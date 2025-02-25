@@ -15,7 +15,7 @@ spring:
       embedding:
         model: mxbai-embed-large
     openai:
-      embedding:
+      image:
         enabled: false
     vectorstore:
       pgvector:
@@ -35,11 +35,3 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-
-document:
-  upload:
-    allowed-types:
-      - application/pdf
-      - text/plain
-      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-      - application/vnd.ms-excel

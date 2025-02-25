@@ -1,0 +1,1 @@
+curl -X POST "http://localhost:9000/api/v1/documents" -F "file=@C:\Users\eii\Desktop\SergioLLMS\rag-spring-ai-ollama\src\main\resources\docs\ejemplo.csv"
