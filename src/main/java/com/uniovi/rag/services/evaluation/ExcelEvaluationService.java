@@ -1,7 +1,15 @@
-package com.uniovi.rag.services;
+package com.uniovi.rag.services.evaluation;
 
+import com.uniovi.rag.services.DocumentService;
+import com.uniovi.rag.services.query.SimpleQueryService;
+import org.springframework.ai.document.Document;
 import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Map;
 
@@ -21,13 +29,28 @@ public class ExcelEvaluationService extends AbstractEvaluationService {
             "¿Cuántas revisiones realizó cada inspector en el mes 7-2023?", "En el mes 7-2023, los inspectores Juan Pérez y Pedro Sánchez realizaron una revisión cada uno."
     );
 
-    public ExcelEvaluationService(OllamaChatModel chatModel, DocumentService documentService, QueryService queryService) {
+    public ExcelEvaluationService(OllamaChatModel chatModel, DocumentService documentService, SimpleQueryService queryService) {
         super(chatModel, documentService, queryService);
     }
 
     @Override
     public void loadSpecificData() {
-        documentService.loadCsvData();
+        StringBuilder content = new StringBuilder();
+
+        try {
+            InputStream file = new ClassPathResource("docs/excel/ejemplo.csv").getInputStream();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(file))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    content.append(line).append("\n");
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Error al cargar el archivo CSV", e);
+        }
+
+        Document document = new Document(String.join("\n", content.toString()));
+        documentService.add(List.of(document));
     }
 
     @Override

@@ -93,55 +93,7 @@ public class DocumentService {
         return content.toString();
     }
 
-    public void loadCsvData(){
-        StringBuilder content = new StringBuilder();
-
-        try {
-            InputStream file = new ClassPathResource("docs/ejemplo.csv").getInputStream();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(file))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    content.append(line).append("\n");
-                }
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Error al cargar el archivo CSV", e);
-        }
-
-        Document document = new Document(String.join("\n", content.toString()));
-        vectorStore.add(List.of(document));
-    }
-
-    public void loadPdfsData() {
-        List<Document> documents = new ArrayList<>();
-
-        try {
-            ClassPathResource resource = new ClassPathResource("docs/");
-            File directory = resource.getFile();
-
-            if (directory.exists() && directory.isDirectory()) {
-                File[] files = directory.listFiles((dir, name) -> name.toLowerCase().endsWith(".pdf"));
-
-                if (files != null) {
-                    for (File file : files) {
-                        try (PDDocument document = PDDocument.load(file)) {
-                            PDFTextStripper stripper = new PDFTextStripper();
-                            String content = stripper.getText(document);
-
-                            if (!content.isEmpty()) {
-                                documents.add(new Document(content));
-                            }
-                        } catch (Exception e) {
-                            System.err.println("Error procesando el PDF: " + file.getName());
-                            e.printStackTrace();
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Error al cargar archivos PDF desde resources/docs/", e);
-        }
-
+    public void add(List<Document> documents) {
         if (!documents.isEmpty()) {
             vectorStore.add(documents);
         }

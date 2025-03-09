@@ -1,0 +1,5 @@
+[Formato]
+Lista = Para enumerar asistentes, temas del orden del día o acuerdos.
+Texto = Para explicar decisiones tomadas o describir discusiones.
+Fecha = Para responder sobre fechas de reuniones o plazos acordados.
+Número = Para respuestas que involucren conteos (asistentes, quórum, votaciones).

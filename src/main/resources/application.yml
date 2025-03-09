@@ -10,8 +10,6 @@ spring:
       base-url: http://localhost:11434
       chat:
         model: gemma2:latest
-        options:
-          top-k: 2
       embedding:
         model: mxbai-embed-large
     vectorstore:

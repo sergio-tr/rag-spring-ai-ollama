@@ -1,6 +1,11 @@
 package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.services.*;
+import com.uniovi.rag.services.evaluation.EvaluationService;
+import com.uniovi.rag.services.evaluation.SimpleActaEvaluationService;
+import com.uniovi.rag.services.evaluation.SystemPromptsActaEvaluationService;
+import com.uniovi.rag.services.query.QueryService;
+import com.uniovi.rag.services.query.SimpleQueryService;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
@@ -30,14 +35,14 @@ public class RagConfiguration {
         return new OllamaChatModel(new OllamaApi(url), OllamaOptions.create().withModel(model));
     }
 
-//    @Bean
-//    public EvaluationService evaluationService(OllamaChatModel chatModel, DocumentService documentService, QueryService queryService) {
-//        return new ExcelEvaluationService(chatModel, documentService, queryService);
-//    }
-
     @Bean
     public EvaluationService evaluationService(OllamaChatModel chatModel, DocumentService documentService, QueryService queryService) {
-        return new PdfEvaluationService(chatModel, documentService, queryService);
+        return new SimpleActaEvaluationService(chatModel, documentService, queryService);
+    }
+
+    @Bean
+    public QueryService queryService(PgVectorStore vectorStore, OllamaChatModel chatModel) {
+        return new SimpleQueryService(vectorStore, chatModel);
     }
 
 }

@@ -1,13 +1,17 @@
-package com.uniovi.rag.services;
+package com.uniovi.rag.services.evaluation;
 
+import com.uniovi.rag.services.DocumentService;
+import com.uniovi.rag.services.query.QueryService;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Service
 public abstract class AbstractEvaluationService implements EvaluationService {
 
     protected final OllamaChatModel chatModel;
@@ -36,11 +40,10 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
     @Override
     public void loadData() {
-        if (dataLoaded) {
-            return;
+        if (!dataLoaded) {
+            loadSpecificData();
+            dataLoaded = true;
         }
-        loadSpecificData();
-        dataLoaded = true;
     }
 
     protected abstract void loadSpecificData();
@@ -63,6 +66,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                 String evaluation = evaluateResponse(question, correctAnswer, llmResponse);
 
                 Map<String, Object> result = new HashMap<>();
+                result.put("Pregunta", question);
                 result.put("Respuesta Correcta", correctAnswer);
                 result.put("Respuesta Generada", llmResponse);
                 result.put("Evaluación", evaluation);

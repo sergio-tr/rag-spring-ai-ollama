@@ -1,4 +1,4 @@
-package com.uniovi.rag.services;
+package com.uniovi.rag.services.evaluation;
 
 import java.util.List;
 import java.util.Map;

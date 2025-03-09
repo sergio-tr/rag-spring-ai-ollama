@@ -1,11 +1,21 @@
-package com.uniovi.rag.services;
+package com.uniovi.rag.services.evaluation;
 
+import com.uniovi.rag.services.DocumentService;
+import com.uniovi.rag.services.query.SimpleQueryService;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.springframework.ai.document.Document;
 import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.stereotype.Service;
 
+import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+@Service
 public class PdfEvaluationService extends AbstractEvaluationService {
 
     private final static Map<String, String> QUESTION_ANSWERS_1 = Map.of(
@@ -34,13 +44,42 @@ public class PdfEvaluationService extends AbstractEvaluationService {
             "¿Cuál es el tiempo de recuperación ante desastres garantizado?", "El tiempo de recuperación ante desastres (RTO) es inferior a 4 horas."
     );
 
-    public PdfEvaluationService(OllamaChatModel chatModel, DocumentService documentService, QueryService queryService) {
+    public PdfEvaluationService(OllamaChatModel chatModel, DocumentService documentService, SimpleQueryService queryService) {
         super(chatModel, documentService, queryService);
     }
 
     @Override
     public void loadSpecificData() {
-        documentService.loadPdfsData();
+        List<Document> documents = new ArrayList<>();
+
+        try {
+            ClassPathResource resource = new ClassPathResource("docs/pdfs");
+            File directory = resource.getFile();
+
+            if (directory.exists() && directory.isDirectory()) {
+                File[] files = directory.listFiles((dir, name) -> name.toLowerCase().endsWith(".pdf"));
+
+                if (files != null) {
+                    for (File file : files) {
+                        try (PDDocument document = PDDocument.load(file)) {
+                            PDFTextStripper stripper = new PDFTextStripper();
+                            String content = stripper.getText(document);
+
+                            if (!content.isEmpty()) {
+                                documents.add(new Document(content));
+                            }
+                        } catch (Exception e) {
+                            System.err.println("Error procesando el PDF: " + file.getName());
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Error al cargar archivos PDF desde resources/docs/", e);
+        }
+
+        documentService.add(documents);
     }
 
     @Override
