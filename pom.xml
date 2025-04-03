@@ -67,7 +67,11 @@
 			<artifactId>poi</artifactId>
 			<version>5.2.3</version>
 		</dependency>
-
+		<dependency>
+			<groupId>org.json</groupId>
+			<artifactId>json</artifactId>
+			<version>20250107</version>
+		</dependency>
 
 	</dependencies>
 	<dependencyManagement>
@@ -79,6 +83,7 @@
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
+
 		</dependencies>
 	</dependencyManagement>
 

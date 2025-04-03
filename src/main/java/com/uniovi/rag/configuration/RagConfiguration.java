@@ -1,11 +1,16 @@
 package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.services.*;
+import com.uniovi.rag.services.analyzer.NERQueryAnalyser;
+import com.uniovi.rag.services.analyzer.QueryAnalyser;
 import com.uniovi.rag.services.evaluation.EvaluationService;
 import com.uniovi.rag.services.evaluation.SimpleActaEvaluationService;
-import com.uniovi.rag.services.evaluation.SystemPromptsActaEvaluationService;
+import com.uniovi.rag.services.expand.DocumentStructureExpander;
+import com.uniovi.rag.services.expand.QueryExpander;
+import com.uniovi.rag.services.query.ComplexQueryService;
 import com.uniovi.rag.services.query.QueryService;
-import com.uniovi.rag.services.query.SimpleQueryService;
+import com.uniovi.rag.services.retriever.ContextRetriever;
+import com.uniovi.rag.services.retriever.DocumentFilteredContextRetriever;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
@@ -19,6 +24,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
 public class RagConfiguration {
+
+    @Value("${spring.ai.ollama.top-k}")
+    private int topK;
 
     @Bean
     public PgVectorStore pgVectorStore(JdbcTemplate jdbcTemplate, EmbeddingModel embeddingModel) {
@@ -41,8 +49,23 @@ public class RagConfiguration {
     }
 
     @Bean
-    public QueryService queryService(PgVectorStore vectorStore, OllamaChatModel chatModel) {
-        return new SimpleQueryService(vectorStore, chatModel);
+    public QueryExpander queryExpander(OllamaChatModel chatModel) {
+        return new DocumentStructureExpander(chatModel);
+    }
+
+    @Bean
+    public QueryAnalyser queryAnalszer(OllamaChatModel chatModel) {
+        return new NERQueryAnalyser(chatModel);
+    }
+
+    @Bean
+    public ContextRetriever contextRetriever(PgVectorStore vectorStore, OllamaChatModel chatModel) {
+        return new DocumentFilteredContextRetriever(vectorStore, chatModel, topK);
+    }
+
+    @Bean
+    public QueryService queryService(QueryExpander expander, QueryAnalyser analyser, ContextRetriever retriever, OllamaChatModel chatModel) {
+        return new ComplexQueryService(expander, analyser, retriever, chatModel);
     }
 
 }
