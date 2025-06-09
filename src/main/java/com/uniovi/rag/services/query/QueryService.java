@@ -1,7 +1,8 @@
 package com.uniovi.rag.services.query;
 
-public interface QueryService {
+import com.uniovi.rag.model.Loggable;
 
-    void setSystemPrompt(String prompt);
+public interface QueryService extends Loggable {
+
     String generateResponse(String question);
 }

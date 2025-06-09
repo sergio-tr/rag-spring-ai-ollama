@@ -1,7 +1,8 @@
 package com.uniovi.rag.services.retriever;
 
+import org.json.JSONObject;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.vectorstore.PgVectorStore;
 import org.springframework.ai.vectorstore.SearchRequest;
 
@@ -11,37 +12,62 @@ import java.util.stream.Collectors;
 public abstract class AbstractContextRetriever implements ContextRetriever {
 
     protected final PgVectorStore vectorStore;
-    protected final OllamaChatModel model;
+    protected final ChatClient chatClient;
     protected int topK;
+    protected double similarityThreshold;
 
-    public AbstractContextRetriever(PgVectorStore vectorStore, OllamaChatModel model, int topK) {
+    private final int defaultTopK;
+    private final double defaultSimilarityThreshold;
+
+    public AbstractContextRetriever(PgVectorStore vectorStore, ChatClient chatClient, int topK, double similarityThreshold) {
         this.vectorStore = vectorStore;
-        this.model = model;
+        this.chatClient = chatClient;
+        this.defaultTopK = topK;
+        this.defaultSimilarityThreshold = similarityThreshold;
         this.topK = topK;
+        this.similarityThreshold = similarityThreshold;
     }
 
     @Override
-    public String retrieve(String query) {
-        SearchRequest req = SearchRequest.query(query).withTopK(topK);
-        List<Document> retrievedDocs = vectorStore.similaritySearch(req);
-
-        return retrievedDocs.stream()
-                .map(doc -> filterContentByQuestion(doc, query))
-                .reduce("", (a, b) -> a + "\n" + b);
+    public List<Document> retrieve(String query) {
+        SearchRequest req = SearchRequest.
+                query(query).
+                withTopK(topK).
+                withSimilarityThreshold(similarityThreshold);
+        return vectorStore.similaritySearch(req);
     }
 
     @Override
-    public String retrieve(String query, String context) {
-        SearchRequest req = SearchRequest.query(query).withTopK(topK);
-        List<Document> retrievedDocs = vectorStore.similaritySearch(req);
+    public String createContext(List<Document> documents, String query, JSONObject entities) {
+        if (documents.isEmpty()) {
+            return "";
+        }
 
-        return retrievedDocs.stream()
-                .map(doc -> filterContentByQuestion(doc, query, context))
+        return documents.stream()
+                .map(doc -> filterDocumentContent(doc, query, entities))
                 .collect(Collectors.joining("\n"));
     }
 
-    protected abstract String filterContentByQuestion(Document doc, String query);
-    protected abstract String filterContentByQuestion(Document doc, String query, String context);
+    @Override
+    public void setTopK(int topK) {
+        if (topK > 0) {
+            this.topK = topK;
+        }
+    }
 
+    @Override
+    public void setSimilarityThreshold(double similarityThreshold) {
+        if (similarityThreshold > 0 && similarityThreshold <= 1) {
+            this.similarityThreshold = similarityThreshold;
+        }
+    }
+
+    @Override
+    public void restoreDefaultSettings() {
+        this.topK = defaultTopK;
+        this.similarityThreshold = defaultSimilarityThreshold;
+    }
+
+    public abstract String filterDocumentContent(Document doc, String query, JSONObject entities);
 
 }

@@ -1,9 +1,16 @@
 package com.uniovi.rag.services.classifier;
 
 public enum QueryType {
-    COUNTER,
-    LITERAL,
-    OPERATION,
-    PARAGRAPH,
-    CONTENT
+    COUNT_DOCUMENTS,
+    EXTRACT_ENTITIES,
+    COUNT_AND_EXPLAIN,
+    FIND_PARAGRAPH,
+    DECISION_EXTRACTION,
+    GET_DURATION,
+    GET_FIELD,
+    SUMMARIZE_TOPIC,
+    SUMMARIZE_MEETING,
+    BOOLEAN_QUERY,
+    FILTER_AND_LIST,
+    COMPARE
 }

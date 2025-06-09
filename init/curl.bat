@@ -1,0 +1,6 @@
+curl -X POST "http://localhost:9000/api/v3/documents" -F "file=@C:\Users\eii\Desktop\SergioLLMS\rag-spring-ai-ollama\src\main\resources\docs\ejemplo.csv"
+curl -X POST "http://localhost:9000/api/v3/documents" -F "file=@C:\Users\eii\Desktop\SergioLLMS\rag-spring-ai-ollama\src\main\resources\docs\actas\ACTA 1.pdf"
+curl -X POST "http://localhost:9000/api/v3/documents" -F "file=@C:\Users\eii\Desktop\SergioLLMS\rag-spring-ai-ollama\src\main\resources\docs\actas\ACTA 2.pdf"
+curl -X POST "http://localhost:9000/api/v3/documents" -F "file=@C:\Users\eii\Desktop\SergioLLMS\rag-spring-ai-ollama\src\main\resources\docs\actas\ACTA 3.pdf"
+curl -X POST "http://localhost:9000/api/v3/documents" -F "file=@C:\Users\eii\Desktop\SergioLLMS\rag-spring-ai-ollama\src\main\resources\docs\actas\ACTA 5.pdf"
+curl -X POST "http://localhost:9000/api/v3/documents" -F "file=@C:\Users\eii\Desktop\SergioLLMS\rag-spring-ai-ollama\src\main\resources\docs\actas\ACTA 6.pdf"

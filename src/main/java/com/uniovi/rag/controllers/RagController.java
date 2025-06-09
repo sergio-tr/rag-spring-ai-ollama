@@ -1,6 +1,6 @@
 package com.uniovi.rag.controllers;
 
-import com.uniovi.rag.services.DocumentService;
+import com.uniovi.rag.services.document.DocumentService;
 import com.uniovi.rag.services.evaluation.EvaluationService;
 import com.uniovi.rag.services.query.QueryService;
 import org.springframework.http.ResponseEntity;
@@ -10,7 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v2")
+@RequestMapping("/api/v3")
 public class RagController {
 
     private final DocumentService documentService;
@@ -25,8 +25,12 @@ public class RagController {
 
     @PostMapping("/documents")
     public ResponseEntity<String> uploadDocument(@RequestParam("file") MultipartFile file) {
-        documentService.processAndStoreDocument(file);
-        return ResponseEntity.ok("Documento procesado correctamente");
+        try {
+            documentService.processDocument(file);
+            return ResponseEntity.ok("Document stored successfully");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error storing document: " + e.getMessage());
+        }
     }
 
     @GetMapping("/query")
@@ -37,7 +41,7 @@ public class RagController {
 
     @GetMapping("/evaluate")
     public ResponseEntity<Map<String, Object>> evaluate() {
-        // evaluationService.loadData();
+        evaluationService.loadData();
         Map<String, Object> results = evaluationService.evaluate();
         return ResponseEntity.ok(results);
     }
