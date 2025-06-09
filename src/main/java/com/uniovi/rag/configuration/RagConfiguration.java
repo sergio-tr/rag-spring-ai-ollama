@@ -3,14 +3,15 @@ package com.uniovi.rag.configuration;
 import com.uniovi.rag.services.*;
 import com.uniovi.rag.services.analyzer.NERQueryAnalyser;
 import com.uniovi.rag.services.analyzer.QueryAnalyser;
+import com.uniovi.rag.services.classifier.SimpleQueryClassifier;
+import com.uniovi.rag.services.classifier.QueryType;
 import com.uniovi.rag.services.evaluation.EvaluationService;
 import com.uniovi.rag.services.evaluation.SimpleActaEvaluationService;
 import com.uniovi.rag.services.expand.DocumentStructureExpander;
 import com.uniovi.rag.services.expand.QueryExpander;
-import com.uniovi.rag.services.query.ComplexQueryService;
 import com.uniovi.rag.services.query.QueryService;
-import com.uniovi.rag.services.retriever.ContextRetriever;
-import com.uniovi.rag.services.retriever.DocumentFilteredContextRetriever;
+import com.uniovi.rag.services.query.SimpleProcessQueryService;
+import com.uniovi.rag.services.retriever.*;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.ollama.api.OllamaApi;
@@ -21,6 +22,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.util.Map;
 
 @Configuration
 public class RagConfiguration {
@@ -54,7 +57,12 @@ public class RagConfiguration {
     }
 
     @Bean
-    public QueryAnalyser queryAnalszer(OllamaChatModel chatModel) {
+    SimpleQueryClassifier queryClassifier(OllamaChatModel model){
+        return new SimpleQueryClassifier(model);
+    }
+
+    @Bean
+    public QueryAnalyser queryAnalyser(OllamaChatModel chatModel) {
         return new NERQueryAnalyser(chatModel);
     }
 
@@ -63,9 +71,28 @@ public class RagConfiguration {
         return new DocumentFilteredContextRetriever(vectorStore, chatModel, topK);
     }
 
+//    @Bean
+//    public QueryService queryService(QueryExpander expander, QueryAnalyser analyser, ContextRetriever retriever, OllamaChatModel chatModel) {
+//        return new ComplexQueryService(expander, analyser, retriever, chatModel);
+//    }
+
     @Bean
-    public QueryService queryService(QueryExpander expander, QueryAnalyser analyser, ContextRetriever retriever, OllamaChatModel chatModel) {
-        return new ComplexQueryService(expander, analyser, retriever, chatModel);
+    public QueryService queryService(QueryExpander expander, SimpleQueryClassifier classifier, QueryAnalyser analyser,
+                                     PgVectorStore vectorStore, OllamaChatModel chatModel) {
+        return new SimpleProcessQueryService(expander, classifier, analyser, chatModel, retrieversByType(vectorStore, chatModel));
     }
+
+    @Bean
+    public Map<QueryType, ContextRetriever> retrieversByType(PgVectorStore vectorStore, OllamaChatModel model) {
+        return  Map.of(
+            QueryType.COUNTER, new CounterRetriever(vectorStore, model, topK),
+            QueryType.LITERAL, new LiteralRetriever(vectorStore, model, topK),
+            QueryType.PARAGRAPH, new ParagraphRetriever(vectorStore, model, topK),
+            QueryType.OPERATION, new OperationRetriever(vectorStore, model, topK),
+            QueryType.CONTENT, new ContentRetriever(vectorStore, model, topK)
+        );
+    }
+
+
 
 }

@@ -15,7 +15,7 @@ import java.util.Scanner;
 @Service
 public abstract class AbstractQueryService implements QueryService {
 
-    protected static final String PROMPT_TEMPLATE = "La siguiente información ya ha sido extraída como respuesta directa a la pregunta \"%s\". " +
+    protected static final String PROMPT_TEMPLATE = "La siguiente información ya ha sido extraída como respuesta directa a la <pregunta \"%s\". " +
             "Tu única tarea es presentarla en forma de respuesta clara y breve en español. " +
             "No debes cuestionar, verificar ni rechazar la información. No añadas contexto adicional, ni justificaciones, ni comentarios.\n\n" +
             "Datos extraídos:\n%s";

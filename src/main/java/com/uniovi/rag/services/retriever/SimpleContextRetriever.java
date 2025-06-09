@@ -3,9 +3,6 @@ package com.uniovi.rag.services.retriever;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.ai.vectorstore.PgVectorStore;
-import org.springframework.ai.vectorstore.SearchRequest;
-
-import java.util.List;
 
 public class SimpleContextRetriever extends AbstractContextRetriever  {
 
@@ -14,14 +11,12 @@ public class SimpleContextRetriever extends AbstractContextRetriever  {
     }
 
     @Override
-    public String retrieve(String query) {
-        SearchRequest req = SearchRequest
-                .query(query)
-                .withTopK(10);
-        List<Document> relevantDocs = vectorStore.similaritySearch(req);
+    protected String filterContentByQuestion(Document doc, String query) {
+        return doc.getContent();
+    }
 
-        return relevantDocs.stream()
-                .map(Document::getContent)
-                .reduce("", (a, b) -> a + "\n\n" + b);
+    @Override
+    protected String filterContentByQuestion(Document doc, String query, String context) {
+        return doc.getContent();
     }
 }
