@@ -33,7 +33,7 @@ public class NERQueryAnalyser implements QueryAnalyser {
     }
 
     @Override
-    public String analyze(String query) {
+    public String analyse(String query) {
         String nerPrompt = String.format(NER_PROMPT, query);
         return this.model.call(nerPrompt);
     }

@@ -20,7 +20,7 @@ public class ComplexQueryService extends AbstractQueryService {
 
         String expandedQuery = expander.expand(question);
 
-        String nerEntities = analyzer.analyze(question);
+        String nerEntities = analyzer.analyse(question);
 
         String context = retriever.retrieve(expandedQuery, nerEntities);
 

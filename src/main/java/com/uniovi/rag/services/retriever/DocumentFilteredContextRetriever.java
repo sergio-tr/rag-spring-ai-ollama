@@ -51,7 +51,7 @@ public class DocumentFilteredContextRetriever extends FilteredContextRetriever {
                 .collect(Collectors.joining("\n"));
     }
 
-    private String filterContentByQuestion(Document doc, String query, String nerContext) {
+    protected String filterContentByQuestion(Document doc, String query, String nerContext) {
 
         String filterPrompt = String.format(
                 promptTemplate,
