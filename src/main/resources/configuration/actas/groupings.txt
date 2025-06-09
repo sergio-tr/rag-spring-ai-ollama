@@ -1,5 +1,0 @@
-[Agrupaciones]
-Asistentes = Participantes, miembros presentes, propietarios
-Decisiones = Votaciones, acuerdos, resoluciones
-Revisión = Aprobación de actas anteriores, actualización de información
-Presupuesto = Gastos, ingresos, financiación
