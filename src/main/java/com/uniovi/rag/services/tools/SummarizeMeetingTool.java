@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -8,31 +9,7 @@ import org.springframework.ai.document.Document;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.uniovi.rag.utils.InfoExtractor.*;
-
 public class SummarizeMeetingTool extends AbstractTool {
-
-    private static final String SUMMARY_PROMPT_WITH_FILTERS = """
-            A continuación se presentan fragmentos de actas de reuniones relacionadas con la consulta: "%s".
-            
-            Filtros contextuales aplicados: %s
-            
-            Fragmentos:
-            %s
-            
-            Redacta un resumen breve y claro en español, indicando los puntos clave mencionados.
-            Evita repetir frases literales y organiza la información de forma clara.
-            """;
-
-    private static final String SUMMARY_PROMPT_NO_FILTERS = """
-            A continuación se presentan fragmentos de actas de reuniones relacionadas con la consulta: "%s".
-            
-            Fragmentos:
-            %s
-            
-            Redacta un resumen breve y claro en español, indicando los puntos clave mencionados.
-            Evita repetir frases literales y organiza la información de forma clara.
-            """;
 
     public SummarizeMeetingTool(ChatClient chatClient, ContextRetriever retriever) {
         super(chatClient, retriever);
@@ -42,87 +19,110 @@ public class SummarizeMeetingTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
+        List<Document> docs = retrieveDocuments(query);
+        List<String> fragments = new ArrayList<>();
 
-        List<String> dates = new ArrayList<>();
-        List<String> presidents = new ArrayList<>();
-        List<String> secretaries = new ArrayList<>();
-
-        if (ner != null && ner.has("entities")) {
-            JSONObject filters = ner.optJSONObject("entities").optJSONObject("filters");
-            if (filters != null) {
-                dates = optArrayToList(filters, "date");
-                presidents = optArrayToList(filters, "presidente");
-                secretaries = optArrayToList(filters, "secretario");
-            }
-        } else {
-            String filterPrompt = """
-                    Extrae del siguiente texto posibles valores para los filtros: fecha, presidente y secretario, en formato JSON:
-                    Consulta: "%s"
-                    Resultado:
-                    {
-                      "fechas": [],
-                      "presidentes": [],
-                      "secretarios": []
-                    }
-                    """.formatted(query);
-            String json = chatClient.prompt().user(filterPrompt).call().content();
-            JSONObject parsed = new JSONObject(json);
-            dates = optArrayToList(parsed, "fechas");
-            presidents = optArrayToList(parsed, "presidentes");
-            secretaries = optArrayToList(parsed, "secretarios");
-        }
-
-        List<Document> documents = retrieveAllDocuments(query);
-        StringBuilder fragments = new StringBuilder();
-        int included = 0;
-
-        for (Document doc : documents) {
-            String content = doc.getContent();
-            String date = extractDate(content);
-            String president = extractLiteralField("presidente", content);
-            String secretary = extractLiteralField("secretario", content);
-            String agenda = extractAgenda(content);
-
-            boolean matchDate = dates.isEmpty() || dates.stream().anyMatch(date::contains);
-            boolean matchPresident = presidents.isEmpty() || presidents.stream().anyMatch(p -> president != null && president.toLowerCase().contains(p.toLowerCase()));
-            boolean matchSecretary = secretaries.isEmpty() || secretaries.stream().anyMatch(s -> secretary != null && secretary.toLowerCase().contains(s.toLowerCase()));
-
-            boolean matchAgenda = false;
-            if (agenda != null && !agenda.isBlank()) {
-                matchAgenda = agenda.lines().anyMatch(line -> containsRelevantPhrase(line, query));
-            }
-
-            if (!(matchDate || matchPresident || matchSecretary || matchAgenda)) continue;
-
-            for (String p : content.split("(?<=[.:?])\\s*([\\n\\r])+")) {
-                if (containsRelevantPhrase(p, query)) {
-                    fragments.append("• ").append(p.trim()).append("\n");
-                    if (++included >= 10) break;
+        for (Document doc : docs) {
+            if (ner != null) {
+                if (matchesNER(doc, ner)) {
+                    fragments.addAll(extractRelevantFragments(doc, query));
+                }
+            } else {
+                if (isRelevantByLLM(doc.getContent(), query)) {
+                    fragments.addAll(extractRelevantFragments(doc, query));
                 }
             }
-
-            if (included >= 10) break;
+            if (fragments.size() >= 10) break;
         }
 
-        if (included == 0) {
-            throw new RuntimeException("No se encontraron fragmentos relevantes para resumir.");
+        if (fragments.isEmpty()) {
+            String notFound = generateNotFoundMessage(query);
+            return ToolResult.from(notFound, getClass());
         }
 
-        String filtersSummary = (!dates.isEmpty() || !presidents.isEmpty() || !secretaries.isEmpty())
-                ? "fechas=" + dates + ", presidentes=" + presidents + ", secretarios=" + secretaries
-                : "";
-
-        String prompt = filtersSummary.isBlank()
-                ? SUMMARY_PROMPT_NO_FILTERS.formatted(query, fragments.toString())
-                : SUMMARY_PROMPT_WITH_FILTERS.formatted(query, filtersSummary, fragments.toString());
-
-        String result = chatClient.prompt().user(prompt).call().content();
-        return ToolResult.from(result.strip(), getClass());
+        String summary = generateSummaryWithLLM(query, fragments);
+        return ToolResult.from(summary, getClass());
     }
 
-    private List<String> optArrayToList(JSONObject obj, String key) {
-        return obj.optJSONArray(key) != null
-                ? obj.getJSONArray(key).toList().stream().map(Object::toString).toList()
-                : List.of();
+    private boolean matchesNER(Document doc, JSONObject ner) {
+        String[] fields = {"date", "place", "startTime", "endTime", "president", "secretary", "attendees", "numberOfAttendees", "agenda", "decisions", "mentionedEntities", "topics", "section", "summary"};
+        String content = doc.getContent().toLowerCase();
+        for (String field : fields) {
+            if (ner.has(field)) {
+                JSONArray arr = ner.optJSONArray(field);
+                if (arr != null && arr.length() > 0) {
+                    boolean anyMatch = false;
+                    for (int i = 0; i < arr.length(); i++) {
+                        String value = arr.getString(i).toLowerCase();
+                        if (!value.isBlank() && content.contains(value)) {
+                            anyMatch = true;
+                            break;
+                        }
+                    }
+                    if (!anyMatch) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean isRelevantByLLM(String content, String query) {
+        String prompt = """
+            Given the following user query (in any language):
+            "%s"
+            And the following minutes content:
+            "%s"
+            Does this minutes document match all the conditions in the query? 
+            Answer only YES or NO.
+            """.formatted(query, content.substring(0, Math.min(1000, content.length())));
+        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
+        return result.startsWith("yes");
+    }
+
+    private List<String> extractRelevantFragments(Document doc, String query) {
+        List<String> relevant = new ArrayList<>();
+        String content = doc.getContent();
+        String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
+        for (String p : paragraphs) {
+            if (isParagraphRelevantByLLM(query, p)) {
+                relevant.add(p.trim());
+            }
+        }
+        return relevant;
+    }
+
+    private boolean isParagraphRelevantByLLM(String query, String paragraph) {
+        String prompt = """
+            Given the following user query (in any language):
+            "%s"
+            And this is a paragraph from the minutes:
+            "%s"
+            Does the paragraph clearly or partially answer the query? 
+            Answer only YES or NO.
+            """.formatted(query, paragraph);
+        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
+        return result.startsWith("yes");
+    }
+
+    private String generateSummaryWithLLM(String query, List<String> fragments) {
+        String joined = String.join("\n\n", fragments);
+        String prompt = """
+            Given the following user query (in any language):
+            "%s"
+            The following are relevant fragments from the minutes:
+            "%s"
+            Write a brief and clear summary in the same language as the query, 
+            indicating the key points mentioned. Avoid literal repetition and organize the information clearly.
+            """.formatted(query, joined);
+        return chatClient.prompt().user(prompt).call().content().strip();
+    }
+
+    private String generateNotFoundMessage(String query) {
+        String prompt = """
+            Given the following user query (in any language):
+            "%s"
+            Write a short message indicating that no information was found related to the query, in the same language as the query.
+            """.formatted(query);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 }

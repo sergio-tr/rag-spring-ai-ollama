@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -9,7 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.*;
+import static com.uniovi.rag.utils.InfoExtractor.extractDate;
+import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
 
 public class FilterAndListTool extends AbstractTool {
 
@@ -21,90 +23,86 @@ public class FilterAndListTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
-
-        List<String> persons;
-        List<String> dates;
-        List<String> locations;
-        List<String> sections;
-
-        if (ner != null && ner.has("entities")) {
-            JSONObject entities = ner.optJSONObject("entities");
-            JSONObject filters = entities.optJSONObject("filters") != null ? entities.optJSONObject("filters") : new JSONObject();
-
-            persons = extractListFromJSON(entities, "person");
-            dates = extractListFromJSON(filters, "date");
-            locations = extractListFromJSON(filters, "place");
-            sections = extractListFromJSON(filters, "section");
-        } else {
-            String filterPrompt = """
-                    Dado el texto de esta consulta:
-                    "%s"
-                    
-                    Devuelve un JSON con los siguientes posibles filtros si se mencionan:
-                    {
-                      "personas": [],
-                      "fechas": [],
-                      "lugares": [],
-                      "secciones": []
-                    }
-                    """.formatted(query);
-
-            String jsonResult = chatClient.prompt().user(filterPrompt).call().content();
-            JSONObject extracted = new JSONObject(jsonResult);
-
-            persons = extractListFromJSON(extracted, "personas");
-            dates = extractListFromJSON(extracted, "fechas");
-            locations = extractListFromJSON(extracted, "lugares");
-            sections = extractListFromJSON(extracted, "secciones");
-        }
-
-        List<Document> documents = retrieveAllDocuments(query);
+        List<Document> docs = retrieveDocuments(query);
         List<String> results = new ArrayList<>();
 
-        for (Document document : documents) {
-            String content = document.getContent();
-            String lowerContent = content.toLowerCase();
-
-            boolean matches = matchesAllFilters(query, lowerContent, dates, locations, persons, sections);
-
-            if (matches) {
-                String summary = summarizeMatchingFragment(content, query);
-                results.add("Acta del " + extractDate(content) + ":\n" + summary);
+        if (ner != null) {
+            for (Document doc : docs) {
+                if (matchesNER(doc, ner)) {
+                    String content = doc.getContent();
+                    String date = extractDate(content);
+                    String summary = extractAndSummarize(content, query);
+                    results.add("Minutes from " + date + ":\n" + summary);
+                }
+            }
+        } else {
+            for (Document doc : docs) {
+                String content = doc.getContent();
+                String date = extractDate(content);
+                if (isRelevantByLLM(content, query)) {
+                    String summary = extractAndSummarize(content, query);
+                    results.add("Minutes from " + date + ":\n" + summary);
+                }
             }
         }
 
-        if (results.isEmpty()) {
-            throw new RuntimeException("No se encontraron actas que cumplan todas las condiciones especificadas en la consulta.");
+        String answer;
+        if (!results.isEmpty()) {
+            answer = generateFinalAnswer(query, results);
+        } else {
+            answer = "No minutes found that match all the conditions specified in the query: '" + query + "'.";
         }
-
-        return ToolResult.from(String.join("\n\n", results), getClass());
+        return ToolResult.from(answer, getClass());
     }
 
-    private List<String> extractListFromJSON(JSONObject obj, String key) {
-        if (obj != null && obj.has(key)) {
-            return obj.getJSONArray(key).toList().stream().map(Object::toString).collect(Collectors.toList());
+    private boolean matchesNER(Document doc, JSONObject ner) {
+        String[] fields = {"date", "place", "startTime", "endTime", "president", "secretary", "attendees", "numberOfAttendees", "agenda", "decisions", "mentionedEntities", "topics", "section", "summary"};
+        String content = doc.getContent().toLowerCase();
+        for (String field : fields) {
+            if (ner.has(field)) {
+                JSONArray arr = ner.optJSONArray(field);
+                if (arr != null && arr.length() > 0) {
+                    boolean anyMatch = false;
+                    for (int i = 0; i < arr.length(); i++) {
+                        String value = arr.getString(i).toLowerCase();
+                        if (!value.isBlank() && content.contains(value)) {
+                            anyMatch = true;
+                            break;
+                        }
+                    }
+                    if (!anyMatch) return false;
+                }
+            }
         }
-        return List.of();
+        return true;
     }
 
-    private String summarizeMatchingFragment(String content, String query) {
+    private boolean isRelevantByLLM(String content, String query) {
+        String prompt = """
+            Given the following user query:\n"%s"\nand the following minutes content:\n"%s"\n\nDoes this minutes document match all the conditions in the query? Answer only YES or NO.
+            """.formatted(query, content.substring(0, Math.min(1000, content.length())));
+        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
+        return result.startsWith("yes");
+    }
+
+    private String extractAndSummarize(String content, String query) {
         String fragment = extractRelevantFragment(content, query);
         String prompt = """
-                Resume en dos frases como máximo el fragmento del siguiente texto que conteste a esta consulta: "%s"
-                Texto:
-                %s
-                """.formatted(query, fragment);
-
+            Summarize in at most two sentences the fragment of the following text that answers this query: "%s"
+            Text:
+            %s
+            """.formatted(query, fragment);
         return chatClient.prompt().user(prompt).call().content().strip();
     }
 
-    private boolean matchesAllFilters(String query, String content, List<String> dates, List<String> locations, List<String> persons, List<String> sections) {
-        boolean dateMatch = dates.isEmpty() || dates.stream().anyMatch(date -> content.contains(date.toLowerCase()));
-        boolean locationMatch = locations.isEmpty() || locations.stream().anyMatch(loc -> content.contains(loc.toLowerCase()));
-        boolean personMatch = persons.isEmpty() || persons.stream().anyMatch(per -> content.contains(per.toLowerCase()));
-        boolean sectionMatch = sections.isEmpty() || sections.stream().anyMatch(sec -> content.contains(sec.toLowerCase()));
-        boolean semanticMatch = containsRelevantPhrase(content, query);
-
-        return dateMatch && locationMatch && personMatch && sectionMatch && semanticMatch;
+    private String generateFinalAnswer(String query, List<String> results) {
+        String joined = results.stream().distinct().collect(Collectors.joining("\n\n"));
+        String prompt = """
+            The user asked: "%s"
+            The following minutes matched the filters and their relevant content is:
+            %s
+            Write a brief and clear answer in Spanish, listing the minutes and summarizing the relevant content for each.
+            """.formatted(query, joined);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 }

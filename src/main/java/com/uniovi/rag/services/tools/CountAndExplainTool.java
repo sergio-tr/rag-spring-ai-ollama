@@ -1,27 +1,19 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.*;
+import static com.uniovi.rag.utils.InfoExtractor.extractDate;
+import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
 
 public class CountAndExplainTool extends AbstractTool {
-
-    private static final String PROMPT_TEMPLATE = """
-            El usuario quiere saber en qué actas se trata el siguiente tema:
-            
-            Pregunta: "%s"
-            
-            Ya se han detectado %d documentos relevantes. A continuación se listan fragmentos de los documentos que contienen el tema:
-            
-            %s
-            
-            Tu tarea es redactar una respuesta breve y clara en español indicando dónde se menciona el tema, utilizando los fragmentos mostrados.
-            """;
 
     public CountAndExplainTool(ChatClient chatClient, ContextRetriever retriever) {
         super(chatClient, retriever);
@@ -30,68 +22,96 @@ public class CountAndExplainTool extends AbstractTool {
     @Override
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
-        JSONObject entities = ctx.nerEntities();
+        JSONObject ner = ctx.nerEntities();
+        List<Document> docs = retrieveDocuments(query);
+        List<String> explicaciones = new ArrayList<>();
+        int count = 0;
 
-        List<Document> docs = retrieveAllDocuments(query);
-        List<String> fragments;
-
-        if (entities == null) {
-            fragments = docs.stream()
-                    .filter(doc -> containsAnyKeyword(doc.getContent(), extractKeywordsFromQuery(query).split(" ")))
-                    .map(doc -> "- Acta: " + extractDate(doc.getContent()) + "\n" +
-                            extractRelevantFragment(doc.getContent().toLowerCase(), query))
-                    .distinct()
-                    .toList();
-
-//            fragments = docs.stream()
-//                    .filter(doc -> containsAnyKeyword(doc.getContent(), extractKeywordsFromQuery(query).split(" ")))
-//                    .map(doc -> "- Acta: " + extractDate(doc.getContent()) + "\n" +
-//                            extractRelevantFragment(doc.getContent().toLowerCase(), query))
-//                    .distinct()
-//                    .limit(10)
-//                    .toList();
-
+        if (ner != null) {
+            for (Document doc : docs) {
+                if (matchesNER(doc, ner)) {
+                    String content = doc.getContent();
+                    String fecha = extractDate(content);
+                    String fragmento = extractRelevantFragment(content, query);
+                    explicaciones.add("Acta del " + fecha + ":\n" + fragmento);
+                    count++;
+                }
+            }
         } else {
-            JSONObject ents = entities.optJSONObject("entities");
-            JSONObject filtros = ents != null ? ents.optJSONObject("filters") : null;
-
-            List<String> personas = safeExtractList(ents, "person");
-            List<String> fechas = safeExtractList(filtros, "date");
-
-            fragments = docs.stream()
-                    .filter(doc -> {
-                        String content = doc.getContent().toLowerCase();
-                        boolean matchFecha = fechas.isEmpty() || fechas.stream().anyMatch(f -> content.contains(f.toLowerCase()));
-                        boolean matchPersona = personas.isEmpty() || personas.stream().anyMatch(p -> content.contains(p.toLowerCase()));
-                        boolean matchSemantico = containsRelevantPhrase(content, query);
-                        return matchFecha && matchPersona && matchSemantico;
-                    })
-                    .map(doc -> "- Acta: " + extractDate(doc.getContent()) + "\n" +
-                            extractRelevantFragment(doc.getContent().toLowerCase(), query))
-                    .distinct()
-                    .limit(10)
-                    .toList();
+            for (Document doc : docs) {
+                String content = doc.getContent();
+                String fecha = extractDate(content);
+                String fragmento = extractRelevantFragment(content, query);
+                if (isRelevantToQuery(fragmento, query)) {
+                    explicaciones.add("Acta del " + fecha + ":\n" + fragmento);
+                    count++;
+                }
+            }
         }
 
-        if (fragments.isEmpty()) {
-            throw new RuntimeException("No se encontró información relacionada con la consulta: \"" + query + "\" en las actas disponibles.");
+        String respuesta;
+        if (count > 0) {
+            respuesta = generarRespuestaConLLM(query, count, explicaciones);
+        } else {
+            respuesta = "No se encontró información relevante para la consulta: '" + query + "' en las actas disponibles.";
         }
+        return ToolResult.from(respuesta, getClass());
+    }
 
-        String joined = String.join("\n", fragments);
-        String prompt = PROMPT_TEMPLATE.formatted(query, fragments.size(), joined);
+    private boolean matchesNER(Document doc, JSONObject ner) {
+        String[] fields = {"date", "place", "startTime", "endTime", "president", "secretary", "attendees", "numberOfAttendees", "agenda", "decisions", "mentionedEntities", "topics", "section", "summary"};
+        String content = doc.getContent().toLowerCase();
+        for (String field : fields) {
+            if (ner.has(field)) {
+                JSONArray arr = ner.optJSONArray(field);
+                if (arr != null && arr.length() > 0) {
+                    boolean anyMatch = false;
+                    for (int i = 0; i < arr.length(); i++) {
+                        String value = arr.getString(i).toLowerCase();
+                        if (!value.isBlank() && content.contains(value)) {
+                            anyMatch = true;
+                            break;
+                        }
+                    }
+                    if (!anyMatch) return false;
+                }
+            }
+        }
+        return true;
+    }
 
-        String respuesta = chatClient
+    private boolean isRelevantToQuery(String fragment, String query) {
+        // Usa el LLM para decidir si el fragmento es relevante para la pregunta
+        String prompt = """
+            Esta es la pregunta del usuario:
+            "%s"
+            Este es un fragmento de un acta:
+            "%s"
+            ¿El fragmento responde de forma clara o parcial a la pregunta? Responde solo con 'sí' o 'no'.
+            """.formatted(query, fragment);
+        String result = chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip()
+                .toLowerCase();
+        return result.contains("sí");
+    }
+
+    private String generarRespuestaConLLM(String query, int count, List<String> explicaciones) {
+        String joined = explicaciones.stream().distinct().collect(Collectors.joining("\n\n"));
+        String prompt = """
+            El usuario ha preguntado: "%s"
+            Se han encontrado %d actas relevantes. A continuación se muestra el contexto encontrado:
+            %s
+            Redacta una respuesta breve y clara en español, indicando el número de actas y resumiendo el contexto encontrado.
+            """.formatted(query, count, joined);
+        return chatClient
                 .prompt()
                 .user(prompt)
                 .call()
                 .content()
                 .strip();
-
-        return ToolResult.from(respuesta, getClass());
-    }
-
-    private List<String> safeExtractList(JSONObject json, String key) {
-        if (json == null || json.optJSONArray(key) == null) return List.of();
-        return json.optJSONArray(key).toList().stream().map(Object::toString).toList();
     }
 }

@@ -6,6 +6,7 @@ import com.uniovi.rag.services.tools.ToolResult;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
+import com.uniovi.rag.model.Minute;
 
 import java.util.*;
 
@@ -18,117 +19,124 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     @Override
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
-        JSONObject nerEntities = ctx.nerEntities();
-        String[] keywords = extractKeywordsFromQuery(query).split("\\s+");
-
+        JSONObject ner = ctx.nerEntities();
         List<Document> docs = retrieveAllDocuments(query);
         if (docs.isEmpty()) {
-            return ToolResult.from("No se encontraron actas relevantes para la comparación.", getClass());
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        String fieldToCompare = inferComparisonField(nerEntities, keywords);
-        if (fieldToCompare == null) {
-            return ToolResult.from("No se ha podido determinar qué comparar (por ejemplo: número de asistentes, duración...).", getClass());
-        }
-
-        // Agrupar documentos por acta
-        Map<String, Map<String, Object>> uniqueMinutes = new HashMap<>();
+        // Step 1: Extract Minute objects from metadata
+        List<Minute> minutes = new ArrayList<>();
         for (Document doc : docs) {
-            Map<String, Object> meta = doc.getMetadata();
-            String minuteId = (String) meta.get("id"); // Usamos la key estandarizada
-            if (minuteId != null && !uniqueMinutes.containsKey(minuteId)) {
-                uniqueMinutes.put(minuteId, meta);
-            }
+            Minute minute = getMinuteFromMetadata(doc);
+            if (minute != null) minutes.add(minute);
+        }
+        if (minutes.isEmpty()) {
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        Map<String, Integer> comparables = new HashMap<>();
-        for (Map<String, Object> meta : uniqueMinutes.values()) {
-            String label = buildLabel(meta, nerEntities);
-            Integer value = extractNumericField(meta, fieldToCompare);
+        // Step 2: Infer which field to compare (attendees, duration, etc.)
+        String fieldToCompare = inferComparisonField(query, ner, minutes);
+        if (fieldToCompare == null) {
+            return ToolResult.from(generateUnknownFieldMessage(query), getClass());
+        }
+
+        // Step 3: Filter and label minutes for comparison
+        Map<String, Integer> comparables = new LinkedHashMap<>();
+        for (Minute minute : minutes) {
+            if (ner != null && !matchesMinuteWithNER(minute, ner)) continue;
+            String label = buildLabel(minute, ner);
+            Integer value = extractNumericField(minute, fieldToCompare);
             if (label != null && value != null) {
                 comparables.put(label, value);
             }
         }
-
         if (comparables.isEmpty()) {
-            return ToolResult.from("No se encontraron datos numéricos para comparar el campo: " + fieldToCompare, getClass());
+            return ToolResult.from(generateNoDataMessage(fieldToCompare, query), getClass());
         }
 
-        StringBuilder result = new StringBuilder("Comparación por *" + fieldToCompare + "*:\n");
+        // Step 4: Generate a comparative answer using the LLM in the query's language
+        String answer = generateComparisonAnswerWithLLM(query, fieldToCompare, comparables);
+        return ToolResult.from(answer, getClass());
+    }
+
+    private String inferComparisonField(String query, JSONObject ner, List<Minute> minutes) {
+        // Use LLM to infer the field to compare, based on the query and available fields
+        StringBuilder availableFields = new StringBuilder();
+        availableFields.append("Available fields for comparison:\n");
+        availableFields.append("- numberOfAttendees\n- duration\n- topics\n- decisions\n");
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        %s
+        Which field does the user want to compare? 
+        Respond with one of: numberOfAttendees, duration, topics, decisions. If unclear, respond only: unknown
+        """.formatted(query, availableFields);
+        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
+        return switch (result) {
+            case "numberofattendees" -> "numberOfAttendees";
+            case "duration" -> "duration";
+            case "topics" -> "topics";
+            case "decisions" -> "decisions";
+            default -> null;
+        };
+    }
+
+    private Integer extractNumericField(Minute minute, String field) {
+        return switch (field) {
+            case "numberOfAttendees" -> minute.numberOfAttendees();
+            case "duration" -> calculateDurationFromMinute(minute);
+            default -> null;
+        };
+    }
+
+    private String buildLabel(Minute minute, JSONObject ner) {
+        // Prefer date + place for clarity, fallback to date
+        StringBuilder label = new StringBuilder();
+        if (minute.date() != null) label.append(minute.date());
+        if (minute.place() != null) label.append(" - ").append(minute.place());
+        return label.length() > 0 ? label.toString() : minute.id();
+    }
+
+    private String generateComparisonAnswerWithLLM(String query, String field, Map<String, Integer> comparables) {
+        StringBuilder comparison = new StringBuilder();
         comparables.entrySet().stream()
                 .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
-                .forEach(e -> result.append("- ").append(e.getKey()).append(": ").append(e.getValue()).append("\n"));
-
-        return ToolResult.from(result.toString(), getClass());
+                .forEach(e -> comparison.append("- ").append(e.getKey()).append(": ").append(e.getValue()).append("\n"));
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        This is the comparison for field '%s':
+        %s
+        Write a clear, concise answer in the same language as the query, comparing the values and explaining which is higher, lower, or if there is a tie.
+        """.formatted(query, field, comparison);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 
-    private String inferComparisonField(JSONObject nerEntities, String[] keywords) {
-        Set<String> keySet = Set.of(keywords);
-
-        if (keySet.contains("attendees") || keySet.contains("numberOfAttendees")) return "numberOfAttendees";
-        if (keySet.contains("duration") || keySet.contains("startTime") || keySet.contains("endTime"))
-            return "duration";
-
-        if (nerEntities != null) {
-            JSONObject entities = nerEntities.optJSONObject("entities");
-            if (entities != null) {
-                String answerType = entities.optString("answer_type", "").toLowerCase();
-                return switch (answerType) {
-                    case "attendees" -> "numberOfAttendees";
-                    case "duration" -> "duration";
-                    default -> null;
-                };
-            }
-        }
-
-        return null;
+    private String generateNotFoundMessage(String query) {
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        Write a short message indicating that no relevant meeting minutes were found, in the same language as the query.
+        """.formatted(query);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 
-    private Integer extractNumericField(Map<String, Object> meta, String field) {
-        try {
-            return switch (field) {
-                case "numberOfAttendees" -> (Integer) meta.get("numberOfAttendees");
-                case "duration" -> calculateDuration(meta);
-                default -> null;
-            };
-        } catch (Exception e) {
-            return null;
-        }
+    private String generateUnknownFieldMessage(String query) {
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        Write a short message indicating that it was not possible to determine what to compare, in the same language as the query.
+        """.formatted(query);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 
-    private int calculateDuration(Map<String, Object> meta) {
-        try {
-            String start = (String) meta.get("startTime");
-            String end = (String) meta.get("endTime");
-            if (start != null && end != null) {
-                String[] s = start.split(":");
-                String[] e = end.split(":");
-                int startMin = Integer.parseInt(s[0]) * 60 + Integer.parseInt(s[1]);
-                int endMin = Integer.parseInt(e[0]) * 60 + Integer.parseInt(e[1]);
-                return endMin - startMin;
-            }
-        } catch (Exception ignored) {
-        }
-        return 0;
-    }
-
-    private String buildLabel(Map<String, Object> meta, JSONObject nerEntities) {
-        List<String> keys = new ArrayList<>();
-        if (nerEntities != null) {
-            JSONObject filters = nerEntities.optJSONObject("entities").optJSONObject("filters");
-            if (filters != null) {
-                if (filters.has("date")) keys.add("date");
-                if (filters.has("place")) keys.add("place");
-            }
-        }
-
-        if (keys.isEmpty()) keys.add("date"); // fallback
-
-        List<String> values = new ArrayList<>();
-        for (String key : keys) {
-            Object val = meta.get(key);
-            if (val != null) values.add(val.toString());
-        }
-        return values.isEmpty() ? null : String.join(" - ", values);
+    private String generateNoDataMessage(String field, String query) {
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        Write a short message indicating that no data was found for the field '%s', in the same language as the query.
+        """.formatted(query, field);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 }

@@ -1,34 +1,16 @@
 package com.uniovi.rag.services.tools.metadata;
 
+import com.uniovi.rag.model.Minute;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
 import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.uniovi.rag.utils.InfoExtractor.containsAnyKeyword;
 
 public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
-
-    private static final int MAX_TOTAL_EXAMPLES = 10;
-    private static final int MAX_PER_MINUTE = 2;
-
-    private static final String PROMPT_TEMPLATE = """
-            El usuario quiere un resumen claro y preciso sobre el tema siguiente:
-            
-            Pregunta: "%s"
-            
-            Fragmentos relevantes extraídos de varias actas:
-            
-            %s
-            
-            Redacta un resumen informativo y objetivo en español centrado exclusivamente en ese tema. No inventes datos. Menciona fechas si son útiles para el contexto.
-            """;
 
     public MetadataSummarizeTopicTool(ChatClient chatClient, ContextRetriever retriever) {
         super(chatClient, retriever);
@@ -37,87 +19,75 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     @Override
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
-        JSONObject nerEntities = ctx.nerEntities();
-        List<String> terms = extractRelevantTerms(nerEntities, query);
-
+        JSONObject ner = ctx.nerEntities();
         List<Document> docs = retrieveAllDocuments(query);
-        if (docs.isEmpty()) {
-            throw new RuntimeException("No se encontraron documentos relacionados con la consulta.");
-        }
-
-        Map<String, List<Document>> docsByMinute = docs.stream()
-                .filter(doc -> doc.getMetadata().containsKey("id"))
-                .collect(Collectors.groupingBy(doc -> (String) doc.getMetadata().get("id")));
-
-        List<String> fragmentosRelevantes = new ArrayList<>();
-
-        for (List<Document> group : docsByMinute.values()) {
-            Map<String, Object> metadata = group.getFirst().getMetadata();
-            String fecha = Optional.ofNullable(metadata.get("date")).map(Object::toString).orElse("acta sin fecha");
-
-            List<String> matchedFragments = group.stream()
-                    .flatMap(doc -> Arrays.stream(doc.getContent().split("(?<=\\.)\\s*\\n+")))
-                    .map(String::trim)
-                    .filter(frag -> containsAnyKeyword(frag, terms.toArray(new String[0])))
-                    .distinct()
-                    .limit(MAX_PER_MINUTE)
-                    .toList();
-
-            if (matchedFragments.isEmpty()) {
-                List<String> topics = (List<String>) metadata.getOrDefault("topics", List.of());
-                if (containsAnyKeyword(String.join(" ", topics), terms.toArray(new String[0]))) {
-                    matchedFragments = List.of("(Mención en metadatos: " + String.join(", ", topics) + ")");
+        List<String> topicFragments = new ArrayList<>();
+        
+        for (Document doc : docs) {
+            Minute minute = getMinuteFromMetadata(doc);
+            if (minute == null) continue;
+            
+            if (matchesBooleanCondition(doc, query, ner)) {
+                if (isTopicRelevant(minute, query) && minute.summary() != null && !minute.summary().isBlank()) {
+                    topicFragments.add(minute.summary());
                 }
+                if (topicFragments.size() >= 10) break;
             }
-
-            if (!matchedFragments.isEmpty()) {
-                fragmentosRelevantes.add("**Acta del " + fecha + "**\n" + matchedFragments.stream()
-                        .map(f -> "- " + f)
-                        .collect(Collectors.joining("\n")));
-            }
-
-            if (fragmentosRelevantes.size() >= MAX_TOTAL_EXAMPLES) break;
         }
-
-        if (fragmentosRelevantes.isEmpty()) {
-            return ToolResult.from("No se encontraron fragmentos relevantes sobre el tema: \"" + query + "\".", getClass());
+        
+        if (topicFragments.isEmpty()) {
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
-
-        String joined = String.join("\n\n", fragmentosRelevantes.subList(0, Math.min(fragmentosRelevantes.size(), MAX_TOTAL_EXAMPLES)));
-
-        String resumen = chatClient
-                .prompt()
-                .user(PROMPT_TEMPLATE.formatted(query, joined))
-                .call()
-                .content()
-                .strip();
-
-        return ToolResult.from(resumen, getClass());
+        
+        String summary = generateSummaryWithLLM(query, topicFragments);
+        return ToolResult.from(summary, getClass());
     }
 
-    private List<String> extractRelevantTerms(JSONObject nerEntities, String query) {
-        Set<String> terms = new LinkedHashSet<>();
+    private boolean isTopicRelevant(Minute minute, String query) {
+        if (minute.topics() == null || minute.topics().isEmpty()) return false;
+        
+        String prompt = """
+                Given the following user query (in any language):
+                "%s"
+                
+                And these meeting topics:
+                %s
+                
+                Does the query ask about any of these topics or related concepts?
+                Consider semantic meaning, not just exact matches.
+                Answer only with YES or NO.
+                """.formatted(
+                    query,
+                    String.join(", ", minute.topics())
+                );
+                
+        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
+        return result.contains("yes") || result.contains("sí");
+    }
 
-        if (nerEntities != null && nerEntities.has("entities")) {
-            JSONObject entities = nerEntities.getJSONObject("entities");
-            JSONObject filters = entities.optJSONObject("filters");
+    private String generateSummaryWithLLM(String query, List<String> fragments) {
+        String joined = String.join("\n\n", fragments);
+        String prompt = """
+                Given the following user query (in any language):
+                "%s"
+                
+                The following are relevant fragments from the meetings:
+                %s
+                
+                Write a brief and clear summary in the same language as the query, 
+                focusing on the key points mentioned about the topic.
+                Avoid literal repetition and organize the information clearly.
+                """.formatted(query, joined);
+                
+        return chatClient.prompt().user(prompt).call().content().strip();
+    }
 
-            for (String field : List.of("topic", "section")) {
-                JSONArray arr = (filters != null && filters.has(field)) ? filters.optJSONArray(field) : null;
-                if (arr != null) {
-                    for (int i = 0; i < arr.length(); i++) {
-                        String term = arr.optString(i).trim().toLowerCase();
-                        if (!term.isBlank()) terms.add(term);
-                    }
-                }
-            }
-        }
-
-        if (terms.isEmpty()) {
-            String[] keywords = extractKeywordsFromQuery(query).split("\\s+");
-            terms.addAll(Arrays.asList(keywords));
-        }
-
-        return new ArrayList<>(terms);
+    private String generateNotFoundMessage(String query) {
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        Write a short message indicating that no information was found related to the query, in the same language as the query.
+        """.formatted(query);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 }

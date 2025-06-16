@@ -3,16 +3,16 @@ package com.uniovi.rag.services.tools.metadata;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
-import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.HashSet;
+import java.util.Arrays;
+
+import com.uniovi.rag.model.Minute;
 
 public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
 
@@ -23,99 +23,72 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     @Override
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
-        JSONObject nerEntities = ctx.nerEntities();
-
+        JSONObject ner = ctx.nerEntities();
         List<Document> docs = retrieveAllDocuments(query);
-        if (docs.isEmpty()) throw new RuntimeException("No se encontraron documentos relacionados con la consulta.");
-
-        Document doc = docs.getFirst();
-        Map<String, Object> metadata = doc.getMetadata();
-
-        // 1. NER explícito
-        JSONObject entities = nerEntities != null ? nerEntities.optJSONObject("entities") : null;
-        if (entities != null) {
-            JSONArray persons = entities.optJSONArray("person");
-            if (persons != null && !persons.isEmpty()) {
-                List<String> asistentes = extractAsList(metadata, "attendees");
-                return ToolResult.from("Personas asistentes: " + formatList(asistentes), getClass());
-            }
-
-            JSONObject filters = entities.optJSONObject("filters");
-            if (filters != null) {
-                if (filters.has("topic") || filters.has("section")) {
-                    return ToolResult.from("Puntos del orden del día:\n" + formatAgenda(metadata), getClass());
-                }
-                if (filters.has("place")) {
-                    return ToolResult.from("Lugar de la reunión: " + metadata.getOrDefault("place", "[no registrado]"), getClass());
-                }
-            }
-
-            // Presidente / Secretario
-            if (entities.optString("answer_type", "").equalsIgnoreCase("presidente") ||
-                    entities.optString("answer_type", "").equalsIgnoreCase("secretario")) {
-                return ToolResult.from(
-                        "Presidente: " + metadata.getOrDefault("president", "[no registrado]") + "\n" +
-                                "Secretario/a: " + metadata.getOrDefault("secretary", "[no registrado]"),
-                        getClass()
-                );
+        
+        Set<String> entities = new HashSet<>();
+        
+        for (Document doc : docs) {
+            Minute minute = getMinuteFromMetadata(doc);
+            if (minute == null) continue;
+            
+            if (matchesBooleanCondition(doc, query, ner)) {
+                entities.addAll(extractEntitiesFromMinute(minute));
             }
         }
-        // 2. Fallback por keywords
 
-        String[] keywords = extractKeywordsFromQuery(query).split("\\s+");
-        Set<String> lowerKeywords = Arrays.stream(keywords).map(String::toLowerCase).collect(Collectors.toSet());
-
-        if (containsKeyword(lowerKeywords, List.of("attendees", "people", "persons"))) {
-            List<String> asistentes = extractAsList(metadata, "attendees");
-            return ToolResult.from("Asistieron " + asistentes.size() + " personas:\n" + formatList(asistentes), getClass());
+        if (entities.isEmpty()) {
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        if (containsKeyword(lowerKeywords, List.of("president"))) {
-            return ToolResult.from("Presidente: " + metadata.getOrDefault("president", "[no registrado]"), getClass());
-        }
-
-        if (containsKeyword(lowerKeywords, List.of("secretary"))) {
-            return ToolResult.from("Secretario/a: " + metadata.getOrDefault("secretary", "[no registrado]"), getClass());
-        }
-
-        if (containsKeyword(lowerKeywords, List.of("entities", "organizations", "companies"))) {
-            List<String> entidades = extractAsList(metadata, "mentionedEntities");
-            return ToolResult.from("Entidades mencionadas:\n" + formatList(entidades), getClass());
-        }
-
-        if (containsKeyword(lowerKeywords, List.of("agenda", "section", "topic"))) {
-            return ToolResult.from("Puntos del orden del día:\n" + formatAgenda(metadata), getClass());
-        }
-
-        throw new RuntimeException("No se ha podido determinar qué tipo de entidad desea listar el usuario.");
+        String answer = generateEntitiesAnswer(query, entities);
+        return ToolResult.from(answer, getClass());
     }
 
-    private boolean containsKeyword(Set<String> keywords, List<String> terms) {
-        return terms.stream().anyMatch(keywords::contains);
-    }
-
-    private List<String> extractAsList(Map<String, Object> metadata, String key) {
-        Object value = metadata.getOrDefault(key, List.of());
-        if (value instanceof List<?> list) {
-            return list.stream().map(Object::toString).collect(Collectors.toList());
+    private Set<String> extractEntitiesFromMinute(Minute minute) {
+        Set<String> entities = new HashSet<>();
+        
+        // Extraer personas
+        if (minute.president() != null) entities.add("Presidente: " + minute.president());
+        if (minute.secretary() != null) entities.add("Secretario: " + minute.secretary());
+        if (minute.attendees() != null) {
+            minute.attendees().forEach(a -> entities.add("Asistente: " + a));
         }
-        return List.of();
-    }
-
-    private String formatList(List<String> values) {
-        return values.isEmpty()
-                ? "[no se encontraron resultados]"
-                : values.stream().map(v -> "- " + v).collect(Collectors.joining("\n"));
-    }
-
-    private String formatAgenda(Map<String, Object> metadata) {
-        Object obj = metadata.get("agenda");
-        if (obj instanceof Map<?, ?> map) {
-            return map.keySet().stream()
-                    .map(Object::toString)
-                    .map(t -> "- " + t)
-                    .collect(Collectors.joining("\n"));
+        
+        // Extraer entidades de decisiones y temas
+        if (minute.decisions() != null) {
+            minute.decisions().forEach(d -> {
+                String prompt = """
+                        Extract all relevant entities (people, organizations, roles) from this text:
+                        "%s"
+                        List each entity on a new line.
+                        """.formatted(d);
+                String extracted = chatClient.prompt().user(prompt).call().content().strip();
+                entities.addAll(Arrays.asList(extracted.split("\n")));
+            });
         }
-        return "[agenda no disponible]";
+        
+        return entities;
+    }
+
+    private String generateEntitiesAnswer(String query, Set<String> entities) {
+        String joined = String.join("\n\n", entities);
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        The following are relevant entities from meeting minutes:
+        %s
+        Write a clear, concise answer in the same language as the query, summarizing the relevant entities and their context. Do not invent information.
+        """.formatted(query, joined);
+        return chatClient.prompt().user(prompt).call().content().strip();
+    }
+
+    private String generateNotFoundMessage(String query) {
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        Write a short message indicating that no relevant meeting minutes were found, in the same language as the query.
+        """.formatted(query);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 }

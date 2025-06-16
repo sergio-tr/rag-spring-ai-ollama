@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -19,86 +20,102 @@ public class GetFieldTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
-        JSONObject entities = ner.optJSONObject("entities");
-        JSONObject filtros = entities != null ? entities.optJSONObject("filters") : new JSONObject();
+        List<Document> docs = retrieveDocuments(query);
 
-        List<String> fechas = filtros.optJSONArray("date") != null ?
-                filtros.optJSONArray("date").toList().stream().map(Object::toString).toList() : List.of();
-
-        List<Document> documents = retrieveAllDocuments(query);
-        if (documents.isEmpty()) {
-            throw new RuntimeException("No se encontraron documentos relevantes.");
-        }
-
-        for (Document doc : documents) {
-            String content = doc.getContent();
-            String docFecha = extractDate(content);
-
-            if (!fechas.isEmpty() && fechas.stream().noneMatch(docFecha::contains)) continue;
-
-            String field = extractLiteralFieldByIntent(query, entities, content);
-            if (field != null) {
-                return ToolResult.from(field, getClass());
+        for (Document doc : docs) {
+            if (ner != null) {
+                if (matchesNER(doc, ner)) {
+                    String value = extractLiteralFieldByIntent(query, ner, doc.getContent());
+                    if (value != null && !value.isBlank()) {
+                        return ToolResult.from(value, getClass());
+                    }
+                }
+            } else {
+                if (isRelevantByLLM(doc.getContent(), query)) {
+                    String value = extractLiteralFieldByIntent(query, null, doc.getContent());
+                    if (value != null && !value.isBlank()) {
+                        return ToolResult.from(value, getClass());
+                    }
+                }
             }
         }
-
-        throw new RuntimeException("No se encontró un valor literal relacionado con la consulta.");
+        String notFound = generateNotFoundMessage(query);
+        return ToolResult.from(notFound, getClass());
     }
 
-    private String extractLiteralFieldByIntent(String query, JSONObject entities, String content) {
-        String lower = query.toLowerCase();
-
-        if (entities != null) {
-            if (entities.has("date")) return extractDate(content);
-            if (entities.has("hora de inicio")) return extractTime(content, "start");
-            if (entities.has("hora de finalización")) return extractTime(content, "end");
-            if (entities.has("place")) return extractLiteralField("place", content);
-            if (entities.has("presidente")) return extractLiteralField("presidente", content);
-            if (entities.has("secretario")) return extractLiteralField("secretario", content);
+    private boolean matchesNER(Document doc, JSONObject ner) {
+        String[] fields = {"date", "place", "startTime", "endTime", "president", "secretary", "attendees", "numberOfAttendees", "agenda", "decisions", "mentionedEntities", "topics", "section", "summary"};
+        String content = doc.getContent().toLowerCase();
+        for (String field : fields) {
+            if (ner.has(field)) {
+                JSONArray arr = ner.optJSONArray(field);
+                if (arr != null && arr.length() > 0) {
+                    boolean anyMatch = false;
+                    for (int i = 0; i < arr.length(); i++) {
+                        String value = arr.getString(i).toLowerCase();
+                        if (!value.isBlank() && content.contains(value)) {
+                            anyMatch = true;
+                            break;
+                        }
+                    }
+                    if (!anyMatch) return false;
+                }
+            }
         }
+        return true;
+    }
 
-        // Fallback: uso de LLM para detectar el campo literal
-        String detectedIntent = classifyLiteralIntentWithLLM(query);
-        return switch (detectedIntent) {
-            case "date" -> extractDate(content);
-            case "startTime" -> extractTime(content, "start");
-            case "endTime" -> extractTime(content, "end");
-            case "place" -> extractLiteralField("place", content);
-            case "presidente" -> extractLiteralField("presidente", content);
-            case "secretario" -> extractLiteralField("secretario", content);
-            case "asistentes_lista" -> String.join(", ", extractAttendees(content));
-            case "asistentes_numero" -> String.valueOf(extractAttendeeCount(content));
-            case "orden_dia" -> extractAgenda(content);
+    private boolean isRelevantByLLM(String content, String query) {
+        String prompt = """
+            Given the following user query (in any language):\n"%s"\nand the following minutes content:\n"%s"\n\nDoes this minutes document match all the conditions in the query? Answer only YES or NO (in the language of the query).
+            """.formatted(query, content.substring(0, Math.min(1000, content.length())));
+        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
+        return result.startsWith("yes") || result.startsWith("sí");
+    }
+
+    private String extractLiteralFieldByIntent(String query, JSONObject ner, String content) {
+        String detectedField = classifyLiteralIntentWithLLM(query);
+        return switch (detectedField) {
+            case "date", "fecha" -> extractDate(content);
+            case "startTime", "hora_inicio" -> extractTime(content, "start");
+            case "endTime", "hora_fin" -> extractTime(content, "end");
+            case "place", "lugar" -> extractLiteralField("place", content);
+            case "president", "presidente" -> extractLiteralField("president", content);
+            case "secretary", "secretario" -> extractLiteralField("secretary", content);
+            case "attendees_list", "asistentes_lista" -> String.join(", ", extractAttendees(content));
+            case "attendees_number", "asistentes_numero" -> String.valueOf(extractAttendeeCount(content));
+            case "agenda", "orden_dia" -> extractAgenda(content);
             default -> null;
         };
     }
 
     private String classifyLiteralIntentWithLLM(String query) {
         String prompt = """
-                Dada la siguiente pregunta de un usuario:
-                
-                "%s"
-                
-                Determina cuál es el campo literal que desea consultar. Elige uno de los siguientes:
-                - fecha
-                - lugar
-                - hora_inicio
-                - hora_fin
-                - presidente
-                - secretario
-                - asistentes_lista
-                - asistentes_numero
-                - orden_dia
-                
-                Si no puedes determinarlo, responde exactamente: desconocido
-                """.formatted(query);
+            Given the following user question (in any language):
+            "%s"
+            Determine which literal field the user wants to query. Choose one of the following (answer with the field name in the language of the question if possible):
+            - date/fecha
+            - place/lugar
+            - startTime/hora_inicio
+            - endTime/hora_fin
+            - president/presidente
+            - secretary/secretario
+            - attendees_list/asistentes_lista
+            - attendees_number/asistentes_numero
+            - agenda/orden_dia
+            If you cannot determine, answer exactly: unknown/desconocido
+            """.formatted(query);
+        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
+        if (result.contains("unknown") || result.contains("desconocido")) return "unknown";
+        return result;
+    }
 
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
+    private String generateNotFoundMessage(String query) {
+        String prompt = """
+            Given the following user query (in any language):
+            "%s"
+            Write a short message indicating that no information was found related to the query, in the same language as the query.
+            """.formatted(query);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 }

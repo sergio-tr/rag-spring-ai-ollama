@@ -3,38 +3,14 @@ package com.uniovi.rag.services.tools.metadata;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
-import java.text.Normalizer;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.uniovi.rag.utils.InfoExtractor.containsAnyKeyword;
-import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
+import com.uniovi.rag.model.Minute;
 
 public class MetadataCountAndExplainTool extends AbstractMetadataTool {
-
-    private static final int MAX_EXAMPLES = 5;
-
-    private static final String PROMPT_TEMPLATE = """
-            El usuario quiere saber cuántas actas mencionan el siguiente tema:
-            
-            Pregunta: "%s"
-            Número de actas encontradas: %d
-            
-            A continuación se muestran ejemplos representativos:
-            
-            %s
-            
-            Resume cuántas actas lo mencionan y qué se dijo. No inventes. Usa lenguaje claro y directo.
-            """;
-
-    private static final SimpleDateFormat parser = new SimpleDateFormat("d 'de' MMMM 'de' yyyy", new Locale("es", "ES"));
 
     public MetadataCountAndExplainTool(ChatClient chatClient, ContextRetriever retriever) {
         super(chatClient, retriever);
@@ -43,118 +19,74 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     @Override
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
-        JSONObject nerEntities = ctx.nerEntities();
-        String[] keywordArray = extractKeywordsFromQuery(query).split("\\s+");
-
-        List<String> terms = collectFilterTerms(nerEntities, keywordArray);
-
+        JSONObject ner = ctx.nerEntities();
         List<Document> docs = retrieveAllDocuments(query);
-        Map<String, List<Document>> docsByMinute = docs.stream()
-                .filter(doc -> doc.getMetadata().containsKey("id"))
-                .collect(Collectors.groupingBy(doc -> (String) doc.getMetadata().get("id")));
-
-        List<AbstractMap.SimpleEntry<Date, String>> results = new ArrayList<>();
-
-        for (Map.Entry<String, List<Document>> entry : docsByMinute.entrySet()) {
-            List<Document> group = entry.getValue();
-            Map<String, Object> metadata = group.getFirst().getMetadata();
-
-            String fechaStr = (String) metadata.get("date");
-            String titulo = fechaStr != null ? "Acta del " + fechaStr : "[Acta sin fecha]";
-            Date fecha = parseFecha(fechaStr);
-
-            StringBuilder fragments = new StringBuilder();
-
-            for (Document doc : group) {
-                String fragment = extractRelevantFragment(doc.getContent(), query);
-                if (!fragment.isBlank() && containsAnyKeyword(normalize(fragment), terms.toArray(new String[0]))) {
-                    fragments.append("- ").append(fragment).append("\n");
-                }
-            }
-
-            // fallback si no hay contenido relevante
-            if (fragments.isEmpty()) {
-                List<String> fallbackFields = new ArrayList<>();
-                fallbackFields.addAll((List<String>) metadata.getOrDefault("topics", List.of()));
-                fallbackFields.addAll((List<String>) metadata.getOrDefault("section", List.of()));
-                fallbackFields.add(Optional.ofNullable(metadata.get("summary")).map(Object::toString).orElse(""));
-
-                String joined = String.join(" ", fallbackFields).toLowerCase();
-                if (containsAnyKeyword(normalize(joined), terms.toArray(new String[0]))) {
-                    fragments.append("- (Mención encontrada en metadatos: ").append(joined).append(")\n");
-                }
-            }
-
-            if (!fragments.isEmpty()) {
-                results.add(new AbstractMap.SimpleEntry<>(fecha, "**" + titulo + "**\n" + fragments.toString().strip()));
-            }
-        }
-
-        if (results.isEmpty()) {
-            return ToolResult.from("No se encontraron actas que traten el tema: \"" + query + "\".", getClass());
-        }
-
-        String joinedExamples = results.stream()
-                .sorted(Map.Entry.comparingByKey(Comparator.nullsLast(Comparator.naturalOrder())))
-                .limit(MAX_EXAMPLES)
-                .map(Map.Entry::getValue)
-                .collect(Collectors.joining("\n\n"));
-
-        String resumen = chatClient
-                .prompt()
-                .user(PROMPT_TEMPLATE.formatted(query, results.size(), joinedExamples))
-                .call()
-                .content()
-                .strip();
-
-        return ToolResult.from(resumen, getClass());
-    }
-
-    private List<String> collectFilterTerms(JSONObject nerEntities, String[] fallbackKeywords) {
-        List<String> terms = new ArrayList<>();
-
-        if (nerEntities != null) {
-            JSONObject entities = nerEntities.optJSONObject("entities");
-            if (entities != null) {
-                JSONObject filters = entities.optJSONObject("filters");
-                if (filters != null) {
-                    for (String key : filters.keySet()) {
-                        JSONArray values = filters.optJSONArray(key);
-                        if (values != null) {
-                            for (int i = 0; i < values.length(); i++) {
-                                String term = normalize(values.optString(i));
-                                if (!term.isBlank()) terms.add(term);
-                            }
-                        }
-                    }
+        
+        List<String> explanations = new ArrayList<>();
+        
+        for (Document doc : docs) {
+            Minute minute = getMinuteFromMetadata(doc);
+            if (minute == null) continue;
+            
+            if (matchesBooleanCondition(doc, query, ner)) {
+                String explanation = generateExplanation(query, minute);
+                if (!explanation.isBlank()) {
+                    explanations.add(explanation);
                 }
             }
         }
 
-        if (terms.isEmpty()) {
-            Arrays.stream(fallbackKeywords)
-                    .map(this::normalize)
-                    .filter(s -> !s.isBlank())
-                    .forEach(terms::add);
+        if (explanations.isEmpty()) {
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        return terms;
+        String answer = generateFinalAnswer(query, explanations);
+        return ToolResult.from(answer, getClass());
     }
 
-    private String normalize(String text) {
-        return Normalizer.normalize(text == null ? "" : text.toLowerCase(), Normalizer.Form.NFD)
-                .replaceAll("\\p{InCombiningDiacriticalMarks}", "")
-                .toLowerCase()
-                .trim();
+    private String generateExplanation(String query, Minute minute) {
+        String prompt = """
+                Given the following user query (in any language):
+                "%s"
+                
+                And the following meeting metadata:
+                Date: %s
+                Topics: %s
+                Decisions: %s
+                Summary: %s
+                
+                Write a brief explanation of what was discussed/decided regarding the query topic.
+                Write in the same language as the query.
+                """.formatted(
+                    query,
+                    minute.date() != null ? minute.date() : "",
+                    minute.topics() != null ? String.join(", ", minute.topics()) : "",
+                    minute.decisions() != null ? String.join(", ", minute.decisions()) : "",
+                    minute.summary() != null ? minute.summary() : ""
+                );
+        
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 
-    private Date parseFecha(String fecha) {
-        if (fecha == null) return null;
-        try {
-            String normalized = normalize(fecha);
-            return parser.parse(normalized);
-        } catch (ParseException e) {
-            return null;
-        }
+    private String generateFinalAnswer(String query, List<String> explanations) {
+        String joined = String.join("\n\n", explanations);
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        There are %d relevant meeting minutes. Here are representative examples from their metadata:
+        %s
+        Write a clear, concise answer in the same language as the query, indicating the number of relevant minutes and summarizing the context found. Do not invent information.
+        """.formatted(query, explanations.size(), joined);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
+
+    private String generateNotFoundMessage(String query) {
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        Write a short message indicating that no relevant meeting minutes were found, in the same language as the query.
+        """.formatted(query);
+        return chatClient.prompt().user(prompt).call().content().strip();
+    }
+
 }
