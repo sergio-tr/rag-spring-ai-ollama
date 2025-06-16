@@ -8,24 +8,26 @@ import java.util.List;
 
 public abstract class AbstractTool implements Tool {
 
+    /*
     public static final String PROMPT_KEYWORDS_EXTRACTOR = """
             Act as a keyword extractor for search queries over homeowners’ meeting minutes.
-            
+
             The minutes follow a structure with fields like:
             - date, place, startTime, endTime
             - president, secretary, attendees
             - agenda (topics), decisions, mentioned_entities, section, number_of_attendees
-            
+
             Your task:
             1. Read the following user question:
             "%s"
-            
+
             2. Extract only the **most relevant and concrete terms** related to the fields above or to entities/actions that could appear in the minutes.
-            
+
             3. Return a single line with the keywords in English, space-separated. Do not include explanations or formatting.
-            
+
             If nothing useful can be extracted, return: [EMPTY]
             """;
+            */
 
     protected final ChatClient chatClient;
     protected final ContextRetriever retriever;
@@ -52,6 +54,7 @@ public abstract class AbstractTool implements Tool {
         return retriever.retrieve(query);
     }
 
+    /*
     protected String extractKeywordsFromQuery(String query) {
         String prompt = PROMPT_KEYWORDS_EXTRACTOR.formatted(query);
 
@@ -67,6 +70,7 @@ public abstract class AbstractTool implements Tool {
 
         return result;
     }
+    */
 
 
 }

@@ -1,91 +1,103 @@
 package com.uniovi.rag.services.tools.metadata;
 
-import com.uniovi.rag.services.retriever.ContextRetriever;
-import com.uniovi.rag.services.tools.ToolExecutionContext;
-import com.uniovi.rag.services.tools.ToolResult;
+import com.uniovi.rag.model.Minute;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import com.uniovi.rag.services.tools.ToolExecutionContext;
+import com.uniovi.rag.services.tools.ToolResult;
+import com.uniovi.rag.services.retriever.ContextRetriever;
 import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractTime;
-
 public class MetadataGetDurationTool extends AbstractMetadataTool {
-
-    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
-
-    public MetadataGetDurationTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
-    }
+    public MetadataGetDurationTool(ChatClient chatClient, ContextRetriever retriever) { super(chatClient, retriever); }
 
     @Override
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
-        JSONObject nerEntities = ctx.nerEntities();
-
+        JSONObject ner = ctx.nerEntities();
         List<Document> docs = retrieveAllDocuments(query);
-        if (docs.isEmpty()) {
-            throw new RuntimeException("No se encontraron documentos relacionados con la consulta.");
-        }
-
-        // Agrupar por acta
-        Map<String, List<Document>> byMinute = docs.stream()
-                .filter(d -> d.getMetadata().containsKey("id"))
-                .collect(Collectors.groupingBy(d -> (String) d.getMetadata().get("id")));
-
-        List<String> resultados = new ArrayList<>();
-
-        for (List<Document> grupo : byMinute.values()) {
-            Document doc = grupo.getFirst(); // usar cualquier chunk
-            Map<String, Object> meta = doc.getMetadata();
-
-            boolean match = matchesBooleanCondition(doc, extractKeywordsFromQuery(query).split("\\s+"), nerEntities);
-            if (!match) continue;
-
-            String startStr = getAsString(meta, "startTime");
-            String endStr = getAsString(meta, "endTime");
-
-            if (startStr == null || endStr == null) {
-                // fallback a contenido si es posible
-                startStr = grupo.stream().map(d -> extractTime(d.getContent(), "start")).filter(Objects::nonNull).findFirst().orElse(null);
-                endStr = grupo.stream().map(d -> extractTime(d.getContent(), "end")).filter(Objects::nonNull).findFirst().orElse(null);
-            }
-
-            if (startStr != null && endStr != null) {
-                try {
-                    LocalTime start = LocalTime.parse(startStr, TIME_FORMAT);
-                    LocalTime end = LocalTime.parse(endStr, TIME_FORMAT);
-                    long mins = java.time.Duration.between(start, end).toMinutes();
-                    long h = mins / 60;
-                    long m = mins % 60;
-                    String fecha = getAsString(meta, "date");
-                    resultados.add((fecha != null ? "Acta del " + fecha + ": " : "") + h + "h" + (m > 0 ? " " + m + "min" : ""));
-                } catch (DateTimeParseException ignored) {
+        List<MinuteDuration> durations = new ArrayList<>();
+        
+        for (Document doc : docs) {
+            Minute minute = getMinuteFromMetadata(doc);
+            if (minute == null) continue;
+            
+            if (matchesBooleanCondition(doc, query, ner)) {
+                MinuteDuration duration = extractMinuteDuration(minute);
+                if (duration.durationMinutes > 0) {
+                    durations.add(duration);
                 }
             }
         }
 
-        if (resultados.isEmpty()) {
-            return ToolResult.from("No se pudo determinar la duración de ninguna reunión relacionada con la consulta.", getClass());
+        if (durations.isEmpty()) {
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        if (resultados.size() == 1) {
-            return ToolResult.from("Duración estimada: " + resultados.getFirst() + ".", getClass());
-        }
-
-        return ToolResult.from("Se encontraron " + resultados.size() + " reuniones relevantes:\n\n" + String.join("\n", resultados), getClass());
+        return ToolResult.from(generateFinalAnswer(query, durations), getClass());
     }
 
-    private String getAsString(Map<String, Object> metadata, String key) {
-        Object val = metadata.get(key);
-        return val instanceof String ? ((String) val).trim() : null;
+    private MinuteDuration extractMinuteDuration(Minute minute) {
+        int duration = calculateDurationFromMinute(minute);
+        return new MinuteDuration(minute.date(), minute.startTime(), minute.endTime(), duration);
+    }
+
+    private String generateFinalAnswer(String query, List<MinuteDuration> durations) {
+        String prompt = """
+                Given the following user query (in any language):
+                "%s"
+                
+                And the following meeting durations:
+                %s
+                
+                Write a clear answer in the same language as the query that:
+                1. If the query asks for a comparison (longest/shortest), identify the relevant meeting
+                2. Otherwise, list all meeting durations found
+                Include dates and times in the response.
+                """.formatted(
+                    query,
+                    durations.stream()
+                        .map(MinuteDuration::toString)
+                        .collect(Collectors.joining("\n"))
+                );
+        
+        return chatClient.prompt().user(prompt).call().content().strip();
+    }
+
+    private String generateNotFoundMessage(String query) {
+        String prompt = """
+                Given the following user query (in any language):
+                "%s"
+                Write a short message indicating that no meeting durations were found, in the same language as the query.
+                """.formatted(query);
+        
+        return chatClient.prompt().user(prompt).call().content().strip();
+    }
+
+    private static class MinuteDuration {
+        String date;
+        String startTime;
+        String endTime;
+        int durationMinutes;
+        
+        public MinuteDuration(String date, String startTime, String endTime, int durationMinutes) {
+            this.date = date;
+            this.startTime = startTime;
+            this.endTime = endTime;
+            this.durationMinutes = durationMinutes;
+        }
+        
+        @Override
+        public String toString() {
+            return String.format("%s, %s - %s, %d minutos",
+                date,
+                startTime != null ? startTime : "?",
+                endTime != null ? endTime : "?",
+                durationMinutes
+            );
+        }
     }
 }

@@ -1,13 +1,15 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
-import com.uniovi.rag.utils.InfoExtractor;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static com.uniovi.rag.utils.InfoExtractor.extractDate;
 
 public class FindParagraphTool extends AbstractTool {
 
@@ -19,69 +21,98 @@ public class FindParagraphTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
-
-        JSONObject entities = ner.optJSONObject("entities") != null ? ner.optJSONObject("entities") : new JSONObject();
-        JSONObject filters = entities.optJSONObject("filters") != null ? entities.optJSONObject("filters") : new JSONObject();
-
-        List<String> people = entities.optJSONArray("person") != null ?
-                entities.optJSONArray("person").toList().stream().map(Object::toString).toList() : List.of();
-        List<String> times = filters.optJSONArray("time") != null ?
-                filters.optJSONArray("time").toList().stream().map(Object::toString).toList() : List.of();
-        List<String> sections = filters.optJSONArray("section") != null ?
-                filters.optJSONArray("section").toList().stream().map(Object::toString).toList() : List.of();
-
-        List<Document> docs = retrieveAllDocuments(query);
+        List<Document> docs = retrieveDocuments(query);
         List<String> results = new ArrayList<>();
 
-        for (Document doc : docs) {
-            String content = doc.getContent();
-            String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
-
-            for (String p : paragraphs) {
-                String lower = p.toLowerCase();
-
-                boolean matchTime = times.stream().anyMatch(f -> lower.contains(f.toLowerCase()));
-                boolean matchPerson = people.stream().anyMatch(pe -> lower.contains(pe.toLowerCase()));
-                boolean matchSection = sections.stream().anyMatch(s -> lower.contains(s.toLowerCase()));
-                boolean matchSemantic = verifyParagraphSemantically(query, p);
-
-                if ((times.isEmpty() || matchTime) &&
-                        (people.isEmpty() || matchPerson) &&
-                        (sections.isEmpty() || matchSection) &&
-                        matchSemantic) {
-
-                    String time = InfoExtractor.extractDate(content);
-                    results.add("Acta del " + time + ":\n" + p.trim());
+        if (ner != null) {
+            for (Document doc : docs) {
+                if (matchesNER(doc, ner)) {
+                    results.addAll(findRelevantParagraphs(doc, query));
                 }
+            }
+        } else {
+            for (Document doc : docs) {
+                results.addAll(findRelevantParagraphsByLLM(doc, query));
             }
         }
 
-        if (results.isEmpty()) {
-            return ToolResult.from(" No se encontró ningún párrafo que responda directamente a: \"" + query + "\"", getClass());
+        String answer;
+        if (!results.isEmpty()) {
+            answer = generateFinalAnswer(query, results);
+        } else {
+            answer = "No relevant paragraphs found for the query: '" + query + "'.";
         }
-
-        return ToolResult.from("Párrafos relevantes:\n\n" + String.join("\n\n", results), getClass());
+        return ToolResult.from(answer, getClass());
     }
 
-    private boolean verifyParagraphSemantically(String query, String paragraph) {
+    private boolean matchesNER(Document doc, JSONObject ner) {
+        String[] fields = {"date", "place", "startTime", "endTime", "president", "secretary", "attendees", "numberOfAttendees", "agenda", "decisions", "mentionedEntities", "topics", "section", "summary"};
+        String content = doc.getContent().toLowerCase();
+        for (String field : fields) {
+            if (ner.has(field)) {
+                JSONArray arr = ner.optJSONArray(field);
+                if (arr != null && arr.length() > 0) {
+                    boolean anyMatch = false;
+                    for (int i = 0; i < arr.length(); i++) {
+                        String value = arr.getString(i).toLowerCase();
+                        if (!value.isBlank() && content.contains(value)) {
+                            anyMatch = true;
+                            break;
+                        }
+                    }
+                    if (!anyMatch) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private List<String> findRelevantParagraphs(Document doc, String query) {
+        List<String> relevant = new ArrayList<>();
+        String content = doc.getContent();
+        String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
+        String date = extractDate(content);
+        for (String p : paragraphs) {
+            if (isParagraphRelevantByLLM(query, p)) {
+                relevant.add("Minutes from " + date + ":\n" + p.trim());
+            }
+        }
+        return relevant;
+    }
+
+    private List<String> findRelevantParagraphsByLLM(Document doc, String query) {
+        List<String> relevant = new ArrayList<>();
+        String content = doc.getContent();
+        String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
+        String date = extractDate(content);
+        for (String p : paragraphs) {
+            if (isParagraphRelevantByLLM(query, p)) {
+                relevant.add("Minutes from " + date + ":\n" + p.trim());
+            }
+        }
+        return relevant;
+    }
+
+    private boolean isParagraphRelevantByLLM(String query, String paragraph) {
         String prompt = """
-                Esta es la consulta del usuario:
-                "%s"
-                
-                Y este es un párrafo del acta:
-                "%s"
-                
-                ¿El párrafo responde de forma clara o parcial a la consulta? Responde solo con "sí" o "no".
-                """.formatted(query, paragraph);
+            This is the user's query:
+            "%s"
+            And this is a paragraph from the minutes:
+            "%s"
+            Does the paragraph clearly or partially answer the query? Answer only YES or NO.
+            """.formatted(query, paragraph);
+        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
+        return result.startsWith("yes") || result.contains("sí");
+    }
 
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-
-        return result.contains("sí");
+    private String generateFinalAnswer(String query, List<String> results) {
+        String joined = String.join("\n\n", results);
+        String prompt = """
+            The user asked: "%s"
+            The following paragraphs from the minutes are relevant:
+            %s
+            Write a brief and clear answer in Spanish, summarizing the relevant information from all the paragraphs found.
+            """.formatted(query, joined);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 }

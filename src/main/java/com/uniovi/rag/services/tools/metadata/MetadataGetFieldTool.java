@@ -1,17 +1,14 @@
 package com.uniovi.rag.services.tools.metadata;
 
+import com.uniovi.rag.model.Minute;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
 import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.uniovi.rag.utils.InfoExtractor.extractLiteralField;
 
 public class MetadataGetFieldTool extends AbstractMetadataTool {
 
@@ -21,72 +18,70 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
     @Override
     public ToolResult execute(ToolExecutionContext ctx) {
-        String query = ctx.query().trim();
-        JSONObject nerEntities = ctx.nerEntities();
-        String[] keywords = extractKeywordsFromQuery(query).split("\\s+");
-
+        String query = ctx.query();
+        JSONObject ner = ctx.nerEntities();
         List<Document> docs = retrieveAllDocuments(query);
-        if (docs.isEmpty()) {
-            throw new RuntimeException("No se encontraron documentos relevantes para la consulta.");
-        }
-
+        
         for (Document doc : docs) {
-            Map<String, Object> metadata = doc.getMetadata();
-
-            // 1. Si hay NER, usar filtros primero
-            if (nerEntities != null) {
-                JSONObject entities = nerEntities.optJSONObject("entities");
-                if (entities != null) {
-                    JSONObject filters = entities.optJSONObject("filters");
-                    if (filters != null) {
-                        for (String field : List.of("date", "place", "startTime", "endTime")) {
-                            if (filters.has(field) && metadata.containsKey(field)) {
-                                return ToolResult.from(formatField(field, metadata.get(field)), getClass());
-                            }
-                        }
-                    }
-
-                    if (entities.has("person")) {
-                        JSONArray persons = entities.getJSONArray("person");
-                        for (int i = 0; i < persons.length(); i++) {
-                            String name = persons.getString(i).toLowerCase();
-                            for (String role : List.of("president", "secretary")) {
-                                String metaValue = Optional.ofNullable(metadata.get(role)).map(Object::toString).orElse("");
-                                if (metaValue.toLowerCase().contains(name)) {
-                                    return ToolResult.from(formatField(role, metaValue), getClass());
-                                }
-                            }
-                        }
-                    }
+            Minute minute = getMinuteFromMetadata(doc);
+            if (minute == null) continue;
+            
+            if (matchesBooleanCondition(doc, query, ner)) {
+                String value = extractFieldByIntent(query, minute);
+                if (value != null && !value.isBlank()) {
+                    return ToolResult.from(value, getClass());
                 }
-            }
-
-            // 2. Fallback por keywords si no hay NER
-            Set<String> keywordSet = Arrays.stream(keywords).map(String::toLowerCase).collect(Collectors.toSet());
-            for (String field : List.of("date", "place", "startTime", "endTime", "president", "secretary")) {
-                if (keywordSet.contains(field.toLowerCase()) && metadata.containsKey(field)) {
-                    return ToolResult.from(formatField(field, metadata.get(field)), getClass());
-                }
-            }
-
-
-            // 3. Intento final: extraer literal del contenido textual si no está en metadatos
-            String value = extractLiteralField(query, doc.getContent());
-            if (value != null) {
-                return ToolResult.from("Dato encontrado en el contenido: " + value, getClass());
             }
         }
-
-        throw new RuntimeException("No se pudo extraer el valor literal solicitado.");
+        
+        return ToolResult.from(generateNotFoundMessage(query), getClass());
     }
 
-    private String formatField(String key, Object value) {
-        String label = key.replace("_", " ");
-        return capitalize(label) + ": " + value;
+    private String extractFieldByIntent(String query, Minute minute) {
+        String detectedField = classifyFieldIntentWithLLM(query);
+        if (detectedField.equals("unknown")) return null;
+        
+        String value = extractFieldFromMinute(detectedField, minute);
+        if (value == null || value.isBlank()) return null;
+        
+        String prompt = """
+                Given the following user query (in any language):
+                "%s"
+                The value for field '%s' is: %s
+                Write a clear, concise answer in the same language as the query, 
+                presenting the value in a user-friendly way.
+                """.formatted(query, detectedField, value);
+                
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 
-    private String capitalize(String text) {
-        if (text == null || text.isBlank()) return "";
-        return text.substring(0, 1).toUpperCase() + text.substring(1);
+    private String classifyFieldIntentWithLLM(String query) {
+        String prompt = """
+                Given the following user question (in any language):
+                "%s"
+                Determine which field the user wants to query. Choose one of the following:
+                - date/fecha
+                - place/lugar
+                - startTime/hora_inicio
+                - endTime/hora_fin
+                - president/presidente
+                - secretary/secretario
+                
+                Answer with the field name in English. If the intent is unclear, answer with "unknown".
+                """.formatted(query);
+                
+        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
+        if (result.contains("unknown")) return "unknown";
+        return result;
+    }
+
+    private String generateNotFoundMessage(String query) {
+        String prompt = """
+        Given the following user query (in any language):
+        \"%s\"
+        Write a short message indicating that no information was found related to the query, 
+        in the same language as the query.
+        """.formatted(query);
+        return chatClient.prompt().user(prompt).call().content().strip();
     }
 }
