@@ -1,7 +1,6 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -11,6 +10,15 @@ import java.util.List;
 
 import static com.uniovi.rag.utils.InfoExtractor.extractDate;
 
+/**
+ * Enhanced FindParagraphTool for finding relevant paragraphs in meeting minutes with intelligent NER analysis.
+ * 
+ * Features:
+ * - Intelligent NER-based filtering using EnhancedNERHandler
+ * - Temporal context filtering
+ * - Semantic paragraph relevance evaluation
+ * - Enhanced paragraph extraction and summarization
+ */
 public class FindParagraphTool extends AbstractTool {
 
     public FindParagraphTool(ChatClient chatClient, ContextRetriever retriever) {
@@ -21,16 +29,24 @@ public class FindParagraphTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
+        
+        log().debug("Executing find paragraph query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        
         List<Document> docs = retrieveDocuments(query);
         List<String> results = new ArrayList<>();
 
+        // Filter documents based on NER if available
         if (ner != null) {
-            for (Document doc : docs) {
-                if (matchesNER(doc, ner)) {
+            // Use EnhancedNERHandler for intelligent filtering
+            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+            
+            for (Document doc : filteredDocs) {
+                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     results.addAll(findRelevantParagraphs(doc, query));
                 }
             }
         } else {
+            // Fallback to LLM-based relevance
             for (Document doc : docs) {
                 results.addAll(findRelevantParagraphsByLLM(doc, query));
             }
@@ -40,79 +56,113 @@ public class FindParagraphTool extends AbstractTool {
         if (!results.isEmpty()) {
             answer = generateFinalAnswer(query, results);
         } else {
-            answer = "No relevant paragraphs found for the query: '" + query + "'.";
+            answer = generateNotFoundResponse(query);
         }
         return ToolResult.from(answer, getClass());
     }
 
-    private boolean matchesNER(Document doc, JSONObject ner) {
-        String[] fields = {"date", "place", "startTime", "endTime", "president", "secretary", "attendees", "numberOfAttendees", "agenda", "decisions", "mentionedEntities", "topics", "section", "summary"};
-        String content = doc.getContent().toLowerCase();
-        for (String field : fields) {
-            if (ner.has(field)) {
-                JSONArray arr = ner.optJSONArray(field);
-                if (arr != null && arr.length() > 0) {
-                    boolean anyMatch = false;
-                    for (int i = 0; i < arr.length(); i++) {
-                        String value = arr.getString(i).toLowerCase();
-                        if (!value.isBlank() && content.contains(value)) {
-                            anyMatch = true;
-                            break;
-                        }
-                    }
-                    if (!anyMatch) return false;
-                }
-            }
-        }
-        return true;
-    }
-
+    /**
+     * Finds relevant paragraphs in a document
+     */
     private List<String> findRelevantParagraphs(Document doc, String query) {
         List<String> relevant = new ArrayList<>();
         String content = doc.getContent();
         String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
         String date = extractDate(content);
-        for (String p : paragraphs) {
-            if (isParagraphRelevantByLLM(query, p)) {
-                relevant.add("Minutes from " + date + ":\n" + p.trim());
+        
+        for (String paragraph : paragraphs) {
+            if (isParagraphRelevantByLLM(query, paragraph)) {
+                relevant.add("Meeting minutes from " + date + ":\n" + paragraph.trim());
             }
         }
         return relevant;
     }
 
+    /**
+     * Finds relevant paragraphs using LLM-based relevance
+     */
     private List<String> findRelevantParagraphsByLLM(Document doc, String query) {
         List<String> relevant = new ArrayList<>();
         String content = doc.getContent();
         String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
         String date = extractDate(content);
-        for (String p : paragraphs) {
-            if (isParagraphRelevantByLLM(query, p)) {
-                relevant.add("Minutes from " + date + ":\n" + p.trim());
+        
+        for (String paragraph : paragraphs) {
+            if (isParagraphRelevantByLLM(query, paragraph)) {
+                relevant.add("Meeting minutes from " + date + ":\n" + paragraph.trim());
             }
         }
         return relevant;
     }
 
+    /**
+     * Determines if a paragraph is relevant to the query using LLM
+     */
     private boolean isParagraphRelevantByLLM(String query, String paragraph) {
-        String prompt = """
-            This is the user's query:
+        String prompt = String.format("""
+            This is the user's query (in any language):
             "%s"
-            And this is a paragraph from the minutes:
+            
+            And this is a paragraph from the meeting minutes:
             "%s"
-            Does the paragraph clearly or partially answer the query? Answer only YES or NO.
-            """.formatted(query, paragraph);
-        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
-        return result.startsWith("yes") || result.contains("sí");
+            
+            Does the paragraph clearly or partially answer the query? 
+            Answer only YES or NO in the same language as the query.
+            """, query, paragraph);
+        
+        String result = chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip()
+                .toLowerCase();
+        
+        // Check for positive responses in multiple languages
+        return result.startsWith("yes") || result.contains("sí") || result.contains("si") || 
+               result.contains("oui") || result.contains("ja") || result.contains("da");
     }
 
+    /**
+     * Generates final answer with found paragraphs
+     */
     private String generateFinalAnswer(String query, List<String> results) {
         String joined = String.join("\n\n", results);
-        String prompt = """
-            The user asked: "%s"
-            The following paragraphs from the minutes are relevant:
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            The following paragraphs from the meeting minutes are relevant:
             %s
-            Write a brief and clear answer in Spanish, summarizing the relevant information from all the paragraphs found.
-            """.formatted(query, joined);
-        return chatClient.prompt().user(prompt).call().content().strip();
+            
+            Write a brief and clear answer in the same language as the query, 
+            summarizing the relevant information from all the paragraphs found.
+            """, query, joined);
+        
+        return chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip();
+    }
+    
+    /**
+     * Generates not found response
+     */
+    private String generateNotFoundResponse(String query) {
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No relevant paragraphs were found for this query in the available meeting minutes.
+            
+            Write a polite response in the same language as the query explaining that no relevant paragraphs were found.
+            """, query);
+        
+        return chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip();
     }
 }

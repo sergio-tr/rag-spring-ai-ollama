@@ -1,7 +1,6 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -13,6 +12,15 @@ import java.util.stream.Stream;
 
 import static com.uniovi.rag.utils.InfoExtractor.extractDate;
 
+/**
+ * Enhanced DecisionExtractionTool for extracting decisions from meeting minutes with intelligent NER analysis.
+ * 
+ * Features:
+ * - Intelligent NER-based filtering using EnhancedNERHandler
+ * - Temporal context filtering
+ * - Semantic decision relevance evaluation
+ * - Enhanced decision extraction and summarization
+ */
 public class DecisionExtractionTool extends AbstractTool {
 
     public DecisionExtractionTool(ChatClient chatClient, ContextRetriever retriever) {
@@ -23,66 +31,55 @@ public class DecisionExtractionTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
+        
+        log().debug("Executing decision extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        
         List<Document> docs = retrieveDocuments(query);
-        List<String> decisiones = new ArrayList<>();
+        List<String> decisions = new ArrayList<>();
 
+        // Filter documents based on NER if available
         if (ner != null) {
-            for (Document doc : docs) {
-                if (matchesNER(doc, ner)) {
+            // Use EnhancedNERHandler for intelligent filtering
+            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+            
+            for (Document doc : filteredDocs) {
+                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String content = doc.getContent();
-                    String fecha = extractDate(content);
-                    List<String> fragmentos = extraerDecisiones(content, query);
-                    for (String frag : fragmentos) {
-                        decisiones.add("Acta del " + fecha + ":\n" + frag);
+                    String date = extractDate(content);
+                    List<String> fragments = extractDecisions(content, query);
+                    for (String fragment : fragments) {
+                        decisions.add("Meeting minutes from " + date + ":\n" + fragment);
                     }
                 }
             }
         } else {
+            // Fallback to query-based relevance
             for (Document doc : docs) {
                 String content = doc.getContent();
-                String fecha = extractDate(content);
-                List<String> fragmentos = extraerDecisiones(content, query);
-                for (String frag : fragmentos) {
-                    if (isDecisionRelevantToQuery(frag, query)) {
-                        decisiones.add("Acta del " + fecha + ":\n" + frag);
+                String date = extractDate(content);
+                List<String> fragments = extractDecisions(content, query);
+                for (String fragment : fragments) {
+                    if (isDecisionRelevantToQuery(fragment, query)) {
+                        decisions.add("Meeting minutes from " + date + ":\n" + fragment);
                     }
                 }
             }
         }
 
-        String respuesta;
-        if (!decisiones.isEmpty()) {
-            respuesta = generarRespuestaConLLM(query, decisiones);
+        String response;
+        if (!decisions.isEmpty()) {
+            response = generateResponseWithLLM(query, decisions);
         } else {
-            respuesta = "No se encontraron decisiones relevantes para la consulta: '" + query + "' en las actas disponibles.";
+            response = generateNotFoundResponse(query);
         }
-        return ToolResult.from(respuesta, getClass());
+        return ToolResult.from(response, getClass());
     }
 
-    private boolean matchesNER(Document doc, JSONObject ner) {
-        String[] fields = {"date", "place", "startTime", "endTime", "president", "secretary", "attendees", "numberOfAttendees", "agenda", "decisions", "mentionedEntities", "topics", "section", "summary"};
-        String content = doc.getContent().toLowerCase();
-        for (String field : fields) {
-            if (ner.has(field)) {
-                JSONArray arr = ner.optJSONArray(field);
-                if (arr != null && arr.length() > 0) {
-                    boolean anyMatch = false;
-                    for (int i = 0; i < arr.length(); i++) {
-                        String value = arr.getString(i).toLowerCase();
-                        if (!value.isBlank() && content.contains(value)) {
-                            anyMatch = true;
-                            break;
-                        }
-                    }
-                    if (!anyMatch) return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    private List<String> extraerDecisiones(String content, String query) {
-        // Divide el contenido en fragmentos y usa el LLM para decidir si es una decisión relevante
+    /**
+     * Extracts decisions from content using intelligent fragment analysis
+     */
+    private List<String> extractDecisions(String content, String query) {
+        // Split content into fragments and use LLM to determine if it's a relevant decision
         return Stream.of(content.split("(?<=[.:?])\\s*([\\n\\r])+"))
                 .map(String::trim)
                 .filter(p -> !p.isBlank())
@@ -91,14 +88,21 @@ public class DecisionExtractionTool extends AbstractTool {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Determines if a fragment contains a decision relevant to the query
+     */
     private boolean isDecisionRelevantToQuery(String fragment, String query) {
-        String prompt = """
-            Esta es la consulta del usuario:
+        String prompt = String.format("""
+            This is the user's query (in any language):
             "%s"
-            Este es un fragmento de un acta:
+            
+            This is a fragment from meeting minutes:
             "%s"
-            ¿Este fragmento contiene una decisión relevante para la consulta? Responde solo con 'sí' o 'no'.
-            """.formatted(query, fragment);
+            
+            Does this fragment contain a decision relevant to the query? 
+            Respond only with 'yes' or 'no' in the same language as the query.
+            """, query, fragment);
+        
         String result = chatClient
                 .prompt()
                 .user(prompt)
@@ -106,17 +110,47 @@ public class DecisionExtractionTool extends AbstractTool {
                 .content()
                 .strip()
                 .toLowerCase();
-        return result.contains("sí");
+        
+        // Check for positive responses in multiple languages
+        return result.contains("yes") || result.contains("sí") || result.contains("si") || 
+               result.contains("oui") || result.contains("ja") || result.contains("da");
     }
 
-    private String generarRespuestaConLLM(String query, List<String> decisiones) {
-        String joined = decisiones.stream().distinct().collect(Collectors.joining("\n\n"));
-        String prompt = """
-            El usuario ha preguntado: "%s"
-            Se han encontrado las siguientes decisiones relevantes en las actas:
+    /**
+     * Generates response with LLM using found decisions
+     */
+    private String generateResponseWithLLM(String query, List<String> decisions) {
+        String joined = decisions.stream().distinct().collect(Collectors.joining("\n\n"));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found the following relevant decisions in the meeting minutes:
             %s
-            Redacta una respuesta breve y clara en español, resumiendo las decisiones encontradas y su contexto.
-            """.formatted(query, joined);
+            
+            Write a brief and clear response in the same language as the query, 
+            summarizing the decisions found and their context.
+            """, query, joined);
+        
+        return chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip();
+    }
+    
+    /**
+     * Generates not found response
+     */
+    private String generateNotFoundResponse(String query) {
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No relevant decisions were found for this query in the available meeting minutes.
+            
+            Write a polite response in the same language as the query explaining that no relevant decisions were found.
+            """, query);
+        
         return chatClient
                 .prompt()
                 .user(prompt)

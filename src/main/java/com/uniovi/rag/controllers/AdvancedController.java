@@ -19,14 +19,16 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/tools")
-public class ToolsTestController {
+public class AdvancedController {
 
     private final ChatClient chatClient;
     private final PgVectorStore vectorStore;
 
-    public ToolsTestController(ChatClient chatClient, PgVectorStore vectorStore) {
+    public AdvancedController(ChatClient chatClient, PgVectorStore vectorStore) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
+
+        // request = chatClient.prompt().advisors(new QuestionAnswerAdvisor(vectorStore, SearchRequest.defaults()));
     }
 
     @RequestMapping("/simple")
@@ -71,12 +73,12 @@ public class ToolsTestController {
         System.out.println(outputConverter.getFormat());
 
         PromptTemplate promptTemplate = new PromptTemplate(template, Map.of("format", outputConverter.getFormat()));
-        String userPrompt = promptTemplate.createMessage().getContent(); // ✅ obtenemos el texto del prompt
+        String userPrompt = promptTemplate.createMessage().getContent();
 
         Generation generation = chatClient
                 .prompt()
                 .advisors(new QuestionAnswerAdvisor(vectorStore, SearchRequest.defaults()))
-                .user(userPrompt) // ✅ enviamos el prompt
+                .user(userPrompt) 
                 .call()
                 .chatResponse()
                 .getResult();
@@ -105,7 +107,8 @@ public class ToolsTestController {
                 .prompt()
                 .system("Eres un asistente que sirve como intermediario entre el usuario y la base de conocimiento sobre actas de reuniones.")
                 .advisors(
-                        new QuestionAnswerAdvisor(vectorStore, SearchRequest.defaults()))
+                        new QuestionAnswerAdvisor(vectorStore, SearchRequest.defaults())
+                )
                 .user(question)
                 .call()
                 .chatResponse();

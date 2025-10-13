@@ -2,9 +2,11 @@ package com.uniovi.rag.services.tools.metadata;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.AbstractTool;
+import com.uniovi.rag.services.tools.EnhancedNERHandler;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
+import org.springframework.cache.annotation.Cacheable;
 import com.uniovi.rag.model.Minute;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -19,9 +21,11 @@ import static com.uniovi.rag.utils.InfoExtractor.containsAnyKeyword;
 public abstract class AbstractMetadataTool extends AbstractTool {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    protected final EnhancedNERHandler nerHandler;
 
     public AbstractMetadataTool(ChatClient chatClient, ContextRetriever retriever) {
         super(chatClient, retriever);
+        this.nerHandler = new EnhancedNERHandler(chatClient);
     }
 
     protected boolean matchesBooleanCondition(Document doc, String query, JSONObject nerEntities) {
@@ -90,8 +94,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
 
-        if (entidades.has("answer_type"))
-            terms.add(entidades.getString("answer_type").toLowerCase());
+        if (entidades.has("answerType"))
+            terms.add(entidades.getString("answerType").toLowerCase());
 
         return terms.toArray(new String[0]);
     }
@@ -351,6 +355,304 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 "only_in_second", topics2
             );
         }
+    }
+
+    // ============================================================================
+    // COMMON METHODS FOR METADATA TOOLS - EXTRACTED FROM IMPROVED TOOLS
+    // ============================================================================
+
+    /**
+     * Extracts minutes from documents in parallel for better performance
+     */
+    protected List<Minute> extractMinutesInParallel(List<Document> docs) {
+        return docs.parallelStream()
+                .map(this::getMinuteFromMetadataCached)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Cached extraction of minute objects to improve performance
+     */
+    @Cacheable(value = "minuteObjects", key = "#doc.id")
+    protected Minute getMinuteFromMetadataCached(Document doc) {
+        return getMinuteFromMetadata(doc);
+    }
+
+    /**
+     * Filters relevant minutes based on NER or query relevance using EnhancedNERHandler
+     */
+    protected List<Minute> filterRelevantMinutes(String query, List<Minute> minutes, JSONObject ner) {
+        if (ner != null && !ner.isEmpty()) {
+            // Use enhanced NER filtering with temporal context
+            List<Minute> temporalFiltered = nerHandler.filterMinutesByTemporalContext(minutes, ner);
+            
+            // Filter by NER matching
+            return temporalFiltered.stream()
+                    .filter(minute -> nerHandler.matchesMinuteWithNER(minute, ner))
+                    .filter(minute -> isRelevantToQueryCached(query, minute))
+                    .collect(Collectors.toList());
+        } else {
+            return filterMinutesByQueryRelevance(query, minutes);
+        }
+    }
+
+    /**
+     * Filters minutes using NER entities intelligently
+     */
+    protected List<Minute> filterMinutesWithNER(String query, List<Minute> minutes, JSONObject ner) {
+        log().debug("Filtering {} minutes with NER entities", minutes.size());
+        
+        return minutes.parallelStream()
+                .filter(minute -> matchesMinuteWithNERCached(minute, ner))
+                .filter(minute -> isRelevantToQueryCached(query, minute))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Cached NER matching evaluation
+     */
+    @Cacheable(value = "nerMatching", key = "#minute.hashCode() + '_' + #ner.hashCode()")
+    protected boolean matchesMinuteWithNERCached(Minute minute, JSONObject ner) {
+        return matchesMinuteWithNER(minute, ner);
+    }
+
+    /**
+     * Filters minutes by query relevance using LLM
+     */
+    protected List<Minute> filterMinutesByQueryRelevance(String query, List<Minute> minutes) {
+        log().debug("Filtering {} minutes by query relevance", minutes.size());
+        
+        return minutes.parallelStream()
+                .filter(minute -> isRelevantToQueryCached(query, minute))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Cached query relevance evaluation
+     */
+    @Cacheable(value = "queryRelevance", key = "#query.hashCode() + '_' + #minute.hashCode()")
+    protected boolean isRelevantToQueryCached(String query, Minute minute) {
+        return isRelevantToQueryByLLM(query, minute);
+    }
+
+    /**
+     * Determines if a minute is relevant to the query using LLM
+     */
+    protected boolean isRelevantToQueryByLLM(String query, Minute minute) {
+        String prompt = generateRelevancePrompt(query, minute);
+        String result = getLLMResponseCached(prompt);
+        return result.toLowerCase().contains("yes") || result.toLowerCase().contains("sí");
+    }
+
+    /**
+     * Generates adaptive relevance prompt based on query context
+     */
+    protected String generateRelevancePrompt(String query, Minute minute) {
+        String queryType = analyzeQueryType(query);
+        
+        return String.format("""
+            Given the following user query (in any language):
+            "%s"
+            
+            Query type: %s
+            
+            Meeting metadata:
+            Date: %s
+            Place: %s
+            President: %s
+            Secretary: %s
+            Topics: %s
+            Decisions: %s
+            Summary: %s
+            
+            Does this meeting contain information that directly answers or relates to the query?
+            Consider semantic meaning, not just exact matches.
+            Answer only with YES or NO.
+            """,
+            query,
+            queryType,
+            minute.date() != null ? minute.date() : "unknown",
+            minute.place() != null ? minute.place() : "unknown",
+            minute.president() != null ? minute.president() : "unknown",
+            minute.secretary() != null ? minute.secretary() : "unknown",
+            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
+            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
+            minute.summary() != null ? minute.summary() : "unknown"
+        );
+    }
+
+    /**
+     * Analyzes query type to generate more specific prompts
+     */
+    protected String analyzeQueryType(String query) {
+        String queryLower = query.toLowerCase();
+        
+        if (queryLower.contains("decision") || queryLower.contains("decid") || queryLower.contains("acord")) {
+            return "decision-focused";
+        } else if (queryLower.contains("topic") || queryLower.contains("tema") || queryLower.contains("discut")) {
+            return "topic-focused";
+        } else if (queryLower.contains("person") || queryLower.contains("president") || queryLower.contains("secretary")) {
+            return "person-focused";
+        } else if (queryLower.contains("date") || queryLower.contains("fecha") || queryLower.contains("when")) {
+            return "date-focused";
+        } else if (queryLower.contains("place") || queryLower.contains("lugar") || queryLower.contains("where")) {
+            return "location-focused";
+        } else if (queryLower.contains("entity") || queryLower.contains("entidad") || queryLower.contains("persona")) {
+            return "entity-focused";
+        } else if (queryLower.contains("count") || queryLower.contains("cuántos") || queryLower.contains("cuantos")) {
+            return "count-focused";
+        } else if (queryLower.contains("compare") || queryLower.contains("comparar") || queryLower.contains("comparación")) {
+            return "comparison-focused";
+        } else {
+            return "general";
+        }
+    }
+
+    /**
+     * Cached LLM response for better performance
+     */
+    @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
+    protected String getLLMResponseCached(String prompt) {
+        return chatClient.prompt().user(prompt).call().content().strip();
+    }
+
+    /**
+     * Retrieves documents with intelligent metadata filtering using EnhancedNERHandler
+     */
+    protected List<Document> retrieveDocumentsWithMetadataFilter(String query, String[] relevantFields) {
+        List<Document> docs = retrieveAllDocuments(query);
+        
+        // Filter documents that have valid metadata
+        List<Document> metadataDocs = docs.stream()
+                .filter(doc -> doc.getMetadata().containsKey("minute"))
+                .filter(doc -> hasRelevantMetadata(doc, query, relevantFields))
+                .collect(Collectors.toList());
+        
+        return metadataDocs;
+    }
+
+    /**
+     * Checks if document has metadata relevant to the query
+     */
+    protected boolean hasRelevantMetadata(Document doc, String query, String[] relevantFields) {
+        Map<String, Object> metadata = doc.getMetadata();
+        
+        // Check if any metadata field might be relevant to the query
+        String queryLower = query.toLowerCase();
+        
+        for (String field : relevantFields) {
+            Object value = metadata.get(field);
+            if (value != null && value.toString().toLowerCase().contains(queryLower)) {
+                return true;
+            }
+        }
+        
+        return true; // If no direct match, let LLM decide
+    }
+
+    /**
+     * Generates not found message using LLM
+     */
+    protected String generateNotFoundMessage(String query) {
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+            Write a short message indicating that no relevant meeting minutes were found, 
+            in the same language as the query.
+            """, query);
+        
+        return getLLMResponseCached(prompt);
+    }
+
+    /**
+     * Generates no data message using LLM
+     */
+    protected String generateNoDataMessage(String query) {
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+            Write a short message indicating that no relevant data was found for the query, 
+            in the same language as the query.
+            """, query);
+        
+        return getLLMResponseCached(prompt);
+    }
+
+    /**
+     * Calculates relevance score using LLM
+     */
+    protected double calculateRelevanceScore(String query, String itemContent, String context) {
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+            
+            Item content: %s
+            Context: %s
+            
+            Rate the relevance of this item to the query on a scale of 0.0 to 1.0.
+            Consider: direct relevance, completeness, clarity, and usefulness.
+            Respond with only a number between 0.0 and 1.0.
+            """, query, itemContent, context);
+        
+        try {
+            String result = getLLMResponseCached(prompt).strip();
+            return Double.parseDouble(result);
+        } catch (NumberFormatException e) {
+            return 0.5; // Default score if parsing fails
+        }
+    }
+
+    /**
+     * Checks if two items are similar based on content overlap
+     */
+    protected boolean isSimilarToCluster(String itemContent, String clusterContent, double threshold) {
+        String itemLower = itemContent.toLowerCase();
+        String clusterLower = clusterContent.toLowerCase();
+        
+        Set<String> itemWords = Set.of(itemLower.split("\\s+"));
+        Set<String> clusterWords = Set.of(clusterLower.split("\\s+"));
+        
+        long commonWords = itemWords.stream()
+                .filter(clusterWords::contains)
+                .count();
+        
+        double similarity = (double) commonWords / Math.max(itemWords.size(), clusterWords.size());
+        
+        return similarity > threshold;
+    }
+
+    /**
+     * Formats cluster summary for LLM prompt
+     */
+    protected String formatClusterSummary(List<?> clusters, String clusterType) {
+        StringBuilder summary = new StringBuilder();
+        
+        for (int i = 0; i < clusters.size(); i++) {
+            summary.append(String.format("Cluster %d (%s):\n", i + 1, clusterType));
+            summary.append(clusters.get(i).toString());
+            summary.append("\n\n");
+        }
+        
+        return summary.toString();
+    }
+
+    /**
+     * Formats cluster analysis for LLM prompt
+     */
+    protected String formatClusterAnalysis(List<?> clusters, String clusterType) {
+        if (clusters.isEmpty()) {
+            return "No clusters found.";
+        }
+        
+        StringBuilder analysis = new StringBuilder();
+        analysis.append(String.format("Total %s clusters: %d\n", clusterType, clusters.size()));
+        
+        for (int i = 0; i < clusters.size(); i++) {
+            analysis.append(String.format("- Cluster %d: %s\n", i + 1, clusterType));
+        }
+        
+        return analysis.toString();
     }
 }
 

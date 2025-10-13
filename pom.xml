@@ -15,7 +15,7 @@
     <description>Project using Spring Boot and Spring AI</description>
     <properties>
         <java.version>21</java.version>
-        <spring-ai.version>1.0.0-M1</spring-ai.version>
+        <spring-ai.version>1.0.0-M3</spring-ai.version>
     </properties>
     <dependencies>
         <dependency>
@@ -32,7 +32,7 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>
-            <version>1.0.0-M1</version>
+            <version>1.0.0-M3</version>
         </dependency>
 
         <dependency>
@@ -41,15 +41,17 @@
             <version>${spring-ai.version}</version>
         </dependency>
 
-
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <!--
-            <artifactId>spring-ai-pgvector-store</artifactId>
-            <version>${spring-ai.version}</version>
-            -->
             <artifactId>spring-ai-pgvector-store-spring-boot-starter</artifactId>
-            <version>1.0.0-M1</version>
+            <version>1.0.0-M3</version>
+        </dependency>
+
+        <!-- Spring AI Core para function calling -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-core</artifactId>
+            <version>${spring-ai.version}</version>
         </dependency>
 
         <dependency>
@@ -83,13 +85,31 @@
             <version>20250107</version>
         </dependency>
 
+        <!-- Spring Boot Cache para optimizaciones -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+
+        <!-- Caffeine Cache -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Async para procesamiento paralelo -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-async</artifactId>
+        </dependency>
+
     </dependencies>
     <dependencyManagement>
         <dependencies>
             <dependency>
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-bom</artifactId>
-                <version>1.0.0-M1</version>
+                <version>1.0.0-M3</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

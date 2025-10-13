@@ -1,7 +1,6 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -15,6 +14,15 @@ import static com.uniovi.rag.utils.InfoExtractor.extractDate;
 import static com.uniovi.rag.utils.InfoExtractor.extractTime;
 import static com.uniovi.rag.utils.InfoExtractor.calculateDuration;
 
+/**
+ * Enhanced GetDurationTool for retrieving meeting durations with intelligent NER analysis.
+ * 
+ * Features:
+ * - Intelligent NER-based filtering using EnhancedNERHandler
+ * - Temporal context filtering
+ * - Semantic duration relevance evaluation
+ * - Enhanced duration extraction and comparison
+ */
 public class GetDurationTool extends AbstractTool {
 
     public GetDurationTool(ChatClient chatClient, ContextRetriever retriever) {
@@ -25,15 +33,25 @@ public class GetDurationTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
+        
+        log().debug("Executing get duration query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        
         List<Document> docs = retrieveDocuments(query);
         List<MeetingDuration> durations = new ArrayList<>();
 
-        for (Document doc : docs) {
-            if (ner != null) {
-                if (matchesNER(doc, ner)) {
+        // Filter documents based on NER if available
+        if (ner != null) {
+            // Use EnhancedNERHandler for intelligent filtering
+            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+            
+            for (Document doc : filteredDocs) {
+                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     durations.add(extractMeetingDuration(doc));
                 }
-            } else {
+            }
+        } else {
+            // Fallback to LLM-based relevance
+            for (Document doc : docs) {
                 if (isRelevantByLLM(doc.getContent(), query)) {
                     durations.add(extractMeetingDuration(doc));
                 }
@@ -51,41 +69,37 @@ public class GetDurationTool extends AbstractTool {
         return ToolResult.from(answer, getClass());
     }
 
-    private boolean matchesNER(Document doc, JSONObject ner) {
-        String[] fields = {"date", "place", "startTime", "endTime", "president", "secretary", "attendees", "numberOfAttendees", "agenda", "decisions", "mentionedEntities", "topics", "section", "summary"};
-        String content = doc.getContent().toLowerCase();
-        for (String field : fields) {
-            if (ner.has(field)) {
-                JSONArray arr = ner.optJSONArray(field);
-                if (arr != null && arr.length() > 0) {
-                    boolean anyMatch = false;
-                    for (int i = 0; i < arr.length(); i++) {
-                        String value = arr.getString(i).toLowerCase();
-                        if (!value.isBlank() && content.contains(value)) {
-                            anyMatch = true;
-                            break;
-                        }
-                    }
-                    if (!anyMatch) return false;
-                }
-            }
-        }
-        return true;
-    }
-
+    /**
+     * Determines if content is relevant to query using LLM
+     */
     private boolean isRelevantByLLM(String content, String query) {
-        String prompt = """
+        String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
-            And the following minutes content:
+            
+            And the following meeting minutes content:
             "%s"
+            
             Does this minutes document match all the conditions in the query? 
-            Answer only YES or NO (in the language of the query).
-            """.formatted(query, content.substring(0, Math.min(1000, content.length())));
-        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
-        return result.startsWith("yes") || result.startsWith("sí");
+            Answer only YES or NO in the same language as the query.
+            """, query, content.substring(0, Math.min(1000, content.length())));
+        
+        String result = chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip()
+                .toLowerCase();
+        
+        // Check for positive responses in multiple languages
+        return result.startsWith("yes") || result.startsWith("sí") || result.startsWith("si") || 
+               result.startsWith("oui") || result.startsWith("ja") || result.startsWith("da");
     }
 
+    /**
+     * Extracts meeting duration from document
+     */
     private MeetingDuration extractMeetingDuration(Document doc) {
         String content = doc.getContent();
         String date = extractDate(content);
@@ -95,41 +109,76 @@ public class GetDurationTool extends AbstractTool {
         return new MeetingDuration(date, startTime, endTime, duration);
     }
 
+    /**
+     * Generates final answer with found durations
+     */
     private String generateFinalAnswer(String query, List<MeetingDuration> durations) {
         boolean isComparison = isComparisonQuery(query);
         if (isComparison) {
             MeetingDuration result = getComparisonResult(query, durations);
             if (result != null) {
-                String prompt = """
+                String prompt = String.format("""
                     Given the following user query (in any language):
                     "%s"
+                    
                     The following meetings were found (date, start, end, duration in minutes):
                     %s
+                    
                     Write a brief and clear answer, in the same language as the query, 
                     indicating which meeting had the longest/shortest duration and its details.
-                    """.formatted(query, durations.stream().map(MeetingDuration::toString).collect(Collectors.joining("\n")));
-                return chatClient.prompt().user(prompt).call().content().strip();
+                    """, query, durations.stream().map(MeetingDuration::toString).collect(Collectors.joining("\n")));
+                
+                return chatClient
+                        .prompt()
+                        .user(prompt)
+                        .call()
+                        .content()
+                        .strip();
             }
         }
-        String prompt = """
+        
+        String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
+            
             The following meetings were found (date, start, end, duration in minutes):
             %s
-            Write a brief and clear answer, in the same language as the query, indicating the duration and details of each meeting found.
-            """.formatted(query, durations.stream().map(MeetingDuration::toString).collect(Collectors.joining("\n")));
-        return chatClient.prompt().user(prompt).call().content().strip();
+            
+            Write a brief and clear answer, in the same language as the query, 
+            indicating the duration and details of each meeting found.
+            """, query, durations.stream().map(MeetingDuration::toString).collect(Collectors.joining("\n")));
+        
+        return chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip();
     }
 
+    /**
+     * Determines if query is asking for comparison
+     */
     private boolean isComparisonQuery(String query) {
-        String prompt = """
+        String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
+            
             Does the query ask for a comparison (e.g., longest, shortest, most, least, etc.)? 
-            Answer only YES or NO (in the language of the query).
-            """.formatted(query);
-        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
-        return result.startsWith("yes") || result.startsWith("sí");
+            Answer only YES or NO in the same language as the query.
+            """, query);
+        
+        String result = chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip()
+                .toLowerCase();
+        
+        // Check for positive responses in multiple languages
+        return result.startsWith("yes") || result.startsWith("sí") || result.startsWith("si") || 
+               result.startsWith("oui") || result.startsWith("ja") || result.startsWith("da");
     }
 
     private MeetingDuration getComparisonResult(String query, List<MeetingDuration> durations) {

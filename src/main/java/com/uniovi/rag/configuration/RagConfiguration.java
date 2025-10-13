@@ -35,6 +35,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.HashMap;
 import java.util.Map;
+import com.uniovi.rag.services.query.AgenticQueryService;
+import org.springframework.ai.vectorstore.VectorStore;
+// import com.uniovi.rag.services.tools.agentic.AgenticToolsManager;
+// import com.uniovi.rag.services.tools.agentic.AgenticCountDocumentsTool;
+// import com.uniovi.rag.agentic.AgenticFunctionTool;
+// import com.uniovi.rag.agentic.tools.CountDocumentsAgenticTool;
 
 @Configuration
 public class RagConfiguration {
@@ -138,7 +144,10 @@ public class RagConfiguration {
     }
 
     @Bean
-    public ContextRetriever contextRetriever(PgVectorStore vectorStore, ChatClient chatClient) {
+    public ContextRetriever contextRetriever(PgVectorStore vectorStore, ChatClient chatClient, RagFeatureConfiguration featureConfig) {
+        if (featureConfig.isCacheDocumentsEnabled()) {
+            return new CachedContextRetriever(vectorStore, chatClient, featureConfig, topK, similarityThreshold);
+        }
         return new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
     }
 
@@ -190,15 +199,39 @@ public class RagConfiguration {
         return tools;
     }
 
+    /*@Bean
+    public AgenticToolsManager agenticToolsManager(
+            ChatClient chatClient,
+            ContextRetriever retriever
+    ) {
+        AgenticToolsManager manager = new AgenticToolsManager();
+        
+        // Registrar las AgenticTools
+        manager.registerTool(new AgenticCountDocumentsTool(chatClient, retriever));
+        // Aquí puedes agregar más AgenticTools según las necesites
+        
+        return manager;
+    }*/
+
     @Bean
-    public QueryService queryService(RagFeatureConfiguration featureConfig,
-                                     RagToolsConfiguration toolsConfig,
-                                     QueryExpander expander,
-                                     QueryClassifier classifier,
-                                     QueryAnalyser analyser,
-                                     ContextRetriever retriever,
-                                     ChatClient chatClient) {
-        return new ProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient);
+    public QueryService queryService(
+            RagFeatureConfiguration featureConfig,
+            RagToolsConfiguration toolsConfig,
+            QueryExpander expander,
+            QueryAnalyser analyser,
+            QueryClassifier classifier,
+            ContextRetriever retriever,
+            ChatClient chatClient
+    ) {
+        return new ProcessQueryService(
+            featureConfig,
+            toolsConfig,
+            expander,
+            analyser,
+            classifier,
+            retriever,
+            chatClient
+        );
     }
 
 
