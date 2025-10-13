@@ -1,7 +1,6 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -10,11 +9,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractDate;
-import static com.uniovi.rag.utils.InfoExtractor.extractAttendees;
-import static com.uniovi.rag.utils.InfoExtractor.extractAgenda;
-import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
+import static com.uniovi.rag.utils.InfoExtractor.*;
 
+/**
+ * Enhanced ExtractEntitiesTool for extracting entities from meeting minutes.
+ * 
+ * Features:
+ * - Intelligent NER-based filtering using EnhancedNERHandler
+ * - Semantic analysis instead of literal matching
+ * - Support for all NER fields including section and answerType
+ * - Multilingual support with adaptive prompts
+ * - Decoupled from literal word matching
+ */
 public class ExtractEntitiesTool extends AbstractTool {
 
     public ExtractEntitiesTool(ChatClient chatClient, ContextRetriever retriever) {
@@ -26,93 +32,135 @@ public class ExtractEntitiesTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         List<Document> docs = retrieveDocuments(query);
-        List<String> resultados = new ArrayList<>();
+        List<String> results = new ArrayList<>();
 
         if (ner != null) {
-            for (Document doc : docs) {
-                if (matchesNER(doc, ner)) {
+            // Use enhanced NER filtering with semantic analysis
+            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+            
+            for (Document doc : filteredDocs) {
+                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String content = doc.getContent();
-                    String fecha = extractDate(content);
-                    String entidades = extraerEntidadesSolicitadas(content, query);
-                    if (!entidades.isBlank()) {
-                        resultados.add("Acta del " + fecha + ":\n" + entidades);
+                    String date = extractDate(content);
+                    String entities = extractRequestedEntities(content, query, ner);
+                    if (!entities.isBlank()) {
+                        results.add(generateEntityResult(date, entities));
                     }
                 }
             }
         } else {
+            // Baseline: extract entities from all documents
             for (Document doc : docs) {
                 String content = doc.getContent();
-                String fecha = extractDate(content);
-                String entidades = extraerEntidadesSolicitadas(content, query);
-                if (!entidades.isBlank()) {
-                    resultados.add("Acta del " + fecha + ":\n" + entidades);
+                String date = extractDate(content);
+                String entities = extractRequestedEntities(content, query, null);
+                if (!entities.isBlank()) {
+                    results.add(generateEntityResult(date, entities));
                 }
             }
         }
 
-        String respuesta;
-        if (!resultados.isEmpty()) {
-            respuesta = generarRespuestaConLLM(query, resultados);
+        String response;
+        if (!results.isEmpty()) {
+            response = generateResponseWithLLM(query, results);
         } else {
-            respuesta = "No se encontraron entidades relevantes para la consulta: '" + query + "' en las actas disponibles.";
+            response = generateNotFoundResponse(query);
         }
-        return ToolResult.from(respuesta, getClass());
+        return ToolResult.from(response, getClass());
     }
 
-    private boolean matchesNER(Document doc, JSONObject ner) {
-        String[] fields = {"date", "place", "startTime", "endTime", "president", "secretary", "attendees", "numberOfAttendees", "agenda", "decisions", "mentionedEntities", "topics", "section", "summary"};
-        String content = doc.getContent().toLowerCase();
-        for (String field : fields) {
-            if (ner.has(field)) {
-                JSONArray arr = ner.optJSONArray(field);
-                if (arr != null && arr.length() > 0) {
-                    boolean anyMatch = false;
-                    for (int i = 0; i < arr.length(); i++) {
-                        String value = arr.getString(i).toLowerCase();
-                        if (!value.isBlank() && content.contains(value)) {
-                            anyMatch = true;
-                            break;
-                        }
-                    }
-                    if (!anyMatch) return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    private String extraerEntidadesSolicitadas(String content, String query) {
-        // Usa el LLM para extraer las entidades relevantes para la pregunta
-        String asistentes = String.join(", ", extractAttendees(content));
+    /**
+     * Extracts requested entities using intelligent analysis
+     */
+    private String extractRequestedEntities(String content, String query, JSONObject ner) {
+        String answerType = nerHandler.determineAnswerType(query, ner);
+        List<String> sections = nerHandler.extractSections(ner);
+        
+        String attendees = String.join(", ", extractAttendees(content));
         String agenda = extractAgenda(content);
-        String fragmento = extractRelevantFragment(content, query);
-        String prompt = """
-            Esta es la pregunta del usuario:
+        String fragment = extractRelevantFragment(content, query);
+        
+        String prompt = String.format("""
+            Given the following user query (in any language):
             "%s"
-            Este es el contenido de un acta:
+            
+            Query type: %s
+            Target sections: %s
+            
+            This is the content of a meeting minute:
             "%s"
-            Asistentes extraídos: %s
-            Agenda extraída: %s
-            Fragmento relevante: %s
-            Extrae y lista únicamente las entidades (personas, asistentes, cargos, temas, etc.) relevantes para la pregunta. Si no hay ninguna, responde exactamente: [VACÍO]
-            """.formatted(query, content.substring(0, Math.min(1000, content.length())), asistentes, agenda != null ? agenda : "", fragmento);
+            
+            Extracted attendees: %s
+            Extracted agenda: %s
+            Relevant fragment: %s
+            
+            Extract and list only the entities (people, attendees, positions, topics, etc.) 
+            that are relevant to the query. Consider the query type and target sections.
+            If no relevant entities are found, respond exactly: [EMPTY]
+            """, 
+            query, 
+            answerType,
+            sections.isEmpty() ? "all sections" : String.join(", ", sections),
+            content.substring(0, Math.min(1000, content.length())), 
+            attendees, 
+            agenda != null ? agenda : "", 
+            fragment);
+        
         String result = chatClient
                 .prompt()
                 .user(prompt)
                 .call()
                 .content()
                 .strip();
-        return result.equalsIgnoreCase("[vacío]") ? "" : result;
+        
+        return result.equalsIgnoreCase("[empty]") ? "" : result;
     }
 
-    private String generarRespuestaConLLM(String query, List<String> resultados) {
-        String joined = resultados.stream().distinct().collect(Collectors.joining("\n\n"));
-        String prompt = """
-            El usuario ha preguntado: "%s"
-            Se han encontrado las siguientes entidades relevantes en las actas:
+    /**
+     * Generates entity result with proper formatting
+     */
+    private String generateEntityResult(String date, String entities) {
+        return String.format("Minutes from %s:\n%s", 
+                           date != null ? date : "unknown date", entities);
+    }
+
+    /**
+     * Generates response using LLM
+     */
+    private String generateResponseWithLLM(String query, List<String> results) {
+        String joinedResults = results.stream().distinct().collect(Collectors.joining("\n\n"));
+        
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+            
+            The following relevant entities were found in the meeting minutes:
             %s
-            Redacta una respuesta breve y clara en español, resumiendo las entidades encontradas y su contexto.
-            """.formatted(query, joined);
+            
+            Write a clear, concise response in the same language as the query, 
+            summarizing the entities found and their context.
+            """, query, joinedResults);
+        
+        return chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip();
+    }
+
+    /**
+     * Generates not found response using LLM
+     */
+    private String generateNotFoundResponse(String query) {
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+            
+            Write a short message indicating that no relevant entities were found for the query, 
+            in the same language as the query.
+            """, query);
+        
         return chatClient
                 .prompt()
                 .user(prompt)

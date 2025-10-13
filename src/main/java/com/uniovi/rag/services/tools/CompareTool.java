@@ -1,7 +1,6 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -11,6 +10,16 @@ import java.util.stream.Collectors;
 
 import static com.uniovi.rag.utils.InfoExtractor.*;
 
+/**
+ * Enhanced CompareTool for comparing meeting minutes across different dimensions.
+ * 
+ * Features:
+ * - Intelligent NER-based filtering using EnhancedNERHandler
+ * - Semantic analysis instead of literal matching
+ * - Support for all NER fields including comparisonType and temporalContext
+ * - Multilingual support with adaptive prompts
+ * - Decoupled from literal word matching
+ */
 public class CompareTool extends AbstractTool {
 
     public CompareTool(ChatClient chatClient, ContextRetriever retriever) {
@@ -22,69 +31,50 @@ public class CompareTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         List<Document> docs = retrieveDocuments(query);
+        
         if (docs.isEmpty()) {
-            throw new RuntimeException("No se encontraron actas relevantes.");
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        Map<String, MinuteInfo> resumen = new LinkedHashMap<>();
+        Map<String, MinuteInfo> summary = new LinkedHashMap<>();
+        
         if (ner != null) {
-            // Usar NER para filtrar y agrupar/comparar
-            for (Document doc : docs) {
-                if (matchesNER(doc, ner)) {
+            // Use enhanced NER filtering with semantic analysis
+            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+            
+            for (Document doc : filteredDocs) {
+                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String content = doc.getContent();
-                    String fecha = extractDate(content);
-                    resumen.put(fecha, buildMinuteInfo(content, fecha));
+                    String date = extractDate(content);
+                    summary.put(date, buildMinuteInfo(content, date));
                 }
             }
         } else {
-            // Baseline: agrupar y comparar por heurística (por ejemplo, por mes, asistentes, propuestas...)
+            // Baseline: group and compare by heuristic
             for (Document doc : docs) {
                 String content = doc.getContent();
-                String fecha = extractDate(content);
-                resumen.put(fecha, buildMinuteInfo(content, fecha));
+                String date = extractDate(content);
+                summary.put(date, buildMinuteInfo(content, date));
             }
         }
 
-        if (resumen.isEmpty()) {
-            throw new RuntimeException("No se pudieron generar datos comparables.");
+        if (summary.isEmpty()) {
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        String tipoComparacion = inferComparisonTarget(query, resumen);
-        if (tipoComparacion.equals("desconocido")) {
-            return ToolResult.from("No se ha podido determinar claramente qué comparar. Estos son los valores disponibles:\n" +
-                    resumen.values().stream().map(MinuteInfo::toString).reduce("", (a, b) -> a + b + "\n"), getClass());
-        }
-
-        String comparacion = compararValores(resumen, tipoComparacion, query);
-        String respuesta = generarRespuestaConLLM(query, comparacion);
-        return ToolResult.from(respuesta, getClass());
+        String comparisonType = nerHandler.determineComparisonType(query, ner);
+        String comparison = compareValues(summary, comparisonType, query);
+        String response = generateResponseWithLLM(query, comparison);
+        
+        return ToolResult.from(response, getClass());
     }
 
-    private boolean matchesNER(Document doc, JSONObject ner) {
-        String[] fields = {"date", "place", "startTime", "endTime", "president", "secretary", "attendees", "numberOfAttendees", "agenda", "decisions", "mentionedEntities", "topics", "section", "summary"};
-        String content = doc.getContent().toLowerCase();
-        for (String field : fields) {
-            if (ner.has(field)) {
-                JSONArray arr = ner.optJSONArray(field);
-                if (arr != null && arr.length() > 0) {
-                    boolean anyMatch = false;
-                    for (int i = 0; i < arr.length(); i++) {
-                        String value = arr.getString(i).toLowerCase();
-                        if (!value.isBlank() && content.contains(value)) {
-                            anyMatch = true;
-                            break;
-                        }
-                    }
-                    if (!anyMatch) return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    private MinuteInfo buildMinuteInfo(String content, String fecha) {
+    /**
+     * Builds minute information from content
+     */
+    private MinuteInfo buildMinuteInfo(String content, String date) {
         return new MinuteInfo(
-                fecha,
+                date,
                 extractAttendeeCount(content),
                 calculateDuration(content),
                 countProposals(content),
@@ -94,76 +84,169 @@ public class CompareTool extends AbstractTool {
         );
     }
 
-    private String inferComparisonTarget(String query, Map<String, MinuteInfo> resumen) {
-        // Usa el LLM para inferir el tipo de comparación (asistentes, duración, propuestas, etc.)
-        String prompt = """
-            Dada la siguiente pregunta de usuario:
-            "%s"
-            Estos son los datos disponibles:
-            %s
-            Indica claramente qué tipo de valor quiere comparar el usuario. Las opciones válidas son:
-            - asistentes
-            - duracion
-            - propuestas
-            - puntos_orden_dia
-            - ruegos
-            - lugar
-            - fecha
-            Si no lo puedes inferir claramente, responde únicamente: desconocido
-            """.formatted(query, resumen.values().stream().map(MinuteInfo::toString).collect(Collectors.joining("\n")));
-        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
-        return switch (result) {
-            case "asistentes", "duracion", "propuestas", "puntos_orden_dia", "ruegos", "place", "fecha" -> result;
-            default -> "desconocido";
-        };
-    }
-
-    private String compararValores(Map<String, MinuteInfo> resumen, String tipoComparacion, String query) {
-        // Agrupa por mes si la pregunta lo sugiere
-        if (query.toLowerCase().contains("mes") || query.toLowerCase().contains("febrero") || query.toLowerCase().contains("agosto") || query.toLowerCase().contains("abril")) {
-            Map<String, List<MinuteInfo>> porMes = new HashMap<>();
-            for (MinuteInfo info : resumen.values()) {
-                String mes = extraerMes(info.date());
-                porMes.computeIfAbsent(mes, k -> new ArrayList<>()).add(info);
-            }
-            // Sumariza por mes
-            Map<String, Integer> valoresPorMes = new HashMap<>();
-            for (Map.Entry<String, List<MinuteInfo>> entry : porMes.entrySet()) {
-                int valor = entry.getValue().stream().mapToInt(info -> getValue(info, tipoComparacion)).sum();
-                valoresPorMes.put(entry.getKey(), valor);
-            }
-            // Genera texto comparativo
-            return valoresPorMes.entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .map(e -> "En " + e.getKey() + ": " + e.getValue())
-                    .collect(Collectors.joining(". "));
+    /**
+     * Compares values based on comparison type and temporal context
+     */
+    private String compareValues(Map<String, MinuteInfo> summary, String comparisonType, String query) {
+        // Check if we should group by temporal periods
+        if (shouldGroupByTemporalPeriod(query, summary)) {
+            return compareByTemporalPeriod(summary, comparisonType);
         } else {
-            // Comparación directa entre actas
-            return resumen.entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .map(e -> "En la reunión del " + e.getKey() + ": " + getValue(e.getValue(), tipoComparacion))
-                    .collect(Collectors.joining(". "));
+            return compareDirectly(summary, comparisonType);
         }
     }
 
-    private String extraerMes(String fecha) {
-        // Extrae el mes de una fecha tipo "25 de febrero de 2025"
+    /**
+     * Determines if we should group by temporal periods
+     */
+    private boolean shouldGroupByTemporalPeriod(String query, Map<String, MinuteInfo> summary) {
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+            
+            And these available meeting dates:
+            %s
+            
+            Should the comparison be grouped by temporal periods (months, quarters, years)?
+            Consider if the query mentions time periods, months, or temporal groupings.
+            
+            Answer only with 'yes' or 'no'.
+            """, query, String.join(", ", summary.keySet()));
+        
+        String result = chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip()
+                .toLowerCase();
+        
+        return result.contains("yes") || result.contains("sí");
+    }
+
+    /**
+     * Compares values grouped by temporal periods
+     */
+    private String compareByTemporalPeriod(Map<String, MinuteInfo> summary, String comparisonType) {
+        Map<String, List<MinuteInfo>> byPeriod = new HashMap<>();
+        
+        for (MinuteInfo info : summary.values()) {
+            String period = extractTemporalPeriod(info.date());
+            byPeriod.computeIfAbsent(period, k -> new ArrayList<>()).add(info);
+        }
+        
+        // Summarize by period
+        Map<String, Integer> valuesByPeriod = new HashMap<>();
+        for (Map.Entry<String, List<MinuteInfo>> entry : byPeriod.entrySet()) {
+            int value = entry.getValue().stream()
+                    .mapToInt(info -> getValue(info, comparisonType))
+                    .sum();
+            valuesByPeriod.put(entry.getKey(), value);
+        }
+        
+        // Generate comparative text
+        return valuesByPeriod.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(e -> String.format("In %s: %d", e.getKey(), e.getValue()))
+                .collect(Collectors.joining(". "));
+    }
+
+    /**
+     * Compares values directly between meetings
+     */
+    private String compareDirectly(Map<String, MinuteInfo> summary, String comparisonType) {
+        return summary.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(e -> String.format("In the meeting of %s: %d", e.getKey(), getValue(e.getValue(), comparisonType)))
+                .collect(Collectors.joining(". "));
+    }
+
+    /**
+     * Extracts temporal period from date
+     */
+    private String extractTemporalPeriod(String date) {
         try {
-            String[] parts = fecha.split(" de ");
+            String[] parts = date.split(" de ");
             if (parts.length >= 2) {
                 return parts[1].toLowerCase();
             }
         } catch (Exception ignored) {}
-        return fecha;
+        return date;
     }
 
-    private String generarRespuestaConLLM(String query, String comparacion) {
-        String prompt = """
-            El usuario ha preguntado: "%s"
-            Esta es la comparación obtenida:
+    /**
+     * Gets value for comparison type
+     */
+    private int getValue(MinuteInfo info, String comparisonType) {
+        return switch (comparisonType) {
+            case "attendees" -> info.attendeeCount();
+            case "duration" -> info.duration();
+            case "proposals" -> info.proposalCount();
+            case "agenda" -> info.agendaItemCount();
+            case "questions" -> info.questionCount();
+            default -> info.attendeeCount(); // Default to attendees
+        };
+    }
+
+    /**
+     * Generates response using LLM
+     */
+    private String generateResponseWithLLM(String query, String comparison) {
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+            
+            This is the comparison obtained:
             %s
-            Redacta una respuesta breve y clara en español, comparando los valores y explicando cuál es mayor o si hay empate.
-            """.formatted(query, comparacion);
-        return chatClient.prompt().user(prompt).call().content().strip();
+            
+            Write a clear, concise response in the same language as the query, 
+            comparing the values and explaining which is greater or if there's a tie.
+            """, query, comparison);
+        
+        return chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip();
+    }
+
+    /**
+     * Generates not found message using LLM
+     */
+    private String generateNotFoundMessage(String query) {
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+            
+            Write a short message indicating that no relevant meeting minutes were found for comparison, 
+            in the same language as the query.
+            """, query);
+        
+        return chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content()
+                .strip();
+    }
+
+    /**
+     * Represents minute information for comparison
+     */
+    private record MinuteInfo(
+            String date,
+            int attendeeCount,
+            int duration,
+            int proposalCount,
+            int agendaItemCount,
+            int questionCount,
+            String place
+    ) {
+        @Override
+        public String toString() {
+            return String.format("Date: %s, Attendees: %d, Duration: %d min, Proposals: %d, Agenda: %d, Questions: %d, Place: %s",
+                    date, attendeeCount, duration, proposalCount, agendaItemCount, questionCount, place);
+        }
     }
 }

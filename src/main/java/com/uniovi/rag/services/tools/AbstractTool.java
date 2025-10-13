@@ -10,7 +10,7 @@ public abstract class AbstractTool implements Tool {
 
     /*
     public static final String PROMPT_KEYWORDS_EXTRACTOR = """
-            Act as a keyword extractor for search queries over homeowners’ meeting minutes.
+            Act as a keyword extractor for search queries over homeowners' meeting minutes.
 
             The minutes follow a structure with fields like:
             - date, place, startTime, endTime
@@ -31,10 +31,12 @@ public abstract class AbstractTool implements Tool {
 
     protected final ChatClient chatClient;
     protected final ContextRetriever retriever;
+    protected final EnhancedNERHandler nerHandler;
 
     public AbstractTool(ChatClient chatClient, ContextRetriever retriever) {
         this.chatClient = chatClient;
         this.retriever = retriever;
+        this.nerHandler = new EnhancedNERHandler(chatClient);
     }
 
     protected List<Document> retrieveAllDocuments(String query) {
