@@ -89,35 +89,6 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         return matchesMinuteWithNER(minute, ner);
     }
 
-
-    /**
-     * Generates adaptive relevance prompt for counting queries
-     */
-    private String generateCountingRelevancePrompt(String query, Minute minute) {
-        return String.format("""
-            Given the following counting query (in any language):
-            "%s"
-            
-            Meeting metadata:
-            Date: %s
-            Place: %s
-            Topics: %s
-            Decisions: %s
-            Summary: %s
-            
-            Does this meeting match the criteria specified in the counting query?
-            Consider that the query asks for counting documents that meet certain conditions.
-            Answer only with YES or NO.
-            """,
-            query,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
-            minute.summary() != null ? minute.summary() : "unknown"
-        );
-    }
-
     /**
      * Performs comprehensive counting analysis
      */

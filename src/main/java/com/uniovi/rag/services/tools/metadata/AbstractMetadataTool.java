@@ -8,6 +8,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.cache.annotation.Cacheable;
 import com.uniovi.rag.model.Minute;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.LocalTime;
@@ -102,12 +103,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     protected boolean semanticallyMatches(String content, String[] keywords) {
         String prompt = """
-                Dado el siguiente contenido de acta, dime si se hace alguna mención relacionada con estos temas: %s
-                Contenido del acta:
-                %s
-                
-                Responde solo con "Sí" o "No".
-                """.formatted(String.join(", ", keywords), content);
+            Given the following meeting minutes content, tell me if there is any mention related to these topics: %s
+            Meeting minutes content:
+            %s
+            
+            Respond only with "Yes" or "No".
+            """.formatted(String.join(", ", keywords), content);
 
         String result = chatClient
                 .prompt()
@@ -122,17 +123,17 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     protected boolean semanticallyMatchesMetadata(Document doc, String query) {
         String prompt = """
-                Given the following user query (in any language):
-                "%s"
-                
-                And the following document metadata:
-                %s
-                
-                Does this document's metadata match the intent of the query, regardless of exact wording or language?
-                Consider all metadata fields and their semantic meaning.
-                
-                Answer only with "YES" or "NO".
-                """.formatted(query, doc.getMetadata().toString());
+            Given the following user query (in any language):
+            "%s"
+            
+            And the following document metadata:
+            %s
+            
+            Does this document's metadata match the intent of the query, regardless of exact wording or language?
+            Consider all metadata fields and their semantic meaning.
+            
+            Answer only with "YES" or "NO".
+            """.formatted(query, doc.getMetadata().toString());
 
         String result = chatClient
                 .prompt()
@@ -347,7 +348,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
         try {
             String result = chatClient.prompt().user(prompt).call().content().strip();
-            return objectMapper.readValue(result, Map.class);
+            return objectMapper.readValue(result, new TypeReference<Map<String, List<String>>>() {});
         } catch (Exception ex) {
             return Map.of(
                 "similar", List.of(),

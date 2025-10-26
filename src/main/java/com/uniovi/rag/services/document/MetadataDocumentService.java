@@ -13,56 +13,57 @@ import java.util.regex.Pattern;
 public class MetadataDocumentService extends AbstractMetadataDocumentService {
 
     public static final String PROMPT_DECISIONS = """
-            Extrae solo las decisiones explícitas contenidas en el acta, basadas en expresiones como "se acordó", "se decidió", "se aprobó", etc.
-            Devuelve exclusivamente una lista cruda, una frase por línea, sin encabezados ni introducciones.
-            """;
+        Extract only the explicit decisions contained in the meeting minutes, based on expressions such as "it was agreed", "it was decided", "it was approved", etc.
+        Return exclusively a raw list, one sentence per line, without headers or introductions.
+        """;
 
     public static final String PROMPT_ENTITIES = """
-            Extrae todos los nombres concretos de entidades mencionadas en el acta, como empresas, técnicos, organismos públicos o asociaciones relevantes.
-            Devuelve exclusivamente una lista de nombres, uno por línea, sin encabezados ni frases explicativas.
-            """;
+        Extract all specific names of entities mentioned in the meeting minutes, such as companies, technicians, public organizations, or relevant associations.
+        Return exclusively a list of names, one per line, without headers or explanatory phrases.
+        """;
 
     public static final String PROMPT_TOPICS = """
-            Extrae los temas tratados durante la reunión.
-            Cada tema debe ser una palabra o frase corta (por ejemplo: "iluminación", "seguridad", "mantenimiento").
-            Devuelve exclusivamente una lista de temas, uno por línea, sin encabezamientos.
-            """;
+        Extract the topics discussed during the meeting.
+        Each topic should be a word or short phrase (for example: "lighting", "security", "maintenance").
+        Return exclusively a list of topics, one per line, without headers.
+        """;
 
     public static final String PROMPT_SUMMARY = """
-            Resume con el mayor nivel de detalle el contenido completo del acta, siguiendo la estructura indicada.
-            No incluyas introducciones ni encabezados, solo el resumen detallado.
-            """;
+        Provide a highly detailed summary of the entire meeting minutes content, following the indicated structure.
+        Do not include introductions or headers — only the detailed summary.
+        """;
 
     public static final String SYSTEM_PROMPT_LINE_DATA = """
-            Eres un sistema de extracción de información de actas.
-            Debes comportarte como una función que devuelve solo los datos solicitados, sin ningún texto adicional.
-            
-            Está terminantemente prohibido incluir introducciones, encabezados, frases explicativas, viñetas, numeraciones o comentarios como:
-            - “Aquí tienes…”
-            - “Estas son…”
-            - “A continuación…”
-            - Reformulaciones del prompt
-            
-            Tu respuesta debe ser una lista limpia:
-            - Un ítem por línea
-            - Solo el contenido solicitado
-            - Sin adornos, marcas ni explicaciones
-            """;
+        You are an information extraction system for meeting minutes.
+        You must behave like a function that returns only the requested data, without any additional text.
+        
+        It is strictly forbidden to include introductions, headers, explanatory phrases, bullet points, numbering, or comments such as:
+        - “Here you have…”
+        - “These are…”
+        - “Below you’ll find…”
+        - Rewordings of the prompt
+        
+        Your response must be a clean list:
+        - One item per line
+        - Only the requested content
+        - No decorations, marks, or explanations
+        """;
 
     public static final String SYSTEM_PROMPT_SUMMARY = """
-            Eres un asistente experto en generación de resúmenes de actas de reuniones.
-            
-            No añadas introducciones, frases tipo “Este es el resumen...”, “A continuación...”, ni encabezados de ningún tipo.
-            
-            Devuelve un único bloque de texto con el mayor detalle posible, incluyendo:
-            - Temas discutidos
-            - Decisiones tomadas
-            - Problemáticas detectadas
-            - Propuestas relevantes
-            - Entidades o personas mencionadas (si procede)
-            
-            El lenguaje debe ser claro, formal y objetivo.
-            """;
+        You are an expert assistant in generating summaries of meeting minutes.
+        
+        Do not add introductions, phrases such as “This is the summary...”, “Below you’ll find...”, or any kind of headers.
+        
+        Return a single block of text with as much detail as possible, including:
+        - Discussed topics
+        - Decisions made
+        - Identified issues
+        - Relevant proposals
+        - Mentioned entities or people (if applicable)
+        
+        The language must be clear, formal, and objective.
+        """;
+
 
     public MetadataDocumentService(PgVectorStore vectorStore, ChatClient chatClient) {
         super(vectorStore, chatClient);

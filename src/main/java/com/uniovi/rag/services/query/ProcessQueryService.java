@@ -21,14 +21,14 @@ import java.util.List;
 public class ProcessQueryService implements QueryService {
 
     private static final String DEFAULT_PROMPT_TEMPLATE = """
-            La siguiente información en <contexto> ya ha sido extraída como respuesta directa a la <pregunta>.
-            Tu única tarea es presentarla en forma de respuesta clara y breve en español.
-            No debes cuestionar, verificar ni rechazar la información. No añadas contexto adicional, ni justificaciones, ni comentarios.
-            
-            <TipoDeConsulta> %s </TipoDeConsulta>
-            <Pregunta> %s </Pregunta>
-            <Contexto> %s </Contexto>
-            """;
+        The following information in <context> has already been extracted as a direct answer to the <question>.
+        Your only task is to present it as a clear and concise response in Spanish.
+        You must not question, verify, or reject the information. Do not add any additional context, justifications, or comments.
+        
+        <QueryType> %s </QueryType>
+        <Question> %s </Question>
+        <Context> %s </Context>
+        """;
 
     private final RagFeatureConfiguration featureConfig;
     private final ChatClient chatClient;

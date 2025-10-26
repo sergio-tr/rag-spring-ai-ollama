@@ -22,31 +22,32 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     protected boolean dataLoaded = false;
 
     protected final static PromptTemplate EVALUATION_PROMPT_TEMPLATE = new PromptTemplate("""
-            Actúa como un evaluador experto en sistemas RAG. 
-            Evalúa la calidad de la respuesta generada a una pregunta, comparándola con una respuesta correcta esperada.
-            
-            **IMPORTANTE**: No inventes ni uses conocimiento externo. 
-            Evalúa únicamente lo que puedes deducir a partir de las tres piezas de entrada: pregunta realizada, respuesta correcta y respuesta generada por el sistema.
-            
-            Pregunta: {question}
-            Respuesta Correcta Esperada: {correctAnswer}
-            Respuesta Generada por el Sistema: {generatedAnswer}
-            
-            Evalúa en una escala de 1 a 5 los siguientes criterios:
-            
-            1. **Corrección**: ¿La respuesta es correcta en base a lo esperado?
-            2. **Suficiencia del contexto**: ¿Es posible responder correctamente con la información que se presenta?
-            3. **Relevancia**: ¿La respuesta trata exclusivamente sobre lo que se pregunta, sin desviarse?
-            4. **Independencia**: ¿Se entiende por sí sola, sin depender de contexto adicional?
-            
-            Responde en este formato:
-            
-            Corrección: [1-5] - Justificación: ...
-            Suficiencia del contexto: [1-5] - Justificación: ...
-            Relevancia: [1-5] - Justificación: ...
-            Independencia: [1-5] - Justificación: ...
-            Resumen general: [Breve evaluación global de la calidad de la respuesta]
-            """);
+        Act as an expert evaluator of RAG (Retrieval-Augmented Generation) systems. 
+        Assess the quality of a generated answer to a question by comparing it with the expected correct answer.
+        
+        **IMPORTANT**: Do not invent or use any external knowledge. 
+        Evaluate only what can be inferred from the three provided inputs: the question, the expected correct answer, and the system-generated answer.
+        
+        Question: {question}
+        Expected Correct Answer: {correctAnswer}
+        System-Generated Answer: {generatedAnswer}
+        
+        Evaluate the following criteria on a scale from 1 to 5:
+        
+        1. **Correctness**: Is the answer correct based on what was expected?
+        2. **Context Sufficiency**: Is it possible to answer correctly with the information provided?
+        3. **Relevance**: Does the answer address only what was asked, without digressions?
+        4. **Independence**: Can the answer be understood on its own, without relying on additional context?
+        
+        Respond in this format:
+        
+        Correctness: [1-5] - Justification: ...
+        Context Sufficiency: [1-5] - Justification: ...
+        Relevance: [1-5] - Justification: ...
+        Independence: [1-5] - Justification: ...
+        Overall Summary: [Brief overall assessment of the answer quality]
+        """);
+
 
 
     public AbstractEvaluationService(RagFeatureConfiguration featureConfig, ChatClient chatClient, DocumentService documentService, QueryService queryService) {

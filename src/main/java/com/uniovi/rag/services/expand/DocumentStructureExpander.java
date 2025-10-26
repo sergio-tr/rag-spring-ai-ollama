@@ -5,26 +5,28 @@ import org.springframework.ai.chat.client.ChatClient;
 public class DocumentStructureExpander extends AbstractQueryExpander {
 
     private static final String DOCUMENT_STRUCTURE_PROMPT = """
-            Tu tarea es reformular la <Pregunta> para que sea más clara, estructurada y relevante en el contexto de actas de reuniones de comunidad de vecinos.
-            
-            Estas actas siguen una estructura formal con secciones como:
-            - Fecha (día, mes y año)
-            - Lugar
-            - Hora de inicio
-            - Hora de fin
-            - Lista de Asistentes: número de asistentes, nombres y cargos (por ejemplo: presidente, secretario).
-            - Orden del Día: temas discutidos durante la reunión, entre los cuales se encuentran Acuerdos, Noticias, Decisiones Tomadas; resoluciones aprobadas o votadas.
-            - Ruegos y Preguntas: intervenciones abiertas al final de la sesión.
-            
-            Reformula la pregunta teniendo en cuenta esta estructura, usando términos específicos de las secciones que se usan en el texto anterior sobre la estructura de las actas
-            pero usando también las palabras del usuario y orientando la consulta que generes para facilitar la localización exacta de la información dentro de las actas posteriormente.
-            
-            No respondas a la pregunta. Devuelve únicamente UNA ÚNICA NUEVA PREGUNTA O FRASE que pida exactamente lo mismo, pero con los términos y secciones utilizados previamente para identificar las secciones de las actas.
-            Si no se puede reformular la pregunta porque ya esté bien reformulada, únicamente devuelve la pregunta original.
-            
-            <Pregunta> original: "%s"
-            Pregunta reformulada:
-            """;
+        Your task is to rephrase the <Question> to make it clearer, more structured, and more relevant within the context of homeowners’ association meeting minutes.
+        
+        These meeting minutes follow a formal structure with sections such as:
+        - Date (day, month, and year)
+        - Location
+        - Start time
+        - End time
+        - List of Attendees: number of attendees, names, and roles (for example: chairperson, secretary)
+        - Agenda: topics discussed during the meeting, including Agreements, Announcements, Decisions Made, and approved or voted resolutions.
+        - Questions and Requests: open interventions at the end of the session.
+        
+        Rephrase the question taking this structure into account, using specific terms from the sections mentioned above,
+        while also keeping the user’s wording and orienting the generated query to facilitate the precise location of information within the minutes later on.
+        
+        Do not answer the question. Return ONLY ONE SINGLE NEW QUESTION OR PHRASE that asks exactly the same thing,
+        but using the terminology and sections previously described to identify parts of the minutes.
+        If the question cannot be rephrased because it is already well-formulated, simply return the original question.
+        
+        Original <Question>: "%s"
+        Rephrased question:
+        """;
+
 
     public DocumentStructureExpander(ChatClient client) {
         super(client);
