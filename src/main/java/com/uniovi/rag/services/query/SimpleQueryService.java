@@ -17,10 +17,12 @@ import java.net.URI;
 @Service
 public class SimpleQueryService implements QueryService {
 
-    protected static final String PROMPT_TEMPLATE = "La siguiente información ya ha sido extraída como respuesta directa a la pregunta \"%s\". " +
-            "Tu única tarea es presentarla en forma de respuesta clara y breve en español. " +
-            "No debes cuestionar, verificar ni rechazar la información. No añadas contexto adicional, ni justificaciones, ni comentarios.\n\n" +
-            "Datos extraídos:\n%s";
+    protected static final String PROMPT_TEMPLATE = """
+        The following information has already been extracted as a direct answer to the question \"%s\".
+        Your only task is to present it as a clear and concise response in Spanish.
+        You must not question, verify, or reject the information. Do not add any additional context, justifications, or comments.
+        Extracted data:
+        %s""";
 
     protected final OllamaChatModel chatModel;
     protected final QueryExpander expander;
@@ -33,16 +35,6 @@ public class SimpleQueryService implements QueryService {
         this.analyser = analyser;
         this.retriever = retriever;
     }
-
-//    protected PromptTemplate promptTemplate = new PromptTemplate("""
-//            Responde a la PREGUNTA especificada a continuación utilizando el contexto dado por los DOCUMENTOS.
-//            Trata de analizar bien el contexto dado en DOCUMENTOS para proporcionar respuestas precisas y relevantes.
-//            Si no estás seguro o si la respuesta no se encuentra en el apartado DOCUMENTOS, simplemente indica que no conoces la respuesta.
-//
-//            PREGUNTA: {query}
-//
-//            DOCUMENTOS: {documents}
-//            """);
 
     protected String askQueryToLlama(String query) {
         try {

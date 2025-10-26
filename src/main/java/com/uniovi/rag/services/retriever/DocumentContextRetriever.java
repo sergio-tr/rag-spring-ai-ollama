@@ -6,53 +6,57 @@ import org.springframework.ai.vectorstore.PgVectorStore;
 public class DocumentContextRetriever extends FilteredContextRetriever {
 
     private final static String PROMPT_TEMPLATE = """
-            Tu tarea es filtrar el siguiente contenido eliminando únicamente la información irrelevante en relación
-            a la pregunta dada **sin modificar ni resumir** aquello que sí resulte útil para responderla.
-            
-            El contenido de las actas de reuniones de comunidad de vecinos sigue una estructura como la siguiente:
-            - ACTA DE LA REUNIÓN DE LA COMUNIDAD DE VECINOS
-            - Fecha (día, mes y año)
-            - Lugar
-            - Hora de inicio
-            - Hora de fin
-            - Lista de Asistentes: número de asistentes, nombres y cargos (por ejemplo: presidente, secretario).
-            - Orden del Día: temas discutidos durante la reunión, entre los cuales se encuentran Acuerdos, Noticias, Decisiones Tomadas; resoluciones aprobadas o votadas.
-            - Ruegos y Preguntas: intervenciones abiertas al final de la sesión.
-            - Hora de finalización de la reunión.
-            
-            Además de la pregunta, se han identificado entidades clave relacionadas con lo que debe buscarse en el contenido de una o varias actas. 
-            Estas entidades pueden ser fechas, lugares, participantes, temas o acciones importantes. Debes usarlas como ayuda para decidir qué contenido conservar.
-            
-            Contenido: "%s"
-            Pregunta: "%s"
-            
-            Devuelve únicamente el contenido filtrado (sin añadir encabezados, notas, comentarios ni explicaciones). Si no hay nada relevante, devuelve una cadena vacía ('').
-            """;
+        Your task is to filter the following content by removing only the information that is irrelevant
+        to the given question, **without modifying or summarizing** anything that may be useful to answer it.
+        
+        The content of homeowners’ association meeting minutes follows a structure like this:
+        - MINUTES OF THE HOMEOWNERS’ ASSOCIATION MEETING
+        - Date (day, month, and year)
+        - Location
+        - Start time
+        - End time
+        - List of Attendees: number of attendees, names, and roles (for example: chairperson, secretary)
+        - Agenda: topics discussed during the meeting, including Agreements, Announcements, Decisions Made, and approved or voted resolutions
+        - Questions and Requests: open interventions at the end of the session
+        - Meeting end time
+        
+        In addition to the question, key entities related to what should be searched for in the content of one or more meeting minutes have been identified. 
+        These entities may include dates, locations, participants, topics, or important actions. You should use them to help decide what content to keep.
+        
+        Content: "%s"
+        Question: "%s"
+        
+        Return only the filtered content (without adding headers, notes, comments, or explanations). 
+        If there is nothing relevant, return an empty string ('').
+        """;
 
-    private final static String NER_PROMPT_TEMPLATE = """
-            Tu tarea es filtrar el siguiente contenido eliminando únicamente la información irrelevante en relación a la pregunta dada
-            y a las entidades clave extraídas para esta pregunta, **sin modificar ni resumir** aquello que sí resulte útil para responderla.
-            
-            El contenido de las actas de reuniones de comunidad de vecinos sigue una estructura como la siguiente:
-            - ACTA DE LA REUNIÓN DE LA COMUNIDAD DE VECINOS
-            - Fecha (día, mes y año)
-            - Lugar
-            - Hora de inicio
-            - Hora de fin
-            - Lista de Asistentes: número de asistentes, nombres y cargos (por ejemplo: presidente, secretario).
-            - Orden del Día: temas discutidos durante la reunión, entre los cuales se encuentran Acuerdos, Noticias, Decisiones Tomadas; resoluciones aprobadas o votadas.
-            - Ruegos y Preguntas: intervenciones abiertas al final de la sesión.
-            - Hora de finalización de la reunión.
-            
-            Además de la pregunta, se han identificado entidades clave relacionadas con lo que debe buscarse en el contenido de una o varias actas.
-            Estas entidades pueden ser fechas, lugares, participantes, temas o acciones importantes. Debes usarlas como ayuda para decidir qué contenido conservar.
-            
-            Contenido: "%s"
-            Pregunta: "%s"
-            Entidades clave: "%s"
-            
-            Devuelve únicamente el contenido filtrado (sin añadir encabezados, notas, comentarios ni explicaciones). Si no hay nada relevante, devuelve una cadena vacía ('').
-            """;
+    private static final String NER_PROMPT_TEMPLATE = """
+        Your task is to filter the following content by removing only the information that is irrelevant
+        to the given question and to the key entities extracted for this question, **without modifying or summarizing** 
+        anything that may be useful to answer it.
+        
+        The content of homeowners’ association meeting minutes follows a structure like this:
+        - MINUTES OF THE HOMEOWNERS’ ASSOCIATION MEETING
+        - Date (day, month, and year)
+        - Location
+        - Start time
+        - End time
+        - List of Attendees: number of attendees, names, and roles (for example: chairperson, secretary)
+        - Agenda: topics discussed during the meeting, including Agreements, Announcements, Decisions Made, and approved or voted resolutions
+        - Questions and Requests: open interventions at the end of the session
+        - Meeting end time
+        
+        In addition to the question, key entities related to what should be searched for in the content of one or more meeting minutes have been identified. 
+        These entities may include dates, locations, participants, topics, or important actions. You should use them to help decide what content to keep.
+        
+        Content: "%s"
+        Question: "%s"
+        Key entities: "%s"
+        
+        Return only the filtered content (without adding headers, notes, comments, or explanations). 
+        If there is nothing relevant, return an empty string ('').
+        """;
+
 
 
     public DocumentContextRetriever(PgVectorStore vectorStore, ChatClient chatClient, int topK, double similarityThreshold) {
