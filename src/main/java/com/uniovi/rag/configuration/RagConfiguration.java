@@ -138,7 +138,7 @@ public class RagConfiguration {
     }
 
     @Bean
-    public ContextRetriever contextRetriever(PgVectorStore vectorStore, ChatClient chatClient, RagFeatureConfiguration featureConfig) {
+    public ContextRetriever retriever(PgVectorStore vectorStore, ChatClient chatClient, RagFeatureConfiguration featureConfig) {
         //if (featureConfig.isCacheDocumentsEnabled()) {
         //    return new CachedContextRetriever(vectorStore, chatClient, featureConfig, topK, similarityThreshold);
         //}
@@ -148,45 +148,45 @@ public class RagConfiguration {
     @Bean
     public Map<QueryType, Tool> tools(
             RagFeatureConfiguration featureConfig,
-            ContextRetriever contextRetriever,
+            ContextRetriever retriever,
             ChatClient chatClient
     ) {
 
         Map<QueryType, Tool> tools = new HashMap<>();
         if (featureConfig.isMetadataEnabled()) {
             tools.putAll(Map.of(
-                    QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, contextRetriever),
-                    QueryType.FIND_PARAGRAPH, new MetadataFindParagraphTool(chatClient, contextRetriever),
-                    QueryType.COUNT_AND_EXPLAIN, new MetadataCountAndExplainTool(chatClient, contextRetriever),
-                    QueryType.EXTRACT_ENTITIES, new MetadataExtractEntitiesTool(chatClient, contextRetriever),
-                    QueryType.SUMMARIZE_TOPIC, new MetadataSummarizeTopicTool(chatClient, contextRetriever),
-                    QueryType.BOOLEAN_QUERY, new MetadataBooleanQueryTool(chatClient, contextRetriever)
+                    QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, retriever),
+                    QueryType.FIND_PARAGRAPH, new MetadataFindParagraphTool(chatClient, retriever),
+                    QueryType.COUNT_AND_EXPLAIN, new MetadataCountAndExplainTool(chatClient, retriever),
+                    QueryType.EXTRACT_ENTITIES, new MetadataExtractEntitiesTool(chatClient, retriever),
+                    QueryType.SUMMARIZE_TOPIC, new MetadataSummarizeTopicTool(chatClient, retriever),
+                    QueryType.BOOLEAN_QUERY, new MetadataBooleanQueryTool(chatClient, retriever)
             ));
 
             tools.putAll(Map.of(
-                    QueryType.COMPARE, new MetadataCompareTool(chatClient, contextRetriever),
-                    QueryType.GET_DURATION, new MetadataGetDurationTool(chatClient, contextRetriever),
-                    QueryType.GET_FIELD, new MetadataGetFieldTool(chatClient, contextRetriever),
-                    QueryType.FILTER_AND_LIST, new MetadataFilterAndListTool(chatClient, contextRetriever),
-                    QueryType.DECISION_EXTRACTION, new MetadataDecisionExtractionTool(chatClient, contextRetriever),
-                    QueryType.SUMMARIZE_MEETING, new MetadataSummarizeMeetingTool(chatClient, contextRetriever)
+                    QueryType.COMPARE, new MetadataCompareTool(chatClient, retriever),
+                    QueryType.GET_DURATION, new MetadataGetDurationTool(chatClient, retriever),
+                    QueryType.GET_FIELD, new MetadataGetFieldTool(chatClient, retriever),
+                    QueryType.FILTER_AND_LIST, new MetadataFilterAndListTool(chatClient, retriever),
+                    QueryType.DECISION_EXTRACTION, new MetadataDecisionExtractionTool(chatClient, retriever),
+                    QueryType.SUMMARIZE_MEETING, new MetadataSummarizeMeetingTool(chatClient, retriever)
             ));
         } else {
             tools.putAll(Map.of(
-                    QueryType.COUNT_DOCUMENTS, new CountDocumentsTool(chatClient, contextRetriever),
-                    QueryType.FIND_PARAGRAPH, new FindParagraphTool(chatClient, contextRetriever),
-                    QueryType.COUNT_AND_EXPLAIN, new CountAndExplainTool(chatClient, contextRetriever),
-                    QueryType.EXTRACT_ENTITIES, new ExtractEntitiesTool(chatClient, contextRetriever),
-                    QueryType.SUMMARIZE_TOPIC, new SummarizeTopicTool(chatClient, contextRetriever),
-                    QueryType.BOOLEAN_QUERY, new BooleanQueryTool(chatClient, contextRetriever)
+                    QueryType.COUNT_DOCUMENTS, new CountDocumentsTool(chatClient, retriever),
+                    QueryType.FIND_PARAGRAPH, new FindParagraphTool(chatClient, retriever),
+                    QueryType.COUNT_AND_EXPLAIN, new CountAndExplainTool(chatClient, retriever),
+                    QueryType.EXTRACT_ENTITIES, new ExtractEntitiesTool(chatClient, retriever),
+                    QueryType.SUMMARIZE_TOPIC, new SummarizeTopicTool(chatClient, retriever),
+                    QueryType.BOOLEAN_QUERY, new BooleanQueryTool(chatClient, retriever)
             ));
             tools.putAll(Map.of(
-                    QueryType.COMPARE, new CompareTool(chatClient, contextRetriever),
-                    QueryType.GET_DURATION, new GetDurationTool(chatClient, contextRetriever),
-                    QueryType.GET_FIELD, new GetFieldTool(chatClient, contextRetriever),
-                    QueryType.FILTER_AND_LIST, new FilterAndListTool(chatClient, contextRetriever),
-                    QueryType.DECISION_EXTRACTION, new DecisionExtractionTool(chatClient, contextRetriever),
-                    QueryType.SUMMARIZE_MEETING, new SummarizeMeetingTool(chatClient, contextRetriever)
+                    QueryType.COMPARE, new CompareTool(chatClient, retriever),
+                    QueryType.GET_DURATION, new GetDurationTool(chatClient, retriever),
+                    QueryType.GET_FIELD, new GetFieldTool(chatClient, retriever),
+                    QueryType.FILTER_AND_LIST, new FilterAndListTool(chatClient, retriever),
+                    QueryType.DECISION_EXTRACTION, new DecisionExtractionTool(chatClient, retriever),
+                    QueryType.SUMMARIZE_MEETING, new SummarizeMeetingTool(chatClient, retriever)
             ));
         }
 
@@ -196,12 +196,12 @@ public class RagConfiguration {
     /*@Bean
     public AgenticToolsManager agenticToolsManager(
             ChatClient chatClient,
-            ContextRetriever contextRetriever
+            ContextRetriever retriever
     ) {
         AgenticToolsManager manager = new AgenticToolsManager();
         
         // Registrar las AgenticTools
-        manager.registerTool(new AgenticCountDocumentsTool(chatClient, contextRetriever));
+        manager.registerTool(new AgenticCountDocumentsTool(chatClient, retriever));
         // Aquí puedes agregar más AgenticTools según las necesites
         
         return manager;
@@ -214,17 +214,17 @@ public class RagConfiguration {
             QueryExpander expander,
             QueryAnalyser analyser,
             QueryClassifier classifier,
-            ContextRetriever contextRetriever,
+            ContextRetriever retriever,
             ChatClient chatClient
     ) {
         return new ProcessQueryService(
-            featureConfig,
-            toolsConfig,
-            expander,
-            analyser,
-            classifier,
-            contextRetriever,
-            chatClient
+                featureConfig,
+                toolsConfig,
+                expander,
+                analyser,
+                classifier,
+                retriever,
+                chatClient
         );
     }
 
