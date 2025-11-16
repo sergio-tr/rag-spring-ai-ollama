@@ -67,8 +67,49 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
     protected String extractFromPdf(MultipartFile file) throws Exception {
         try (PDDocument document = PDDocument.load(file.getInputStream())) {
             PDFTextStripper stripper = new PDFTextStripper();
-            return stripper.getText(document).trim();
+            String rawText = stripper.getText(document);
+            
+            // Validar que el texto no esté vacío
+            if (rawText == null || rawText.trim().isEmpty()) {
+                throw new IllegalArgumentException("El PDF no contiene texto extraíble. Puede estar protegido o ser una imagen.");
+            }
+            
+            // Normalizar el texto extraído para mejorar la extracción posterior
+            String normalized = normalizeExtractedText(rawText);
+            
+            // Validar longitud mínima
+            if (normalized.length() < 100) {
+                // Log warning pero no fallar - algunos documentos pueden ser muy cortos
+            }
+            
+            return normalized;
+        } catch (Exception e) {
+            throw new RuntimeException("Error procesando el PDF: " + e.getMessage(), e);
         }
+    }
+    
+    /**
+     * Normaliza el texto extraído de PDFs para mejorar la extracción posterior.
+     * Limpia espacios múltiples, normaliza saltos de línea y caracteres especiales.
+     */
+    protected String normalizeExtractedText(String text) {
+        if (text == null) return "";
+        
+        return text
+            // Normalizar espacios múltiples a un solo espacio
+            .replaceAll("\\s+", " ")
+            // Normalizar saltos de línea múltiples a uno solo
+            .replaceAll("\\n\\s*\\n+", "\n")
+            // Normalizar espacios alrededor de dos puntos
+            .replaceAll("\\s*:\\s*", ": ")
+            // Normalizar espacios alrededor de paréntesis
+            .replaceAll("\\s*\\(\\s*", " (")
+            .replaceAll("\\s*\\)", ")")
+            // Normalizar viñetas (diferentes tipos a •)
+            .replaceAll("[•·▪▫◦‣⁃]", "•")
+            // Limpiar caracteres de control excepto saltos de línea
+            .replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "")
+            .trim();
     }
 
     protected String extractFromTxt(MultipartFile file) throws Exception {

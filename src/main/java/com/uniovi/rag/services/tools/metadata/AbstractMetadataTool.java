@@ -364,6 +364,14 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
 
+        // MEJORA: Pre-filter by agenda items if present (more efficient than LLM call)
+        if (ner.has("agenda") && !ner.getJSONArray("agenda").isEmpty()) {
+            if (!matchesAgendaItems(minute, ner)) {
+                log().debug("Minute {} filtered out by agenda items mismatch", minute.id());
+                return false;
+            }
+        }
+
         String prompt = String.format("""
             You are a meeting metadata matching system. Analyze if meeting metadata matches specified NER entities.
             
@@ -417,6 +425,65 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
     }
     
+    /**
+     * Checks if minute's agenda items match NER agenda items.
+     * This is a direct filter before LLM call for better efficiency.
+     * 
+     * MEJORA: Added direct filtering by agenda items to improve correlation.
+     */
+    private boolean matchesAgendaItems(Minute minute, JSONObject ner) {
+        if (minute.agenda() == null || minute.agenda().isEmpty()) {
+            // If minute has no agenda but NER requires it, it doesn't match
+            // However, we allow it to pass to LLM for semantic matching (maybe agenda info is in content)
+            return true; // Let LLM decide
+        }
+        
+        try {
+            org.json.JSONArray nerAgenda = ner.getJSONArray("agenda");
+            if (nerAgenda.length() == 0) {
+                return true; // No agenda items to match
+            }
+            
+            // Build a searchable string from all agenda items (values from the map)
+            String agendaStr = minute.agenda().values().stream()
+                    .filter(item -> item != null && !item.trim().isEmpty())
+                    .map(String::toLowerCase)
+                    .collect(Collectors.joining(" "));
+            
+            if (agendaStr.isEmpty()) {
+                return true; // No agenda content to search
+            }
+            
+            // Check if any NER agenda item matches any minute agenda item (case-insensitive, partial matching)
+            for (int i = 0; i < nerAgenda.length(); i++) {
+                String nerAgendaItem = nerAgenda.getString(i).toLowerCase().trim();
+                if (nerAgendaItem.isEmpty()) continue;
+                
+                // Check if NER agenda item is contained in any agenda value
+                boolean found = minute.agenda().values().stream()
+                        .anyMatch(agendaValue -> {
+                            if (agendaValue == null || agendaValue.trim().isEmpty()) return false;
+                            String agendaValueLower = agendaValue.toLowerCase().trim();
+                            return agendaValueLower.contains(nerAgendaItem) || 
+                                   nerAgendaItem.contains(agendaValueLower) ||
+                                   agendaValueLower.equals(nerAgendaItem);
+                        });
+                
+                if (found) {
+                    log().debug("Found matching agenda item: NER='{}' matches Minute agenda", nerAgendaItem);
+                    return true; // At least one match found
+                }
+            }
+            
+            log().debug("No matching agenda items found. NER agenda: {}, Minute agenda: {}", 
+                       nerAgenda, minute.agenda());
+            return false; // No matches found
+        } catch (Exception e) {
+            log().warn("Error matching agenda items, allowing through to LLM", e);
+            return true; // On error, let LLM decide
+        }
+    }
+
     /**
      * Checks if minute's mentionedEntities match NER mentionedEntities.
      * This is a direct filter before LLM call for better efficiency.

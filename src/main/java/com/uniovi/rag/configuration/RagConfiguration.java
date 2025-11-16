@@ -19,6 +19,7 @@ import com.uniovi.rag.services.retriever.BasicContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.*;
 import com.uniovi.rag.services.tools.metadata.*;
+import com.uniovi.rag.model.Minute;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -101,8 +102,8 @@ public class RagConfiguration {
         if (featureConfig.isMetadataEnabled()) {
             return new MetadataMinuteDocumentService(vectorStore, chatClient);
         }
-
-        return new SimpleDocumentService(vectorStore, chatClient);
+        
+        return new SimpleDocumentService<Minute>(vectorStore, chatClient);
     }
 
     @Bean
