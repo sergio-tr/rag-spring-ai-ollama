@@ -65,26 +65,42 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
     }
 
     protected String extractFromPdf(MultipartFile file) throws Exception {
+        if (file == null) {
+            throw new IllegalArgumentException("File is null");
+        }
+        
+        String filename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "unknown";
+        
         try (PDDocument document = PDDocument.load(file.getInputStream())) {
             PDFTextStripper stripper = new PDFTextStripper();
             String rawText = stripper.getText(document);
             
             // Validar que el texto no esté vacío
             if (rawText == null || rawText.trim().isEmpty()) {
+                System.err.println("PDF extraction returned empty text for file: " + filename);
                 throw new IllegalArgumentException("El PDF no contiene texto extraíble. Puede estar protegido o ser una imagen.");
             }
+            
+            System.out.println("PDF extracted " + rawText.length() + " characters from file: " + filename);
             
             // Normalizar el texto extraído para mejorar la extracción posterior
             String normalized = normalizeExtractedText(rawText);
             
+            System.out.println("After normalization: " + normalized.length() + " characters for file: " + filename);
+            
             // Validar longitud mínima
-            if (normalized.length() < 100) {
-                // Log warning pero no fallar - algunos documentos pueden ser muy cortos
+            if (normalized.length() < 20) {
+                System.err.println("WARNING: Normalized text is very short (" + normalized.length() + " chars) for file: " + filename);
             }
             
             return normalized;
+        } catch (IllegalArgumentException e) {
+            // Re-lanzar IllegalArgumentException tal cual
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Error procesando el PDF: " + e.getMessage(), e);
+            System.err.println("Error processing PDF file: " + filename);
+            e.printStackTrace();
+            throw new RuntimeException("Error procesando el PDF " + filename + ": " + e.getMessage(), e);
         }
     }
     
