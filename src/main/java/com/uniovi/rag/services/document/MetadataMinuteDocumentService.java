@@ -76,14 +76,18 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     @Override
     protected Minute extractModel(String content, String filename) {
-        // MEJORA: Validar contenido mínimo antes de procesar
-        if (content == null || content.trim().length() < 50) {
-            log().warn("Content too short or empty for file: {} (length: {})", 
-                      filename, content != null ? content.length() : 0);
-            throw new IllegalArgumentException("Document content is too short or empty (minimum 50 characters required)");
+        // MEJORA: Validar contenido mínimo antes de procesar (reducido a 20 caracteres para ser menos estricto)
+        if (content == null || content.trim().isEmpty()) {
+            log().error("Content is null or empty for file: {}", filename);
+            throw new IllegalArgumentException("Document content is null or empty. The PDF may be corrupted, protected, or contain only images.");
         }
         
-        // MEJORA: Extracción mejorada con múltiples formatos y fallbacks
+        if (content.trim().length() < 20) {
+            log().warn("Content very short for file: {} (length: {}). Processing anyway but extraction may be incomplete.", 
+                      filename, content.length());
+            // No lanzar excepción - continuar con advertencia ya que algunos documentos pueden ser muy cortos
+        }
+        
         String date = extractDate(content);
         String place = extractPlace(content);
         String startTime = extractStartTime(content);
