@@ -555,82 +555,197 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
      * MEJORA: Extracción de hora de inicio con múltiples formatos.
      */
     private String extractStartTime(String content) {
-        return extractTime(content, "inicio");
+        return extractTime(content, true);
     }
     
     /**
      * MEJORA: Extracción de hora de finalización con múltiples formatos.
      */
     private String extractEndTime(String content) {
-        return extractTime(content, "finalización|fin");
+        return extractTime(content, false);
     }
     
     /**
      * Extrae la hora con múltiples formatos soportados.
+     * @param content Contenido del documento
+     * @param isStartTime true para hora de inicio, false para hora de fin
      */
-    private String extractTime(String content, String timeType) {
+    private String extractTime(String content, boolean isStartTime) {
         if (content == null || content.trim().isEmpty()) {
             return null;
         }
         
-        // Patrón 1: "Hora de inicio: 19:00" (formato actual)
+        // Definir etiquetas posibles según el tipo de hora
+        String[] startLabels = {"inicio", "comienzo", "comienza"};
+        String[] endLabels = {"fin", "finalización", "finaliza", "termina", "clausura"};
+        String[] labels = isStartTime ? startLabels : endLabels;
+        
+        // Patrones de hora posibles
+        String[] timePatterns = {
+            "(\\d{1,2}:\\d{2})",           // 19:00
+            "(\\d{1,2}:\\d{2})\\s*h",      // 19:00 h
+            "(\\d{1,2}\\.\\d{2})",         // 19.00
+            "(\\d{1,2}:\\d{2})\\s*[hH]",  // 19:00 H
+        };
+        
+        // Intentar cada combinación de etiqueta y patrón
+        for (String label : labels) {
+            for (String timePattern : timePatterns) {
+                // Patrón 1: "Hora de inicio: 19:00"
+                String regex = String.format("(?i)Hora de %s:\\s*%s", label, timePattern);
+                String time = extractSingle(content, regex);
+                if (time != null) {
+                    return normalizeTime(time.replace(".", ":"));
+                }
+                
+                // Patrón 2: "Hora inicio: 19:00" (sin "de")
+                regex = String.format("(?i)Hora %s:\\s*%s", label, timePattern);
+                time = extractSingle(content, regex);
+                if (time != null) {
+                    return normalizeTime(time.replace(".", ":"));
+                }
+                
+                // Patrón 3: "Inicio: 19:00" (solo etiqueta)
+                String labelCapitalized = label.substring(0, 1).toUpperCase() + label.substring(1);
+                regex = String.format("(?i)%s:\\s*%s", labelCapitalized, timePattern);
+                time = extractSingle(content, regex);
+                if (time != null) {
+                    return normalizeTime(time.replace(".", ":"));
+                }
+            }
+        }
+        
+        // Patrón adicional: Buscar en contexto de encabezado (similar a place)
+        String header = extractBlock(content, "(?i)^(?:ACTA|REUNIÓN)", "(?i)Asistentes:");
+        if (header != null) {
+            for (String label : labels) {
+                for (String timePattern : timePatterns) {
+                    String regex = String.format("(?i)(?:Hora de |Hora )?%s[^:]*:\\s*%s", label, timePattern);
+                    String time = extractSingle(header, regex);
+                    if (time != null) {
+                        return normalizeTime(time.replace(".", ":"));
+                    }
+                }
+            }
+        }
+        
+        // Patrón final: Buscar cualquier hora en formato HH:MM cerca de palabras clave
+        String keyword = isStartTime ? "inicio|comienzo|comienza" : "fin|final|termina|clausura";
         String time = extractSingle(content, 
-            String.format("(?i)Hora de %s:\\s*(\\d{1,2}:\\d{2})", timeType));
+            String.format("(?i)(?:%s)[^:]*:\\s*(\\d{1,2}:\\d{2})", keyword));
         if (time != null) {
             return normalizeTime(time);
         }
         
-        // Patrón 2: "Hora de inicio: 19:00 h"
-        time = extractSingle(content, 
-            String.format("(?i)Hora de %s:\\s*(\\d{1,2}:\\d{2})\\s*h", timeType));
-        if (time != null) {
-            return normalizeTime(time);
+        // Patrón adicional: Buscar formato "19:00 - 20:30" o "19:00 a 20:30" y extraer la hora correspondiente
+        if (isStartTime) {
+            time = extractSingle(content, "(?i)(\\d{1,2}:\\d{2})\\s*[-a]\\s*\\d{1,2}:\\d{2}");
+            if (time != null) {
+                return normalizeTime(time);
+            }
+        } else {
+            time = extractSingle(content, "(?i)\\d{1,2}:\\d{2}\\s*[-a]\\s*(\\d{1,2}:\\d{2})");
+            if (time != null) {
+                return normalizeTime(time);
+            }
         }
         
-        // Patrón 3: "Hora de inicio: 19.00"
-        time = extractSingle(content, 
-            String.format("(?i)Hora de %s:\\s*(\\d{1,2}\\.\\d{2})", timeType));
-        if (time != null) {
-            return normalizeTime(time.replace(".", ":"));
+        // Patrón adicional muy flexible: Buscar cualquier hora en formato HH:MM en las primeras líneas
+        // (donde típicamente está la información de fecha/hora)
+        String firstLines = content.length() > 500 ? content.substring(0, 500) : content;
+        Pattern timePattern = Pattern.compile("(\\d{1,2}:\\d{2})");
+        Matcher matcher = timePattern.matcher(firstLines);
+        List<String> foundTimes = new ArrayList<>();
+        while (matcher.find() && foundTimes.size() < 3) {
+            String foundTime = matcher.group(1);
+            if (normalizeTime(foundTime) != null) {
+                foundTimes.add(foundTime);
+            }
         }
         
-        // Patrón 4: "Inicio: 19:00" (sin "Hora de")
-        String timeLabel = timeType.contains("inicio") ? "Inicio" : "Fin";
-        time = extractSingle(content, 
-            String.format("(?i)%s:\\s*(\\d{1,2}:\\d{2})", timeLabel));
-        if (time != null) {
-            return normalizeTime(time);
+        // Si encontramos horas, usar la primera para inicio y la última para fin
+        if (!foundTimes.isEmpty()) {
+            if (isStartTime && foundTimes.size() >= 1) {
+                return normalizeTime(foundTimes.get(0));
+            } else if (!isStartTime && foundTimes.size() >= 2) {
+                return normalizeTime(foundTimes.get(foundTimes.size() - 1));
+            } else if (!isStartTime && foundTimes.size() == 1) {
+                // Si solo hay una hora y es fin, puede que sea la hora de fin
+                return normalizeTime(foundTimes.get(0));
+            }
         }
         
-        log().warn("No se pudo extraer la hora de {} del documento", timeType);
+        // Si no se encuentra, no es crítico - las horas son opcionales
+        // Cambiado a debug para no generar ruido en logs
+        log().debug("No se pudo extraer la hora de {} del documento (esto es opcional y no afecta el funcionamiento)", 
+                   isStartTime ? "inicio" : "fin");
         return null;
     }
     
     /**
      * Normaliza la hora al formato HH:MM estándar.
+     * Maneja múltiples formatos y casos edge.
      */
     private String normalizeTime(String time) {
-        if (time == null) return null;
+        if (time == null || time.trim().isEmpty()) {
+            return null;
+        }
         
-        // Asegurar formato HH:MM
-        time = time.trim().replaceAll("\\s*h\\s*$", "").trim();
+        // Limpiar y normalizar
+        time = time.trim()
+                .replaceAll("\\s*h\\s*$", "")  // Remover "h" al final
+                .replaceAll("\\s*H\\s*$", "")  // Remover "H" al final
+                .replaceAll("\\.", ":")        // Convertir 19.00 a 19:00
+                .trim();
         
+        // Intentar extraer hora del formato HH:MM o H:MM
         if (time.matches("\\d{1,2}:\\d{2}")) {
             try {
                 String[] parts = time.split(":");
+                if (parts.length != 2) {
+                    return null;
+                }
+                
                 int hour = Integer.parseInt(parts[0]);
                 int minute = Integer.parseInt(parts[1]);
                 
                 // Validar rango
                 if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
                     return String.format("%02d:%02d", hour, minute);
+                } else {
+                    log().debug("Hora fuera de rango válido: {}:{}", hour, minute);
+                    return null;
                 }
             } catch (NumberFormatException e) {
-                log().warn("Error parseando hora: {}", time, e);
+                log().debug("Error parseando hora '{}': {}", time, e.getMessage());
+                return null;
             }
         }
         
-        return time;
+        // Si no coincide con el patrón esperado, intentar extraer números
+        String numbersOnly = time.replaceAll("[^0-9]", "");
+        if (numbersOnly.length() >= 3 && numbersOnly.length() <= 4) {
+            // Formato HHMM o HMM
+            try {
+                int hour, minute;
+                if (numbersOnly.length() == 4) {
+                    hour = Integer.parseInt(numbersOnly.substring(0, 2));
+                    minute = Integer.parseInt(numbersOnly.substring(2, 4));
+                } else {
+                    hour = Integer.parseInt(numbersOnly.substring(0, 1));
+                    minute = Integer.parseInt(numbersOnly.substring(1, 3));
+                }
+                
+                if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+                    return String.format("%02d:%02d", hour, minute);
+                }
+            } catch (NumberFormatException e) {
+                // Ignorar
+            }
+        }
+        
+        log().debug("No se pudo normalizar la hora: '{}'", time);
+        return null;
     }
     
     /**
