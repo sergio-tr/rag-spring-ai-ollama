@@ -76,7 +76,6 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     @Override
     protected Minute extractModel(String content, String filename) {
-        // MEJORA: Validar contenido mínimo antes de procesar (reducido a 20 caracteres para ser menos estricto)
         if (content == null || content.trim().isEmpty()) {
             log().error("Content is null or empty for file: {}", filename);
             throw new IllegalArgumentException("Document content is null or empty. The PDF may be corrupted, protected, or contain only images.");
@@ -97,9 +96,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         List<String> attendees = extractAttendees(content);
         Map<String, String> agenda = extractAgendaMap(content);
 
-        // MEJORA 3: Parallelize LLM-assisted extraction for better performance
         // All 4 LLM calls can run in parallel, reducing total extraction time by ~75%
-        // MEJORA: Manejo robusto de excepciones en CompletableFuture
         CompletableFuture<List<String>> decisionsFuture = 
             CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_DECISIONS))
                 .exceptionally(e -> {
@@ -131,7 +128,6 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         List<String> topics = topicsFuture.join();
         String summary = summaryFuture.join();
         
-        // MEJORA: Validar que al menos algunos campos críticos se extrajeron
         if (date == null && place == null && attendees.isEmpty() && decisions.isEmpty() && topics.isEmpty()) {
             log().warn("Failed to extract critical fields from document: {} (date: {}, place: {}, attendees: {}, decisions: {}, topics: {})", 
                       filename, date != null, place != null, attendees.size(), decisions.size(), topics.size());
@@ -193,7 +189,6 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 return extractWithRegexFallback(content, prompt);
             }
 
-            // MEJORA: Limpiar respuesta del LLM antes de procesar
             List<String> extracted = cleanLLMResponse(rawResponse);
             
             if (extracted.size() < 2 && content.length() > 500) {
@@ -422,7 +417,6 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     public Map<String, Object> extractMetadata(Minute minute) {
         Map<String, Object> metadata = new HashMap<>();
         
-        // MEJORA 1: Store document_id to identify chunks from the same document
         // This allows grouping chunks by document and avoiding duplicate processing
         metadata.put("document_id", minute.id());
         
@@ -950,7 +944,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             if (line.isEmpty()) continue;
             
             // Detectar inicio de nuevo item (viñeta, número, o línea que empieza con mayúscula)
-            if (line.matches("^[•·▪▫◦‣⁃-*]\\s+.+") || 
+            if (line.matches("^[•·▪▫◦‣⁃*\\-]\\s+.+") || 
                 line.matches("^\\d+[.)]\\s+.+") ||
                 (line.matches("^[A-ZÁÉÍÓÚÑ].+") && currentKey == null)) {
                 
@@ -1033,7 +1027,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (afterAttendees != null && !afterAttendees.trim().isEmpty()) {
             // Buscar items que parezcan ser del orden del día (numerados o con viñetas)
             Pattern agendaPattern = Pattern.compile(
-                "(?i)(?:Orden del día:?\\s*)?((?:[•·▪▫◦‣⁃-*]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|No habiendo)[^\\n]+)*)",
+                "(?i)(?:Orden del día:?\\s*)?((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|No habiendo)[^\\n]+)*)",
                 Pattern.DOTALL
             );
             Matcher agendaMatcher = agendaPattern.matcher(afterAttendees);
@@ -1048,7 +1042,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Patrón 5: Buscar cualquier bloque con items numerados o viñetas que parezca ser agenda
         // Esto es un último recurso para documentos sin estructura clara
         pattern = Pattern.compile(
-            "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃-*]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]+)*)",
+            "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]+)*)",
             Pattern.DOTALL
         );
         matcher = pattern.matcher(content);
@@ -1068,7 +1062,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
      */
     private String extractAgendaItemKey(String line) {
         // Quitar viñetas y numeración
-        line = line.replaceAll("^[•·▪▫◦‣⁃-*]\\s*", "")
+        line = line.replaceAll("^[•·▪▫◦‣⁃*\\-]\\s*", "")
                    .replaceAll("^\\d+[.)]\\s*", "")
                    .trim();
         

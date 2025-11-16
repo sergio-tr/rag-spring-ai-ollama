@@ -356,7 +356,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     protected boolean matchesMinuteWithNER(Minute minute, JSONObject ner) {
         if (ner == null || ner.isEmpty()) return true;
 
-        // MEJORA: Pre-filter by mentionedEntities if present (more efficient than LLM call)
         if (ner.has("mentionedEntities") && !ner.getJSONArray("mentionedEntities").isEmpty()) {
             if (!matchesMentionedEntities(minute, ner)) {
                 log().debug("Minute {} filtered out by mentionedEntities mismatch", minute.id());
@@ -364,7 +363,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
 
-        // MEJORA: Pre-filter by agenda items if present (more efficient than LLM call)
         if (ner.has("agenda") && !ner.getJSONArray("agenda").isEmpty()) {
             if (!matchesAgendaItems(minute, ner)) {
                 log().debug("Minute {} filtered out by agenda items mismatch", minute.id());
@@ -901,7 +899,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 .filter(doc -> hasRelevantMetadata(doc, query, relevantFields))
                 .collect(Collectors.toList());
         
-        // MEJORA 2: Group chunks by document_id to deduplicate documents
         // When PgVectorStore splits a document into chunks, all chunks have the same document_id
         // We only need to process one chunk per document to reconstruct the Minute object
         Map<String, Document> uniqueDocuments = metadataDocs.stream()
