@@ -107,12 +107,23 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     }
 
     /**
-     * Determines if a minute is relevant to the explanation query using LLM
+     * Determines if a minute is relevant to the explanation query using LLM.
      */
     private boolean isRelevantToExplanationQueryByLLM(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return false;
+        }
+        
         String prompt = generateExplanationRelevancePrompt(query, minute);
         String result = getLLMResponseCached(prompt);
-        return result.toLowerCase().contains("yes") || result.toLowerCase().contains("sí");
+        
+        if (result == null || result.trim().isEmpty()) {
+            log().warn("Empty response from LLM in isRelevantToExplanationQueryByLLM, defaulting to false");
+            return false;
+        }
+        
+        String normalized = result.toLowerCase();
+        return normalized.contains("yes") || normalized.contains("sí");
     }
 
     /**
@@ -159,18 +170,23 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates explanation for a minute with enhanced context
+     * Generates explanation for a minute with enhanced context.
      */
     private Explanation generateExplanation(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return null;
+        }
+        
         String prompt = generateEnhancedExplanationPrompt(query, minute);
         String content = getLLMResponseCached(prompt);
         
-        if (content.isBlank()) {
+        if (content == null || content.trim().isEmpty()) {
+            log().debug("Empty response from LLM in generateExplanation, returning null");
             return null;
         }
         
         // Calculate relevance score
-        double relevanceScore = calculateRelevanceScore(query, minute, content);
+        double relevanceScore = calculateRelevanceScore(query, content, minute.toString());
         
         return new Explanation(
             minute.id(),
@@ -220,26 +236,50 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     }
 
     /**
-     * Calculates relevance score for an explanation
+     * Calculates relevance score for an explanation.
+     * Uses English for internal processing, but preserves original language in query and explanation.
      */
-    private double calculateRelevanceScore(String query, Minute minute, String explanation) {
+    protected double calculateRelevanceScore(String query, String explanation, String context) {
+        if (query == null || query.trim().isEmpty() || explanation == null || explanation.trim().isEmpty()) {
+            return 0.5; // Default score
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
             
-            And this explanation:
+            And this explanation (may be in any language):
             "%s"
             
             Rate the relevance of this explanation to the query on a scale of 0.0 to 1.0.
             Consider: direct relevance, completeness, clarity, and usefulness.
-            Respond with only a number between 0.0 and 1.0.
+            
+            Respond with ONLY a number between 0.0 and 1.0.
+            Do not include any explanation or additional text.
             """, query, explanation);
         
         try {
-            String result = getLLMResponseCached(prompt).strip();
-            return Double.parseDouble(result);
+            String result = getLLMResponseCached(prompt);
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in calculateRelevanceScore, defaulting to 0.5");
+                return 0.5;
+            }
+            
+            String cleaned = result.strip();
+            // Extract first number from response
+            String numberStr = cleaned.replaceAll("[^0-9.]", "").split("\\s+")[0];
+            if (numberStr.isEmpty()) {
+                return 0.5;
+            }
+            
+            return Double.parseDouble(numberStr);
         } catch (NumberFormatException e) {
+            log().warn("Error parsing relevance score in calculateRelevanceScore, defaulting to 0.5", e);
             return 0.5; // Default score if parsing fails
+        } catch (Exception e) {
+            log().error("Error calculating relevance score, defaulting to 0.5", e);
+            return 0.5;
         }
     }
 
@@ -302,9 +342,14 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates enhanced final answer with clustering and analysis
+     * Generates enhanced final answer with clustering and analysis.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedFinalAnswer(String query, List<Explanation> explanations, List<ExplanationCluster> clusters) {
+        if (query == null || query.trim().isEmpty() || explanations == null || explanations.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
         String explanationSummary = formatExplanationSummary(explanations, clusters);
         String clusterAnalysis = formatClusterAnalysis(clusters);
         
@@ -322,9 +367,52 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
             Write a clear, comprehensive answer in the same language as the query, 
             indicating the number of relevant minutes and providing a well-organized summary of the explanations.
             Group similar information together and highlight the most important points.
-            """, query, explanations.size(), clusters.size(), explanationSummary, clusterAnalysis);
+            """, query, explanations.size(), clusters.size(), 
+            explanationSummary != null ? explanationSummary : "No explanations found.",
+            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedFinalAnswer, using fallback");
+                return generateFallbackFinalAnswer(query, explanations);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced final answer, using fallback", e);
+            return generateFallbackFinalAnswer(query, explanations);
+        }
+    }
+    
+    /**
+     * Generates a fallback final answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackFinalAnswer(String query, List<Explanation> explanations) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("Se encontraron %d acta(s) relevante(s).\n\nExplicaciones:\n%s",
+                               explanations.size(),
+                               explanations.stream()
+                                       .limit(3)
+                                       .map(e -> String.format("- %s: %s", 
+                                           e.date != null ? e.date : "fecha desconocida",
+                                           e.content.length() > 200 ? e.content.substring(0, 200) + "..." : e.content))
+                                       .collect(Collectors.joining("\n\n")));
+        } else {
+            return String.format("Found %d relevant minute(s).\n\nExplanations:\n%s",
+                               explanations.size(),
+                               explanations.stream()
+                                       .limit(3)
+                                       .map(e -> String.format("- %s: %s", 
+                                           e.date != null ? e.date : "unknown date",
+                                           e.content.length() > 200 ? e.content.substring(0, 200) + "..." : e.content))
+                                       .collect(Collectors.joining("\n\n")));
+        }
     }
 
     /**
@@ -364,11 +452,12 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     }
 
     /**
-     * Cached LLM response
+     * Cached LLM response with error handling and validation.
+     * Uses parent class implementation which includes error handling.
      */
     @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
     public String getLLMResponseCached(String prompt) {
-        return chatClient.prompt().user(prompt).call().content().strip();
+        return super.getLLMResponseCached(prompt);
     }
 
     /**

@@ -75,40 +75,67 @@ public class CountAndExplainTool extends AbstractTool {
     }
 
     /**
-     * Determines if a fragment is relevant to the query using LLM
+     * Determines if a fragment is relevant to the query using LLM.
+     * Uses English for internal processing, but preserves original language in query and fragment.
      */
-
     private boolean isRelevantToQuery(String fragment, String query) {
-        // Use LLM to determine if the fragment is relevant to the question
+        if (fragment == null || fragment.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
         String prompt = String.format("""
             This is the user's question (in any language):
             "%s"
             
-            This is a fragment from meeting minutes:
+            This is a fragment from meeting minutes (may be in any language):
             "%s"
             
-            Does this fragment clearly or partially answer the question? 
-            Respond only with 'yes' or 'no' in the same language as the query.
+            Does this fragment clearly or partially answer the question?
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
             """, query, fragment);
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        // Check for positive responses in multiple languages
-        return result.contains("yes") || result.contains("sí") || result.contains("si") || 
-               result.contains("oui") || result.contains("ja") || result.contains("da");
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in isRelevantToQuery, defaulting to false");
+                return false;
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            // Check for positive responses in multiple languages
+            return normalized.contains("yes") || normalized.contains("sí") || normalized.contains("si") || 
+                   normalized.contains("oui") || normalized.contains("ja") || normalized.contains("da");
+        } catch (Exception e) {
+            log().error("Error in isRelevantToQuery, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
     }
 
     /**
-     * Generates response with LLM using found explanations
+     * Generates response with LLM using found explanations.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateResponseWithLLM(String query, int count, List<String> explanations) {
-        String joined = explanations.stream().distinct().collect(Collectors.joining("\n\n"));
+        if (query == null || query.trim().isEmpty() || explanations == null || explanations.isEmpty() || count <= 0) {
+            return generateNotFoundResponse(query);
+        }
+        
+        String joined = explanations.stream()
+                .filter(e -> e != null && !e.trim().isEmpty())
+                .distinct()
+                .collect(Collectors.joining("\n\n"));
+        
+        if (joined.trim().isEmpty()) {
+            return generateNotFoundResponse(query);
+        }
+        
         String prompt = String.format("""
             The user asked (in any language): "%s"
             
@@ -119,18 +146,53 @@ public class CountAndExplainTool extends AbstractTool {
             indicating the number of minutes found and summarizing the relevant context.
             """, query, count, joined);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
+                return generateFallbackResponse(query, count, explanations);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating response with LLM, using fallback", e);
+            return generateFallbackResponse(query, count, explanations);
+        }
     }
     
     /**
-     * Generates not found response
+     * Generates a fallback response when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackResponse(String query, int count, List<String> explanations) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("Se encontraron %d acta(s) relevante(s).\n\nContexto encontrado:\n%s",
+                               count,
+                               explanations.stream().limit(3).collect(Collectors.joining("\n\n")));
+        } else {
+            return String.format("Found %d relevant minute(s).\n\nContext found:\n%s",
+                               count,
+                               explanations.stream().limit(3).collect(Collectors.joining("\n\n")));
+        }
+    }
+    
+    /**
+     * Generates not found response.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateNotFoundResponse(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return generateFallbackNotFoundMessage("");
+        }
+        
         String prompt = String.format("""
             The user asked (in any language): "%s"
             
@@ -139,11 +201,36 @@ public class CountAndExplainTool extends AbstractTool {
             Write a polite response in the same language as the query explaining that no relevant information was found.
             """, query);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                return generateFallbackNotFoundMessage(query);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating not found response, using fallback", e);
+            return generateFallbackNotFoundMessage(query);
+        }
+    }
+    
+    /**
+     * Generates a fallback "not found" message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackNotFoundMessage(String query) {
+        String queryLower = query != null ? query.toLowerCase() : "";
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "No se encontró información relevante para esta consulta en las actas de reunión disponibles.";
+        } else {
+            return "No relevant information was found for this query in the available meeting minutes.";
+        }
     }
 }

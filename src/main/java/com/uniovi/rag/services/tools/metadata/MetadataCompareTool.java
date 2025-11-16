@@ -102,12 +102,23 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * Determines if a minute is relevant to the comparison query using LLM
+     * Determines if a minute is relevant to the comparison query using LLM.
      */
     private boolean isRelevantToComparisonQueryByLLM(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return false;
+        }
+        
         String prompt = generateComparisonRelevancePrompt(query, minute);
         String result = getLLMResponseCached(prompt);
-        return result.toLowerCase().contains("yes") || result.toLowerCase().contains("sí");
+        
+        if (result == null || result.trim().isEmpty()) {
+            log().warn("Empty response from LLM in isRelevantToComparisonQueryByLLM, defaulting to false");
+            return false;
+        }
+        
+        String normalized = result.toLowerCase();
+        return normalized.contains("yes") || normalized.contains("sí");
     }
 
     /**
@@ -202,9 +213,14 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * LLM-based field inference with enhanced context
+     * LLM-based field inference with enhanced context.
+     * Uses English for internal processing, but preserves original language in query.
      */
     private ComparisonField inferFieldByLLMWithContext(String query, JSONObject ner, List<Minute> minutes) {
+        if (query == null || query.trim().isEmpty() || minutes == null || minutes.isEmpty()) {
+            return null;
+        }
+        
         // Analyze available data in minutes
         Map<String, Integer> fieldAvailability = analyzeFieldAvailability(minutes);
         
@@ -215,23 +231,40 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             Available fields for comparison (with data availability):
             %s
             
-        Which field does the user want to compare? 
+            Which field does the user want to compare? 
             Consider the semantic meaning and context of the query.
             Respond with one of: numberOfAttendees, duration, date, place, topics, decisions.
             If unclear, respond only: unknown
+            
+            Respond with ONLY the field name in English (one word).
+            Do not include any explanation or additional text.
             """, query, formatFieldAvailability(fieldAvailability));
         
-        String result = getLLMResponseCached(prompt).strip().toLowerCase();
-        
-        return switch (result) {
-            case "numberofattendees" -> new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC, "Number of attendees");
-            case "duration" -> new ComparisonField("duration", ComparisonType.NUMERIC, "Meeting duration in minutes");
-            case "date" -> new ComparisonField("date", ComparisonType.DATE, "Meeting date");
-            case "place" -> new ComparisonField("place", ComparisonType.TEXT, "Meeting place");
-            case "topics" -> new ComparisonField("topics", ComparisonType.COUNT, "Number of topics");
-            case "decisions" -> new ComparisonField("decisions", ComparisonType.COUNT, "Number of decisions");
-            default -> null;
-        };
+        try {
+            String result = getLLMResponseCached(prompt);
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in inferFieldByLLMWithContext, returning null");
+                return null;
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            // Extract first word
+            String cleaned = normalized.split("\\s+")[0].trim();
+            
+            return switch (cleaned) {
+                case "numberofattendees", "numberofattendee" -> new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC, "Number of attendees");
+                case "duration" -> new ComparisonField("duration", ComparisonType.NUMERIC, "Meeting duration in minutes");
+                case "date" -> new ComparisonField("date", ComparisonType.DATE, "Meeting date");
+                case "place" -> new ComparisonField("place", ComparisonType.TEXT, "Meeting place");
+                case "topics", "topic" -> new ComparisonField("topics", ComparisonType.COUNT, "Number of topics");
+                case "decisions", "decision" -> new ComparisonField("decisions", ComparisonType.COUNT, "Number of decisions");
+                default -> null;
+            };
+        } catch (Exception e) {
+            log().error("Error in inferFieldByLLMWithContext, returning null", e);
+            return null;
+        }
     }
 
     /**
@@ -415,11 +448,17 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates enhanced comparison answer with statistical insights
+     * Generates enhanced comparison answer with statistical insights.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedComparisonAnswer(String query, ComparisonField field, 
                                                    Map<String, ComparisonValue> comparables, 
                                                    ComparisonAnalysis analysis) {
+        if (query == null || query.trim().isEmpty() || field == null || 
+            comparables == null || comparables.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
         String comparisonData = formatComparisonData(comparables, field);
         String statisticalInsights = formatStatisticalInsights(analysis, field);
         
@@ -440,7 +479,50 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             Include specific details from the data and statistical analysis when relevant.
             """, query, field.description, field.fieldName, comparisonData, statisticalInsights);
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedComparisonAnswer, using fallback");
+                return generateFallbackComparisonAnswer(query, comparables, analysis);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced comparison answer, using fallback", e);
+            return generateFallbackComparisonAnswer(query, comparables, analysis);
+        }
+    }
+    
+    /**
+     * Generates a fallback comparison answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackComparisonAnswer(String query, Map<String, ComparisonValue> comparables, ComparisonAnalysis analysis) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            StringBuilder answer = new StringBuilder();
+            answer.append("Comparación obtenida:\n");
+            comparables.entrySet().stream().limit(5).forEach(entry -> 
+                answer.append(String.format("- %s: %s\n", entry.getKey(), entry.getValue().value)));
+            if (analysis != null && analysis.min != null) {
+                answer.append(String.format("\nEstadísticas: Min=%d, Max=%d, Promedio=%.1f", 
+                    analysis.min.intValue(), analysis.max.intValue(), analysis.avg));
+            }
+            return answer.toString();
+        } else {
+            StringBuilder answer = new StringBuilder();
+            answer.append("Comparison obtained:\n");
+            comparables.entrySet().stream().limit(5).forEach(entry -> 
+                answer.append(String.format("- %s: %s\n", entry.getKey(), entry.getValue().value)));
+            if (analysis != null && analysis.min != null) {
+                answer.append(String.format("\nStatistics: Min=%d, Max=%d, Average=%.1f", 
+                    analysis.min.intValue(), analysis.max.intValue(), analysis.avg));
+            }
+            return answer.toString();
+        }
     }
 
     /**
@@ -476,9 +558,14 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates unknown field message
+     * Generates unknown field message.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateUnknownFieldMessage(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return generateFallbackUnknownFieldMessage("");
+        }
+        
         String prompt = String.format("""
             Given the following comparison query (in any language):
             "%s"
@@ -486,13 +573,44 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             in the same language as the query.
             """, query);
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                return generateFallbackUnknownFieldMessage(query);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating unknown field message, using fallback", e);
+            return generateFallbackUnknownFieldMessage(query);
+        }
+    }
+    
+    /**
+     * Generates a fallback "unknown field" message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackUnknownFieldMessage(String query) {
+        String queryLower = query != null ? query.toLowerCase() : "";
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "No fue posible determinar qué campo comparar en esta consulta.";
+        } else {
+            return "It was not possible to determine what field to compare in this query.";
+        }
     }
 
     /**
-     * Generates no data message
+     * Generates no data message.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateNoDataMessage(String field, String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return generateFallbackNoDataMessage(field, "");
+        }
+        
         String prompt = String.format("""
             Given the following comparison query (in any language):
             "%s"
@@ -500,15 +618,42 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             in the same language as the query.
             """, query, field);
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                return generateFallbackNoDataMessage(field, query);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating no data message, using fallback", e);
+            return generateFallbackNoDataMessage(field, query);
+        }
+    }
+    
+    /**
+     * Generates a fallback "no data" message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackNoDataMessage(String field, String query) {
+        String queryLower = query != null ? query.toLowerCase() : "";
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("No se encontraron datos para el campo '%s' en esta consulta.", field);
+        } else {
+            return String.format("No data was found for the field '%s' in this query.", field);
+        }
     }
 
     /**
-     * Cached LLM response
+     * Cached LLM response with error handling and validation.
+     * Uses parent class implementation which includes error handling.
      */
     @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
     public String getLLMResponseCached(String prompt) {
-        return chatClient.prompt().user(prompt).call().content().strip();
+        return super.getLLMResponseCached(prompt);
     }
 
     /**

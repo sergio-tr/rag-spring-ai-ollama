@@ -1,5 +1,6 @@
 package com.uniovi.rag.services.tools;
 
+import com.uniovi.rag.model.Loggable;
 import com.uniovi.rag.model.Minute;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -24,7 +25,7 @@ import java.util.stream.Collectors;
  * - Decoupled from literal word matching
  * - Support for all NER fields including new ones (answerType, comparisonType, temporalContext)
  */
-public class EnhancedNERHandler {
+public class EnhancedNERHandler implements Loggable {
 
     private final ChatClient chatClient;
     
@@ -45,42 +46,70 @@ public class EnhancedNERHandler {
     }
 
     /**
-     * Intelligently matches a document against NER entities using semantic analysis
+     * Intelligently matches a document against NER entities using semantic analysis.
+     * Uses English for internal processing, but preserves original language in content and query.
      */
     public boolean matchesDocumentWithNER(Document doc, JSONObject ner) {
         if (ner == null || ner.isEmpty()) return true;
         
+        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+            return false;
+        }
+        
         String content = doc.getContent();
         String prompt = generateDocumentMatchingPrompt(content, ner);
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        return result.contains("yes") || result.contains("sí");
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in matchesDocumentWithNER, defaulting to false");
+                return false;
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            return normalized.contains("yes") || normalized.contains("sí");
+        } catch (Exception e) {
+            log().error("Error in matchesDocumentWithNER, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
     }
 
     /**
-     * Intelligently matches a minute against NER entities using semantic analysis
+     * Intelligently matches a minute against NER entities using semantic analysis.
+     * Uses English for internal processing, but preserves original language in metadata values.
      */
     public boolean matchesMinuteWithNER(Minute minute, JSONObject ner) {
         if (ner == null || ner.isEmpty()) return true;
         
+        if (minute == null) {
+            return false;
+        }
+        
         String prompt = generateMinuteMatchingPrompt(minute, ner);
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        return result.contains("yes") || result.contains("sí");
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in matchesMinuteWithNER, defaulting to false");
+                return false;
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            return normalized.contains("yes") || normalized.contains("sí");
+        } catch (Exception e) {
+            log().error("Error in matchesMinuteWithNER, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
     }
 
     /**
@@ -252,30 +281,41 @@ public class EnhancedNERHandler {
     // ============================================================================
 
     /**
-     * Generates prompt for document matching
+     * Generates prompt for document matching.
+     * Uses English for internal processing, but preserves original language in content.
      */
     private String generateDocumentMatchingPrompt(String content, JSONObject ner) {
         return String.format("""
-            Given the following document content (in any language):
+            You are a document matching system. Analyze if a document matches specified entities.
+            
+            Document content (may be in any language):
             "%s"
             
-            And these NER entities to match:
+            Entities to match (JSON format):
             %s
             
-            Does this document contain information that matches the specified entities?
-            Consider semantic meaning, not just exact matches.
-            Consider the context and relationships between entities.
+            Task: Determine if this document contains information that semantically matches the specified entities.
             
-            Answer only with YES or NO.
+            Matching criteria:
+            - Consider semantic meaning, not just exact word matches
+            - Consider context and relationships between entities
+            - Match dates, people, topics, and other entities semantically
+            - If multiple entities are specified, all should be present or relevant
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
             """, content.substring(0, Math.min(2000, content.length())), ner.toString(2));
     }
 
     /**
-     * Generates prompt for minute matching
+     * Generates prompt for minute matching.
+     * Uses English for internal processing, but preserves original language in metadata values.
      */
     private String generateMinuteMatchingPrompt(Minute minute, JSONObject ner) {
         return String.format("""
-            Given the following meeting metadata:
+            You are a meeting metadata matching system. Analyze if meeting metadata matches specified entities.
+            
+            Meeting metadata (values may be in any language):
             Date: %s
             Place: %s
             President: %s
@@ -284,14 +324,19 @@ public class EnhancedNERHandler {
             Decisions: %s
             Summary: %s
             
-            And these NER entities to match:
+            Entities to match (JSON format):
             %s
             
-            Does this meeting match all the specified entities?
-            Consider semantic meaning, not just exact matches.
-            Consider the context and relationships between entities.
+            Task: Determine if this meeting metadata semantically matches ALL the specified entities.
             
-            Answer only with YES or NO.
+            Matching criteria:
+            - Consider semantic meaning, not just exact word matches
+            - Consider context and relationships between entities
+            - Match dates, people, topics, and other entities semantically
+            - If multiple entities are specified, all should be present or relevant in the metadata
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
             """,
             minute.date() != null ? minute.date() : "unknown",
             minute.place() != null ? minute.place() : "unknown",
@@ -305,50 +350,105 @@ public class EnhancedNERHandler {
     }
 
     /**
-     * Checks if document matches temporal context
+     * Checks if document matches temporal context.
+     * Uses English for internal processing.
+     */
+    /**
+     * Checks if document matches temporal context.
+     * Uses English for internal processing, but preserves original language in content.
      */
     private boolean matchesTemporalContext(Document doc, String temporalContext) {
+        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+            return false;
+        }
+        
         String content = doc.getContent();
         String prompt = String.format("""
-            Given the following document content:
+            You are a temporal context matching system. Analyze if a document matches a temporal context.
+            
+            Document content (may be in any language):
             "%s"
             
-            And the temporal context: "%s"
+            Temporal context to match: "%s"
             
-            Does this document match the specified temporal context?
-            Consider dates, time references, and temporal indicators.
+            Temporal context types:
+            - "latest" or "last": most recent meeting
+            - "oldest" or "first": earliest meeting
+            - "past": past meetings
+            - "future": future meetings
+            - "specific_date": specific date mentioned
+            - "range": date range
+            - "current": current/recent meetings
             
-            Answer only with YES or NO.
+            Task: Determine if this document's date/temporal information matches the specified temporal context.
+            
+            Consider:
+            - Dates mentioned in the document
+            - Time references and temporal indicators
+            - Relative time expressions
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
             """, content.substring(0, Math.min(1000, content.length())), temporalContext);
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        return result.contains("yes") || result.contains("sí");
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in matchesTemporalContext, defaulting to false");
+                return false;
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            return normalized.contains("yes") || normalized.contains("sí");
+        } catch (Exception e) {
+            log().error("Error in matchesTemporalContext, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
     }
 
     /**
-     * Checks if minute matches temporal context
+     * Checks if minute matches temporal context.
+     * Uses English for internal processing, but preserves original language in metadata values.
      */
     private boolean matchesMinuteTemporalContext(Minute minute, String temporalContext) {
+        if (minute == null) {
+            return false;
+        }
+        
         String prompt = String.format("""
-            Given the following meeting metadata:
+            You are a temporal context matching system. Analyze if meeting metadata matches a temporal context.
+            
+            Meeting metadata (values may be in any language):
             Date: %s
             Place: %s
             Topics: %s
             Summary: %s
             
-            And the temporal context: "%s"
+            Temporal context to match: "%s"
             
-            Does this meeting match the specified temporal context?
-            Consider dates, time references, and temporal indicators.
+            Temporal context types:
+            - "latest" or "last": most recent meeting
+            - "oldest" or "first": earliest meeting
+            - "past": past meetings
+            - "future": future meetings
+            - "specific_date": specific date mentioned
+            - "range": date range
+            - "current": current/recent meetings
             
-            Answer only with YES or NO.
+            Task: Determine if this meeting's date matches the specified temporal context.
+            
+            Consider:
+            - The date field in the metadata
+            - Time references in topics or summary
+            - Relative time expressions
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
             """,
             minute.date() != null ? minute.date() : "unknown",
             minute.place() != null ? minute.place() : "unknown",
@@ -357,87 +457,120 @@ public class EnhancedNERHandler {
             temporalContext
         );
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        return result.contains("yes") || result.contains("sí");
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in matchesMinuteTemporalContext, defaulting to false");
+                return false;
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            return normalized.contains("yes") || normalized.contains("sí");
+        } catch (Exception e) {
+            log().error("Error in matchesMinuteTemporalContext, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
     }
 
     /**
-     * Infers comparison type using LLM
+     * Infers comparison type using LLM.
+     * Uses English for internal processing.
      */
     private String inferComparisonTypeWithLLM(String query) {
         String prompt = String.format("""
-            Given the following user query (in any language):
+            You are a query analysis system. Analyze a user query to determine the type of comparison requested.
+            
+            User query (may be in any language):
             "%s"
             
-            Determine what type of comparison the user wants to make. Choose one of the following:
-            - duration: comparing meeting durations
-            - attendees: comparing number of attendees
-            - topics: comparing topics discussed
-            - decisions: comparing decisions made
-            - place: comparing meeting places
-            - date: comparing dates
-            - general: general comparison
+            Task: Determine what type of comparison the user wants to make.
             
-            Answer with only the comparison type in English.
+            Valid comparison types (respond with ONLY the type name in English):
+            - duration: comparing meeting durations (e.g., "which meeting was longer")
+            - attendees: comparing number of attendees (e.g., "which meeting had more people")
+            - topics: comparing topics discussed (e.g., "which meetings discussed security")
+            - decisions: comparing decisions made (e.g., "which meetings had more decisions")
+            - place: comparing meeting places (e.g., "which meetings were in different locations")
+            - date: comparing dates (e.g., "which meeting was earlier")
+            - general: general comparison that doesn't fit the above categories
+            
+            Respond with ONLY the comparison type in English (one word).
+            Do not include any explanation or additional text.
             """, query);
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        return switch (result) {
-            case "duration", "attendees", "topics", "decisions", "place", "date", "general" -> result;
-            default -> "general";
-        };
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toLowerCase();
+            
+            // Extract the comparison type from response
+            String cleaned = result.split("\\s+")[0].trim();
+            return switch (cleaned) {
+                case "duration", "attendees", "topics", "decisions", "place", "date", "general" -> cleaned;
+                default -> "general";
+            };
+        } catch (Exception e) {
+            return "general"; // Default fallback
+        }
     }
 
     /**
-     * Infers answer type using LLM
+     * Infers answer type using LLM.
+     * Uses English for internal processing.
      */
     private String inferAnswerTypeWithLLM(String query) {
         String prompt = String.format("""
-            Given the following user query (in any language):
+            You are a query analysis system. Analyze a user query to determine the expected answer type.
+            
+            User query (may be in any language):
             "%s"
             
-            Determine what type of answer the user expects. Choose one of the following:
-            - person: asking about a person (who)
-            - number: asking about a number (how many)
-            - date: asking about a date (when)
-            - location: asking about a place (where)
-            - text: asking for text/summary
-            - boolean: asking yes/no question
-            - list: asking for a list
-            - comparison: asking for comparison
-            - duration: asking about duration
-            - field: asking about a specific field
+            Task: Determine what type of answer the user expects.
             
-            Answer with only the answer type in English.
+            Valid answer types (respond with ONLY the type name in English):
+            - person: asking about a person (who, quién)
+            - number: asking about a number (how many, cuántos)
+            - date: asking about a date (when, cuándo)
+            - location: asking about a place (where, dónde)
+            - text: asking for text/summary (what, qué)
+            - boolean: asking yes/no question (is, does, se)
+            - list: asking for a list (list, lista)
+            - comparison: asking for comparison (compare, comparar)
+            - duration: asking about duration (how long, cuánto tiempo)
+            - field: asking about a specific field (which field, qué campo)
+            
+            Respond with ONLY the answer type in English (one word).
+            Do not include any explanation or additional text.
             """, query);
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        return switch (result) {
-            case "person", "number", "date", "location", "text", "boolean", "list", 
-                 "comparison", "duration", "field" -> result;
-            default -> "text";
-        };
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toLowerCase();
+            
+            // Extract the answer type from response
+            String cleaned = result.split("\\s+")[0].trim();
+            return switch (cleaned) {
+                case "person", "number", "date", "location", "text", "boolean", "list", 
+                     "comparison", "duration", "field" -> cleaned;
+                default -> "text";
+            };
+        } catch (Exception e) {
+            return "text"; // Default fallback
+        }
     }
 
     /**

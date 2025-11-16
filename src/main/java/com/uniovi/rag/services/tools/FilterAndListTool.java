@@ -72,60 +72,110 @@ public class FilterAndListTool extends AbstractTool {
     }
 
     /**
-     * Determines if content is relevant to query using LLM
+     * Determines if content is relevant to query using LLM.
+     * Uses English for internal processing, but preserves original language in query and content.
      */
     private boolean isRelevantByLLM(String content, String query) {
+        if (content == null || content.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
+        String contentSnippet = content.substring(0, Math.min(1000, content.length()));
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
             
-            And the following meeting minutes content:
+            And the following meeting minutes content (may be in any language):
             "%s"
             
-            Does this minutes document match all the conditions in the query? 
-            Answer only YES or NO in the same language as the query.
-            """, query, content.substring(0, Math.min(1000, content.length())));
+            Does this minutes document match all the conditions in the query?
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
+            """, query, contentSnippet);
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        // Check for positive responses in multiple languages
-        return result.startsWith("yes") || result.startsWith("sí") || result.startsWith("si") || 
-               result.startsWith("oui") || result.startsWith("ja") || result.startsWith("da");
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in isRelevantByLLM, defaulting to false");
+                return false;
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            // Check for positive responses in multiple languages
+            return normalized.startsWith("yes") || normalized.startsWith("sí") || normalized.startsWith("si") || 
+                   normalized.startsWith("oui") || normalized.startsWith("ja") || normalized.startsWith("da");
+        } catch (Exception e) {
+            log().error("Error in isRelevantByLLM, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
     }
 
     /**
-     * Extracts and summarizes relevant content
+     * Extracts and summarizes relevant content.
+     * Uses English for internal processing, but preserves original language in query and content.
      */
     private String extractAndSummarize(String content, String query) {
+        if (content == null || content.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return "";
+        }
+        
         String fragment = extractRelevantFragment(content, query);
+        if (fragment == null || fragment.trim().isEmpty()) {
+            return "";
+        }
+        
         String prompt = String.format("""
             Summarize in at most two sentences the fragment of the following text that answers this query (in any language): "%s"
             
-            Text:
+            Text (may be in any language):
             %s
             
             Write the summary in the same language as the query.
             """, query, fragment);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in extractAndSummarize, returning empty string");
+                return "";
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error in extractAndSummarize, returning empty string", e);
+            return "";
+        }
     }
 
     /**
-     * Generates final answer with found results
+     * Generates final answer with found results.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateFinalAnswer(String query, List<String> results) {
-        String joined = results.stream().distinct().collect(Collectors.joining("\n\n"));
+        if (query == null || query.trim().isEmpty() || results == null || results.isEmpty()) {
+            return generateNotFoundResponse(query);
+        }
+        
+        String joined = results.stream()
+                .filter(r -> r != null && !r.trim().isEmpty())
+                .distinct()
+                .collect(Collectors.joining("\n\n"));
+        
+        if (joined.trim().isEmpty()) {
+            return generateNotFoundResponse(query);
+        }
+        
         String prompt = String.format("""
             The user asked (in any language): "%s"
             
@@ -136,18 +186,51 @@ public class FilterAndListTool extends AbstractTool {
             listing the minutes and summarizing the relevant content for each.
             """, query, joined);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateFinalAnswer, using fallback");
+                return generateFallbackAnswer(query, results);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating final answer, using fallback", e);
+            return generateFallbackAnswer(query, results);
+        }
     }
     
     /**
-     * Generates not found response
+     * Generates a fallback answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackAnswer(String query, List<String> results) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "Reuniones encontradas que coinciden con los filtros:\n\n" + 
+                   results.stream().limit(5).collect(Collectors.joining("\n\n"));
+        } else {
+            return "Meetings found matching the filters:\n\n" + 
+                   results.stream().limit(5).collect(Collectors.joining("\n\n"));
+        }
+    }
+    
+    /**
+     * Generates not found response.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateNotFoundResponse(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return generateFallbackNotFoundMessage("");
+        }
+        
         String prompt = String.format("""
             The user asked (in any language): "%s"
             
@@ -156,11 +239,36 @@ public class FilterAndListTool extends AbstractTool {
             Write a polite response in the same language as the query explaining that no matching minutes were found.
             """, query);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                return generateFallbackNotFoundMessage(query);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating not found response, using fallback", e);
+            return generateFallbackNotFoundMessage(query);
+        }
+    }
+    
+    /**
+     * Generates a fallback "not found" message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackNotFoundMessage(String query) {
+        String queryLower = query != null ? query.toLowerCase() : "";
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "No se encontraron actas de reunión que coincidan con todas las condiciones especificadas en la consulta.";
+        } else {
+            return "No meeting minutes were found that match all the conditions specified in the query.";
+        }
     }
 }

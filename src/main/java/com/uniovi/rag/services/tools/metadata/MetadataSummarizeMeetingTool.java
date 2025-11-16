@@ -125,9 +125,13 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts or generates summary with enhanced context analysis
+     * Extracts or generates summary with enhanced context analysis.
      */
     private String extractOrGenerateSummary(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return "";
+        }
+        
         String queryType = analyzeQueryType(query);
         
         // If minute already has a summary, use it as base
@@ -139,7 +143,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             
             Query type: %s
             
-            Meeting metadata:
+            Meeting metadata (values may be in any language):
             Date: %s
             Place: %s
             President: %s
@@ -167,18 +171,35 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             baseSummary
         );
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().debug("Empty response from LLM in extractOrGenerateSummary, returning empty string");
+                return "";
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error extracting or generating summary, returning empty string", e);
+            return "";
+        }
     }
 
     /**
-     * Extracts key information from summary
+     * Extracts key information from summary.
+     * Uses English for internal processing, but preserves original language in query and summary.
      */
     private String extractKeyInformation(String summary, String query) {
+        if (summary == null || summary.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return "";
+        }
+        
         String prompt = String.format("""
-            Given the following summary:
+            Given the following summary (may be in any language):
             "%s"
             
-            And the original query:
+            And the original query (may be in any language):
             "%s"
             
             Extract the key information that directly relates to the query.
@@ -186,7 +207,19 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             Write a brief summary (1-2 sentences) in the same language as the query.
             """, summary, query);
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().debug("Empty response from LLM in extractKeyInformation, returning empty string");
+                return "";
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error extracting key information, returning empty string", e);
+            return "";
+        }
     }
 
     /**
@@ -212,10 +245,15 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates enhanced summary answer with clustering and analysis
+     * Generates enhanced summary answer with clustering and analysis.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedSummaryAnswer(String query, List<SummaryResult> results, 
                                                 List<InfoExtractor.Cluster<SummaryResult>> clusters) {
+        if (query == null || query.trim().isEmpty() || results == null || results.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
         String summarySummary = formatSummarySummary(results, clusters);
         String clusterAnalysis = formatClusterAnalysis(clusters);
         
@@ -233,9 +271,52 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             Write a clear, comprehensive summary in the same language as the query, 
             presenting the most relevant information from the summaries found.
             Group similar information together and highlight the most important findings.
-            """, query, results.size(), clusters.size(), summarySummary, clusterAnalysis);
+            """, query, results.size(), clusters.size(), 
+            summarySummary != null ? summarySummary : "No summaries found.",
+            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedSummaryAnswer, using fallback");
+                return generateFallbackSummaryAnswer(query, results);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced summary answer, using fallback", e);
+            return generateFallbackSummaryAnswer(query, results);
+        }
+    }
+    
+    /**
+     * Generates a fallback summary answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackSummaryAnswer(String query, List<SummaryResult> results) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("Resumen de %d reuniones encontradas:\n%s",
+                              results.size(),
+                              results.stream()
+                                      .limit(3)
+                                      .map(r -> String.format("Reunión del %s:\n%s", 
+                                          r.date != null ? r.date : "fecha desconocida",
+                                          r.summary.length() > 250 ? r.summary.substring(0, 250) + "..." : r.summary))
+                                      .collect(Collectors.joining("\n\n")));
+        } else {
+            return String.format("Summary of %d meetings found:\n%s",
+                              results.size(),
+                              results.stream()
+                                      .limit(3)
+                                      .map(r -> String.format("Meeting on %s:\n%s", 
+                                          r.date != null ? r.date : "unknown date",
+                                          r.summary.length() > 250 ? r.summary.substring(0, 250) + "..." : r.summary))
+                                      .collect(Collectors.joining("\n\n")));
+        }
     }
 
     /**

@@ -9,7 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @Service
-public class SimpleDocumentService extends AbstractDocumentService {
+public class SimpleDocumentService<T> extends AbstractDocumentService<T> {
 
     public SimpleDocumentService(PgVectorStore vectorStore, ChatClient chatClient) {
         super(vectorStore, chatClient);

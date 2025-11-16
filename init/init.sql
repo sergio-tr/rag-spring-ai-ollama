@@ -25,3 +25,14 @@ CREATE TABLE vector_store (
 
 CREATE INDEX idx_documents_document_name ON documents(document_name);
 CREATE INDEX idx_vector_store_embedding ON vector_store USING HNSW (embedding vector_cosine_ops);
+
+-- Estos índices mejoran significativamente el rendimiento de búsquedas por metadata
+CREATE INDEX idx_vector_store_metadata_date ON vector_store USING GIN ((metadata->>'date'));
+CREATE INDEX idx_vector_store_metadata_president ON vector_store USING GIN ((metadata->>'president'));
+CREATE INDEX idx_vector_store_metadata_document_id ON vector_store USING GIN ((metadata->>'document_id'));
+CREATE INDEX idx_vector_store_metadata_id ON vector_store USING GIN ((metadata->>'id'));
+CREATE INDEX idx_vector_store_metadata_filename ON vector_store USING GIN ((metadata->>'filename'));
+
+-- Índice compuesto para búsquedas comunes (fecha + presidente)
+CREATE INDEX idx_vector_store_metadata_date_president ON vector_store 
+    USING GIN ((metadata->>'date'), (metadata->>'president'));

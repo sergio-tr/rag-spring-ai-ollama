@@ -131,17 +131,22 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts key information about the field value
+     * Extracts key information about the field value.
      */
     private String extractKeyFieldInfo(Minute minute, String fieldName, String fieldValue, String query) {
+        if (minute == null || fieldName == null || fieldValue == null || fieldValue.trim().isEmpty() || 
+            query == null || query.trim().isEmpty()) {
+            return "";
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
             
             Field name: %s
-            Field value: %s
+            Field value (may be in any language): %s
             
-            Meeting metadata:
+            Meeting metadata (values may be in any language):
             Date: %s
             Place: %s
             President: %s
@@ -164,13 +169,30 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown"
         );
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().debug("Empty response from LLM in extractKeyFieldInfo, returning empty string");
+                return "";
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error extracting key field info, returning empty string", e);
+            return "";
+        }
     }
 
     /**
-     * Classifies field intent with enhanced LLM analysis
+     * Classifies field intent with enhanced LLM analysis.
+     * Uses English for internal processing, but preserves original language in query.
      */
     private String classifyFieldIntentWithLLM(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return "unknown";
+        }
+        
         String queryType = analyzeQueryType(query);
         
         String prompt = String.format("""
@@ -179,34 +201,54 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             
             Query type: %s
             
-            Determine which field the user wants to query. Choose one of the following:
-            - date/fecha
-            - place/lugar
-            - startTime/hora_inicio
-            - endTime/hora_fin
-            - president/presidente
-            - secretary/secretario
-            - topics/temas
-            - decisions/decisiones
-            - summary/resumen
-            - attendees/asistentes
+            Determine which field the user wants to query. Choose one of the following (respond with the field name in English):
+            - date
+            - place
+            - startTime
+            - endTime
+            - president
+            - secretary
+            - topics
+            - decisions
+            - summary
+            - attendees
             
             Consider the query type and context to make the best choice.
-            Answer with the field name in English. If the intent is unclear, answer with "unknown".
+            
+            Respond with ONLY the field name in English (one word).
+            If the intent is unclear, answer with "unknown".
+            Do not include any explanation or additional text.
             """, query, queryType);
         
-        String result = getLLMResponseCached(prompt).strip().toLowerCase();
-        if (result.contains("unknown")) return "unknown";
-        
-        // Validate the result against known fields
-        String[] validFields = {"date", "place", "starttime", "endtime", "president", "secretary", "topics", "decisions", "summary", "attendees"};
-        for (String field : validFields) {
-            if (result.contains(field)) {
-                return field;
+        try {
+            String result = getLLMResponseCached(prompt);
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in classifyFieldIntentWithLLM, defaulting to unknown");
+                return "unknown";
             }
+            
+            String normalized = result.strip().toLowerCase();
+            if (normalized.contains("unknown")) {
+                return "unknown";
+            }
+            
+            // Extract first word
+            String cleaned = normalized.split("\\s+")[0].trim();
+            
+            // Validate the result against known fields
+            String[] validFields = {"date", "place", "starttime", "endtime", "president", "secretary", "topics", "decisions", "summary", "attendees"};
+            for (String field : validFields) {
+                if (cleaned.contains(field)) {
+                    return field;
+                }
+            }
+            
+            return "unknown";
+        } catch (Exception e) {
+            log().error("Error classifying field intent, defaulting to unknown", e);
+            return "unknown";
         }
-        
-        return "unknown";
     }
 
     /**
@@ -220,9 +262,15 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates enhanced field answer with analysis
+     * Generates enhanced field answer with analysis.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedFieldAnswer(String query, List<FieldResult> results, String detectedField) {
+        if (query == null || query.trim().isEmpty() || results == null || results.isEmpty() || 
+            detectedField == null || detectedField.equals("unknown")) {
+            return generateNotFoundMessage(query);
+        }
+        
         String fieldSummary = formatFieldResults(results, detectedField);
         
         String prompt = String.format("""
@@ -238,9 +286,49 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             presenting the field values in a user-friendly way.
             If multiple values are found, organize them logically and highlight the most relevant ones.
             Include context and additional information that might be helpful.
-            """, query, detectedField, results.size(), fieldSummary);
+            """, query, detectedField, results.size(), 
+            fieldSummary != null ? fieldSummary : "No field values found.");
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedFieldAnswer, using fallback");
+                return generateFallbackFieldAnswer(query, results, detectedField);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced field answer, using fallback", e);
+            return generateFallbackFieldAnswer(query, results, detectedField);
+        }
+    }
+    
+    /**
+     * Generates a fallback field answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackFieldAnswer(String query, List<FieldResult> results, String detectedField) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("Se encontraron %d valores para el campo '%s':\n%s",
+                              results.size(),
+                              detectedField,
+                              results.stream()
+                                      .limit(5)
+                                      .map(r -> String.format("- %s: %s", r.date != null ? r.date : "fecha desconocida", r.fieldValue))
+                                      .collect(Collectors.joining("\n")));
+        } else {
+            return String.format("Found %d values for field '%s':\n%s",
+                              results.size(),
+                              detectedField,
+                              results.stream()
+                                      .limit(5)
+                                      .map(r -> String.format("- %s: %s", r.date != null ? r.date : "unknown date", r.fieldValue))
+                                      .collect(Collectors.joining("\n")));
+        }
     }
 
     /**

@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  * - Cached evaluations for improved performance
  * - Comprehensive validation and quality analysis
  */
-public class NERQueryAnalyser implements QueryAnalyser {
+public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     // Enhanced prompt with multilingual support and better examples
     private static final String NER_PROMPT = """
@@ -100,8 +100,13 @@ public class NERQueryAnalyser implements QueryAnalyser {
           "section": ["place"]
         }
 
-        If no information is available for a field, leave it as an empty array. Return ONLY the JSON, without explanations or additional formatting.
-        <Query>: {query}
+        If no information is available for a field, leave it as an empty array [].
+        
+        CRITICAL: Return ONLY the JSON object, without any markdown formatting, explanations, or additional text.
+        The response must start with { and end with }.
+        Do NOT include ```json or ``` markers.
+        
+        Query to analyze: {query}
     """;
 
     private final ChatClient chatClient;
@@ -119,66 +124,103 @@ public class NERQueryAnalyser implements QueryAnalyser {
     private static final Pattern TIME_PATTERN = Pattern.compile("\\b(\\d{1,2}):(\\d{2})\\b");
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\b\\d+\\b");
 
-    public NERQueryAnalyser(ChatClient chatClient) {
+    public MinuteNERQueryAnalyser(ChatClient chatClient) {
         this.chatClient = chatClient;
     }
 
     @Override
     public JSONObject analyse(String query) {
-        String prompt = new PromptTemplate(NER_PROMPT).create(Map.of("query", query)).getContents();
-
-        String response = chatClient
-                .prompt()
-                .system(getSystemPrompt())
-                .user(prompt)
-                .call()
-                .content();
-
-        String cleanResponse = cleanJsonResponse(response);
-        
-        log().debug("NER-QUERY: JSON returned →\n{}", cleanResponse);
-
         try {
+            String prompt = new PromptTemplate(NER_PROMPT).create(Map.of("query", query)).getContents();
+
+            String response = chatClient
+                    .prompt()
+                    .system(getSystemPrompt())
+                    .user(prompt)
+                    .call()
+                    .content();
+
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("NER: Empty response from LLM for query: {}", query);
+                return createFallbackResponse(query);
+            }
+
+            String cleanResponse = cleanJsonResponse(response);
+            
+            log().debug("NER-QUERY: Raw response length: {}, Cleaned response:\n{}", response.length(), cleanResponse);
+
+            // Validate JSON structure
             if (!cleanResponse.trim().startsWith("{")) {
-                throw new IllegalArgumentException("Response is not a valid JSON.");
+                log().warn("NER: Response does not start with {{, attempting to extract JSON");
+                // Try to extract JSON from response
+                int startIdx = cleanResponse.indexOf("{");
+                int endIdx = cleanResponse.lastIndexOf("}");
+                if (startIdx >= 0 && endIdx > startIdx) {
+                    cleanResponse = cleanResponse.substring(startIdx, endIdx + 1);
+                    log().debug("NER: Extracted JSON substring: {}", cleanResponse);
+                } else {
+                    throw new IllegalArgumentException("Response does not contain valid JSON structure.");
+                }
             }
 
             JSONObject json = new JSONObject(cleanResponse);
             validateAndNormalize(json);
             enhanceWithContextAnalysis(json, query);
+            
+            log().debug("NER: Successfully parsed and normalized JSON for query: {}", query);
             return json;
+        } catch (org.json.JSONException e) {
+            log().error("NER: JSON parsing error for query '{}': {}", query, e.getMessage(), e);
+            return createFallbackResponse(query);
+        } catch (IllegalArgumentException e) {
+            log().error("NER: Invalid JSON structure for query '{}': {}", query, e.getMessage(), e);
+            return createFallbackResponse(query);
         } catch (Exception e) {
-            log().warn("NER: Error parsing JSON for query '{}': {}", query, e.getMessage());
+            log().error("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage(), e);
             return createFallbackResponse(query);
         }
     }
 
     /**
-     * Enhanced system prompt with better instructions
+     * Enhanced system prompt with better instructions for consistent JSON output.
      */
     private String getSystemPrompt() {
         return """
-            You are an expert entity extractor for meeting minutes queries in JSON format.
-            These minutes follow a formal structure with sections like:
+            You are an expert entity extractor for meeting minutes queries. Your task is to extract structured 
+            information from user queries and return it as a valid JSON object.
+            
+            These meeting minutes follow a formal structure with sections like:
             - Date (day, month and year)
             - Location
             - Start time
             - End time
-            - List of Attendees: number of attendees, names and positions (e.g., president, secretary).
-            - Order of the Day: topics discussed during the meeting, including Agreements, News, Decisions Made; approved or voted resolutions.
-            - Questions and Comments: open interventions at the end of the session.
-            - Meeting end time.
+            - List of Attendees: number of attendees, names and positions (e.g., president, secretary)
+            - Order of the Day: topics discussed during the meeting, including Agreements, News, Decisions Made; approved or voted resolutions
+            - Questions and Comments: open interventions at the end of the session
+            - Meeting end time
             
-            Your output must be a JSON object that starts with an opening brace and ends with a closing brace.
+            CRITICAL OUTPUT REQUIREMENTS:
+            1. Your output MUST be a valid JSON object starting with { and ending with }
+            2. Do NOT include any text before or after the JSON object
+            3. Do NOT include markdown code blocks (```json or ```)
+            4. Do NOT include explanations or comments
+            5. All field names must be exactly as specified (lowercase, no spaces)
+            6. Array fields must be JSON arrays, even if empty: []
+            7. String fields (answerType, comparisonType, temporalContext) must be strings, not arrays
             
-            IMPORTANT GUIDELINES:
+            EXTRACTION GUIDELINES:
             1. Extract entities considering semantic meaning, not just exact matches
-            2. Normalize dates to standard formats when possible
-            3. Consider multilingual queries (Spanish, English, etc.)
+            2. Preserve original language of extracted entities (do not translate)
+            3. Consider multilingual queries (Spanish, English, etc.) - extract entities in their original language
             4. Identify temporal context (past, present, future, specific dates, ranges)
             5. Detect comparison queries and extract comparison types
             6. Be precise with answer types and entity relationships
-            7. Return only valid JSON without any additional text
+            7. If a field has no relevant information, use an empty array [] or appropriate default value
+            
+            VALIDATION:
+            - Ensure all required fields are present
+            - Ensure arrays are properly formatted
+            - Ensure no syntax errors in JSON
             """;
     }
 

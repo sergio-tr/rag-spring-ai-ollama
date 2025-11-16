@@ -132,14 +132,18 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts key meeting information
+     * Extracts key meeting information.
      */
     private String extractKeyMeetingInfo(Minute minute, String query) {
+        if (minute == null || query == null || query.trim().isEmpty()) {
+            return "";
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
             
-            Meeting metadata:
+            Meeting metadata (values may be in any language):
             Date: %s
             Place: %s
             President: %s
@@ -160,7 +164,19 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
             minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown"
         );
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().debug("Empty response from LLM in extractKeyMeetingInfo, returning empty string");
+                return "";
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error extracting key meeting info, returning empty string", e);
+            return "";
+        }
     }
 
     /**
@@ -219,11 +235,16 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates enhanced duration answer with analysis and clustering
+     * Generates enhanced duration answer with analysis and clustering.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedDurationAnswer(String query, List<DurationResult> results, 
                                                  DurationAnalysis analysis, 
                                                  List<InfoExtractor.Cluster<DurationResult>> clusters) {
+        if (query == null || query.trim().isEmpty() || results == null || results.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
         String durationSummary = formatDurationSummary(results, clusters);
         String statisticalSummary = formatStatisticalSummary(analysis);
         String clusterAnalysis = formatClusterAnalysis(clusters);
@@ -246,9 +267,67 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
             presenting the duration information and any relevant analysis.
             If the query asks for comparisons (longest/shortest), identify the relevant meetings.
             Include statistical insights and patterns found.
-            """, query, results.size(), durationSummary, statisticalSummary, clusterAnalysis);
+            """, query, results.size(), 
+            durationSummary != null ? durationSummary : "No duration summary available.",
+            statisticalSummary != null ? statisticalSummary : "No statistical analysis available.",
+            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedDurationAnswer, using fallback");
+                return generateFallbackDurationAnswer(query, results, analysis);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced duration answer, using fallback", e);
+            return generateFallbackDurationAnswer(query, results, analysis);
+        }
+    }
+    
+    /**
+     * Generates a fallback duration answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackDurationAnswer(String query, List<DurationResult> results, DurationAnalysis analysis) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            StringBuilder answer = new StringBuilder();
+            answer.append(String.format("Se encontraron %d reuniones con duraciones:\n", results.size()));
+            if (analysis != null && analysis.allDurations.size() > 0) {
+                answer.append(String.format("Duración mínima: %d minutos\n", analysis.minDuration));
+                answer.append(String.format("Duración máxima: %d minutos\n", analysis.maxDuration));
+                answer.append(String.format("Duración promedio: %.1f minutos\n", analysis.averageDuration));
+            }
+            answer.append("\nDuraciones encontradas:\n");
+            results.stream().limit(5).forEach(r -> 
+                answer.append(String.format("- %s: %d minutos (%s - %s)\n", 
+                    r.date != null ? r.date : "fecha desconocida",
+                    r.durationMinutes,
+                    r.startTime != null ? r.startTime : "?",
+                    r.endTime != null ? r.endTime : "?")));
+            return answer.toString();
+        } else {
+            StringBuilder answer = new StringBuilder();
+            answer.append(String.format("Found %d meetings with durations:\n", results.size()));
+            if (analysis != null && analysis.allDurations.size() > 0) {
+                answer.append(String.format("Minimum duration: %d minutes\n", analysis.minDuration));
+                answer.append(String.format("Maximum duration: %d minutes\n", analysis.maxDuration));
+                answer.append(String.format("Average duration: %.1f minutes\n", analysis.averageDuration));
+            }
+            answer.append("\nDurations found:\n");
+            results.stream().limit(5).forEach(r -> 
+                answer.append(String.format("- %s: %d minutes (%s - %s)\n", 
+                    r.date != null ? r.date : "unknown date",
+                    r.durationMinutes,
+                    r.startTime != null ? r.startTime : "?",
+                    r.endTime != null ? r.endTime : "?")));
+            return answer.toString();
+        }
     }
 
     /**

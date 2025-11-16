@@ -206,11 +206,16 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts entities from text using LLM
+     * Extracts entities from text using LLM.
+     * Uses English for internal processing, but preserves original language in text.
      */
     private List<Entity> extractEntitiesFromText(String text, EntityType contextType, Minute minute) {
+        if (text == null || text.trim().isEmpty() || minute == null) {
+            return Collections.emptyList();
+        }
+        
         String prompt = String.format("""
-            Given the following text:
+            Given the following text (may be in any language):
             "%s"
             
             Extract all relevant entities (people, organizations, roles, dates, amounts, etc.) from this text.
@@ -223,10 +228,16 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             """, text);
         
         try {
-            String result = getLLMResponseCached(prompt).strip();
-            return parseEntitiesFromLLMResponse(result, contextType, minute);
+            String result = getLLMResponseCached(prompt);
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().debug("Empty response from LLM in extractEntitiesFromText, returning empty list");
+                return Collections.emptyList();
+            }
+            
+            return parseEntitiesFromLLMResponse(result.strip(), contextType, minute);
         } catch (Exception e) {
-            log().debug("Error extracting entities from text: {}", e.getMessage());
+            log().error("Error extracting entities from text, returning empty list", e);
             return Collections.emptyList();
         }
     }
@@ -335,9 +346,14 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
 
     /**
-     * Calculates relevance score for an entity
+     * Calculates relevance score for an entity.
+     * Uses English for internal processing, but preserves original language in query.
      */
     private Entity calculateEntityRelevanceScore(String query, Entity entity) {
+        if (query == null || query.trim().isEmpty() || entity == null) {
+            return entity; // Return original entity if validation fails
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
@@ -349,7 +365,9 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             
             Rate the relevance of this entity to the query on a scale of 0.0 to 1.0.
             Consider: direct relevance, importance, and usefulness.
-            Respond with only a number between 0.0 and 1.0.
+            
+            Respond with ONLY a number between 0.0 and 1.0.
+            Do not include any explanation or additional text.
             """, 
             query,
             entity.name,
@@ -359,8 +377,21 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         );
         
         try {
-            String result = getLLMResponseCached(prompt).strip();
-            double score = Double.parseDouble(result);
+            String result = getLLMResponseCached(prompt);
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in calculateEntityRelevanceScore, keeping original score");
+                return entity;
+            }
+            
+            String cleaned = result.strip();
+            // Extract first number from response
+            String numberStr = cleaned.replaceAll("[^0-9.]", "").split("\\s+")[0];
+            if (numberStr.isEmpty()) {
+                return entity;
+            }
+            
+            double score = Double.parseDouble(numberStr);
             return new Entity(
                 entity.name,
                 entity.type,
@@ -371,7 +402,11 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                 entity.timestamp
             );
         } catch (NumberFormatException e) {
+            log().warn("Error parsing relevance score in calculateEntityRelevanceScore, keeping original score", e);
             return entity; // Keep original score if parsing fails
+        } catch (Exception e) {
+            log().error("Error calculating entity relevance score, keeping original score", e);
+            return entity;
         }
     }
 
@@ -425,9 +460,14 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates enhanced entity answer with clustering and analysis
+     * Generates enhanced entity answer with clustering and analysis.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedEntityAnswer(String query, List<Entity> entities, List<EntityCluster> clusters) {
+        if (query == null || query.trim().isEmpty() || entities == null || entities.isEmpty()) {
+            return generateEntityNotFoundMessage(query);
+        }
+        
         String entitySummary = formatEntitySummary(entities, clusters);
         String clusterAnalysis = formatClusterAnalysis(clusters);
         
@@ -445,9 +485,48 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             Write a clear, comprehensive answer in the same language as the query, 
             summarizing the relevant entities and their context.
             Group similar entities together and highlight the most important findings.
-            """, query, entities.size(), clusters.size(), entitySummary, clusterAnalysis);
+            """, query, entities.size(), clusters.size(), 
+            entitySummary != null ? entitySummary : "No entities found.",
+            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedEntityAnswer, using fallback");
+                return generateFallbackEntityAnswer(query, entities);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced entity answer, using fallback", e);
+            return generateFallbackEntityAnswer(query, entities);
+        }
+    }
+    
+    /**
+     * Generates a fallback entity answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackEntityAnswer(String query, List<Entity> entities) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("Se encontraron %d entidades relevantes:\n%s",
+                              entities.size(),
+                              entities.stream()
+                                      .limit(5)
+                                      .map(e -> String.format("- %s (%s)", e.name, e.type))
+                                      .collect(Collectors.joining("\n")));
+        } else {
+            return String.format("Found %d relevant entities:\n%s",
+                              entities.size(),
+                              entities.stream()
+                                      .limit(5)
+                                      .map(e -> String.format("- %s (%s)", e.name, e.type))
+                                      .collect(Collectors.joining("\n")));
+        }
     }
 
     /**
@@ -488,9 +567,14 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates entity-specific not found message
+     * Generates entity-specific not found message.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEntityNotFoundMessage(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return generateFallbackEntityNotFoundMessage("");
+        }
+        
         String prompt = String.format("""
             Given the following entity extraction query (in any language):
             "%s"
@@ -498,7 +582,33 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             in the same language as the query.
             """, query);
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                return generateFallbackEntityNotFoundMessage(query);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating entity not found message, using fallback", e);
+            return generateFallbackEntityNotFoundMessage(query);
+        }
+    }
+    
+    /**
+     * Generates a fallback "entity not found" message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackEntityNotFoundMessage(String query) {
+        String queryLower = query != null ? query.toLowerCase() : "";
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "No se encontraron entidades relevantes para esta consulta en los documentos disponibles.";
+        } else {
+            return "No relevant entities were found for this query in the available documents.";
+        }
     }
 
     /**

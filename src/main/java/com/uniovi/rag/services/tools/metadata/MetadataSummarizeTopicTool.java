@@ -129,9 +129,13 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts or generates topic summary with enhanced context analysis
+     * Extracts or generates topic summary with enhanced context analysis.
      */
     private String extractOrGenerateTopicSummary(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return "";
+        }
+        
         String queryType = analyzeQueryType(query);
         
         // Check if minute has topics
@@ -148,7 +152,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             
             Query type: %s
             
-            Meeting metadata:
+            Meeting metadata (values may be in any language):
             Date: %s
             Place: %s
             President: %s
@@ -176,13 +180,30 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             baseSummary
         );
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().debug("Empty response from LLM in extractOrGenerateTopicSummary, returning empty string");
+                return "";
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error extracting or generating topic summary, returning empty string", e);
+            return "";
+        }
     }
 
     /**
-     * Extracts relevant topics from minute based on query
+     * Extracts relevant topics from minute based on query.
+     * Uses English for internal processing, but preserves original language in query and topics.
      */
     private List<String> extractRelevantTopics(Minute minute, String query) {
+        if (minute == null || query == null || query.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        
         if (minute.topics() == null || minute.topics().isEmpty()) {
             return Collections.emptyList();
         }
@@ -191,7 +212,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             Given the following user query (in any language):
             "%s"
             
-            And these meeting topics:
+            And these meeting topics (may be in any language):
             %s
             
             Which topics are most relevant to the query?
@@ -202,22 +223,38 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             String.join(", ", minute.topics())
         );
         
-        String result = getLLMResponseCached(prompt);
-        return Arrays.stream(result.split(","))
-                .map(String::trim)
-                .filter(topic -> !topic.isBlank())
-                .collect(Collectors.toList());
+        try {
+            String result = getLLMResponseCached(prompt);
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().debug("Empty response from LLM in extractRelevantTopics, returning empty list");
+                return Collections.emptyList();
+            }
+            
+            return Arrays.stream(result.split(","))
+                    .map(String::trim)
+                    .filter(topic -> !topic.isBlank())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log().error("Error extracting relevant topics, returning empty list", e);
+            return Collections.emptyList();
+        }
     }
 
     /**
-     * Extracts key information from topic summary
+     * Extracts key information from topic summary.
+     * Uses English for internal processing, but preserves original language in query and summary.
      */
     private String extractKeyInformation(String topicSummary, String query) {
+        if (topicSummary == null || topicSummary.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return "";
+        }
+        
         String prompt = String.format("""
-            Given the following topic summary:
+            Given the following topic summary (may be in any language):
             "%s"
             
-            And the original query:
+            And the original query (may be in any language):
             "%s"
             
             Extract the key information that directly relates to the query.
@@ -225,7 +262,19 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             Write a brief summary (1-2 sentences) in the same language as the query.
             """, topicSummary, query);
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().debug("Empty response from LLM in extractKeyInformation, returning empty string");
+                return "";
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error extracting key information, returning empty string", e);
+            return "";
+        }
     }
 
     /**
@@ -253,8 +302,16 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     /**
      * Generates enhanced topic summary answer with clustering and analysis
      */
+    /**
+     * Generates enhanced topic summary answer.
+     * Uses English for internal processing, but response matches query language.
+     */
     private String generateEnhancedTopicSummaryAnswer(String query, List<TopicResult> results, 
                                                      List<InfoExtractor.Cluster<TopicResult>> clusters) {
+        if (query == null || query.trim().isEmpty() || results == null || results.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
         String topicSummarySummary = formatTopicSummarySummary(results, clusters);
         String clusterAnalysis = formatClusterAnalysis(clusters);
         
@@ -272,9 +329,52 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             Write a clear, comprehensive summary in the same language as the query, 
             presenting the most relevant information about the topic from the summaries found.
             Group similar information together and highlight the most important findings about the topic.
-            """, query, results.size(), clusters.size(), topicSummarySummary, clusterAnalysis);
+            """, query, results.size(), clusters.size(), 
+            topicSummarySummary != null ? topicSummarySummary : "No topic summaries available.",
+            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedTopicSummaryAnswer, using fallback");
+                return generateFallbackTopicSummary(query, results);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced topic summary answer, using fallback", e);
+            return generateFallbackTopicSummary(query, results);
+        }
+    }
+    
+    /**
+     * Generates a fallback topic summary when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackTopicSummary(String query, List<TopicResult> results) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            StringBuilder answer = new StringBuilder();
+            answer.append(String.format("Resumen del tema basado en %d reuniones:\n\n", results.size()));
+            results.stream().limit(3).forEach(r -> {
+                answer.append(String.format("Reunión del %s:\n", r.date != null ? r.date : "fecha desconocida"));
+                answer.append(String.format("%s\n\n", r.topicSummary != null && !r.topicSummary.isBlank() ? 
+                    r.topicSummary.substring(0, Math.min(200, r.topicSummary.length())) : "Sin resumen disponible"));
+            });
+            return answer.toString();
+        } else {
+            StringBuilder answer = new StringBuilder();
+            answer.append(String.format("Topic summary based on %d meetings:\n\n", results.size()));
+            results.stream().limit(3).forEach(r -> {
+                answer.append(String.format("Meeting on %s:\n", r.date != null ? r.date : "unknown date"));
+                answer.append(String.format("%s\n\n", r.topicSummary != null && !r.topicSummary.isBlank() ? 
+                    r.topicSummary.substring(0, Math.min(200, r.topicSummary.length())) : "No summary available"));
+            });
+            return answer.toString();
+        }
     }
 
     /**

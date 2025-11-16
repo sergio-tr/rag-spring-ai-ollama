@@ -121,9 +121,13 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     }
 
     /**
-     * Builds summary explanation with enhanced context
+     * Builds summary explanation with enhanced context.
      */
     private String buildSummaryExplanation(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return "";
+        }
+        
         String queryType = analyzeQueryType(query);
         
         String prompt = String.format("""
@@ -132,7 +136,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             
             Query type: %s
             
-            Meeting metadata:
+            Meeting metadata (values may be in any language):
             Date: %s
             Place: %s
             President: %s
@@ -158,7 +162,19 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             minute.agenda() != null ? minute.agenda().toString() : "unknown"
         );
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().debug("Empty response from LLM in buildSummaryExplanation, returning empty string");
+                return "";
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error building summary explanation, returning empty string", e);
+            return "";
+        }
     }
 
     /**
@@ -184,10 +200,15 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates enhanced filter answer with clustering and analysis
+     * Generates enhanced filter answer with clustering and analysis.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedFilterAnswer(String query, List<FilterResult> results, 
                                                List<InfoExtractor.Cluster<FilterResult>> clusters) {
+        if (query == null || query.trim().isEmpty() || results == null || results.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
         String resultSummary = formatResultSummary(results, clusters);
         String clusterAnalysis = formatClusterAnalysis(clusters);
         
@@ -205,9 +226,52 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             Write a clear, comprehensive answer in the same language as the query, 
             listing the minutes and summarizing the relevant content for each.
             Group similar information together and highlight the most important findings.
-            """, query, results.size(), clusters.size(), resultSummary, clusterAnalysis);
+            """, query, results.size(), clusters.size(), 
+            resultSummary != null ? resultSummary : "No results found.",
+            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedFilterAnswer, using fallback");
+                return generateFallbackFilterAnswer(query, results);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced filter answer, using fallback", e);
+            return generateFallbackFilterAnswer(query, results);
+        }
+    }
+    
+    /**
+     * Generates a fallback filter answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackFilterAnswer(String query, List<FilterResult> results) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("Se encontraron %d reuniones relevantes:\n%s",
+                              results.size(),
+                              results.stream()
+                                      .limit(5)
+                                      .map(r -> String.format("- %s: %s", 
+                                          r.date != null ? r.date : "fecha desconocida",
+                                          r.summary.length() > 150 ? r.summary.substring(0, 150) + "..." : r.summary))
+                                      .collect(Collectors.joining("\n\n")));
+        } else {
+            return String.format("Found %d relevant meetings:\n%s",
+                              results.size(),
+                              results.stream()
+                                      .limit(5)
+                                      .map(r -> String.format("- %s: %s", 
+                                          r.date != null ? r.date : "unknown date",
+                                          r.summary.length() > 150 ? r.summary.substring(0, 150) + "..." : r.summary))
+                                      .collect(Collectors.joining("\n\n")));
+        }
     }
 
     /**
