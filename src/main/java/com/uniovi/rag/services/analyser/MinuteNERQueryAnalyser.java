@@ -3,7 +3,6 @@ package com.uniovi.rag.services.analyser;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.PromptTemplate;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -131,7 +130,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     @Override
     public JSONObject analyse(String query) {
         try {
-            String prompt = new PromptTemplate(NER_PROMPT).create(Map.of("query", query)).getContents();
+            // Use simple string replacement instead of PromptTemplate to avoid issues with [ and ] in JSON examples
+            String prompt = NER_PROMPT.replace("{query}", query != null ? query : "");
 
             String response = chatClient
                     .prompt()
