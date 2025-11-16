@@ -76,6 +76,13 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     @Override
     protected Minute extractModel(String content, String filename) {
+        // MEJORA: Validar contenido mínimo antes de procesar
+        if (content == null || content.trim().length() < 50) {
+            log().warn("Content too short or empty for file: {} (length: {})", 
+                      filename, content != null ? content.length() : 0);
+            throw new IllegalArgumentException("Document content is too short or empty (minimum 50 characters required)");
+        }
+        
         // MEJORA: Extracción mejorada con múltiples formatos y fallbacks
         String date = extractDate(content);
         String place = extractPlace(content);
@@ -88,20 +95,44 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
         // MEJORA 3: Parallelize LLM-assisted extraction for better performance
         // All 4 LLM calls can run in parallel, reducing total extraction time by ~75%
+        // MEJORA: Manejo robusto de excepciones en CompletableFuture
         CompletableFuture<List<String>> decisionsFuture = 
-            CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_DECISIONS));
+            CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_DECISIONS))
+                .exceptionally(e -> {
+                    log().error("Error extracting decisions for file: {}", filename, e);
+                    return new ArrayList<>();
+                });
         CompletableFuture<List<String>> entitiesFuture = 
-            CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_ENTITIES));
+            CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_ENTITIES))
+                .exceptionally(e -> {
+                    log().error("Error extracting entities for file: {}", filename, e);
+                    return new ArrayList<>();
+                });
         CompletableFuture<List<String>> topicsFuture = 
-            CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_TOPICS));
+            CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_TOPICS))
+                .exceptionally(e -> {
+                    log().error("Error extracting topics for file: {}", filename, e);
+                    return new ArrayList<>();
+                });
         CompletableFuture<String> summaryFuture = 
-            CompletableFuture.supplyAsync(() -> extractSummaryWithPrompt(content, PROMPT_SUMMARY));
+            CompletableFuture.supplyAsync(() -> extractSummaryWithPrompt(content, PROMPT_SUMMARY))
+                .exceptionally(e -> {
+                    log().error("Error extracting summary for file: {}", filename, e);
+                    return generateFallbackSummary(content);
+                });
 
         // Wait for all extractions to complete
         List<String> decisions = decisionsFuture.join();
         List<String> mentionedEntities = entitiesFuture.join();
         List<String> topics = topicsFuture.join();
         String summary = summaryFuture.join();
+        
+        // MEJORA: Validar que al menos algunos campos críticos se extrajeron
+        if (date == null && place == null && attendees.isEmpty() && decisions.isEmpty() && topics.isEmpty()) {
+            log().warn("Failed to extract critical fields from document: {} (date: {}, place: {}, attendees: {}, decisions: {}, topics: {})", 
+                      filename, date != null, place != null, attendees.size(), decisions.size(), topics.size());
+            // Continuar pero con advertencia - algunos documentos pueden tener formato no estándar
+        }
 
         return new Minute(
                 UUID.randomUUID().toString(),
@@ -158,10 +189,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 return extractWithRegexFallback(content, prompt);
             }
 
-            List<String> extracted = Arrays.stream(rawResponse.split("\n"))
-                    .map(String::trim)
-                    .filter(line -> !line.isEmpty())
-                    .toList();
+            // MEJORA: Limpiar respuesta del LLM antes de procesar
+            List<String> extracted = cleanLLMResponse(rawResponse);
             
             if (extracted.size() < 2 && content.length() > 500) {
                 log().warn("LLM extraction returned very few items ({}), trying regex fallback", extracted.size());
@@ -178,6 +207,30 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             log().error("Error extracting information with LLM prompt, trying regex fallback", e);
             return extractWithRegexFallback(content, prompt);
         }
+    }
+    
+    /**
+     * Limpia la respuesta del LLM removiendo headers, explicaciones y formato incorrecto.
+     * MEJORA: Mejora la calidad de extracción al limpiar respuestas del LLM.
+     */
+    private List<String> cleanLLMResponse(String rawResponse) {
+        if (rawResponse == null || rawResponse.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        return Arrays.stream(rawResponse.split("\n"))
+                .map(String::trim)
+                .filter(line -> !line.isEmpty())
+                // Remover líneas que parezcan headers o explicaciones
+                .filter(line -> !line.matches("(?i)^(?:aquí|here|below|estos|these|lista|list|a continuación|following).*"))
+                // Remover separadores (líneas con solo guiones, iguales, asteriscos)
+                .filter(line -> !line.matches("^[-=*_]{3,}"))
+                // Filtrar líneas muy cortas (probablemente no son contenido útil)
+                .filter(line -> line.length() > 3)
+                // Remover numeración al inicio (1., 2., etc.) si existe
+                .map(line -> line.replaceAll("^\\d+[.)]\\s*", "").trim())
+                .filter(line -> !line.isEmpty())
+                .toList();
     }
     
     /**
@@ -433,6 +486,18 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return normalizeDate(date);
         }
         
+        // Patrón 5: Fecha con día de la semana (ej: "Lunes, 25 de agosto de 2026")
+        date = extractSingle(content, "(?i)Fecha:\\s*(?:lunes|martes|miércoles|jueves|viernes|sábado|domingo),?\\s*(\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4})");
+        if (date != null) {
+            return normalizeDate(date);
+        }
+        
+        // Patrón 6: Meses abreviados (ej: "25 ago 2026")
+        date = extractSingle(content, "(?i)Fecha:\\s*(\\d{1,2}\\s+(?:ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\\s+\\d{4})");
+        if (date != null) {
+            return normalizeDate(date);
+        }
+        
         log().warn("No se pudo extraer la fecha del documento");
         return null;
     }
@@ -542,6 +607,15 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         String header = extractBlock(content, "(?i)^(?:ACTA|REUNIÓN)", "(?i)Asistentes:");
         if (header != null) {
             place = extractSingle(header, "(?i)Lugar[^:]*:\\s*([^\\n]{1,200})");
+            if (place != null && place.length() > 5 && place.length() < 200) {
+                return place.trim().replaceAll("\\.$", "").trim();
+            }
+        }
+        
+        // Patrón 3: Variantes de etiquetas de lugar
+        String[] placeLabels = {"Lugar de celebración", "Sitio", "Ubicación", "Localización", "Lugar"};
+        for (String label : placeLabels) {
+            place = extractSingle(content, String.format("(?i)%s[^:]*:\\s*([^\\n]{1,200})", label));
             if (place != null && place.length() > 5 && place.length() < 200) {
                 return place.trim().replaceAll("\\.$", "").trim();
             }
@@ -857,7 +931,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Extraer bloque completo del orden del día
         String agendaBlock = extractAgendaBlock(content);
         if (agendaBlock == null || agendaBlock.trim().isEmpty()) {
-            log().warn("No se encontró el bloque del orden del día");
+            // No es crítico - la agenda es opcional y puede estar en otros formatos
+            log().debug("No se encontró el bloque del orden del día (esto es opcional y no afecta el funcionamiento)");
             return agenda;
         }
         
@@ -901,18 +976,86 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     }
     
     /**
-     * Extrae el bloque completo del orden del día.
+     * Extrae el bloque completo del orden del día con múltiples fallbacks.
+     * MEJORA: Soporta múltiples formatos y variaciones de texto.
      */
     private String extractAgendaBlock(String content) {
-        // Buscar desde "Orden del día:" hasta "Ruegos y preguntas" o "No habiendo más asuntos"
+        if (content == null || content.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Patrón 1: "Orden del día:" hasta "Ruegos y preguntas" o "No habiendo más asuntos"
         Pattern pattern = Pattern.compile(
             "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:Ruegos y preguntas|No habiendo más asuntos|Clausura|$))",
             Pattern.DOTALL
         );
         Matcher matcher = pattern.matcher(content);
         if (matcher.find()) {
-            return matcher.group(1).trim();
+            String block = matcher.group(1).trim();
+            if (!block.isEmpty()) {
+                return block;
+            }
         }
+        
+        // Patrón 2: "Orden del día:" hasta cualquier sección siguiente (más flexible)
+        pattern = Pattern.compile(
+            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:Ruegos|Preguntas|Clausura|No habiendo|Asistentes|$))",
+            Pattern.DOTALL
+        );
+        matcher = pattern.matcher(content);
+        if (matcher.find()) {
+            String block = matcher.group(1).trim();
+            if (!block.isEmpty()) {
+                return block;
+            }
+        }
+        
+        // Patrón 3: "ORDEN DEL DÍA" (mayúsculas) hasta sección siguiente
+        pattern = Pattern.compile(
+            "(?i)ORDEN DEL DÍA:?\\s*(.*?)(?=\\n\\s*(?:Ruegos|Preguntas|Clausura|No habiendo|$))",
+            Pattern.DOTALL
+        );
+        matcher = pattern.matcher(content);
+        if (matcher.find()) {
+            String block = matcher.group(1).trim();
+            if (!block.isEmpty()) {
+                return block;
+            }
+        }
+        
+        // Patrón 4: Buscar sección que contenga items numerados o con viñetas después de "Asistentes:"
+        // Esto captura el orden del día aunque no tenga la etiqueta explícita
+        String afterAttendees = extractBlock(content, "(?i)Asistentes:", "(?i)(?:Ruegos|Preguntas|Clausura|No habiendo|$)");
+        if (afterAttendees != null && !afterAttendees.trim().isEmpty()) {
+            // Buscar items que parezcan ser del orden del día (numerados o con viñetas)
+            Pattern agendaPattern = Pattern.compile(
+                "(?i)(?:Orden del día:?\\s*)?((?:[•·▪▫◦‣⁃-*]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|No habiendo)[^\\n]+)*)",
+                Pattern.DOTALL
+            );
+            Matcher agendaMatcher = agendaPattern.matcher(afterAttendees);
+            if (agendaMatcher.find()) {
+                String block = agendaMatcher.group(1).trim();
+                if (!block.isEmpty() && block.length() > 10) { // Debe tener contenido significativo
+                    return block;
+                }
+            }
+        }
+        
+        // Patrón 5: Buscar cualquier bloque con items numerados o viñetas que parezca ser agenda
+        // Esto es un último recurso para documentos sin estructura clara
+        pattern = Pattern.compile(
+            "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃-*]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]+)*)",
+            Pattern.DOTALL
+        );
+        matcher = pattern.matcher(content);
+        if (matcher.find()) {
+            String block = matcher.group(1).trim();
+            if (!block.isEmpty() && block.length() > 10) {
+                return block;
+            }
+        }
+        
+        // Si no se encuentra, devolver null (no es crítico)
         return null;
     }
     

@@ -91,11 +91,20 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
     /**
      * Normaliza el texto extraído de PDFs para mejorar la extracción posterior.
      * Limpia espacios múltiples, normaliza saltos de línea y caracteres especiales.
+     * MEJORA: Maneja diferentes encodings y caracteres especiales.
      */
     protected String normalizeExtractedText(String text) {
         if (text == null) return "";
         
         return text
+            // MEJORA: Normalizar saltos de línea primero (CRLF, CR, LF)
+            .replaceAll("\\r\\n", "\n")
+            .replaceAll("\\r", "\n")
+            // MEJORA: Reemplazar espacios no separables con espacios normales
+            .replaceAll("\\u00A0", " ")  // NBSP (Non-breaking space)
+            .replaceAll("\\u2007", " ")  // Figure space
+            .replaceAll("\\u202F", " ")  // Narrow NBSP
+            .replaceAll("\\u2009", " ")  // Thin space
             // Normalizar espacios múltiples a un solo espacio
             .replaceAll("\\s+", " ")
             // Normalizar saltos de línea múltiples a uno solo
@@ -109,6 +118,8 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             .replaceAll("[•·▪▫◦‣⁃]", "•")
             // Limpiar caracteres de control excepto saltos de línea
             .replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "")
+            // MEJORA: Limpiar caracteres de reemplazo Unicode (indican encoding incorrecto)
+            .replaceAll("\\uFFFD", "")  // Replacement character
             .trim();
     }
 
