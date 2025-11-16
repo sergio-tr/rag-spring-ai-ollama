@@ -251,25 +251,22 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         }
         
         String paragraphSummary = formatParagraphSummary(results, clusters);
-        String clusterAnalysis = formatClusterAnalysis(clusters);
         
         String prompt = String.format("""
-            Given the following find paragraph query (in any language):
+            Given the following user query (in any language):
             "%s"
             
-            Found %d relevant paragraphs grouped into %d clusters:
+            Found %d relevant paragraphs:
             
             %s
             
-            Cluster analysis:
-            %s
-            
-            Write a clear, comprehensive answer in the same language as the query, 
-            presenting the most relevant information from the paragraphs found.
-            Group similar information together and highlight the most important findings.
-            """, query, results.size(), clusters.size(), 
-            paragraphSummary != null ? paragraphSummary : "No paragraphs found.",
-            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "clusters", "análisis", "analysis", "grouped into", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            """, query, results.size(), 
+            paragraphSummary != null ? paragraphSummary : "No paragraphs found.");
         
         try {
             String response = getLLMResponseCached(prompt);
@@ -316,21 +313,25 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     }
 
     /**
-     * Formats paragraph summary for LLM prompt
+     * Formats paragraph summary for LLM prompt (without technical details)
      */
     private String formatParagraphSummary(List<ParagraphResult> results, List<InfoExtractor.Cluster<ParagraphResult>> clusters) {
         StringBuilder summary = new StringBuilder();
         
+        // Format paragraphs naturally without mentioning clusters
         for (int i = 0; i < clusters.size(); i++) {
             InfoExtractor.Cluster<ParagraphResult> cluster = clusters.get(i);
             ParagraphResult representative = cluster.getRepresentativeItem();
             
-            summary.append(String.format("Cluster %d (%d paragraphs) - Date: %s\n", 
-                                        i + 1, cluster.getSize(), representative.date));
-            summary.append(String.format("Place: %s\n", representative.place));
-            summary.append(String.format("Key Info: %s\n", representative.keyInfo));
-            summary.append(String.format("Paragraph: %s\n", representative.paragraph));
-            summary.append("\n");
+            if (representative.date != null) {
+                summary.append(String.format("Reunión del %s", representative.date));
+                if (representative.place != null) {
+                    summary.append(String.format(" (%s)", representative.place));
+                }
+                summary.append(":\n");
+            }
+            summary.append(representative.paragraph);
+            summary.append("\n\n");
         }
         
         return summary.toString();

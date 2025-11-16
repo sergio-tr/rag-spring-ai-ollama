@@ -177,13 +177,17 @@ public class FilterAndListTool extends AbstractTool {
         }
         
         String prompt = String.format("""
-            The user asked (in any language): "%s"
+            Given the following user query (in any language):
+            "%s"
             
-            The following meeting minutes matched the filters and their relevant content is:
+            Relevant meeting minutes found:
             %s
             
-            Write a brief and clear answer in the same language as the query, 
-            listing the minutes and summarizing the relevant content for each.
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "matched the filters", "análisis", "analysis", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
             """, query, joined);
         
         try {

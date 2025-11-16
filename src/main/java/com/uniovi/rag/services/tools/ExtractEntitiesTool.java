@@ -161,11 +161,14 @@ public class ExtractEntitiesTool extends AbstractTool {
             Given the following user query (in any language):
             "%s"
             
-            The following relevant entities were found in the meeting minutes:
+            Relevant information found:
             %s
             
-            Write a clear, concise response in the same language as the query, 
-            summarizing the entities found and their context.
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "entities found", "extraction", "analysis", or internal processing.
+            DO NOT include phrases like "La extracción de entidades ha identificado" or "Según el análisis".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
             """, query, joinedResults);
         
         try {

@@ -469,25 +469,21 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         }
         
         String entitySummary = formatEntitySummary(entities, clusters);
-        String clusterAnalysis = formatClusterAnalysis(clusters);
         
         String prompt = String.format("""
-            Given the following entity extraction query (in any language):
+            Given the following user query (in any language):
             "%s"
             
-            Found %d relevant entities grouped into %d clusters:
-            
+            Relevant information found:
             %s
             
-            Cluster analysis:
-            %s
-            
-            Write a clear, comprehensive answer in the same language as the query, 
-            summarizing the relevant entities and their context.
-            Group similar entities together and highlight the most important findings.
-            """, query, entities.size(), clusters.size(), 
-            entitySummary != null ? entitySummary : "No entities found.",
-            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "clusters", "entity extraction", "analysis", or internal processing.
+            DO NOT include phrases like "La extracción de entidades ha identificado" or "Según el análisis".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            """, query, 
+            entitySummary != null ? entitySummary : "No relevant information found.");
         
         try {
             String response = getLLMResponseCached(prompt);
@@ -530,41 +526,43 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
 
     /**
-     * Formats entity summary for LLM prompt
+     * Formats entity summary for LLM prompt (without technical details)
      */
     private String formatEntitySummary(List<Entity> entities, List<EntityCluster> clusters) {
         StringBuilder summary = new StringBuilder();
         
-        for (int i = 0; i < clusters.size(); i++) {
-            EntityCluster cluster = clusters.get(i);
-            summary.append(String.format("Cluster %d (%d entities) - Type: %s\n", 
-                                        i + 1, cluster.getSize(), cluster.getEntityType()));
-            summary.append(cluster.getRepresentativeEntity().name);
-            summary.append("\n\n");
+        // Group entities by type for natural presentation
+        Map<String, List<String>> entitiesByType = new HashMap<>();
+        
+        for (EntityCluster cluster : clusters) {
+            Entity representative = cluster.getRepresentativeEntity();
+            String type = representative.type.toString();
+            String name = representative.name;
+            
+            entitiesByType.computeIfAbsent(type, k -> new ArrayList<>()).add(name);
+        }
+        
+        // Format in a natural way without technical terms
+        for (Map.Entry<String, List<String>> entry : entitiesByType.entrySet()) {
+            String typeLabel = getTypeLabel(entry.getKey());
+            summary.append(String.format("%s: %s\n", typeLabel, String.join(", ", entry.getValue())));
         }
         
         return summary.toString();
     }
-
+    
     /**
-     * Formats cluster analysis for LLM prompt
+     * Gets a natural label for entity type
      */
-    private String formatClusterAnalysis(List<EntityCluster> clusters) {
-        if (clusters.isEmpty()) {
-            return "No clusters found.";
-        }
-        
-        StringBuilder analysis = new StringBuilder();
-        analysis.append(String.format("Total clusters: %d\n", clusters.size()));
-        
-        for (int i = 0; i < clusters.size(); i++) {
-            EntityCluster cluster = clusters.get(i);
-            analysis.append(String.format("- Cluster %d: %d entities, avg relevance: %.2f, type: %s\n", 
-                                        i + 1, cluster.getSize(), cluster.getAverageRelevance(), cluster.getEntityType()));
-        }
-        
-        return analysis.toString();
+    private String getTypeLabel(String type) {
+        return switch (type.toUpperCase()) {
+            case "PERSON" -> "Personas";
+            case "LOCATION" -> "Lugares";
+            case "ORGANIZATION" -> "Organizaciones";
+            default -> "Otros";
+        };
     }
+
 
     /**
      * Generates entity-specific not found message.

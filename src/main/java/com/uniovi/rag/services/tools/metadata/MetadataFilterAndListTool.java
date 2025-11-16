@@ -210,25 +210,22 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         }
         
         String resultSummary = formatResultSummary(results, clusters);
-        String clusterAnalysis = formatClusterAnalysis(clusters);
         
         String prompt = String.format("""
-            Given the following filter and list query (in any language):
+            Given the following user query (in any language):
             "%s"
             
-            Found %d relevant meeting minutes grouped into %d clusters:
+            Found %d relevant meeting minutes:
             
             %s
             
-            Cluster analysis:
-            %s
-            
-            Write a clear, comprehensive answer in the same language as the query, 
-            listing the minutes and summarizing the relevant content for each.
-            Group similar information together and highlight the most important findings.
-            """, query, results.size(), clusters.size(), 
-            resultSummary != null ? resultSummary : "No results found.",
-            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "clusters", "análisis", "analysis", "grouped into", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            """, query, results.size(), 
+            resultSummary != null ? resultSummary : "No results found.");
         
         try {
             String response = getLLMResponseCached(prompt);
@@ -275,18 +272,23 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     }
 
     /**
-     * Formats result summary for LLM prompt
+     * Formats result summary for LLM prompt (without technical details)
      */
     private String formatResultSummary(List<FilterResult> results, List<InfoExtractor.Cluster<FilterResult>> clusters) {
         StringBuilder summary = new StringBuilder();
         
+        // Format results naturally without mentioning clusters
         for (int i = 0; i < clusters.size(); i++) {
             InfoExtractor.Cluster<FilterResult> cluster = clusters.get(i);
             FilterResult representative = cluster.getRepresentativeItem();
             
-            summary.append(String.format("Cluster %d (%d results) - Date: %s\n", 
-                                        i + 1, cluster.getSize(), representative.date));
-            summary.append(String.format("Place: %s\n", representative.place));
+            if (representative.date != null) {
+                summary.append(String.format("Reunión del %s", representative.date));
+                if (representative.place != null) {
+                    summary.append(String.format(" (%s)", representative.place));
+                }
+                summary.append(":\n");
+            }
             summary.append(representative.summary);
             summary.append("\n\n");
         }
