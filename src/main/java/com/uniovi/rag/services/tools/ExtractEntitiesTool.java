@@ -70,9 +70,14 @@ public class ExtractEntitiesTool extends AbstractTool {
     }
 
     /**
-     * Extracts requested entities using intelligent analysis
+     * Extracts requested entities using intelligent analysis.
+     * Uses English for internal processing, but preserves original language in query and content.
      */
     private String extractRequestedEntities(String content, String query, JSONObject ner) {
+        if (content == null || content.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return "";
+        }
+        
         String answerType = nerHandler.determineAnswerType(query, ner);
         List<String> sections = nerHandler.extractSections(ner);
         
@@ -87,7 +92,7 @@ public class ExtractEntitiesTool extends AbstractTool {
             Query type: %s
             Target sections: %s
             
-            This is the content of a meeting minute:
+            This is the content of a meeting minute (may be in any language):
             "%s"
             
             Extracted attendees: %s
@@ -104,16 +109,26 @@ public class ExtractEntitiesTool extends AbstractTool {
             content.substring(0, Math.min(1000, content.length())), 
             attendees, 
             agenda != null ? agenda : "", 
-            fragment);
+            fragment != null ? fragment : "");
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
-        
-        return result.equalsIgnoreCase("[empty]") ? "" : result;
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in extractRequestedEntities, returning empty string");
+                return "";
+            }
+            
+            String trimmed = result.strip();
+            return trimmed.equalsIgnoreCase("[empty]") ? "" : trimmed;
+        } catch (Exception e) {
+            log().error("Error extracting requested entities, returning empty string", e);
+            return "";
+        }
     }
 
     /**
@@ -125,10 +140,22 @@ public class ExtractEntitiesTool extends AbstractTool {
     }
 
     /**
-     * Generates response using LLM
+     * Generates response using LLM.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateResponseWithLLM(String query, List<String> results) {
-        String joinedResults = results.stream().distinct().collect(Collectors.joining("\n\n"));
+        if (query == null || query.trim().isEmpty() || results == null || results.isEmpty()) {
+            return generateNotFoundResponse(query);
+        }
+        
+        String joinedResults = results.stream()
+                .filter(r -> r != null && !r.trim().isEmpty())
+                .distinct()
+                .collect(Collectors.joining("\n\n"));
+        
+        if (joinedResults.trim().isEmpty()) {
+            return generateNotFoundResponse(query);
+        }
         
         String prompt = String.format("""
             Given the following user query (in any language):
@@ -141,18 +168,51 @@ public class ExtractEntitiesTool extends AbstractTool {
             summarizing the entities found and their context.
             """, query, joinedResults);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
+                return generateFallbackResponse(query, results);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating response with LLM, using fallback", e);
+            return generateFallbackResponse(query, results);
+        }
+    }
+    
+    /**
+     * Generates a fallback response when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackResponse(String query, List<String> results) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "Entidades relevantes encontradas:\n\n" + 
+                   results.stream().limit(5).collect(Collectors.joining("\n\n"));
+        } else {
+            return "Relevant entities found:\n\n" + 
+                   results.stream().limit(5).collect(Collectors.joining("\n\n"));
+        }
     }
 
     /**
-     * Generates not found response using LLM
+     * Generates not found response using LLM.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateNotFoundResponse(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return generateFallbackNotFoundMessage("");
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
@@ -161,11 +221,36 @@ public class ExtractEntitiesTool extends AbstractTool {
             in the same language as the query.
             """, query);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                return generateFallbackNotFoundMessage(query);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating not found response, using fallback", e);
+            return generateFallbackNotFoundMessage(query);
+        }
+    }
+    
+    /**
+     * Generates a fallback "not found" message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackNotFoundMessage(String query) {
+        String queryLower = query != null ? query.toLowerCase() : "";
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "No se encontraron entidades relevantes en los documentos disponibles para esta consulta.";
+        } else {
+            return "No relevant entities were found in the available documents for this query.";
+        }
     }
 }

@@ -1,17 +1,17 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.services.analyser.NERQueryAnalyser;
+import com.uniovi.rag.services.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.services.analyser.QueryAnalyser;
 import com.uniovi.rag.services.classifier.EnhancedQueryClassifier;
 import com.uniovi.rag.services.classifier.PythonQueryClassifier;
 import com.uniovi.rag.services.classifier.QueryClassifier;
 import com.uniovi.rag.services.classifier.QueryType;
 import com.uniovi.rag.services.document.DocumentService;
-import com.uniovi.rag.services.document.MetadataDocumentService;
+import com.uniovi.rag.services.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.services.document.SimpleDocumentService;
 import com.uniovi.rag.services.evaluation.DatasetMinuteEvaluationService;
 import com.uniovi.rag.services.evaluation.EvaluationService;
-import com.uniovi.rag.services.expand.DocumentStructureExpander;
+import com.uniovi.rag.services.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.services.expand.QueryExpander;
 import com.uniovi.rag.services.query.ProcessQueryService;
 import com.uniovi.rag.services.query.QueryService;
@@ -82,23 +82,12 @@ public class RagConfiguration {
                 OllamaOptions.create().withModel(chatModel)
         );
     }
-
-    @Bean
-    public ChatClient.Builder chatClientBuilder(
-            @Value("${spring.ai.ollama.base-url}") String url,
-            @Value("${spring.ai.ollama.chat.model}") String chatModel
-    ) {
-        return ChatClient.builder(
-                chatModel(url, chatModel)
-        );
-    }
-
     @Bean
     public ChatClient chatClient(
             @Value("${spring.ai.ollama.base-url}") String url,
             @Value("${spring.ai.ollama.chat.model}") String chatModel
     ) {
-        return chatClientBuilder(url, chatModel).build();
+        return ChatClient.builder(chatModel(url, chatModel)).build();
     }
 
     @Bean
@@ -110,7 +99,7 @@ public class RagConfiguration {
     public DocumentService documentService(RagFeatureConfiguration featureConfig, PgVectorStore vectorStore, ChatClient chatClient) {
 
         if (featureConfig.isMetadataEnabled()) {
-            return new MetadataDocumentService(vectorStore, chatClient);
+            return new MetadataMinuteDocumentService(vectorStore, chatClient);
         }
 
         return new SimpleDocumentService(vectorStore, chatClient);
@@ -124,7 +113,7 @@ public class RagConfiguration {
 
     @Bean
     public QueryExpander queryExpander(ChatClient chatClient) {
-        return new DocumentStructureExpander(chatClient);
+        return new MinuteDocumentStructureExpander(chatClient);
     }
 
     @Bean
@@ -134,7 +123,7 @@ public class RagConfiguration {
 
     @Bean
     public QueryAnalyser queryAnalyser(ChatClient chatClient) {
-        return new NERQueryAnalyser(chatClient);
+        return new MinuteNERQueryAnalyser(chatClient);
     }
 
     @Bean

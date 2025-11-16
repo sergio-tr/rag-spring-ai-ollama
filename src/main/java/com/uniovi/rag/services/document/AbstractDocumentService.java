@@ -17,7 +17,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.List;
 
-public abstract class AbstractDocumentService implements DocumentService {
+public abstract class AbstractDocumentService<T> implements DocumentService {
 
     protected final PgVectorStore vectorStore;
     protected final ChatClient chatClient;

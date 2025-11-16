@@ -33,12 +33,16 @@ public class GetFieldTool extends AbstractTool {
         
         List<Document> docs = retrieveDocuments(query);
 
-        // Filter documents based on NER if available
-        if (ner != null) {
+        // Try with NER filtering if available
+        if (ner != null && !docs.isEmpty()) {
             // Use EnhancedNERHandler for intelligent filtering
             List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
             
             for (Document doc : filteredDocs) {
+                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    continue;
+                }
+                
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String value = extractLiteralFieldByIntent(query, ner, doc.getContent());
                     if (value != null && !value.isBlank()) {
@@ -46,9 +50,31 @@ public class GetFieldTool extends AbstractTool {
                     }
                 }
             }
-        } else {
+        }
+        
+        if (!docs.isEmpty()) {
             // Fallback to LLM-based relevance
             for (Document doc : docs) {
+                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    continue;
+                }
+                
+                if (isRelevantByLLM(doc.getContent(), query)) {
+                    String value = extractLiteralFieldByIntent(query, null, doc.getContent());
+                    if (value != null && !value.isBlank()) {
+                        return ToolResult.from(value, getClass());
+                    }
+                }
+            }
+        }
+        
+        docs = retrieveAllDocuments(query);
+        if (!docs.isEmpty()) {
+            for (Document doc : docs) {
+                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    continue;
+                }
+                
                 if (isRelevantByLLM(doc.getContent(), query)) {
                     String value = extractLiteralFieldByIntent(query, null, doc.getContent());
                     if (value != null && !value.isBlank()) {
@@ -63,31 +89,48 @@ public class GetFieldTool extends AbstractTool {
     }
 
     /**
-     * Determines if content is relevant to query using LLM
+     * Determines if content is relevant to query using LLM.
+     * Uses English for internal processing, but preserves original language in query and content.
      */
     private boolean isRelevantByLLM(String content, String query) {
+        if (content == null || content.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
+        String contentSnippet = content.substring(0, Math.min(1000, content.length()));
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
             
-            And the following meeting minutes content:
+            And the following meeting minutes content (may be in any language):
             "%s"
             
-            Does this minutes document match all the conditions in the query? 
-            Answer only YES or NO in the same language as the query.
-            """, query, content.substring(0, Math.min(1000, content.length())));
+            Does this minutes document match all the conditions in the query?
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
+            """, query, contentSnippet);
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        // Check for positive responses in multiple languages
-        return result.startsWith("yes") || result.startsWith("sí") || result.startsWith("si") || 
-               result.startsWith("oui") || result.startsWith("ja") || result.startsWith("da");
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in isRelevantByLLM, defaulting to false");
+                return false;
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            // Check for positive responses in multiple languages
+            return normalized.startsWith("yes") || normalized.startsWith("sí") || normalized.startsWith("si") || 
+                   normalized.startsWith("oui") || normalized.startsWith("ja") || normalized.startsWith("da");
+        } catch (Exception e) {
+            log().error("Error in isRelevantByLLM, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
     }
 
     private String extractLiteralFieldByIntent(String query, JSONObject ner, String content) {
@@ -106,33 +149,101 @@ public class GetFieldTool extends AbstractTool {
         };
     }
 
+    /**
+     * Classifies field intent using LLM.
+     * Uses English for internal processing, but preserves original language in query.
+     */
     private String classifyLiteralIntentWithLLM(String query) {
-        String prompt = """
+        String prompt = String.format("""
             Given the following user question (in any language):
             "%s"
-            Determine which literal field the user wants to query. Choose one of the following (answer with the field name in the language of the question if possible):
-            - date/fecha
-            - place/lugar
-            - startTime/hora_inicio
-            - endTime/hora_fin
-            - president/presidente
-            - secretary/secretario
-            - attendees_list/asistentes_lista
-            - attendees_number/asistentes_numero
-            - agenda/orden_dia
-            If you cannot determine, answer exactly: unknown/desconocido
-            """.formatted(query);
-        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
-        if (result.contains("unknown") || result.contains("desconocido")) return "unknown";
-        return result;
+            
+            Determine which literal field the user wants to query. Choose one of the following (respond with the field name in English):
+            - date
+            - place
+            - startTime
+            - endTime
+            - president
+            - secretary
+            - attendees_list
+            - attendees_number
+            - agenda
+            
+            If you cannot determine, answer exactly: unknown
+            
+            Respond with ONLY the field name in English (one word).
+            Do not include any explanation or additional text.
+            """, query);
+        
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in classifyLiteralIntentWithLLM, defaulting to unknown");
+                return "unknown";
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            if (normalized.contains("unknown") || normalized.contains("desconocido")) {
+                return "unknown";
+            }
+            
+            // Extract the first word
+            String cleaned = normalized.split("\\s+")[0].trim();
+            return cleaned;
+        } catch (Exception e) {
+            log().error("Error in classifyLiteralIntentWithLLM, defaulting to unknown", e);
+            return "unknown";
+        }
     }
 
+    /**
+     * Generates not found message.
+     * Uses English for internal processing, but response matches query language.
+     */
     private String generateNotFoundMessage(String query) {
-        String prompt = """
+        String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
-            Write a short message indicating that no information was found related to the query, in the same language as the query.
-            """.formatted(query);
-        return chatClient.prompt().user(prompt).call().content().strip();
+            
+            Write a short message indicating that no information was found related to the query, 
+            in the same language as the query.
+            """, query);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                return generateFallbackNotFoundMessage(query);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating not found message, using fallback", e);
+            return generateFallbackNotFoundMessage(query);
+        }
+    }
+    
+    /**
+     * Generates a fallback "not found" message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackNotFoundMessage(String query) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "No se encontró información relacionada con esta consulta en los documentos disponibles.";
+        } else {
+            return "No information related to this query was found in the available documents.";
+        }
     }
 }

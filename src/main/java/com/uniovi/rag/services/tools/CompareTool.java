@@ -97,9 +97,14 @@ public class CompareTool extends AbstractTool {
     }
 
     /**
-     * Determines if we should group by temporal periods
+     * Determines if we should group by temporal periods.
+     * Uses English for internal processing, but preserves original language in query.
      */
     private boolean shouldGroupByTemporalPeriod(String query, Map<String, MinuteInfo> summary) {
+        if (query == null || query.trim().isEmpty() || summary == null || summary.isEmpty()) {
+            return false;
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
@@ -110,18 +115,28 @@ public class CompareTool extends AbstractTool {
             Should the comparison be grouped by temporal periods (months, quarters, years)?
             Consider if the query mentions time periods, months, or temporal groupings.
             
-            Answer only with 'yes' or 'no'.
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
             """, query, String.join(", ", summary.keySet()));
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        return result.contains("yes") || result.contains("sí");
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in shouldGroupByTemporalPeriod, defaulting to false");
+                return false;
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            return normalized.contains("yes") || normalized.contains("sí");
+        } catch (Exception e) {
+            log().error("Error in shouldGroupByTemporalPeriod, defaulting to false", e);
+            return false;
+        }
     }
 
     /**
@@ -189,9 +204,14 @@ public class CompareTool extends AbstractTool {
     }
 
     /**
-     * Generates response using LLM
+     * Generates response using LLM.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateResponseWithLLM(String query, String comparison) {
+        if (query == null || query.trim().isEmpty() || comparison == null || comparison.trim().isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
@@ -203,18 +223,49 @@ public class CompareTool extends AbstractTool {
             comparing the values and explaining which is greater or if there's a tie.
             """, query, comparison);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
+                return generateFallbackResponse(query, comparison);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating response with LLM, using fallback", e);
+            return generateFallbackResponse(query, comparison);
+        }
+    }
+    
+    /**
+     * Generates a fallback response when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackResponse(String query, String comparison) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "Comparación obtenida:\n" + comparison;
+        } else {
+            return "Comparison obtained:\n" + comparison;
+        }
     }
 
     /**
-     * Generates not found message using LLM
+     * Generates not found message using LLM.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateNotFoundMessage(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return generateFallbackNotFoundMessage("");
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
@@ -223,12 +274,37 @@ public class CompareTool extends AbstractTool {
             in the same language as the query.
             """, query);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                return generateFallbackNotFoundMessage(query);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating not found message, using fallback", e);
+            return generateFallbackNotFoundMessage(query);
+        }
+    }
+    
+    /**
+     * Generates a fallback "not found" message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackNotFoundMessage(String query) {
+        String queryLower = query != null ? query.toLowerCase() : "";
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "No se encontraron actas de reunión relevantes para realizar la comparación solicitada.";
+        } else {
+            return "No relevant meeting minutes were found for the requested comparison.";
+        }
     }
 
     /**

@@ -19,9 +19,50 @@ public class EnhancedQueryClassifier implements QueryClassifier {
 
     @Override
     public QueryType classify(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return null;
+        }
+        
         try {
-            return QueryType.valueOf(classifyWithText(query));
+            String typeText = classifyWithText(query);
+            
+            if (typeText == null || typeText.trim().isEmpty() || typeText.equals("UNKNOWN")) {
+                // Fallback: try base classifier directly
+                try {
+                    QueryType baseType = baseClassifier.classify(query);
+                    if (baseType != null) {
+                        System.out.println("[CLASSIFIER] Enhanced failed, using base classifier result: " + baseType);
+                        return baseType;
+                    }
+                } catch (Exception e) {
+                    System.out.println("[CLASSIFIER] Both enhanced and base classifier failed");
+                }
+                return null;
+            }
+            
+            return QueryType.valueOf(typeText);
         } catch (IllegalArgumentException e) {
+            System.out.println("[CLASSIFIER] Invalid QueryType, trying base classifier");
+            try {
+                QueryType baseType = baseClassifier.classify(query);
+                if (baseType != null) {
+                    System.out.println("[CLASSIFIER] Using base classifier result: " + baseType);
+                    return baseType;
+                }
+            } catch (Exception ex) {
+                System.out.println("[CLASSIFIER] Base classifier also failed");
+            }
+            return null;
+        } catch (Exception e) {
+            System.out.println("[CLASSIFIER] Error in enhanced classifier, trying base classifier: " + e.getMessage());
+            try {
+                QueryType baseType = baseClassifier.classify(query);
+                if (baseType != null) {
+                    return baseType;
+                }
+            } catch (Exception ex) {
+                System.out.println("[CLASSIFIER] Base classifier also failed");
+            }
             return null;
         }
     }
@@ -36,8 +77,16 @@ public class EnhancedQueryClassifier implements QueryClassifier {
         return refinedType;
     }
 
+    /**
+     * Validates classification with LLM, with fallback to base classifier if LLM fails.
+     * Uses English for internal processing, but preserves original language in query.
+     */
     private String validateWithLLM(String query, String initialType) {
-        String prompt = """
+        if (query == null || query.trim().isEmpty()) {
+            return initialType != null ? initialType : "UNKNOWN";
+        }
+        
+        String prompt = String.format("""
             You are an expert system for classifying questions asked about meeting minutes. Below are the possible question types in this system, along with their definitions:
             
             Possible question types:
@@ -56,25 +105,42 @@ public class EnhancedQueryClassifier implements QueryClassifier {
             
             Your task is to validate whether the initial classification is correct or should be corrected.
             
-            Question:
+            Question (may be in any language):
             "%s"
             
             Proposed classification:
             %s
             
-            Return only one of the following valid identifiers (without explanations or quotation marks):
+            Return ONLY one of the following valid identifiers (without explanations or quotation marks):
             COUNT_DOCUMENTS, COUNT_AND_EXPLAIN, EXTRACT_ENTITIES, FIND_PARAGRAPH, GET_FIELD,
             BOOLEAN_QUERY, COMPARE, SUMMARIZE_TOPIC, SUMMARIZE_MEETING,
             DECISION_EXTRACTION, FILTER_AND_LIST, GET_DURATION.
-            """.formatted(query, initialType);
+            """, query, initialType != null ? initialType : "UNKNOWN");
 
-
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toUpperCase();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                System.out.println("[CLASSIFIER] Empty LLM response, using base classifier result: " + initialType);
+                return initialType != null ? initialType : "UNKNOWN";
+            }
+            
+            String refinedType = response.strip().toUpperCase();
+            
+            try {
+                QueryType.valueOf(refinedType);
+                return refinedType;
+            } catch (IllegalArgumentException e) {
+                System.out.println("[CLASSIFIER] Invalid QueryType from LLM: " + refinedType + ", using base classifier result: " + initialType);
+                return initialType != null ? initialType : "UNKNOWN";
+            }
+        } catch (Exception e) {
+            System.out.println("[CLASSIFIER] Error validating with LLM, using base classifier result: " + initialType + ", error: " + e.getMessage());
+            return initialType != null ? initialType : "UNKNOWN";
+        }
     }
 }

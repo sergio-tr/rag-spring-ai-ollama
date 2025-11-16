@@ -125,9 +125,13 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts relevant paragraph with enhanced context analysis
+     * Extracts relevant paragraph with enhanced context analysis.
      */
     private String extractRelevantParagraph(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return "";
+        }
+        
         String queryType = analyzeQueryType(query);
         
         String prompt = String.format("""
@@ -136,7 +140,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             
             Query type: %s
             
-            Meeting metadata:
+            Meeting metadata (values may be in any language):
             Date: %s
             Place: %s
             President: %s
@@ -163,18 +167,35 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             minute.agenda() != null ? minute.agenda().toString() : "unknown"
         );
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().debug("Empty response from LLM in extractRelevantParagraph, returning empty string");
+                return "";
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error extracting relevant paragraph, returning empty string", e);
+            return "";
+        }
     }
 
     /**
-     * Extracts key information from paragraph
+     * Extracts key information from paragraph.
+     * Uses English for internal processing, but preserves original language in query and paragraph.
      */
     private String extractKeyInformation(String paragraph, String query) {
+        if (paragraph == null || paragraph.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return "";
+        }
+        
         String prompt = String.format("""
-            Given the following paragraph:
+            Given the following paragraph (may be in any language):
             "%s"
             
-            And the original query:
+            And the original query (may be in any language):
             "%s"
             
             Extract the key information that directly relates to the query.
@@ -182,7 +203,19 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             Write a brief summary (1-2 sentences) in the same language as the query.
             """, paragraph, query);
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().debug("Empty response from LLM in extractKeyInformation, returning empty string");
+                return "";
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error extracting key information, returning empty string", e);
+            return "";
+        }
     }
 
     /**
@@ -208,10 +241,15 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates enhanced paragraph answer with clustering and analysis
+     * Generates enhanced paragraph answer with clustering and analysis.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedParagraphAnswer(String query, List<ParagraphResult> results, 
                                                   List<InfoExtractor.Cluster<ParagraphResult>> clusters) {
+        if (query == null || query.trim().isEmpty() || results == null || results.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
         String paragraphSummary = formatParagraphSummary(results, clusters);
         String clusterAnalysis = formatClusterAnalysis(clusters);
         
@@ -229,9 +267,52 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             Write a clear, comprehensive answer in the same language as the query, 
             presenting the most relevant information from the paragraphs found.
             Group similar information together and highlight the most important findings.
-            """, query, results.size(), clusters.size(), paragraphSummary, clusterAnalysis);
+            """, query, results.size(), clusters.size(), 
+            paragraphSummary != null ? paragraphSummary : "No paragraphs found.",
+            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedParagraphAnswer, using fallback");
+                return generateFallbackParagraphAnswer(query, results);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced paragraph answer, using fallback", e);
+            return generateFallbackParagraphAnswer(query, results);
+        }
+    }
+    
+    /**
+     * Generates a fallback paragraph answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackParagraphAnswer(String query, List<ParagraphResult> results) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("Se encontraron %d párrafos relevantes:\n%s",
+                              results.size(),
+                              results.stream()
+                                      .limit(3)
+                                      .map(r -> String.format("Reunión del %s:\n%s", 
+                                          r.date != null ? r.date : "fecha desconocida",
+                                          r.paragraph.length() > 300 ? r.paragraph.substring(0, 300) + "..." : r.paragraph))
+                                      .collect(Collectors.joining("\n\n")));
+        } else {
+            return String.format("Found %d relevant paragraphs:\n%s",
+                              results.size(),
+                              results.stream()
+                                      .limit(3)
+                                      .map(r -> String.format("Meeting on %s:\n%s", 
+                                          r.date != null ? r.date : "unknown date",
+                                          r.paragraph.length() > 300 ? r.paragraph.substring(0, 300) + "..." : r.paragraph))
+                                      .collect(Collectors.joining("\n\n")));
+        }
     }
 
     /**

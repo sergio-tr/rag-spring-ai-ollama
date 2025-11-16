@@ -103,11 +103,22 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts relevant evidence from a minute using LLM
+     * Extracts relevant evidence from a minute using LLM.
      */
     private String extractEvidenceFromMinute(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return "";
+        }
+        
         String prompt = generateEvidenceExtractionPrompt(query, minute);
-        return getLLMResponseCached(prompt);
+        String response = getLLMResponseCached(prompt);
+        
+        if (response == null || response.trim().isEmpty()) {
+            log().debug("Empty evidence extracted from minute: {}", minute.id());
+            return "";
+        }
+        
+        return response;
     }
 
     /**
@@ -144,10 +155,23 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates final boolean answer with enhanced context
+     * Generates final boolean answer with enhanced context.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateBooleanAnswerWithLLM(String query, List<String> evidence, int minuteCount) {
-        String joined = String.join("\n\n", evidence);
+        if (query == null || query.trim().isEmpty() || evidence == null || evidence.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
+        String joined = evidence.stream()
+                .filter(e -> e != null && !e.trim().isEmpty())
+                .distinct()
+                .collect(Collectors.joining("\n\n"));
+        
+        if (joined.trim().isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
@@ -160,14 +184,47 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             Be concise but informative. Include specific details from the evidence when relevant.
             """, query, minuteCount, joined);
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateBooleanAnswerWithLLM, using fallback");
+                return generateFallbackAnswer(query, evidence);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating boolean answer with LLM, using fallback", e);
+            return generateFallbackAnswer(query, evidence);
+        }
+    }
+    
+    /**
+     * Generates a fallback answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackAnswer(String query, List<String> evidence) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("Basándome en la evidencia encontrada (%d piezas), la respuesta es: SÍ/NO/PARCIALMENTE. Evidencia: %s",
+                              evidence.size(), 
+                              evidence.stream().limit(3).collect(Collectors.joining("; ")));
+        } else {
+            return String.format("Based on the evidence found (%d pieces), the answer is: YES/NO/PARTIALLY. Evidence: %s",
+                              evidence.size(),
+                              evidence.stream().limit(3).collect(Collectors.joining("; ")));
+        }
     }
 
     /**
-     * Cached LLM response
+     * Cached LLM response with error handling and validation.
+     * Uses parent class implementation which includes error handling.
      */
     @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
     public String getLLMResponseCached(String prompt) {
-        return chatClient.prompt().user(prompt).call().content().strip();
+        // Use parent class implementation which has error handling
+        return super.getLLMResponseCached(prompt);
     }
 }

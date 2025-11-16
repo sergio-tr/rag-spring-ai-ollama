@@ -37,30 +37,62 @@ public class DecisionExtractionTool extends AbstractTool {
         List<Document> docs = retrieveDocuments(query);
         List<String> decisions = new ArrayList<>();
 
-        // Filter documents based on NER if available
-        if (ner != null) {
+        // Try with NER filtering if available
+        if (ner != null && !docs.isEmpty()) {
             // Use EnhancedNERHandler for intelligent filtering
             List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
             
             for (Document doc : filteredDocs) {
+                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    continue;
+                }
+                
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String content = doc.getContent();
                     String date = extractDate(content);
                     List<String> fragments = extractDecisions(content, query);
                     for (String fragment : fragments) {
-                        decisions.add("Meeting minutes from " + date + ":\n" + fragment);
+                        if (fragment != null && !fragment.trim().isEmpty()) {
+                            decisions.add("Meeting minutes from " + (date != null ? date : "unknown date") + ":\n" + fragment);
+                        }
                     }
                 }
             }
-        } else {
+        }
+        
+        if (decisions.isEmpty() && !docs.isEmpty()) {
             // Fallback to query-based relevance
             for (Document doc : docs) {
+                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    continue;
+                }
+                
                 String content = doc.getContent();
                 String date = extractDate(content);
                 List<String> fragments = extractDecisions(content, query);
                 for (String fragment : fragments) {
-                    if (isDecisionRelevantToQuery(fragment, query)) {
-                        decisions.add("Meeting minutes from " + date + ":\n" + fragment);
+                    if (fragment != null && !fragment.trim().isEmpty() && isDecisionRelevantToQuery(fragment, query)) {
+                        decisions.add("Meeting minutes from " + (date != null ? date : "unknown date") + ":\n" + fragment);
+                    }
+                }
+            }
+        }
+        
+        if (decisions.isEmpty()) {
+            docs = retrieveAllDocuments(query);
+            if (!docs.isEmpty()) {
+                for (Document doc : docs) {
+                    if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                        continue;
+                    }
+                    
+                    String content = doc.getContent();
+                    String date = extractDate(content);
+                    List<String> fragments = extractDecisions(content, query);
+                    for (String fragment : fragments) {
+                        if (fragment != null && !fragment.trim().isEmpty() && isDecisionRelevantToQuery(fragment, query)) {
+                            decisions.add("Meeting minutes from " + (date != null ? date : "unknown date") + ":\n" + fragment);
+                        }
                     }
                 }
             }
@@ -89,38 +121,67 @@ public class DecisionExtractionTool extends AbstractTool {
     }
 
     /**
-     * Determines if a fragment contains a decision relevant to the query
+     * Determines if a fragment contains a decision relevant to the query.
+     * Uses English for internal processing, but preserves original language in query and fragment.
      */
     private boolean isDecisionRelevantToQuery(String fragment, String query) {
+        if (fragment == null || fragment.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
         String prompt = String.format("""
             This is the user's query (in any language):
             "%s"
             
-            This is a fragment from meeting minutes:
+            This is a fragment from meeting minutes (may be in any language):
             "%s"
             
-            Does this fragment contain a decision relevant to the query? 
-            Respond only with 'yes' or 'no' in the same language as the query.
+            Does this fragment contain a decision relevant to the query?
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
             """, query, fragment);
         
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-        
-        // Check for positive responses in multiple languages
-        return result.contains("yes") || result.contains("sí") || result.contains("si") || 
-               result.contains("oui") || result.contains("ja") || result.contains("da");
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in isDecisionRelevantToQuery, defaulting to false");
+                return false;
+            }
+            
+            String normalized = result.strip().toLowerCase();
+            // Check for positive responses in multiple languages
+            return normalized.contains("yes") || normalized.contains("sí") || normalized.contains("si") || 
+                   normalized.contains("oui") || normalized.contains("ja") || normalized.contains("da");
+        } catch (Exception e) {
+            log().error("Error in isDecisionRelevantToQuery, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
     }
 
     /**
-     * Generates response with LLM using found decisions
+     * Generates response with LLM using found decisions.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateResponseWithLLM(String query, List<String> decisions) {
-        String joined = decisions.stream().distinct().collect(Collectors.joining("\n\n"));
+        if (query == null || query.trim().isEmpty() || decisions == null || decisions.isEmpty()) {
+            return generateNotFoundResponse(query);
+        }
+        
+        String joined = decisions.stream()
+                .filter(d -> d != null && !d.trim().isEmpty())
+                .distinct()
+                .collect(Collectors.joining("\n\n"));
+        
+        if (joined.trim().isEmpty()) {
+            return generateNotFoundResponse(query);
+        }
+        
         String prompt = String.format("""
             The user asked (in any language): "%s"
             
@@ -131,16 +192,28 @@ public class DecisionExtractionTool extends AbstractTool {
             summarizing the decisions found and their context.
             """, query, joined);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
+                return generateFallbackResponse(query, decisions);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating response with LLM, using fallback", e);
+            return generateFallbackResponse(query, decisions);
+        }
     }
     
     /**
-     * Generates not found response
+     * Generates not found response.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateNotFoundResponse(String query) {
         String prompt = String.format("""
@@ -151,11 +224,53 @@ public class DecisionExtractionTool extends AbstractTool {
             Write a polite response in the same language as the query explaining that no relevant decisions were found.
             """, query);
         
-        return chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip();
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                return generateFallbackNotFoundMessage(query);
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error generating not found response, using fallback", e);
+            return generateFallbackNotFoundMessage(query);
+        }
+    }
+    
+    /**
+     * Generates a fallback response when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackResponse(String query, List<String> decisions) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "Se encontraron las siguientes decisiones relevantes:\n\n" + 
+                   decisions.stream().limit(5).collect(Collectors.joining("\n\n"));
+        } else {
+            return "Found the following relevant decisions:\n\n" + 
+                   decisions.stream().limit(5).collect(Collectors.joining("\n\n"));
+        }
+    }
+    
+    /**
+     * Generates a fallback "not found" message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackNotFoundMessage(String query) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return "No se encontraron decisiones relevantes en los documentos disponibles para esta consulta.";
+        } else {
+            return "No relevant decisions were found in the available documents for this query.";
+        }
     }
 }

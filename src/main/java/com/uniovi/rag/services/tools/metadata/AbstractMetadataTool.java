@@ -40,27 +40,36 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             JSONObject entidades = nerEntities.getJSONObject("entities");
             String[] terms = extractTermsFromNER(entidades);
             if (terms.length > 0) {
-                String prompt = """
-                        Given these specific terms from the query:
-                        %s
-                        
-                        And the document metadata:
-                        %s
-                        
-                        Do these terms match the metadata semantically?
-                        Answer only with "YES" or "NO".
-                        """.formatted(String.join(", ", terms), doc.getMetadata().toString());
+                String prompt = String.format("""
+                    You are a metadata matching system. Analyze if document metadata semantically matches specific terms.
+                    
+                    Terms from query (may be in any language):
+                    %s
+                    
+                    Document metadata (values may be in any language):
+                    %s
+                    
+                    Task: Determine if the metadata semantically matches these terms.
+                    Consider semantic meaning, not just exact word matches.
+                    
+                    Respond with ONLY one word: YES or NO.
+                    Do not include any explanation or additional text.
+                    """, String.join(", ", terms), doc.getMetadata().toString());
 
-                String result = chatClient
-                        .prompt()
-                        .user(prompt)
-                        .call()
-                        .content()
-                        .strip()
-                        .toLowerCase();
+                try {
+                    String result = chatClient
+                            .prompt()
+                            .user(prompt)
+                            .call()
+                            .content()
+                            .strip()
+                            .toLowerCase();
 
-                if (result.contains("yes")) {
-                    return true;
+                    if (result.contains("yes") || result.contains("sí")) {
+                        return true;
+                    }
+                } catch (Exception e) {
+                    log().warn("Error in NER-based metadata matching, continuing with fallback", e);
                 }
             }
         }
@@ -101,94 +110,149 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return terms.toArray(new String[0]);
     }
 
+    /**
+     * Checks if content semantically matches keywords.
+     * Uses English for internal processing, but preserves original language in content.
+     */
     protected boolean semanticallyMatches(String content, String[] keywords) {
-        String prompt = """
-            Given the following meeting minutes content, tell me if there is any mention related to these topics: %s
-            Meeting minutes content:
+        String prompt = String.format("""
+            You are a content matching system. Analyze if meeting minutes content mentions specific topics.
+            
+            Topics to check (may be in any language):
             %s
             
-            Respond only with "Yes" or "No".
-            """.formatted(String.join(", ", keywords), content);
-
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-
-        return result.contains("sí");
-    }
-
-    protected boolean semanticallyMatchesMetadata(Document doc, String query) {
-        String prompt = """
-            Given the following user query (in any language):
-            "%s"
-            
-            And the following document metadata:
+            Meeting minutes content (may be in any language):
             %s
             
-            Does this document's metadata match the intent of the query, regardless of exact wording or language?
-            Consider all metadata fields and their semantic meaning.
+            Task: Determine if the content mentions or discusses any of the specified topics.
+            Consider semantic meaning, not just exact word matches.
             
-            Answer only with "YES" or "NO".
-            """.formatted(query, doc.getMetadata().toString());
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
+            """, String.join(", ", keywords), content);
 
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toLowerCase();
 
-        return result.contains("yes");
-    }
-
-    protected boolean semanticallyMatchesMinute(Minute minute, String query) {
-        String prompt = """
-                Given the following user query (in any language):
-                "%s"
-                
-                And the following meeting metadata:
-                Date: %s
-                Place: %s
-                Topics: %s
-                Decisions: %s
-                Summary: %s
-                Agenda: %s
-                
-                Does this meeting match the intent of the query, regardless of exact wording or language?
-                Consider all fields and their semantic meaning.
-                
-                Answer only with "YES" or "NO".
-                """.formatted(
-                    query,
-                    minute.date() != null ? minute.date() : "unknown",
-                    minute.place() != null ? minute.place() : "unknown",
-                    minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-                    minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
-                    minute.summary() != null ? minute.summary() : "unknown",
-                    minute.agenda() != null ? minute.agenda().toString() : "unknown"
-                );
-
-        String result = chatClient
-                .prompt()
-                .user(prompt)
-                .call()
-                .content()
-                .strip()
-                .toLowerCase();
-
-        return result.contains("yes");
+            return result.contains("yes") || result.contains("sí");
+        } catch (Exception e) {
+            log().warn("Error in semantic content matching, defaulting to false", e);
+            return false;
+        }
     }
 
     /**
-     * Extrae y deserializa el objeto Minute del Document
+     * Checks if document metadata semantically matches the query.
+     * Uses English for internal processing, but preserves original language in query and metadata.
+     */
+    protected boolean semanticallyMatchesMetadata(Document doc, String query) {
+        String prompt = String.format("""
+            You are a metadata matching system. Analyze if document metadata semantically matches a user query.
+            
+            User query (may be in any language):
+            "%s"
+            
+            Document metadata (values may be in any language):
+            %s
+            
+            Task: Determine if this document's metadata semantically matches the intent of the query.
+            
+            Matching criteria:
+            - Consider semantic meaning, not just exact word matches
+            - Consider all metadata fields and their semantic meaning
+            - Match regardless of exact wording or language
+            - If query mentions dates, people, topics, etc., check if metadata contains relevant information
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
+            """, query, doc.getMetadata().toString());
+
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toLowerCase();
+
+            return result.contains("yes") || result.contains("sí");
+        } catch (Exception e) {
+            log().warn("Error in semantic metadata matching, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
+    }
+
+    /**
+     * Checks if minute metadata semantically matches the query.
+     */
+    protected boolean semanticallyMatchesMinute(Minute minute, String query) {
+        String prompt = String.format("""
+            You are a meeting metadata matching system. Analyze if meeting metadata semantically matches a user query.
+            
+            User query (may be in any language):
+            "%s"
+            
+            Meeting metadata (values may be in any language):
+            Date: %s
+            Place: %s
+            Topics: %s
+            Decisions: %s
+            Summary: %s
+            Agenda: %s
+            
+            Task: Determine if this meeting metadata semantically matches the intent of the query.
+            
+            Matching criteria:
+            - Consider semantic meaning, not just exact word matches
+            - Consider all fields and their semantic meaning
+            - Match regardless of exact wording or language
+            - If query mentions dates, people, topics, etc., check if metadata contains relevant information
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
+            """,
+            query,
+            minute.date() != null ? minute.date() : "unknown",
+            minute.place() != null ? minute.place() : "unknown",
+            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
+            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
+            minute.summary() != null ? minute.summary() : "unknown",
+            minute.agenda() != null ? minute.agenda().toString() : "unknown"
+        );
+
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toLowerCase();
+
+            return result.contains("yes") || result.contains("sí");
+        } catch (Exception e) {
+            log().warn("Error in semantic minute matching, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
+    }
+
+    /**
+     * Extracts and deserializes the Minute object from Document metadata.
+     * First tries to get the complete object from "minute" key (JSON or object).
+     * If not available, reconstructs it from individual metadata fields.
      */
     protected Minute getMinuteFromMetadata(Document doc) {
-        Object minuteObj = doc.getMetadata().get("minute");
+        Map<String, Object> metadata = doc.getMetadata();
+        
+        // Try to get complete Minute object from "minute" key
+        Object minuteObj = metadata.get("minute");
         if (minuteObj instanceof Minute) {
             return (Minute) minuteObj;
         }
@@ -196,49 +260,213 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             try {
                 return objectMapper.readValue(json, Minute.class);
             } catch (Exception ex) {
-                return null;
+                log().debug("Failed to deserialize Minute from JSON, attempting reconstruction from fields", ex);
+                // Fall through to reconstruction
             }
         }
-        return null;
+        
+        // This handles documents created before the fix or when serialization failed
+        try {
+            return reconstructMinuteFromMetadata(metadata);
+        } catch (Exception ex) {
+            log().warn("Failed to reconstruct Minute from metadata fields for document: {}", doc.getId(), ex);
+            return null;
+        }
+    }
+    
+    /**
+     * Reconstructs a Minute object from individual metadata fields.
+     * This is a fallback when the complete object is not stored in metadata.
+     */
+    private Minute reconstructMinuteFromMetadata(Map<String, Object> metadata) {
+        // Extract all fields with proper type handling
+        String id = getStringValue(metadata, "id");
+        String filename = getStringValue(metadata, "filename");
+        String date = getStringValue(metadata, "date");
+        String place = getStringValue(metadata, "place");
+        String startTime = getStringValue(metadata, "startTime");
+        String endTime = getStringValue(metadata, "endTime");
+        String president = getStringValue(metadata, "president");
+        String secretary = getStringValue(metadata, "secretary");
+        
+        @SuppressWarnings("unchecked")
+        List<String> attendees = (List<String>) metadata.getOrDefault("attendees", new ArrayList<>());
+        
+        int numberOfAttendees = metadata.containsKey("numberOfAttendees") 
+            ? ((Number) metadata.get("numberOfAttendees")).intValue() 
+            : attendees.size();
+        
+        @SuppressWarnings("unchecked")
+        Map<String, String> agenda = metadata.containsKey("agenda") && metadata.get("agenda") instanceof Map
+            ? (Map<String, String>) metadata.get("agenda")
+            : new LinkedHashMap<>();
+        
+        @SuppressWarnings("unchecked")
+        List<String> decisions = (List<String>) metadata.getOrDefault("decisions", new ArrayList<>());
+        
+        @SuppressWarnings("unchecked")
+        List<String> mentionedEntities = (List<String>) metadata.getOrDefault("mentionedEntities", new ArrayList<>());
+        
+        @SuppressWarnings("unchecked")
+        List<String> topics = (List<String>) metadata.getOrDefault("topics", new ArrayList<>());
+        
+        String summary = getStringValue(metadata, "summary");
+        
+        // Generate ID if missing
+        if (id == null || id.isBlank()) {
+            id = UUID.randomUUID().toString();
+        }
+        
+        return new Minute(
+            id,
+            filename,
+            date,
+            place,
+            startTime,
+            endTime,
+            president,
+            secretary,
+            attendees,
+            numberOfAttendees,
+            agenda,
+            decisions,
+            mentionedEntities,
+            topics,
+            summary
+        );
+    }
+    
+    /**
+     * Safely extracts a string value from metadata.
+     */
+    private String getStringValue(Map<String, Object> metadata, String key) {
+        Object value = metadata.get(key);
+        if (value == null) {
+            return null;
+        }
+        return value.toString();
     }
 
     /**
-     * Compara semánticamente un Minute con las entidades NER
+     * Checks if minute semantically matches NER entities.
+     * Uses English for internal processing, but preserves original language in metadata values.
+     * 
+     * MEJORA: Added direct filtering by mentionedEntities before LLM call for better efficiency.
      */
     protected boolean matchesMinuteWithNER(Minute minute, JSONObject ner) {
         if (ner == null || ner.isEmpty()) return true;
 
-        String prompt = """
-                Given the following meeting metadata:
-                Date: %s
-                Place: %s
-                President: %s
-                Secretary: %s
-                Topics: %s
-                Summary: %s
-                
-                And these NER entities to match:
-                %s
-                
-                Does this meeting match all the specified entities?
-                Consider semantic meaning, not just exact matches.
-                Answer only with YES or NO.
-                """.formatted(
-                    minute.date() != null ? minute.date() : "",
-                    minute.place() != null ? minute.place() : "",
-                    minute.president() != null ? minute.president() : "",
-                    minute.secretary() != null ? minute.secretary() : "",
-                    minute.topics() != null ? String.join(", ", minute.topics()) : "",
-                    minute.summary() != null ? minute.summary() : "",
-                    ner.toString(2)
-                );
+        // MEJORA: Pre-filter by mentionedEntities if present (more efficient than LLM call)
+        if (ner.has("mentionedEntities") && !ner.getJSONArray("mentionedEntities").isEmpty()) {
+            if (!matchesMentionedEntities(minute, ner)) {
+                log().debug("Minute {} filtered out by mentionedEntities mismatch", minute.id());
+                return false;
+            }
+        }
 
-        String result = chatClient.prompt().user(prompt).call().content().strip().toLowerCase();
-        return result.contains("yes") || result.contains("sí");
+        String prompt = String.format("""
+            You are a meeting metadata matching system. Analyze if meeting metadata matches specified NER entities.
+            
+            Meeting metadata (values may be in any language):
+            Date: %s
+            Place: %s
+            President: %s
+            Secretary: %s
+            Topics: %s
+            Decisions: %s
+            Mentioned Entities: %s
+            Summary: %s
+            
+            NER entities to match (JSON format):
+            %s
+            
+            Task: Determine if this meeting metadata semantically matches ALL the specified NER entities.
+            
+            Matching criteria:
+            - Consider semantic meaning, not just exact word matches
+            - Consider context and relationships between entities
+            - Match dates, people, topics, and other entities semantically
+            - If multiple entities are specified, all should be present or relevant in the metadata
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
+            """,
+            minute.date() != null ? minute.date() : "unknown",
+            minute.place() != null ? minute.place() : "unknown",
+            minute.president() != null ? minute.president() : "unknown",
+            minute.secretary() != null ? minute.secretary() : "unknown",
+            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
+            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
+            minute.mentionedEntities() != null ? String.join(", ", minute.mentionedEntities()) : "unknown",
+            minute.summary() != null ? minute.summary() : "unknown",
+            ner.toString(2)
+        );
+
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toLowerCase();
+            return result.contains("yes") || result.contains("sí");
+        } catch (Exception e) {
+            log().warn("Error matching minute with NER, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
+    }
+    
+    /**
+     * Checks if minute's mentionedEntities match NER mentionedEntities.
+     * This is a direct filter before LLM call for better efficiency.
+     * 
+     * MEJORA: Added direct filtering by mentionedEntities to improve correlation.
+     */
+    private boolean matchesMentionedEntities(Minute minute, JSONObject ner) {
+        if (minute.mentionedEntities() == null || minute.mentionedEntities().isEmpty()) {
+            // If minute has no mentioned entities but NER requires them, it doesn't match
+            // However, we allow it to pass to LLM for semantic matching (maybe entity is in content)
+            return true; // Let LLM decide
+        }
+        
+        try {
+            org.json.JSONArray nerEntities = ner.getJSONArray("mentionedEntities");
+            if (nerEntities.length() == 0) {
+                return true; // No entities to match
+            }
+            
+            // Check if any NER entity matches any minute entity (case-insensitive, partial matching)
+            for (int i = 0; i < nerEntities.length(); i++) {
+                String nerEntity = nerEntities.getString(i).toLowerCase().trim();
+                if (nerEntity.isEmpty()) continue;
+                
+                for (String minuteEntity : minute.mentionedEntities()) {
+                    if (minuteEntity == null || minuteEntity.trim().isEmpty()) continue;
+                    
+                    String minuteEntityLower = minuteEntity.toLowerCase().trim();
+                    
+                    // Exact match or substring match (entity name might be part of longer string)
+                    if (minuteEntityLower.equals(nerEntity) ||
+                        minuteEntityLower.contains(nerEntity) ||
+                        nerEntity.contains(minuteEntityLower)) {
+                        log().debug("Found matching entity: NER='{}' matches Minute='{}'", nerEntity, minuteEntity);
+                        return true; // At least one match found
+                    }
+                }
+            }
+            
+            log().debug("No matching entities found. NER entities: {}, Minute entities: {}", 
+                       nerEntities, minute.mentionedEntities());
+            return false; // No matches found
+        } catch (Exception e) {
+            log().warn("Error matching mentionedEntities, allowing through to LLM", e);
+            return true; // On error, let LLM decide
+        }
     }
 
     /**
-     * Extrae un campo específico del Minute y lo formatea según el tipo
+     * Extracts a specific field from a Minute and formats it according to its type.
      */
     protected String extractFieldFromMinute(String field, Minute minute) {
         Object value = getMinuteFieldValue(minute, field);
@@ -381,21 +609,51 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Filters relevant minutes based on NER or query relevance using EnhancedNERHandler
+     * Filters relevant minutes based on NER or query relevance using EnhancedNERHandler.
+     * Implements progressive fallback when filters are too strict.
      */
     protected List<Minute> filterRelevantMinutes(String query, List<Minute> minutes, JSONObject ner) {
+        if (minutes.isEmpty()) {
+            return minutes;
+        }
+        
+        List<Minute> filtered;
+        
         if (ner != null && !ner.isEmpty()) {
             // Use enhanced NER filtering with temporal context
             List<Minute> temporalFiltered = nerHandler.filterMinutesByTemporalContext(minutes, ner);
             
             // Filter by NER matching
-            return temporalFiltered.stream()
+            filtered = temporalFiltered.stream()
                     .filter(minute -> nerHandler.matchesMinuteWithNER(minute, ner))
                     .filter(minute -> isRelevantToQueryCached(query, minute))
                     .collect(Collectors.toList());
+            
+            if (filtered.isEmpty() && !temporalFiltered.isEmpty()) {
+                log().debug("All minutes filtered out by NER matching, trying fallback: only temporal + relevance");
+                // Fallback 1: Skip NER matching, keep temporal + relevance
+                filtered = temporalFiltered.stream()
+                        .filter(minute -> isRelevantToQueryCached(query, minute))
+                        .collect(Collectors.toList());
+            }
+            
+            if (filtered.isEmpty() && !minutes.isEmpty()) {
+                log().debug("All minutes filtered out even with fallback, trying: only relevance");
+                // Fallback 2: Skip all NER filters, only relevance
+                filtered = filterMinutesByQueryRelevance(query, minutes);
+            }
         } else {
-            return filterMinutesByQueryRelevance(query, minutes);
+            filtered = filterMinutesByQueryRelevance(query, minutes);
         }
+        
+        // Final fallback: if still empty and we have minutes, return at least some
+        if (filtered.isEmpty() && !minutes.isEmpty()) {
+            log().warn("All filtering failed, returning first {} minutes as last resort", Math.min(3, minutes.size()));
+            return minutes.stream().limit(3).collect(Collectors.toList());
+        }
+        
+        log().debug("Filtered {} relevant minutes from {} total", filtered.size(), minutes.size());
+        return filtered;
     }
 
     /**
@@ -438,27 +696,40 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Determines if a minute is relevant to the query using LLM
+     * Determines if a minute is relevant to the query using LLM.
      */
     protected boolean isRelevantToQueryByLLM(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return false;
+        }
+        
         String prompt = generateRelevancePrompt(query, minute);
         String result = getLLMResponseCached(prompt);
-        return result.toLowerCase().contains("yes") || result.toLowerCase().contains("sí");
+        
+        if (result == null || result.trim().isEmpty()) {
+            log().warn("Empty response from LLM in isRelevantToQueryByLLM, defaulting to false");
+            return false;
+        }
+        
+        String normalized = result.toLowerCase();
+        return normalized.contains("yes") || normalized.contains("sí");
     }
 
     /**
-     * Generates adaptive relevance prompt based on query context
+     * Generates adaptive relevance prompt based on query context.
      */
     protected String generateRelevancePrompt(String query, Minute minute) {
         String queryType = analyzeQueryType(query);
         
         return String.format("""
-            Given the following user query (in any language):
+            You are a relevance analysis system. Analyze if meeting metadata is relevant to a user query.
+            
+            User query (may be in any language):
             "%s"
             
             Query type: %s
             
-            Meeting metadata:
+            Meeting metadata (values may be in any language):
             Date: %s
             Place: %s
             President: %s
@@ -467,9 +738,16 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Decisions: %s
             Summary: %s
             
-            Does this meeting contain information that directly answers or relates to the query?
-            Consider semantic meaning, not just exact matches.
-            Answer only with YES or NO.
+            Task: Determine if this meeting contains information that directly answers or relates to the query.
+            
+            Relevance criteria:
+            - Consider semantic meaning, not just exact matches
+            - Check if the query can be answered using information from this meeting
+            - Consider all metadata fields and their relevance to the query
+            - Be inclusive: if the meeting might be relevant, answer YES
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
             """,
             query,
             queryType,
@@ -511,96 +789,277 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Cached LLM response for better performance
+     * Cached LLM response with error handling and validation.
+     * Returns empty string if LLM call fails or response is empty.
      */
     @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
     protected String getLLMResponseCached(String prompt) {
-        return chatClient.prompt().user(prompt).call().content().strip();
+        if (prompt == null || prompt.trim().isEmpty()) {
+            log().warn("Empty prompt provided to getLLMResponseCached");
+            return "";
+        }
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in getLLMResponseCached");
+                return "";
+            }
+            
+            return response.strip();
+        } catch (Exception e) {
+            log().error("Error in getLLMResponseCached, returning empty string", e);
+            return "";
+        }
     }
 
     /**
-     * Retrieves documents with intelligent metadata filtering using EnhancedNERHandler
+     * Retrieves documents with intelligent metadata filtering using EnhancedNERHandler.
+     * Filters documents that have relevant metadata fields (either complete Minute object or individual fields).
+     * 
+     * MEJORA 2: Groups chunks by document_id to avoid processing the same document multiple times.
+     * This significantly improves performance by eliminating duplicate Minute reconstructions.
      */
     protected List<Document> retrieveDocumentsWithMetadataFilter(String query, String[] relevantFields) {
         List<Document> docs = retrieveAllDocuments(query);
         
-        // Filter documents that have valid metadata
+        // Filter by metadata fields and relevance
         List<Document> metadataDocs = docs.stream()
-                .filter(doc -> doc.getMetadata().containsKey("minute"))
+                .filter(doc -> hasMetadataFields(doc, relevantFields))
                 .filter(doc -> hasRelevantMetadata(doc, query, relevantFields))
                 .collect(Collectors.toList());
         
-        return metadataDocs;
+        // MEJORA 2: Group chunks by document_id to deduplicate documents
+        // When PgVectorStore splits a document into chunks, all chunks have the same document_id
+        // We only need to process one chunk per document to reconstruct the Minute object
+        Map<String, Document> uniqueDocuments = metadataDocs.stream()
+                .collect(Collectors.toMap(
+                    doc -> getDocumentId(doc),  // Use document_id as key
+                    doc -> doc,                 // Keep the document
+                    (existing, replacement) -> existing  // If duplicate, keep the first one
+                ));
+        
+        List<Document> deduplicatedDocs = new ArrayList<>(uniqueDocuments.values());
+        
+        log().debug("Filtered {} unique documents from {} chunks ({} total retrieved)", 
+                   deduplicatedDocs.size(), metadataDocs.size(), docs.size());
+        return deduplicatedDocs;
     }
-
+    
     /**
-     * Checks if document has metadata relevant to the query
+     * Extracts the document_id from a document's metadata.
+     * Falls back to the document's id if document_id is not present (for backward compatibility).
+     * 
+     * MEJORA 2: Helper method to get document identifier for deduplication.
      */
-    protected boolean hasRelevantMetadata(Document doc, String query, String[] relevantFields) {
+    private String getDocumentId(Document doc) {
+        if (doc == null) {
+            return null;
+        }
+        
+        Map<String, Object> metadata = doc.getMetadata();
+        if (metadata == null) {
+            return doc.getId();
+        }
+        
+        // Try to get document_id first (new documents)
+        Object docId = metadata.get("document_id");
+        if (docId != null) {
+            return docId.toString();
+        }
+        
+        // Fallback: try to get id from metadata (should be the same as document_id)
+        Object id = metadata.get("id");
+        if (id != null) {
+            return id.toString();
+        }
+        
+        // Last resort: use document's own id
+        // Note: This might be a chunk id, not the document id, but it's better than nothing
+        return doc.getId();
+    }
+    
+    /**
+     * Checks if a document has the necessary metadata fields.
+     * Returns true if it has "minute" key OR has at least one of the relevant fields.
+     */
+    private boolean hasMetadataFields(Document doc, String[] relevantFields) {
         Map<String, Object> metadata = doc.getMetadata();
         
-        // Check if any metadata field might be relevant to the query
-        String queryLower = query.toLowerCase();
+        // If it has the "minute" key, it's valid
+        if (metadata.containsKey("minute")) {
+            return true;
+        }
         
+        // Otherwise, check if it has at least one relevant field
         for (String field : relevantFields) {
-            Object value = metadata.get(field);
-            if (value != null && value.toString().toLowerCase().contains(queryLower)) {
+            if (metadata.containsKey(field)) {
                 return true;
             }
         }
         
-        return true; // If no direct match, let LLM decide
+        // Also check for basic metadata fields that indicate it's a minute document
+        return metadata.containsKey("date") || metadata.containsKey("id") || metadata.containsKey("filename");
     }
 
     /**
-     * Generates not found message using LLM
+     * Checks if document has metadata relevant to the query.
+     * Uses semantic matching to determine relevance instead of literal string matching.
+     */
+    protected boolean hasRelevantMetadata(Document doc, String query, String[] relevantFields) {
+        Map<String, Object> metadata = doc.getMetadata();
+        
+        // If document has no metadata at all, it's not relevant
+        if (metadata.isEmpty()) {
+            return false;
+        }
+        
+        // Build a summary of metadata values for semantic matching
+        StringBuilder metadataSummary = new StringBuilder();
+        for (String field : relevantFields) {
+            Object value = metadata.get(field);
+            if (value != null) {
+                metadataSummary.append(field).append(": ").append(value.toString()).append("; ");
+            }
+        }
+        
+        // If we have no relevant fields, check basic fields
+        if (metadataSummary.length() == 0) {
+            metadataSummary.append("date: ").append(metadata.getOrDefault("date", "")).append("; ");
+            metadataSummary.append("topics: ").append(metadata.getOrDefault("topics", "")).append("; ");
+        }
+        
+        // Use semantic matching to determine if metadata is relevant to query
+        // This is less strict than exact matching but more accurate than always returning true
+        return semanticallyMatchesMetadata(doc, query);
+    }
+
+    /**
+     * Generates not found message using LLM.
+     * Ensures response language matches query language.
      */
     protected String generateNotFoundMessage(String query) {
         String prompt = String.format("""
-            Given the following user query (in any language):
+            You are a helpful assistant. The user asked the following question (in any language):
             "%s"
-            Write a short message indicating that no relevant meeting minutes were found, 
-            in the same language as the query.
+            
+            IMPORTANT: You must respond in the EXACT SAME LANGUAGE as the user's question.
+            - If the question is in Spanish, respond in Spanish
+            - If the question is in English, respond in English
+            - Match the language exactly
+            
+            Write a short, polite message indicating that no relevant meeting minutes were found for this query.
+            Be concise and helpful.
             """, query);
         
-        return getLLMResponseCached(prompt);
+        try {
+            return getLLMResponseCached(prompt);
+        } catch (Exception e) {
+            log().warn("Error generating not found message, using fallback", e);
+            return generateFallbackNotFoundMessage(query);
+        }
+    }
+    
+    /**
+     * Generates a fallback "not found" message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackNotFoundMessage(String query) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*") || 
+                           queryLower.contains("quién") || queryLower.contains("qué") || 
+                           queryLower.contains("cuándo") || queryLower.contains("dónde") ||
+                           queryLower.contains("cuántos") || queryLower.contains("cómo");
+        
+        if (isSpanish) {
+            return "Lo siento, no se encontraron actas de reunión relevantes para esta consulta.";
+        } else {
+            return "I'm sorry, no relevant meeting minutes were found for this query.";
+        }
     }
 
     /**
-     * Generates no data message using LLM
+     * Generates no data message using LLM.
+     * Uses English for internal processing, but response matches query language.
      */
     protected String generateNoDataMessage(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return generateFallbackNotFoundMessage("");
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
+            
             Write a short message indicating that no relevant data was found for the query, 
             in the same language as the query.
             """, query);
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateNoDataMessage, using fallback");
+                return generateFallbackNotFoundMessage(query);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating no data message, using fallback", e);
+            return generateFallbackNotFoundMessage(query);
+        }
     }
 
     /**
-     * Calculates relevance score using LLM
+     * Calculates relevance score using LLM.
+     * Uses English for internal processing, but preserves original language in query and content.
      */
     protected double calculateRelevanceScore(String query, String itemContent, String context) {
+        if (query == null || query.trim().isEmpty()) {
+            return 0.5; // Default score
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
             
-            Item content: %s
-            Context: %s
+            Item content (may be in any language): %s
+            Context (may be in any language): %s
             
             Rate the relevance of this item to the query on a scale of 0.0 to 1.0.
             Consider: direct relevance, completeness, clarity, and usefulness.
-            Respond with only a number between 0.0 and 1.0.
-            """, query, itemContent, context);
+            
+            Respond with ONLY a number between 0.0 and 1.0.
+            Do not include any explanation or additional text.
+            """, query, itemContent != null ? itemContent : "", context != null ? context : "");
         
         try {
-            String result = getLLMResponseCached(prompt).strip();
-            return Double.parseDouble(result);
+            String result = getLLMResponseCached(prompt);
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in calculateRelevanceScore, defaulting to 0.5");
+                return 0.5;
+            }
+            
+            String cleaned = result.strip();
+            // Extract first number from response
+            String numberStr = cleaned.replaceAll("[^0-9.]", "").split("\\s+")[0];
+            if (numberStr.isEmpty()) {
+                return 0.5;
+            }
+            
+            return Double.parseDouble(numberStr);
         } catch (NumberFormatException e) {
+            log().warn("Error parsing relevance score, defaulting to 0.5", e);
             return 0.5; // Default score if parsing fails
+        } catch (Exception e) {
+            log().error("Error calculating relevance score, defaulting to 0.5", e);
+            return 0.5;
         }
     }
 
@@ -656,4 +1115,5 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return analysis.toString();
     }
 }
+
 

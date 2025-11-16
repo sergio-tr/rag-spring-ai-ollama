@@ -188,12 +188,24 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     }
 
     /**
-     * Determines if a decision is relevant to the query using LLM
+     * Determines if a decision is relevant to the query using LLM.
+     * Uses English for internal processing, but preserves original language in query and decision text.
      */
     private boolean isDecisionRelevantToQueryByLLM(String decisionText, String query) {
+        if (decisionText == null || decisionText.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
         String prompt = generateDecisionRelevancePrompt(decisionText, query);
         String result = getLLMResponseCached(prompt);
-        return result.toLowerCase().contains("yes") || result.toLowerCase().contains("sí");
+        
+        if (result == null || result.trim().isEmpty()) {
+            log().warn("Empty response from LLM in isDecisionRelevantToQueryByLLM, defaulting to false");
+            return false;
+        }
+        
+        String normalized = result.toLowerCase();
+        return normalized.contains("yes") || normalized.contains("sí");
     }
 
     /**
@@ -379,9 +391,14 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates enhanced decision answer with clustering and analysis
+     * Generates enhanced decision answer with clustering and analysis.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedDecisionAnswer(String query, List<Decision> decisions, List<DecisionCluster> clusters) {
+        if (query == null || query.trim().isEmpty() || decisions == null || decisions.isEmpty()) {
+            return generateNoDataMessage(query);
+        }
+        
         String decisionSummary = formatDecisionSummary(decisions, clusters);
         String clusterAnalysis = formatClusterAnalysis(clusters);
         
@@ -399,9 +416,48 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             Write a clear, comprehensive answer in the same language as the query, 
             summarizing the relevant decisions and their context.
             Group similar decisions together and highlight the most important findings.
-            """, query, decisions.size(), clusters.size(), decisionSummary, clusterAnalysis);
+            """, query, decisions.size(), clusters.size(), 
+            decisionSummary != null ? decisionSummary : "No decisions found.",
+            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedDecisionAnswer, using fallback");
+                return generateFallbackDecisionAnswer(query, decisions);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced decision answer, using fallback", e);
+            return generateFallbackDecisionAnswer(query, decisions);
+        }
+    }
+    
+    /**
+     * Generates a fallback decision answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackDecisionAnswer(String query, List<Decision> decisions) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("Se encontraron %d decisiones relevantes:\n%s",
+                              decisions.size(),
+                              decisions.stream()
+                                      .limit(5)
+                                      .map(d -> String.format("- %s", d.decisionText))
+                                      .collect(Collectors.joining("\n")));
+        } else {
+            return String.format("Found %d relevant decisions:\n%s",
+                              decisions.size(),
+                              decisions.stream()
+                                      .limit(5)
+                                      .map(d -> String.format("- %s", d.decisionText))
+                                      .collect(Collectors.joining("\n")));
+        }
     }
 
     /**
@@ -442,11 +498,12 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     }
 
     /**
-     * Cached LLM response
+     * Cached LLM response with error handling and validation.
+     * Uses parent class implementation which includes error handling.
      */
     @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
     public String getLLMResponseCached(String prompt) {
-        return chatClient.prompt().user(prompt).call().content().strip();
+        return super.getLLMResponseCached(prompt);
     }
 
     /**

@@ -271,9 +271,14 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates enhanced count answer with comprehensive analysis
+     * Generates enhanced count answer with comprehensive analysis.
+     * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedCountAnswer(String query, CountingAnalysis analysis) {
+        if (query == null || query.trim().isEmpty() || analysis == null) {
+            return generateNotFoundMessage(query);
+        }
+        
         String temporalInsights = formatTemporalInsights(analysis.temporalAnalysis);
         String distributionInsights = formatDistributionInsights(analysis.distributionAnalysis);
         
@@ -299,14 +304,41 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             """, 
             query, 
             analysis.totalCount,
-            String.join(", ", analysis.dates),
-            String.join(", ", analysis.places),
-            String.join(", ", analysis.topics),
-            temporalInsights,
-            distributionInsights
+            analysis.dates != null ? String.join(", ", analysis.dates) : "none",
+            analysis.places != null ? String.join(", ", analysis.places) : "none",
+            analysis.topics != null ? String.join(", ", analysis.topics) : "none",
+            temporalInsights != null ? temporalInsights : "No temporal analysis available.",
+            distributionInsights != null ? distributionInsights : "No distribution analysis available."
         );
         
-        return getLLMResponseCached(prompt);
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateEnhancedCountAnswer, using fallback");
+                return generateFallbackCountAnswer(query, analysis);
+            }
+            
+            return response;
+        } catch (Exception e) {
+            log().error("Error generating enhanced count answer, using fallback", e);
+            return generateFallbackCountAnswer(query, analysis);
+        }
+    }
+    
+    /**
+     * Generates a fallback count answer when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackCountAnswer(String query, CountingAnalysis analysis) {
+        String queryLower = query.toLowerCase();
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            return String.format("Se encontraron %d actas de reunión relevantes para esta consulta.", analysis.totalCount);
+        } else {
+            return String.format("Found %d relevant meeting minutes for this query.", analysis.totalCount);
+        }
     }
 
     /**
@@ -346,11 +378,12 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
     }
 
     /**
-     * Cached LLM response
+     * Cached LLM response with error handling and validation.
+     * Uses parent class implementation which includes error handling.
      */
     @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
     public String getLLMResponseCached(String prompt) {
-        return chatClient.prompt().user(prompt).call().content().strip();
+        return super.getLLMResponseCached(prompt);
     }
 
     /**
