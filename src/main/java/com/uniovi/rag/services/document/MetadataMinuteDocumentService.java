@@ -76,14 +76,14 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     @Override
     protected Minute extractModel(String content, String filename) {
-        // Extract structured fields with regex (fast, sequential)
-        String date = extractSingle(content, "(?i)Fecha:\\s*(\\d{1,2} de [a-záéíóú]+ de \\d{4})");
-        String place = extractSingle(content, "(?i)Lugar:\\s*(.+)");
-        String startTime = extractSingle(content, "(?i)Hora de inicio:\\s*(\\d{1,2}:\\d{2})");
-        String endTime = extractSingle(content, "(?i)Hora de finalización:\\s*(\\d{1,2}:\\d{2})");
+        // MEJORA: Extracción mejorada con múltiples formatos y fallbacks
+        String date = extractDate(content);
+        String place = extractPlace(content);
+        String startTime = extractStartTime(content);
+        String endTime = extractEndTime(content);
         String president = extractSingle(content, "(?i)•\\s*(.+?)\\s*\\(Presidente\\)");
         String secretary = extractSingle(content, "(?i)•\\s*(.+?)\\s*\\(Secretari[ao]\\)");
-        List<String> attendees = extractBullets(extractBlock(content, "(?i)Asistentes:\\s*", "(?i)Orden del día:"));
+        List<String> attendees = extractAttendees(content);
         Map<String, String> agenda = extractAgendaMap(content);
 
         // MEJORA 3: Parallelize LLM-assisted extraction for better performance
@@ -400,6 +400,291 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         return metadata;
     }
 
+    /**
+     * MEJORA: Extracción de fecha con múltiples formatos soportados.
+     * Acepta: "día de mes de año", "día/mes/año", "día-mes-año", "año-mes-día"
+     */
+    private String extractDate(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Patrón 1: "25 de agosto de 2026" (formato actual, con mayúsculas/minúsculas flexibles)
+        String date = extractSingle(content, "(?i)Fecha:\\s*(\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4})");
+        if (date != null) {
+            return normalizeDate(date);
+        }
+        
+        // Patrón 2: "25/08/2026" o "25-08-2026"
+        date = extractSingle(content, "(?i)Fecha:\\s*(\\d{1,2}[/-]\\d{1,2}[/-]\\d{4})");
+        if (date != null) {
+            return normalizeDate(date);
+        }
+        
+        // Patrón 3: "2026-08-25" (formato ISO)
+        date = extractSingle(content, "(?i)Fecha:\\s*(\\d{4}[/-]\\d{1,2}[/-]\\d{1,2})");
+        if (date != null) {
+            return normalizeDate(date);
+        }
+        
+        // Patrón 4: Sin etiqueta "Fecha:", buscar en encabezado
+        date = extractSingle(content, "(?i)^(?:ACTA|ACTA DE REUNIÓN|REUNIÓN).*?(\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4})");
+        if (date != null) {
+            return normalizeDate(date);
+        }
+        
+        log().warn("No se pudo extraer la fecha del documento");
+        return null;
+    }
+    
+    /**
+     * Normaliza la fecha a formato estándar "DD de MES de YYYY".
+     */
+    private String normalizeDate(String date) {
+        if (date == null) return null;
+        
+        try {
+            // Si ya está en formato "día de mes de año", solo normalizar mayúsculas
+            if (date.matches("(?i)\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4}")) {
+                return capitalizeDate(date);
+            }
+            
+            // Si está en formato numérico, convertir
+            if (date.matches("\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}")) {
+                return convertNumericDate(date);
+            }
+            
+            if (date.matches("\\d{4}[/-]\\d{1,2}[/-]\\d{1,2}")) {
+                return convertISODate(date);
+            }
+            
+            return date; // Devolver original si no se puede normalizar
+        } catch (Exception e) {
+            log().warn("Error normalizando fecha: {}", date, e);
+            return date;
+        }
+    }
+    
+    private String capitalizeDate(String date) {
+        String[] months = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                         "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+        
+        String lower = date.toLowerCase();
+        for (String month : months) {
+            if (lower.contains(month)) {
+                String capitalized = month.substring(0, 1).toUpperCase() + month.substring(1);
+                return date.replaceAll("(?i)" + month, capitalized);
+            }
+        }
+        return date;
+    }
+    
+    private String convertNumericDate(String date) {
+        try {
+            String[] parts = date.split("[/-]");
+            if (parts.length == 3) {
+                int day = Integer.parseInt(parts[0]);
+                int month = Integer.parseInt(parts[1]);
+                int year = Integer.parseInt(parts[2]);
+                
+                String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                                       "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+                
+                if (month >= 1 && month <= 12) {
+                    return String.format("%d de %s de %d", day, monthNames[month - 1], year);
+                }
+            }
+        } catch (Exception e) {
+            log().warn("Error convirtiendo fecha numérica: {}", date, e);
+        }
+        return date;
+    }
+    
+    private String convertISODate(String date) {
+        try {
+            String[] parts = date.split("[/-]");
+            if (parts.length == 3) {
+                int year = Integer.parseInt(parts[0]);
+                int month = Integer.parseInt(parts[1]);
+                int day = Integer.parseInt(parts[2]);
+                
+                String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                                       "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+                
+                if (month >= 1 && month <= 12) {
+                    return String.format("%d de %s de %d", day, monthNames[month - 1], year);
+                }
+            }
+        } catch (Exception e) {
+            log().warn("Error convirtiendo fecha ISO: {}", date, e);
+        }
+        return date;
+    }
+    
+    /**
+     * MEJORA: Extracción mejorada de lugar con validación de longitud.
+     */
+    private String extractPlace(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Patrón 1: "Lugar: [lugar]" en una sola línea (limitado a 200 caracteres)
+        String place = extractSingle(content, "(?i)Lugar:\\s*([^\\n]{1,200})");
+        if (place != null && !place.trim().isEmpty()) {
+            place = place.trim().replaceAll("\\.$", "").trim();
+            if (place.length() > 5 && place.length() < 200) {
+                return place;
+            }
+        }
+        
+        // Patrón 2: Buscar en contexto de encabezado
+        String header = extractBlock(content, "(?i)^(?:ACTA|REUNIÓN)", "(?i)Asistentes:");
+        if (header != null) {
+            place = extractSingle(header, "(?i)Lugar[^:]*:\\s*([^\\n]{1,200})");
+            if (place != null && place.length() > 5 && place.length() < 200) {
+                return place.trim().replaceAll("\\.$", "").trim();
+            }
+        }
+        
+        log().warn("No se pudo extraer el lugar del documento");
+        return null;
+    }
+    
+    /**
+     * MEJORA: Extracción de hora de inicio con múltiples formatos.
+     */
+    private String extractStartTime(String content) {
+        return extractTime(content, "inicio");
+    }
+    
+    /**
+     * MEJORA: Extracción de hora de finalización con múltiples formatos.
+     */
+    private String extractEndTime(String content) {
+        return extractTime(content, "finalización|fin");
+    }
+    
+    /**
+     * Extrae la hora con múltiples formatos soportados.
+     */
+    private String extractTime(String content, String timeType) {
+        if (content == null || content.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Patrón 1: "Hora de inicio: 19:00" (formato actual)
+        String time = extractSingle(content, 
+            String.format("(?i)Hora de %s:\\s*(\\d{1,2}:\\d{2})", timeType));
+        if (time != null) {
+            return normalizeTime(time);
+        }
+        
+        // Patrón 2: "Hora de inicio: 19:00 h"
+        time = extractSingle(content, 
+            String.format("(?i)Hora de %s:\\s*(\\d{1,2}:\\d{2})\\s*h", timeType));
+        if (time != null) {
+            return normalizeTime(time);
+        }
+        
+        // Patrón 3: "Hora de inicio: 19.00"
+        time = extractSingle(content, 
+            String.format("(?i)Hora de %s:\\s*(\\d{1,2}\\.\\d{2})", timeType));
+        if (time != null) {
+            return normalizeTime(time.replace(".", ":"));
+        }
+        
+        // Patrón 4: "Inicio: 19:00" (sin "Hora de")
+        String timeLabel = timeType.contains("inicio") ? "Inicio" : "Fin";
+        time = extractSingle(content, 
+            String.format("(?i)%s:\\s*(\\d{1,2}:\\d{2})", timeLabel));
+        if (time != null) {
+            return normalizeTime(time);
+        }
+        
+        log().warn("No se pudo extraer la hora de {} del documento", timeType);
+        return null;
+    }
+    
+    /**
+     * Normaliza la hora al formato HH:MM estándar.
+     */
+    private String normalizeTime(String time) {
+        if (time == null) return null;
+        
+        // Asegurar formato HH:MM
+        time = time.trim().replaceAll("\\s*h\\s*$", "").trim();
+        
+        if (time.matches("\\d{1,2}:\\d{2}")) {
+            try {
+                String[] parts = time.split(":");
+                int hour = Integer.parseInt(parts[0]);
+                int minute = Integer.parseInt(parts[1]);
+                
+                // Validar rango
+                if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+                    return String.format("%02d:%02d", hour, minute);
+                }
+            } catch (NumberFormatException e) {
+                log().warn("Error parseando hora: {}", time, e);
+            }
+        }
+        
+        return time;
+    }
+    
+    /**
+     * MEJORA: Extracción robusta de asistentes con múltiples métodos de fallback.
+     */
+    private List<String> extractAttendees(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        
+        List<String> attendees = new ArrayList<>();
+        
+        // Método 1: Entre "Asistentes:" y "Orden del día:" (actual)
+        String block = extractBlock(content, "(?i)Asistentes:", "(?i)Orden del día:");
+        if (block != null && !block.trim().isEmpty()) {
+            attendees.addAll(extractBullets(block));
+        }
+        
+        // Método 2: Si no se encontró, buscar hasta encontrar otra sección
+        if (attendees.isEmpty()) {
+            block = extractBlock(content, "(?i)Asistentes:", "(?i)(?:Orden del día|Ruegos|Clausura|No habiendo)");
+            if (block != null && !block.trim().isEmpty()) {
+                attendees.addAll(extractBullets(block));
+            }
+        }
+        
+        // Método 3: Buscar líneas que empiecen con viñeta después de "Asistentes:"
+        if (attendees.isEmpty()) {
+            Pattern pattern = Pattern.compile(
+                "(?i)Asistentes:.*?\\n((?:•|[-*]|\\d+\\.)\\s*[^\\n]+(?:\\n(?!•|[-*]|\\d+\\.|Orden|Ruegos|Clausura)[^\\n]+)*)", 
+                Pattern.DOTALL
+            );
+            Matcher matcher = pattern.matcher(content);
+            if (matcher.find()) {
+                String attendeesBlock = matcher.group(1);
+                attendees.addAll(extractBullets(attendeesBlock));
+            }
+        }
+        
+        // Limpiar y normalizar nombres
+        attendees = attendees.stream()
+            .map(name -> name.trim())
+            .filter(name -> !name.isEmpty())
+            .filter(name -> name.length() > 2)
+            // Quitar roles entre paréntesis (se extraen por separado)
+            .map(name -> name.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim())
+            .filter(name -> !name.isEmpty())
+            .distinct()
+            .collect(Collectors.toList());
+        
+        log().debug("Extracted {} attendees", attendees.size());
+        return attendees;
+    }
+    
     private String extractSingle(String text, String regex) {
         Matcher matcher = Pattern.compile(regex).matcher(text);
         return matcher.find() ? matcher.group(1).trim() : null;
@@ -411,48 +696,122 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         return matcher.find() ? matcher.group(1).trim() : "";
     }
 
+    /**
+     * MEJORA: Extracción de bullets con múltiples formatos soportados.
+     */
     private List<String> extractBullets(String text) {
         List<String> items = new ArrayList<>();
-        Matcher matcher = Pattern.compile("•\\s*(.+)").matcher(text);
-        while (matcher.find()) {
-            items.add(matcher.group(1).trim());
+        if (text == null || text.trim().isEmpty()) {
+            return items;
         }
+        
+        // Patrón 1: Viñetas estándar (•)
+        Pattern pattern1 = Pattern.compile("•\\s*(.+?)(?=\\n(?:•|\\s*$|Orden|Ruegos|Clausura))", Pattern.MULTILINE);
+        Matcher matcher1 = pattern1.matcher(text);
+        while (matcher1.find()) {
+            String item = matcher1.group(1).trim();
+            if (!item.isEmpty()) {
+                items.add(item);
+            }
+        }
+        
+        // Patrón 2: Viñetas alternativas (-, *, números) si no se encontraron con •
+        if (items.isEmpty()) {
+            Pattern pattern2 = Pattern.compile("(?:[-*]|\\d+\\.)\\s*(.+?)(?=\\n(?:[-*]|\\d+\\.|\\s*$|Orden|Ruegos|Clausura))", Pattern.MULTILINE);
+            Matcher matcher2 = pattern2.matcher(text);
+            while (matcher2.find()) {
+                String item = matcher2.group(1).trim();
+                if (!item.isEmpty()) {
+                    items.add(item);
+                }
+            }
+        }
+        
         return items;
     }
 
+    /**
+     * MEJORA: Extracción mejorada de agenda con soporte para sub-items y múltiples formatos.
+     */
     private Map<String, String> extractAgendaMap(String content) {
         Map<String, String> agenda = new LinkedHashMap<>();
-        String[] lines = content.split("\n");
+        if (content == null || content.trim().isEmpty()) {
+            return agenda;
+        }
+        
+        // Extraer bloque completo del orden del día
+        String agendaBlock = extractAgendaBlock(content);
+        if (agendaBlock == null || agendaBlock.trim().isEmpty()) {
+            log().warn("No se encontró el bloque del orden del día");
+            return agenda;
+        }
+        
+        // Dividir en items principales
+        String[] lines = agendaBlock.split("\\n");
         String currentKey = null;
         StringBuilder currentValue = new StringBuilder();
-        boolean inAgenda = false;
-
+        
         for (String line : lines) {
             line = line.trim();
-            if (line.matches("(?i)^Orden del día:?$")) {
-                inAgenda = true;
-                continue;
-            }
-            if (inAgenda) {
-                if (line.startsWith("•")) {
-                    if (currentKey != null) {
-                        agenda.put(currentKey, currentValue.toString().trim());
-                        currentValue.setLength(0);
-                    }
-                    currentKey = line.substring(1).trim();
-                } else if (!line.isEmpty()) {
+            if (line.isEmpty()) continue;
+            
+            // Detectar inicio de nuevo item (viñeta, número, o línea que empieza con mayúscula)
+            if (line.matches("^[•·▪▫◦‣⁃-*]\\s+.+") || 
+                line.matches("^\\d+[.)]\\s+.+") ||
+                (line.matches("^[A-ZÁÉÍÓÚÑ].+") && currentKey == null)) {
+                
+                // Guardar item anterior
+                if (currentKey != null && currentValue.length() > 0) {
+                    agenda.put(currentKey, currentValue.toString().trim());
+                    currentValue.setLength(0);
+                }
+                
+                // Extraer clave del nuevo item
+                currentKey = extractAgendaItemKey(line);
+            } else if (currentKey != null) {
+                // Continuación del item actual (sub-item o descripción)
+                if (!line.matches("(?i)^(?:Ruegos|No habiendo|Clausura).*")) {
                     currentValue.append(line).append(" ");
                 }
-                if (line.matches("(?i)^No habiendo más asuntos.*")) {
-                    break;
-                }
             }
         }
-
-        if (currentKey != null) {
+        
+        // Guardar último item
+        if (currentKey != null && currentValue.length() > 0) {
             agenda.put(currentKey, currentValue.toString().trim());
         }
-
+        
+        log().debug("Extracted {} agenda items", agenda.size());
         return agenda;
+    }
+    
+    /**
+     * Extrae el bloque completo del orden del día.
+     */
+    private String extractAgendaBlock(String content) {
+        // Buscar desde "Orden del día:" hasta "Ruegos y preguntas" o "No habiendo más asuntos"
+        Pattern pattern = Pattern.compile(
+            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:Ruegos y preguntas|No habiendo más asuntos|Clausura|$))",
+            Pattern.DOTALL
+        );
+        Matcher matcher = pattern.matcher(content);
+        if (matcher.find()) {
+            return matcher.group(1).trim();
+        }
+        return null;
+    }
+    
+    /**
+     * Extrae la clave de un item de agenda, limpiando viñetas y numeración.
+     */
+    private String extractAgendaItemKey(String line) {
+        // Quitar viñetas y numeración
+        line = line.replaceAll("^[•·▪▫◦‣⁃-*]\\s*", "")
+                   .replaceAll("^\\d+[.)]\\s*", "")
+                   .trim();
+        
+        // Tomar solo la primera parte (hasta dos puntos o punto final)
+        String[] parts = line.split("[:.]", 2);
+        return parts[0].trim();
     }
 }
