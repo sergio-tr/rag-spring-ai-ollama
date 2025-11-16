@@ -246,31 +246,26 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         }
         
         String durationSummary = formatDurationSummary(results, clusters);
-        String statisticalSummary = formatStatisticalSummary(analysis);
-        String clusterAnalysis = formatClusterAnalysis(clusters);
+        String simpleStats = formatSimpleStats(analysis);
         
         String prompt = String.format("""
-            Given the following get duration query (in any language):
+            Given the following user query (in any language):
             "%s"
             
             Found %d relevant meeting durations:
             
             %s
             
-            Statistical analysis:
             %s
             
-            Cluster analysis:
-            %s
-            
-            Write a clear, comprehensive answer in the same language as the query, 
-            presenting the duration information and any relevant analysis.
-            If the query asks for comparisons (longest/shortest), identify the relevant meetings.
-            Include statistical insights and patterns found.
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "statistical analysis", "análisis estadístico", "clusters", "analysis", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
             """, query, results.size(), 
-            durationSummary != null ? durationSummary : "No duration summary available.",
-            statisticalSummary != null ? statisticalSummary : "No statistical analysis available.",
-            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
+            durationSummary != null ? durationSummary : "No duration information available.",
+            simpleStats != null ? simpleStats : "");
         
         try {
             String response = getLLMResponseCached(prompt);
@@ -331,23 +326,27 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
     }
 
     /**
-     * Formats duration summary for LLM prompt
+     * Formats duration summary for LLM prompt (without technical details)
      */
     private String formatDurationSummary(List<DurationResult> results, List<InfoExtractor.Cluster<DurationResult>> clusters) {
         StringBuilder summary = new StringBuilder();
         
+        // Format durations naturally without mentioning clusters
         for (int i = 0; i < clusters.size(); i++) {
             InfoExtractor.Cluster<DurationResult> cluster = clusters.get(i);
             DurationResult representative = cluster.getRepresentativeItem();
             
-            summary.append(String.format("Cluster %d (%d durations) - Date: %s\n", 
-                                        i + 1, cluster.getSize(), representative.date));
-            summary.append(String.format("Place: %s\n", representative.place));
-            summary.append(String.format("Duration: %d minutes (%s - %s)\n", 
-                                        representative.durationMinutes, 
-                                        representative.startTime != null ? representative.startTime : "?",
-                                        representative.endTime != null ? representative.endTime : "?"));
-            summary.append(String.format("Key Info: %s\n", representative.keyInfo));
+            if (representative.date != null) {
+                summary.append(String.format("Reunión del %s", representative.date));
+                if (representative.place != null) {
+                    summary.append(String.format(" (%s)", representative.place));
+                }
+                summary.append(": ");
+            }
+            summary.append(String.format("%d minutos", representative.durationMinutes));
+            if (representative.startTime != null && representative.endTime != null) {
+                summary.append(String.format(" (%s - %s)", representative.startTime, representative.endTime));
+            }
             summary.append("\n");
         }
         
@@ -355,20 +354,17 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
     }
 
     /**
-     * Formats statistical summary for LLM prompt
+     * Formats simple statistics for LLM prompt (without technical terms)
      */
-    private String formatStatisticalSummary(DurationAnalysis analysis) {
+    private String formatSimpleStats(DurationAnalysis analysis) {
+        if (analysis.allDurations.isEmpty()) {
+            return "";
+        }
+        
         return String.format("""
-            Duration Statistics:
-            - Minimum: %d minutes
-            - Maximum: %d minutes
-            - Average: %.1f minutes
-            - Median: %d minutes
-            - Standard Deviation: %.1f minutes
-            - Total meetings analyzed: %d
+            Resumen: Duración mínima: %d minutos, Duración máxima: %d minutos, Duración promedio: %.1f minutos
             """, 
-            analysis.minDuration, analysis.maxDuration, analysis.averageDuration, 
-            analysis.medianDuration, analysis.standardDeviation, analysis.allDurations.size());
+            analysis.minDuration, analysis.maxDuration, analysis.averageDuration);
     }
 
     /**

@@ -351,25 +351,22 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         }
         
         String explanationSummary = formatExplanationSummary(explanations, clusters);
-        String clusterAnalysis = formatClusterAnalysis(clusters);
         
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
             
-            Found %d relevant meeting minutes with explanations grouped into %d clusters:
+            Found %d relevant meeting minutes:
             
             %s
             
-            Cluster analysis:
-            %s
-            
-            Write a clear, comprehensive answer in the same language as the query, 
-            indicating the number of relevant minutes and providing a well-organized summary of the explanations.
-            Group similar information together and highlight the most important points.
-            """, query, explanations.size(), clusters.size(), 
-            explanationSummary != null ? explanationSummary : "No explanations found.",
-            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "clusters", "análisis", "analysis", "grouped into", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            """, query, explanations.size(), 
+            explanationSummary != null ? explanationSummary : "No information found.");
         
         try {
             String response = getLLMResponseCached(prompt);
@@ -416,15 +413,20 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     }
 
     /**
-     * Formats explanation summary for LLM prompt
+     * Formats explanation summary for LLM prompt (without technical details)
      */
     private String formatExplanationSummary(List<Explanation> explanations, List<ExplanationCluster> clusters) {
         StringBuilder summary = new StringBuilder();
         
+        // Format explanations naturally without mentioning clusters
         for (int i = 0; i < clusters.size(); i++) {
             ExplanationCluster cluster = clusters.get(i);
-            summary.append(String.format("Cluster %d (%d explanations):\n", i + 1, cluster.getSize()));
-            summary.append(cluster.getRepresentativeExplanation().content);
+            Explanation representative = cluster.getRepresentativeExplanation();
+            
+            if (representative.date != null) {
+                summary.append(String.format("Reunión del %s:\n", representative.date));
+            }
+            summary.append(representative.content);
             summary.append("\n\n");
         }
         

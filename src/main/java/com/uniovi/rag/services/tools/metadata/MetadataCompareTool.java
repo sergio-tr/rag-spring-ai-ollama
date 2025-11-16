@@ -460,24 +460,23 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         }
         
         String comparisonData = formatComparisonData(comparables, field);
-        String statisticalInsights = formatStatisticalInsights(analysis, field);
+        String simpleStats = formatSimpleStats(analysis, field);
         
         String prompt = String.format("""
-            Given the following comparison query (in any language):
+            Given the following user query (in any language):
             "%s"
-            
-            Field being compared: %s (%s)
             
             Comparison data:
             %s
             
-            Statistical analysis:
             %s
             
-            Write a clear, comprehensive answer in the same language as the query, 
-            comparing the values and explaining trends, patterns, and insights.
-            Include specific details from the data and statistical analysis when relevant.
-            """, query, field.description, field.fieldName, comparisonData, statisticalInsights);
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "statistical analysis", "análisis estadístico", "comparison data", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            """, query, comparisonData, simpleStats != null ? simpleStats : "");
         
         try {
             String response = getLLMResponseCached(prompt);
@@ -541,20 +540,16 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * Formats statistical insights for LLM prompt
+     * Formats simple statistics for LLM prompt (without technical terms)
      */
-    private String formatStatisticalInsights(ComparisonAnalysis analysis, ComparisonField field) {
-        if (analysis.min == null) {
-            return "No statistical analysis available for this field type.";
+    private String formatSimpleStats(ComparisonAnalysis analysis, ComparisonField field) {
+        if (analysis.min == null || field.type != ComparisonType.NUMERIC && field.type != ComparisonType.COUNT) {
+            return "";
         }
         
         return String.format("""
-            - Minimum: %.2f
-            - Maximum: %.2f
-            - Average: %.2f
-            - Median: %.2f
-            - Standard Deviation: %.2f
-            """, analysis.min, analysis.max, analysis.avg, analysis.median, analysis.stdDev);
+            Resumen: Mínimo: %.2f, Máximo: %.2f, Promedio: %.2f
+            """, analysis.min, analysis.max, analysis.avg);
     }
 
     /**

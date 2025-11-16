@@ -400,25 +400,22 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         }
         
         String decisionSummary = formatDecisionSummary(decisions, clusters);
-        String clusterAnalysis = formatClusterAnalysis(clusters);
         
         String prompt = String.format("""
-            Given the following decision extraction query (in any language):
+            Given the following user query (in any language):
             "%s"
             
-            Found %d relevant decisions grouped into %d clusters:
+            Found %d relevant decisions:
             
             %s
             
-            Cluster analysis:
-            %s
-            
-            Write a clear, comprehensive answer in the same language as the query, 
-            summarizing the relevant decisions and their context.
-            Group similar decisions together and highlight the most important findings.
-            """, query, decisions.size(), clusters.size(), 
-            decisionSummary != null ? decisionSummary : "No decisions found.",
-            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "clusters", "análisis", "analysis", "grouped into", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            """, query, decisions.size(), 
+            decisionSummary != null ? decisionSummary : "No decisions found.");
         
         try {
             String response = getLLMResponseCached(prompt);
@@ -461,16 +458,20 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     }
 
     /**
-     * Formats decision summary for LLM prompt
+     * Formats decision summary for LLM prompt (without technical details)
      */
     private String formatDecisionSummary(List<Decision> decisions, List<DecisionCluster> clusters) {
         StringBuilder summary = new StringBuilder();
         
+        // Format decisions naturally without mentioning clusters
         for (int i = 0; i < clusters.size(); i++) {
             DecisionCluster cluster = clusters.get(i);
-            summary.append(String.format("Cluster %d (%d decisions) - Type: %s\n", 
-                                        i + 1, cluster.getSize(), cluster.getDecisionType()));
-            summary.append(cluster.getRepresentativeDecision().decisionText);
+            Decision representative = cluster.getRepresentativeDecision();
+            
+            if (representative.date != null) {
+                summary.append(String.format("Reunión del %s:\n", representative.date));
+            }
+            summary.append(representative.decisionText);
             summary.append("\n\n");
         }
         

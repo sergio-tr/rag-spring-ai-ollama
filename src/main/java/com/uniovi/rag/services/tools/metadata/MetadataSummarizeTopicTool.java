@@ -313,25 +313,22 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         }
         
         String topicSummarySummary = formatTopicSummarySummary(results, clusters);
-        String clusterAnalysis = formatClusterAnalysis(clusters);
         
         String prompt = String.format("""
-            Given the following summarize topic query (in any language):
+            Given the following user query (in any language):
             "%s"
             
-            Found %d relevant topic summaries grouped into %d clusters:
+            Found %d relevant topic summaries:
             
             %s
             
-            Cluster analysis:
-            %s
-            
-            Write a clear, comprehensive summary in the same language as the query, 
-            presenting the most relevant information about the topic from the summaries found.
-            Group similar information together and highlight the most important findings about the topic.
-            """, query, results.size(), clusters.size(), 
-            topicSummarySummary != null ? topicSummarySummary : "No topic summaries available.",
-            clusterAnalysis != null ? clusterAnalysis : "No cluster analysis available.");
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "clusters", "análisis", "analysis", "grouped into", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            """, query, results.size(), 
+            topicSummarySummary != null ? topicSummarySummary : "No topic summaries available.");
         
         try {
             String response = getLLMResponseCached(prompt);
@@ -378,22 +375,25 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     }
 
     /**
-     * Formats topic summary summary for LLM prompt
+     * Formats topic summary summary for LLM prompt (without technical details)
      */
     private String formatTopicSummarySummary(List<TopicResult> results, List<InfoExtractor.Cluster<TopicResult>> clusters) {
         StringBuilder summary = new StringBuilder();
         
+        // Format topic summaries naturally without mentioning clusters
         for (int i = 0; i < clusters.size(); i++) {
             InfoExtractor.Cluster<TopicResult> cluster = clusters.get(i);
             TopicResult representative = cluster.getRepresentativeItem();
             
-            summary.append(String.format("Cluster %d (%d summaries) - Date: %s\n", 
-                                        i + 1, cluster.getSize(), representative.date));
-            summary.append(String.format("Place: %s\n", representative.place));
-            summary.append(String.format("Relevant Topics: %s\n", String.join(", ", representative.relevantTopics)));
-            summary.append(String.format("Key Info: %s\n", representative.keyInfo));
-            summary.append(String.format("Topic Summary: %s\n", representative.topicSummary));
-            summary.append("\n");
+            if (representative.date != null) {
+                summary.append(String.format("Reunión del %s", representative.date));
+                if (representative.place != null) {
+                    summary.append(String.format(" (%s)", representative.place));
+                }
+                summary.append(":\n");
+            }
+            summary.append(representative.topicSummary);
+            summary.append("\n\n");
         }
         
         return summary.toString();

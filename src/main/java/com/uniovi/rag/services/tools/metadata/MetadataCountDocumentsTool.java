@@ -279,36 +279,26 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             return generateNotFoundMessage(query);
         }
         
-        String temporalInsights = formatTemporalInsights(analysis.temporalAnalysis);
-        String distributionInsights = formatDistributionInsights(analysis.distributionAnalysis);
+        String simpleData = formatSimpleData(analysis);
         
         String prompt = String.format("""
-            Given the following counting query (in any language):
+            Given the following user query (in any language):
             "%s"
             
-            Found %d relevant meeting minutes with the following analysis:
+            Found %d relevant meeting minutes.
             
-            Dates: %s
-            Places: %s
-            Topics: %s
-            
-            Temporal analysis:
+            Information:
             %s
             
-            Distribution analysis:
-            %s
-            
-            Write a clear, comprehensive answer in the same language as the query, 
-            indicating the count and providing insights about the temporal and distribution patterns.
-            Highlight the most significant findings and trends.
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "análisis temporal", "análisis de distribución", "temporal analysis", "distribution analysis", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
             """, 
             query, 
             analysis.totalCount,
-            analysis.dates != null ? String.join(", ", analysis.dates) : "none",
-            analysis.places != null ? String.join(", ", analysis.places) : "none",
-            analysis.topics != null ? String.join(", ", analysis.topics) : "none",
-            temporalInsights != null ? temporalInsights : "No temporal analysis available.",
-            distributionInsights != null ? distributionInsights : "No distribution analysis available."
+            simpleData != null ? simpleData : "No additional information available."
         );
         
         try {
@@ -342,39 +332,30 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
     }
 
     /**
-     * Formats temporal insights for LLM prompt
+     * Formats simple data for LLM prompt (without technical analysis terms)
      */
-    private String formatTemporalInsights(TemporalAnalysis temporalAnalysis) {
-        if (temporalAnalysis.earliestDate == null) {
-            return "No temporal analysis available.";
+    private String formatSimpleData(CountingAnalysis analysis) {
+        StringBuilder data = new StringBuilder();
+        
+        if (analysis.dates != null && !analysis.dates.isEmpty()) {
+            data.append("Fechas: ").append(String.join(", ", analysis.dates)).append("\n");
         }
         
-        return String.format("""
-            - Time span: %d days (from %s to %s)
-            - Monthly distribution: %s
-            - Yearly distribution: %s
-            """,
-            temporalAnalysis.daysSpan,
-            temporalAnalysis.earliestDate.toString(),
-            temporalAnalysis.latestDate.toString(),
-            temporalAnalysis.monthlyDistribution.toString(),
-            temporalAnalysis.yearlyDistribution.toString()
-        );
-    }
-
-    /**
-     * Formats distribution insights for LLM prompt
-     */
-    private String formatDistributionInsights(DistributionAnalysis distributionAnalysis) {
-        return String.format("""
-            - Place distribution: %s
-            - Topic distribution: %s
-            - Attendee distribution: %s
-            """,
-            distributionAnalysis.placeDistribution.toString(),
-            distributionAnalysis.topicDistribution.toString(),
-            distributionAnalysis.attendeeDistribution.toString()
-        );
+        if (analysis.places != null && !analysis.places.isEmpty()) {
+            data.append("Lugares: ").append(String.join(", ", analysis.places)).append("\n");
+        }
+        
+        if (analysis.topics != null && !analysis.topics.isEmpty()) {
+            data.append("Temas principales: ").append(String.join(", ", analysis.topics.stream().limit(10).collect(Collectors.toList()))).append("\n");
+        }
+        
+        if (analysis.temporalAnalysis != null && analysis.temporalAnalysis.earliestDate != null) {
+            data.append(String.format("Período: desde %s hasta %s\n", 
+                analysis.temporalAnalysis.earliestDate.toString(), 
+                analysis.temporalAnalysis.latestDate.toString()));
+        }
+        
+        return data.toString();
     }
 
     /**

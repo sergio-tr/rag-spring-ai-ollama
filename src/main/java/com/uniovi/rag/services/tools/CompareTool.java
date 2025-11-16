@@ -216,11 +216,14 @@ public class CompareTool extends AbstractTool {
             Given the following user query (in any language):
             "%s"
             
-            This is the comparison obtained:
+            Comparison data:
             %s
             
-            Write a clear, concise response in the same language as the query, 
-            comparing the values and explaining which is greater or if there's a tie.
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "comparison obtained", "análisis", "analysis", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
             """, query, comparison);
         
         try {

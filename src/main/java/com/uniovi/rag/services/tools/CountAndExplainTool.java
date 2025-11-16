@@ -137,13 +137,17 @@ public class CountAndExplainTool extends AbstractTool {
         }
         
         String prompt = String.format("""
-            The user asked (in any language): "%s"
+            Given the following user query (in any language):
+            "%s"
             
-            Found %d relevant meeting minutes. Below is the context found:
+            Found %d relevant meeting minutes:
             %s
             
-            Write a brief and clear response in the same language as the query, 
-            indicating the number of minutes found and summarizing the relevant context.
+            Write a clear, direct answer in the same language as the query.
+            Provide only the information requested by the user.
+            DO NOT mention any technical details like "analysis", "análisis", "context found", or internal processing.
+            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
             """, query, count, joined);
         
         try {
