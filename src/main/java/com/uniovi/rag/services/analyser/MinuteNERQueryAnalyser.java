@@ -258,10 +258,32 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
                     json.put(field, new JSONArray());
                 }
             } else {
-                // Ensure non-special fields are arrays
-                if (!field.equals("answerType") && !field.equals("comparisonType") && !field.equals("temporalContext")) {
+                // Special fields that must be strings
+                if (field.equals("answerType") || field.equals("comparisonType") || field.equals("temporalContext")) {
+                    Object value = json.get(field);
+                    // If it's an array, take the first element or default value
+                    if (value instanceof JSONArray) {
+                        JSONArray array = (JSONArray) value;
+                        if (array.length() > 0) {
+                            String firstValue = array.getString(0);
+                            json.put(field, firstValue != null && !firstValue.trim().isEmpty() ? firstValue.trim() : getDefaultStringValue(field));
+                        } else {
+                            json.put(field, getDefaultStringValue(field));
+                        }
+                    } else if (value instanceof String) {
+                        // Already a string, just ensure it's not empty
+                        String strValue = (String) value;
+                        if (strValue.trim().isEmpty()) {
+                            json.put(field, getDefaultStringValue(field));
+                        }
+                    } else {
+                        // Convert other types to string or use default
+                        json.put(field, getDefaultStringValue(field));
+                    }
+                } else {
+                    // Ensure non-special fields are arrays
                     if (!(json.get(field) instanceof JSONArray)) {
-                    json.put(field, new JSONArray());
+                        json.put(field, new JSONArray());
                     }
                 }
             }
@@ -272,6 +294,18 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         normalizeTimes(json);
         normalizeNumbers(json);
         normalizeNames(json);
+    }
+    
+    /**
+     * Gets the default string value for special fields
+     */
+    private String getDefaultStringValue(String field) {
+        if (field.equals("answerType")) {
+            return "unknown";
+        } else if (field.equals("comparisonType") || field.equals("temporalContext")) {
+            return "none";
+        }
+        return "";
     }
 
     /**
@@ -459,6 +493,30 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     }
 
     /**
+     * Helper method to safely get string value from JSON, handling arrays
+     */
+    private String getStringSafely(JSONObject obj, String key, String defaultValue) {
+        try {
+            if (!obj.has(key)) {
+                return defaultValue;
+            }
+            Object value = obj.get(key);
+            if (value instanceof String) {
+                return (String) value;
+            } else if (value instanceof JSONArray) {
+                JSONArray array = (JSONArray) value;
+                if (array.length() > 0) {
+                    return array.getString(0);
+                }
+            }
+            return defaultValue;
+        } catch (Exception e) {
+            log().debug("Error getting string value for key '{}': {}", key, e.getMessage());
+            return defaultValue;
+        }
+    }
+    
+    /**
      * Enhances the JSON with context analysis
      */
     private void enhanceWithContextAnalysis(JSONObject json, String query) {
@@ -470,7 +528,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             queryLower.contains("vs") || queryLower.contains("versus") ||
             queryLower.contains("difference") || queryLower.contains("diferencia")) {
             
-            if (json.getString("comparisonType").equals("none")) {
+            String comparisonType = getStringSafely(json, "comparisonType", "none");
+            if (comparisonType.equals("none")) {
                 // Try to infer comparison type
                 if (queryLower.contains("duration") || queryLower.contains("duración")) {
                     json.put("comparisonType", "duration");
@@ -489,7 +548,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         }
         
         // Detect temporal context
-        if (json.getString("temporalContext").equals("none")) {
+        String temporalContext = getStringSafely(json, "temporalContext", "none");
+        if (temporalContext.equals("none")) {
             if (queryLower.contains("última") || queryLower.contains("last") || 
                 queryLower.contains("reciente") || queryLower.contains("recent")) {
                 json.put("temporalContext", "latest");
@@ -510,7 +570,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         }
         
         // Detect answer type if not specified
-        if (json.getString("answerType").equals("unknown")) {
+        String answerType = getStringSafely(json, "answerType", "unknown");
+        if (answerType.equals("unknown")) {
             if (queryLower.contains("quién") || queryLower.contains("who") ||
                 queryLower.contains("president") || queryLower.contains("secretary")) {
                 json.put("answerType", "person");
