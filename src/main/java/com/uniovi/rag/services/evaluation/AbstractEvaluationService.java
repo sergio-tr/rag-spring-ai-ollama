@@ -20,6 +20,9 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     protected final QueryService queryService;
     protected final RagFeatureConfiguration featureConfig;
     protected boolean dataLoaded = false;
+    
+    // For dynamic evaluation with custom configurations
+    protected EvaluationServiceFactory evaluationServiceFactory;
 
     protected final static PromptTemplate EVALUATION_PROMPT_TEMPLATE = new PromptTemplate("""
         Act as an expert evaluator of RAG (Retrieval-Augmented Generation) systems. 
@@ -69,16 +72,33 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
     @Override
     public Map<String, Object> evaluate() {
+        // Use default configuration from application.properties
+        return evaluateWithConfiguration(featureConfig);
+    }
+    
+    /**
+     * Evaluates with a custom configuration.
+     * This allows testing different configuration combinations.
+     * 
+     * @param customConfig The custom configuration to use
+     * @return Evaluation results with the custom configuration
+     */
+    public Map<String, Object> evaluateWithConfiguration(RagFeatureConfiguration customConfig) {
         Map<String, Object> results = new HashMap<>();
+        results.put("configuration", customConfig.getConfiguration());
 
-        results.put("configuration", featureConfig.getConfiguration());
+        // Create services with custom configuration if factory is available
+        QueryService queryServiceToUse = this.queryService;
+        if (evaluationServiceFactory != null) {
+            queryServiceToUse = evaluationServiceFactory.createQueryService(customConfig);
+        }
 
         List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
 
         for (Map.Entry<String, String> entry : getQuestionsAndAnswers().entrySet()) {
             String question = entry.getKey();
             String correctAnswer = entry.getValue();
-            String llmResponse = queryService.generateResponse(question);
+            String llmResponse = queryServiceToUse.generateResponse(question);
 
             String evaluation = evaluateResponse(question, correctAnswer, llmResponse);
 
@@ -94,8 +114,56 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         }
 
         results.put("results", resultsForPrompt);
-
         return results;
+    }
+    
+    /**
+     * Evaluates all possible configuration combinations.
+     * This generates 2^4 = 16 combinations (for 4 boolean flags: expansion, ner, tools, metadata).
+     * 
+     * @return Map with configuration name as key and evaluation results as value
+     */
+    public Map<String, Map<String, Object>> evaluateAllConfigurations() {
+        if (evaluationServiceFactory == null) {
+            throw new IllegalStateException("EvaluationServiceFactory must be set to evaluate all configurations");
+        }
+        
+        Map<String, Map<String, Object>> allResults = new HashMap<>();
+        
+        // Generate all combinations of boolean flags
+        boolean[] flags = {false, true};
+        int configNumber = 0;
+        
+        for (boolean expansion : flags) {
+            for (boolean ner : flags) {
+                for (boolean tools : flags) {
+                    for (boolean metadata : flags) {
+                        RagFeatureConfiguration config = new RagFeatureConfiguration();
+                        config.setExpansionEnabled(expansion);
+                        config.setNerEnabled(ner);
+                        config.setToolsEnabled(tools);
+                        config.setMetadataEnabled(metadata);
+                        
+                        String configName = String.format("config_%02d_expansion_%s_ner_%s_tools_%s_metadata_%s",
+                                configNumber++,
+                                expansion, ner, tools, metadata);
+                        
+                        log().info("Evaluating configuration: {}", configName);
+                        Map<String, Object> result = evaluateWithConfiguration(config);
+                        allResults.put(configName, result);
+                    }
+                }
+            }
+        }
+        
+        return allResults;
+    }
+    
+    /**
+     * Sets the evaluation service factory for dynamic configuration testing.
+     */
+    public void setEvaluationServiceFactory(EvaluationServiceFactory factory) {
+        this.evaluationServiceFactory = factory;
     }
 
     protected String evaluateResponse(String question, String correctAnswer, String llmResponse) {
