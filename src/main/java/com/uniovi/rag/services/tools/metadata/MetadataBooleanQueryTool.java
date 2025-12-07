@@ -38,6 +38,12 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         
         // Step 1: Retrieve and filter documents efficiently
         List<Document> docs = retrieveDocumentsWithMetadataFilter(query, new String[] {"date", "place", "decisions", "topics", "summary"});
+
+        if (docs.isEmpty()) {
+            log().debug("No documents found with metadata filter, trying basic retrieval");
+            docs = retrieveDocuments(query);  // Basic retrieval without metadata
+        }
+        
         if (docs.isEmpty()) {
             log().debug("No documents found for query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());

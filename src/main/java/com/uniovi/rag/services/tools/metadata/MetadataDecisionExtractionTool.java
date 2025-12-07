@@ -42,6 +42,12 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             query,
             new String[] {"date", "place", "topics", "decisions", "summary"}
         );
+        
+        if (docs.isEmpty()) {
+            log().debug("No documents found with metadata filter, trying basic retrieval");
+            docs = retrieveDocuments(query);
+        }
+        
         if (docs.isEmpty()) {
             log().debug("No documents found for decision extraction query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());

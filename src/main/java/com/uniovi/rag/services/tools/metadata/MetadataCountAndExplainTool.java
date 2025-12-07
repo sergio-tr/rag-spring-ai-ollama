@@ -42,6 +42,12 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
             query,
             new String[] {"date", "place", "topics", "decisions", "summary", "agenda"}
         );
+        
+        if (docs.isEmpty()) {
+            log().debug("No documents found with metadata filter, trying basic retrieval");
+            docs = retrieveDocuments(query);
+        }
+        
         if (docs.isEmpty()) {
             log().debug("No documents found for count and explain query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());

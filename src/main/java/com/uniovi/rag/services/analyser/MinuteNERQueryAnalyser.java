@@ -3,6 +3,7 @@ package com.uniovi.rag.services.analyser;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.cache.annotation.Cacheable;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -129,40 +130,58 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     @Override
     public JSONObject analyse(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            log().warn("NER: Empty query provided");
+            return createFallbackResponse(query);
+        }
+        
         try {
-            // Use simple string replacement instead of PromptTemplate to avoid issues with [ and ] in JSON examples
-            String prompt = NER_PROMPT.replace("{query}", query != null ? query : "");
+            return analyseWithCache(query);
+        } catch (Exception e) {
+            log().error("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage(), e);
+            return createFallbackResponse(query);
+        }
+    }
+    
+    /**
+     * Analyzes the query with robust validation and normalization.
+     */
+    @Cacheable(value = "nerAnalysis", key = "#query.hashCode()")
+    private JSONObject analyseWithCache(String query) {
+        // Use simple string replacement instead of PromptTemplate to avoid issues with [ and ] in JSON examples
+        String prompt = NER_PROMPT.replace("{query}", query);
 
-            String response = chatClient
-                    .prompt()
-                    .system(getSystemPrompt())
-                    .user(prompt)
-                    .call()
-                    .content();
+        String response = chatClient
+                .prompt()
+                .system(getSystemPrompt())
+                .user(prompt)
+                .call()
+                .content();
 
-            if (response == null || response.trim().isEmpty()) {
-                log().warn("NER: Empty response from LLM for query: {}", query);
+        if (response == null || response.trim().isEmpty()) {
+            log().warn("NER: Empty response from LLM for query: {}", query);
+            return createFallbackResponse(query);
+        }
+
+        String cleanResponse = cleanJsonResponse(response);
+        
+        log().debug("NER-QUERY: Raw response length: {}, Cleaned response:\n{}", response.length(), cleanResponse);
+
+        if (!cleanResponse.trim().startsWith("{")) {
+            log().warn("NER: Response does not start with {{, attempting to extract JSON");
+            // Try to extract JSON from response
+            int startIdx = cleanResponse.indexOf("{");
+            int endIdx = cleanResponse.lastIndexOf("}");
+            if (startIdx >= 0 && endIdx > startIdx) {
+                cleanResponse = cleanResponse.substring(startIdx, endIdx + 1);
+                log().debug("NER: Extracted JSON substring: {}", cleanResponse);
+            } else {
+                log().error("NER: Response does not contain valid JSON structure for query: {}", query);
                 return createFallbackResponse(query);
             }
+        }
 
-            String cleanResponse = cleanJsonResponse(response);
-            
-            log().debug("NER-QUERY: Raw response length: {}, Cleaned response:\n{}", response.length(), cleanResponse);
-
-            // Validate JSON structure
-            if (!cleanResponse.trim().startsWith("{")) {
-                log().warn("NER: Response does not start with {{, attempting to extract JSON");
-                // Try to extract JSON from response
-                int startIdx = cleanResponse.indexOf("{");
-                int endIdx = cleanResponse.lastIndexOf("}");
-                if (startIdx >= 0 && endIdx > startIdx) {
-                    cleanResponse = cleanResponse.substring(startIdx, endIdx + 1);
-                    log().debug("NER: Extracted JSON substring: {}", cleanResponse);
-                } else {
-                    throw new IllegalArgumentException("Response does not contain valid JSON structure.");
-                }
-            }
-
+        try {
             JSONObject json = new JSONObject(cleanResponse);
             validateAndNormalize(json);
             enhanceWithContextAnalysis(json, query);
@@ -174,9 +193,6 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             return createFallbackResponse(query);
         } catch (IllegalArgumentException e) {
             log().error("NER: Invalid JSON structure for query '{}': {}", query, e.getMessage(), e);
-            return createFallbackResponse(query);
-        } catch (Exception e) {
-            log().error("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage(), e);
             return createFallbackResponse(query);
         }
     }

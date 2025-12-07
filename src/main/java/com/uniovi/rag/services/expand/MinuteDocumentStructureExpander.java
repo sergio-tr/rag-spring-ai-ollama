@@ -64,17 +64,8 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
             
             String trimmed = result.trim();
             
-            // If the original query has Spanish characters and the result doesn't, it might have changed language
-            boolean originalHasSpanish = query.matches(".*[áéíóúñ¿¡].*");
-            boolean resultHasSpanish = trimmed.matches(".*[áéíóúñ¿¡].*");
-            
-            if (originalHasSpanish && !resultHasSpanish) {
-                log().warn("Expansion may have changed language from Spanish to another, returning original query");
-                return query;
-            }
-            
-            if (trimmed.length() > query.length() * 3 || trimmed.length() < query.length() / 3) {
-                log().warn("Expansion result length is very different from original, returning original query");
+            if (!isValidExpansion(query, trimmed)) {
+                log().warn("Expansion failed quality validation, returning original query");
                 return query;
             }
             
@@ -87,5 +78,57 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
             log().error("Error expanding query, returning original", e);
             return query; // Return original query on error
         }
+    }
+    
+    /**
+     * Validates the quality of the expansion.
+     */
+    private boolean isValidExpansion(String original, String expanded) {
+        if (expanded == null || expanded.trim().isEmpty()) {
+            return false;
+        }
+        
+        String trimmed = expanded.trim();
+        
+        // Validation 1: Same language
+        boolean originalHasSpanish = original.matches(".*[áéíóúñ¿¡].*");
+        boolean resultHasSpanish = trimmed.matches(".*[áéíóúñ¿¡].*");
+        
+        if (originalHasSpanish && !resultHasSpanish) {
+            log().warn("Expansion changed language from Spanish to another");
+            return false;
+        }
+        
+        // Validation 2: Reasonable length (no more than 3x nor less than 1/3)
+        if (trimmed.length() > original.length() * 3 || trimmed.length() < original.length() / 3) {
+            log().warn("Expansion result length is very different from original (original: {}, expanded: {})", 
+                      original.length(), trimmed.length());
+            return false;
+        }
+        
+        // Validation 3: Should not be identical (if identical, there's no useful expansion)
+        if (trimmed.equalsIgnoreCase(original)) {
+            // This is fine, it means the query was already well-formulated
+            return true;
+        }
+        
+        // Validation 4: Must contain at least some words from the original (basic similarity)
+        String[] originalWords = original.toLowerCase().split("\\s+");
+        String expandedLower = trimmed.toLowerCase();
+        int matchingWords = 0;
+        for (String word : originalWords) {
+            if (word.length() > 3 && expandedLower.contains(word)) {  // Only words with more than 3 characters
+                matchingWords++;
+            }
+        }
+        
+        // At least 30% of words must be present
+        if (originalWords.length > 0 && matchingWords < originalWords.length * 0.3) {
+            log().warn("Expansion has too few matching words with original ({} out of {})", 
+                      matchingWords, originalWords.length);
+            return false;
+        }
+        
+        return true;
     }
 }

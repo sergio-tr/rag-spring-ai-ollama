@@ -1,0 +1,126 @@
+package com.uniovi.rag.utils;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Utility class for validating LLM responses consistently across all services.
+ * This helps ensure response quality and handle edge cases uniformly.
+ */
+public class LLMResponseValidator {
+    
+    private static final Logger log = LoggerFactory.getLogger(LLMResponseValidator.class);
+    
+    private static final int MIN_RESPONSE_LENGTH = 3;
+    private static final int MAX_RESPONSE_LENGTH = 10000;
+    
+    /**
+     * Validates if an LLM response is valid and usable.
+     * 
+     * @param response The response to validate
+     * @param context Optional context for logging (e.g., "NER", "Expander", "Tool")
+     * @return true if the response is valid, false otherwise
+     */
+    public static boolean isValidResponse(String response, String context) {
+        if (response == null) {
+            log.warn("{}: Response is null", context);
+            return false;
+        }
+        
+        String trimmed = response.trim();
+        
+        if (trimmed.isEmpty()) {
+            log.warn("{}: Response is empty", context);
+            return false;
+        }
+        
+        if (trimmed.length() < MIN_RESPONSE_LENGTH) {
+            log.warn("{}: Response too short (length: {})", context, trimmed.length());
+            return false;
+        }
+        
+        if (trimmed.length() > MAX_RESPONSE_LENGTH) {
+            log.warn("{}: Response too long (length: {}), may be truncated or corrupted", context, trimmed.length());
+            return false;
+        }
+        
+        // Check for common error patterns
+        if (isErrorResponse(trimmed)) {
+            log.warn("{}: Response appears to be an error message: {}", context, trimmed.substring(0, Math.min(50, trimmed.length())));
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Checks if a response appears to be an error message rather than actual content.
+     * 
+     * @param response The response to check
+     * @return true if it looks like an error message
+     */
+    private static boolean isErrorResponse(String response) {
+        String lower = response.toLowerCase();
+        
+        // Common error patterns
+        return lower.contains("error") && (lower.contains("occurred") || lower.contains("processing")) ||
+               lower.contains("exception") ||
+               lower.contains("failed") && lower.contains("process") ||
+               lower.startsWith("error:") ||
+               lower.startsWith("exception:");
+    }
+    
+    /**
+     * Cleans and normalizes an LLM response.
+     * Removes common artifacts like markdown code blocks, extra whitespace, etc.
+     * 
+     * @param response The response to clean
+     * @return The cleaned response
+     */
+    public static String cleanResponse(String response) {
+        if (response == null) {
+            return "";
+        }
+        
+        String cleaned = response
+                .replaceAll("(?s)```.*?```", "")  // Remove markdown code blocks
+                .replaceAll("(?s)```.*?\\n", "")     // Remove incomplete code blocks
+                .replaceAll("```", "")                // Remove any remaining ```
+                .replaceAll("(?m)^\\s*//.*$", "")   // Remove comments
+                .replaceAll("(?m)^\\s*#.*$", "")     // Remove markdown headers
+                .trim();
+        
+        // Remove leading/trailing quotes if present
+        if (cleaned.startsWith("\"") && cleaned.endsWith("\"") && cleaned.length() > 1) {
+            cleaned = cleaned.substring(1, cleaned.length() - 1);
+        }
+        if (cleaned.startsWith("'") && cleaned.endsWith("'") && cleaned.length() > 1) {
+            cleaned = cleaned.substring(1, cleaned.length() - 1);
+        }
+        
+        return cleaned.trim();
+    }
+    
+    /**
+     * Validates and cleans a response in one step.
+     * 
+     * @param response The response to validate and clean
+     * @param context Optional context for logging
+     * @return The cleaned response if valid, null otherwise
+     */
+    public static String validateAndClean(String response, String context) {
+        if (!isValidResponse(response, context)) {
+            return null;
+        }
+        
+        String cleaned = cleanResponse(response);
+        
+        // Re-validate after cleaning
+        if (!isValidResponse(cleaned, context + " (cleaned)")) {
+            return null;
+        }
+        
+        return cleaned;
+    }
+}
+
