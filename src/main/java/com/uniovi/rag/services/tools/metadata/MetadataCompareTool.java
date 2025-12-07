@@ -42,6 +42,12 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             query, 
             new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"}
         );
+        
+        if (docs.isEmpty()) {
+            log().debug("No documents found with metadata filter, trying basic retrieval");
+            docs = retrieveDocuments(query);
+        }
+        
         if (docs.isEmpty()) {
             log().debug("No documents found for comparison query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());

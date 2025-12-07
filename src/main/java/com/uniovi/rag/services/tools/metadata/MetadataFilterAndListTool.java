@@ -42,6 +42,12 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             query, 
             new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"}
         );
+        
+        if (docs.isEmpty()) {
+            log().debug("No documents found with metadata filter, trying basic retrieval");
+            docs = retrieveDocuments(query);
+        }
+        
         if (docs.isEmpty()) {
             log().debug("No documents found for filter and list query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());

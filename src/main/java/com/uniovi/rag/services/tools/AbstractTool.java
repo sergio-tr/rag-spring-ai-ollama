@@ -18,8 +18,22 @@ public abstract class AbstractTool implements Tool {
         this.nerHandler = new EnhancedNERHandler(chatClient);
     }
 
+    /**
+     * Retrieves all documents matching the query with maximum recall.
+     * If more documents are needed, use retrieveDocumentsIntelligently().
+     */
     protected List<Document> retrieveAllDocuments(String query) {
-        retriever.setTopK(1000);
+        retriever.setTopK(100);  // Reduced from 1000 to improve performance
+        retriever.setSimilarityThreshold(0);
+        return retriever.retrieve(query);
+    }
+    
+    /**
+     * Retrieves documents intelligently with a configurable limit.
+     * Use this when you need more control over the number of documents retrieved.
+     */
+    protected List<Document> retrieveDocumentsIntelligently(String query, int maxDocuments) {
+        retriever.setTopK(Math.min(maxDocuments, 200));  // Maximum 200 to avoid overload
         retriever.setSimilarityThreshold(0);
         return retriever.retrieve(query);
     }

@@ -11,6 +11,7 @@ import com.uniovi.rag.model.Minute;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -682,43 +683,179 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return minutes;
         }
         
+        List<Minute> preFiltered = minutes;
+        if (minutes.size() > 30) { // Increased threshold from 20 to 30
+            preFiltered = preFilterMinutesFast(minutes, ner);
+            log().debug("Pre-filtered {} minutes to {} using fast matching", minutes.size(), preFiltered.size());
+        }
+        
         List<Minute> filtered;
         
         if (ner != null && !ner.isEmpty()) {
-            // Use enhanced NER filtering with temporal context
-            List<Minute> temporalFiltered = nerHandler.filterMinutesByTemporalContext(minutes, ner);
+        
+            List<Minute> temporalFiltered = filterMinutesByTemporalContextFast(preFiltered, ner);
             
-            // Filter by NER matching
-            filtered = temporalFiltered.stream()
-                    .filter(minute -> nerHandler.matchesMinuteWithNER(minute, ner))
-                    .filter(minute -> isRelevantToQueryCached(query, minute))
+            List<Minute> directMatched = temporalFiltered.stream()
+                    .filter(minute -> {
+                        if (ner.has("mentionedEntities") && !ner.getJSONArray("mentionedEntities").isEmpty()) {
+                            if (!matchesMentionedEntities(minute, ner)) {
+                                return false;
+                            }
+                        }
+                        if (ner.has("agenda") && !ner.getJSONArray("agenda").isEmpty()) {
+                            if (!matchesAgendaItems(minute, ner)) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    })
+                    .limit(25) // Increased from 20 to 25
                     .collect(Collectors.toList());
             
-            if (filtered.isEmpty() && !temporalFiltered.isEmpty()) {
-                log().debug("All minutes filtered out by NER matching, trying fallback: only temporal + relevance");
-                // Fallback 1: Skip NER matching, keep temporal + relevance
-                filtered = temporalFiltered.stream()
-                        .filter(minute -> isRelevantToQueryCached(query, minute))
+            // Filter by NER matching (with LLM, but limited)
+            filtered = directMatched.stream()
+                    .filter(minute -> nerHandler.matchesMinuteWithNER(minute, ner))
+                    .filter(minute -> isRelevantToQueryCached(query, minute))
+                    .limit(15) // Increased from 10 to 15 to reduce incomplete responses
+                    .collect(Collectors.toList());
+            
+            if (filtered.isEmpty() && !directMatched.isEmpty()) {
+                log().debug("Fallback 1: Skipping relevance filter");
+                filtered = directMatched.stream()
+                        .filter(minute -> nerHandler.matchesMinuteWithNER(minute, ner))
+                        .limit(15) // Increased from 10 to 15
                         .collect(Collectors.toList());
             }
             
-            if (filtered.isEmpty() && !minutes.isEmpty()) {
-                log().debug("All minutes filtered out even with fallback, trying: only relevance");
-                // Fallback 2: Skip all NER filters, only relevance
-                filtered = filterMinutesByQueryRelevance(query, minutes);
+            if (filtered.isEmpty() && !preFiltered.isEmpty()) {
+                log().debug("Fallback 2: Using only temporal filter");
+                filtered = filterMinutesByTemporalContextFast(preFiltered, ner).stream()
+                        .limit(15) // Increased from 10 to 15
+                        .collect(Collectors.toList());
             }
         } else {
-            filtered = filterMinutesByQueryRelevance(query, minutes);
+            filtered = preFiltered.stream()
+                    .filter(minute -> isRelevantToQueryCached(query, minute))
+                    .limit(15) // Increased from 10 to 15
+                    .collect(Collectors.toList());
         }
         
         // Final fallback: if still empty and we have minutes, return at least some
         if (filtered.isEmpty() && !minutes.isEmpty()) {
-            log().warn("All filtering failed, returning first {} minutes as last resort", Math.min(3, minutes.size()));
-            return minutes.stream().limit(3).collect(Collectors.toList());
+            log().warn("All filtering failed, returning top 5 minutes by similarity as last resort");
+            return minutes.stream().limit(5).collect(Collectors.toList());
         }
         
         log().debug("Filtered {} relevant minutes from {} total", filtered.size(), minutes.size());
         return filtered;
+    }
+    
+    /**
+     * Fast pre-filtering without LLM to reduce the number of minutes before expensive filtering.
+     * Uses improved date matching with LocalDate parsing for better accuracy.
+     */
+    private List<Minute> preFilterMinutesFast(List<Minute> minutes, JSONObject ner) {
+        if (ner == null || ner.isEmpty()) {
+            return minutes.stream().limit(30).collect(Collectors.toList()); // Increased from 20 to 30
+        }
+        
+        return minutes.stream()
+                .filter(minute -> {
+                    // Fast date matching with improved precision
+                    if (ner.has("date") && !ner.getJSONArray("date").isEmpty()) {
+                        String minuteDate = minute.date();
+                        if (minuteDate != null && !minuteDate.trim().isEmpty()) {
+                            org.json.JSONArray nerDates = ner.getJSONArray("date");
+                            boolean dateMatches = false;
+                            for (int i = 0; i < nerDates.length(); i++) {
+                                String nerDate = nerDates.getString(i);
+                                // Try precise date matching first
+                                if (datesMatchPrecisely(minuteDate, nerDate)) {
+                                    dateMatches = true;
+                                    break;
+                                }
+                                // Fallback to string matching
+                                String nerDateLower = nerDate.toLowerCase();
+                                String minuteDateLower = minuteDate.toLowerCase();
+                                if (minuteDateLower.contains(nerDateLower) || nerDateLower.contains(minuteDateLower)) {
+                                    dateMatches = true;
+                                    break;
+                                }
+                            }
+                            if (!dateMatches) {
+                                return false;  // No date match
+                            }
+                        }
+                    }
+                    return true;  // If no date in NER or there's a match, pass through
+                })
+                .limit(30)  // Increased from 20 to 30 to reduce incomplete responses
+                .collect(Collectors.toList());
+    }
+    
+    /**
+     * Checks if two dates match precisely using LocalDate parsing.
+     */
+    private boolean datesMatchPrecisely(String date1, String date2) {
+        if (date1 == null || date2 == null) {
+            return false;
+        }
+        
+        try {
+            LocalDate parsed1 = parseDateToLocalDate(date1);
+            LocalDate parsed2 = parseDateToLocalDate(date2);
+            
+            if (parsed1 != null && parsed2 != null) {
+                return parsed1.equals(parsed2);
+            }
+        } catch (Exception e) {
+            log().debug("Error parsing dates for comparison: {} vs {}", date1, date2);
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Parses a date string to LocalDate using multiple formatters.
+     */
+    private LocalDate parseDateToLocalDate(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            return null;
+        }
+        
+        List<DateTimeFormatter> formatters = Arrays.asList(
+            DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.ENGLISH)
+        );
+        
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                return LocalDate.parse(dateStr.trim(), formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try next formatter
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Filtrado temporal rápido (sin LLM) basado en matching de fechas.
+     */
+    private List<Minute> filterMinutesByTemporalContextFast(List<Minute> minutes, JSONObject ner) {
+        if (ner == null || !ner.has("temporalContext")) {
+            return minutes;
+        }
+        
+        String temporalContext = ner.getString("temporalContext");
+        if (temporalContext.equals("none") || temporalContext.equals("general")) {
+            return minutes;
+        }
+        return minutes;
     }
 
     /**
@@ -887,16 +1024,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Retrieves documents with intelligent metadata filtering using EnhancedNERHandler.
      * Filters documents that have relevant metadata fields (either complete Minute object or individual fields).
      * 
-     * MEJORA 2: Groups chunks by document_id to avoid processing the same document multiple times.
-     * This significantly improves performance by eliminating duplicate Minute reconstructions.
      */
     protected List<Document> retrieveDocumentsWithMetadataFilter(String query, String[] relevantFields) {
-        List<Document> docs = retrieveAllDocuments(query);
+        // Increase topK to reduce incomplete responses
+        retriever.setTopK(150); // Increased from 100 to 150
+        retriever.setSimilarityThreshold(0);
+        List<Document> docs = retriever.retrieve(query);
         
-        // Filter by metadata fields and relevance
         List<Document> metadataDocs = docs.stream()
                 .filter(doc -> hasMetadataFields(doc, relevantFields))
-                .filter(doc -> hasRelevantMetadata(doc, query, relevantFields))
                 .collect(Collectors.toList());
         
         // When PgVectorStore splits a document into chunks, all chunks have the same document_id
@@ -917,9 +1053,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     
     /**
      * Extracts the document_id from a document's metadata.
-     * Falls back to the document's id if document_id is not present (for backward compatibility).
-     * 
-     * MEJORA 2: Helper method to get document identifier for deduplication.
+     * Falls back to the document's id if document_id is not present.
      */
     private String getDocumentId(Document doc) {
         if (doc == null) {
@@ -942,9 +1076,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (id != null) {
             return id.toString();
         }
-        
-        // Last resort: use document's own id
-        // Note: This might be a chunk id, not the document id, but it's better than nothing
+
         return doc.getId();
     }
     

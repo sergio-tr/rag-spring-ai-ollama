@@ -6,6 +6,12 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.PgVectorStore;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class MinuteDocumentContextRetriever extends FilteredContextRetriever {
@@ -142,7 +148,7 @@ public class MinuteDocumentContextRetriever extends FilteredContextRetriever {
             return true; // If no metadata, can't filter, so keep it
         }
         
-        // Check date matching
+        // Check date matching with improved parsing
         if (ner.has("date") && !ner.getJSONArray("date").isEmpty()) {
             String docDate = (String) metadata.get("date");
             if (docDate != null && !docDate.trim().isEmpty()) {
@@ -150,9 +156,13 @@ public class MinuteDocumentContextRetriever extends FilteredContextRetriever {
                 boolean dateMatches = false;
                 for (int i = 0; i < nerDates.length(); i++) {
                     String nerDate = nerDates.getString(i);
-                    // Simple date matching (can be improved with date normalization)
-                    if (docDate.contains(nerDate) || nerDate.contains(docDate) || 
-                        datesAreSimilar(docDate, nerDate)) {
+                    // Try precise date matching first
+                    if (datesMatchPrecisely(docDate, nerDate)) {
+                        dateMatches = true;
+                        break;
+                    }
+                    // Fallback to similarity check
+                    if (datesAreSimilar(docDate, nerDate)) {
                         dateMatches = true;
                         break;
                     }
@@ -213,8 +223,54 @@ public class MinuteDocumentContextRetriever extends FilteredContextRetriever {
     }
     
     /**
+     * Checks if two dates match precisely using LocalDate parsing.
+     */
+    private boolean datesMatchPrecisely(String date1, String date2) {
+        if (date1 == null || date2 == null) {
+            return false;
+        }
+        
+        LocalDate parsed1 = parseDateToLocalDate(date1);
+        LocalDate parsed2 = parseDateToLocalDate(date2);
+        
+        if (parsed1 != null && parsed2 != null) {
+            return parsed1.equals(parsed2);
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Parses a date string to LocalDate using multiple formatters.
+     */
+    private LocalDate parseDateToLocalDate(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            return null;
+        }
+        
+        List<DateTimeFormatter> formatters = Arrays.asList(
+            DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.ENGLISH)
+        );
+        
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                return LocalDate.parse(dateStr.trim(), formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try next formatter
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
      * Simple heuristic to check if two date strings are similar.
-     * Can be improved with proper date parsing and normalization.
+     * Used as fallback when precise parsing fails.
      */
     private boolean datesAreSimilar(String date1, String date2) {
         if (date1 == null || date2 == null) return false;

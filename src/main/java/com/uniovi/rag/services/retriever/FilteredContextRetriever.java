@@ -1,12 +1,11 @@
 package com.uniovi.rag.services.retriever;
 
-import com.uniovi.rag.model.Loggable;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.PgVectorStore;
 
-public class FilteredContextRetriever extends AbstractContextRetriever implements Loggable {
+public class FilteredContextRetriever extends AbstractContextRetriever {
 
     private static final String PROMPT_TEMPLATE = """
         You are a content filtering system for meeting minutes. Your task is to filter document content 
