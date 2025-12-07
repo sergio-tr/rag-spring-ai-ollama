@@ -1,9 +1,10 @@
 package com.uniovi.rag.services.evaluation;
 
-import com.uniovi.rag.services.DocumentService;
+import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.services.document.DocumentService;
 import com.uniovi.rag.services.query.QueryService;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
-import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -14,26 +15,44 @@ import java.util.Map;
 @Service
 public abstract class AbstractEvaluationService implements EvaluationService {
 
-    protected final OllamaChatModel chatModel;
+    protected final ChatClient chatClient;
     protected final DocumentService documentService;
     protected final QueryService queryService;
+    protected final RagFeatureConfiguration featureConfig;
     protected boolean dataLoaded = false;
 
     protected final static PromptTemplate EVALUATION_PROMPT_TEMPLATE = new PromptTemplate("""
-        Evalúa la calidad de la siguiente respuesta respondiendo en español según estos criterios:
-       
-        Pregunta: {question}
-        Respuesta Correcta: {correctAnswer}
-        Respuesta Generada: {generatedAnswer}
-       
-        - Correcto (1-5): ¿Es correcta?
-        - Suficiente contexto (1-5): ¿Se puede responder bien con la información dada?
-        - Relevancia (1-5): ¿Es relevante en el contexto?
-        - Independencia (1-5): ¿Se entiende sin contexto adicional?
-    """);
+        Act as an expert evaluator of RAG (Retrieval-Augmented Generation) systems. 
+        Assess the quality of a generated answer to a question by comparing it with the expected correct answer.
+        
+        **IMPORTANT**: Do not invent or use any external knowledge. 
+        Evaluate only what can be inferred from the three provided inputs: the question, the expected correct answer, and the system-generated answer.
+        
+        Question: {question}
+        Expected Correct Answer: {correctAnswer}
+        System-Generated Answer: {generatedAnswer}
+        
+        Evaluate the following criteria on a scale from 1 to 5:
+        
+        1. **Correctness**: Is the answer correct based on what was expected?
+        2. **Context Sufficiency**: Is it possible to answer correctly with the information provided?
+        3. **Relevance**: Does the answer address only what was asked, without digressions?
+        4. **Independence**: Can the answer be understood on its own, without relying on additional context?
+        
+        Respond in this format:
+        
+        Correctness: [1-5] - Justification: ...
+        Context Sufficiency: [1-5] - Justification: ...
+        Relevance: [1-5] - Justification: ...
+        Independence: [1-5] - Justification: ...
+        Overall Summary: [Brief overall assessment of the answer quality]
+        """);
 
-    public AbstractEvaluationService(OllamaChatModel chatModel, DocumentService documentService, QueryService queryService) {
-        this.chatModel = chatModel;
+
+
+    public AbstractEvaluationService(RagFeatureConfiguration featureConfig, ChatClient chatClient, DocumentService documentService, QueryService queryService) {
+        this.featureConfig = featureConfig;
+        this.chatClient = chatClient;
         this.documentService = documentService;
         this.queryService = queryService;
     }
@@ -51,48 +70,47 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     @Override
     public Map<String, Object> evaluate() {
         Map<String, Object> results = new HashMap<>();
-        List<String> systemPrompts = getSystemPrompts();
-        StringBuilder systemPrompt = new StringBuilder(systemPrompts.getFirst());
 
-        for (int i = 1; i <= systemPrompts.size(); i++) {
-            List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
+        results.put("configuration", featureConfig.getConfiguration());
 
-            for (Map.Entry<String, String> entry : getQuestionsAndAnswers().entrySet()) {
-                String question = entry.getKey();
-                String correctAnswer = entry.getValue();
-                queryService.setSystemPrompt(systemPrompt.toString());
-                String llmResponse = queryService.generateResponse(question);
+        List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
 
-                String evaluation = evaluateResponse(question, correctAnswer, llmResponse);
+        for (Map.Entry<String, String> entry : getQuestionsAndAnswers().entrySet()) {
+            String question = entry.getKey();
+            String correctAnswer = entry.getValue();
+            String llmResponse = queryService.generateResponse(question);
 
-                Map<String, Object> result = new HashMap<>();
-                result.put("Pregunta", question);
-                result.put("Respuesta Correcta", correctAnswer);
-                result.put("Respuesta Generada", llmResponse);
-                result.put("Evaluación", evaluation);
+            String evaluation = evaluateResponse(question, correctAnswer, llmResponse);
 
-                resultsForPrompt.add(result);
-            }
+            Map<String, Object> result = new HashMap<>();
+            result.put("question", question);
+            result.put("correct_answer", correctAnswer);
+            result.put("generated_answer", llmResponse);
+            result.put("llm_evaluation", evaluation);
 
-            results.put("System prompt: " + systemPrompt, resultsForPrompt);
+            resultsForPrompt.add(result);
 
-            if(i < systemPrompts.size()) {
-                String prompt = systemPrompts.get(i);
-                systemPrompt.append("\n").append(prompt);
-            }
+            System.out.println(result);
         }
+
+        results.put("results", resultsForPrompt);
+
         return results;
     }
 
     protected String evaluateResponse(String question, String correctAnswer, String llmResponse) {
         String prompt = EVALUATION_PROMPT_TEMPLATE.create(
                 Map.of(
-                "question", question,
-                "correctAnswer", correctAnswer,
-                "generatedAnswer", llmResponse
+                        "question", question,
+                        "correctAnswer", correctAnswer,
+                        "generatedAnswer", llmResponse
                 )
         ).getContents();
 
-        return chatModel.call(prompt);
+        return chatClient
+                .prompt()
+                .user(prompt)
+                .call()
+                .content();
     }
 }

@@ -1,108 +1,139 @@
 package com.uniovi.rag.services.query;
 
-import com.uniovi.rag.services.analyzer.QueryAnalyser;
+import com.uniovi.rag.services.analyser.QueryAnalyser;
 import com.uniovi.rag.services.expand.QueryExpander;
 import com.uniovi.rag.services.retriever.ContextRetriever;
+import org.json.JSONObject;
 import org.springframework.ai.ollama.OllamaChatModel;
 import org.springframework.stereotype.Service;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Scanner;
+import java.util.List;
+import org.springframework.ai.document.Document;
+import java.net.URI;
 
 @Service
-public class SimpleQueryService extends AbstractQueryService{
+public class SimpleQueryService implements QueryService {
 
-    private String context;
+    protected static final String PROMPT_TEMPLATE = """
+        The following information has already been extracted as a direct answer to the question \"%s\".
+        Your only task is to present it as a clear and concise response in Spanish.
+        You must not question, verify, or reject the information. Do not add any additional context, justifications, or comments.
+        Extracted data:
+        %s""";
+
+    protected final OllamaChatModel chatModel;
+    protected final QueryExpander expander;
+    protected final QueryAnalyser analyser;
+    protected final ContextRetriever retriever;
 
     public SimpleQueryService(QueryExpander expander, QueryAnalyser analyser, ContextRetriever retriever, OllamaChatModel chatModel) {
-        super(expander, analyser, retriever, chatModel);
+        this.chatModel = chatModel;
+        this.expander = expander;
+        this.analyser = analyser;
+        this.retriever = retriever;
+    }
+
+    protected String askQueryToLlama(String query) {
+        try {
+            // URL del endpoint de Ollama para hacer la consulta con el endpoint /generate
+            URL url = URI.create("http://localhost:11434/api/generate").toURL(); // Endpoint para el modelo de generación
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+
+            // Crear JSON con el modelo y la consulta (query)
+            JSONObject json = new JSONObject();
+            json.put("model", "llama3.2:3b"); // Especificamos el modelo a usar
+            json.put("stream", false);
+            json.put("prompt", query); // El texto de la consulta
+            json.put("max_tokens", 131072); // Limitar la longitud de la respuesta (opcional)
+
+            // Enviar petición a Ollama
+            try (OutputStream os = conn.getOutputStream()) {
+                byte[] input = json.toString().getBytes("utf-8");
+                os.write(input, 0, input.length);
+            }
+
+            // Leer respuesta de Ollama
+            Scanner scanner = new Scanner(conn.getInputStream(), "utf-8");
+            String response = scanner.useDelimiter("\\A").next();
+            scanner.close();
+
+            // Parsear la respuesta JSON
+            JSONObject jsonResponse = new JSONObject(response);
+            System.out.println(jsonResponse);
+            String generatedText = jsonResponse.getString("response"); // Obtener el texto generado bajo la clave "response"
+
+            return generatedText; // Retornar la respuesta del modelo
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null; // En caso de error, retornar null
+        }
+    }
+
+    protected static int countTokens(String text) {
+        try {
+            URL url = URI.create("http://localhost:11434/api/embeddings").toURL(); // Ollama usa este endpoint
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setDoOutput(true);
+
+            // Crear JSON con el modelo y el texto
+            JSONObject json = new JSONObject();
+            json.put("model", "llama3.2:3b");
+            json.put("prompt", text);
+
+            // Enviar petición a Ollama
+            try (OutputStream os = conn.getOutputStream()) {
+                byte[] input = json.toString().getBytes("utf-8");
+                os.write(input, 0, input.length);
+            }
+
+            // Leer respuesta de Ollama
+            Scanner scanner = new Scanner(conn.getInputStream(), "utf-8");
+            String response = scanner.useDelimiter("\\A").next();
+            scanner.close();
+
+            // Extraer el número de tokens desde la respuesta JSON
+            JSONObject jsonResponse = new JSONObject(response);
+            return jsonResponse.getJSONArray("embedding").length(); // El tamaño de embedding es el número de tokens
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return -1; // Error
+        }
     }
 
     public String generateResponse(String question) {
+        if (question == null || question.trim().isEmpty()) {
+            throw new IllegalArgumentException("La pregunta no puede ser nula, vacia o solo espacios en blanco.");
+        }
 
+        String expandedQuery = expander.expand(question);
 
-        String templateContext =
-                "ACTA DE LA REUNIÓN DE LA COMUNIDAD DE VECINOS \n" +
-                "Fecha: 25 de agosto de 2025 \n" +
-                "Lugar: Sala de reuniones del edificio \n" +
-                "Hora de inicio: 19:30 h \n" +
-                "Hora de finalización: 21:00 h \n" +
-                "Asistentes: \n" +
-                "Se cuenta con la asistencia de 18 propietarios, según la lista de asistencia firmada al inicio de la reunión. \n" +
-                "• Beatriz Suárez Aguilar (Presidente) \n" +
-                "• Manuel Ortega Medina \n" +
-                "• Isabel Castro Torres \n" +
-                "• Jorge Moreno Navarro \n" +
-                "• Patricia Navarro Díaz \n" +
-                "• Eduardo Rojas Martínez \n" +
-                "• Silvia Medina Pérez \n" +
-                "• Ricardo Flores Sánchez \n" +
-                "• Daniel Gutiérrez Moreno \n" +
-                "• Rosa Aguilar Fernández \n" +
-                "• Laura Díaz Castro \n" +
-                "• Marta González Ramírez \n" +
-                "• Antonio Martínez López \n" +
-                "• Alejandro Torres Rojas \n" +
-                "• Natalia Vázquez Gutiérrez (Secretaria) \n" +
-                "• Francisco Torres Delgado \n" +
-                "• Pedro Jiménez Suárez \n" +
-                "• Ana Sánchez Herrera \n" +
-                "\n" +
-                "ACTA DE LA REUNIÓN DE LA COMUNIDAD DE VECINOS \n" +
-                "Fecha: 25 de febrero de 2026 \n" +
-                "Lugar: Sala de reuniones del edificio \n" +
-                "Hora de inicio: 19:00 h \n" +
-                "Hora de finalización: 20:30 h \n" +
-                "Asistentes: \n" +
-                "Se cuenta con la asistencia de 17 propietarios, según la lista de asistencia firmada al inicio de la reunión. \n" +
-                "• Jorge Moreno Navarro (Presidente) \n" +
-                "• Laura Díaz Castro \n" +
-                "• Manuel Ortega Medina \n" +
-                "• Rosa Aguilar Fernández \n" +
-                "• Ricardo Flores Sánchez \n" +
-                "• Beatriz Suárez Aguilar \n" +
-                "• Pedro Jiménez Suárez \n" +
-                "• Ana Sánchez Herrera \n" +
-                "• Patricia Navarro Díaz \n" +
-                "• Eduardo Rojas Martínez \n" +
-                "• Silvia Medina Pérez \n" +
-                "• Francisco Torres Delgado \n" +
-                "• Daniel Gutiérrez Moreno \n" +
-                "• Natalia Vázquez Gutiérrez (Secretaria) \n" +
-                "• Antonio Martínez López \n" +
-                "• Isabel Castro Torres \n" +
-                "• Marta González Ramírez \n";
-        context = templateContext;
+        JSONObject nerEntities = analyser.analyse(question);
 
-        //  System.out.println("Contexto original --------------------------------------------------------------------------------\n " + context);
+        List<Document> docs = retriever.retrieve(expandedQuery);
+        String context = retriever.createContext(docs, expandedQuery, nerEntities);
 
-        String promtPruebaFiltro = "<pregunta>Repite exactamente el texto que te adjunto pero eliminando todos los nombres propios que NO sean Manuel Ortega Medina </pregunta>" +
-                "<texto>"+context+"</texto> " +
-                "<pregunta>Repite exactamente el texto que te adjunto pero eliminando todos los nombres propios que NO sean Manuel Ortega Medina </pregunta>";
+        String template = String.format(
+                PROMPT_TEMPLATE,
+                question, context
+        );
 
-        //context = chatModel.call(promtPruebaFiltro);
-        context = askQueryToLlama(promtPruebaFiltro);
+        System.out.println("\n\n-----------------------------------------------------------------------------");
+        System.out.println("-----------------------------------------------------------------------------");
+        System.out.println("QUERY: Pregunta final: " + template);
+        System.out.println("\n\n-----------------------------------------------------------------------------");
+        System.out.println("-----------------------------------------------------------------------------");
 
-        System.out.println("Contexto Filtrado --------------------------------------------------------------------------------\n " + context);
-
-        System.out.println(" --------------------------------------------------------------------------------\n ");
-        // No es capaz de retornar todas las actas.
-        /**
-        Message prompt = promptTemplate.createMessage(Map.of("query", question, "documents", context));
-        UserMessage userMessage = new UserMessage(prompt.getContent());
-        //System.out.println("Question: " + prompt.getContent());
-        SystemMessage systemMessage = new SystemMessage(systemPrompt);
-        //System.out.println("System prompt: " + systemPrompt);
-        **/
-
-
-
-        String template = "Responde siempre en español a la pregunta <pregunta>" + question +
-                "</pregunta> usando únicamente esta información del contexto <contexto>\n\n" +
-                context + "</contexto> Responde siempre en español a la pregunta <pregunta>" +
-                question + "</pregunta> usando únicamente esta información del contexto.";
-
-        System.out.println("template: " + template);
-        System.out.println("tokens:"+countTokens(template));
-
-        return chatModel.call(template);
+        return askQueryToLlama(template);
     }
 
 }
