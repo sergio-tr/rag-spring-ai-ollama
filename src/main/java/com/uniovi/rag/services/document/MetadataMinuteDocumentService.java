@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.model.Minute;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -70,8 +71,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         """;
 
 
-    public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient) {
-        super(vectorStore, chatClient);
+    public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate) {
+        super(vectorStore, chatClient, jdbcTemplate);
     }
 
     @Override

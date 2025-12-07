@@ -10,6 +10,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.BufferedReader;
@@ -21,16 +22,42 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
 
     protected final PgVectorStore vectorStore;
     protected final ChatClient chatClient;
+    protected final JdbcTemplate jdbcTemplate;
 
-    public AbstractDocumentService(PgVectorStore vectorStore, ChatClient chatClient) {
+    public AbstractDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate) {
         this.vectorStore = vectorStore;
         this.chatClient = chatClient;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
     public void add(List<Document> documents) {
         if (!documents.isEmpty()) {
             vectorStore.add(documents);
+        }
+    }
+    
+    @Override
+    public void clearDatabase() {
+        try {
+            log().info("Clearing vector_store and documents tables");
+            jdbcTemplate.update("DELETE FROM vector_store");
+            jdbcTemplate.update("DELETE FROM documents");
+            log().info("Database cleared successfully");
+        } catch (Exception e) {
+            log().error("Error clearing database", e);
+            throw new RuntimeException("Failed to clear database", e);
+        }
+    }
+    
+    @Override
+    public boolean hasDocuments() {
+        try {
+            Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM vector_store", Integer.class);
+            return count != null && count > 0;
+        } catch (Exception e) {
+            log().warn("Error checking if database has documents", e);
+            return false;
         }
     }
 

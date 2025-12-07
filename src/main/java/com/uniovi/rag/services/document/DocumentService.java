@@ -11,4 +11,16 @@ public interface DocumentService extends Loggable {
     void processDocument(MultipartFile file);
 
     void add(List<Document> documents);
+    
+    /**
+     * Clears all documents from the vector store and documents table.
+     * This is useful when switching between different configurations that process documents differently.
+     */
+    void clearDatabase();
+    
+    /**
+     * Checks if the database has any documents.
+     * @return true if there are documents in the database, false otherwise
+     */
+    boolean hasDocuments();
 }

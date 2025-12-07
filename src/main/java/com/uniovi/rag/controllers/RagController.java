@@ -91,4 +91,18 @@ public class RagController {
         Map<String, Map<String, Object>> allResults = evaluationService.evaluateAllConfigurations();
         return ResponseEntity.ok(allResults);
     }
+    
+    /**
+     * Clears all documents from the database.
+     * Useful for testing or when switching between different configurations.
+     */
+    @DeleteMapping("/documents")
+    public ResponseEntity<String> clearDatabase() {
+        try {
+            documentService.clearDatabase();
+            return ResponseEntity.ok("Database cleared successfully");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error clearing database: " + e.getMessage());
+        }
+    }
 }

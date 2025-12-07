@@ -23,6 +23,7 @@ import com.uniovi.rag.services.tools.*;
 import com.uniovi.rag.services.tools.metadata.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -35,12 +36,15 @@ public class EvaluationServiceFactory {
 
     private final ChatClient chatClient;
     private final PgVectorStore vectorStore;
+    private final JdbcTemplate jdbcTemplate;
     private final int topK;
     private final double similarityThreshold;
 
-    public EvaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore, int topK, double similarityThreshold) {
+    public EvaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore, JdbcTemplate jdbcTemplate, 
+                                     int topK, double similarityThreshold) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
+        this.jdbcTemplate = jdbcTemplate;
         this.topK = topK;
         this.similarityThreshold = similarityThreshold;
     }
@@ -71,9 +75,9 @@ public class EvaluationServiceFactory {
      */
     public DocumentService createDocumentService(RagFeatureConfiguration featureConfig) {
         if (featureConfig.isMetadataEnabled()) {
-            return new MetadataMinuteDocumentService(vectorStore, chatClient);
+            return new MetadataMinuteDocumentService(vectorStore, chatClient, jdbcTemplate);
         }
-        return new SimpleDocumentService<Minute>(vectorStore, chatClient);
+        return new SimpleDocumentService<Minute>(vectorStore, chatClient, jdbcTemplate);
     }
 
     /**
