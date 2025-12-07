@@ -5,7 +5,6 @@ import com.uniovi.rag.services.document.DocumentService;
 import com.uniovi.rag.services.query.QueryService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -68,11 +67,12 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
      */
     private MultipartFile fileToMultipartFile(File file) throws IOException {
         try (FileInputStream input = new FileInputStream(file)) {
-            return new MockMultipartFile(
+            byte[] content = input.readAllBytes();
+            return new SimpleMultipartFile(
                     "file",
                     file.getName(),
                     "application/pdf",
-                    input.readAllBytes()
+                    content
             );
         }
     }
