@@ -11,6 +11,7 @@ import com.uniovi.rag.services.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.services.document.SimpleDocumentService;
 import com.uniovi.rag.services.evaluation.DatasetMinuteEvaluationService;
 import com.uniovi.rag.services.evaluation.EvaluationService;
+import com.uniovi.rag.services.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.services.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.services.expand.QueryExpander;
 import com.uniovi.rag.services.query.ProcessQueryService;
@@ -107,9 +108,17 @@ public class RagConfiguration {
     }
 
     @Bean
+    public EvaluationServiceFactory evaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore) {
+        return new EvaluationServiceFactory(chatClient, vectorStore, topK, similarityThreshold);
+    }
+
+    @Bean
     public EvaluationService evaluationService(RagFeatureConfiguration featureConfig, ChatClient chatClient,
-                                               DocumentService documentService, QueryService queryService) {
-        return new DatasetMinuteEvaluationService(featureConfig, chatClient, documentService, queryService);
+                                               DocumentService documentService, QueryService queryService,
+                                               EvaluationServiceFactory evaluationServiceFactory) {
+        DatasetMinuteEvaluationService service = new DatasetMinuteEvaluationService(featureConfig, chatClient, documentService, queryService);
+        service.setEvaluationServiceFactory(evaluationServiceFactory);
+        return service;
     }
 
     @Bean
@@ -182,20 +191,6 @@ public class RagConfiguration {
 
         return tools;
     }
-
-    /*@Bean
-    public AgenticToolsManager agenticToolsManager(
-            ChatClient chatClient,
-            ContextRetriever retriever
-    ) {
-        AgenticToolsManager manager = new AgenticToolsManager();
-        
-        // Registrar las AgenticTools
-        manager.registerTool(new AgenticCountDocumentsTool(chatClient, retriever));
-        // Aquí puedes agregar más AgenticTools según las necesites
-        
-        return manager;
-    }*/
 
     @Bean
     public QueryService queryService(
