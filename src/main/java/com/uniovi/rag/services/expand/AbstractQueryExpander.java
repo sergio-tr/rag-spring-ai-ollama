@@ -1,13 +1,13 @@
 package com.uniovi.rag.services.expand;
 
-import org.springframework.ai.ollama.OllamaChatModel;
+import org.springframework.ai.chat.client.ChatClient;
 
 public abstract class AbstractQueryExpander implements QueryExpander {
 
-    protected final OllamaChatModel model;
+    protected final ChatClient client;
 
-    public AbstractQueryExpander(OllamaChatModel model) {
-        this.model = model;
+    public AbstractQueryExpander(ChatClient client) {
+        this.client = client;
     }
 
 }

@@ -1,13 +1,14 @@
 package com.uniovi.rag.services.evaluation;
 
-import java.util.List;
+import com.uniovi.rag.model.Loggable;
+
 import java.util.Map;
 
-public interface EvaluationService {
+public interface EvaluationService extends Loggable {
 
     Map<String, Object> evaluate();
-    void loadData();
-    Map<String, String> getQuestionsAndAnswers();
 
-    List<String> getSystemPrompts();
+    void loadData();
+
+    Map<String, String> getQuestionsAndAnswers();
 }

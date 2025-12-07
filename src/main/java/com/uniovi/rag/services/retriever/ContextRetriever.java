@@ -1,11 +1,22 @@
 package com.uniovi.rag.services.retriever;
 
+import org.json.JSONObject;
+import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 @Service
 public interface ContextRetriever {
 
-    String retrieve(String query);
+    List<Document> retrieve(String query);
 
-    String retrieve(String query, String context);
+    void setTopK(int topK);
+
+    void setSimilarityThreshold(double similarityThreshold);
+
+    void restoreDefaultSettings();
+
+    String createContext(List<Document> documents, String query, JSONObject entities);
+
 }
