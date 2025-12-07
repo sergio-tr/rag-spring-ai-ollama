@@ -15,10 +15,10 @@ public record Minute(
         String secretary,
         List<String> attendees,
         int numberOfAttendees,
-        Map<String, String> agenda,        // punto → contenido
-        List<String> decisions,            // acuerdos explícitos: "Se aprobó...", "Se decidió..."
-        List<String> mentionedEntities,    // empresas, organismos, técnicos
-        List<String> topics,               // temas tratados (ej: “seguridad”, “iluminación”)
-        String summary                     // resumen del acta completo
+        Map<String, String> agenda,
+        List<String> decisions,
+        List<String> mentionedEntities,
+        List<String> topics,
+        String summary
 ) {
 }
