@@ -62,10 +62,57 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
     @Override
     public void loadData() {
-        if (!dataLoaded) {
-            loadSpecificData();
+        // Load data with default configuration from application.properties
+        loadDataWithConfiguration(featureConfig);
+    }
+    
+    /**
+     * Loads data with a specific configuration.
+     * If the database already has documents, it clears them first to avoid duplicates.
+     * 
+     * @param config The configuration to use for loading documents
+     */
+    public void loadDataWithConfiguration(RagFeatureConfiguration config) {
+        // Check if config is different from default
+        boolean isCustomConfig = !configsEqual(config, featureConfig);
+        
+        if (isCustomConfig && evaluationServiceFactory != null) {
+            // Always clear and reload for custom configurations
+            log().info("Loading documents with custom configuration: {}", config.getConfiguration());
+            DocumentService customDocService = evaluationServiceFactory.createDocumentService(config);
+            customDocService.clearDatabase();
+            loadSpecificDataWithService(customDocService);
             dataLoaded = true;
+        } else {
+            // Use default configuration
+            if (!dataLoaded) {
+                if (documentService.hasDocuments()) {
+                    log().info("Database already has documents, skipping load");
+                } else {
+                    log().info("Loading documents with default configuration");
+                    loadSpecificData();
+                }
+                dataLoaded = true;
+            }
         }
+    }
+    
+    /**
+     * Compares two RagFeatureConfiguration objects by comparing their configuration maps.
+     */
+    private boolean configsEqual(RagFeatureConfiguration config1, RagFeatureConfiguration config2) {
+        if (config1 == config2) return true;
+        if (config1 == null || config2 == null) return false;
+        return config1.getConfiguration().equals(config2.getConfiguration());
+    }
+    
+    /**
+     * Loads specific data using a provided document service.
+     * This allows loading documents with a custom configuration.
+     */
+    protected void loadSpecificDataWithService(DocumentService docService) {
+        loadSpecificData(); // Default implementation uses HTTP endpoint
+        // Subclasses can override to use docService directly
     }
 
     protected abstract void loadSpecificData();
@@ -79,19 +126,24 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     /**
      * Evaluates with a custom configuration.
      * This allows testing different configuration combinations.
+     * Automatically manages document loading: clears database and reloads documents with the custom configuration.
      * 
      * @param customConfig The custom configuration to use
      * @return Evaluation results with the custom configuration
      */
     public Map<String, Object> evaluateWithConfiguration(RagFeatureConfiguration customConfig) {
+        if (evaluationServiceFactory == null) {
+            throw new IllegalStateException("EvaluationServiceFactory must be set to evaluate with custom configuration");
+        }
+        
+        // Load data with custom configuration (will clear and reload if needed)
+        loadDataWithConfiguration(customConfig);
+        
         Map<String, Object> results = new HashMap<>();
         results.put("configuration", customConfig.getConfiguration());
 
-        // Create services with custom configuration if factory is available
-        QueryService queryServiceToUse = this.queryService;
-        if (evaluationServiceFactory != null) {
-            queryServiceToUse = evaluationServiceFactory.createQueryService(customConfig);
-        }
+        // Create services with custom configuration
+        QueryService queryServiceToUse = evaluationServiceFactory.createQueryService(customConfig);
 
         List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
 

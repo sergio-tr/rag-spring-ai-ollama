@@ -98,18 +98,19 @@ public class RagConfiguration {
     }
 
     @Bean
-    public DocumentService documentService(RagFeatureConfiguration featureConfig, PgVectorStore vectorStore, ChatClient chatClient) {
+    public DocumentService documentService(RagFeatureConfiguration featureConfig, PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate) {
 
         if (featureConfig.isMetadataEnabled()) {
-            return new MetadataMinuteDocumentService(vectorStore, chatClient);
+            return new MetadataMinuteDocumentService(vectorStore, chatClient, jdbcTemplate);
         }
         
-        return new SimpleDocumentService<Minute>(vectorStore, chatClient);
+        return new SimpleDocumentService<Minute>(vectorStore, chatClient, jdbcTemplate);
     }
 
     @Bean
-    public EvaluationServiceFactory evaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore) {
-        return new EvaluationServiceFactory(chatClient, vectorStore, topK, similarityThreshold);
+    public EvaluationServiceFactory evaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore, 
+                                                              JdbcTemplate jdbcTemplate) {
+        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold);
     }
 
     @Bean
