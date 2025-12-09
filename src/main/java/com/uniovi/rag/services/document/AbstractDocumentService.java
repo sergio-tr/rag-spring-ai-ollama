@@ -66,11 +66,11 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
         String fileName = file.getOriginalFilename();
 
         if (contentType == null) {
-            throw new IllegalArgumentException("Tipo de archivo no especificado");
+            throw new IllegalArgumentException("File type not specified");
         }
 
         if (fileName == null) {
-            throw new IllegalArgumentException("Nombre de archivo no especificado");
+            throw new IllegalArgumentException("File name not specified");
         }
 
         try {
@@ -84,11 +84,11 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
                 return extractFromCsv(file);
             }
         } catch (Exception e) {
-            throw new RuntimeException("Error procesando el archivo", e);
+            throw new RuntimeException("Error processing the file", e);
         }
 
 
-        throw new IllegalArgumentException("Tipo de archivo no soportado");
+        throw new IllegalArgumentException("Not supported file type");
     }
 
     protected String extractFromPdf(MultipartFile file) throws Exception {
@@ -102,22 +102,22 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             PDFTextStripper stripper = new PDFTextStripper();
             String rawText = stripper.getText(document);
             
-            // Validar que el texto no esté vacío
+            // Validate that the text is not empty
             if (rawText == null || rawText.trim().isEmpty()) {
-                System.err.println("PDF extraction returned empty text for file: " + filename);
-                throw new IllegalArgumentException("El PDF no contiene texto extraíble. Puede estar protegido o ser una imagen.");
+                log().error("PDF extraction returned empty text for file: " + filename);
+                throw new IllegalArgumentException("The PDF does not contain extractable text. It may be protected or an image.");
             }
             
-            System.out.println("PDF extracted " + rawText.length() + " characters from file: " + filename);
+            log().debug("PDF extracted " + rawText.length() + " characters from file: " + filename);
             
-            // Normalizar el texto extraído para mejorar la extracción posterior
+            // Normalize the extracted text to improve subsequent extraction
             String normalized = normalizeExtractedText(rawText);
             
-            System.out.println("After normalization: " + normalized.length() + " characters for file: " + filename);
+            log().debug("After normalization: " + normalized.length() + " characters for file: " + filename);
             
-            // Validar longitud mínima
+            // Validate minimum length
             if (normalized.length() < 20) {
-                System.err.println("WARNING: Normalized text is very short (" + normalized.length() + " chars) for file: " + filename);
+                log().warn("Normalized text is very short (" + normalized.length() + " chars) for file: " + filename);
             }
             
             return normalized;
@@ -125,16 +125,15 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             // Re-lanzar IllegalArgumentException tal cual
             throw e;
         } catch (Exception e) {
-            System.err.println("Error processing PDF file: " + filename);
+            log().error("Error processing PDF file: " + filename, e);
             e.printStackTrace();
-            throw new RuntimeException("Error procesando el PDF " + filename + ": " + e.getMessage(), e);
+            throw new RuntimeException("Error processing the PDF " + filename + ": " + e.getMessage(), e);
         }
     }
     
     /**
-     * Normaliza el texto extraído de PDFs para mejorar la extracción posterior.
-     * Limpia espacios múltiples, normaliza saltos de línea y caracteres especiales.
-     * MEJORA: Maneja diferentes encodings y caracteres especiales.
+     * Normalize the extracted text from PDFs to improve subsequent extraction.
+     * Clean multiple spaces, normalize line breaks and special characters.
      */
     protected String normalizeExtractedText(String text) {
         if (text == null) return "";
@@ -146,18 +145,18 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             .replaceAll("\\u2007", " ")  // Figure space
             .replaceAll("\\u202F", " ")  // Narrow NBSP
             .replaceAll("\\u2009", " ")  // Thin space
-            // Normalizar espacios múltiples a un solo espacio
+            // Normalize multiple spaces to one space
             .replaceAll("\\s+", " ")
-            // Normalizar saltos de línea múltiples a uno solo
+            // Normalize multiple line breaks to one
             .replaceAll("\\n\\s*\\n+", "\n")
-            // Normalizar espacios alrededor de dos puntos
+            // Normalize spaces around colons
             .replaceAll("\\s*:\\s*", ": ")
-            // Normalizar espacios alrededor de paréntesis
+            // Normalize spaces around parentheses
             .replaceAll("\\s*\\(\\s*", " (")
             .replaceAll("\\s*\\)", ")")
             // Normalizar viñetas (diferentes tipos a •)
             .replaceAll("[•·▪▫◦‣⁃]", "•")
-            // Limpiar caracteres de control excepto saltos de línea
+            // Clean control characters except line breaks
             .replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "")
             .replaceAll("\\uFFFD", "")  // Replacement character
             .trim();

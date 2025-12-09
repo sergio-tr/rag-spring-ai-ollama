@@ -1,6 +1,6 @@
 package com.uniovi.rag.services.tools.metadata;
 
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.model.*;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
@@ -14,14 +14,6 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataExtractEntitiesTool for extracting and analyzing entities from meeting minutes with intelligent processing.
- * 
- * Features:
- * - Intelligent entity extraction with context analysis
- * - Parallel processing for better performance
- * - Cached evaluations for efficiency
- * - Entity clustering and pattern analysis
- * - Quality ranking and synthesis of entities
- * - Advanced NER-based filtering
  */
 public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
 
@@ -36,16 +28,12 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         
         log().debug("Executing entity extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve and filter documents efficiently
-        List<Document> docs = retrieveDocumentsWithMetadataFilter(
+        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        List<Document> docs = retrieveDocumentsWithFallback(
             query, 
-            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"}
+            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"},
+            ner
         );
-        
-        if (docs.isEmpty()) {
-            log().debug("No documents found with metadata filter, trying basic retrieval");
-            docs = retrieveDocuments(query);
-        }
         
         if (docs.isEmpty()) {
             log().debug("No documents found for entity extraction query: {}", query);
@@ -73,8 +61,8 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
         }
 
-        // Step 5: Analyze and rank entities
-        List<Entity> rankedEntities = analyzeAndRankEntities(query, entities);
+        // Step 5: Deduplicate and order entities (metadata-first heuristic)
+        List<Entity> rankedEntities = deduplicateAndRankEntities(entities);
 
         // Step 6: Cluster similar entities
         List<EntityCluster> clusters = clusterEntities(rankedEntities);
@@ -112,7 +100,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         // Extract structured entities from metadata
         entities.addAll(extractStructuredEntities(minute));
         
-        // Extract entities from text content using LLM
+        // Extract entities from text content using LLM (fallback)
         entities.addAll(extractTextEntities(query, minute));
         
         return entities;
@@ -129,11 +117,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             entities.add(new Entity(
                 minute.president(),
                 EntityType.PERSON,
-                EntityRole.PRESIDENT,
-                minute.date(),
-                minute.place(),
-                1.0,
-                System.currentTimeMillis()
+                EntityRole.PRESIDENT
             ));
         }
         
@@ -142,11 +126,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             entities.add(new Entity(
                 minute.secretary(),
                 EntityType.PERSON,
-                EntityRole.SECRETARY,
-                minute.date(),
-                minute.place(),
-                1.0,
-                System.currentTimeMillis()
+                EntityRole.SECRETARY
             ));
         }
         
@@ -157,11 +137,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                     entities.add(new Entity(
                         attendee,
                         EntityType.PERSON,
-                        EntityRole.ATTENDEE,
-                        minute.date(),
-                        minute.place(),
-                        0.8,
-                        System.currentTimeMillis()
+                        EntityRole.ATTENDEE
                     ));
                 }
             }
@@ -172,15 +148,50 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             entities.add(new Entity(
                 minute.place(),
                 EntityType.LOCATION,
-                EntityRole.MEETING_PLACE,
-                minute.date(),
-                null,
-                0.9,
-                System.currentTimeMillis()
+                EntityRole.MEETING_PLACE
             ));
         }
         
+        // Extract mentionedEntities directly from metadata
+        if (minute.mentionedEntities() != null && !minute.mentionedEntities().isEmpty()) {
+            for (String entity : minute.mentionedEntities()) {
+                if (entity != null && !entity.isBlank()) {
+                    // Try to infer type: if it's a person name (capitalized words), treat as PERSON
+                    EntityType entityType = inferEntityType(entity);
+                    entities.add(new Entity(
+                        entity,
+                        entityType,
+                        EntityRole.UNKNOWN
+                    ));
+                }
+            }
+        }
+        
         return entities;
+    }
+
+    /**
+     * Infers entity type from entity name using simple heuristics
+     */
+    private EntityType inferEntityType(String entityName) {
+        if (entityName == null || entityName.isBlank()) {
+            return EntityType.OTHER;
+        }
+        
+        // If it looks like a person name (starts with capital, has spaces, or common name patterns)
+        if (entityName.matches("^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+")) {
+            return EntityType.PERSON;
+        }
+        
+        // If it contains organization keywords
+        String lower = entityName.toLowerCase();
+        if (lower.contains("sociedad") || lower.contains("asociación") || lower.contains("comunidad") ||
+            lower.contains("empresa") || lower.contains("corporación") || lower.contains("s.a.") ||
+            lower.contains("s.l.") || lower.contains("s.c.")) {
+            return EntityType.ORGANIZATION;
+        }
+        
+        return EntityType.OTHER;
     }
 
     /**
@@ -249,13 +260,64 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
 
     /**
-     * Parses entities from LLM response
+     * Parses entities from LLM response using JSON parser
      */
     private List<Entity> parseEntitiesFromLLMResponse(String response, EntityType contextType, Minute minute) {
         List<Entity> entities = new ArrayList<>();
         
         try {
-            // Simple parsing - in a real implementation, you'd use a proper JSON parser
+            // Try to extract JSON array from response
+            String jsonStr = response.trim();
+            
+            // Find JSON array in response (may be wrapped in markdown code blocks or text)
+            int arrayStart = jsonStr.indexOf('[');
+            int arrayEnd = jsonStr.lastIndexOf(']');
+            
+            if (arrayStart == -1 || arrayEnd == -1 || arrayEnd <= arrayStart) {
+                // Fallback to line-by-line parsing if no JSON array found
+                return parseEntitiesFromLines(response);
+            }
+            
+            jsonStr = jsonStr.substring(arrayStart, arrayEnd + 1);
+            
+            // Parse JSON array
+            org.json.JSONArray jsonArray = new org.json.JSONArray(jsonStr);
+            
+            for (int i = 0; i < jsonArray.length(); i++) {
+                org.json.JSONObject obj = jsonArray.getJSONObject(i);
+                String name = obj.optString("name", "").trim();
+                String type = obj.optString("type", "OTHER").trim();
+                String role = obj.optString("role", "").trim();
+                
+                if (!name.isEmpty()) {
+                    EntityType entityType = parseEntityType(type);
+                    EntityRole entityRole = parseEntityRole(role);
+                    
+                    entities.add(new Entity(
+                        name,
+                        entityType,
+                        entityRole
+                    ));
+                }
+            }
+        } catch (org.json.JSONException e) {
+            log().debug("Error parsing JSON from LLM response, trying line-by-line parsing: {}", e.getMessage());
+            // Fallback to line-by-line parsing
+            return parseEntitiesFromLines(response);
+        } catch (Exception e) {
+            log().debug("Error parsing entities from LLM response: {}", e.getMessage());
+        }
+        
+        return entities;
+    }
+
+    /**
+     * Fallback parsing method for non-JSON responses
+     */
+    private List<Entity> parseEntitiesFromLines(String response) {
+        List<Entity> entities = new ArrayList<>();
+        
+        try {
             String[] lines = response.split("\n");
             for (String line : lines) {
                 if (line.contains("name") && line.contains("type")) {
@@ -271,17 +333,13 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                         entities.add(new Entity(
                             name,
                             entityType,
-                            entityRole,
-                            minute.date(),
-                            minute.place(),
-                            0.7,
-                            System.currentTimeMillis()
+                            entityRole
                         ));
                     }
                 }
             }
         } catch (Exception e) {
-            log().debug("Error parsing entities from LLM response: {}", e.getMessage());
+            log().debug("Error in fallback line parsing: {}", e.getMessage());
         }
         
         return entities;
@@ -339,81 +397,44 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     /**
      * Analyzes and ranks entities by relevance and quality
      */
-    private List<Entity> analyzeAndRankEntities(String query, List<Entity> entities) {
-        // Calculate relevance scores
-        List<Entity> scoredEntities = entities.stream()
-                .map(entity -> calculateEntityRelevanceScore(query, entity))
-                .collect(Collectors.toList());
-        
-        // Sort by relevance score (descending)
-        return scoredEntities.stream()
-                .sorted((a, b) -> Double.compare(b.relevanceScore, a.relevanceScore))
+    private List<Entity> deduplicateAndRankEntities(List<Entity> entities) {
+        // Deduplicate by name+type+role
+        Map<String, Entity> dedup = new LinkedHashMap<>();
+        for (Entity e : entities) {
+            if (e == null || e.getName() == null || e.getName().isBlank()) continue;
+            String key = (e.getName().trim().toLowerCase()) + "|" + e.getType() + "|" + e.getRole();
+            dedup.putIfAbsent(key, e);
+        }
+
+        // Order: structured types first (PERSON, ROLE, LOCATION), then ORGANIZATION, then others; within type by name length desc
+        return dedup.values().stream()
+                .sorted((a, b) -> {
+                    int typeOrder = Integer.compare(typePriority(b.getType()), typePriority(a.getType()));
+                    if (typeOrder != 0) return typeOrder;
+                    int roleOrder = Integer.compare(rolePriority(b.getRole()), rolePriority(a.getRole()));
+                    if (roleOrder != 0) return roleOrder;
+                    return Integer.compare(
+                            b.getName() != null ? b.getName().length() : 0,
+                            a.getName() != null ? a.getName().length() : 0);
+                })
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Calculates relevance score for an entity.
-     * Uses English for internal processing, but preserves original language in query.
-     */
-    private Entity calculateEntityRelevanceScore(String query, Entity entity) {
-        if (query == null || query.trim().isEmpty() || entity == null) {
-            return entity; // Return original entity if validation fails
-        }
-        
-        String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
-            
-            Entity: %s
-            Type: %s
-            Role: %s
-            Context: %s
-            
-            Rate the relevance of this entity to the query on a scale of 0.0 to 1.0.
-            Consider: direct relevance, importance, and usefulness.
-            
-            Respond with ONLY a number between 0.0 and 1.0.
-            Do not include any explanation or additional text.
-            """, 
-            query,
-            entity.name,
-            entity.type,
-            entity.role,
-            entity.getContext()
-        );
-        
-        try {
-            String result = getLLMResponseCached(prompt);
-            
-            if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in calculateEntityRelevanceScore, keeping original score");
-                return entity;
-            }
-            
-            String cleaned = result.strip();
-            // Extract first number from response
-            String numberStr = cleaned.replaceAll("[^0-9.]", "").split("\\s+")[0];
-            if (numberStr.isEmpty()) {
-                return entity;
-            }
-            
-            double score = Double.parseDouble(numberStr);
-            return new Entity(
-                entity.name,
-                entity.type,
-                entity.role,
-                entity.date,
-                entity.place,
-                score,
-                entity.timestamp
-            );
-        } catch (NumberFormatException e) {
-            log().warn("Error parsing relevance score in calculateEntityRelevanceScore, keeping original score", e);
-            return entity; // Keep original score if parsing fails
-        } catch (Exception e) {
-            log().error("Error calculating entity relevance score, keeping original score", e);
-            return entity;
-        }
+    private int typePriority(EntityType type) {
+        return switch (type) {
+            case PERSON, ROLE, LOCATION -> 3;
+            case ORGANIZATION -> 2;
+            case TOPIC, DECISION -> 1;
+            default -> 0;
+        };
+    }
+
+    private int rolePriority(EntityRole role) {
+        return switch (role) {
+            case PRESIDENT, SECRETARY -> 3;
+            case ATTENDEE, MEETING_PLACE -> 2;
+            default -> 0;
+        };
     }
 
     /**
@@ -448,13 +469,13 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
      */
     private boolean isSimilarToCluster(Entity entity, EntityCluster cluster) {
         // Check if entity types match
-        if (!entity.type.equals(cluster.getRepresentativeEntity().type)) {
+        if (!entity.getType().equals(cluster.getRepresentativeEntity().getType())) {
             return false;
         }
         
         // Check name similarity
-        String entityName = entity.name.toLowerCase();
-        String clusterName = cluster.getRepresentativeEntity().name.toLowerCase();
+        String entityName = entity.getName().toLowerCase();
+        String clusterName = cluster.getRepresentativeEntity().getName().toLowerCase();
         
         // Simple similarity check
         if (entityName.equals(clusterName)) {
@@ -519,14 +540,14 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                               entities.size(),
                               entities.stream()
                                       .limit(5)
-                                      .map(e -> String.format("- %s (%s)", e.name, e.type))
+                                      .map(e -> String.format("- %s (%s)", e.getName(), e.getType()))
                                       .collect(Collectors.joining("\n")));
         } else {
             return String.format("Found %d relevant entities:\n%s",
                               entities.size(),
                               entities.stream()
                                       .limit(5)
-                                      .map(e -> String.format("- %s (%s)", e.name, e.type))
+                                      .map(e -> String.format("- %s (%s)", e.getName(), e.getType()))
                                       .collect(Collectors.joining("\n")));
         }
     }
@@ -542,8 +563,8 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         
         for (EntityCluster cluster : clusters) {
             Entity representative = cluster.getRepresentativeEntity();
-            String type = representative.type.toString();
-            String name = representative.name;
+            String type = representative.getType().toString();
+            String name = representative.getName();
             
             entitiesByType.computeIfAbsent(type, k -> new ArrayList<>()).add(name);
         }
@@ -615,89 +636,4 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         }
     }
 
-    /**
-     * Represents an entity with enhanced metadata
-     */
-    private static class Entity {
-        final String name;
-        final EntityType type;
-        final EntityRole role;
-        final String date;
-        final String place;
-        final double relevanceScore;
-        final long timestamp;
-
-        Entity(String name, EntityType type, EntityRole role, String date, String place, double relevanceScore, long timestamp) {
-            this.name = name;
-            this.type = type;
-            this.role = role;
-            this.date = date;
-            this.place = place;
-            this.relevanceScore = relevanceScore;
-            this.timestamp = timestamp;
-        }
-        
-        /**
-         * Gets the context information for the entity
-         */
-        String getContext() {
-            return String.format("%s (%s - %s)", name, date != null ? date : "unknown", place != null ? place : "unknown");
-        }
-        
-        @Override
-        public String toString() {
-            return String.format("Entity[%s, type=%s, role=%s, score=%.2f]", name, type, role, relevanceScore);
-        }
-    }
-
-    /**
-     * Represents a cluster of similar entities
-     */
-    private static class EntityCluster {
-        private final List<Entity> entities = new ArrayList<>();
-
-        EntityCluster(Entity initialEntity) {
-            entities.add(initialEntity);
-        }
-
-        void addEntity(Entity entity) {
-            entities.add(entity);
-        }
-
-        int getSize() {
-            return entities.size();
-        }
-
-        Entity getRepresentativeEntity() {
-            // Return the entity with highest relevance score
-            return entities.stream()
-                    .max((a, b) -> Double.compare(a.relevanceScore, b.relevanceScore))
-                    .orElse(entities.get(0));
-        }
-
-        EntityType getEntityType() {
-            return getRepresentativeEntity().type;
-        }
-
-        double getAverageRelevance() {
-            return entities.stream()
-                    .mapToDouble(e -> e.relevanceScore)
-                    .average()
-                    .orElse(0.0);
-        }
-    }
-
-    /**
-     * Enum for entity types
-     */
-    private enum EntityType {
-        PERSON, ORGANIZATION, ROLE, DATE, AMOUNT, LOCATION, TOPIC, DECISION, SUMMARY, OTHER
-    }
-
-    /**
-     * Enum for entity roles
-     */
-    private enum EntityRole {
-        PRESIDENT, SECRETARY, ATTENDEE, MEETING_PLACE, UNKNOWN
-    }
 }

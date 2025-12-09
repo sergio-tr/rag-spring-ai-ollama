@@ -1,6 +1,6 @@
 package com.uniovi.rag.services.tools.metadata;
 
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.model.*;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
@@ -15,14 +15,6 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataCountAndExplainTool for counting and explaining meeting minutes with intelligent analysis.
- * 
- * Features:
- * - Intelligent explanation generation with context analysis
- * - Parallel processing for better performance
- * - Cached evaluations for efficiency
- * - Pattern analysis and clustering of explanations
- * - Quality ranking and synthesis of explanations
- * - Advanced NER-based filtering
  */
 public class MetadataCountAndExplainTool extends AbstractMetadataTool {
 
@@ -37,16 +29,12 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         
         log().debug("Executing count and explain query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve and filter documents efficiently
-        List<Document> docs = retrieveDocumentsWithMetadataFilter(
+        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        List<Document> docs = retrieveDocumentsWithFallback(
             query,
-            new String[] {"date", "place", "topics", "decisions", "summary", "agenda"}
+            new String[] {"date", "place", "topics", "decisions", "summary", "agenda"},
+            ner
         );
-        
-        if (docs.isEmpty()) {
-            log().debug("No documents found with metadata filter, trying basic retrieval");
-            docs = retrieveDocuments(query);
-        }
         
         if (docs.isEmpty()) {
             log().debug("No documents found for count and explain query: {}", query);
@@ -89,78 +77,6 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     }
 
     /**
-     * Cached extraction of minute objects
-     */
-    @Cacheable(value = "minuteObjects", key = "#doc.id")
-    public Minute getMinuteFromMetadataCached(Document doc) {
-        return getMinuteFromMetadata(doc);
-    }
-
-    /**
-     * Cached NER matching evaluation
-     */
-    @Cacheable(value = "nerMatching", key = "#minute.hashCode() + '_' + #ner.hashCode()")
-    public boolean matchesMinuteWithNERCached(Minute minute, JSONObject ner) {
-        return matchesMinuteWithNER(minute, ner);
-    }
-
-    /**
-     * Cached query relevance evaluation for explanation queries
-     */
-    @Cacheable(value = "explanationQueryRelevance", key = "#query.hashCode() + '_' + #minute.hashCode()")
-    public boolean isRelevantToExplanationQueryCached(String query, Minute minute) {
-        return isRelevantToExplanationQueryByLLM(query, minute);
-    }
-
-    /**
-     * Determines if a minute is relevant to the explanation query using LLM.
-     */
-    private boolean isRelevantToExplanationQueryByLLM(String query, Minute minute) {
-        if (query == null || query.trim().isEmpty() || minute == null) {
-            return false;
-        }
-        
-        String prompt = generateExplanationRelevancePrompt(query, minute);
-        String result = getLLMResponseCached(prompt);
-        
-        if (result == null || result.trim().isEmpty()) {
-            log().warn("Empty response from LLM in isRelevantToExplanationQueryByLLM, defaulting to false");
-            return false;
-        }
-        
-        String normalized = result.toLowerCase();
-        return normalized.contains("yes") || normalized.contains("sí");
-    }
-
-    /**
-     * Generates adaptive relevance prompt for explanation queries
-     */
-    private String generateExplanationRelevancePrompt(String query, Minute minute) {
-        return String.format("""
-            Given the following explanation query (in any language):
-            "%s"
-            
-            Meeting metadata:
-            Date: %s
-            Place: %s
-            Topics: %s
-            Decisions: %s
-            Summary: %s
-            
-            Does this meeting contain information that could help explain or provide context for the query?
-            Consider that the query asks for explanations or detailed information.
-            Answer only with YES or NO.
-            """,
-            query,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
-            minute.summary() != null ? minute.summary() : "unknown"
-        );
-    }
-
-    /**
      * Generates explanations in parallel
      */
     private List<Explanation> generateExplanationsInParallel(String query, List<Minute> minutes) {
@@ -171,7 +87,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
-                .filter(explanation -> !explanation.content.isBlank())
+                .filter(explanation -> explanation.getContent() != null && !explanation.getContent().isBlank())
                 .collect(Collectors.toList());
     }
 
@@ -183,6 +99,20 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
             return null;
         }
         
+        // Try metadata-first explanation to avoid LLM call when possible
+        String metadataExplanation = buildExplanationFromMetadata(minute);
+        if (metadataExplanation != null && !metadataExplanation.isBlank()) {
+            double relevanceScore = 0.6; // heuristic when built from metadata
+            return new Explanation(
+                minute.id(),
+                minute.date(),
+                minute.place(),
+                metadataExplanation,
+                relevanceScore,
+                System.currentTimeMillis()
+            );
+        }
+
         String prompt = generateEnhancedExplanationPrompt(query, minute);
         String content = getLLMResponseCached(prompt);
         
@@ -202,6 +132,30 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
             relevanceScore,
             System.currentTimeMillis()
         );
+    }
+
+    /**
+     * Builds a concise explanation using only metadata fields (no LLM).
+     */
+    private String buildExplanationFromMetadata(Minute minute) {
+        List<String> parts = new ArrayList<>();
+
+        if (minute.decisions() != null && !minute.decisions().isEmpty()) {
+            parts.add("Decisiones: " + String.join("; ", minute.decisions()));
+        }
+        if (minute.topics() != null && !minute.topics().isEmpty()) {
+            parts.add("Temas: " + String.join("; ", minute.topics()));
+        }
+        if (minute.summary() != null && !minute.summary().isBlank()) {
+            parts.add("Resumen: " + minute.summary());
+        }
+        if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+            parts.add("Agenda: " + minute.agenda().toString());
+        }
+        if (parts.isEmpty()) {
+            return "";
+        }
+        return String.join(" | ", parts);
     }
 
     /**
@@ -295,7 +249,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     private List<Explanation> analyzeAndRankExplanations(String query, List<Explanation> explanations) {
         // Sort by relevance score (descending)
         return explanations.stream()
-                .sorted((a, b) -> Double.compare(b.relevanceScore, a.relevanceScore))
+                .sorted((a, b) -> Double.compare(b.getRelevanceScore(), a.getRelevanceScore()))
                 .collect(Collectors.toList());
     }
 
@@ -331,7 +285,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
      */
     private boolean isSimilarToCluster(Explanation explanation, ExplanationCluster cluster) {
         // Simple similarity check based on content overlap
-        String explanationContent = explanation.content.toLowerCase();
+        String explanationContent = explanation.getContent().toLowerCase();
         String clusterContent = cluster.getRepresentativeContent().toLowerCase();
         
         // Calculate simple word overlap
@@ -403,8 +357,8 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
                                explanations.stream()
                                        .limit(3)
                                        .map(e -> String.format("- %s: %s", 
-                                           e.date != null ? e.date : "fecha desconocida",
-                                           e.content.length() > 200 ? e.content.substring(0, 200) + "..." : e.content))
+                                           e.getDate() != null ? e.getDate() : "fecha desconocida",
+                                           e.getContent() != null && e.getContent().length() > 200 ? e.getContent().substring(0, 200) + "..." : (e.getContent() != null ? e.getContent() : "")))
                                        .collect(Collectors.joining("\n\n")));
         } else {
             return String.format("Found %d relevant minute(s).\n\nExplanations:\n%s",
@@ -412,8 +366,8 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
                                explanations.stream()
                                        .limit(3)
                                        .map(e -> String.format("- %s: %s", 
-                                           e.date != null ? e.date : "unknown date",
-                                           e.content.length() > 200 ? e.content.substring(0, 200) + "..." : e.content))
+                                           e.getDate() != null ? e.getDate() : "unknown date",
+                                           e.getContent() != null && e.getContent().length() > 200 ? e.getContent().substring(0, 200) + "..." : (e.getContent() != null ? e.getContent() : "")))
                                        .collect(Collectors.joining("\n\n")));
         }
     }
@@ -429,34 +383,14 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
             ExplanationCluster cluster = clusters.get(i);
             Explanation representative = cluster.getRepresentativeExplanation();
             
-            if (representative.date != null) {
-                summary.append(String.format("Reunión del %s:\n", representative.date));
+            if (representative.getDate() != null) {
+                summary.append(String.format("Reunión del %s:\n", representative.getDate()));
             }
-            summary.append(representative.content);
+            summary.append(representative.getContent() != null ? representative.getContent() : "");
             summary.append("\n\n");
         }
         
         return summary.toString();
-    }
-
-    /**
-     * Formats cluster analysis for LLM prompt
-     */
-    private String formatClusterAnalysis(List<ExplanationCluster> clusters) {
-        if (clusters.isEmpty()) {
-            return "No clusters found.";
-        }
-        
-        StringBuilder analysis = new StringBuilder();
-        analysis.append(String.format("Total clusters: %d\n", clusters.size()));
-        
-        for (int i = 0; i < clusters.size(); i++) {
-            ExplanationCluster cluster = clusters.get(i);
-            analysis.append(String.format("- Cluster %d: %d explanations, avg relevance: %.2f\n", 
-                                        i + 1, cluster.getSize(), cluster.getAverageRelevance()));
-        }
-        
-        return analysis.toString();
     }
 
     /**
@@ -468,80 +402,4 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         return super.getLLMResponseCached(prompt);
     }
 
-    /**
-     * Represents an explanation with metadata
-     */
-    private static class Explanation {
-        final String minuteId;
-        final String date;
-        final String place;
-        final String content;
-        final double relevanceScore;
-        final long timestamp;
-
-        Explanation(String minuteId, String date, String place, String content, double relevanceScore, long timestamp) {
-            this.minuteId = minuteId;
-            this.date = date;
-            this.place = place;
-            this.content = content;
-            this.relevanceScore = relevanceScore;
-            this.timestamp = timestamp;
-        }
-        
-        /**
-         * Gets a formatted identifier for the explanation
-         */
-        String getIdentifier() {
-            return String.format("%s (%s - %s)", minuteId, date != null ? date : "unknown", place != null ? place : "unknown");
-        }
-        
-        /**
-         * Gets the age of the explanation in milliseconds
-         */
-        long getAge() {
-            return System.currentTimeMillis() - timestamp;
-        }
-        
-        @Override
-        public String toString() {
-            return String.format("Explanation[%s, score=%.2f, age=%dms]", getIdentifier(), relevanceScore, getAge());
-        }
-    }
-
-    /**
-     * Represents a cluster of similar explanations
-     */
-    private static class ExplanationCluster {
-        private final List<Explanation> explanations = new ArrayList<>();
-
-        ExplanationCluster(Explanation initialExplanation) {
-            explanations.add(initialExplanation);
-        }
-
-        void addExplanation(Explanation explanation) {
-            explanations.add(explanation);
-        }
-
-        int getSize() {
-            return explanations.size();
-        }
-
-        Explanation getRepresentativeExplanation() {
-            // Return the explanation with highest relevance score
-            return explanations.stream()
-                    .max((a, b) -> Double.compare(a.relevanceScore, b.relevanceScore))
-                    .orElse(explanations.get(0));
-        }
-
-        String getRepresentativeContent() {
-            return getRepresentativeExplanation().content;
-        }
-
-        double getAverageRelevance() {
-            return explanations.stream()
-                    .mapToDouble(e -> e.relevanceScore)
-                    .average()
-                    .orElse(0.0);
-        }
-    }
 }

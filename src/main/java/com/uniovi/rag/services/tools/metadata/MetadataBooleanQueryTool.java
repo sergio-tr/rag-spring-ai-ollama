@@ -7,7 +7,6 @@ import com.uniovi.rag.services.tools.ToolResult;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.cache.annotation.Cacheable;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -15,13 +14,6 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataBooleanQueryTool for answering yes/no questions about meeting minutes.
- * 
- * Features:
- * - Intelligent NER-based filtering
- * - Parallel processing for better performance
- * - Cached evaluations for efficiency
- * - Adaptive prompts based on query context
- * - Comprehensive evidence extraction
  */
 public class MetadataBooleanQueryTool extends AbstractMetadataTool {
 
@@ -36,13 +28,8 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         
         log().debug("Executing boolean query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve and filter documents efficiently
-        List<Document> docs = retrieveDocumentsWithMetadataFilter(query, new String[] {"date", "place", "decisions", "topics", "summary"});
-
-        if (docs.isEmpty()) {
-            log().debug("No documents found with metadata filter, trying basic retrieval");
-            docs = retrieveDocuments(query);  // Basic retrieval without metadata
-        }
+        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        List<Document> docs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "decisions", "topics", "summary"}, ner);
         
         if (docs.isEmpty()) {
             log().debug("No documents found for query: {}", query);
@@ -63,8 +50,9 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        // Step 4: Extract evidence in parallel
+        // Step 4: Extract evidence in parallel (metadata-first, LLM as fallback per minute)
         List<String> evidence = extractEvidenceInParallel(query, relevantMinutes);
+        
         if (evidence.isEmpty()) {
             log().debug("No evidence found for query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
@@ -78,27 +66,11 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
     }
 
     /**
-     * Cached extraction of minute objects
-     */
-    @Cacheable(value = "minuteObjects", key = "#doc.id")
-    public Minute getMinuteFromMetadataCached(Document doc) {
-        return getMinuteFromMetadata(doc);
-    }
-
-    /**
-     * Cached NER matching evaluation
-     */
-    @Cacheable(value = "nerMatching", key = "#minute.hashCode() + '_' + #ner.hashCode()")
-    public boolean matchesMinuteWithNERCached(Minute minute, JSONObject ner) {
-        return matchesMinuteWithNER(minute, ner);
-    }
-
-    /**
      * Extracts evidence from minutes in parallel
      */
     private List<String> extractEvidenceInParallel(String query, List<Minute> minutes) {
         List<CompletableFuture<String>> evidenceFutures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> extractEvidenceFromMinute(query, minute)))
+                .map(minute -> CompletableFuture.supplyAsync(() -> extractEvidencePreferMetadata(query, minute)))
                 .collect(Collectors.toList());
 
         return evidenceFutures.stream()
@@ -106,6 +78,17 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
                 .filter(evidence -> !evidence.isBlank())
                 .distinct()
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Prefers metadata-based evidence; falls back to LLM only if metadata has no usable signal.
+     */
+    private String extractEvidencePreferMetadata(String query, Minute minute) {
+        String metadataEvidence = buildEvidenceFromMetadata(minute, query);
+        if (metadataEvidence != null && !metadataEvidence.isBlank()) {
+            return metadataEvidence;
+        }
+        return extractEvidenceFromMinute(query, minute);
     }
 
     /**
@@ -206,6 +189,51 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
     }
     
     /**
+     * Builds evidence directly from minute metadata when LLM extraction fails.
+     * This is a fallback to avoid false negatives.
+     */
+    private String buildEvidenceFromMetadata(Minute minute, String query) {
+        if (minute == null || query == null || query.trim().isEmpty()) {
+            return "";
+        }
+        
+        StringBuilder evidence = new StringBuilder();
+        
+        // Extract relevant fields based on query keywords
+        String queryLower = query.toLowerCase();
+        
+        if (queryLower.contains("decisión") || queryLower.contains("decision") || 
+            queryLower.contains("acuerdo") || queryLower.contains("acord")) {
+            if (minute.decisions() != null && !minute.decisions().isEmpty()) {
+                evidence.append("Decisiones: ").append(String.join(", ", minute.decisions())).append("\n");
+            }
+        }
+        
+        if (queryLower.contains("tema") || queryLower.contains("topic") || 
+            queryLower.contains("asunto") || queryLower.contains("subject")) {
+            if (minute.topics() != null && !minute.topics().isEmpty()) {
+                evidence.append("Temas: ").append(String.join(", ", minute.topics())).append("\n");
+            }
+        }
+        
+        if (queryLower.contains("resumen") || queryLower.contains("summary")) {
+            if (minute.summary() != null && !minute.summary().trim().isEmpty()) {
+                evidence.append("Resumen: ").append(minute.summary()).append("\n");
+            }
+        }
+        
+        // Always include date and place for context
+        if (minute.date() != null) {
+            evidence.append("Fecha: ").append(minute.date()).append("\n");
+        }
+        if (minute.place() != null) {
+            evidence.append("Lugar: ").append(minute.place()).append("\n");
+        }
+        
+        return evidence.toString().trim();
+    }
+    
+    /**
      * Generates a fallback answer when LLM fails.
      * Detects language from query and responds accordingly.
      */
@@ -222,15 +250,5 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
                               evidence.size(),
                               evidence.stream().limit(3).collect(Collectors.joining("; ")));
         }
-    }
-
-    /**
-     * Cached LLM response with error handling and validation.
-     * Uses parent class implementation which includes error handling.
-     */
-    @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
-    public String getLLMResponseCached(String prompt) {
-        // Use parent class implementation which has error handling
-        return super.getLLMResponseCached(prompt);
     }
 }

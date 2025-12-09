@@ -100,15 +100,24 @@ public class EnhancedNERHandler implements Loggable {
                     .content();
             
             if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in matchesMinuteWithNER, defaulting to false");
-                return false;
+                log().warn("Empty response from LLM in matchesMinuteWithNER, defaulting to true to avoid false negatives");
+                return true;
             }
             
+            // Validate and parse response
             String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            boolean matches = normalized.contains("yes") || normalized.contains("sí");
+            
+            // Additional validation: if response is unclear, default to true
+            if (!matches && !normalized.contains("no") && !normalized.contains("no")) {
+                log().warn("Unclear LLM response in matchesMinuteWithNER: '{}', defaulting to true", result);
+                return true;
+            }
+            
+            return matches;
         } catch (Exception e) {
-            log().error("Error in matchesMinuteWithNER, defaulting to false", e);
-            return false; // Default to false on error to avoid false positives
+            log().error("Error in matchesMinuteWithNER, defaulting to true to avoid false negatives", e);
+            return true;
         }
     }
 
