@@ -93,19 +93,19 @@ public class ProcessQueryService implements QueryService {
             JSONObject nerEntities = analyse(expandedQuery);
             QueryType queryType = classify(expandedQuery);
 
-            log().debug("Query expanded: {}", expandedQuery);
-            log().debug("NER: {}", nerEntities);
-            log().debug("Query Type : {}", queryType);
+            log().info("Query expanded: {}", expandedQuery);
+            log().info("NER: {}", nerEntities);
+            log().info("Query Type : {}", queryType);
 
             ToolResult response = tryToolRoute(expandedQuery, nerEntities, queryType);
 
             if (response == null) {
                 String answer = askModel(expandedQuery, nerEntities, queryType);
-                log().debug("Response generated with model directly: {}", answer);
+                log().info("Response generated with model directly: {}", answer);
                 return answer;
             }
 
-            log().debug("Response generated with tool {}: {}", response.source(), response.result());
+            log().info("Response generated with tool {}: {}", response.source(), response.result());
             return response.result();
         } catch (Exception e) {
             log().error("Unexpected error processing query : {}", query, e);
@@ -152,7 +152,7 @@ public class ProcessQueryService implements QueryService {
 
         Tool tool = toolsConfig.getTool(queryType);
         if (tool == null) {
-            log().debug("No tool found for query type: {}", queryType);
+            log().info("No tool found for query type: {}", queryType);
             return null;
         }
 
@@ -161,11 +161,11 @@ public class ProcessQueryService implements QueryService {
         for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             try {
                 if (attempt > 0) {
-                    log().debug("Retry attempt {} for tool: {}", attempt, queryType);
+                    log().info("Retry attempt {} for tool: {}", attempt, queryType);
                     Thread.sleep(RETRY_DELAY_MS * attempt);
                 }
                 
-                log().debug("Executing tool: {} (attempt {})", queryType, attempt + 1);
+                log().info("Executing tool: {} (attempt {})", queryType, attempt + 1);
                 ToolResult result = featureConfig.isNerEnabled() ?
                         tool.execute(ToolExecutionContext.of(query, queryType, nerEntities)) :
                         tool.execute(ToolExecutionContext.of(query, queryType));
@@ -174,7 +174,7 @@ public class ProcessQueryService implements QueryService {
                     // Validate tool result
                     String validatedResult = LLMResponseValidator.validateAndClean(result.result(), "Tool-" + queryType);
                     if (validatedResult != null) {
-                        log().debug("Successfully executed tool {} on attempt {}", queryType, attempt + 1);
+                        log().info("Successfully executed tool {} on attempt {}", queryType, attempt + 1);
                         // Create new ToolResult with validated result, preserving original source
                         return new ToolResult(validatedResult, result.source());
                     } else {
@@ -220,16 +220,16 @@ public class ProcessQueryService implements QueryService {
         List<Document> docs;
         if (retriever instanceof AbstractContextRetriever && nerEntities != null && !nerEntities.isEmpty()) {
             docs = ((AbstractContextRetriever) retriever).retrieveWithMetadataFilters(query, nerEntities);
-            log().debug("Using optimized retrieval with metadata filters, retrieved {} documents", docs.size());
+            log().info("Using optimized retrieval with metadata filters, retrieved {} documents", docs.size());
         } else {
             docs = retriever.retrieve(query);
         }
 
         String context = retriever.createContext(docs, query, nerEntities);
 
-        log().debug("Retrieved {} documents, context length: {}", docs.size(), context != null ? context.length() : 0);
+        log().info("Retrieved {} documents, context length: {}", docs.size(), context != null ? context.length() : 0);
         if (log().isDebugEnabled()) {
-            log().debug("Retrieved context:\n{}", context);
+            log().info("Retrieved context:\n{}", context);
         }
 
         if (context == null || context.trim().isEmpty()) {
@@ -255,7 +255,7 @@ public class ProcessQueryService implements QueryService {
         for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             try {
                 if (attempt > 0) {
-                    log().debug("Retry attempt {} for query: {}", attempt, query);
+                    log().info("Retry attempt {} for query: {}", attempt, query);
                     Thread.sleep(RETRY_DELAY_MS * attempt); // Exponential backoff
                 }
                 
@@ -269,7 +269,7 @@ public class ProcessQueryService implements QueryService {
                 String validatedResponse = LLMResponseValidator.validateAndClean(response, "ProcessQueryService");
                 
                 if (validatedResponse != null) {
-                    log().debug("Successfully generated response on attempt {}", attempt + 1);
+                    log().info("Successfully generated response on attempt {}", attempt + 1);
                     return validatedResponse;
                 } else {
                     log().warn("Invalid response from LLM on attempt {} for query: {}", attempt + 1, query);

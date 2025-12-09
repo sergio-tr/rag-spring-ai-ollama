@@ -25,7 +25,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing count documents query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing count documents query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(
@@ -35,21 +35,21 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         );
         
         if (docs.isEmpty()) {
-            log().debug("No documents found for count query: {}", query);
+            log().info("No documents found for count query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for count query: {}", query);
+            log().info("No valid minutes found for count query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for count query: {}", query);
+            log().info("No relevant minutes found for count query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
@@ -58,7 +58,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
 
         // Step 5: Generate enhanced count answer
         String answer = generateEnhancedCountAnswer(query, analysis);
-        log().debug("Generated count answer for query: {} with {} documents", query, analysis.getTotalCount());
+        log().info("Generated count answer for query: {} with {} documents", query, analysis.getTotalCount());
         
         return ToolResult.from(answer, getClass());
     }

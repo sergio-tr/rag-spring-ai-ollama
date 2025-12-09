@@ -152,7 +152,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
 
         // Log the extracted fields
-        log().debug("Extracted fields for file: {} - Date: {}, Place: {}, Start Time: {}, End Time: {}, President: {}, Secretary: {}, Attendees: {}, Decisions: {}, Mentioned Entities: {}, Topics: {}, Summary: {}",
+        log().info("Extracted fields for file: {} - Date: {}, Place: {}, Start Time: {}, End Time: {}, President: {}, Secretary: {}, Attendees: {}, Decisions: {}, Mentioned Entities: {}, Topics: {}, Summary: {}",
                       filename, date, place, startTime, endTime, president, secretary, attendees.size(), decisions.size(), mentionedEntities.size(), topics.size(), summary);
 
         return sanitizeMinute(new Minute(
@@ -216,12 +216,12 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 log().warn("LLM extraction returned very few items ({}), trying regex fallback", extracted.size());
                 List<String> regexExtracted = extractWithRegexFallback(content, prompt);
                 if (regexExtracted.size() > extracted.size()) {
-                    log().debug("Regex fallback found more items ({} vs {}), using regex results", regexExtracted.size(), extracted.size());
+                    log().info("Regex fallback found more items ({} vs {}), using regex results", regexExtracted.size(), extracted.size());
                     return regexExtracted;
                 }
             }
             
-            log().debug("Extracted {} items using LLM prompt", extracted.size());
+            log().info("Extracted {} items using LLM prompt", extracted.size());
             return extracted;
         } catch (Exception e) {
             log().error("Error extracting information with LLM prompt, trying regex fallback", e);
@@ -269,9 +269,9 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         if (!extracted.isEmpty()) {
-            log().debug("Regex fallback extracted {} items", extracted.size());
+            log().info("Regex fallback extracted {} items", extracted.size());
         } else {
-            log().debug("Regex fallback also failed to extract items");
+            log().info("Regex fallback also failed to extract items");
         }
         
         return extracted;
@@ -395,7 +395,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
             
             String trimmed = summary.trim();
-            log().debug("Extracted summary with {} characters", trimmed.length());
+            log().info("Extracted summary with {} characters", trimmed.length());
             return trimmed;
         } catch (Exception e) {
             log().error("Error extracting summary with LLM, using fallback", e);
@@ -472,13 +472,13 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         try {
             String minuteJson = objectMapper.writeValueAsString(minute);
             metadata.put("minute", minuteJson);
-            log().debug("Minute object stored in metadata as JSON for document: {}", minute.id());
+            log().info("Minute object stored in metadata as JSON for document: {}", minute.id());
         } catch (Exception e) {
             log().warn("Failed to serialize Minute object to JSON for document: {}. Error: {}", 
                       minute.id(), e.getMessage());
         }
         
-        log().debug("Metadata extracted for document: {} with {} fields (document_id: {})", 
+        log().info("Metadata extracted for document: {} with {} fields (document_id: {})", 
                   minute.id(), metadata.size(), minute.id());
         return metadata;
     }
@@ -990,7 +990,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         // If not found, it is not critical - times are optional
         // Changed to debug to avoid noise in logs
-        log().debug("No se pudo extraer la hora de {} del documento (esto es opcional y no afecta el funcionamiento)", 
+        log().info("No se pudo extraer la hora de {} del documento (esto es opcional y no afecta el funcionamiento)", 
                    isStartTime ? "inicio" : "fin");
         return null;
     }
@@ -1043,11 +1043,11 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
                     return String.format("%02d:%02d", hour, minute);
                 } else {
-                    log().debug("Time out of valid range: {}:{}", hour, minute);
+                    log().info("Time out of valid range: {}:{}", hour, minute);
                     return null;
                 }
             } catch (NumberFormatException e) {
-                log().debug("Error parsing time '{}': {}", time, e.getMessage());
+                log().info("Error parsing time '{}': {}", time, e.getMessage());
                 return null;
             }
         }
@@ -1074,7 +1074,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        log().debug("Could not normalize time: '{}'", time);
+        log().info("Could not normalize time: '{}'", time);
         return null;
     }
     
@@ -1126,7 +1126,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             .distinct()
             .collect(Collectors.toList());
         
-        log().debug("Extracted {} attendees: {}", attendees.size(), attendees);
+        log().info("Extracted {} attendees: {}", attendees.size(), attendees);
         return attendees;
     }
 
@@ -1177,7 +1177,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         String agendaBlock = extractAgendaBlock(content);
         if (agendaBlock == null || agendaBlock.trim().isEmpty()) {
             // Not critical - the agenda is optional and may be in other formats
-            log().debug("No found agenda block (this is optional and does not affect functionality)");
+            log().info("No found agenda block (this is optional and does not affect functionality)");
             return agenda;
         }
         

@@ -32,7 +32,7 @@ public class DecisionExtractionTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing decision extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing decision extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         List<Document> docs = retrieveDocuments(query);
         List<String> decisions = new ArrayList<>();

@@ -108,12 +108,12 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
                 throw new IllegalArgumentException("The PDF does not contain extractable text. It may be protected or an image.");
             }
             
-            log().debug("PDF extracted " + rawText.length() + " characters from file: " + filename);
+            log().info("PDF extracted " + rawText.length() + " characters from file: " + filename);
             
             // Normalize the extracted text to improve subsequent extraction
             String normalized = normalizeExtractedText(rawText);
             
-            log().debug("After normalization: " + normalized.length() + " characters for file: " + filename);
+            log().info("After normalization: " + normalized.length() + " characters for file: " + filename);
             
             // Validate minimum length
             if (normalized.length() < 20) {

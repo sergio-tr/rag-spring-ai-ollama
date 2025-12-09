@@ -27,7 +27,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing find paragraph query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing find paragraph query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(
@@ -37,21 +37,21 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         );
         
         if (docs.isEmpty()) {
-            log().debug("No documents found for find paragraph query: {}", query);
+            log().info("No documents found for find paragraph query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for find paragraph query: {}", query);
+            log().info("No valid minutes found for find paragraph query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for find paragraph query: {}", query);
+            log().info("No relevant minutes found for find paragraph query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
@@ -67,7 +67,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         // Step 4: Find relevant paragraphs in parallel (content-first, metadata fallback)
         List<ParagraphResult> results = findParagraphsInParallel(query, relevantMinutes, minuteIdToDoc);
         if (results.isEmpty()) {
-            log().debug("No paragraphs found for query: {}", query);
+            log().info("No paragraphs found for query: {}", query);
             return ToolResult.from(generateNoDataMessage(query), getClass());
         }
 
@@ -79,7 +79,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
 
         // Step 7: Generate enhanced final answer
         String answer = generateEnhancedParagraphAnswer(query, rankedResults, clusters);
-        log().debug("Generated find paragraph answer for query: {} with {} paragraphs in {} clusters", 
+        log().info("Generated find paragraph answer for query: {} with {} paragraphs in {} clusters", 
                    query, results.size(), clusters.size());
         
         return ToolResult.from(answer, getClass());
@@ -166,7 +166,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             String response = getLLMResponseCached(prompt);
             
             if (response == null || response.trim().isEmpty()) {
-                log().debug("Empty response from LLM in extractParagraphFromContent");
+                log().info("Empty response from LLM in extractParagraphFromContent");
                 return "";
             }
             
@@ -239,7 +239,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             String response = getLLMResponseCached(prompt);
             
             if (response == null || response.trim().isEmpty()) {
-                log().debug("Empty response from LLM in extractRelevantParagraph, returning empty string");
+                log().info("Empty response from LLM in extractRelevantParagraph, returning empty string");
                 return "";
             }
             

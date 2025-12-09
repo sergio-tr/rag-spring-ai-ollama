@@ -47,7 +47,7 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
                           filename, content.length());
             }
             
-            log().debug("Content extracted for file: {} (length: {})", filename, content.length());
+            log().info("Content extracted for file: {} (length: {})", filename, content.length());
             
             // Step 3: Extract model
             T model = extractModel(content, filename);
@@ -112,7 +112,7 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
         
         // Log metadata summary for debugging
         if (log().isDebugEnabled()) {
-            log().debug("Metadata validation for file: {} - Fields: {}", filename, metadata.keySet());
+            log().info("Metadata validation for file: {} - Fields: {}", filename, metadata.keySet());
         }
     }
     

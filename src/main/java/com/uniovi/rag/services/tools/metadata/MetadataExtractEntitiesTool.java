@@ -26,7 +26,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing entity extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing entity extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(
@@ -36,28 +36,28 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         );
         
         if (docs.isEmpty()) {
-            log().debug("No documents found for entity extraction query: {}", query);
+            log().info("No documents found for entity extraction query: {}", query);
             return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for entity extraction query: {}", query);
+            log().info("No valid minutes found for entity extraction query: {}", query);
             return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for entity extraction query: {}", query);
+            log().info("No relevant minutes found for entity extraction query: {}", query);
             return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
         }
 
         // Step 4: Extract entities in parallel
         List<Entity> entities = extractEntitiesInParallel(query, relevantMinutes);
         if (entities.isEmpty()) {
-            log().debug("No relevant entities found for query: {}", query);
+            log().info("No relevant entities found for query: {}", query);
             return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
         }
 
@@ -69,7 +69,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
 
         // Step 7: Generate enhanced final answer
         String answer = generateEnhancedEntityAnswer(query, rankedEntities, clusters);
-        log().debug("Generated entity extraction answer for query: {} with {} entities in {} clusters", 
+        log().info("Generated entity extraction answer for query: {} with {} entities in {} clusters", 
                    query, entities.size(), clusters.size());
         
         return ToolResult.from(answer, getClass());
@@ -248,7 +248,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             String result = getLLMResponseCached(prompt);
             
             if (result == null || result.trim().isEmpty()) {
-                log().debug("Empty response from LLM in extractEntitiesFromText, returning empty list");
+                log().info("Empty response from LLM in extractEntitiesFromText, returning empty list");
                 return Collections.emptyList();
             }
             
@@ -301,11 +301,11 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                 }
             }
         } catch (org.json.JSONException e) {
-            log().debug("Error parsing JSON from LLM response, trying line-by-line parsing: {}", e.getMessage());
+            log().info("Error parsing JSON from LLM response, trying line-by-line parsing: {}", e.getMessage());
             // Fallback to line-by-line parsing
             return parseEntitiesFromLines(response);
         } catch (Exception e) {
-            log().debug("Error parsing entities from LLM response: {}", e.getMessage());
+            log().info("Error parsing entities from LLM response: {}", e.getMessage());
         }
         
         return entities;
@@ -339,7 +339,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                 }
             }
         } catch (Exception e) {
-            log().debug("Error in fallback line parsing: {}", e.getMessage());
+            log().info("Error in fallback line parsing: {}", e.getMessage());
         }
         
         return entities;

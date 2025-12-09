@@ -112,7 +112,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         int head = (int) (maxChars * 0.65); // mantener más cabecera
         int tail = maxChars - head;
         String truncated = trimmed.substring(0, head) + "\n...\n" + trimmed.substring(trimmed.length() - tail);
-        log().debug("Prompt content truncated from {} to {} characters", trimmed.length(), truncated.length());
+        log().info("Prompt content truncated from {} to {} characters", trimmed.length(), truncated.length());
         return truncated;
     }
     

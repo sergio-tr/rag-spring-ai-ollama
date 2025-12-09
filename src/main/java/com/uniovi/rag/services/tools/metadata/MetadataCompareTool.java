@@ -26,7 +26,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing comparison query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing comparison query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(
@@ -36,35 +36,35 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         );
         
         if (docs.isEmpty()) {
-            log().debug("No documents found for comparison query: {}", query);
+            log().info("No documents found for comparison query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for comparison query: {}", query);
+            log().info("No valid minutes found for comparison query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for comparison query: {}", query);
+            log().info("No relevant minutes found for comparison query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 4: Infer comparison field with enhanced analysis
         ComparisonField fieldToCompare = inferComparisonFieldEnhanced(query, ner, relevantMinutes);
         if (fieldToCompare == null) {
-            log().debug("Could not infer comparison field for query: {}", query);
+            log().info("Could not infer comparison field for query: {}", query);
             return ToolResult.from(generateUnknownFieldMessage(query), getClass());
         }
 
         // Step 5: Extract comparison data in parallel
         Map<String, ComparisonValue> comparables = extractComparisonDataInParallel(relevantMinutes, fieldToCompare, ner);
         if (comparables.isEmpty()) {
-            log().debug("No comparison data found for field: {}", fieldToCompare.fieldName);
+            log().info("No comparison data found for field: {}", fieldToCompare.fieldName);
             return ToolResult.from(generateNoDataMessage(fieldToCompare.fieldName, query), getClass());
         }
 
@@ -73,7 +73,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
 
         // Step 7: Generate enhanced comparison answer
         String answer = generateEnhancedComparisonAnswer(query, fieldToCompare, comparables, analysis);
-        log().debug("Generated comparison answer for query: {} with {} data points", query, comparables.size());
+        log().info("Generated comparison answer for query: {} with {} data points", query, comparables.size());
         
         return ToolResult.from(answer, getClass());
     }
@@ -86,7 +86,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         // First try rule-based inference for common cases
         ComparisonField ruleBasedField = inferFieldByRules(query);
         if (ruleBasedField != null) {
-            log().debug("Inferred field by rules: {}", ruleBasedField.fieldName);
+            log().info("Inferred field by rules: {}", ruleBasedField.fieldName);
             return ruleBasedField;
         }
 

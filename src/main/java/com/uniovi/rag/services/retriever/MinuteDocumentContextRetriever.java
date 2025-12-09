@@ -96,7 +96,7 @@ public class MinuteDocumentContextRetriever extends AbstractMetadataContextRetri
 
         // This prevents wasting LLM calls on documents that don't match basic criteria
         if (entities != null && !entities.isEmpty() && !matchesDocumentMetadata(doc, entities)) {
-            log().debug("Document {} filtered out by metadata/NER matching before content filtering", doc.getId());
+            log().info("Document {} filtered out by metadata/NER matching before content filtering", doc.getId());
             return ""; // Document doesn't match NER criteria, return empty
         }
 

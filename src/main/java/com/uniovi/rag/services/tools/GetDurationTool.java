@@ -34,7 +34,7 @@ public class GetDurationTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing get duration query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing get duration query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         List<Document> docs = retrieveDocuments(query);
         List<MeetingDuration> durations = new ArrayList<>();

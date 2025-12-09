@@ -26,7 +26,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing get field query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing get field query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(
@@ -36,35 +36,35 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         );
         
         if (docs.isEmpty()) {
-            log().debug("No documents found for get field query: {}", query);
+            log().info("No documents found for get field query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for get field query: {}", query);
+            log().info("No valid minutes found for get field query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for get field query: {}", query);
+            log().info("No relevant minutes found for get field query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 4: Clasificar campo por reglas (sin LLM)
         String detectedField = classifyFieldIntent(query, ner);
         if (detectedField.equals("unknown")) {
-            log().debug("Could not classify field intent for query: {}", query);
+            log().info("Could not classify field intent for query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 5: Extract field values in parallel
         List<FieldResult> results = extractFieldValuesInParallel(relevantMinutes, detectedField);
         if (results.isEmpty()) {
-            log().debug("No field values extracted for query: {}", query);
+            log().info("No field values extracted for query: {}", query);
             return ToolResult.from(generateNoDataMessage(query), getClass());
         }
 
@@ -73,7 +73,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
         // Step 7: Generate enhanced final answer
         String answer = generateFieldAnswer(query, rankedResults, detectedField);
-        log().debug("Generated get field answer for query: {} with {} field values for field: {}", 
+        log().info("Generated get field answer for query: {} with {} field values for field: {}", 
                    query, results.size(), detectedField);
         
         return ToolResult.from(answer, getClass());

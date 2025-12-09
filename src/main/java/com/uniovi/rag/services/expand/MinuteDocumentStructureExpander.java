@@ -69,9 +69,9 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
                 return query;
             }
             
-            log().debug("-----------------------------------------------------------------------------");
-            log().debug("EXPANDER: Pregunta original: {}", query);
-            log().debug("EXPANDER: Pregunta reformulada: {}", trimmed);
+            log().info("-----------------------------------------------------------------------------");
+            log().info("EXPANDER: Pregunta original: {}", query);
+            log().info("EXPANDER: Pregunta reformulada: {}", trimmed);
 
             return trimmed;
         } catch (Exception e) {
