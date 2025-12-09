@@ -1146,6 +1146,18 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             .distinct()
             .collect(Collectors.toList());
         
+        // Remove first element if it looks like descriptive text (simple solution)
+        if (!attendees.isEmpty()) {
+            String first = attendees.get(0).toLowerCase();
+            if (first.contains("cuenta") || first.contains("asistencia") || first.contains("propietarios") ||
+                first.contains("lista") || first.contains("firmada") || first.contains("reunión") ||
+                first.contains("quórum") || first.contains("suficiente") || first.contains("validez") ||
+                first.contains("acuerdos") || first.contains("tomados") || first.contains("declara") ||
+                first.length() > 100) { // Also remove if too long (likely descriptive text)
+                attendees.remove(0);
+            }
+        }
+        
         log().info("Extracted {} attendees: {}", attendees.size(), attendees);
         return attendees;
     }
@@ -1153,28 +1165,46 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     /**
      * Removes all text before the first list delimiter (bullet, dash, asterisk, or number).
      * This discards introductory/descriptive text before the actual list.
+     * Supports multiple unordered list symbols: •, -, *, etc.
      */
     private String removeTextBeforeFirstDelimiter(String text) {
         if (text == null || text.trim().isEmpty()) {
             return text;
         }
         
-        // Find the first occurrence of any list delimiter
-        Pattern delimiterPattern = Pattern.compile("(?:^|\\n)[^\\n]*?(?:•|\\s*[-*]|\\s*\\d+\\.)", Pattern.MULTILINE);
-        Matcher matcher = delimiterPattern.matcher(text);
+        // List of unordered list delimiters to search for
+        String[] delimiters = {"•", "-", "*"};
         
-        if (matcher.find()) {
-            // Return everything from the first delimiter onwards
-            int startIndex = matcher.start();
-            // Find the actual delimiter position
-            String remaining = text.substring(startIndex);
-            // Find the first delimiter in the remaining text
-            Pattern firstDelimiter = Pattern.compile("(?:•|[-*]|\\d+\\.)");
-            Matcher firstMatcher = firstDelimiter.matcher(remaining);
-            if (firstMatcher.find()) {
-                return remaining.substring(firstMatcher.start());
+        int firstIndex = Integer.MAX_VALUE;
+        String foundDelimiter = null;
+        
+        // Find the first occurrence of any delimiter
+        for (String delimiter : delimiters) {
+            int index = text.indexOf(delimiter);
+            if (index >= 0 && index < firstIndex) {
+                firstIndex = index;
+                foundDelimiter = delimiter;
             }
-            return remaining;
+        }
+        
+        // If found, return text from that delimiter onwards
+        if (firstIndex < Integer.MAX_VALUE && foundDelimiter != null) {
+            return text.substring(firstIndex);
+        }
+        
+        // If no delimiter found, try pattern-based search for delimiters at start of line
+        Pattern[] patterns = {
+            Pattern.compile("(?:^|\\n)\\s*•\\s+[A-ZÁÉÍÓÚÑ]", Pattern.MULTILINE),  // Bullet
+            Pattern.compile("(?:^|\\n)\\s*-\\s+[A-ZÁÉÍÓÚÑ]", Pattern.MULTILINE),   // Dash
+            Pattern.compile("(?:^|\\n)\\s*\\*\\s+[A-ZÁÉÍÓÚÑ]", Pattern.MULTILINE), // Asterisk
+            Pattern.compile("(?:^|\\n)\\s*\\d+\\.\\s+[A-ZÁÉÍÓÚÑ]", Pattern.MULTILINE) // Numbered
+        };
+        
+        for (Pattern pattern : patterns) {
+            Matcher matcher = pattern.matcher(text);
+            if (matcher.find()) {
+                return text.substring(matcher.start());
+            }
         }
         
         // If no delimiter found, return original (might be comma-separated)
@@ -1223,25 +1253,54 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return items;
         }
         
-        // Detect the most common list symbol in the text
-        String detectedSymbol = detectListSymbol(text);
+        // Skip if the text doesn't start with a delimiter (might be descriptive text)
+        String trimmed = text.trim();
+        if (!trimmed.startsWith("•") && !trimmed.matches("^\\s*[-*]") && !trimmed.matches("^\\s*\\d+\\.")) {
+            // Text doesn't start with delimiter, find first delimiter
+            int firstBullet = trimmed.indexOf("•");
+            int firstDash = trimmed.indexOf("-");
+            int firstAsterisk = trimmed.indexOf("*");
+            int firstNumber = trimmed.indexOf("1.");
+            
+            int firstDelimiter = Integer.MAX_VALUE;
+            if (firstBullet >= 0) firstDelimiter = Math.min(firstDelimiter, firstBullet);
+            if (firstDash >= 0) firstDelimiter = Math.min(firstDelimiter, firstDash);
+            if (firstAsterisk >= 0) firstDelimiter = Math.min(firstDelimiter, firstAsterisk);
+            if (firstNumber >= 0) firstDelimiter = Math.min(firstDelimiter, firstNumber);
+            
+            if (firstDelimiter < Integer.MAX_VALUE) {
+                trimmed = trimmed.substring(firstDelimiter);
+            } else {
+                // No delimiter found, return empty
+                return items;
+            }
+        }
+        
+        // Detect the most common list symbol in the cleaned text
+        String detectedSymbol = detectListSymbol(trimmed);
         
         // Method 1: Split by detected symbol if multiple items in same line
-        if (detectedSymbol != null) {
+        if (detectedSymbol != null && !detectedSymbol.equals("1.")) {
             // Escape special regex characters
             String escapedSymbol = Pattern.quote(detectedSymbol);
-            String[] parts = text.split(escapedSymbol);
+            String[] parts = trimmed.split(escapedSymbol);
             if (parts.length > 1) {
                 // Multiple items separated by the same symbol
-                for (String part : parts) {
-                    String item = part.trim();
+                for (int i = 0; i < parts.length; i++) {
+                    String part = parts[i].trim();
+                    // Skip the first part if it's empty or doesn't look like a name (might be leftover text)
+                    if (i == 0 && (part.isEmpty() || part.length() < 3 || 
+                        part.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*"))) {
+                        continue;
+                    }
                     // Remove leading/trailing list symbols and whitespace
-                    item = item.replaceAll("^[•\\-*\\d\\.\\s]+", "").replaceAll("[•\\-*\\d\\.\\s]+$", "").trim();
-                    if (!item.isEmpty() && item.length() > 2) {
+                    part = part.replaceAll("^[•\\-*\\d\\.\\s]+", "").replaceAll("[•\\-*\\d\\.\\s]+$", "").trim();
+                    if (!part.isEmpty() && part.length() > 2) {
                         // Remove roles in parentheses (extracted separately)
-                        item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
-                        if (!item.isEmpty()) {
-                            items.add(item);
+                        part = part.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                        // Filter out descriptive text
+                        if (!part.isEmpty() && !part.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*")) {
+                            items.add(part);
                         }
                     }
                 }
