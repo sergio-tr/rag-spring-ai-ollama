@@ -832,8 +832,9 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return null;
         }
         
-        // Pattern 1: "Lugar: [lugar]" in a single line (limited to 200 characters)
-        String place = extractSingle(content, "(?i)Lugar:\\s*([^\\n]{1,200})");
+        // Pattern 1: "Lugar: [lugar]" stopping before "Hora" or time patterns
+        // Stop at: Hora, Hora de inicio, Hora de finalización, or time pattern (HH:MM)
+        String place = extractSingle(content, "(?i)Lugar:\\s*([^\\n]{0,150}?)(?=\\s*(?:Hora|\\d{1,2}:\\s*\\d{2}|Asistentes:|Orden del día))");
         if (place != null && !place.trim().isEmpty()) {
             place = place.trim().replaceAll("\\.$", "").trim();
             if (place.length() > 5 && place.length() < 200) {
@@ -841,19 +842,19 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Pattern 2: Search in header context
+        // Pattern 2: Search in header context, stopping before hours
         String header = extractBlock(content, "(?i)^(?:ACTA|REUNIÓN)", "(?i)Asistentes:");
         if (header != null) {
-            place = extractSingle(header, "(?i)Lugar[^:]*:\\s*([^\\n]{1,200})");
+            place = extractSingle(header, "(?i)Lugar[^:]*:\\s*([^\\n]{0,150}?)(?=\\s*(?:Hora|\\d{1,2}:\\s*\\d{2}|Asistentes:|Orden del día))");
             if (place != null && place.length() > 5 && place.length() < 200) {
                 return place.trim().replaceAll("\\.$", "").trim();
             }
         }
         
-        // Pattern 3: Place label variants
+        // Pattern 3: Place label variants, stopping before hours
         String[] placeLabels = {"Lugar de celebración", "Sitio", "Ubicación", "Localización", "Lugar"};
         for (String label : placeLabels) {
-            place = extractSingle(content, String.format("(?i)%s[^:]*:\\s*([^\\n]{1,200})", label));
+            place = extractSingle(content, String.format("(?i)%s[^:]*:\\s*([^\\n]{0,150}?)(?=\\s*(?:Hora|\\d{1,2}:\\s*\\d{2}|Asistentes:|Orden del día))", label));
             if (place != null && place.length() > 5 && place.length() < 200) {
                 return place.trim().replaceAll("\\.$", "").trim();
             }
@@ -892,14 +893,13 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         String[] endLabels = {"fin", "finalización", "finaliza", "termina", "clausura"};
         String[] labels = isStartTime ? startLabels : endLabels;
         
-        // Possible time patterns
+        // Possible time patterns (including space after colon: "19: 00" and optional space before h: "19:00 h" or "19:00h")
         String[] timePatterns = {
-            "(\\d{1,2}:\\d{2})",           // 19:00
-            "(\\d{1,2}:\\d{2})\\s*h",      // 19:00 h
-            "(\\d{1,2}\\.\\d{2})",         // 19.00
-            "(\\d{1,2}:\\d{2})\\s*[hH]",  // 19:00 H
-            "(\\d{1,2})\\s*[hH]",         // 19 h
-            "(\\d{1,2})\\s*[hH]\\s*(\\d{2})?" // 19 h 30 (partial)
+            "(\\d{1,2}:\\s*\\d{2})",                    // 19:00 or 19: 00 (with space)
+            "(\\d{1,2}:\\s*\\d{2})\\s*[hH]",            // 19:00 h, 19:00h, 19: 00 h, 19: 00h (space optional before h)
+            "(\\d{1,2}\\.\\d{2})",                      // 19.00
+            "(\\d{1,2})\\s*[hH]",                       // 19 h or 19h
+            "(\\d{1,2})\\s*[hH]\\s*(\\d{2})?"           // 19 h 30 or 19h30 (partial)
         };
         
         // Try each combination of label and pattern
@@ -943,30 +943,30 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Final pattern: Search any time in HH:MM format near keywords
+        // Final pattern: Search any time in HH:MM format (with optional space) near keywords
         String keyword = isStartTime ? "inicio|comienzo|comienza" : "fin|final|termina|clausura";
         String time = extractSingle(content, 
-            String.format("(?i)(?:%s)[^:]*:\\s*(\\d{1,2}:\\d{2})", keyword));
+            String.format("(?i)(?:%s)[^:]*:\\s*(\\d{1,2}:\\s*\\d{2})", keyword));
         if (time != null) {
             return normalizeTime(time);
         }
         
-        // Additional pattern: Search format "19:00 - 20:30" or "19:00 a 20:30" and extract the corresponding time
+        // Additional pattern: Search format "19:00 - 20:30" or "19:00 a 20:30" (with optional space)
         if (isStartTime) {
-            time = extractSingle(content, "(?i)(\\d{1,2}:\\d{2})\\s*[-a]\\s*\\d{1,2}:\\d{2}");
+            time = extractSingle(content, "(?i)(\\d{1,2}:\\s*\\d{2})\\s*[-a]\\s*\\d{1,2}:\\s*\\d{2}");
             if (time != null) {
                 return normalizeTime(time);
             }
         } else {
-            time = extractSingle(content, "(?i)\\d{1,2}:\\d{2}\\s*[-a]\\s*(\\d{1,2}:\\d{2})");
+            time = extractSingle(content, "(?i)\\d{1,2}:\\s*\\d{2}\\s*[-a]\\s*(\\d{1,2}:\\s*\\d{2})");
             if (time != null) {
                 return normalizeTime(time);
             }
         }
         
-        // Additional very flexible pattern: Search any time in HH:MM format in the first lines
+        // Additional very flexible pattern: Search any time in HH:MM format (with optional space) in the first lines
         String firstLines = content.length() > 500 ? content.substring(0, 500) : content;
-        Pattern timePattern = Pattern.compile("(\\d{1,2}:\\d{2})");
+        Pattern timePattern = Pattern.compile("(\\d{1,2}:\\s*\\d{2})");
         Matcher matcher = timePattern.matcher(firstLines);
         List<String> foundTimes = new ArrayList<>();
         while (matcher.find() && foundTimes.size() < 3) {
@@ -990,7 +990,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         // If not found, it is not critical - times are optional
         // Changed to debug to avoid noise in logs
-        log().info("No se pudo extraer la hora de {} del documento (esto es opcional y no afecta el funcionamiento)", 
+        log().info("Could not extract the time of {} from the document (this is optional and does not affect functionality)", 
                    isStartTime ? "inicio" : "fin");
         return null;
     }
@@ -1009,6 +1009,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 .replaceAll("\\s*h\\s*$", "")  // Remove "h" at the end
                 .replaceAll("\\s*H\\s*$", "")  // Remover "H" al final
                 .replaceAll("\\.", ":")        // Convert 19.00 to 19:00
+                .replaceAll(":\\s+", ":")      // Remove space after colon: "19: 00" -> "19:00"
                 .trim();
 
         // Format "19 h 30" -> "19:30"
@@ -1028,8 +1029,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Try to extract time from HH:MM or H:MM format
-        if (time.matches("\\d{1,2}:\\d{2}")) {
+        // Try to extract time from HH:MM or H:MM format (with optional space after colon)
+        if (time.matches("\\d{1,2}:\\s*\\d{2}")) {
             try {
                 String[] parts = time.split(":");
                 if (parts.length != 2) {
@@ -1089,9 +1090,24 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         List<String> attendees = new ArrayList<>();
         
         // Method 1: Between "Asistentes:" and "Orden del día:" (actual)
+        // This may include descriptive text before the bullet list
         String block = extractBlock(content, "(?i)Asistentes:", "(?i)Orden del día:");
         if (block != null && !block.trim().isEmpty()) {
+            // First try to extract bullets directly
             attendees.addAll(extractBullets(block));
+            
+            // If no bullets found, try to find names after descriptive text
+            if (attendees.isEmpty()) {
+                // Look for bullet points that might be after descriptive text
+                Pattern bulletPattern = Pattern.compile("(?:•|[-*]|\\d+\\.)\\s*([^\\n]+)", Pattern.MULTILINE);
+                Matcher bulletMatcher = bulletPattern.matcher(block);
+                while (bulletMatcher.find()) {
+                    String name = bulletMatcher.group(1).trim();
+                    if (!name.isEmpty() && name.length() > 2) {
+                        attendees.add(name);
+                    }
+                }
+            }
         }
         
         // Method 2: If not found, search until finding another section
@@ -1099,10 +1115,22 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             block = extractBlock(content, "(?i)Asistentes:", "(?i)(?:Orden del día|Ruegos|Clausura|No habiendo)");
             if (block != null && !block.trim().isEmpty()) {
                 attendees.addAll(extractBullets(block));
+                
+                // If still empty, try pattern matching for names
+                if (attendees.isEmpty()) {
+                    Pattern bulletPattern = Pattern.compile("(?:•|[-*]|\\d+\\.)\\s*([^\\n]+)", Pattern.MULTILINE);
+                    Matcher bulletMatcher = bulletPattern.matcher(block);
+                    while (bulletMatcher.find()) {
+                        String name = bulletMatcher.group(1).trim();
+                        if (!name.isEmpty() && name.length() > 2) {
+                            attendees.add(name);
+                        }
+                    }
+                }
             }
         }
         
-        // Method 3: Search lines that begin with bullet after "Asistentes:"
+        // Method 3: Search lines that begin with bullet after "Asistentes:" (even if there's text before)
         if (attendees.isEmpty()) {
             Pattern pattern = Pattern.compile(
                 "(?i)Asistentes:.*?\\n((?:•|[-*]|\\d+\\.)\\s*[^\\n]+(?:\\n(?!•|[-*]|\\d+\\.|Orden|Ruegos|Clausura)[^\\n]+)*)", 
@@ -1112,6 +1140,22 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             if (matcher.find()) {
                 String attendeesBlock = matcher.group(1);
                 attendees.addAll(extractBullets(attendeesBlock));
+            }
+        }
+        
+        // Method 4: Extract names from lines that look like names (capitalized words, 2-4 words)
+        if (attendees.isEmpty()) {
+            Pattern namePattern = Pattern.compile(
+                "(?i)Asistentes:.*?\\n((?:•|[-*]|\\d+\\.)?\\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})(?:\\s*\\([^)]*\\))?)",
+                Pattern.MULTILINE | Pattern.DOTALL
+            );
+            Matcher nameMatcher = namePattern.matcher(content);
+            while (nameMatcher.find() && attendees.size() < 30) { // Limit to avoid false positives
+                String name = nameMatcher.group(2).trim();
+                // Filter out common words that might be capitalized
+                if (!name.matches("(?i)^(Se|La|El|Los|Las|De|Del|En|Por|Para|Con|Sin|Sobre|Bajo|Entre|Durante|Según|Mediante|Asistentes|Orden|Ruegos|Clausura)$")) {
+                    attendees.add(name);
+                }
             }
         }
         
