@@ -87,9 +87,9 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             // Use default configuration
             if (!dataLoaded) {
                 if (documentService.hasDocuments()) {
-                    log().info("Database already has documents, skipping load");
+                    log().debug("Database already has documents, skipping load");
                 } else {
-                    log().info("Loading documents with default configuration");
+                    log().debug("Loading documents with default configuration");
                     loadSpecificData();
                 }
                 dataLoaded = true;
@@ -162,7 +162,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
             resultsForPrompt.add(result);
 
-            System.out.println(result);
+            log().debug(result.toString());
         }
 
         results.put("results", resultsForPrompt);
@@ -200,7 +200,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
                                 configNumber++,
                                 expansion, ner, tools, metadata);
                         
-                        log().info("Evaluating configuration: {}", configName);
+                        log().debug("Evaluating configuration: {}", configName);
                         Map<String, Object> result = evaluateWithConfiguration(config);
                         allResults.put(configName, result);
                     }

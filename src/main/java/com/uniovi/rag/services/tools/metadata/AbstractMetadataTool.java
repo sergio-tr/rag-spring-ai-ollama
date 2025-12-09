@@ -17,6 +17,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.Arrays;
 
 import static com.uniovi.rag.utils.InfoExtractor.containsAnyKeyword;
 
@@ -151,6 +152,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /**
      * Checks if document metadata semantically matches the query.
      * Uses English for internal processing, but preserves original language in query and metadata.
+     * 
+     * SOLUTION 3.1: Added robust validation and fallback to avoid false negatives.
      */
     protected boolean semanticallyMatchesMetadata(Document doc, String query) {
         String prompt = String.format("""
@@ -179,15 +182,46 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .prompt()
                     .user(prompt)
                     .call()
-                    .content()
-                    .strip()
-                    .toLowerCase();
-
-            return result.contains("yes") || result.contains("sí");
+                    .content();
+            
+            Boolean validated = validateLLMFilterResponse(result, "semanticallyMatchesMetadata");
+            
+            // If validation returns null (unknown), default to true (keep document) to avoid false negatives
+            return validated != null ? validated : true;
         } catch (Exception e) {
-            log().warn("Error in semantic metadata matching, defaulting to false", e);
-            return false; // Default to false on error to avoid false positives
+            log().warn("Error in semantic metadata matching, defaulting to true (keep document)", e);
+            return true; // Default to true on error to avoid false negatives
         }
+    }
+    
+    /**
+     * Validates LLM response for filtering operations.
+     * Returns true if response is valid and indicates a match, false otherwise.
+     * On error or invalid response, returns null to indicate "unknown" (should not filter).
+     * 
+     * SOLUTION 3.1: Robust validation of LLM responses for filtering.
+     */
+    private Boolean validateLLMFilterResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            log().warn("Empty LLM response in {}", context);
+            return null; // Unknown, don't filter
+        }
+        
+        String cleaned = response.trim().toLowerCase();
+        
+        // Check for positive responses
+        if (cleaned.contains("yes") || cleaned.contains("sí") || cleaned.contains("true")) {
+            return true;
+        }
+        
+        // Check for negative responses
+        if (cleaned.contains("no") || cleaned.contains("false")) {
+            return false;
+        }
+        
+        // If unclear, don't filter (default to keeping the document)
+        log().warn("Unclear LLM response in {}: '{}', defaulting to keep document", context, response);
+        return null; // Unknown, don't filter
     }
 
     /**
@@ -229,18 +263,35 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         );
 
         try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toLowerCase();
-
-            return result.contains("yes") || result.contains("sí");
+            String result = getLLMResponseCached(prompt);
+            
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in semanticallyMatchesMinute, defaulting to true to avoid false negatives");
+                return true; // Avoid false negatives
+            }
+            
+            // Use validateLLMFilterResponse for consistent validation
+            Boolean validated = validateLLMFilterResponse(result, "semanticallyMatchesMinute");
+            
+            // If validation returns null (unknown), default to true (keep document) to avoid false negatives
+            if (validated != null) {
+                return validated;
+            }
+            
+            // Fallback: parse response manually
+            String normalized = result.strip().toLowerCase();
+            boolean matches = normalized.contains("yes") || normalized.contains("sí");
+            
+            // If response is unclear, default to true
+            if (!matches && !normalized.contains("no") && !normalized.contains("no")) {
+                log().warn("Unclear LLM response in semanticallyMatchesMinute: '{}', defaulting to true", result);
+                return true; // Default to true when response is unclear
+            }
+            
+            return matches;
         } catch (Exception e) {
-            log().warn("Error in semantic minute matching, defaulting to false", e);
-            return false; // Default to false on error to avoid false positives
+            log().warn("Error in semantic minute matching, defaulting to true to avoid false negatives", e);
+            return true; // Avoid false negatives
         }
     }
 
@@ -249,6 +300,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * First tries to get the complete object from "minute" key (JSON or object).
      * If not available, reconstructs it from individual metadata fields.
      */
+    @Cacheable(value = "minuteObjects", key = "#doc.hashCode()")
     protected Minute getMinuteFromMetadata(Document doc) {
         Map<String, Object> metadata = doc.getMetadata();
         
@@ -262,7 +314,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return objectMapper.readValue(json, Minute.class);
             } catch (Exception ex) {
                 log().debug("Failed to deserialize Minute from JSON, attempting reconstruction from fields", ex);
-                // Fall through to reconstruction
             }
         }
         
@@ -280,38 +331,29 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * This is a fallback when the complete object is not stored in metadata.
      */
     private Minute reconstructMinuteFromMetadata(Map<String, Object> metadata) {
-        // Extract all fields with proper type handling
-        String id = getStringValue(metadata, "id");
-        String filename = getStringValue(metadata, "filename");
-        String date = getStringValue(metadata, "date");
-        String place = getStringValue(metadata, "place");
-        String startTime = getStringValue(metadata, "startTime");
-        String endTime = getStringValue(metadata, "endTime");
-        String president = getStringValue(metadata, "president");
-        String secretary = getStringValue(metadata, "secretary");
+        // Extract all fields with proper type handling using safe methods
+        String id = safeGetString(metadata, "id");
+        String filename = safeGetString(metadata, "filename");
+        String date = safeGetString(metadata, "date");
+        String place = safeGetString(metadata, "place");
+        String startTime = safeGetString(metadata, "startTime");
+        String endTime = safeGetString(metadata, "endTime");
+        String president = safeGetString(metadata, "president");
+        String secretary = safeGetString(metadata, "secretary");
         
-        @SuppressWarnings("unchecked")
-        List<String> attendees = (List<String>) metadata.getOrDefault("attendees", new ArrayList<>());
+        // Use safe methods for complex types
+        List<String> attendees = safeGetStringList(metadata, "attendees");
         
         int numberOfAttendees = metadata.containsKey("numberOfAttendees") 
-            ? ((Number) metadata.get("numberOfAttendees")).intValue() 
+            ? safeGetInt(metadata, "numberOfAttendees", attendees.size())
             : attendees.size();
         
-        @SuppressWarnings("unchecked")
-        Map<String, String> agenda = metadata.containsKey("agenda") && metadata.get("agenda") instanceof Map
-            ? (Map<String, String>) metadata.get("agenda")
-            : new LinkedHashMap<>();
+        Map<String, String> agenda = safeGetStringMap(metadata, "agenda");
+        List<String> decisions = safeGetStringList(metadata, "decisions");
+        List<String> mentionedEntities = safeGetStringList(metadata, "mentionedEntities");
+        List<String> topics = safeGetStringList(metadata, "topics");
         
-        @SuppressWarnings("unchecked")
-        List<String> decisions = (List<String>) metadata.getOrDefault("decisions", new ArrayList<>());
-        
-        @SuppressWarnings("unchecked")
-        List<String> mentionedEntities = (List<String>) metadata.getOrDefault("mentionedEntities", new ArrayList<>());
-        
-        @SuppressWarnings("unchecked")
-        List<String> topics = (List<String>) metadata.getOrDefault("topics", new ArrayList<>());
-        
-        String summary = getStringValue(metadata, "summary");
+        String summary = safeGetString(metadata, "summary");
         
         // Generate ID if missing
         if (id == null || id.isBlank()) {
@@ -338,22 +380,134 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
     
     /**
-     * Safely extracts a string value from metadata.
+     * Safely extracts a string value from metadata, handling null and type conversion.
      */
-    private String getStringValue(Map<String, Object> metadata, String key) {
+    private String safeGetString(Map<String, Object> metadata, String key) {
+        if (metadata == null || key == null) {
+            return null;
+        }
+        
         Object value = metadata.get(key);
         if (value == null) {
             return null;
         }
-        return value.toString();
+        
+        if (value instanceof String) {
+            String str = (String) value;
+            return str.isBlank() ? null : str;
+        }
+        
+        // Convert other types to string
+        String result = value.toString();
+        return result.isBlank() ? null : result;
     }
-
+    
+    /**
+     * Safely extracts a list of strings from metadata, handling type conversion.
+     */
+    private List<String> safeGetStringList(Map<String, Object> metadata, String key) {
+        if (metadata == null || key == null) {
+            return new ArrayList<>();
+        }
+        
+        Object value = metadata.get(key);
+        if (value == null) {
+            return new ArrayList<>();
+        }
+        
+        // If already a List, convert elements to strings
+        if (value instanceof List) {
+            List<?> list = (List<?>) value;
+            return list.stream()
+                    .map(obj -> obj != null ? obj.toString() : "")
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+        }
+        
+        // If String, try to parse comma-separated values
+        if (value instanceof String) {
+            String str = ((String) value).trim();
+            if (str.isEmpty()) {
+                return new ArrayList<>();
+            }
+            
+            // Try to parse as comma-separated string
+            return Arrays.stream(str.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+        }
+        
+        log().warn("Unexpected type for key '{}': {}, expected List<String> or String. Returning empty list.", 
+                  key, value.getClass().getName());
+        return new ArrayList<>();
+    }
+    
+    /**
+     * Safely extracts a map of string to string from metadata, handling type conversion.
+     */
+    private Map<String, String> safeGetStringMap(Map<String, Object> metadata, String key) {
+        if (metadata == null || key == null) {
+            return new LinkedHashMap<>();
+        }
+        
+        Object value = metadata.get(key);
+        if (value == null) {
+            return new LinkedHashMap<>();
+        }
+        
+        // If already a Map, convert keys and values to strings
+        if (value instanceof Map) {
+            Map<String, String> result = new LinkedHashMap<>();
+            ((Map<?, ?>) value).forEach((k, v) -> {
+                if (k != null && v != null) {
+                    result.put(k.toString(), v.toString());
+                }
+            });
+            return result;
+        }
+        
+        log().warn("Unexpected type for key '{}': {}, expected Map<String, String>. Returning empty map.", 
+                  key, value.getClass().getName());
+        return new LinkedHashMap<>();
+    }
+    
+    /**
+     * Safely extracts an integer value from metadata, handling type conversion.
+     */
+    private int safeGetInt(Map<String, Object> metadata, String key, int defaultValue) {
+        if (metadata == null || key == null) {
+            return defaultValue;
+        }
+        
+        Object value = metadata.get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        
+        if (value instanceof String) {
+            try {
+                return Integer.parseInt((String) value);
+            } catch (NumberFormatException e) {
+                log().warn("Could not parse integer from key '{}': {}", key, value);
+                return defaultValue;
+            }
+        }
+        
+        log().warn("Unexpected type for key '{}': {}, expected Number or String. Using default value: {}", 
+                  key, value.getClass().getName(), defaultValue);
+        return defaultValue;
+    }
+    
     /**
      * Checks if minute semantically matches NER entities.
      * Uses English for internal processing, but preserves original language in metadata values.
-     * 
-     * MEJORA: Added direct filtering by mentionedEntities before LLM call for better efficiency.
      */
+    @Cacheable(value = "nerMatching", key = "#minute.hashCode() + '_' + #ner.hashCode()")
     protected boolean matchesMinuteWithNER(Minute minute, JSONObject ner) {
         if (ner == null || ner.isEmpty()) return true;
 
@@ -419,8 +573,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .toLowerCase();
             return result.contains("yes") || result.contains("sí");
         } catch (Exception e) {
-            log().warn("Error matching minute with NER, defaulting to false", e);
-            return false; // Default to false on error to avoid false positives
+            log().warn("Error matching minute with NER, defaulting to true to avoid false negatives", e);
+            return true; // Avoid false negatives (consistent with EnhancedNERHandler)
         }
     }
     
@@ -652,51 +806,119 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
     }
 
-    // ============================================================================
-    // COMMON METHODS FOR METADATA TOOLS - EXTRACTED FROM IMPROVED TOOLS
-    // ============================================================================
-
     /**
-     * Extracts minutes from documents in parallel for better performance
+     * Extracts Minute objects from documents in parallel.
      */
     protected List<Minute> extractMinutesInParallel(List<Document> docs) {
         return docs.parallelStream()
-                .map(this::getMinuteFromMetadataCached)
+                .map(doc -> {
+                    try {
+                        return getMinuteFromMetadata(doc);
+                    } catch (Exception e) {
+                        log().warn("Error extracting minute from document {}, skipping: {}", 
+                                 doc != null ? doc.getId() : "null", e.getMessage());
+                        return null;
+                    }
+                })
                 .filter(Objects::nonNull)
+                .filter(this::isMinuteComplete)
+                .filter(this::hasUsefulData)
                 .collect(Collectors.toList());
     }
-
+    
     /**
-     * Cached extraction of minute objects to improve performance
+     * Validates that a Minute object has all critical fields.
+     * 
+     * @param minute The minute to validate
+     * @return true if minute has critical fields, false otherwise
      */
-    @Cacheable(value = "minuteObjects", key = "#doc.id")
-    protected Minute getMinuteFromMetadataCached(Document doc) {
-        return getMinuteFromMetadata(doc);
+    private boolean isMinuteComplete(Minute minute) {
+        if (minute == null) {
+            return false;
+        }
+        
+        // Critical fields: id, filename, date
+        if (minute.id() == null || minute.id().trim().isEmpty()) {
+            log().debug("Minute missing id, filtering out");
+            return false;
+        }
+        
+        if (minute.filename() == null || minute.filename().trim().isEmpty()) {
+            log().debug("Minute missing filename, filtering out");
+            return false;
+        }
+        
+        // Date is critical for most queries
+        if (minute.date() == null || minute.date().trim().isEmpty()) {
+            log().debug("Minute {} missing date, filtering out", minute.id());
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Validates that a Minute object has useful data beyond critical fields.
+     * This prevents processing minutes that are complete but have no useful information.
+     * 
+     * @param minute The minute to validate
+     * @return true if minute has at least one useful data field, false otherwise
+     */
+    private boolean hasUsefulData(Minute minute) {
+        if (minute == null) {
+            return false;
+        }
+        
+        // Check if minute has at least one field with useful data
+        boolean hasTopics = minute.topics() != null && !minute.topics().isEmpty();
+        boolean hasDecisions = minute.decisions() != null && !minute.decisions().isEmpty();
+        boolean hasSummary = minute.summary() != null && !minute.summary().trim().isEmpty();
+        boolean hasAttendees = minute.attendees() != null && !minute.attendees().isEmpty();
+        boolean hasAgenda = minute.agenda() != null && !minute.agenda().isEmpty();
+        boolean hasMentionedEntities = minute.mentionedEntities() != null && !minute.mentionedEntities().isEmpty();
+        
+        boolean hasUseful = hasTopics || hasDecisions || hasSummary || hasAttendees || hasAgenda || hasMentionedEntities;
+        
+        if (!hasUseful) {
+            log().debug("Minute {} has no useful data fields, filtering out", minute.id());
+        }
+        
+        return hasUseful;
     }
 
     /**
      * Filters relevant minutes based on NER or query relevance using EnhancedNERHandler.
      * Implements progressive fallback when filters are too strict.
+     * 
+     * SOLUTION 2.1: Reduced filtering layers and increased limits for better recall.
      */
     protected List<Minute> filterRelevantMinutes(String query, List<Minute> minutes, JSONObject ner) {
         if (minutes.isEmpty()) {
             return minutes;
         }
         
+        log().debug("Starting to filter {} minutes for query: {}", minutes.size(), query);
+        
+        // STEP 1: Pre-filter by date (if NER has date) - MORE FLEXIBLE
         List<Minute> preFiltered = minutes;
-        if (minutes.size() > 30) { // Increased threshold from 20 to 30
+        if (ner != null && ner.has("date") && !ner.getJSONArray("date").isEmpty() && minutes.size() > 50) {
             preFiltered = preFilterMinutesFast(minutes, ner);
-            log().debug("Pre-filtered {} minutes to {} using fast matching", minutes.size(), preFiltered.size());
+            log().debug("Pre-filtered {} minutes to {} using flexible date matching", minutes.size(), preFiltered.size());
+            
+            // If pre-filtering removed too many, use original list
+            if (preFiltered.size() < minutes.size() * 0.1) {
+                log().warn("Pre-filtering removed too many minutes ({}%), using original list", 
+                          (1.0 - (double)preFiltered.size() / minutes.size()) * 100);
+                preFiltered = minutes;
+            }
         }
         
-        List<Minute> filtered;
-        
+        // STEP 2: Direct matching (mentionedEntities, agenda) - NO LLM
+        List<Minute> directMatched = preFiltered;
         if (ner != null && !ner.isEmpty()) {
-        
-            List<Minute> temporalFiltered = filterMinutesByTemporalContextFast(preFiltered, ner);
-            
-            List<Minute> directMatched = temporalFiltered.stream()
+            directMatched = preFiltered.stream()
                     .filter(minute -> {
+                        // Only filter if we have clear criteria
                         if (ner.has("mentionedEntities") && !ner.getJSONArray("mentionedEntities").isEmpty()) {
                             if (!matchesMentionedEntities(minute, ner)) {
                                 return false;
@@ -709,88 +931,172 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         }
                         return true;
                     })
-                    .limit(25) // Increased from 20 to 25
+                    .limit(50) // Increased from 25 to 50
                     .collect(Collectors.toList());
             
-            // Filter by NER matching (with LLM, but limited)
+            log().debug("Direct matching filtered {} minutes to {}", preFiltered.size(), directMatched.size());
+        }
+        
+        // STEP 3: LLM-based filtering (reduced to single pass) - WITH FALLBACK
+        List<Minute> filtered = directMatched;
+        if (ner != null && !ner.isEmpty() && directMatched.size() > 10) {
+            // Try NER matching first (less expensive)
             filtered = directMatched.stream()
-                    .filter(minute -> nerHandler.matchesMinuteWithNER(minute, ner))
-                    .filter(minute -> isRelevantToQueryCached(query, minute))
-                    .limit(15) // Increased from 10 to 15 to reduce incomplete responses
+                    .filter(minute -> {
+                        try {
+                            return nerHandler.matchesMinuteWithNER(minute, ner);
+                        } catch (Exception e) {
+                            log().warn("Error in NER matching for minute {}, defaulting to true", minute.id(), e);
+                            return true; // Default to true on error
+                        }
+                    })
+                    .limit(40) // Increased from 15 to 40
                     .collect(Collectors.toList());
             
+            log().debug("NER matching filtered {} minutes to {}", directMatched.size(), filtered.size());
+            
+            // If NER filtering removed too many, use direct matched
             if (filtered.isEmpty() && !directMatched.isEmpty()) {
-                log().debug("Fallback 1: Skipping relevance filter");
-                filtered = directMatched.stream()
-                        .filter(minute -> nerHandler.matchesMinuteWithNER(minute, ner))
-                        .limit(15) // Increased from 10 to 15
-                        .collect(Collectors.toList());
+                log().warn("NER filtering removed all minutes, using direct matched minutes");
+                filtered = directMatched.stream().limit(40).collect(Collectors.toList());
             }
+        }
+        
+        // STEP 4: Relevance filtering (only if we still have too many)
+        if (filtered.size() > 30) {
+            filtered = filtered.stream()
+                    .filter(minute -> {
+                        try {
+                            return isRelevantToQueryCached(query, minute);
+                        } catch (Exception e) {
+                            log().warn("Error in relevance check for minute {}, defaulting to true", minute.id(), e);
+                            return true; // Default to true on error
+                        }
+                    })
+                    .limit(30) // Final limit
+                    .collect(Collectors.toList());
             
-            if (filtered.isEmpty() && !preFiltered.isEmpty()) {
-                log().debug("Fallback 2: Using only temporal filter");
-                filtered = filterMinutesByTemporalContextFast(preFiltered, ner).stream()
-                        .limit(15) // Increased from 10 to 15
-                        .collect(Collectors.toList());
-            }
-        } else {
-            filtered = preFiltered.stream()
-                    .filter(minute -> isRelevantToQueryCached(query, minute))
-                    .limit(15) // Increased from 10 to 15
+            log().debug("Relevance filtering reduced to {} minutes", filtered.size());
+        }
+        
+        // Final fallback: if still empty, return at least some minutes (sorted by relevance)
+        if (filtered.isEmpty() && !minutes.isEmpty()) {
+            log().warn("All filtering failed, returning top {} minutes sorted by date as last resort", 
+                      Math.min(10, minutes.size()));
+            // Sort by date (most recent first) as a basic relevance indicator
+            return minutes.stream()
+                    .sorted((a, b) -> {
+                        String dateA = a.date() != null ? a.date() : "";
+                        String dateB = b.date() != null ? b.date() : "";
+                        // Try to parse dates for proper sorting, fallback to string comparison
+                        LocalDate parsedA = parseDateToLocalDate(dateA);
+                        LocalDate parsedB = parseDateToLocalDate(dateB);
+                        if (parsedA != null && parsedB != null) {
+                            return parsedB.compareTo(parsedA); // Most recent first
+                        }
+                        return dateB.compareTo(dateA); // String comparison fallback
+                    })
+                    .limit(10)
                     .collect(Collectors.toList());
         }
         
-        // Final fallback: if still empty and we have minutes, return at least some
-        if (filtered.isEmpty() && !minutes.isEmpty()) {
-            log().warn("All filtering failed, returning top 5 minutes by similarity as last resort");
-            return minutes.stream().limit(5).collect(Collectors.toList());
-        }
-        
-        log().debug("Filtered {} relevant minutes from {} total", filtered.size(), minutes.size());
+        log().debug("Final filtered {} relevant minutes from {} total", filtered.size(), minutes.size());
         return filtered;
     }
     
     /**
      * Fast pre-filtering without LLM to reduce the number of minutes before expensive filtering.
      * Uses improved date matching with LocalDate parsing for better accuracy.
+     * 
+     * SOLUTION 2.2: Implemented flexible date matching (same year/month, within 1-2 days).
      */
     private List<Minute> preFilterMinutesFast(List<Minute> minutes, JSONObject ner) {
-        if (ner == null || ner.isEmpty()) {
-            return minutes.stream().limit(30).collect(Collectors.toList()); // Increased from 20 to 30
+        if (ner == null || ner.isEmpty() || !ner.has("date") || ner.getJSONArray("date").isEmpty()) {
+            return minutes.stream().limit(50).collect(Collectors.toList()); // Increased from 30 to 50
+        }
+        
+        org.json.JSONArray nerDates = ner.getJSONArray("date");
+        List<String> nerDateStrings = new ArrayList<>();
+        for (int i = 0; i < nerDates.length(); i++) {
+            nerDateStrings.add(nerDates.getString(i));
         }
         
         return minutes.stream()
                 .filter(minute -> {
-                    // Fast date matching with improved precision
-                    if (ner.has("date") && !ner.getJSONArray("date").isEmpty()) {
-                        String minuteDate = minute.date();
-                        if (minuteDate != null && !minuteDate.trim().isEmpty()) {
-                            org.json.JSONArray nerDates = ner.getJSONArray("date");
-                            boolean dateMatches = false;
-                            for (int i = 0; i < nerDates.length(); i++) {
-                                String nerDate = nerDates.getString(i);
-                                // Try precise date matching first
-                                if (datesMatchPrecisely(minuteDate, nerDate)) {
-                                    dateMatches = true;
-                                    break;
-                                }
-                                // Fallback to string matching
-                                String nerDateLower = nerDate.toLowerCase();
-                                String minuteDateLower = minuteDate.toLowerCase();
-                                if (minuteDateLower.contains(nerDateLower) || nerDateLower.contains(minuteDateLower)) {
-                                    dateMatches = true;
-                                    break;
-                                }
-                            }
-                            if (!dateMatches) {
-                                return false;  // No date match
-                            }
+                    String minuteDate = minute.date();
+                    if (minuteDate == null || minuteDate.trim().isEmpty()) {
+                        return true; // Keep if no date
+                    }
+                    
+                    // Try flexible matching
+                    for (String nerDate : nerDateStrings) {
+                        if (datesMatchFlexibly(minuteDate, nerDate)) {
+                            return true; // Match found
                         }
                     }
-                    return true;  // If no date in NER or there's a match, pass through
+                    
+                    // If no flexible match, still keep if dates are in same year
+                    return datesInSameYear(minuteDate, nerDateStrings);
                 })
-                .limit(30)  // Increased from 20 to 30 to reduce incomplete responses
+                .limit(50) // Increased from 30 to 50
                 .collect(Collectors.toList());
+    }
+    
+    /**
+     * Checks if two dates match flexibly (same year/month, or within 1-2 days).
+     * SOLUTION 2.2: Flexible date matching to avoid rejecting relevant documents.
+     */
+    private boolean datesMatchFlexibly(String date1, String date2) {
+        if (date1 == null || date2 == null) {
+            return false;
+        }
+        
+        // Try precise matching first
+        if (datesMatchPrecisely(date1, date2)) {
+            return true;
+        }
+        
+        // Try parsing to LocalDate for flexible comparison
+        LocalDate parsed1 = parseDateToLocalDate(date1);
+        LocalDate parsed2 = parseDateToLocalDate(date2);
+        
+        if (parsed1 != null && parsed2 != null) {
+            // Same year and month = relevant
+            if (parsed1.getYear() == parsed2.getYear() && parsed1.getMonth() == parsed2.getMonth()) {
+                return true;
+            }
+            
+            // Within 1-2 days = relevant (for typos or similar dates)
+            long daysDiff = Math.abs(java.time.temporal.ChronoUnit.DAYS.between(parsed1, parsed2));
+            if (daysDiff <= 2) {
+                return true;
+            }
+        }
+        
+        // Fallback: string matching (same year)
+        return datesInSameYear(date1, List.of(date2));
+    }
+    
+    /**
+     * Checks if dates are in the same year.
+     * SOLUTION 2.2: Helper for flexible date matching.
+     */
+    private boolean datesInSameYear(String date1, List<String> date2List) {
+        LocalDate parsed1 = parseDateToLocalDate(date1);
+        if (parsed1 == null) {
+            return false;
+        }
+        
+        int year1 = parsed1.getYear();
+        
+        for (String date2 : date2List) {
+            LocalDate parsed2 = parseDateToLocalDate(date2);
+            if (parsed2 != null && parsed2.getYear() == year1) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
     /**
@@ -844,21 +1150,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
     
     /**
-     * Filtrado temporal rápido (sin LLM) basado en matching de fechas.
-     */
-    private List<Minute> filterMinutesByTemporalContextFast(List<Minute> minutes, JSONObject ner) {
-        if (ner == null || !ner.has("temporalContext")) {
-            return minutes;
-        }
-        
-        String temporalContext = ner.getString("temporalContext");
-        if (temporalContext.equals("none") || temporalContext.equals("general")) {
-            return minutes;
-        }
-        return minutes;
-    }
-
-    /**
      * Filters minutes using NER entities intelligently
      */
     protected List<Minute> filterMinutesWithNER(String query, List<Minute> minutes, JSONObject ner) {
@@ -899,22 +1190,26 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     /**
      * Determines if a minute is relevant to the query using LLM.
+     * 
+     * SOLUTION 3.1: Added robust validation and fallback to avoid false negatives.
      */
     protected boolean isRelevantToQueryByLLM(String query, Minute minute) {
         if (query == null || query.trim().isEmpty() || minute == null) {
             return false;
         }
         
-        String prompt = generateRelevancePrompt(query, minute);
-        String result = getLLMResponseCached(prompt);
-        
-        if (result == null || result.trim().isEmpty()) {
-            log().warn("Empty response from LLM in isRelevantToQueryByLLM, defaulting to false");
-            return false;
+        try {
+            String prompt = generateRelevancePrompt(query, minute);
+            String result = getLLMResponseCached(prompt);
+            
+            Boolean validated = validateLLMFilterResponse(result, "isRelevantToQueryByLLM");
+            
+            // If validation returns null (unknown), default to true (keep document) to avoid false negatives
+            return validated != null ? validated : true;
+        } catch (Exception e) {
+            log().warn("Error in relevance check, defaulting to true (keep document)", e);
+            return true; // Default to true on error to avoid false negatives
         }
-        
-        String normalized = result.toLowerCase();
-        return normalized.contains("yes") || normalized.contains("sí");
     }
 
     /**
@@ -1023,31 +1318,35 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /**
      * Retrieves documents with intelligent metadata filtering using EnhancedNERHandler.
      * Filters documents that have relevant metadata fields (either complete Minute object or individual fields).
-     * 
+     * Implements robust fallback when metadata filtering removes all documents.
      */
     protected List<Document> retrieveDocumentsWithMetadataFilter(String query, String[] relevantFields) {
-        // Increase topK to reduce incomplete responses
-        retriever.setTopK(150); // Increased from 100 to 150
-        retriever.setSimilarityThreshold(0);
         List<Document> docs = retriever.retrieve(query);
-        
+
         List<Document> metadataDocs = docs.stream()
                 .filter(doc -> hasMetadataFields(doc, relevantFields))
                 .collect(Collectors.toList());
-        
-        // When PgVectorStore splits a document into chunks, all chunks have the same document_id
-        // We only need to process one chunk per document to reconstruct the Minute object
-        Map<String, Document> uniqueDocuments = metadataDocs.stream()
-                .collect(Collectors.toMap(
-                    doc -> getDocumentId(doc),  // Use document_id as key
-                    doc -> doc,                 // Keep the document
-                    (existing, replacement) -> existing  // If duplicate, keep the first one
-                ));
-        
-        List<Document> deduplicatedDocs = new ArrayList<>(uniqueDocuments.values());
-        
-        log().debug("Filtered {} unique documents from {} chunks ({} total retrieved)", 
-                   deduplicatedDocs.size(), metadataDocs.size(), docs.size());
+
+        // FALLBACK 1: If metadata filtering removed all documents, use unfiltered documents
+        if (metadataDocs.isEmpty() && !docs.isEmpty()) {
+            log().warn("Metadata filtering removed all {} documents, using unfiltered documents as fallback", docs.size());
+            metadataDocs = docs;
+        } else if (metadataDocs.size() < docs.size() * 0.1 && docs.size() > 10) {
+            // FALLBACK 2: If filtering removed more than 90%, use less strict filtering
+            log().warn("Metadata filtering removed {}% of documents ({} of {}), using less strict filtering",
+                    (1.0 - (double) metadataDocs.size() / docs.size()) * 100,
+                    docs.size() - metadataDocs.size(), docs.size());
+            // Accept documents with at least basic metadata fields
+            metadataDocs = docs.stream()
+                    .filter(this::hasBasicMetadata)
+                    .collect(Collectors.toList());
+        }
+
+        // Deduplicate documents, selecting chunk with most complete metadata
+        List<Document> deduplicatedDocs = deduplicateDocuments(metadataDocs);
+
+        log().debug("Retrieved {} unique documents from {} chunks ({} total retrieved, {} after metadata filter)",
+                deduplicatedDocs.size(), metadataDocs.size(), docs.size(), metadataDocs.size());
         return deduplicatedDocs;
     }
     
@@ -1083,24 +1382,81 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /**
      * Checks if a document has the necessary metadata fields.
      * Returns true if it has "minute" key OR has at least one of the relevant fields.
+     * 
+     * SOLUTION 1.2: Made more permissive - accepts documents with at least one relevant field OR basic metadata fields.
      */
     private boolean hasMetadataFields(Document doc, String[] relevantFields) {
-        Map<String, Object> metadata = doc.getMetadata();
-        
-        // If it has the "minute" key, it's valid
-        if (metadata.containsKey("minute")) {
-            return true;
+        if (doc == null || doc.getMetadata() == null) {
+            return false;
         }
         
-        // Otherwise, check if it has at least one relevant field
-        for (String field : relevantFields) {
-            if (metadata.containsKey(field)) {
+        Map<String, Object> metadata = doc.getMetadata();
+        
+        // If it has the "minute" key, validate that it's not malformed
+        if (metadata.containsKey("minute")) {
+            Object minuteObj = metadata.get("minute");
+            // Validate that minute is not null, empty string, or obviously invalid
+            if (minuteObj != null && 
+                !(minuteObj instanceof String && ((String) minuteObj).trim().isEmpty())) {
                 return true;
+            }
+            // If minute is malformed, continue with validation of individual fields
+            log().debug("Document has 'minute' key but value is malformed, checking individual fields");
+        }
+        
+        // Check if it has at least one relevant field (more permissive)
+        int foundFields = 0;
+        for (String field : relevantFields) {
+            if (hasFieldOrDerived(metadata, field)) {
+                foundFields++;
             }
         }
         
-        // Also check for basic metadata fields that indicate it's a minute document
-        return metadata.containsKey("date") || metadata.containsKey("id") || metadata.containsKey("filename");
+        // Accept if it has at least one relevant field OR basic metadata fields
+        boolean hasRelevantField = foundFields > 0;
+        boolean hasBasicFields = hasFieldOrDerived(metadata, "date") ||
+                                metadata.containsKey("id") || 
+                                metadata.containsKey("filename");
+        
+        return hasRelevantField || hasBasicFields;
+    }
+    
+    /**
+     * Checks if a document has basic metadata fields (date, id, or filename).
+     * Used for less strict filtering when strict filtering removes too many documents.
+     */
+    private boolean hasBasicMetadata(Document doc) {
+        if (doc == null || doc.getMetadata() == null) {
+            return false;
+        }
+        
+        Map<String, Object> metadata = doc.getMetadata();
+        return hasFieldOrDerived(metadata, "date") || 
+               metadata.containsKey("id") || 
+               metadata.containsKey("filename") ||
+               metadata.containsKey("minute");
+    }
+
+    /**
+     * Checks presence of a field or its derived equivalents.
+     */
+    private boolean hasFieldOrDerived(Map<String, Object> metadata, String field) {
+        if (metadata == null || field == null) {
+            return false;
+        }
+
+        switch (field) {
+            case "date":
+                return metadata.containsKey("date") && metadata.get("date") != null
+                        || metadata.containsKey("date_iso") && metadata.get("date_iso") != null
+                        || metadata.containsKey("year") && metadata.get("year") != null
+                        || metadata.containsKey("month") && metadata.get("month") != null;
+            case "numberOfAttendees":
+                return (metadata.containsKey("numberOfAttendees") && metadata.get("numberOfAttendees") != null)
+                        || (metadata.containsKey("attendeesCount") && metadata.get("attendeesCount") != null);
+            default:
+                return metadata.containsKey(field) && metadata.get(field) != null;
+        }
     }
 
     /**
@@ -1135,6 +1491,164 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return semanticallyMatchesMetadata(doc, query);
     }
 
+    /**
+     * Retrieves documents with intelligent fallback strategy.
+     * Uses NER entities if available to filter at database level for better precision.
+     * 
+     * @param query The search query
+     * @param relevantFields Metadata fields to filter by
+     * @param ner NER entities extracted from query (optional, can be null)
+     * @return List of retrieved documents
+     */
+    protected List<Document> retrieveDocumentsWithFallback(String query, String[] relevantFields, JSONObject ner) {
+        // LEVEL 1: Try NER-based retrieval if NER is available and retriever supports it
+        if (ner != null && !ner.isEmpty()) {
+            // Validate that NER has at least one useful field before using it
+            if (hasUsefulNERFields(ner)) {
+                try {
+                    List<Document> docs = retriever.retrieveWithMetadataFilters(query, ner);
+                    List<Document> originalDocs = new ArrayList<>(docs); // Save for fallback
+
+                    // Filter by relevantFields if necessary
+                    if (relevantFields != null && relevantFields.length > 0 && !docs.isEmpty()) {
+                        docs = docs.stream()
+                                .filter(doc -> hasMetadataFields(doc, relevantFields))
+                                .collect(Collectors.toList());
+
+                        // FALLBACK: If filtering by relevantFields removed all documents, use unfiltered
+                        if (docs.isEmpty() && !originalDocs.isEmpty()) {
+                            log().warn("Filtering by relevantFields removed all documents, using unfiltered documents as fallback");
+                            docs = originalDocs;
+                        }
+                    }
+
+                    // Deduplicate documents (selecting chunk with most complete metadata)
+                    docs = deduplicateDocuments(docs);
+
+                    if (!docs.isEmpty()) {
+                        log().debug("Retrieved {} documents using NER-based retrieval with metadata filters", docs.size());
+                        return docs;
+                    } else {
+                        log().debug("NER-based retrieval returned no documents after filtering, trying fallback");
+                    }
+                } catch (Exception e) {
+                    log().warn("Error using NER-based retrieval, falling back to basic retrieval: {}", e.getMessage());
+                }
+            } else {
+                log().debug("NER entities present but no useful fields, skipping NER-based retrieval");
+            }
+        }
+        
+        // LEVEL 2: Try metadata filtering without NER (original approach)
+        List<Document> docs = retrieveDocumentsWithMetadataFilter(query, relevantFields);
+        
+        // Fallback 1: If empty, try basic retrieval
+        if (docs.isEmpty()) {
+            log().debug("Metadata filtering returned no documents, trying basic retrieval");
+            docs = retrieveDocuments(query);
+        }
+        
+        // Fallback 2: If still empty, try with higher topK and lower threshold
+        if (docs.isEmpty()) {
+            log().debug("Basic retrieval returned no documents after metadata filter");
+        }
+        
+        return docs;
+    }
+    
+    /**
+     * Overloaded method for backward compatibility (without NER).
+     * Delegates to the main method with null NER.
+     */
+    protected List<Document> retrieveDocumentsWithFallback(String query, String[] relevantFields) {
+        return retrieveDocumentsWithFallback(query, relevantFields, null);
+    }
+    
+    /**
+     * Deduplicates documents by document_id, selecting the chunk with most complete metadata.
+     * Improved selection based on metadata completeness.
+     */
+    private List<Document> deduplicateDocuments(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return docs;
+        }
+        
+        Map<String, Document> uniqueDocuments = docs.stream()
+                .collect(Collectors.toMap(
+                    doc -> getDocumentId(doc),
+                    doc -> doc,
+                    (existing, replacement) -> {
+                        int existingFields = countMetadataFields(existing);
+                        int replacementFields = countMetadataFields(replacement);
+                        if (replacementFields > existingFields) {
+                            log().debug("Selecting replacement chunk with {} metadata fields (existing had {})", 
+                                      replacementFields, existingFields);
+                            return replacement;
+                        }
+                        return existing;
+                    }
+                ));
+        
+        List<Document> deduplicated = new ArrayList<>(uniqueDocuments.values());
+        log().debug("Deduplicated {} documents from {} chunks", deduplicated.size(), docs.size());
+        return deduplicated;
+    }
+    
+    /**
+     * Counts non-null, non-empty metadata fields in a document.
+     * Used to select the chunk with most complete metadata when deduplicating.
+     */
+    private int countMetadataFields(Document doc) {
+        if (doc == null) {
+            return 0;
+        }
+        
+        Map<String, Object> metadata = doc.getMetadata();
+        if (metadata == null) {
+            return 0;
+        }
+        
+        int count = 0;
+        for (Object value : metadata.values()) {
+            if (value != null) {
+                if (value instanceof String && !((String) value).trim().isEmpty()) {
+                    count++;
+                } else if (value instanceof List && !((List<?>) value).isEmpty()) {
+                    count++;
+                } else if (value instanceof Map && !((Map<?, ?>) value).isEmpty()) {
+                    count++;
+                } else if (!(value instanceof String) && !(value instanceof List) && !(value instanceof Map)) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+    
+    /**
+     * Validates that NER has at least one useful field before using it for retrieval.
+     * Prevents unnecessary calls with invalid or empty NER.
+     */
+    private boolean hasUsefulNERFields(JSONObject ner) {
+        if (ner == null || ner.isEmpty()) {
+            return false;
+        }
+        
+        // Check if NER has at least one non-empty field
+        String[] usefulFields = {"date", "mentionedEntities", "agenda", "place", "person"};
+        for (String field : usefulFields) {
+            if (ner.has(field)) {
+                Object value = ner.get(field);
+                if (value instanceof org.json.JSONArray && ((org.json.JSONArray) value).length() > 0) {
+                    return true;
+                } else if (value instanceof String && !((String) value).trim().isEmpty()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+    
     /**
      * Generates not found message using LLM.
      * Ensures response language matches query language.
@@ -1309,6 +1823,26 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         return analysis.toString();
+    }
+
+    /**
+     * Trunca el contenido antes de enviarlo a un prompt LLM para evitar desbordar
+     * el contexto. Conserva cabecera y pie para mantener señal relevante.
+     */
+    protected String truncateForPrompt(String content, int maxChars) {
+        if (content == null) {
+            return "";
+        }
+        String trimmed = content.trim();
+        if (trimmed.length() <= maxChars) {
+            return trimmed;
+        }
+
+        int head = (int) (maxChars * 0.65); // mantener más cabecera
+        int tail = maxChars - head;
+        String truncated = trimmed.substring(0, head) + "\n...\n" + trimmed.substring(trimmed.length() - tail);
+        log().debug("Prompt content truncated from {} to {} characters", trimmed.length(), truncated.length());
+        return truncated;
     }
 }
 

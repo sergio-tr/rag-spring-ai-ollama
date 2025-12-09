@@ -1,13 +1,12 @@
 package com.uniovi.rag.services.tools.metadata;
 
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.model.*;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.cache.annotation.Cacheable;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -15,14 +14,6 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataCompareTool for comparing meeting minutes across different dimensions.
- * 
- * Features:
- * - Intelligent field inference with context analysis
- * - Parallel processing for better performance
- * - Cached evaluations for efficiency
- * - Multi-dimensional comparisons (numeric, text, dates)
- * - Statistical analysis and trend detection
- * - Advanced NER-based filtering
  */
 public class MetadataCompareTool extends AbstractMetadataTool {
 
@@ -37,16 +28,12 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         
         log().debug("Executing comparison query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve and filter documents efficiently
-        List<Document> docs = retrieveDocumentsWithMetadataFilter(
+        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        List<Document> docs = retrieveDocumentsWithFallback(
             query, 
-            new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"}
+            new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"},
+            ner
         );
-        
-        if (docs.isEmpty()) {
-            log().debug("No documents found with metadata filter, trying basic retrieval");
-            docs = retrieveDocuments(query);
-        }
         
         if (docs.isEmpty()) {
             log().debug("No documents found for comparison query: {}", query);
@@ -91,71 +78,6 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         return ToolResult.from(answer, getClass());
     }
 
-    /**
-     * Cached NER matching evaluation
-     */
-    @Cacheable(value = "nerMatching", key = "#minute.hashCode() + '_' + #ner.hashCode()")
-    public boolean matchesMinuteWithNERCached(Minute minute, JSONObject ner) {
-        return matchesMinuteWithNER(minute, ner);
-    }
-
-    /**
-     * Cached query relevance evaluation for comparison queries
-     */
-    @Cacheable(value = "comparisonQueryRelevance", key = "#query.hashCode() + '_' + #minute.hashCode()")
-    public boolean isRelevantToComparisonQueryCached(String query, Minute minute) {
-        return isRelevantToComparisonQueryByLLM(query, minute);
-    }
-
-    /**
-     * Determines if a minute is relevant to the comparison query using LLM.
-     */
-    private boolean isRelevantToComparisonQueryByLLM(String query, Minute minute) {
-        if (query == null || query.trim().isEmpty() || minute == null) {
-            return false;
-        }
-        
-        String prompt = generateComparisonRelevancePrompt(query, minute);
-        String result = getLLMResponseCached(prompt);
-        
-        if (result == null || result.trim().isEmpty()) {
-            log().warn("Empty response from LLM in isRelevantToComparisonQueryByLLM, defaulting to false");
-            return false;
-        }
-        
-        String normalized = result.toLowerCase();
-        return normalized.contains("yes") || normalized.contains("sí");
-    }
-
-    /**
-     * Generates adaptive relevance prompt for comparison queries
-     */
-    private String generateComparisonRelevancePrompt(String query, Minute minute) {
-        return String.format("""
-            Given the following comparison query (in any language):
-            "%s"
-            
-            Meeting metadata:
-            Date: %s
-            Place: %s
-            Number of Attendees: %d
-            Topics: %s
-            Decisions: %s
-            Summary: %s
-            
-            Does this meeting contain data that could be useful for the comparison requested?
-            Consider that the query asks for comparing meetings or their attributes.
-            Answer only with YES or NO.
-            """,
-            query,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.numberOfAttendees(),
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
-            minute.summary() != null ? minute.summary() : "unknown"
-        );
-    }
 
     /**
      * Enhanced field inference with context analysis
@@ -168,8 +90,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             return ruleBasedField;
         }
 
-        // If rule-based fails, use LLM with enhanced context
-        return inferFieldByLLMWithContext(query, ner, minutes);
+        // If rule-based fails, pick the best available field based on data availability
+        return inferFieldByAvailability(query, minutes);
     }
 
     /**
@@ -181,96 +103,68 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         // Attendees patterns
         if (queryLower.contains("asistentes") || queryLower.contains("attendees") || 
             queryLower.contains("personas") || queryLower.contains("people")) {
-            return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC, "Number of attendees");
+            return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
         }
         
         // Duration patterns
         if (queryLower.contains("duración") || queryLower.contains("duration") || 
             queryLower.contains("tiempo") || queryLower.contains("time") ||
             queryLower.contains("horas") || queryLower.contains("hours")) {
-            return new ComparisonField("duration", ComparisonType.NUMERIC, "Meeting duration in minutes");
+            return new ComparisonField("duration", ComparisonType.NUMERIC);
         }
         
         // Date patterns
         if (queryLower.contains("fecha") || queryLower.contains("date") || 
             queryLower.contains("cuándo") || queryLower.contains("when")) {
-            return new ComparisonField("date", ComparisonType.DATE, "Meeting date");
+            return new ComparisonField("date", ComparisonType.DATE);
         }
         
         // Place patterns
         if (queryLower.contains("lugar") || queryLower.contains("place") || 
             queryLower.contains("dónde") || queryLower.contains("where")) {
-            return new ComparisonField("place", ComparisonType.TEXT, "Meeting place");
+            return new ComparisonField("place", ComparisonType.TEXT);
         }
         
         // Topics patterns
         if (queryLower.contains("temas") || queryLower.contains("topics") || 
             queryLower.contains("asuntos") || queryLower.contains("subjects")) {
-            return new ComparisonField("topics", ComparisonType.COUNT, "Number of topics");
+            return new ComparisonField("topics", ComparisonType.COUNT);
         }
         
         // Decisions patterns
         if (queryLower.contains("decisiones") || queryLower.contains("decisions") || 
             queryLower.contains("acuerdos") || queryLower.contains("agreements")) {
-            return new ComparisonField("decisions", ComparisonType.COUNT, "Number of decisions");
+            return new ComparisonField("decisions", ComparisonType.COUNT);
         }
         
         return null;
     }
 
     /**
-     * LLM-based field inference with enhanced context.
-     * Uses English for internal processing, but preserves original language in query.
+     * Field inference based on data availability (no LLM).
+     * Chooses the field with highest availability among meaningful options.
      */
-    private ComparisonField inferFieldByLLMWithContext(String query, JSONObject ner, List<Minute> minutes) {
+    private ComparisonField inferFieldByAvailability(String query, List<Minute> minutes) {
         if (query == null || query.trim().isEmpty() || minutes == null || minutes.isEmpty()) {
             return null;
         }
-        
-        // Analyze available data in minutes
-        Map<String, Integer> fieldAvailability = analyzeFieldAvailability(minutes);
-        
-        String prompt = String.format("""
-            Given the following comparison query (in any language):
-            "%s"
-            
-            Available fields for comparison (with data availability):
-            %s
-            
-            Which field does the user want to compare? 
-            Consider the semantic meaning and context of the query.
-            Respond with one of: numberOfAttendees, duration, date, place, topics, decisions.
-            If unclear, respond only: unknown
-            
-            Respond with ONLY the field name in English (one word).
-            Do not include any explanation or additional text.
-            """, query, formatFieldAvailability(fieldAvailability));
-        
-        try {
-            String result = getLLMResponseCached(prompt);
-            
-            if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in inferFieldByLLMWithContext, returning null");
-                return null;
-            }
-            
-            String normalized = result.strip().toLowerCase();
-            // Extract first word
-            String cleaned = normalized.split("\\s+")[0].trim();
-            
-            return switch (cleaned) {
-                case "numberofattendees", "numberofattendee" -> new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC, "Number of attendees");
-                case "duration" -> new ComparisonField("duration", ComparisonType.NUMERIC, "Meeting duration in minutes");
-                case "date" -> new ComparisonField("date", ComparisonType.DATE, "Meeting date");
-                case "place" -> new ComparisonField("place", ComparisonType.TEXT, "Meeting place");
-                case "topics", "topic" -> new ComparisonField("topics", ComparisonType.COUNT, "Number of topics");
-                case "decisions", "decision" -> new ComparisonField("decisions", ComparisonType.COUNT, "Number of decisions");
-                default -> null;
-            };
-        } catch (Exception e) {
-            log().error("Error in inferFieldByLLMWithContext, returning null", e);
-            return null;
-        }
+
+        Map<String, Integer> availability = analyzeFieldAvailability(minutes);
+
+        // Choose the field with highest availability among meaningful options
+        return availability.entrySet().stream()
+                .filter(e -> e.getValue() > 0)
+                .max(Map.Entry.comparingByValue())
+                .map(e -> switch (e.getKey()) {
+                    case "numberOfAttendees" -> new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
+                    case "duration" -> new ComparisonField("duration", ComparisonType.NUMERIC);
+                    case "date" -> new ComparisonField("date", ComparisonType.DATE);
+                    case "place" -> new ComparisonField("place", ComparisonType.TEXT);
+                    case "topics" -> new ComparisonField("topics", ComparisonType.COUNT);
+                    case "decisions" -> new ComparisonField("decisions", ComparisonType.COUNT);
+                    default -> null;
+                })
+                .orElse(null);
     }
 
     /**
@@ -298,7 +192,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      */
     private boolean hasValidFieldData(Minute minute, String field) {
         return switch (field) {
-            case "numberOfAttendees" -> minute.numberOfAttendees() > 0;
+            case "numberOfAttendees" -> minute.numberOfAttendees() > 0 ||
+                    (minute.attendees() != null && !minute.attendees().isEmpty());
             case "duration" -> calculateDurationFromMinute(minute) > 0;
             case "date" -> minute.date() != null && !minute.date().isBlank();
             case "place" -> minute.place() != null && !minute.place().isBlank();
@@ -306,15 +201,6 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             case "decisions" -> minute.decisions() != null && !minute.decisions().isEmpty();
             default -> false;
         };
-    }
-
-    /**
-     * Formats field availability for LLM prompt
-     */
-    private String formatFieldAvailability(Map<String, Integer> availability) {
-        return availability.entrySet().stream()
-                .map(entry -> String.format("- %s: %d meetings with data", entry.getKey(), entry.getValue()))
-                .collect(Collectors.joining("\n"));
     }
 
     /**
@@ -340,7 +226,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      * Extracts comparison value from a minute
      */
     private Map.Entry<String, ComparisonValue> extractComparisonValue(Minute minute, ComparisonField field, JSONObject ner) {
-        String label = buildEnhancedLabel(minute, ner);
+        String label = buildEnhancedLabel(minute);
         Object value = extractFieldValue(minute, field);
         
         if (label != null && value != null) {
@@ -353,7 +239,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     /**
      * Builds enhanced label for comparison
      */
-    private String buildEnhancedLabel(Minute minute, JSONObject ner) {
+    private String buildEnhancedLabel(Minute minute) {
         StringBuilder label = new StringBuilder();
         
         if (minute.date() != null) {
@@ -363,6 +249,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         if (minute.place() != null) {
             if (label.length() > 0) label.append(" - ");
             label.append(minute.place());
+        }
+        
+        if (minute.filename() != null) {
+            if (label.length() > 0) label.append(" - ");
+            label.append(minute.filename());
         }
         
         // Add president if available and relevant
@@ -380,7 +271,9 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      */
     private Object extractFieldValue(Minute minute, ComparisonField field) {
         return switch (field.fieldName) {
-            case "numberOfAttendees" -> minute.numberOfAttendees();
+            case "numberOfAttendees" -> minute.numberOfAttendees() > 0
+                    ? minute.numberOfAttendees()
+                    : (minute.attendees() != null ? minute.attendees().size() : 0);
             case "duration" -> calculateDurationFromMinute(minute);
             case "date" -> minute.date();
             case "place" -> minute.place();
@@ -395,7 +288,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      */
     private ComparisonAnalysis performStatisticalAnalysis(Map<String, ComparisonValue> comparables, ComparisonField field) {
         if (field.type != ComparisonType.NUMERIC && field.type != ComparisonType.COUNT) {
-            return new ComparisonAnalysis(null, null, null, null, null);
+            return new ComparisonAnalysis(null, null, null);
         }
 
         List<Double> numericValues = comparables.values().stream()
@@ -415,42 +308,14 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 .collect(Collectors.toList());
 
         if (numericValues.isEmpty()) {
-            return new ComparisonAnalysis(null, null, null, null, null);
+            return new ComparisonAnalysis(null, null, null);
         }
 
         double min = Collections.min(numericValues);
         double max = Collections.max(numericValues);
         double avg = numericValues.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-        double median = calculateMedian(numericValues);
-        double stdDev = calculateStandardDeviation(numericValues, avg);
 
-        return new ComparisonAnalysis(min, max, avg, median, stdDev);
-    }
-
-    /**
-     * Calculates median value
-     */
-    private double calculateMedian(List<Double> values) {
-        List<Double> sorted = new ArrayList<>(values);
-        Collections.sort(sorted);
-        int size = sorted.size();
-        
-        if (size % 2 == 0) {
-            return (sorted.get(size / 2 - 1) + sorted.get(size / 2)) / 2.0;
-        } else {
-            return sorted.get(size / 2);
-        }
-    }
-
-    /**
-     * Calculates standard deviation
-     */
-    private double calculateStandardDeviation(List<Double> values, double mean) {
-        double variance = values.stream()
-                .mapToDouble(v -> Math.pow(v - mean, 2))
-                .average()
-                .orElse(0.0);
-        return Math.sqrt(variance);
+        return new ComparisonAnalysis(min, max, avg);
     }
 
     /**
@@ -649,26 +514,15 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * Cached LLM response with error handling and validation.
-     * Uses parent class implementation which includes error handling.
-     */
-    @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
-    public String getLLMResponseCached(String prompt) {
-        return super.getLLMResponseCached(prompt);
-    }
-
-    /**
      * Represents a comparison field with its type and description
      */
     private static class ComparisonField {
         final String fieldName;
         final ComparisonType type;
-        final String description;
 
-        ComparisonField(String fieldName, ComparisonType type, String description) {
+        ComparisonField(String fieldName, ComparisonType type) {
             this.fieldName = fieldName;
             this.type = type;
-            this.description = description;
         }
     }
 
@@ -697,15 +551,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         final Double min;
         final Double max;
         final Double avg;
-        final Double median;
-        final Double stdDev;
 
-        ComparisonAnalysis(Double min, Double max, Double avg, Double median, Double stdDev) {
+        ComparisonAnalysis(Double min, Double max, Double avg) {
             this.min = min;
             this.max = max;
             this.avg = avg;
-            this.median = median;
-            this.stdDev = stdDev;
         }
     }
 

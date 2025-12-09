@@ -91,19 +91,87 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
      * @throws IllegalArgumentException if critical fields are missing or invalid
      */
     protected void validateMetadata(Map<String, Object> metadata, String filename) {
-        // Check for document_id (critical for chunk grouping)
-        if (!metadata.containsKey("document_id") || metadata.get("document_id") == null) {
-            log().warn("Metadata missing document_id for file: {}. This may cause issues with chunk grouping.", filename);
+        if (metadata == null) {
+            log().error("Metadata is null for file: {}", filename);
+            throw new IllegalArgumentException("Metadata cannot be null for file: " + filename);
         }
         
-        // Check for filename
-        if (!metadata.containsKey("filename") || metadata.get("filename") == null) {
-            log().warn("Metadata missing filename for file: {}", filename);
+        // Validate critical fields
+        if (!metadata.containsKey("document_id") || metadata.get("document_id") == null) {
+            log().error("Metadata missing document_id for file: {}. This will cause issues with chunk grouping.", filename);
+            throw new IllegalArgumentException("Metadata missing document_id for file: " + filename);
         }
+        
+        if (!metadata.containsKey("filename") || metadata.get("filename") == null) {
+            log().error("Metadata missing filename for file: {}", filename);
+            throw new IllegalArgumentException("Metadata missing filename for file: " + filename);
+        }
+        
+        // Validate types of complex fields
+        validateMetadataTypes(metadata, filename);
         
         // Log metadata summary for debugging
         if (log().isDebugEnabled()) {
             log().debug("Metadata validation for file: {} - Fields: {}", filename, metadata.keySet());
+        }
+    }
+    
+    /**
+     * Validates types of complex metadata fields.
+     */
+    private void validateMetadataTypes(Map<String, Object> metadata, String filename) {
+        // Validate attendees is List
+        if (metadata.containsKey("attendees")) {
+            Object attendees = metadata.get("attendees");
+            if (attendees != null && !(attendees instanceof List)) {
+                log().warn("Invalid type for 'attendees' in file {}: {}, expected List. Will be normalized during extraction.", 
+                          filename, attendees.getClass().getName());
+            }
+        }
+        
+        // Validate decisions is List
+        if (metadata.containsKey("decisions")) {
+            Object decisions = metadata.get("decisions");
+            if (decisions != null && !(decisions instanceof List)) {
+                log().warn("Invalid type for 'decisions' in file {}: {}, expected List. Will be normalized during extraction.", 
+                          filename, decisions.getClass().getName());
+            }
+        }
+        
+        // Validate topics is List
+        if (metadata.containsKey("topics")) {
+            Object topics = metadata.get("topics");
+            if (topics != null && !(topics instanceof List)) {
+                log().warn("Invalid type for 'topics' in file {}: {}, expected List. Will be normalized during extraction.", 
+                          filename, topics.getClass().getName());
+            }
+        }
+        
+        // Validate mentionedEntities is List
+        if (metadata.containsKey("mentionedEntities")) {
+            Object mentionedEntities = metadata.get("mentionedEntities");
+            if (mentionedEntities != null && !(mentionedEntities instanceof List)) {
+                log().warn("Invalid type for 'mentionedEntities' in file {}: {}, expected List. Will be normalized during extraction.", 
+                          filename, mentionedEntities.getClass().getName());
+            }
+        }
+        
+        // Validate agenda is Map
+        if (metadata.containsKey("agenda")) {
+            Object agenda = metadata.get("agenda");
+            if (agenda != null && !(agenda instanceof Map)) {
+                log().warn("Invalid type for 'agenda' in file {}: {}, expected Map. Will be normalized during extraction.", 
+                          filename, agenda.getClass().getName());
+            }
+        }
+        
+        // Validate numberOfAttendees is Number
+        if (metadata.containsKey("numberOfAttendees")) {
+            Object numberOfAttendees = metadata.get("numberOfAttendees");
+            if (numberOfAttendees != null && !(numberOfAttendees instanceof Number)) {
+                log().warn("Invalid type for 'numberOfAttendees' in file {}: {}, expected Number. Will be normalized during extraction.", 
+                          filename, numberOfAttendees.getClass().getName());
+            }
         }
     }
 }

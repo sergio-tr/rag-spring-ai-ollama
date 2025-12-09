@@ -31,37 +31,37 @@ public class EnhancedQueryClassifier implements QueryClassifier {
                 try {
                     QueryType baseType = baseClassifier.classify(query);
                     if (baseType != null) {
-                        System.out.println("[CLASSIFIER] Enhanced failed, using base classifier result: " + baseType);
+                        log().debug("[CLASSIFIER] Enhanced failed, using base classifier result: " + baseType);
                         return baseType;
                     }
                 } catch (Exception e) {
-                    System.out.println("[CLASSIFIER] Both enhanced and base classifier failed");
+                    log().debug("[CLASSIFIER] Both enhanced and base classifier failed");
                 }
                 return null;
             }
             
             return QueryType.valueOf(typeText);
         } catch (IllegalArgumentException e) {
-            System.out.println("[CLASSIFIER] Invalid QueryType, trying base classifier");
+            log().debug("[CLASSIFIER] Invalid QueryType, trying base classifier");
             try {
                 QueryType baseType = baseClassifier.classify(query);
                 if (baseType != null) {
-                    System.out.println("[CLASSIFIER] Using base classifier result: " + baseType);
+                    log().debug("[CLASSIFIER] Using base classifier result: " + baseType);
                     return baseType;
                 }
             } catch (Exception ex) {
-                System.out.println("[CLASSIFIER] Base classifier also failed");
+                log().debug("[CLASSIFIER] Base classifier also failed");
             }
             return null;
         } catch (Exception e) {
-            System.out.println("[CLASSIFIER] Error in enhanced classifier, trying base classifier: " + e.getMessage());
+            log().debug("[CLASSIFIER] Error in enhanced classifier, trying base classifier: " + e.getMessage());
             try {
                 QueryType baseType = baseClassifier.classify(query);
                 if (baseType != null) {
                     return baseType;
                 }
             } catch (Exception ex) {
-                System.out.println("[CLASSIFIER] Base classifier also failed");
+                log().debug("[CLASSIFIER] Base classifier also failed");
             }
             return null;
         }
@@ -71,8 +71,8 @@ public class EnhancedQueryClassifier implements QueryClassifier {
         String initialType = baseClassifier.classifyWithText(query);
         String refinedType = validateWithLLM(query, initialType);
 
-        System.out.println("[CLASSIFIER] Initial type: " + initialType);
-        System.out.println("[CLASSIFIER] Refined type: " + refinedType);
+        log().debug("[CLASSIFIER] Initial type: " + initialType);
+        log().debug("[CLASSIFIER] Refined type: " + refinedType);
 
         return refinedType;
     }
@@ -125,7 +125,7 @@ public class EnhancedQueryClassifier implements QueryClassifier {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                System.out.println("[CLASSIFIER] Empty LLM response, using base classifier result: " + initialType);
+                log().debug("[CLASSIFIER] Empty LLM response, using base classifier result: " + initialType);
                 return initialType != null ? initialType : "UNKNOWN";
             }
             
@@ -135,11 +135,11 @@ public class EnhancedQueryClassifier implements QueryClassifier {
                 QueryType.valueOf(refinedType);
                 return refinedType;
             } catch (IllegalArgumentException e) {
-                System.out.println("[CLASSIFIER] Invalid QueryType from LLM: " + refinedType + ", using base classifier result: " + initialType);
+                log().debug("[CLASSIFIER] Invalid QueryType from LLM: " + refinedType + ", using base classifier result: " + initialType);
                 return initialType != null ? initialType : "UNKNOWN";
             }
         } catch (Exception e) {
-            System.out.println("[CLASSIFIER] Error validating with LLM, using base classifier result: " + initialType + ", error: " + e.getMessage());
+            log().debug("[CLASSIFIER] Error validating with LLM, using base classifier result: " + initialType + ", error: " + e.getMessage());
             return initialType != null ? initialType : "UNKNOWN";
         }
     }

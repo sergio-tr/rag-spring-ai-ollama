@@ -1,13 +1,12 @@
 package com.uniovi.rag.services.tools.metadata;
 
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.model.*;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.cache.annotation.Cacheable;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -15,14 +14,6 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataDecisionExtractionTool for extracting and analyzing meeting decisions with intelligent processing.
- * 
- * Features:
- * - Intelligent decision extraction with context analysis
- * - Parallel processing for better performance
- * - Cached evaluations for efficiency
- * - Decision clustering and pattern analysis
- * - Quality ranking and synthesis of decisions
- * - Advanced NER-based filtering
  */
 public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
 
@@ -37,16 +28,12 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         
         log().debug("Executing decision extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve and filter documents efficiently
-        List<Document> docs = retrieveDocumentsWithMetadataFilter(
+        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        List<Document> docs = retrieveDocumentsWithFallback(
             query,
-            new String[] {"date", "place", "topics", "decisions", "summary"}
+            new String[] {"date", "place", "topics", "decisions", "summary"},
+            ner
         );
-        
-        if (docs.isEmpty()) {
-            log().debug("No documents found with metadata filter, trying basic retrieval");
-            docs = retrieveDocuments(query);
-        }
         
         if (docs.isEmpty()) {
             log().debug("No documents found for decision extraction query: {}", query);
@@ -75,7 +62,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         }
 
         // Step 5: Analyze and rank decisions
-        List<Decision> rankedDecisions = analyzeAndRankDecisions(query, decisions);
+        List<Decision> rankedDecisions = analyzeAndRankDecisions(decisions);
 
         // Step 6: Cluster similar decisions
         List<DecisionCluster> clusters = clusterDecisions(rankedDecisions);
@@ -86,67 +73,6 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                    query, decisions.size(), clusters.size());
         
         return ToolResult.from(answer, getClass());
-    }
-
-    /**
-     * Cached extraction of minute objects
-     */
-    @Cacheable(value = "minuteObjects", key = "#doc.id")
-    public Minute getMinuteFromMetadataCached(Document doc) {
-        return getMinuteFromMetadata(doc);
-    }
-
-    /**
-     * Cached NER matching evaluation
-     */
-    @Cacheable(value = "nerMatching", key = "#minute.hashCode() + '_' + #ner.hashCode()")
-    public boolean matchesMinuteWithNERCached(Minute minute, JSONObject ner) {
-        return matchesMinuteWithNER(minute, ner);
-    }
-
-    /**
-     * Cached query relevance evaluation for decision queries
-     */
-    @Cacheable(value = "decisionQueryRelevance", key = "#query.hashCode() + '_' + #minute.hashCode()")
-    public boolean isRelevantToDecisionQueryCached(String query, Minute minute) {
-        return isRelevantToDecisionQueryByLLM(query, minute);
-    }
-
-    /**
-     * Determines if a minute is relevant to the decision query using LLM
-     */
-    private boolean isRelevantToDecisionQueryByLLM(String query, Minute minute) {
-        String prompt = generateDecisionRelevancePrompt(query, minute);
-        String result = getLLMResponseCached(prompt);
-        return result.toLowerCase().contains("yes") || result.toLowerCase().contains("sí");
-    }
-
-    /**
-     * Generates adaptive relevance prompt for decision queries
-     */
-    private String generateDecisionRelevancePrompt(String query, Minute minute) {
-        return String.format("""
-            Given the following decision extraction query (in any language):
-            "%s"
-            
-            Meeting metadata:
-            Date: %s
-            Place: %s
-            Topics: %s
-            Decisions: %s
-            Summary: %s
-            
-            Does this meeting contain decisions that could be relevant to the query?
-            Consider that the query asks for extracting specific decisions or decision patterns.
-            Answer only with YES or NO.
-            """,
-            query,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
-            minute.summary() != null ? minute.summary() : "unknown"
-        );
     }
 
     /**
@@ -174,11 +100,10 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
 
         List<Decision> decisions = new ArrayList<>();
         for (String decisionText : minute.decisions()) {
-            if (isDecisionRelevantToQueryCached(decisionText, query)) {
-                Decision decision = buildDecisionWithContext(minute, decisionText, query);
-                if (decision != null) {
-                    decisions.add(decision);
-                }
+            // Metadata-first: keep all decisions, rely on later ranking instead of LLM filtering
+            Decision decision = buildDecisionWithContext(minute, decisionText);
+            if (decision != null) {
+                decisions.add(decision);
             }
         }
         
@@ -186,64 +111,15 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     }
 
     /**
-     * Cached decision relevance evaluation
-     */
-    @Cacheable(value = "decisionRelevance", key = "#decisionText.hashCode() + '_' + #query.hashCode()")
-    public boolean isDecisionRelevantToQueryCached(String decisionText, String query) {
-        return isDecisionRelevantToQueryByLLM(decisionText, query);
-    }
-
-    /**
-     * Determines if a decision is relevant to the query using LLM.
-     * Uses English for internal processing, but preserves original language in query and decision text.
-     */
-    private boolean isDecisionRelevantToQueryByLLM(String decisionText, String query) {
-        if (decisionText == null || decisionText.trim().isEmpty() || query == null || query.trim().isEmpty()) {
-            return false;
-        }
-        
-        String prompt = generateDecisionRelevancePrompt(decisionText, query);
-        String result = getLLMResponseCached(prompt);
-        
-        if (result == null || result.trim().isEmpty()) {
-            log().warn("Empty response from LLM in isDecisionRelevantToQueryByLLM, defaulting to false");
-            return false;
-        }
-        
-        String normalized = result.toLowerCase();
-        return normalized.contains("yes") || normalized.contains("sí");
-    }
-
-    /**
-     * Generates decision relevance prompt
-     */
-    private String generateDecisionRelevancePrompt(String decisionText, String query) {
-        return String.format("""
-        Given the following user query (in any language):
-            "%s"
-            
-        And the following decision from a meeting minute:
-            "%s"
-            
-            Does this decision answer or relate to the query?
-            Consider the context and intent of the query.
-            Answer only with YES or NO.
-            """, query, decisionText);
-    }
-
-    /**
      * Builds a decision with enhanced context
      */
-    private Decision buildDecisionWithContext(Minute minute, String decisionText, String query) {
-        // Calculate relevance score
-        double relevanceScore = calculateDecisionRelevanceScore(query, minute, decisionText);
-        
-        // Extract decision type
+    private Decision buildDecisionWithContext(Minute minute, String decisionText) {
+        // Extract decision type via LLM (could be replaced by regex/keywords if needed)
         String decisionType = analyzeDecisionType(decisionText);
-        
-        // Extract key entities
+
+        // Extract key entities via LLM (fallback to simple parsing)
         List<String> keyEntities = extractKeyEntitiesFromDecision(decisionText);
-        
+
         return new Decision(
             minute.id(),
             minute.date(),
@@ -251,96 +127,125 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             decisionText,
             decisionType,
             keyEntities,
-            relevanceScore,
             System.currentTimeMillis()
         );
     }
 
     /**
-     * Calculates relevance score for a decision
-     */
-    private double calculateDecisionRelevanceScore(String query, Minute minute, String decisionText) {
-        String prompt = String.format("""
-        Given the following user query (in any language):
-            "%s"
-            
-            Meeting context:
-            Date: %s
-            Place: %s
-            Topics: %s
-            
-            Decision:
-            "%s"
-            
-            Rate the relevance of this decision to the query on a scale of 0.0 to 1.0.
-            Consider: direct relevance, completeness, clarity, and usefulness.
-            Respond with only a number between 0.0 and 1.0.
-            """, 
-            query,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            decisionText
-        );
-        
-        try {
-            String result = getLLMResponseCached(prompt).strip();
-            return Double.parseDouble(result);
-        } catch (NumberFormatException e) {
-            return 0.5; // Default score if parsing fails
-        }
-    }
-
-    /**
-     * Analyzes decision type
+     * Analyzes decision type using rule-based classification (no LLM)
      */
     private String analyzeDecisionType(String decisionText) {
-        String prompt = String.format("""
-            Given the following decision from a meeting minute:
-            "%s"
-            
-            Classify this decision into one of these types:
-            - APPROVAL: Approval of proposals, budgets, or plans
-            - REJECTION: Rejection of proposals or requests
-            - ASSIGNMENT: Assignment of tasks or responsibilities
-            - SCHEDULING: Scheduling of events or deadlines
-            - POLICY: Policy changes or new regulations
-            - FINANCIAL: Financial decisions or budget allocations
-            - PERSONNEL: Personnel decisions or appointments
-            - OTHER: Other types of decisions
-            
-            Respond with only the type name.
-            """, decisionText);
+        if (decisionText == null || decisionText.isBlank()) {
+            return "OTHER";
+        }
         
-        return getLLMResponseCached(prompt).strip();
+        String text = decisionText.toLowerCase();
+        
+        // APPROVAL patterns
+        if (text.contains("aprob") || text.contains("aprobar") || text.contains("acept") ||
+            text.contains("aceptar") || text.contains("autoriz") || text.contains("autorizar") ||
+            text.contains("ratific") || text.contains("ratificar")) {
+            return "APPROVAL";
+        }
+        
+        // REJECTION patterns
+        if (text.contains("rechaz") || text.contains("deneg") || text.contains("denegar") ||
+            text.contains("desestim") || text.contains("desestimar")) {
+            return "REJECTION";
+        }
+        
+        // ASSIGNMENT patterns
+        if (text.contains("asign") || text.contains("asignar") || text.contains("encarg") ||
+            text.contains("encargar") || text.contains("deleg") || text.contains("delegar") ||
+            text.contains("responsabil") || text.contains("responsable")) {
+            return "ASSIGNMENT";
+        }
+        
+        // SCHEDULING patterns
+        if (text.contains("fecha") || text.contains("plazo") || text.contains("program") ||
+            text.contains("programar") || text.contains("agend") || text.contains("agendar") ||
+            text.contains("convoc") || text.contains("convocar")) {
+            return "SCHEDULING";
+        }
+        
+        // POLICY patterns
+        if (text.contains("norma") || text.contains("reglamento") || text.contains("política") ||
+            text.contains("política") || text.contains("regulación") || text.contains("estatuto")) {
+            return "POLICY";
+        }
+        
+        // FINANCIAL patterns
+        if (text.contains("presupuesto") || text.contains("presupuest") || text.contains("financi") ||
+            text.contains("pago") || text.contains("gasto") || text.contains("ingreso") ||
+            text.contains("€") || text.contains("euro") || text.contains("coste") ||
+            text.contains("costo") || text.contains("tarifa") || text.contains("cuota")) {
+            return "FINANCIAL";
+        }
+        
+        // PERSONNEL patterns
+        if (text.contains("personal") || text.contains("empleado") || text.contains("trabajador") ||
+            text.contains("contrat") || text.contains("contratar") || text.contains("nombramiento") ||
+            text.contains("design") || text.contains("designar") || text.contains("cargo")) {
+            return "PERSONNEL";
+        }
+        
+        return "OTHER";
     }
 
     /**
-     * Extracts key entities from decision text
+     * Extracts key entities from decision text using simple pattern matching
      */
     private List<String> extractKeyEntitiesFromDecision(String decisionText) {
-        String prompt = String.format("""
-            Given the following decision from a meeting minute:
-            "%s"
-            
-            Extract the key entities mentioned in this decision (people, organizations, dates, amounts, etc.).
-            Return them as a comma-separated list.
-            """, decisionText);
+        if (decisionText == null || decisionText.isBlank()) {
+            return Collections.emptyList();
+        }
         
-        String result = getLLMResponseCached(prompt).strip();
-        return Arrays.stream(result.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
+        List<String> entities = new ArrayList<>();
+        
+        // Extract amounts (€, euros, numbers with currency)
+        java.util.regex.Pattern amountPattern = java.util.regex.Pattern.compile("\\d+[.,]?\\d*\\s*€|\\d+[.,]?\\d*\\s*euro");
+        java.util.regex.Matcher amountMatcher = amountPattern.matcher(decisionText);
+        while (amountMatcher.find()) {
+            entities.add(amountMatcher.group().trim());
+        }
+        
+        // Extract dates (common Spanish date patterns)
+        java.util.regex.Pattern datePattern = java.util.regex.Pattern.compile(
+            "\\d{1,2}\\s+de\\s+[a-z]+\\s+de\\s+\\d{4}|\\d{1,2}/\\d{1,2}/\\d{4}|\\d{4}-\\d{2}-\\d{2}"
+        );
+        java.util.regex.Matcher dateMatcher = datePattern.matcher(decisionText);
+        while (dateMatcher.find()) {
+            entities.add(dateMatcher.group().trim());
+        }
+        
+        // Extract capitalized words/phrases (likely names or organizations)
+        java.util.regex.Pattern namePattern = java.util.regex.Pattern.compile(
+            "\\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+\\b"
+        );
+        java.util.regex.Matcher nameMatcher = namePattern.matcher(decisionText);
+        while (nameMatcher.find()) {
+            String name = nameMatcher.group().trim();
+            // Filter out common words that are capitalized but not entities
+            if (!name.matches("^(El|La|Los|Las|De|Del|En|Por|Para|Con|Sin|Sobre|Bajo|Entre|Durante|Según|Mediante)$")) {
+                entities.add(name);
+            }
+        }
+        
+        return entities.stream()
+                .distinct()
+                .limit(10) // Limit to avoid too many entities
                 .collect(Collectors.toList());
     }
 
     /**
      * Analyzes and ranks decisions by relevance and quality
      */
-    private List<Decision> analyzeAndRankDecisions(String query, List<Decision> decisions) {
-        // Sort by relevance score (descending)
+    private List<Decision> analyzeAndRankDecisions(List<Decision> decisions) {
+        // Heuristic: longer decision text first
         return decisions.stream()
-                .sorted((a, b) -> Double.compare(b.relevanceScore, a.relevanceScore))
+                .sorted((a, b) -> Integer.compare(
+                        b.getDecisionText() != null ? b.getDecisionText().length() : 0,
+                        a.getDecisionText() != null ? a.getDecisionText().length() : 0))
                 .collect(Collectors.toList());
     }
 
@@ -376,12 +281,12 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
      */
     private boolean isSimilarToCluster(Decision decision, DecisionCluster cluster) {
         // Check if decision types match
-        if (!decision.decisionType.equals(cluster.getRepresentativeDecision().decisionType)) {
+        if (!decision.getDecisionType().equals(cluster.getRepresentativeDecision().getDecisionType())) {
             return false;
         }
         
         // Check content similarity
-        String decisionContent = decision.decisionText.toLowerCase();
+        String decisionContent = decision.getDecisionText().toLowerCase();
         String clusterContent = cluster.getRepresentativeContent().toLowerCase();
         
         Set<String> decisionWords = Set.of(decisionContent.split("\\s+"));
@@ -451,14 +356,14 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                               decisions.size(),
                               decisions.stream()
                                       .limit(5)
-                                      .map(d -> String.format("- %s", d.decisionText))
+                                      .map(d -> String.format("- %s", d.getDecisionText()))
                                       .collect(Collectors.joining("\n")));
         } else {
             return String.format("Found %d relevant decisions:\n%s",
                               decisions.size(),
                               decisions.stream()
                                       .limit(5)
-                                      .map(d -> String.format("- %s", d.decisionText))
+                                      .map(d -> String.format("- %s", d.getDecisionText()))
                                       .collect(Collectors.joining("\n")));
         }
     }
@@ -474,136 +379,14 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             DecisionCluster cluster = clusters.get(i);
             Decision representative = cluster.getRepresentativeDecision();
             
-            if (representative.date != null) {
-                summary.append(String.format("Reunión del %s:\n", representative.date));
+            if (representative.getDate() != null) {
+                summary.append(String.format("Reunión del %s:\n", representative.getDate()));
             }
-            summary.append(representative.decisionText);
+            summary.append(representative.getDecisionText() != null ? representative.getDecisionText() : "");
             summary.append("\n\n");
         }
         
         return summary.toString();
     }
 
-    /**
-     * Formats cluster analysis for LLM prompt
-     */
-    private String formatClusterAnalysis(List<DecisionCluster> clusters) {
-        if (clusters.isEmpty()) {
-            return "No clusters found.";
-        }
-        
-        StringBuilder analysis = new StringBuilder();
-        analysis.append(String.format("Total clusters: %d\n", clusters.size()));
-        
-        for (int i = 0; i < clusters.size(); i++) {
-            DecisionCluster cluster = clusters.get(i);
-            analysis.append(String.format("- Cluster %d: %d decisions, avg relevance: %.2f, type: %s\n", 
-                                        i + 1, cluster.getSize(), cluster.getAverageRelevance(), cluster.getDecisionType()));
-        }
-        
-        return analysis.toString();
-    }
-
-    /**
-     * Cached LLM response with error handling and validation.
-     * Uses parent class implementation which includes error handling.
-     */
-    @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
-    public String getLLMResponseCached(String prompt) {
-        return super.getLLMResponseCached(prompt);
-    }
-
-    /**
-     * Represents a decision with enhanced metadata
-     */
-    private static class Decision {
-        final String minuteId;
-        final String date;
-        final String place;
-        final String decisionText;
-        final String decisionType;
-        final List<String> keyEntities;
-        final double relevanceScore;
-        final long timestamp;
-
-        Decision(String minuteId, String date, String place, String decisionText, String decisionType,
-                List<String> keyEntities, double relevanceScore, long timestamp) {
-            this.minuteId = minuteId;
-            this.date = date;
-            this.place = place;
-            this.decisionText = decisionText;
-            this.decisionType = decisionType;
-            this.keyEntities = keyEntities;
-            this.relevanceScore = relevanceScore;
-            this.timestamp = timestamp;
-        }
-        
-        /**
-         * Gets a formatted identifier for the decision
-         */
-        String getIdentifier() {
-            return String.format("%s (%s - %s)", minuteId, date != null ? date : "unknown", place != null ? place : "unknown");
-        }
-        
-        /**
-         * Gets the age of the decision in milliseconds
-         */
-        long getAge() {
-            return System.currentTimeMillis() - timestamp;
-        }
-        
-        /**
-         * Gets the key entities as a formatted string
-         */
-        String getKeyEntitiesAsString() {
-            return keyEntities.isEmpty() ? "none" : String.join(", ", keyEntities);
-        }
-        
-        @Override
-        public String toString() {
-            return String.format("Decision[%s, type=%s, score=%.2f, age=%dms, entities=%s]", 
-                               getIdentifier(), decisionType, relevanceScore, getAge(), getKeyEntitiesAsString());
-        }
-    }
-
-    /**
-     * Represents a cluster of similar decisions
-     */
-    private static class DecisionCluster {
-        private final List<Decision> decisions = new ArrayList<>();
-
-        DecisionCluster(Decision initialDecision) {
-            decisions.add(initialDecision);
-        }
-
-        void addDecision(Decision decision) {
-            decisions.add(decision);
-        }
-
-        int getSize() {
-            return decisions.size();
-        }
-
-        Decision getRepresentativeDecision() {
-            // Return the decision with highest relevance score
-            return decisions.stream()
-                    .max((a, b) -> Double.compare(a.relevanceScore, b.relevanceScore))
-                    .orElse(decisions.get(0));
-        }
-
-        String getRepresentativeContent() {
-            return getRepresentativeDecision().decisionText;
-        }
-
-        String getDecisionType() {
-            return getRepresentativeDecision().decisionType;
-        }
-
-        double getAverageRelevance() {
-            return decisions.stream()
-                    .mapToDouble(d -> d.relevanceScore)
-                    .average()
-                    .orElse(0.0);
-        }
-    }
 }

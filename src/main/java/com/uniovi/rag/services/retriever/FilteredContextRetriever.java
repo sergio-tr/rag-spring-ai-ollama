@@ -68,10 +68,12 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
             return doc.getContent();
         }
 
+        String promptContent = truncateForPrompt(doc.getContent(), DEFAULT_MAX_PROMPT_CHARS);
+
         try {
             String filterPrompt = entities == null || entities.isEmpty() ?
-                    String.format(PROMPT_TEMPLATE, doc.getContent(), query) :
-                    String.format(NER_PROMPT_TEMPLATE, doc.getContent(), query, 
+                    String.format(PROMPT_TEMPLATE, promptContent, query) :
+                    String.format(NER_PROMPT_TEMPLATE, promptContent, query, 
                                  entities != null ? entities.toString(2) : "{}");
 
             String filteredContent = chatClient

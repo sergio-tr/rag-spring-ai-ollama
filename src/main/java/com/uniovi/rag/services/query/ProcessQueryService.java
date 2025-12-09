@@ -101,11 +101,11 @@ public class ProcessQueryService implements QueryService {
 
             if (response == null) {
                 String answer = askModel(expandedQuery, nerEntities, queryType);
-                log().info("Response generated with model directly: {}", answer);
+                log().debug("Response generated with model directly: {}", answer);
                 return answer;
             }
 
-            log().info("Response generated with tool {}: {}", response.source(), response.result());
+            log().debug("Response generated with tool {}: {}", response.source(), response.result());
             return response.result();
         } catch (Exception e) {
             log().error("Unexpected error processing query : {}", query, e);

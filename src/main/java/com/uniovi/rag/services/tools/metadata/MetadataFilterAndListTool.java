@@ -1,6 +1,6 @@
 package com.uniovi.rag.services.tools.metadata;
 
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.model.*;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
@@ -15,14 +15,6 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataFilterAndListTool for filtering and listing meeting minutes with intelligent analysis.
- * 
- * Features:
- * - Intelligent filtering with context analysis
- * - Parallel processing for better performance
- * - Cached evaluations for efficiency
- * - Result clustering and pattern analysis
- * - Quality ranking and synthesis of results
- * - Advanced NER-based filtering
  */
 public class MetadataFilterAndListTool extends AbstractMetadataTool {
 
@@ -37,16 +29,12 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         
         log().debug("Executing filter and list query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve and filter documents efficiently
-        List<Document> docs = retrieveDocumentsWithMetadataFilter(
+        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        List<Document> docs = retrieveDocumentsWithFallback(
             query, 
-            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"}
+            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"},
+            ner
         );
-        
-        if (docs.isEmpty()) {
-            log().debug("No documents found with metadata filter, trying basic retrieval");
-            docs = retrieveDocuments(query);
-        }
         
         if (docs.isEmpty()) {
             log().debug("No documents found for filter and list query: {}", query);
@@ -67,7 +55,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        // Step 4: Generate summaries in parallel
+        // Step 4: Generate summaries in parallel (metadata-first, LLM fallback)
         List<FilterResult> results = generateSummariesInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
             log().debug("No summaries generated for query: {}", query);
@@ -75,7 +63,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         }
 
         // Step 5: Analyze and rank results
-        List<FilterResult> rankedResults = analyzeAndRankResults(query, results);
+        List<FilterResult> rankedResults = analyzeAndRankResults(results);
 
         // Step 6: Cluster similar results
         List<InfoExtractor.Cluster<FilterResult>> clusters = clusterResults(rankedResults);
@@ -99,7 +87,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
-                .filter(result -> !result.summary.isBlank())
+                .filter(result -> result.getSummary() != null && !result.getSummary().isBlank())
                 .collect(Collectors.toList());
     }
 
@@ -107,42 +95,63 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
      * Generates summary for a minute with enhanced context
      */
     private FilterResult generateSummary(String query, Minute minute) {
-        String summary = buildSummaryExplanation(query, minute);
-        
+        // Metadata-first summary
+        String summary = buildSummaryFromMetadata(minute);
+
+        if (summary.isBlank()) {
+            // Fallback to LLM summary
+            summary = buildSummaryExplanation(query, minute);
+        }
+
         if (summary.isBlank()) {
             return null;
         }
-        
-        // Calculate relevance score
-        double relevanceScore = calculateRelevanceScore(query, summary, minute.toString());
-        
+
+        int score = summary.length();
+
         return new FilterResult(
             minute.id(),
             minute.date(),
             minute.place(),
             summary,
-            relevanceScore,
-            System.currentTimeMillis()
+            score
         );
     }
 
     /**
-     * Builds summary explanation with enhanced context.
+     * Metadata-first summary builder; uses existing summary, decisions, topics, agenda.
+     */
+    private String buildSummaryFromMetadata(Minute minute) {
+        if (minute == null) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        if (minute.summary() != null && !minute.summary().isBlank()) {
+            parts.add(minute.summary());
+        }
+        if (minute.decisions() != null && !minute.decisions().isEmpty()) {
+            parts.add("Decisiones: " + String.join("; ", minute.decisions()));
+        }
+        if (minute.topics() != null && !minute.topics().isEmpty()) {
+            parts.add("Temas: " + String.join("; ", minute.topics()));
+        }
+        if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+            parts.add("Agenda: " + minute.agenda().toString());
+        }
+        return String.join(" | ", parts).trim();
+    }
+
+    /**
+     * LLM fallback summary when metadata is insufficient.
      */
     private String buildSummaryExplanation(String query, Minute minute) {
         if (query == null || query.trim().isEmpty() || minute == null) {
             return "";
         }
         
-        String queryType = analyzeQueryType(query);
-        
         String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
-            
-            Query type: %s
-            
-            Meeting metadata (values may be in any language):
+            Summarize the meeting in 2-3 sentences focusing on what is most relevant to the query:
+            Query: %s
             Date: %s
             Place: %s
             President: %s
@@ -151,13 +160,8 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             Decisions: %s
             Summary: %s
             Agenda: %s
-            
-            Write a brief summary (2-3 sentences) in the same language as the query,
-            focusing on the aspects most relevant to the query.
-            Highlight the most important information that directly relates to the query.
             """,
             query,
-            queryType,
             minute.date() != null ? minute.date() : "unknown",
             minute.place() != null ? minute.place() : "unknown",
             minute.president() != null ? minute.president() : "unknown",
@@ -170,13 +174,11 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         
         try {
             String response = getLLMResponseCached(prompt);
-            
             if (response == null || response.trim().isEmpty()) {
                 log().debug("Empty response from LLM in buildSummaryExplanation, returning empty string");
                 return "";
             }
-            
-            return response;
+            return response.trim();
         } catch (Exception e) {
             log().error("Error building summary explanation, returning empty string", e);
             return "";
@@ -186,10 +188,12 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     /**
      * Analyzes and ranks results by relevance and quality
      */
-    private List<FilterResult> analyzeAndRankResults(String query, List<FilterResult> results) {
-        // Sort by relevance score (descending)
+    private List<FilterResult> analyzeAndRankResults(List<FilterResult> results) {
+        // Sort by summary length (descending) as a simple signal of content richness
         return results.stream()
-                .sorted((a, b) -> Double.compare(b.relevanceScore, a.relevanceScore))
+                .sorted((a, b) -> Integer.compare(
+                        b.getSummary() != null ? b.getSummary().length() : 0,
+                        a.getSummary() != null ? a.getSummary().length() : 0))
                 .collect(Collectors.toList());
     }
 
@@ -199,8 +203,8 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     private List<InfoExtractor.Cluster<FilterResult>> clusterResults(List<FilterResult> results) {
         return InfoExtractor.clusterItems(
             results,
-            result -> result.summary,
-            result -> result.date != null ? result.date : "unknown",
+            result -> result.getSummary(),
+            result -> result.getDate() != null ? result.getDate() : "unknown",
             0.3 // Similarity threshold
         );
     }
@@ -262,8 +266,8 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
                               results.stream()
                                       .limit(5)
                                       .map(r -> String.format("- %s: %s", 
-                                          r.date != null ? r.date : "fecha desconocida",
-                                          r.summary.length() > 150 ? r.summary.substring(0, 150) + "..." : r.summary))
+                                          r.getDate() != null ? r.getDate() : "fecha desconocida",
+                                          r.getSummary() != null && r.getSummary().length() > 150 ? r.getSummary().substring(0, 150) + "..." : (r.getSummary() != null ? r.getSummary() : "")))
                                       .collect(Collectors.joining("\n\n")));
         } else {
             return String.format("Found %d relevant meetings:\n%s",
@@ -271,8 +275,8 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
                               results.stream()
                                       .limit(5)
                                       .map(r -> String.format("- %s: %s", 
-                                          r.date != null ? r.date : "unknown date",
-                                          r.summary.length() > 150 ? r.summary.substring(0, 150) + "..." : r.summary))
+                                          r.getDate() != null ? r.getDate() : "unknown date",
+                                          r.getSummary() != null && r.getSummary().length() > 150 ? r.getSummary().substring(0, 150) + "..." : (r.getSummary() != null ? r.getSummary() : "")))
                                       .collect(Collectors.joining("\n\n")));
         }
     }
@@ -288,84 +292,18 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             InfoExtractor.Cluster<FilterResult> cluster = clusters.get(i);
             FilterResult representative = cluster.getRepresentativeItem();
             
-            if (representative.date != null) {
-                summary.append(String.format("Reunión del %s", representative.date));
-                if (representative.place != null) {
-                    summary.append(String.format(" (%s)", representative.place));
+            if (representative.getDate() != null) {
+                summary.append(String.format("Reunión del %s", representative.getDate()));
+                if (representative.getPlace() != null) {
+                    summary.append(String.format(" (%s)", representative.getPlace()));
                 }
                 summary.append(":\n");
             }
-            summary.append(representative.summary);
+            summary.append(representative.getSummary() != null ? representative.getSummary() : "");
             summary.append("\n\n");
         }
         
         return summary.toString();
     }
 
-    /**
-     * Formats cluster analysis for LLM prompt
-     */
-    private String formatClusterAnalysis(List<InfoExtractor.Cluster<FilterResult>> clusters) {
-        if (clusters.isEmpty()) {
-            return "No clusters found.";
-        }
-        
-        StringBuilder analysis = new StringBuilder();
-        analysis.append(String.format("Total clusters: %d\n", clusters.size()));
-        
-        for (int i = 0; i < clusters.size(); i++) {
-            InfoExtractor.Cluster<FilterResult> cluster = clusters.get(i);
-            FilterResult representative = cluster.getRepresentativeItem();
-            
-            double avgRelevance = cluster.getItems().stream()
-                    .mapToDouble(r -> r.relevanceScore)
-                    .average()
-                    .orElse(0.0);
-            
-            analysis.append(String.format("- Cluster %d: %d results, avg relevance: %.2f, date: %s\n", 
-                                        i + 1, cluster.getSize(), avgRelevance, representative.date));
-        }
-        
-        return analysis.toString();
-    }
-
-    /**
-     * Represents a filter result with enhanced metadata
-     */
-    private static class FilterResult {
-        final String minuteId;
-        final String date;
-        final String place;
-        final String summary;
-        final double relevanceScore;
-        final long timestamp;
-
-        FilterResult(String minuteId, String date, String place, String summary, double relevanceScore, long timestamp) {
-            this.minuteId = minuteId;
-            this.date = date;
-            this.place = place;
-            this.summary = summary;
-            this.relevanceScore = relevanceScore;
-            this.timestamp = timestamp;
-        }
-        
-        /**
-         * Gets a formatted identifier for the result
-         */
-        String getIdentifier() {
-            return String.format("%s (%s - %s)", minuteId, date != null ? date : "unknown", place != null ? place : "unknown");
-        }
-        
-        /**
-         * Gets the age of the result in milliseconds
-         */
-        long getAge() {
-            return System.currentTimeMillis() - timestamp;
-        }
-        
-        @Override
-        public String toString() {
-            return String.format("FilterResult[%s, score=%.2f, age=%dms]", getIdentifier(), relevanceScore, getAge());
-        }
-    }
 }

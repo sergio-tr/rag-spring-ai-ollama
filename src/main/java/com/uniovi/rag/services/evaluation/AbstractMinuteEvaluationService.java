@@ -77,7 +77,7 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
         }
     }
 
-    private void sendFileToEndpoint(File file) throws IOException {
+    protected void sendFileToEndpoint(File file) throws IOException {
         String endpoint = "http://localhost:9000/api/v3/documents";
         String boundary = "===" + System.currentTimeMillis() + "===";
 
@@ -111,7 +111,7 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
         if (responseCode != HttpURLConnection.HTTP_OK) {
             throw new IOException("Error al enviar archivo: " + file.getName() + ". Código: " + responseCode);
         } else {
-            System.out.println("Archivo enviado correctamente: " + file.getName());
+            log().debug("Archivo enviado correctamente: " + file.getName());
         }
     }
 

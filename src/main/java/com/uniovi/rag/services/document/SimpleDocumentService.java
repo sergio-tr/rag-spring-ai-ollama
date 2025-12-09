@@ -17,7 +17,7 @@ public class SimpleDocumentService<T> extends AbstractDocumentService<T> {
     }
 
     public void processDocument(MultipartFile file) {
-        System.out.println("SIMPLE: Processing file" + file.getName());
+        log().debug("SIMPLE: Processing file" + file.getName());
         String content = extractContent(file);
         if (content == null || content.isEmpty()) {
             throw new IllegalArgumentException("Document content does not exist");

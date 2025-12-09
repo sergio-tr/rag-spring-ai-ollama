@@ -65,7 +65,7 @@ public class SimpleQueryService implements QueryService {
 
             // Parsear la respuesta JSON
             JSONObject jsonResponse = new JSONObject(response);
-            System.out.println(jsonResponse);
+            log().debug(jsonResponse.toString());
             String generatedText = jsonResponse.getString("response"); // Obtener el texto generado bajo la clave "response"
 
             return generatedText; // Retornar la respuesta del modelo
@@ -127,11 +127,11 @@ public class SimpleQueryService implements QueryService {
                 question, context
         );
 
-        System.out.println("\n\n-----------------------------------------------------------------------------");
-        System.out.println("-----------------------------------------------------------------------------");
-        System.out.println("QUERY: Pregunta final: " + template);
-        System.out.println("\n\n-----------------------------------------------------------------------------");
-        System.out.println("-----------------------------------------------------------------------------");
+        log().debug("\n\n-----------------------------------------------------------------------------");
+        log().debug("-----------------------------------------------------------------------------");
+        log().debug("QUERY: Pregunta final: " + template);
+        log().debug("\n\n-----------------------------------------------------------------------------");
+        log().debug("-----------------------------------------------------------------------------");
 
         return askQueryToLlama(template);
     }

@@ -57,13 +57,12 @@ public class SimpleProcessQueryService implements QueryService {
             Tool tool = toolsConfig.getTool(queryType);
 
             try {
-//                String toolResponse = featureConfig.isNerEnabled() ? tool.execute(finalQuery, nerEntities) : tool.execute(finalQuery);
                 String toolResponse = tool.execute(ToolExecutionContext.of(finalQuery, queryType, nerEntities)).result();
                 if (toolResponse != null) {
                     return toolResponse;
                 }
             } catch (Exception e) {
-                System.err.println(e.getMessage());
+                log().error("Error executing tool: {}", e.getMessage());
             }
 
         }

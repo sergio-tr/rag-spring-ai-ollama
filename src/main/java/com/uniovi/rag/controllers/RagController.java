@@ -7,12 +7,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
-
+import com.uniovi.rag.model.Loggable;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v3")
-public class RagController {
+public class RagController implements Loggable {
 
     private final DocumentService documentService;
     private final QueryService queryService;
@@ -42,9 +42,8 @@ public class RagController {
             return ResponseEntity.badRequest().body("Error processing document " +
                     (file != null ? file.getOriginalFilename() : "unknown") + ": " + e.getMessage());
         } catch (Exception e) {
-            System.err.println("Error storing document " +
-                    (file != null ? file.getOriginalFilename() : "unknown") + ": " + e.getMessage());
-            documentService.log().error(e.getMessage(), e);
+            log().error("Error storing document " +
+                    (file != null ? file.getOriginalFilename() : "unknown") + ": " + e.getMessage(), e);
             return ResponseEntity.badRequest().body("Error storing document " +
                     (file != null ? file.getOriginalFilename() : "unknown") + ": " + e.getMessage());
         }
