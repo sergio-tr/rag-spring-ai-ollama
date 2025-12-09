@@ -1090,23 +1090,17 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         List<String> attendees = new ArrayList<>();
         
         // Method 1: Between "Asistentes:" and "Orden del día:" (actual)
-        // This may include descriptive text before the bullet list
         String block = extractBlock(content, "(?i)Asistentes:", "(?i)Orden del día:");
         if (block != null && !block.trim().isEmpty()) {
-            // First try to extract bullets directly
-            attendees.addAll(extractBullets(block));
+            // Remove everything before the first list delimiter (bullet, dash, asterisk, or number)
+            String cleanedBlock = removeTextBeforeFirstDelimiter(block);
+            if (!cleanedBlock.trim().isEmpty()) {
+                attendees.addAll(extractBullets(cleanedBlock));
+            }
             
-            // If no bullets found, try to find names after descriptive text
+            // If no bullets found, try comma-separated list after ":"
             if (attendees.isEmpty()) {
-                // Look for bullet points that might be after descriptive text
-                Pattern bulletPattern = Pattern.compile("(?:•|[-*]|\\d+\\.)\\s*([^\\n]+)", Pattern.MULTILINE);
-                Matcher bulletMatcher = bulletPattern.matcher(block);
-                while (bulletMatcher.find()) {
-                    String name = bulletMatcher.group(1).trim();
-                    if (!name.isEmpty() && name.length() > 2) {
-                        attendees.add(name);
-                    }
-                }
+                attendees.addAll(extractCommaSeparatedNames(block));
             }
         }
         
@@ -1114,18 +1108,14 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (attendees.isEmpty()) {
             block = extractBlock(content, "(?i)Asistentes:", "(?i)(?:Orden del día|Ruegos|Clausura|No habiendo)");
             if (block != null && !block.trim().isEmpty()) {
-                attendees.addAll(extractBullets(block));
+                String cleanedBlock = removeTextBeforeFirstDelimiter(block);
+                if (!cleanedBlock.trim().isEmpty()) {
+                    attendees.addAll(extractBullets(cleanedBlock));
+                }
                 
-                // If still empty, try pattern matching for names
+                // If still empty, try comma-separated list
                 if (attendees.isEmpty()) {
-                    Pattern bulletPattern = Pattern.compile("(?:•|[-*]|\\d+\\.)\\s*([^\\n]+)", Pattern.MULTILINE);
-                    Matcher bulletMatcher = bulletPattern.matcher(block);
-                    while (bulletMatcher.find()) {
-                        String name = bulletMatcher.group(1).trim();
-                        if (!name.isEmpty() && name.length() > 2) {
-                            attendees.add(name);
-                        }
-                    }
+                    attendees.addAll(extractCommaSeparatedNames(block));
                 }
             }
         }
@@ -1143,22 +1133,6 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Method 4: Extract names from lines that look like names (capitalized words, 2-4 words)
-        if (attendees.isEmpty()) {
-            Pattern namePattern = Pattern.compile(
-                "(?i)Asistentes:.*?\\n((?:•|[-*]|\\d+\\.)?\\s*([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})(?:\\s*\\([^)]*\\))?)",
-                Pattern.MULTILINE | Pattern.DOTALL
-            );
-            Matcher nameMatcher = namePattern.matcher(content);
-            while (nameMatcher.find() && attendees.size() < 30) { // Limit to avoid false positives
-                String name = nameMatcher.group(2).trim();
-                // Filter out common words that might be capitalized
-                if (!name.matches("(?i)^(Se|La|El|Los|Las|De|Del|En|Por|Para|Con|Sin|Sobre|Bajo|Entre|Durante|Según|Mediante|Asistentes|Orden|Ruegos|Clausura)$")) {
-                    attendees.add(name);
-                }
-            }
-        }
-        
         // Clean and normalize names
         attendees = attendees.stream()
             .map(name -> name.trim())
@@ -1167,11 +1141,75 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             // Remove roles between parentheses (extracted separately)
             .map(name -> name.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim())
             .filter(name -> !name.isEmpty())
+            // Filter out descriptive text that might have been captured
+            .filter(name -> !name.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*"))
             .distinct()
             .collect(Collectors.toList());
         
         log().info("Extracted {} attendees: {}", attendees.size(), attendees);
         return attendees;
+    }
+    
+    /**
+     * Removes all text before the first list delimiter (bullet, dash, asterisk, or number).
+     * This discards introductory/descriptive text before the actual list.
+     */
+    private String removeTextBeforeFirstDelimiter(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return text;
+        }
+        
+        // Find the first occurrence of any list delimiter
+        Pattern delimiterPattern = Pattern.compile("(?:^|\\n)[^\\n]*?(?:•|\\s*[-*]|\\s*\\d+\\.)", Pattern.MULTILINE);
+        Matcher matcher = delimiterPattern.matcher(text);
+        
+        if (matcher.find()) {
+            // Return everything from the first delimiter onwards
+            int startIndex = matcher.start();
+            // Find the actual delimiter position
+            String remaining = text.substring(startIndex);
+            // Find the first delimiter in the remaining text
+            Pattern firstDelimiter = Pattern.compile("(?:•|[-*]|\\d+\\.)");
+            Matcher firstMatcher = firstDelimiter.matcher(remaining);
+            if (firstMatcher.find()) {
+                return remaining.substring(firstMatcher.start());
+            }
+            return remaining;
+        }
+        
+        // If no delimiter found, return original (might be comma-separated)
+        return text;
+    }
+    
+    /**
+     * Extracts names from a comma-separated list after ":".
+     * Example: "Asistentes: Juan Pérez, Marta González, Luis Ramírez"
+     */
+    private List<String> extractCommaSeparatedNames(String text) {
+        List<String> names = new ArrayList<>();
+        if (text == null || text.trim().isEmpty()) {
+            return names;
+        }
+        
+        // Look for pattern: ":" followed by names separated by commas
+        Pattern pattern = Pattern.compile(":\\s*([^\\n]+?)(?=\\n|$)", Pattern.MULTILINE);
+        Matcher matcher = pattern.matcher(text);
+        
+        if (matcher.find()) {
+            String namesText = matcher.group(1).trim();
+            // Split by comma
+            String[] nameParts = namesText.split(",");
+            for (String name : nameParts) {
+                name = name.trim();
+                // Filter out descriptive text
+                if (!name.isEmpty() && name.length() > 2 && 
+                    !name.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*")) {
+                    names.add(name);
+                }
+            }
+        }
+        
+        return names;
     }
 
     /**
