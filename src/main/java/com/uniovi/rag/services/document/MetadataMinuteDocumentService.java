@@ -1176,6 +1176,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     /**
      * Extraction of bullets with multiple supported formats.
+     * Handles both multi-line (one bullet per line) and single-line (multiple bullets separated by any list symbol) formats.
+     * Supports: • (bullet), - (dash), * (asterisk), and numbered lists (1., 2., etc.)
      */
     private List<String> extractBullets(String text) {
         List<String> items = new ArrayList<>();
@@ -1183,29 +1185,160 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return items;
         }
         
-        // Pattern 1: Standard bullets (•)
-        Pattern pattern1 = Pattern.compile("•\\s*(.+?)(?=\\n(?:•|\\s*$|Orden|Ruegos|Clausura))", Pattern.MULTILINE);
-        Matcher matcher1 = pattern1.matcher(text);
-        while (matcher1.find()) {
-            String item = matcher1.group(1).trim();
-            if (!item.isEmpty()) {
-                items.add(item);
-            }
-        }
+        // Detect the most common list symbol in the text
+        String detectedSymbol = detectListSymbol(text);
         
-        // Pattern 2: Alternative bullets (-, *, numbers) if not found with •
-        if (items.isEmpty()) {
-            Pattern pattern2 = Pattern.compile("(?:[-*]|\\d+\\.)\\s*(.+?)(?=\\n(?:[-*]|\\d+\\.|\\s*$|Orden|Ruegos|Clausura))", Pattern.MULTILINE);
-            Matcher matcher2 = pattern2.matcher(text);
-            while (matcher2.find()) {
-                String item = matcher2.group(1).trim();
-                if (!item.isEmpty()) {
-                    items.add(item);
+        // Method 1: Split by detected symbol if multiple items in same line
+        if (detectedSymbol != null) {
+            // Escape special regex characters
+            String escapedSymbol = Pattern.quote(detectedSymbol);
+            String[] parts = text.split(escapedSymbol);
+            if (parts.length > 1) {
+                // Multiple items separated by the same symbol
+                for (String part : parts) {
+                    String item = part.trim();
+                    // Remove leading/trailing list symbols and whitespace
+                    item = item.replaceAll("^[•\\-*\\d\\.\\s]+", "").replaceAll("[•\\-*\\d\\.\\s]+$", "").trim();
+                    if (!item.isEmpty() && item.length() > 2) {
+                        // Remove roles in parentheses (extracted separately)
+                        item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                        if (!item.isEmpty()) {
+                            items.add(item);
+                        }
+                    }
                 }
             }
         }
         
-        return items;
+        // Method 2: Pattern-based extraction (one item per line or separated by newlines)
+        if (items.isEmpty()) {
+            // Pattern for bullet points (•)
+            Pattern pattern1 = Pattern.compile("•\\s*([^•\\n]+?)(?=\\s*•|\\n|$)", Pattern.MULTILINE);
+            Matcher matcher1 = pattern1.matcher(text);
+            while (matcher1.find()) {
+                String item = matcher1.group(1).trim();
+                item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                if (!item.isEmpty() && item.length() > 2) {
+                    items.add(item);
+                }
+            }
+            
+            // Pattern for dashes (-)
+            if (items.isEmpty()) {
+                Pattern pattern2 = Pattern.compile("(?:^|\\n)\\s*-\\s*([^\\n\\-]+?)(?=\\s*-|\\n|$)", Pattern.MULTILINE);
+                Matcher matcher2 = pattern2.matcher(text);
+                while (matcher2.find()) {
+                    String item = matcher2.group(1).trim();
+                    item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                    if (!item.isEmpty() && item.length() > 2) {
+                        items.add(item);
+                    }
+                }
+            }
+            
+            // Pattern for asterisks (*)
+            if (items.isEmpty()) {
+                Pattern pattern3 = Pattern.compile("(?:^|\\n)\\s*\\*\\s*([^\\n\\*]+?)(?=\\s*\\*|\\n|$)", Pattern.MULTILINE);
+                Matcher matcher3 = pattern3.matcher(text);
+                while (matcher3.find()) {
+                    String item = matcher3.group(1).trim();
+                    item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                    if (!item.isEmpty() && item.length() > 2) {
+                        items.add(item);
+                    }
+                }
+            }
+            
+            // Pattern for numbered lists (1., 2., etc.)
+            if (items.isEmpty()) {
+                Pattern pattern4 = Pattern.compile("\\d+\\.\\s*([^\\n]+?)(?=\\n\\d+\\.|\\n|$)", Pattern.MULTILINE);
+                Matcher matcher4 = pattern4.matcher(text);
+                while (matcher4.find()) {
+                    String item = matcher4.group(1).trim();
+                    item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                    if (!item.isEmpty() && item.length() > 2) {
+                        items.add(item);
+                    }
+                }
+            }
+        }
+        
+        // Clean and deduplicate
+        return items.stream()
+            .map(String::trim)
+            .filter(item -> !item.isEmpty())
+            .filter(item -> item.length() > 2)
+            .distinct()
+            .collect(Collectors.toList());
+    }
+    
+    /**
+     * Detects the most common list symbol in the text.
+     * Returns the symbol that appears most frequently as a list marker.
+     */
+    private String detectListSymbol(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Count occurrences of each list symbol
+        int bulletCount = countOccurrences(text, "•");
+        int dashCount = countOccurrences(text, "-");
+        int asteriskCount = countOccurrences(text, "*");
+        int numberCount = countNumberedListItems(text);
+        
+        // Return the most common symbol
+        int maxCount = Math.max(Math.max(bulletCount, dashCount), Math.max(asteriskCount, numberCount));
+        
+        if (maxCount < 2) {
+            // Not enough items to be a list
+            return null;
+        }
+        
+        if (bulletCount == maxCount) return "•";
+        if (dashCount == maxCount) return "-";
+        if (asteriskCount == maxCount) return "*";
+        if (numberCount == maxCount) return "1."; // Represent numbered lists
+        
+        return null;
+    }
+    
+    /**
+     * Counts occurrences of a symbol that appear to be list markers (followed by text).
+     */
+    private int countOccurrences(String text, String symbol) {
+        if (text == null || symbol == null) {
+            return 0;
+        }
+        
+        // Count symbol followed by whitespace and text (not just punctuation)
+        String escapedSymbol = Pattern.quote(symbol);
+        Pattern pattern = Pattern.compile(escapedSymbol + "\\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]", Pattern.MULTILINE);
+        Matcher matcher = pattern.matcher(text);
+        
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+    
+    /**
+     * Counts numbered list items (1., 2., etc.).
+     */
+    private int countNumberedListItems(String text) {
+        if (text == null) {
+            return 0;
+        }
+        
+        Pattern pattern = Pattern.compile("\\d+\\.\\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]", Pattern.MULTILINE);
+        Matcher matcher = pattern.matcher(text);
+        
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
     }
 
     /**
