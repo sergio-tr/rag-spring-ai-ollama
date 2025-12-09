@@ -28,7 +28,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
 
-        log().debug("Executing summarize meeting query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing summarize meeting query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
 
         List<Document> docs = retrieveDocumentsWithFallback(
             query,
@@ -57,7 +57,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         List<SummaryResult> rankedResults = analyzeAndRankSummaries(results);
 
         String answer = generateSummaryAnswer(query, rankedResults);
-        log().debug("Generated summarize meeting answer for query: {} with {} summaries", query, results.size());
+        log().info("Generated summarize meeting answer for query: {} with {} summaries", query, results.size());
 
         return ToolResult.from(answer, getClass());
     }
@@ -148,7 +148,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             String response = getLLMResponseCached(prompt);
 
             if (response == null || response.trim().isEmpty()) {
-                log().debug("Empty response from LLM in generateSummaryWithLLM, returning empty string");
+                log().info("Empty response from LLM in generateSummaryWithLLM, returning empty string");
                 return "";
             }
 

@@ -26,27 +26,27 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing boolean query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing boolean query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "decisions", "topics", "summary"}, ner);
         
         if (docs.isEmpty()) {
-            log().debug("No documents found for query: {}", query);
+            log().info("No documents found for query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for query: {}", query);
+            log().info("No valid minutes found for query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for query: {}", query);
+            log().info("No relevant minutes found for query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
@@ -54,13 +54,13 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         List<String> evidence = extractEvidenceInParallel(query, relevantMinutes);
         
         if (evidence.isEmpty()) {
-            log().debug("No evidence found for query: {}", query);
+            log().info("No evidence found for query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 5: Generate final answer
         String answer = generateBooleanAnswerWithLLM(query, evidence, relevantMinutes.size());
-        log().debug("Generated answer for query: {} with {} evidence pieces", query, evidence.size());
+        log().info("Generated answer for query: {} with {} evidence pieces", query, evidence.size());
         
         return ToolResult.from(answer, getClass());
     }
@@ -103,7 +103,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         String response = getLLMResponseCached(prompt);
         
         if (response == null || response.trim().isEmpty()) {
-            log().debug("Empty evidence extracted from minute: {}", minute.id());
+            log().info("Empty evidence extracted from minute: {}", minute.id());
             return "";
         }
         

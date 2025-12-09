@@ -46,12 +46,12 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
         
         // If filtering removed all documents, try less aggressive filtering
         if (filtered.isEmpty() && !retrievedDocs.isEmpty()) {
-            log().debug("Metadata filtering removed all documents, trying less aggressive filtering");
+            log().info("Metadata filtering removed all documents, trying less aggressive filtering");
             filtered = filterDocumentsByMetadataLenient(retrievedDocs, nerEntities);
             
             // If still empty, return unfiltered documents
             if (filtered.isEmpty()) {
-                log().debug("Lenient filtering also removed all documents, returning unfiltered documents (limit: {})", topK);
+                log().info("Lenient filtering also removed all documents, returning unfiltered documents (limit: {})", topK);
                 return retrievedDocs.stream().limit(topK).collect(Collectors.toList());
             }
         }
@@ -127,7 +127,7 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
                 
                 // If no year match at all, filter out
                 if (!hasYearMatch) {
-                    log().debug("Document filtered out by year mismatch: docDate={}, nerDates={}", docDate, nerDates);
+                    log().info("Document filtered out by year mismatch: docDate={}, nerDates={}", docDate, nerDates);
                     return false;
                 }
                 
@@ -204,13 +204,13 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
                     }
                 }
                 if (!dateMatches) {
-                    log().debug("Document filtered out by date mismatch: docDate={}, nerDates={}", docDate, nerDates);
+                    log().info("Document filtered out by date mismatch: docDate={}, nerDates={}", docDate, nerDates);
                     return false;
                 }
             } else {
                 // If document has no date but NER requires date, be more lenient
                 // Don't filter out - let other filters decide
-                log().debug("Document has no date metadata, skipping date filter");
+                log().info("Document has no date metadata, skipping date filter");
             }
         }
         
@@ -248,7 +248,7 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
                     }
                 }
                 if (!placeMatches) {
-                    log().debug("Document filtered out by place mismatch: docPlace={}, nerPlaces={}", docPlace, nerPlaces);
+                    log().info("Document filtered out by place mismatch: docPlace={}, nerPlaces={}", docPlace, nerPlaces);
                     return false;
                 }
             }

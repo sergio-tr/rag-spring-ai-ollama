@@ -26,7 +26,7 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing get duration query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing get duration query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(
@@ -36,28 +36,28 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         );
         
         if (docs.isEmpty()) {
-            log().debug("No documents found for get duration query: {}", query);
+            log().info("No documents found for get duration query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for get duration query: {}", query);
+            log().info("No valid minutes found for get duration query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for get duration query: {}", query);
+            log().info("No relevant minutes found for get duration query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 4: Extract durations in parallel
         List<DurationResult> results = extractDurationsInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
-            log().debug("No durations extracted for query: {}", query);
+            log().info("No durations extracted for query: {}", query);
             return ToolResult.from(generateNoDataMessage(query), getClass());
         }
 
@@ -69,7 +69,7 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
 
         // Step 7: Generate final answer (metadata-only)
         String answer = generateDurationAnswer(query, rankedResults, analysis);
-        log().debug("Generated get duration answer for query: {} with {} durations", 
+        log().info("Generated get duration answer for query: {} with {} durations", 
                    query, results.size());
         
         return ToolResult.from(answer, getClass());

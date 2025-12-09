@@ -26,7 +26,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing decision extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing decision extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(
@@ -36,28 +36,28 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         );
         
         if (docs.isEmpty()) {
-            log().debug("No documents found for decision extraction query: {}", query);
+            log().info("No documents found for decision extraction query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for decision extraction query: {}", query);
+            log().info("No valid minutes found for decision extraction query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for decision extraction query: {}", query);
+            log().info("No relevant minutes found for decision extraction query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 4: Extract decisions in parallel
         List<Decision> decisions = extractDecisionsInParallel(query, relevantMinutes);
         if (decisions.isEmpty()) {
-            log().debug("No relevant decisions found for query: {}", query);
+            log().info("No relevant decisions found for query: {}", query);
             return ToolResult.from(generateNoDataMessage(query), getClass());
         }
 
@@ -69,7 +69,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
 
         // Step 7: Generate enhanced final answer
         String answer = generateEnhancedDecisionAnswer(query, rankedDecisions, clusters);
-        log().debug("Generated decision extraction answer for query: {} with {} decisions in {} clusters", 
+        log().info("Generated decision extraction answer for query: {} with {} decisions in {} clusters", 
                    query, decisions.size(), clusters.size());
         
         return ToolResult.from(answer, getClass());

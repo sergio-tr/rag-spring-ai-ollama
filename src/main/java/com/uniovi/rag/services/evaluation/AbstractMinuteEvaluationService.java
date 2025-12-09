@@ -111,7 +111,7 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
         if (responseCode != HttpURLConnection.HTTP_OK) {
             throw new IOException("Error al enviar archivo: " + file.getName() + ". Código: " + responseCode);
         } else {
-            log().debug("Archivo enviado correctamente: " + file.getName());
+            log().info("Archivo enviado correctamente: " + file.getName());
         }
     }
 

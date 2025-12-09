@@ -313,7 +313,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             try {
                 return objectMapper.readValue(json, Minute.class);
             } catch (Exception ex) {
-                log().debug("Failed to deserialize Minute from JSON, attempting reconstruction from fields", ex);
+                log().info("Failed to deserialize Minute from JSON, attempting reconstruction from fields", ex);
             }
         }
         
@@ -513,14 +513,14 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
         if (ner.has("mentionedEntities") && !ner.getJSONArray("mentionedEntities").isEmpty()) {
             if (!matchesMentionedEntities(minute, ner)) {
-                log().debug("Minute {} filtered out by mentionedEntities mismatch", minute.id());
+                log().info("Minute {} filtered out by mentionedEntities mismatch", minute.id());
                 return false;
             }
         }
 
         if (ner.has("agenda") && !ner.getJSONArray("agenda").isEmpty()) {
             if (!matchesAgendaItems(minute, ner)) {
-                log().debug("Minute {} filtered out by agenda items mismatch", minute.id());
+                log().info("Minute {} filtered out by agenda items mismatch", minute.id());
                 return false;
             }
         }
@@ -623,12 +623,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         });
                 
                 if (found) {
-                    log().debug("Found matching agenda item: NER='{}' matches Minute agenda", nerAgendaItem);
+                    log().info("Found matching agenda item: NER='{}' matches Minute agenda", nerAgendaItem);
                     return true; // At least one match found
                 }
             }
             
-            log().debug("No matching agenda items found. NER agenda: {}, Minute agenda: {}", 
+            log().info("No matching agenda items found. NER agenda: {}, Minute agenda: {}", 
                        nerAgenda, minute.agenda());
             return false; // No matches found
         } catch (Exception e) {
@@ -670,13 +670,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     if (minuteEntityLower.equals(nerEntity) ||
                         minuteEntityLower.contains(nerEntity) ||
                         nerEntity.contains(minuteEntityLower)) {
-                        log().debug("Found matching entity: NER='{}' matches Minute='{}'", nerEntity, minuteEntity);
+                        log().info("Found matching entity: NER='{}' matches Minute='{}'", nerEntity, minuteEntity);
                         return true; // At least one match found
                     }
                 }
             }
             
-            log().debug("No matching entities found. NER entities: {}, Minute entities: {}", 
+            log().info("No matching entities found. NER entities: {}, Minute entities: {}", 
                        nerEntities, minute.mentionedEntities());
             return false; // No matches found
         } catch (Exception e) {
@@ -839,18 +839,18 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         // Critical fields: id, filename, date
         if (minute.id() == null || minute.id().trim().isEmpty()) {
-            log().debug("Minute missing id, filtering out");
+            log().info("Minute missing id, filtering out");
             return false;
         }
         
         if (minute.filename() == null || minute.filename().trim().isEmpty()) {
-            log().debug("Minute missing filename, filtering out");
+            log().info("Minute missing filename, filtering out");
             return false;
         }
         
         // Date is critical for most queries
         if (minute.date() == null || minute.date().trim().isEmpty()) {
-            log().debug("Minute {} missing date, filtering out", minute.id());
+            log().info("Minute {} missing date, filtering out", minute.id());
             return false;
         }
         
@@ -880,7 +880,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         boolean hasUseful = hasTopics || hasDecisions || hasSummary || hasAttendees || hasAgenda || hasMentionedEntities;
         
         if (!hasUseful) {
-            log().debug("Minute {} has no useful data fields, filtering out", minute.id());
+            log().info("Minute {} has no useful data fields, filtering out", minute.id());
         }
         
         return hasUseful;
@@ -897,13 +897,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return minutes;
         }
         
-        log().debug("Starting to filter {} minutes for query: {}", minutes.size(), query);
+        log().info("Starting to filter {} minutes for query: {}", minutes.size(), query);
         
         // STEP 1: Pre-filter by date (if NER has date) - MORE FLEXIBLE
         List<Minute> preFiltered = minutes;
         if (ner != null && ner.has("date") && !ner.getJSONArray("date").isEmpty() && minutes.size() > 50) {
             preFiltered = preFilterMinutesFast(minutes, ner);
-            log().debug("Pre-filtered {} minutes to {} using flexible date matching", minutes.size(), preFiltered.size());
+            log().info("Pre-filtered {} minutes to {} using flexible date matching", minutes.size(), preFiltered.size());
             
             // If pre-filtering removed too many, use original list
             if (preFiltered.size() < minutes.size() * 0.1) {
@@ -934,7 +934,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .limit(50) // Increased from 25 to 50
                     .collect(Collectors.toList());
             
-            log().debug("Direct matching filtered {} minutes to {}", preFiltered.size(), directMatched.size());
+            log().info("Direct matching filtered {} minutes to {}", preFiltered.size(), directMatched.size());
         }
         
         // STEP 3: LLM-based filtering (reduced to single pass) - WITH FALLBACK
@@ -953,7 +953,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .limit(40) // Increased from 15 to 40
                     .collect(Collectors.toList());
             
-            log().debug("NER matching filtered {} minutes to {}", directMatched.size(), filtered.size());
+            log().info("NER matching filtered {} minutes to {}", directMatched.size(), filtered.size());
             
             // If NER filtering removed too many, use direct matched
             if (filtered.isEmpty() && !directMatched.isEmpty()) {
@@ -976,7 +976,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .limit(30) // Final limit
                     .collect(Collectors.toList());
             
-            log().debug("Relevance filtering reduced to {} minutes", filtered.size());
+            log().info("Relevance filtering reduced to {} minutes", filtered.size());
         }
         
         // Final fallback: if still empty, return at least some minutes (sorted by relevance)
@@ -1000,7 +1000,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .collect(Collectors.toList());
         }
         
-        log().debug("Final filtered {} relevant minutes from {} total", filtered.size(), minutes.size());
+        log().info("Final filtered {} relevant minutes from {} total", filtered.size(), minutes.size());
         return filtered;
     }
     
@@ -1115,7 +1115,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return parsed1.equals(parsed2);
             }
         } catch (Exception e) {
-            log().debug("Error parsing dates for comparison: {} vs {}", date1, date2);
+            log().info("Error parsing dates for comparison: {} vs {}", date1, date2);
         }
         
         return false;
@@ -1153,7 +1153,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Filters minutes using NER entities intelligently
      */
     protected List<Minute> filterMinutesWithNER(String query, List<Minute> minutes, JSONObject ner) {
-        log().debug("Filtering {} minutes with NER entities", minutes.size());
+        log().info("Filtering {} minutes with NER entities", minutes.size());
         
         return minutes.parallelStream()
                 .filter(minute -> matchesMinuteWithNERCached(minute, ner))
@@ -1173,7 +1173,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Filters minutes by query relevance using LLM
      */
     protected List<Minute> filterMinutesByQueryRelevance(String query, List<Minute> minutes) {
-        log().debug("Filtering {} minutes by query relevance", minutes.size());
+        log().info("Filtering {} minutes by query relevance", minutes.size());
         
         return minutes.parallelStream()
                 .filter(minute -> isRelevantToQueryCached(query, minute))
@@ -1345,7 +1345,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         // Deduplicate documents, selecting chunk with most complete metadata
         List<Document> deduplicatedDocs = deduplicateDocuments(metadataDocs);
 
-        log().debug("Retrieved {} unique documents from {} chunks ({} total retrieved, {} after metadata filter)",
+        log().info("Retrieved {} unique documents from {} chunks ({} total retrieved, {} after metadata filter)",
                 deduplicatedDocs.size(), metadataDocs.size(), docs.size(), metadataDocs.size());
         return deduplicatedDocs;
     }
@@ -1401,7 +1401,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return true;
             }
             // If minute is malformed, continue with validation of individual fields
-            log().debug("Document has 'minute' key but value is malformed, checking individual fields");
+            log().info("Document has 'minute' key but value is malformed, checking individual fields");
         }
         
         // Check if it has at least one relevant field (more permissive)
@@ -1526,16 +1526,16 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     docs = deduplicateDocuments(docs);
 
                     if (!docs.isEmpty()) {
-                        log().debug("Retrieved {} documents using NER-based retrieval with metadata filters", docs.size());
+                        log().info("Retrieved {} documents using NER-based retrieval with metadata filters", docs.size());
                         return docs;
                     } else {
-                        log().debug("NER-based retrieval returned no documents after filtering, trying fallback");
+                        log().info("NER-based retrieval returned no documents after filtering, trying fallback");
                     }
                 } catch (Exception e) {
                     log().warn("Error using NER-based retrieval, falling back to basic retrieval: {}", e.getMessage());
                 }
             } else {
-                log().debug("NER entities present but no useful fields, skipping NER-based retrieval");
+                log().info("NER entities present but no useful fields, skipping NER-based retrieval");
             }
         }
         
@@ -1544,13 +1544,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         // Fallback 1: If empty, try basic retrieval
         if (docs.isEmpty()) {
-            log().debug("Metadata filtering returned no documents, trying basic retrieval");
+            log().info("Metadata filtering returned no documents, trying basic retrieval");
             docs = retrieveDocuments(query);
         }
         
         // Fallback 2: If still empty, try with higher topK and lower threshold
         if (docs.isEmpty()) {
-            log().debug("Basic retrieval returned no documents after metadata filter");
+            log().info("Basic retrieval returned no documents after metadata filter");
         }
         
         return docs;
@@ -1581,7 +1581,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         int existingFields = countMetadataFields(existing);
                         int replacementFields = countMetadataFields(replacement);
                         if (replacementFields > existingFields) {
-                            log().debug("Selecting replacement chunk with {} metadata fields (existing had {})", 
+                            log().info("Selecting replacement chunk with {} metadata fields (existing had {})", 
                                       replacementFields, existingFields);
                             return replacement;
                         }
@@ -1590,7 +1590,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 ));
         
         List<Document> deduplicated = new ArrayList<>(uniqueDocuments.values());
-        log().debug("Deduplicated {} documents from {} chunks", deduplicated.size(), docs.size());
+        log().info("Deduplicated {} documents from {} chunks", deduplicated.size(), docs.size());
         return deduplicated;
     }
     
@@ -1841,7 +1841,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         int head = (int) (maxChars * 0.65); // mantener más cabecera
         int tail = maxChars - head;
         String truncated = trimmed.substring(0, head) + "\n...\n" + trimmed.substring(trimmed.length() - tail);
-        log().debug("Prompt content truncated from {} to {} characters", trimmed.length(), truncated.length());
+        log().info("Prompt content truncated from {} to {} characters", trimmed.length(), truncated.length());
         return truncated;
     }
 }

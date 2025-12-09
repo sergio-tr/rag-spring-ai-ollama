@@ -26,7 +26,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing summarize topic query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing summarize topic query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(
@@ -36,28 +36,28 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         );
         
         if (docs.isEmpty()) {
-            log().debug("No documents found for summarize topic query: {}", query);
+            log().info("No documents found for summarize topic query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for summarize topic query: {}", query);
+            log().info("No valid minutes found for summarize topic query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for summarize topic query: {}", query);
+            log().info("No relevant minutes found for summarize topic query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 4: Generate topic summaries in parallel (metadata-first, LLM fallback)
         List<TopicResult> results = generateTopicSummariesInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
-            log().debug("No topic summaries generated for query: {}", query);
+            log().info("No topic summaries generated for query: {}", query);
             return ToolResult.from(generateNoDataMessage(query), getClass());
         }
 
@@ -66,7 +66,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
         // Step 6: Generate final answer (metadata-only)
         String answer = generateTopicSummaryAnswer(query, rankedResults);
-        log().debug("Generated summarize topic answer for query: {} with {} topic summaries", 
+        log().info("Generated summarize topic answer for query: {} with {} topic summaries", 
                    query, results.size());
         
         return ToolResult.from(answer, getClass());
@@ -160,7 +160,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         try {
             String response = getLLMResponseCached(prompt);
             if (response == null || response.trim().isEmpty()) {
-                log().debug("Empty response from LLM in generateTopicSummaryWithLLM, returning empty string");
+                log().info("Empty response from LLM in generateTopicSummaryWithLLM, returning empty string");
                 return "";
             }
             return response;

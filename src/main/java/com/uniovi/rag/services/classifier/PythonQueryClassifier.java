@@ -26,7 +26,7 @@ public class PythonQueryClassifier implements QueryClassifier {
             queryType = null;
         }
 
-        log().debug("[CLASSIFIER] Query type: " + queryType);
+        log().info("[CLASSIFIER] Query type: " + queryType);
 
         return queryType;
     }
@@ -43,12 +43,12 @@ public class PythonQueryClassifier implements QueryClassifier {
 
             BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
 
-            log().debug("[CLASSIFIER] Salida de Python");
+            log().info("[CLASSIFIER] Salida de Python");
             String lastLine = null;
             String line;
 
             while ((line = reader.readLine()) != null) {
-                log().debug("[CLASSIFIER] " + line);
+                log().info("[CLASSIFIER] " + line);
                 lastLine = line;
             }
 

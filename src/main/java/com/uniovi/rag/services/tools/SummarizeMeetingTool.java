@@ -28,7 +28,7 @@ public class SummarizeMeetingTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing summarize meeting query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing summarize meeting query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         List<Document> docs = retrieveDocuments(query);
         List<String> fragments = new ArrayList<>();

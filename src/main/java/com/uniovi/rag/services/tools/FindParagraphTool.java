@@ -30,7 +30,7 @@ public class FindParagraphTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing find paragraph query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing find paragraph query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         List<Document> docs = retrieveDocuments(query);
         List<String> results = new ArrayList<>();

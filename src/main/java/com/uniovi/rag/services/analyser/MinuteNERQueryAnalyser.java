@@ -165,7 +165,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
         String cleanResponse = cleanJsonResponse(response);
         
-        log().debug("NER-QUERY: Raw response length: {}, Cleaned response:\n{}", response.length(), cleanResponse);
+        log().info("NER-QUERY: Raw response length: {}, Cleaned response:\n{}", response.length(), cleanResponse);
 
         if (!cleanResponse.trim().startsWith("{")) {
             log().warn("NER: Response does not start with {{, attempting to extract JSON");
@@ -174,7 +174,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             int endIdx = cleanResponse.lastIndexOf("}");
             if (startIdx >= 0 && endIdx > startIdx) {
                 cleanResponse = cleanResponse.substring(startIdx, endIdx + 1);
-                log().debug("NER: Extracted JSON substring: {}", cleanResponse);
+                log().info("NER: Extracted JSON substring: {}", cleanResponse);
             } else {
                 log().error("NER: Response does not contain valid JSON structure for query: {}", query);
                 return createFallbackResponse(query);
@@ -186,7 +186,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             validateAndNormalize(json);
             enhanceWithContextAnalysis(json, query);
             
-            log().debug("NER: Successfully parsed and normalized JSON for query: {}", query);
+            log().info("NER: Successfully parsed and normalized JSON for query: {}", query);
             return json;
         } catch (org.json.JSONException e) {
             log().error("NER: JSON parsing error for query '{}': {}", query, e.getMessage(), e);
@@ -527,7 +527,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             }
             return defaultValue;
         } catch (Exception e) {
-            log().debug("Error getting string value for key '{}': {}", key, e.getMessage());
+            log().info("Error getting string value for key '{}': {}", key, e.getMessage());
             return defaultValue;
         }
     }

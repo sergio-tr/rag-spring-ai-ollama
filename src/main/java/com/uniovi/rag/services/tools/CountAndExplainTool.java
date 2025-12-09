@@ -32,7 +32,7 @@ public class CountAndExplainTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing count and explain query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing count and explain query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         List<Document> docs = retrieveDocuments(query);
         List<String> explanations = new ArrayList<>();

@@ -27,7 +27,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing filter and list query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing filter and list query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(
@@ -37,28 +37,28 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         );
         
         if (docs.isEmpty()) {
-            log().debug("No documents found for filter and list query: {}", query);
+            log().info("No documents found for filter and list query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for filter and list query: {}", query);
+            log().info("No valid minutes found for filter and list query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for filter and list query: {}", query);
+            log().info("No relevant minutes found for filter and list query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
         // Step 4: Generate summaries in parallel (metadata-first, LLM fallback)
         List<FilterResult> results = generateSummariesInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
-            log().debug("No summaries generated for query: {}", query);
+            log().info("No summaries generated for query: {}", query);
             return ToolResult.from(generateNoDataMessage(query), getClass());
         }
 
@@ -70,7 +70,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
 
         // Step 7: Generate enhanced final answer
         String answer = generateEnhancedFilterAnswer(query, rankedResults, clusters);
-        log().debug("Generated filter and list answer for query: {} with {} results in {} clusters", 
+        log().info("Generated filter and list answer for query: {} with {} results in {} clusters", 
                    query, results.size(), clusters.size());
         
         return ToolResult.from(answer, getClass());
@@ -175,7 +175,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         try {
             String response = getLLMResponseCached(prompt);
             if (response == null || response.trim().isEmpty()) {
-                log().debug("Empty response from LLM in buildSummaryExplanation, returning empty string");
+                log().info("Empty response from LLM in buildSummaryExplanation, returning empty string");
                 return "";
             }
             return response.trim();

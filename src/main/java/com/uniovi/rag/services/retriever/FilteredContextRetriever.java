@@ -85,11 +85,11 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
 
             // Validate filtered content
             if (filteredContent == null || filteredContent.isEmpty()) {
-                log().debug("Filtered content is empty for document: {}", doc.getId());
+                log().info("Filtered content is empty for document: {}", doc.getId());
                 return "";
             }
 
-            log().debug("Filtered content length: {} (original: {})", 
+            log().info("Filtered content length: {} (original: {})", 
                        filteredContent.length(), doc.getContent().length());
             return filteredContent;
         } catch (Exception e) {
