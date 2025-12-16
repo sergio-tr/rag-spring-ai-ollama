@@ -170,9 +170,30 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
      * Genera respuesta directa usando solo metadatos.
      */
     private String generateFieldAnswer(String query, List<FieldResult> results, String detectedField) {
+        if (results == null || results.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
         String queryLower = query.toLowerCase();
         boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
         
+        boolean isSpecificQuery = isSpecificDateQuery(query);
+        
+        // If specific query and we have exactly one result, return specific format
+        if (isSpecificQuery && results.size() == 1) {
+            FieldResult result = results.get(0);
+            if (isSpanish) {
+                return String.format("%s para %s.", 
+                    result.getFieldValue(),
+                    result.getDate() != null ? result.getDate() : "fecha desconocida");
+            } else {
+                return String.format("%s for %s.", 
+                    result.getFieldValue(),
+                    result.getDate() != null ? result.getDate() : "unknown date");
+            }
+        }
+        
+        // Generic format for multiple results or non-specific queries
         if (isSpanish) {
             return String.format("Se encontraron %d valores para el campo '%s':\n%s",
                               results.size(),
@@ -190,6 +211,38 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                                       .map(r -> String.format("- %s: %s", r.getDate() != null ? r.getDate() : "unknown date", r.getFieldValue()))
                                       .collect(Collectors.joining("\n")));
         }
+    }
+    
+    /**
+     * Detects if query contains a specific date.
+     */
+    private boolean isSpecificDateQuery(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
+        // Check for date patterns in query
+        String queryLower = query.toLowerCase();
+        
+        // Spanish date patterns
+        if (queryLower.matches(".*\\d{1,2}\\s+de\\s+[a-z]+\\s+de\\s+\\d{4}.*") ||
+            queryLower.matches(".*\\d{1,2}/\\d{1,2}/\\d{4}.*") ||
+            queryLower.matches(".*\\d{4}-\\d{2}-\\d{2}.*")) {
+            return true;
+        }
+        
+        // English date patterns
+        if (queryLower.matches(".*\\d{1,2}/\\d{1,2}/\\d{4}.*") ||
+            queryLower.matches(".*\\d{4}-\\d{2}-\\d{2}.*")) {
+            return true;
+        }
+        
+        // Check for phrases that indicate specific date query
+        if (queryLower.contains("del ") && queryLower.matches(".*\\d{4}.*")) {
+            return true;
+        }
+        
+        return false;
     }
 
 }

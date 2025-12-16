@@ -195,6 +195,14 @@ public class ProcessQueryService implements QueryService {
                 break;
             } catch (Exception e) {
                 lastException = e;
+                String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+                
+                if (errorMsg.contains("duplicate element")) {
+                    log().warn("Duplicate element error detected for tool {} on attempt {}: {}. Skipping retries as this won't resolve with retry.", 
+                              queryType, attempt + 1, e.getMessage());
+                    break; // Don't retry for duplicate element errors
+                }
+                
                 log().warn("Error executing tool {} on attempt {}: {}", queryType, attempt + 1, e.getMessage());
                 if (attempt < MAX_RETRIES) {
                     continue; // Retry

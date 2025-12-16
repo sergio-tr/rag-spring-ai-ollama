@@ -148,6 +148,30 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
             return generateNotFoundMessage(query);
         }
 
+        boolean isSpecificQuery = isSpecificDateQuery(query);
+        
+        // If specific query and we have exactly one result, return specific format
+        if (isSpecificQuery && results.size() == 1) {
+            DurationResult result = results.get(0);
+            String queryLower = query.toLowerCase();
+            boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+            
+            if (isSpanish) {
+                return String.format("La reunión del %s duró %d minutos (%s - %s).",
+                    result.getDate() != null ? result.getDate() : "fecha desconocida",
+                    result.getDurationMinutes(),
+                    result.getStartTime() != null ? result.getStartTime() : "?",
+                    result.getEndTime() != null ? result.getEndTime() : "?");
+            } else {
+                return String.format("The meeting on %s lasted %d minutes (%s - %s).",
+                    result.getDate() != null ? result.getDate() : "unknown date",
+                    result.getDurationMinutes(),
+                    result.getStartTime() != null ? result.getStartTime() : "?",
+                    result.getEndTime() != null ? result.getEndTime() : "?");
+            }
+        }
+
+        // Generic format for multiple results or non-specific queries
         StringBuilder sb = new StringBuilder();
         String queryLower = query.toLowerCase();
         boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
@@ -178,6 +202,38 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         });
 
         return sb.toString().trim();
+    }
+    
+    /**
+     * Detects if query contains a specific date.
+     */
+    private boolean isSpecificDateQuery(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
+        // Check for date patterns in query
+        String queryLower = query.toLowerCase();
+        
+        // Spanish date patterns
+        if (queryLower.matches(".*\\d{1,2}\\s+de\\s+[a-z]+\\s+de\\s+\\d{4}.*") ||
+            queryLower.matches(".*\\d{1,2}/\\d{1,2}/\\d{4}.*") ||
+            queryLower.matches(".*\\d{4}-\\d{2}-\\d{2}.*")) {
+            return true;
+        }
+        
+        // English date patterns
+        if (queryLower.matches(".*\\d{1,2}/\\d{1,2}/\\d{4}.*") ||
+            queryLower.matches(".*\\d{4}-\\d{2}-\\d{2}.*")) {
+            return true;
+        }
+        
+        // Check for phrases that indicate specific date query
+        if (queryLower.contains("del ") && queryLower.matches(".*\\d{4}.*")) {
+            return true;
+        }
+        
+        return false;
     }
 
 }

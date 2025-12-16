@@ -26,29 +26,50 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
     protected final static PromptTemplate EVALUATION_PROMPT_TEMPLATE = new PromptTemplate("""
         Act as an expert evaluator of RAG (Retrieval-Augmented Generation) systems. 
-        Assess the quality of a generated answer to a question by comparing it with the expected correct answer.
+        Assess the quality of a generated answer by determining if it correctly answers the question.
+        
+        **CRITICAL EVALUATION PRINCIPLES**:
+        1. **Focus on the question, not exact word matching**: The "Expected Correct Answer" is only a GUIDE showing what information should be present. The generated answer does NOT need to match it word-for-word.
+        2. **Evaluate if the answer responds to the question**: Determine if the generated answer provides the information needed to answer the question, even if it's shorter, longer, or worded differently than the expected answer.
+        3. **Key information presence**: Check if the essential information requested by the question is present in the generated answer, regardless of format or additional details.
+        4. **Context understanding**: Understand what the question is actually asking for. For example:
+           - If asked "Which acta had the longest duration?", the answer should identify the acta (date/identifier), not necessarily include the exact duration.
+           - If asked "What was the duration?", the answer should include the duration value.
         
         **IMPORTANT**: Do not invent or use any external knowledge. 
-        Evaluate only what can be inferred from the three provided inputs: the question, the expected correct answer, and the system-generated answer.
+        Evaluate only what can be inferred from the three provided inputs: the question, the expected correct answer (as a guide), and the system-generated answer.
         
         Question: {question}
-        Expected Correct Answer: {correctAnswer}
+        Expected Correct Answer (GUIDE ONLY - not required to match exactly): {correctAnswer}
         System-Generated Answer: {generatedAnswer}
         
         Evaluate the following criteria on a scale from 1 to 5:
         
-        1. **Correctness**: Is the answer correct based on what was expected?
+        1. **Correctness**: Does the answer correctly respond to what the question is asking? 
+           - Consider if the essential information requested is present, even if formatted differently.
+           - Do NOT penalize for missing details that weren't explicitly asked for in the question.
+           - Example: If asked "Which acta?", answering with the date is correct, even if duration details are missing.
+        
         2. **Context Sufficiency**: Is it possible to answer correctly with the information provided?
-        3. **Relevance**: Does the answer address only what was asked, without digressions?
+        
+        3. **Relevance**: Does the answer address what was asked, without unnecessary digressions?
+           - A shorter answer that directly answers the question is better than a longer one with irrelevant details.
+        
         4. **Independence**: Can the answer be understood on its own, without relying on additional context?
+        
+        **Scoring Guidelines**:
+        - Score 5 if the answer correctly responds to the question, even if it's shorter or worded differently than expected.
+        - Score 4-5 if the answer contains the essential information requested, even if some non-essential details are missing.
+        - Score 3-4 if the answer is partially correct but missing some important information.
+        - Score 1-2 only if the answer is incorrect, irrelevant, or doesn't address the question.
         
         Respond in this format:
         
-        Correctness: [1-5] - Justification: ...
+        Correctness: [1-5] - Justification: [Focus on whether the answer responds to the question, not word matching]
         Context Sufficiency: [1-5] - Justification: ...
         Relevance: [1-5] - Justification: ...
         Independence: [1-5] - Justification: ...
-        Overall Summary: [Brief overall assessment of the answer quality]
+        Overall Summary: [Brief overall assessment focusing on whether the answer correctly responds to the question]
         """);
 
 

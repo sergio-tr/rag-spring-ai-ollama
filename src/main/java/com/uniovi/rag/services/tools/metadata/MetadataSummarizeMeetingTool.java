@@ -97,6 +97,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         if (minute == null) {
             return "";
         }
+        // Build summary from metadata - this will be refined by LLM if needed
         List<String> parts = new ArrayList<>();
         if (minute.summary() != null && !minute.summary().isBlank()) {
             parts.add(minute.summary());
@@ -120,10 +121,19 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             return "";
         }
 
+        // Extract key information from query to focus the summary
+        String queryFocus = extractQueryFocus(query);
+        
         String prompt = String.format("""
-            Summarize the meeting in 3-4 sentences, prioritizing what is most relevant to the query.
-            Write in the same language as the query.
-            Query: %s
+            You are summarizing a meeting minute. The user asked: "%s"
+            
+            CRITICAL: Your summary MUST directly answer what the user is asking for in the query.
+            - Focus on the specific information requested in the query
+            - If the query asks about a specific topic/aspect, prioritize that in your summary
+            - If the query asks for a general summary, provide a comprehensive overview
+            - Write in the same language as the query
+            
+            Meeting information:
             Date: %s
             Place: %s
             President: %s
@@ -132,6 +142,11 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             Decisions: %s
             Agenda: %s
             Previous summary: %s
+            
+            Query focus: %s
+            
+            Write a concise summary (3-4 sentences) that directly addresses the user's query.
+            Make sure the summary is relevant to what was asked, not just a generic meeting description.
             """,
             query,
             minute.date() != null ? minute.date() : "unknown",
@@ -141,7 +156,8 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
             minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
             minute.agenda() != null ? minute.agenda().toString() : "unknown",
-            minute.summary() != null ? minute.summary() : ""
+            minute.summary() != null ? minute.summary() : "",
+            queryFocus
         );
 
         try {
@@ -176,9 +192,6 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
 
         StringBuilder sb = new StringBuilder();
-        sb.append(isSpanish
-                ? String.format("Se encontraron %d actas relevantes.\n", results.size())
-                : String.format("Found %d relevant minutes.\n", results.size()));
 
         results.stream().limit(5).forEach(r -> {
             if (r.getDate() != null) {
@@ -194,6 +207,45 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         });
 
         return sb.toString().trim();
+    }
+    
+    /**
+     * Extracts the focus/key aspect of the query to guide summary generation.
+     */
+    private String extractQueryFocus(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return "general summary";
+        }
+        
+        String queryLower = query.toLowerCase();
+        
+        // Detect specific aspects being asked about
+        if (queryLower.contains("decisión") || queryLower.contains("decision") || 
+            queryLower.contains("acuerdo") || queryLower.contains("acord")) {
+            return "decisions and agreements";
+        }
+        if (queryLower.contains("tema") || queryLower.contains("topic") || 
+            queryLower.contains("asunto") || queryLower.contains("subject")) {
+            return "topics discussed";
+        }
+        if (queryLower.contains("asistente") || queryLower.contains("attendee") || 
+            queryLower.contains("participante")) {
+            return "attendees and participants";
+        }
+        if (queryLower.contains("presidente") || queryLower.contains("president") ||
+            queryLower.contains("secretario") || queryLower.contains("secretary")) {
+            return "meeting leadership";
+        }
+        if (queryLower.contains("lugar") || queryLower.contains("place") || 
+            queryLower.contains("ubicación")) {
+            return "meeting location";
+        }
+        if (queryLower.contains("fecha") || queryLower.contains("date") || 
+            queryLower.contains("cuándo") || queryLower.contains("when")) {
+            return "meeting date";
+        }
+        
+        return "general meeting summary";
     }
 
 }
