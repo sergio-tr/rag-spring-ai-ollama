@@ -146,6 +146,9 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             %s
             
             Write a clear, direct answer in the same language as the query.
+            CRITICAL: You MUST respond with a complete sentence responding to the user query, NOT just a number.
+            Example if the query is in English: "Found 5 meeting minutes" (NOT just "5")
+            
             Provide only the information requested by the user.
             DO NOT mention any technical details like "análisis temporal", "análisis de distribución", "temporal analysis", "distribution analysis", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
@@ -161,6 +164,12 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             
             if (response == null || response.trim().isEmpty()) {
                 log().warn("Empty response from LLM in generateEnhancedCountAnswer, using fallback");
+                return generateFallbackCountAnswer(query, analysis);
+            }
+            
+            String trimmed = response.trim();
+            if (trimmed.length() < 10 || trimmed.matches("^\\d+$")) {
+                log().warn("Response too short or just a number (length: {}), reformatting automatically", trimmed.length());
                 return generateFallbackCountAnswer(query, analysis);
             }
             

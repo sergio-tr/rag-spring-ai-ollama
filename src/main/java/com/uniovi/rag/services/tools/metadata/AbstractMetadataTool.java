@@ -1654,6 +1654,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Ensures response language matches query language.
      */
     protected String generateNotFoundMessage(String query) {
+        // Detect if query is asking about a specific date/acta
+        boolean isSpecificDateQuery = isQueryAboutSpecificDate(query);
+        
         String prompt = String.format("""
             You are a helpful assistant. The user asked the following question (in any language):
             "%s"
@@ -1663,9 +1666,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             - If the question is in English, respond in English
             - Match the language exactly
             
+            %s
+            
             Write a short, polite message indicating that no relevant meeting minutes were found for this query.
-            Be concise and helpful.
-            """, query);
+            Be concise and helpful. If the query mentions a specific date or acta, acknowledge that specifically.
+            """, 
+            query,
+            isSpecificDateQuery ? 
+                "NOTE: The user is asking about a specific date or acta that was not found in the available documents." :
+                "Write a general message that no relevant meeting minutes were found.");
         
         try {
             return getLLMResponseCached(prompt);
@@ -1702,13 +1711,23 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return generateFallbackNotFoundMessage("");
         }
         
+        // Detect if query is asking about a specific date/acta
+        boolean isSpecificDateQuery = isQueryAboutSpecificDate(query);
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
             
+            %s
+            
             Write a short message indicating that no relevant data was found for the query, 
             in the same language as the query.
-            """, query);
+            If the query mentions a specific date or acta, acknowledge that specifically.
+            """, 
+            query,
+            isSpecificDateQuery ? 
+                "NOTE: The user is asking about a specific date or acta that was not found in the available documents." :
+                "Write a general message that no relevant data was found.");
         
         try {
             String response = getLLMResponseCached(prompt);
@@ -1825,6 +1844,34 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return analysis.toString();
     }
 
+    /**
+     * Detects if a query is asking about a specific date or acta.
+     * Used to provide more specific error messages.
+     */
+    private boolean isQueryAboutSpecificDate(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
+        String queryLower = query.toLowerCase();
+        
+        // Check for date patterns
+        if (queryLower.matches(".*\\d{1,2}\\s+de\\s+[a-z]+\\s+de\\s+\\d{4}.*") ||
+            queryLower.matches(".*\\d{1,2}/\\d{1,2}/\\d{4}.*") ||
+            queryLower.matches(".*\\d{4}-\\d{2}-\\d{2}.*")) {
+            return true;
+        }
+        
+        // Check for phrases indicating specific date/acta query
+        if ((queryLower.contains("del ") || queryLower.contains("de ")) && 
+            (queryLower.contains("fecha") || queryLower.contains("acta") || queryLower.contains("reunión") ||
+             queryLower.matches(".*\\d{4}.*"))) {
+            return true;
+        }
+        
+        return false;
+    }
+    
     /**
      * Trunca el contenido antes de enviarlo a un prompt LLM para evitar desbordar
      * el contexto. Conserva cabecera y pie para mantener señal relevante.
