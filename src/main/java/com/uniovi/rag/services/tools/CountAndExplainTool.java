@@ -7,9 +7,11 @@ import org.springframework.ai.document.Document;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractDate;
 import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
 
 /**
@@ -36,7 +38,11 @@ public class CountAndExplainTool extends AbstractTool {
         
         List<Document> docs = retrieveDocuments(query);
         List<String> explanations = new ArrayList<>();
-        int count = 0;
+        List<String> matchedIds = new ArrayList<>();
+
+        if (docs == null || docs.isEmpty()) {
+            return ToolResult.from(generateFinalAnswerWithLLM(query, List.of(), List.of()), getClass());
+        }
 
         // Filter documents based on NER if available
         if (ner != null) {
@@ -46,195 +52,144 @@ public class CountAndExplainTool extends AbstractTool {
             for (Document doc : filteredDocs) {
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String content = doc.getContent();
-                    String date = extractDate(content);
+                    String id = extractMinuteIdentifier(doc);
                     String fragment = extractRelevantFragment(content, query);
-                    explanations.add("Meeting minutes from " + date + ":\n" + fragment);
-                    count++;
+                    if (matchesQueryWithLLM(query, id, fragment)) {
+                        explanations.add(formatExplanationLine(id, fragment));
+                        matchedIds.add(id);
+                    }
                 }
             }
         } else {
             // Fallback to query-based relevance
             for (Document doc : docs) {
                 String content = doc.getContent();
-                String date = extractDate(content);
                 String fragment = extractRelevantFragment(content, query);
-                if (isRelevantToQuery(fragment, query)) {
-                    explanations.add("Meeting minutes from " + date + ":\n" + fragment);
-                    count++;
+                String id = extractMinuteIdentifier(doc);
+                if (matchesQueryWithLLM(query, id, fragment)) {
+                    explanations.add(formatExplanationLine(id, fragment));
+                    matchedIds.add(id);
                 }
             }
         }
 
-        String response;
-        if (count > 0) {
-            response = generateResponseWithLLM(query, count, explanations);
-        } else {
-            response = generateNotFoundResponse(query);
-        }
+        String response = generateFinalAnswerWithLLM(query, matchedIds, explanations);
         return ToolResult.from(response, getClass());
     }
 
     /**
-     * Determines if a fragment is relevant to the query using LLM.
-     * Uses English for internal processing, but preserves original language in query and fragment.
+     * Generic per-document matcher.
+     * No hardcoded schemas: the LLM decides if this minute satisfies the user's conditions.
      */
-    private boolean isRelevantToQuery(String fragment, String query) {
-        if (fragment == null || fragment.trim().isEmpty() || query == null || query.trim().isEmpty()) {
-            return false;
-        }
-        
+    private boolean matchesQueryWithLLM(String query, String minuteId, String fragment) {
+        if (query == null || query.trim().isEmpty()) return false;
+        if (fragment == null || fragment.trim().isEmpty()) return false;
+
+        String safeId = minuteId == null ? "" : minuteId.trim();
+        String safeFragment = fragment.length() > 1200 ? fragment.substring(0, 1200) : fragment;
+
         String prompt = String.format("""
-            This is the user's question (in any language):
+            User question (respond in the same language as the question):
             "%s"
-            
-            This is a fragment from meeting minutes (may be in any language):
+
+            Meeting minute identifier:
             "%s"
-            
-            Does this fragment clearly or partially answer the question?
-            
-            Respond with ONLY one word: YES or NO.
-            Do not include any explanation or additional text.
-            """, query, fragment);
-        
+
+            Evidence fragment from that meeting minute:
+            "%s"
+
+            Task:
+            Determine whether THIS meeting minute satisfies the user's requested conditions.
+            Answer ONLY with: YES or NO
+            """, query, safeId, safeFragment);
+
         try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
-            
-            if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in isRelevantToQuery, defaulting to false");
-                return false;
-            }
-            
-            String normalized = result.strip().toLowerCase();
-            // Check for positive responses in multiple languages
-            return normalized.contains("yes") || normalized.contains("sí") || normalized.contains("si") || 
-                   normalized.contains("oui") || normalized.contains("ja") || normalized.contains("da");
+            String raw = chatClient.prompt().user(prompt).call().content();
+            if (raw == null) return false;
+            String normalized = raw.trim().toLowerCase();
+            return normalized.equals("yes") || normalized.equals("sí") || normalized.equals("si");
         } catch (Exception e) {
-            log().error("Error in isRelevantToQuery, defaulting to false", e);
-            return false; // Default to false on error to avoid false positives
+            log().warn("LLM match check failed, defaulting to NO: {}", e.getMessage());
+            return false;
         }
     }
 
-    /**
-     * Generates response with LLM using found explanations.
-     * Uses English for internal processing, but response matches query language.
-     */
-    private String generateResponseWithLLM(String query, int count, List<String> explanations) {
-        if (query == null || query.trim().isEmpty() || explanations == null || explanations.isEmpty() || count <= 0) {
-            return generateNotFoundResponse(query);
+    private String formatExplanationLine(String id, String fragment) {
+        String safeId = id != null ? id : "Acta";
+        String safeFrag = fragment != null ? fragment : "";
+        // Never include the raw user question; keep only snippet
+        return safeFrag.isBlank() ? safeId : (safeId + ":\n" + safeFrag);
+    }
+
+    private String extractMinuteIdentifier(Document doc) {
+        if (doc == null) return null;
+        Object filename = doc.getMetadata() != null ? doc.getMetadata().get("filename") : null;
+        if (filename != null && !filename.toString().isBlank()) {
+            return filename.toString();
         }
-        
-        String joined = explanations.stream()
-                .filter(e -> e != null && !e.trim().isEmpty())
-                .distinct()
-                .collect(Collectors.joining("\n\n"));
-        
-        if (joined.trim().isEmpty()) {
-            return generateNotFoundResponse(query);
+
+        String content = doc.getContent();
+        String date = extractDateFromContent(content);
+        if (date != null && !date.isBlank()) {
+            return "Acta del " + date;
         }
-        
+        return doc.getId();
+    }
+
+    private String extractDateFromContent(String content) {
+        if (content == null) return null;
+        Matcher m = Pattern.compile("(?i)\\bFecha\\s*:\\s*(.+)$", Pattern.MULTILINE).matcher(content);
+        if (m.find()) {
+            String v = m.group(1).trim().replaceAll("\\s{2,}", " ").trim();
+            return v.length() > 60 ? v.substring(0, 60).trim() : v;
+        }
+        Matcher m2 = Pattern.compile("(?i)(\\d{1,2}\\s+de\\s+[a-záéíóú]+\\s+de\\s+\\d{4})").matcher(content);
+        if (m2.find()) return m2.group(1).trim();
+        return null;
+    }
+
+    private String generateFinalAnswerWithLLM(String query, List<String> matchedIds, List<String> explanations) {
+        List<String> uniqueIds = matchedIds == null
+                ? List.of()
+                : matchedIds.stream().filter(Objects::nonNull).distinct().limit(20).collect(Collectors.toList());
+
+        String idsBlock = uniqueIds.isEmpty()
+                ? "(none)"
+                : uniqueIds.stream().map(s -> "- " + s).collect(Collectors.joining("\n"));
+
+        String explBlock = explanations == null
+                ? ""
+                : explanations.stream().filter(Objects::nonNull).limit(8).collect(Collectors.joining("\n\n"));
+
         String prompt = String.format("""
-            Given the following user query (in any language):
+            You are answering a user question about meeting minutes.
+            Respond in the SAME language as the user's question.
+            Do NOT repeat the user's question.
+
+            User question:
             "%s"
-            
-            Found %d relevant meeting minutes:
+
+            Matching meeting minutes (identifiers):
             %s
-            
-            Write a clear, direct answer in the same language as the query.
-            Provide only the information requested by the user.
-            DO NOT mention any technical details like "analysis", "análisis", "context found", or internal processing.
-            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
-            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
-            """, query, count, joined);
-        
+
+            Relevant evidence snippets (may be empty):
+            %s
+
+            Task:
+            - If there are no matching minutes, answer clearly that no meeting minutes match the conditions or oconstraints told by the user.
+            - Otherwise, answer with (1) the count and (2) a short explanation grounded in the snippets.
+            - If the user is asking "which minutes", include the list.
+            Keep it concise.
+            """, query, idsBlock, explBlock.isBlank() ? "(none)" : explBlock);
+
         try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
-            
-            if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
-                return generateFallbackResponse(query, count, explanations);
-            }
-            
-            return response.strip();
+            String raw = chatClient.prompt().user(prompt).call().content();
+            return raw == null ? "" : raw.trim();
         } catch (Exception e) {
-            log().error("Error generating response with LLM, using fallback", e);
-            return generateFallbackResponse(query, count, explanations);
-        }
-    }
-    
-    /**
-     * Generates a fallback response when LLM fails.
-     * Detects language from query and responds accordingly.
-     */
-    private String generateFallbackResponse(String query, int count, List<String> explanations) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
-        
-        if (isSpanish) {
-            return String.format("Se encontraron %d acta(s) relevante(s).\n\nContexto encontrado:\n%s",
-                               count,
-                               explanations.stream().limit(3).collect(Collectors.joining("\n\n")));
-        } else {
-            return String.format("Found %d relevant minute(s).\n\nContext found:\n%s",
-                               count,
-                               explanations.stream().limit(3).collect(Collectors.joining("\n\n")));
-        }
-    }
-    
-    /**
-     * Generates not found response.
-     * Uses English for internal processing, but response matches query language.
-     */
-    private String generateNotFoundResponse(String query) {
-        if (query == null || query.trim().isEmpty()) {
-            return generateFallbackNotFoundMessage("");
-        }
-        
-        String prompt = String.format("""
-            The user asked (in any language): "%s"
-            
-            No relevant information was found for this query in the available meeting minutes.
-            
-            Write a polite response in the same language as the query explaining that no relevant information was found.
-            """, query);
-        
-        try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
-            
-            if (response == null || response.trim().isEmpty()) {
-                return generateFallbackNotFoundMessage(query);
-            }
-            
-            return response.strip();
-        } catch (Exception e) {
-            log().error("Error generating not found response, using fallback", e);
-            return generateFallbackNotFoundMessage(query);
-        }
-    }
-    
-    /**
-     * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
-     */
-    private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query != null ? query.toLowerCase() : "";
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
-        
-        if (isSpanish) {
-            return "No se encontró información relevante para esta consulta en las actas de reunión disponibles.";
-        } else {
-            return "No relevant information was found for this query in the available meeting minutes.";
+            log().warn("Failed to generate final answer with LLM: {}", e.getMessage());
+            // Deterministic fallback (Spanish default per project convention)
+            if (uniqueIds.isEmpty()) return "No se encontró ninguna acta que cumpla las condiciones indicadas.";
+            return "He encontrado actas que cumplen las condiciones, pero no he podido generar una respuesta final ahora mismo.";
         }
     }
 }
