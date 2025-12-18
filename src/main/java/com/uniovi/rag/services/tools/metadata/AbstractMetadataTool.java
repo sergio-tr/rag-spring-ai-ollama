@@ -1844,6 +1844,264 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         log().info("Prompt content truncated from {} to {} characters", trimmed.length(), truncated.length());
         return truncated;
     }
+
+    /**
+     * Parses a date string flexibly, supporting multiple formats including full Spanish dates.
+     * This is an improved version that handles more date formats than parseDateToLocalDate.
+     */
+    protected LocalDate parseDateFlexible(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            return null;
+        }
+        String v = dateStr.trim();
+
+        // Try ISO first (most common after LLM normalization)
+        try {
+            return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+        }
+
+        // Try existing parseDateToLocalDate formatters
+        LocalDate result = parseDateToLocalDate(v);
+        if (result != null) {
+            return result;
+        }
+
+        // Additional Spanish formats with different capitalization
+        List<DateTimeFormatter> spanishFormatters = Arrays.asList(
+            DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es"))
+        );
+
+        for (DateTimeFormatter formatter : spanishFormatters) {
+            try {
+                return LocalDate.parse(v, formatter);
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extracts date candidates from query and NER entities.
+     * Supports multiple date formats and uses LLM for normalization when needed.
+     */
+    protected List<String> extractDateCandidates(String query, JSONObject ner) {
+        List<String> out = new ArrayList<>();
+
+        // From NER
+        if (ner != null && ner.has("date")) {
+            try {
+                org.json.JSONArray arr = ner.getJSONArray("date");
+                for (int i = 0; i < arr.length(); i++) {
+                    String s = arr.optString(i, "").trim();
+                    if (!s.isBlank()) out.add(s);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        // From query (regex patterns)
+        if (query != null) {
+            java.util.regex.Matcher m1 = java.util.regex.Pattern.compile("(\\d{4}-\\d{2}-\\d{2})").matcher(query);
+            while (m1.find()) out.add(m1.group(1));
+
+            java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})").matcher(query);
+            while (m2.find()) out.add(m2.group(1));
+
+            java.util.regex.Matcher m3 = java.util.regex.Pattern.compile("(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(query);
+            while (m3.find()) out.add(m3.group(1));
+        }
+
+        // If we still have no candidates, try LLM-based normalization (one call)
+        if (out.isEmpty() && looksLikeContainsDate(query)) {
+            out.addAll(extractIsoDatesWithLLM(query));
+        }
+
+        return out.stream().distinct().collect(Collectors.toList());
+    }
+
+    /**
+     * Quick heuristic: only call LLM if the query plausibly contains a date.
+     */
+    private boolean looksLikeContainsDate(String query) {
+        if (query == null) return false;
+        String q = query.toLowerCase();
+        // digits like 2025 or separators
+        if (q.matches(".*\\d{4}.*")) return true;
+        if (q.contains("/") || q.contains("-")) return true;
+        // Spanish month clue
+        return q.matches(".*\\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\b.*");
+    }
+
+    /**
+     * Uses LLM to extract/normalize dates present in the query to ISO (yyyy-MM-dd).
+     * One-shot, strict JSON output.
+     */
+    private List<String> extractIsoDatesWithLLM(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        String prompt = String.format("""
+            Extract all dates explicitly mentioned in the following text and normalize them to ISO format (yyyy-MM-dd).
+            The text may be in Spanish or English and may contain dates in many possible formats.
+
+            Text:
+            "%s"
+
+            Output rules:
+            - Return ONLY a JSON object with this schema: {"dates":["yyyy-MM-dd", ...]}
+            - If no date is present, return {"dates":[]}
+            - Do not include any extra keys, explanations, markdown, or surrounding text.
+            """, query);
+
+        try {
+            String raw = getLLMResponseCached(prompt);
+            if (raw == null || raw.trim().isEmpty()) {
+                return Collections.emptyList();
+            }
+
+            // Try to locate JSON object inside the response
+            int start = raw.indexOf('{');
+            int end = raw.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+                return Collections.emptyList();
+            }
+            String jsonStr = raw.substring(start, end + 1).trim();
+
+            org.json.JSONObject obj = new org.json.JSONObject(jsonStr);
+            org.json.JSONArray arr = obj.optJSONArray("dates");
+            if (arr == null) return Collections.emptyList();
+
+            List<String> dates = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                String d = arr.optString(i, "").trim();
+                if (!d.isBlank()) dates.add(d);
+            }
+
+            // Keep only parseable ISO dates
+            return dates.stream()
+                    .filter(s -> {
+                        try {
+                            LocalDate.parse(s, DateTimeFormatter.ISO_LOCAL_DATE);
+                            return true;
+                        } catch (Exception e) {
+                            return false;
+                        }
+                    })
+                    .distinct()
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log().warn("Failed to extract ISO dates with LLM, falling back to non-LLM parsing: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Filters minutes by date extracted from query/NER.
+     * Supports multiple date formats and returns all minutes if no date is found.
+     */
+    protected List<Minute> filterMinutesByDate(String query, JSONObject ner, List<Minute> minutes) {
+        List<String> dateCandidates = extractDateCandidates(query, ner);
+        if (dateCandidates.isEmpty()) {
+            return minutes; // No date in query, return all
+        }
+
+        // Normalize dates to LocalDate
+        List<LocalDate> targetDates = dateCandidates.stream()
+                .map(this::parseDateFlexible)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+
+        if (targetDates.isEmpty()) {
+            return minutes; // Can't parse dates, return all
+        }
+
+        // Filter minutes by date
+        return minutes.stream()
+                .filter(minute -> {
+                    LocalDate minuteDate = parseDateFlexible(minute.date());
+                    return minuteDate != null && targetDates.contains(minuteDate);
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Builds complete minute context for LLM evaluation.
+     * Includes all relevant metadata fields in a structured format.
+     */
+    protected String buildMinuteContext(Minute minute) {
+        if (minute == null) {
+            return "No meeting minute information available.";
+        }
+
+        StringBuilder ctx = new StringBuilder();
+        if (minute.date() != null) ctx.append("- Date: ").append(minute.date()).append("\n");
+        if (minute.place() != null) ctx.append("- Place: ").append(minute.place()).append("\n");
+        if (minute.startTime() != null) ctx.append("- Start time: ").append(minute.startTime()).append("\n");
+        if (minute.endTime() != null) ctx.append("- End time: ").append(minute.endTime()).append("\n");
+        if (minute.president() != null) ctx.append("- President: ").append(minute.president()).append("\n");
+        if (minute.secretary() != null) ctx.append("- Secretary: ").append(minute.secretary()).append("\n");
+        if (minute.attendees() != null && !minute.attendees().isEmpty()) {
+            ctx.append("- Attendees: ").append(String.join(", ", minute.attendees())).append("\n");
+        }
+        if (minute.topics() != null && !minute.topics().isEmpty()) {
+            ctx.append("- Topics: ").append(String.join(", ", minute.topics())).append("\n");
+        }
+        if (minute.decisions() != null && !minute.decisions().isEmpty()) {
+            ctx.append("- Decisions: ").append(String.join("; ", minute.decisions())).append("\n");
+        }
+        if (minute.summary() != null && !minute.summary().isBlank()) {
+            ctx.append("- Summary: ").append(truncateForPrompt(minute.summary(), 500)).append("\n");
+        }
+        if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+            ctx.append("- Agenda: ").append(minute.agenda().toString()).append("\n");
+        }
+        return ctx.toString();
+    }
+
+    /**
+     * Evaluates if a minute contains the information requested in the query.
+     * Uses LLM to validate complex conditions before extracting/computing.
+     * Useful for validating that a minute matches the query requirements.
+     */
+    protected boolean evaluateMinuteContainsRequestedInfo(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return false;
+        }
+
+        String minuteContext = buildMinuteContext(minute);
+
+        String prompt = String.format("""
+            User query: "%s"
+            
+            Meeting minute information:
+            %s
+            
+            Does this meeting minute contain the information requested in the user query?
+            Specifically, can you extract/answer what the user is asking for from this minute?
+            
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
+            """, query, minuteContext);
+
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response == null || response.trim().isEmpty()) {
+                return false; // Default to false on error
+            }
+            String normalized = response.trim().toLowerCase();
+            return normalized.contains("yes") || normalized.contains("sí");
+        } catch (Exception e) {
+            log().warn("Error evaluating minute with LLM, defaulting to false", e);
+            return false;
+        }
+    }
 }
 
 

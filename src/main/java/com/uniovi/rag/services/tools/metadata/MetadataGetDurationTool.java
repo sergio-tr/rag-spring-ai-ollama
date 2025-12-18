@@ -9,8 +9,6 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -57,20 +55,48 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        // Step 4: Extract durations in parallel
-        List<DurationResult> results = extractDurationsInParallel(relevantMinutes);
+        // Step 4: Check if query includes a date
+        List<String> dateCandidates = extractDateCandidates(query, ner);
+        boolean hasDateInQuery = !dateCandidates.isEmpty();
+
+        List<Minute> targetMinutes;
+        if (hasDateInQuery) {
+            // Filter by date first (reduces work)
+            targetMinutes = filterMinutesByDate(query, ner, relevantMinutes);
+            if (targetMinutes.isEmpty()) {
+                // User asked about a specific date but no minutes matched
+                log().info("No minutes found for the specified date in query: {}", query);
+                return ToolResult.from(generateNotFoundMessage(query), getClass());
+            }
+        } else {
+            // No date in query: evaluate each minute with LLM to find the one being asked about
+            targetMinutes = evaluateMinutesWithLLM(query, relevantMinutes);
+            if (targetMinutes.isEmpty()) {
+                log().info("No minutes validated by LLM for get duration query: {}", query);
+                return ToolResult.from(generateClarificationMessage(query), getClass());
+            }
+        }
+
+        // Step 5: Extract durations in parallel (only from target minutes)
+        List<DurationResult> results = extractDurationsInParallel(targetMinutes);
         if (results.isEmpty()) {
             log().info("No durations extracted for query: {}", query);
             return ToolResult.from(generateNoDataMessage(query), getClass());
         }
 
-        // Step 5: Select the target minute based on query/NER (by date)
-        DurationResult selected = selectTargetMinuteByDate(query, ner, results);
+        // Step 6: Select the target minute
+        DurationResult selected = selectTargetMinute(query, ner, results, hasDateInQuery);
         if (selected == null) {
-            return ToolResult.from(generateClarificationMessage(query), getClass());
+            if (hasDateInQuery) {
+                // Date was specified but not found
+                return ToolResult.from(generateNotFoundMessage(query), getClass());
+            } else {
+                // No date specified, ask for clarification
+                return ToolResult.from(generateClarificationMessage(query), getClass());
+            }
         }
 
-        // Step 6: Generate final answer (only that minute)
+        // Step 7: Generate final answer (only that minute)
         String answer = generateSingleDurationAnswer(query, selected);
         log().info("Generated get duration answer for query: {} (selected minuteId={})", query, selected.getMinuteId());
         
@@ -113,39 +139,58 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
     }
 
     /**
-     * Analyzes and ranks durations by relevance and quality
+     * Evaluates minutes with LLM to validate they are the ones being asked about.
+     * Only minutes that pass validation are used for duration extraction.
      */
-    private DurationResult selectTargetMinuteByDate(String query, JSONObject ner, List<DurationResult> results) {
-        List<String> dateCandidates = extractDateCandidates(query, ner);
-        if (dateCandidates.isEmpty()) {
+    private List<Minute> evaluateMinutesWithLLM(String query, List<Minute> minutes) {
+        List<CompletableFuture<Minute>> futures = minutes.stream()
+                .map(minute -> CompletableFuture.supplyAsync(() -> {
+                    if (evaluateMinuteContainsRequestedInfo(query, minute)) {
+                        return minute;
+                    }
+                    return null;
+                }))
+                .collect(Collectors.toList());
+
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Selects the target minute from results.
+     * If date was specified, matches by date. Otherwise, uses first result (already validated by LLM).
+     */
+    private DurationResult selectTargetMinute(String query, JSONObject ner, List<DurationResult> results, boolean hasDateInQuery) {
+        if (results.isEmpty()) {
             return null;
         }
 
-        // 1) Match exact LocalDate if possible
-        for (String candidate : dateCandidates) {
-            LocalDate qDate = parseDate(candidate);
-            if (qDate == null) continue;
+        if (hasDateInQuery) {
+            // Match by date (should be exact match since we already filtered)
+            List<String> dateCandidates = extractDateCandidates(query, ner);
+            for (String candidate : dateCandidates) {
+                LocalDate qDate = parseDateFlexible(candidate);
+                if (qDate == null) continue;
 
-            for (DurationResult r : results) {
-                LocalDate rDate = parseDate(r.getDate());
-                if (rDate != null && rDate.equals(qDate)) {
-                    return r;
+                for (DurationResult r : results) {
+                    LocalDate rDate = parseDateFlexible(r.getDate());
+                    if (rDate != null && rDate.equals(qDate)) {
+                        return r;
+                    }
                 }
             }
-        }
-
-        // 2) Fallback: string contains (when parsing fails)
-        String queryLower = query != null ? query.toLowerCase() : "";
-        for (DurationResult r : results) {
-            if (r.getDate() != null && !r.getDate().isBlank()) {
-                String rDateLower = r.getDate().toLowerCase();
-                if (queryLower.contains(rDateLower)) {
-                    return r;
-                }
+            // If no exact match found, return first result (date parsing might have failed)
+            return results.get(0);
+        } else {
+            // No date specified: if multiple results, use LLM to select, otherwise return first
+            if (results.size() == 1) {
+                return results.get(0);
             }
+            // Multiple results: return first (already validated by LLM)
+            return results.get(0);
         }
-
-        return null;
     }
 
     /**
@@ -194,54 +239,5 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
                 : String.format("%d hour%s %d min", h, h == 1 ? "" : "s", m);
     }
 
-    private List<String> extractDateCandidates(String query, JSONObject ner) {
-        List<String> out = new ArrayList<>();
-
-        // From NER
-        if (ner != null && ner.has("date")) {
-            try {
-                org.json.JSONArray arr = ner.getJSONArray("date");
-                for (int i = 0; i < arr.length(); i++) {
-                    String s = arr.optString(i, "").trim();
-                    if (!s.isBlank()) out.add(s);
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        // From query (simple patterns)
-        if (query != null) {
-            String q = query;
-            java.util.regex.Matcher m1 = java.util.regex.Pattern.compile("(\\d{4}-\\d{2}-\\d{2})").matcher(q);
-            while (m1.find()) out.add(m1.group(1));
-
-            java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})").matcher(q);
-            while (m2.find()) out.add(m2.group(1));
-
-            java.util.regex.Matcher m3 = java.util.regex.Pattern.compile("(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(q);
-            while (m3.find()) out.add(m3.group(1));
-        }
-
-        return out.stream().distinct().collect(Collectors.toList());
-    }
-
-    private LocalDate parseDate(String s) {
-        if (s == null || s.isBlank()) return null;
-        String v = s.trim();
-        List<DateTimeFormatter> formatters = List.of(
-                DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ENGLISH),
-                DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ENGLISH),
-                DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH),
-                DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-                DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es"))
-        );
-        for (DateTimeFormatter f : formatters) {
-            try {
-                return LocalDate.parse(v, f);
-            } catch (DateTimeParseException ignored) {
-            }
-        }
-        return null;
-    }
 
 }
