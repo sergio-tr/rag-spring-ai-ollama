@@ -8,9 +8,6 @@ import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -57,40 +54,66 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        // Step 4: Clasificar campo por reglas (sin LLM)
+        // Step 4: Filter by date first (if query includes date) - early filtering reduces LLM calls
+        List<Minute> dateFilteredMinutes = filterMinutesByDate(query, ner, relevantMinutes);
+        if (dateFilteredMinutes.isEmpty() && !extractDateCandidates(query, ner).isEmpty()) {
+            // User asked about a specific date but no minutes matched
+            log().info("No minutes found for the specified date in query: {}", query);
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
+        }
+        // If no date in query, use all relevant minutes
+        List<Minute> minutesToEvaluate = dateFilteredMinutes.isEmpty() ? relevantMinutes : dateFilteredMinutes;
+
+        // Step 5: Evaluate each minute with LLM to validate it contains the requested information
+        List<Minute> validatedMinutes = evaluateMinutesWithLLM(query, minutesToEvaluate);
+        if (validatedMinutes.isEmpty()) {
+            log().info("No minutes validated by LLM for get field query: {}", query);
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
+        }
+
+        // Step 6: Classify field by rules (no LLM)
         String detectedField = classifyFieldIntent(query, ner);
         if (detectedField.equals("unknown")) {
             log().info("Could not classify field intent for query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        // Step 5: Extract field values in parallel
-        List<FieldResult> results = extractFieldValuesInParallel(relevantMinutes, detectedField);
+        // Step 7: Extract field values in parallel (only from validated minutes)
+        List<FieldResult> results = extractFieldValuesInParallel(validatedMinutes, detectedField);
         if (results.isEmpty()) {
             log().info("No field values extracted for query: {}", query);
             return ToolResult.from(generateNoDataMessage(query), getClass());
         }
 
-        // Step 6: Analyze and rank field results
+        // Step 8: Analyze and rank field results
         List<FieldResult> rankedResults = analyzeAndRankFieldResults(results);
 
-        // Step 6.5: If user asked for a specific acta/date, select matching minute(s) by date
-        List<String> dateCandidates = extractDateCandidates(query, ner);
-        if (!dateCandidates.isEmpty()) {
-            List<FieldResult> matchedByDate = filterByDateCandidates(rankedResults, dateCandidates);
-            if (matchedByDate.isEmpty()) {
-                // The user asked about a specific acta/date but none matched
-                return ToolResult.from(generateNotFoundMessage(query), getClass());
-            }
-            rankedResults = matchedByDate;
-        }
-
-        // Step 7: Generate enhanced final answer
+        // Step 9: Generate enhanced final answer
         String answer = generateFieldAnswer(query, rankedResults, detectedField);
         log().info("Generated get field answer for query: {} with {} field values for field: {}", 
                    query, results.size(), detectedField);
         
         return ToolResult.from(answer, getClass());
+    }
+
+    /**
+     * Evaluates minutes with LLM to validate they contain the requested information.
+     * Only minutes that pass validation are used for field extraction.
+     */
+    private List<Minute> evaluateMinutesWithLLM(String query, List<Minute> minutes) {
+        List<CompletableFuture<Minute>> futures = minutes.stream()
+                .map(minute -> CompletableFuture.supplyAsync(() -> {
+                    if (evaluateMinuteContainsRequestedInfo(query, minute)) {
+                        return minute;
+                    }
+                    return null;
+                }))
+                .collect(Collectors.toList());
+
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -242,163 +265,5 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         };
     }
 
-    private List<String> extractDateCandidates(String query, JSONObject ner) {
-        List<String> out = new ArrayList<>();
-
-        if (ner != null && ner.has("date")) {
-            try {
-                org.json.JSONArray arr = ner.getJSONArray("date");
-                for (int i = 0; i < arr.length(); i++) {
-                    String s = arr.optString(i, "").trim();
-                    if (!s.isBlank()) out.add(s);
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        if (query != null) {
-            java.util.regex.Matcher m1 = java.util.regex.Pattern.compile("(\\d{4}-\\d{2}-\\d{2})").matcher(query);
-            while (m1.find()) out.add(m1.group(1));
-
-            java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})").matcher(query);
-            while (m2.find()) out.add(m2.group(1));
-
-            java.util.regex.Matcher m3 = java.util.regex.Pattern.compile("(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(query);
-            while (m3.find()) out.add(m3.group(1));
-        }
-
-        // If we still have no strong candidates, try LLM-based normalization (one call)
-        if (out.isEmpty() && looksLikeContainsDate(query)) {
-            out.addAll(extractIsoDatesWithLLM(query));
-        }
-
-        return out.stream().distinct().collect(Collectors.toList());
-    }
-
-    private List<FieldResult> filterByDateCandidates(List<FieldResult> results, List<String> dateCandidates) {
-        List<LocalDate> parsedCandidates = dateCandidates.stream()
-                .map(this::parseDate)
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.toList());
-
-        if (parsedCandidates.isEmpty()) {
-            return results; // can't parse, keep original
-        }
-
-        return results.stream()
-                .filter(r -> {
-                    LocalDate d = parseDate(r.getDate());
-                    return d != null && parsedCandidates.contains(d);
-                })
-                .collect(Collectors.toList());
-    }
-
-    private LocalDate parseDate(String s) {
-        if (s == null || s.isBlank()) return null;
-        String v = s.trim();
-
-        // Prefer ISO first (LLM normalization returns ISO)
-        try {
-            return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
-        } catch (DateTimeParseException ignored) {
-        }
-
-        // Fallback: some common numeric formats (still useful even without LLM)
-        List<DateTimeFormatter> formatters = List.of(
-                DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ROOT),
-                DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ROOT),
-                DateTimeFormatter.ofPattern("d-M-yyyy", Locale.ROOT),
-                DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.ROOT),
-                DateTimeFormatter.ofPattern("yyyy/M/d", Locale.ROOT),
-                DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.ROOT),
-                DateTimeFormatter.ofPattern("yyyy-M-d", Locale.ROOT),
-                DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ROOT)
-        );
-        for (DateTimeFormatter f : formatters) {
-            try {
-                return LocalDate.parse(v, f);
-            } catch (DateTimeParseException ignored) {
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Quick heuristic: only call LLM if the query plausibly contains a date.
-     */
-    private boolean looksLikeContainsDate(String query) {
-        if (query == null) return false;
-        String q = query.toLowerCase();
-        // digits like 2025 or separators
-        if (q.matches(".*\\d{4}.*")) return true;
-        if (q.contains("/") || q.contains("-")) return true;
-        // Spanish month clue
-        return q.matches(".*\\b(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\b.*");
-    }
-
-    /**
-     * Uses LLM to extract/normalize dates present in the query to ISO (yyyy-MM-dd).
-     * One-shot, strict JSON output.
-     */
-    private List<String> extractIsoDatesWithLLM(String query) {
-        if (query == null || query.trim().isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        String prompt = String.format("""
-            Extract all dates explicitly mentioned in the following text and normalize them to ISO format (yyyy-MM-dd).
-            The text may be in Spanish or English and may contain dates in many possible formats.
-
-            Text:
-            "%s"
-
-            Output rules:
-            - Return ONLY a JSON object with this schema: {"dates":["yyyy-MM-dd", ...]}
-            - If no date is present, return {"dates":[]}
-            - Do not include any extra keys, explanations, markdown, or surrounding text.
-            """, query);
-
-        try {
-            String raw = getLLMResponseCached(prompt);
-            if (raw == null || raw.trim().isEmpty()) {
-                return Collections.emptyList();
-            }
-
-            // Try to locate JSON object inside the response
-            int start = raw.indexOf('{');
-            int end = raw.lastIndexOf('}');
-            if (start < 0 || end <= start) {
-                return Collections.emptyList();
-            }
-            String jsonStr = raw.substring(start, end + 1).trim();
-
-            org.json.JSONObject obj = new org.json.JSONObject(jsonStr);
-            org.json.JSONArray arr = obj.optJSONArray("dates");
-            if (arr == null) return Collections.emptyList();
-
-            List<String> dates = new ArrayList<>();
-            for (int i = 0; i < arr.length(); i++) {
-                String d = arr.optString(i, "").trim();
-                if (!d.isBlank()) dates.add(d);
-            }
-
-            // Keep only parseable ISO dates
-            return dates.stream()
-                    .filter(s -> {
-                        try {
-                            LocalDate.parse(s, DateTimeFormatter.ISO_LOCAL_DATE);
-                            return true;
-                        } catch (Exception e) {
-                            return false;
-                        }
-                    })
-                    .distinct()
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            log().warn("Failed to extract ISO dates with LLM, falling back to non-LLM parsing: {}", e.getMessage());
-            return Collections.emptyList();
-        }
-    }
 
 }

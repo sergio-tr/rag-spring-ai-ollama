@@ -54,25 +54,62 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
-        // Step 4: Extract decisions in parallel
-        List<Decision> decisions = extractDecisionsInParallel(query, relevantMinutes);
+        // Step 4: Filter by date first (if query includes date) - early filtering reduces LLM calls
+        List<Minute> dateFilteredMinutes = filterMinutesByDate(query, ner, relevantMinutes);
+        if (dateFilteredMinutes.isEmpty() && !extractDateCandidates(query, ner).isEmpty()) {
+            // User asked about a specific date but no minutes matched
+            log().info("No minutes found for the specified date in query: {}", query);
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
+        }
+        // If no date in query, use all relevant minutes
+        List<Minute> minutesToEvaluate = dateFilteredMinutes.isEmpty() ? relevantMinutes : dateFilteredMinutes;
+
+        // Step 5: Evaluate each minute with LLM to validate it contains the requested decisions
+        List<Minute> validatedMinutes = evaluateMinutesWithLLM(query, minutesToEvaluate);
+        if (validatedMinutes.isEmpty()) {
+            log().info("No minutes validated by LLM for decision extraction query: {}", query);
+            return ToolResult.from(generateNotFoundMessage(query), getClass());
+        }
+
+        // Step 6: Extract decisions in parallel (only from validated minutes)
+        List<Decision> decisions = extractDecisionsInParallel(query, validatedMinutes);
         if (decisions.isEmpty()) {
             log().info("No relevant decisions found for query: {}", query);
             return ToolResult.from(generateNoDataMessage(query), getClass());
         }
 
-        // Step 5: Analyze and rank decisions
+        // Step 7: Analyze and rank decisions
         List<Decision> rankedDecisions = analyzeAndRankDecisions(decisions);
 
-        // Step 6: Cluster similar decisions
+        // Step 8: Cluster similar decisions
         List<DecisionCluster> clusters = clusterDecisions(rankedDecisions);
 
-        // Step 7: Generate enhanced final answer
+        // Step 9: Generate enhanced final answer
         String answer = generateEnhancedDecisionAnswer(query, rankedDecisions, clusters);
         log().info("Generated decision extraction answer for query: {} with {} decisions in {} clusters", 
                    query, decisions.size(), clusters.size());
         
         return ToolResult.from(answer, getClass());
+    }
+
+    /**
+     * Evaluates minutes with LLM to validate they contain the requested decisions.
+     * Only minutes that pass validation are used for decision extraction.
+     */
+    private List<Minute> evaluateMinutesWithLLM(String query, List<Minute> minutes) {
+        List<CompletableFuture<Minute>> futures = minutes.stream()
+                .map(minute -> CompletableFuture.supplyAsync(() -> {
+                    if (evaluateMinuteContainsRequestedInfo(query, minute)) {
+                        return minute;
+                    }
+                    return null;
+                }))
+                .collect(Collectors.toList());
+
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
     }
 
     /**
