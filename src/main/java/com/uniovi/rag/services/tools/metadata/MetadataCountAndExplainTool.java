@@ -313,19 +313,25 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         String explanationSummary = formatExplanationSummary(explanations, clusters);
         
         String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
+            You need to answer a question about meeting minutes. The question asked was about counting and explaining meeting minutes that meet certain criteria.
             
             Found %d relevant meeting minutes:
             
             %s
             
-            Write a clear, direct answer in the same language as the query.
-            Provide only the information requested by the user.
+            Write a clear, direct answer in the same language as the user's question (detect from context).
+            CRITICAL RULES:
+            1. DO NOT repeat or echo the user's question in your response.
+            2. DO NOT start your answer with the question.
+            3. Answer directly with the count and explanations.
+            4. Example if the query is in English: "Found 5 meeting minutes. [explanations]" (NOT "The question was... Found 5...")
+            5. Example if the query is in Spanish: "Se encontraron 5 actas. [explicaciones]" (NOT "La pregunta era... Se encontraron 5...")
+            
+            Provide only the information requested.
             DO NOT mention any technical details like "clusters", "análisis", "analysis", "grouped into", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
-            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
-            """, query, explanations.size(), 
+            Focus on answering naturally and concisely, as if you were a helpful assistant.
+            """, explanations.size(), 
             explanationSummary != null ? explanationSummary : "No information found.");
         
         try {
@@ -336,7 +342,9 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
                 return generateFallbackFinalAnswer(query, explanations);
             }
             
-            return response;
+            // FASE 7: Remove echo of question if present
+            String cleaned = removeQuestionEcho(response.trim(), query);
+            return cleaned;
         } catch (Exception e) {
             log().error("Error generating enhanced final answer, using fallback", e);
             return generateFallbackFinalAnswer(query, explanations);
@@ -370,6 +378,56 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
                                            e.getContent() != null && e.getContent().length() > 200 ? e.getContent().substring(0, 200) + "..." : (e.getContent() != null ? e.getContent() : "")))
                                        .collect(Collectors.joining("\n\n")));
         }
+    }
+
+    /**
+     * Removes question echo from response.
+     * FASE 7: Post-processing to eliminate question echo.
+     */
+    private String removeQuestionEcho(String response, String query) {
+        if (response == null || query == null) {
+            return response;
+        }
+        
+        // Remove common echo patterns
+        String lowerResponse = response.toLowerCase();
+        String lowerQuery = query.toLowerCase();
+        
+        // If response starts with the question, remove it
+        if (lowerResponse.startsWith(lowerQuery)) {
+            String cleaned = response.substring(query.length()).trim();
+            // Remove common separators
+            cleaned = cleaned.replaceAll("^[.:;,\\-\\s]+", "").trim();
+            if (!cleaned.isEmpty()) {
+                log().debug("Removed question echo from response");
+                return cleaned;
+            }
+        }
+        
+        // Check for common echo patterns like "La pregunta era...", "The question was..."
+        String[] echoPatterns = {
+            "la pregunta era", "la pregunta es", "la consulta era", "la consulta es",
+            "the question was", "the question is", "the query was", "the query is",
+            "en cuántas actas", "dime qué actas", "qué actas"
+        };
+        
+        for (String pattern : echoPatterns) {
+            if (lowerResponse.contains(pattern)) {
+                // Try to find where the actual answer starts
+                int patternIndex = lowerResponse.indexOf(pattern);
+                if (patternIndex >= 0 && patternIndex < response.length() / 2) {
+                    // Pattern is in first half, likely an echo
+                    String afterPattern = response.substring(patternIndex + pattern.length()).trim();
+                    afterPattern = afterPattern.replaceAll("^[.:;,\\-\\s]+", "").trim();
+                    if (!afterPattern.isEmpty() && afterPattern.length() > 10) {
+                        log().debug("Removed echo pattern '{}' from response", pattern);
+                        return afterPattern;
+                    }
+                }
+            }
+        }
+        
+        return response;
     }
 
     /**

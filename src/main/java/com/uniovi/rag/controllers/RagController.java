@@ -9,6 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.model.Loggable;
 import java.util.Map;
+import com.uniovi.rag.model.QueryResponse;
 
 @RestController
 @RequestMapping("/api/v3")
@@ -51,8 +52,8 @@ public class RagController implements Loggable {
 
     @GetMapping("/query")
     public ResponseEntity<String> query(@RequestParam String question) {
-        String response = queryService.generateResponse(question);
-        return ResponseEntity.ok(response);
+        QueryResponse response = queryService.generateResponse(question);
+        return ResponseEntity.ok(response.getAnswer());
     }
 
     @GetMapping("/evaluate")

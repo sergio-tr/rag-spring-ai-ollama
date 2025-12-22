@@ -13,6 +13,7 @@ import java.util.Scanner;
 import java.util.List;
 import org.springframework.ai.document.Document;
 import java.net.URI;
+import com.uniovi.rag.model.QueryResponse;
 
 @Service
 public class SimpleQueryService implements QueryService {
@@ -110,7 +111,7 @@ public class SimpleQueryService implements QueryService {
         }
     }
 
-    public String generateResponse(String question) {
+    public QueryResponse generateResponse(String question) {
         if (question == null || question.trim().isEmpty()) {
             throw new IllegalArgumentException("La pregunta no puede ser nula, vacia o solo espacios en blanco.");
         }
@@ -133,7 +134,7 @@ public class SimpleQueryService implements QueryService {
         log().info("\n\n-----------------------------------------------------------------------------");
         log().info("-----------------------------------------------------------------------------");
 
-        return askQueryToLlama(template);
+        return QueryResponse.fromLLM(askQueryToLlama(template));
     }
 
 }
