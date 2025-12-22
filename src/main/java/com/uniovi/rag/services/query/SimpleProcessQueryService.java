@@ -7,8 +7,10 @@ import com.uniovi.rag.services.classifier.QueryClassifier;
 import com.uniovi.rag.services.classifier.QueryType;
 import com.uniovi.rag.services.expand.QueryExpander;
 import com.uniovi.rag.services.retriever.ContextRetriever;
+import com.uniovi.rag.model.QueryResponse;
 import com.uniovi.rag.services.tools.Tool;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
+import com.uniovi.rag.services.tools.ToolResult;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
@@ -48,7 +50,7 @@ public class SimpleProcessQueryService implements QueryService {
     }
 
     @Override
-    public String generateResponse(String query) {
+    public QueryResponse generateResponse(String query) {
         String finalQuery = featureConfig.isExpansionEnabled() ? expander.expand(query) : query;
         JSONObject nerEntities = featureConfig.isNerEnabled() ? analyser.analyse(finalQuery) : null;
         QueryType queryType = featureConfig.isToolsEnabled() ? classifier.classify(finalQuery) : null;
@@ -57,9 +59,9 @@ public class SimpleProcessQueryService implements QueryService {
             Tool tool = toolsConfig.getTool(queryType);
 
             try {
-                String toolResponse = tool.execute(ToolExecutionContext.of(finalQuery, queryType, nerEntities)).result();
-                if (toolResponse != null) {
-                    return toolResponse;
+                ToolResult toolResult = tool.execute(ToolExecutionContext.of(finalQuery, queryType, nerEntities));
+                if (toolResult != null && toolResult.result() != null) {
+                    return QueryResponse.fromTool(toolResult.result(), toolResult.source(), queryType);
                 }
             } catch (Exception e) {
                 log().error("Error executing tool: {}", e.getMessage());
@@ -67,8 +69,8 @@ public class SimpleProcessQueryService implements QueryService {
 
         }
 
-        return askModel(finalQuery, nerEntities);
-
+        String answer = askModel(finalQuery, nerEntities);
+        return QueryResponse.fromLLM(answer, queryType);
     }
 
     private String askModel(String query, JSONObject nerEntities) {

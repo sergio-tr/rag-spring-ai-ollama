@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.model.QueryResponse;
 import com.uniovi.rag.services.document.DocumentService;
 import com.uniovi.rag.services.query.QueryService;
 import org.springframework.ai.chat.client.ChatClient;
@@ -171,7 +172,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         for (Map.Entry<String, String> entry : getQuestionsAndAnswers().entrySet()) {
             String question = entry.getKey();
             String correctAnswer = entry.getValue();
-            String llmResponse = queryServiceToUse.generateResponse(question);
+            QueryResponse queryResponse = queryServiceToUse.generateResponse(question);
+            String llmResponse = queryResponse.getAnswer();
 
             String evaluation = evaluateResponse(question, correctAnswer, llmResponse);
 
@@ -180,9 +182,16 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             result.put("correct_answer", correctAnswer);
             result.put("generated_answer", llmResponse);
             result.put("llm_evaluation", evaluation);
+            
+            // Add tool metadata for traceability
+            result.put("tool_used", queryResponse.getToolUsed());
+            result.put("query_type", queryResponse.getQueryType() != null ? queryResponse.getQueryType().name() : null);
+            result.put("used_tool", queryResponse.isUsedTool());
 
             resultsForPrompt.add(result);
 
+            log().info("Question: {} | Tool: {} | QueryType: {} | UsedTool: {}", 
+                    question, queryResponse.getToolUsed(), queryResponse.getQueryType(), queryResponse.isUsedTool());
             log().info(result.toString());
         }
 

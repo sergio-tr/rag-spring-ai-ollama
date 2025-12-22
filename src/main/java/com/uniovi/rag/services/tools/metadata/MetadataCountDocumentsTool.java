@@ -137,24 +137,26 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         String simpleData = formatSimpleData(analysis);
         
         String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
+            You need to answer a question about meeting minutes. The question asked was about counting meeting minutes that meet certain criteria.
             
             Found %d relevant meeting minutes.
             
             Information:
             %s
             
-            Write a clear, direct answer in the same language as the query.
-            CRITICAL: You MUST respond with a complete sentence responding to the user query, NOT just a number.
-            Example if the query is in English: "Found 5 meeting minutes" (NOT just "5")
+            Write a clear, direct answer in the same language as the user's question (detect from context).
+            CRITICAL RULES:
+            1. DO NOT repeat or echo the user's question in your response.
+            2. DO NOT start your answer with the question.
+            3. Answer directly with the count and relevant information.
+            4. Example if the query is in English: "Found 5 meeting minutes" (NOT "The question was... Found 5 meeting minutes")
+            5. Example if the query is in Spanish: "Se encontraron 5 actas" (NOT "La pregunta era... Se encontraron 5 actas")
             
-            Provide only the information requested by the user.
+            Provide only the information requested.
             DO NOT mention any technical details like "análisis temporal", "análisis de distribución", "temporal analysis", "distribution analysis", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
-            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            Focus on answering naturally and concisely, as if you were a helpful assistant.
             """, 
-            query, 
             analysis.getTotalCount(),
             simpleData != null ? simpleData : "No additional information available."
         );
@@ -173,7 +175,9 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                 return generateFallbackCountAnswer(query, analysis);
             }
             
-            return response;
+            // FASE 7: Remove echo of question if present
+            String cleaned = removeQuestionEcho(trimmed, query);
+            return cleaned;
         } catch (Exception e) {
             log().error("Error generating enhanced count answer, using fallback", e);
             return generateFallbackCountAnswer(query, analysis);
@@ -193,6 +197,56 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         } else {
             return String.format("Found %d relevant meeting minutes for this query.", analysis.getTotalCount());
         }
+    }
+
+    /**
+     * Removes question echo from response.
+     * FASE 7: Post-processing to eliminate question echo.
+     */
+    private String removeQuestionEcho(String response, String query) {
+        if (response == null || query == null) {
+            return response;
+        }
+        
+        // Remove common echo patterns
+        String lowerResponse = response.toLowerCase();
+        String lowerQuery = query.toLowerCase();
+        
+        // If response starts with the question, remove it
+        if (lowerResponse.startsWith(lowerQuery)) {
+            String cleaned = response.substring(query.length()).trim();
+            // Remove common separators
+            cleaned = cleaned.replaceAll("^[.:;,\\-\\s]+", "").trim();
+            if (!cleaned.isEmpty()) {
+                log().debug("Removed question echo from response");
+                return cleaned;
+            }
+        }
+        
+        // Check for common echo patterns like "La pregunta era...", "The question was..."
+        String[] echoPatterns = {
+            "la pregunta era", "la pregunta es", "la consulta era", "la consulta es",
+            "the question was", "the question is", "the query was", "the query is",
+            "en cuántas actas", "dime qué actas", "qué actas"
+        };
+        
+        for (String pattern : echoPatterns) {
+            if (lowerResponse.contains(pattern)) {
+                // Try to find where the actual answer starts
+                int patternIndex = lowerResponse.indexOf(pattern);
+                if (patternIndex >= 0 && patternIndex < response.length() / 2) {
+                    // Pattern is in first half, likely an echo
+                    String afterPattern = response.substring(patternIndex + pattern.length()).trim();
+                    afterPattern = afterPattern.replaceAll("^[.:;,\\-\\s]+", "").trim();
+                    if (!afterPattern.isEmpty() && afterPattern.length() > 10) {
+                        log().debug("Removed echo pattern '{}' from response", pattern);
+                        return afterPattern;
+                    }
+                }
+            }
+        }
+        
+        return response;
     }
 
     /**

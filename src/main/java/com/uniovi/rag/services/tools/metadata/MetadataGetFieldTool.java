@@ -159,26 +159,53 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
         String q = query.toLowerCase();
 
+        // Priority 1: Check for explicit field requests with context
+        // "fecha del acta donde [presidente]" -> date (not president)
+        if ((containsAny(q, "fecha del acta", "fecha del", "date of the acta", "date where") ||
+             (containsAny(q, "fecha", "date") && containsAny(q, "donde", "where", "acta", "minute"))) &&
+            !containsAny(q, "presidió", "presidido", "presided")) {
+            log().debug("Classified as 'date' based on context (fecha del acta)");
+            return "date";
+        }
+
+        // Priority 2: Agenda/orden del día (check before topics)
+        if (containsAny(q, "orden del día", "qué contiene el orden", "contenido del orden", "agenda", "puntos del día")) {
+            log().debug("Classified as 'agenda'");
+            return "agenda";
+        }
+
+        // Priority 3: Specific field requests
         if (containsAny(q, "duración", "duration", "cuánto dur")) return "durationMinutes";
-        if (containsAny(q, "fecha", "date", "día")) return "date";
         if (containsAny(q, "año", "year")) return "year";
         if (containsAny(q, "mes", "month")) return "month";
         if (containsAny(q, "lugar", "sitio", "place", "ubicación")) return "place";
         if (containsAny(q, "inicio", "start time", "hora de inicio", "comienzo")) return "startTime";
         if (containsAny(q, "fin", "final", "end time", "hora de cierre", "termin")) return "endTime";
-        if (containsAny(q, "presidente", "president")) return "president";
+        if (containsAny(q, "presidente", "president", "quién presidió", "who presided")) return "president";
         if (containsAny(q, "secretario", "secretary")) return "secretary";
         if (containsAny(q, "asistente", "attendee", "participante", "personas")) return "attendees";
         if (containsAny(q, "número de asistentes", "cuántos asistieron", "attendees count")) return "attendeesCount";
-        if (containsAny(q, "tema", "topics", "orden del día", "agenda")) return "topics";
+        if (containsAny(q, "tema", "topics")) return "topics";
         if (containsAny(q, "decisión", "acuerdo", "decision", "agreements")) return "decisions";
         if (containsAny(q, "resumen", "summary")) return "summary";
-        if (containsAny(q, "agenda", "puntos", "orden del día")) return "agenda";
 
-        // fallback: NER place/date hints
-        if (ner != null && ner.has("date")) return "date";
-        if (ner != null && ner.has("location")) return "place";
+        // Priority 4: Date (general, after checking context)
+        if (containsAny(q, "fecha", "date", "día", "cuándo", "when")) {
+            log().debug("Classified as 'date' (general)");
+            return "date";
+        }
 
+        // Fallback: NER hints (but be careful - NER date might be for filtering, not extraction)
+        if (ner != null && ner.has("date") && !containsAny(q, "presidente", "secretario", "agenda", "orden")) {
+            log().debug("Classified as 'date' based on NER");
+            return "date";
+        }
+        if (ner != null && ner.has("location") && !containsAny(q, "fecha", "date")) {
+            log().debug("Classified as 'place' based on NER");
+            return "place";
+        }
+
+        log().warn("Could not classify field intent for query: {}", query);
         return "unknown";
     }
 

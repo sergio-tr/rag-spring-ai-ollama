@@ -58,19 +58,33 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         // Step 4: Check if query includes a date
         List<String> dateCandidates = extractDateCandidates(query, ner);
         boolean hasDateInQuery = !dateCandidates.isEmpty();
+        log().info("Date candidates extracted: {} (hasDateInQuery: {})", dateCandidates, hasDateInQuery);
 
         List<Minute> targetMinutes;
         if (hasDateInQuery) {
             // Filter by date first (reduces work)
+            log().info("Filtering {} relevant minutes by date", relevantMinutes.size());
             targetMinutes = filterMinutesByDate(query, ner, relevantMinutes);
+            log().info("After date filtering: {} minutes", targetMinutes.size());
+            
             if (targetMinutes.isEmpty()) {
                 // User asked about a specific date but no minutes matched
-                log().info("No minutes found for the specified date in query: {}", query);
+                log().warn("No minutes found for the specified date in query: {}. Date candidates: {}", query, dateCandidates);
+                // Check if we have minutes with dates that might match
+                List<String> availableDates = relevantMinutes.stream()
+                        .map(Minute::date)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .collect(Collectors.toList());
+                log().info("Available dates in relevant minutes: {}", availableDates);
                 return ToolResult.from(generateNotFoundMessage(query), getClass());
             }
         } else {
             // No date in query: evaluate each minute with LLM to find the one being asked about
+            log().info("No date in query, evaluating {} minutes with LLM", relevantMinutes.size());
             targetMinutes = evaluateMinutesWithLLM(query, relevantMinutes);
+            log().info("After LLM evaluation: {} minutes", targetMinutes.size());
+            
             if (targetMinutes.isEmpty()) {
                 log().info("No minutes validated by LLM for get duration query: {}", query);
                 return ToolResult.from(generateClarificationMessage(query), getClass());
@@ -119,14 +133,28 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts duration for a minute with enhanced context
+     * Extracts duration for a minute with enhanced context.
+     * 
+     * FASE 5: Enhanced duration extraction with better logging and validation.
      */
     private DurationResult extractDuration(Minute minute) {
+        if (minute.startTime() == null || minute.startTime().trim().isEmpty() ||
+            minute.endTime() == null || minute.endTime().trim().isEmpty()) {
+            log().debug("Minute {} has no startTime or endTime: startTime={}, endTime={}", 
+                    minute.id(), minute.startTime(), minute.endTime());
+            return null;
+        }
+        
         int duration = calculateDurationFromMinute(minute);
         
         if (duration <= 0) {
+            log().debug("Minute {} has invalid duration: {} minutes (startTime={}, endTime={})", 
+                    minute.id(), duration, minute.startTime(), minute.endTime());
             return null;
         }
+        
+        log().debug("Extracted duration for minute {}: {} minutes ({} - {})", 
+                minute.id(), duration, minute.startTime(), minute.endTime());
         
         return new DurationResult(
             minute.id(),

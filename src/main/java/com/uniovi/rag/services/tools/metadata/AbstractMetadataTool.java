@@ -199,7 +199,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Returns true if response is valid and indicates a match, false otherwise.
      * On error or invalid response, returns null to indicate "unknown" (should not filter).
      * 
-     * SOLUTION 3.1: Robust validation of LLM responses for filtering.
+     * FASE 8: Enhanced validation with more patterns and less strict matching.
      */
     private Boolean validateLLMFilterResponse(String response, String context) {
         if (response == null || response.trim().isEmpty()) {
@@ -209,14 +209,33 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         String cleaned = response.trim().toLowerCase();
         
-        // Check for positive responses
-        if (cleaned.contains("yes") || cleaned.contains("sí") || cleaned.contains("true")) {
+        // Check for positive responses (expanded patterns)
+        if (cleaned.contains("yes") || cleaned.contains("sí") || cleaned.contains("si") ||
+            cleaned.contains("true") || cleaned.contains("verdadero") ||
+            cleaned.contains("correct") || cleaned.contains("correcto") ||
+            cleaned.contains("match") || cleaned.contains("coincide") ||
+            cleaned.contains("relevant") || cleaned.contains("relevante") ||
+            cleaned.contains("contains") || cleaned.contains("contiene") ||
+            cleaned.startsWith("y") || cleaned.startsWith("s")) {
             return true;
         }
         
-        // Check for negative responses
-        if (cleaned.contains("no") || cleaned.contains("false")) {
+        // Check for negative responses (expanded patterns)
+        if (cleaned.contains("no") || cleaned.contains("false") || cleaned.contains("falso") ||
+            cleaned.contains("not") || cleaned.contains("no ") ||
+            cleaned.contains("doesn't") || cleaned.contains("no contiene") ||
+            cleaned.contains("irrelevant") || cleaned.contains("irrelevante") ||
+            cleaned.startsWith("n")) {
             return false;
+        }
+        
+        // Check for ambiguous/uncertain responses - treat as positive (less strict)
+        if (cleaned.contains("probably") || cleaned.contains("probablemente") ||
+            cleaned.contains("possibly") || cleaned.contains("posiblemente") ||
+            cleaned.contains("maybe") || cleaned.contains("quizás") ||
+            cleaned.contains("might") || cleaned.contains("podría")) {
+            log().debug("Ambiguous LLM response in {}: '{}', defaulting to keep document (less strict)", context, response);
+            return true; // Less strict: keep on ambiguity
         }
         
         // If unclear, don't filter (default to keeping the document)
@@ -721,10 +740,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Obtiene el valor de un campo específico del Minute
+     * Obtiene el valor de un campo específico del Minute.
+     * 
+     * FASE 4.2: Enhanced field extraction with better handling of agenda field.
      */
     private Object getMinuteFieldValue(Minute minute, String field) {
-        return switch (field.toLowerCase()) {
+        String fieldLower = field.toLowerCase();
+        return switch (fieldLower) {
             case "date", "fecha" -> minute.date();
             case "place", "lugar" -> minute.place();
             case "president", "presidente" -> minute.president();
@@ -734,7 +756,17 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             case "topics", "temas" -> minute.topics();
             case "decisions", "decisiones" -> minute.decisions();
             case "summary", "resumen" -> minute.summary();
-            case "agenda" -> minute.agenda();
+            case "agenda" -> {
+                // Agenda is a Map<String, String>, convert to readable format
+                Map<String, String> agenda = minute.agenda();
+                if (agenda == null || agenda.isEmpty()) {
+                    yield null;
+                }
+                // Convert map to list of "key: value" strings for better readability
+                yield agenda.entrySet().stream()
+                        .map(e -> e.getKey() + ": " + e.getValue())
+                        .collect(Collectors.joining("; "));
+            }
             case "attendees", "asistentes" -> minute.attendees();
             default -> null;
         };
@@ -1848,6 +1880,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /**
      * Parses a date string flexibly, supporting multiple formats including full Spanish dates.
      * This is an improved version that handles more date formats than parseDateToLocalDate.
+     * 
+     * FASE 3.1: Enhanced date parsing with more formats and better Spanish support.
      */
     protected LocalDate parseDateFlexible(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) {
@@ -1867,12 +1901,24 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return result;
         }
 
-        // Additional Spanish formats with different capitalization
+        // Enhanced Spanish formats with different capitalization and variations
         List<DateTimeFormatter> spanishFormatters = Arrays.asList(
+            // Full month names
             DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
             DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")), // Without quotes
+            DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")), // Without quotes
+            // Abbreviated month names
             DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es"))
+            DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")), // Without quotes
+            DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")), // Without quotes
+            // Without "de" between day and month
+            DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
+            // With comma (e.g., "Lunes, 25 de agosto de 2025")
+            DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("EEEE, dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es"))
         );
 
         for (DateTimeFormatter formatter : spanishFormatters) {
@@ -1882,46 +1928,121 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
 
+        // Additional formats: dd-MM-yyyy, dd.MM.yyyy, dd/MM/yyyy (already in parseDateToLocalDate but try again with different separators)
+        List<DateTimeFormatter> additionalFormatters = Arrays.asList(
+            DateTimeFormatter.ofPattern("d-M-yyyy", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("d.M.yyyy", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH),
+            // Year-month-day variations
+            DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ENGLISH),
+            DateTimeFormatter.ofPattern("yyyy.MM.dd", Locale.ENGLISH)
+        );
+
+        for (DateTimeFormatter formatter : additionalFormatters) {
+            try {
+                return LocalDate.parse(v, formatter);
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+
+        // If all parsing fails, log for debugging
+        log().debug("Could not parse date: {}", dateStr);
         return null;
     }
 
     /**
      * Extracts date candidates from query and NER entities.
      * Supports multiple date formats and uses LLM for normalization when needed.
+     * 
+     * FASE 3.1: Enhanced date extraction with more regex patterns and better Spanish support.
      */
     protected List<String> extractDateCandidates(String query, JSONObject ner) {
         List<String> out = new ArrayList<>();
 
-        // From NER
+        // From NER (highest priority - most accurate)
         if (ner != null && ner.has("date")) {
             try {
                 org.json.JSONArray arr = ner.getJSONArray("date");
                 for (int i = 0; i < arr.length(); i++) {
                     String s = arr.optString(i, "").trim();
-                    if (!s.isBlank()) out.add(s);
+                    if (!s.isBlank()) {
+                        out.add(s);
+                        log().debug("Extracted date from NER: {}", s);
+                    }
                 }
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log().warn("Error extracting dates from NER: {}", e.getMessage());
             }
         }
 
-        // From query (regex patterns)
+        // From query (regex patterns) - enhanced with more patterns
         if (query != null) {
+            // ISO format: yyyy-MM-dd
             java.util.regex.Matcher m1 = java.util.regex.Pattern.compile("(\\d{4}-\\d{2}-\\d{2})").matcher(query);
-            while (m1.find()) out.add(m1.group(1));
+            while (m1.find()) {
+                out.add(m1.group(1));
+                log().debug("Extracted ISO date from query: {}", m1.group(1));
+            }
 
+            // Slash format: dd/MM/yyyy or d/M/yyyy
             java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})").matcher(query);
-            while (m2.find()) out.add(m2.group(1));
+            while (m2.find()) {
+                out.add(m2.group(1));
+                log().debug("Extracted slash date from query: {}", m2.group(1));
+            }
 
-            java.util.regex.Matcher m3 = java.util.regex.Pattern.compile("(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(query);
-            while (m3.find()) out.add(m3.group(1));
+            // Dash format: dd-MM-yyyy or d-M-yyyy
+            java.util.regex.Matcher m3 = java.util.regex.Pattern.compile("(\\d{1,2}-\\d{1,2}-\\d{4})").matcher(query);
+            while (m3.find()) {
+                out.add(m3.group(1));
+                log().debug("Extracted dash date from query: {}", m3.group(1));
+            }
+
+            // Dot format: dd.MM.yyyy or d.M.yyyy
+            java.util.regex.Matcher m4 = java.util.regex.Pattern.compile("(\\d{1,2}\\.\\d{1,2}\\.\\d{4})").matcher(query);
+            while (m4.find()) {
+                out.add(m4.group(1));
+                log().debug("Extracted dot date from query: {}", m4.group(1));
+            }
+
+            // Spanish format: "d de mes de yyyy" or "dd de mes de yyyy" (case insensitive)
+            java.util.regex.Matcher m5 = java.util.regex.Pattern.compile(
+                "(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", 
+                java.util.regex.Pattern.CASE_INSENSITIVE
+            ).matcher(query);
+            while (m5.find()) {
+                out.add(m5.group(1));
+                log().debug("Extracted Spanish date from query: {}", m5.group(1));
+            }
+
+            // Spanish format without "de" between day and month: "d mes yyyy"
+            java.util.regex.Matcher m6 = java.util.regex.Pattern.compile(
+                "(\\d{1,2}\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\s+\\d{4})",
+                java.util.regex.Pattern.CASE_INSENSITIVE
+            ).matcher(query);
+            while (m6.find()) {
+                out.add(m6.group(1));
+                log().debug("Extracted Spanish date (no 'de') from query: {}", m6.group(1));
+            }
         }
 
         // If we still have no candidates, try LLM-based normalization (one call)
         if (out.isEmpty() && looksLikeContainsDate(query)) {
-            out.addAll(extractIsoDatesWithLLM(query));
+            log().debug("No dates found with regex/NER, trying LLM extraction for query: {}", query);
+            List<String> llmDates = extractIsoDatesWithLLM(query);
+            out.addAll(llmDates);
+            if (!llmDates.isEmpty()) {
+                log().debug("LLM extracted {} dates: {}", llmDates.size(), llmDates);
+            }
         }
 
-        return out.stream().distinct().collect(Collectors.toList());
+        List<String> distinct = out.stream().distinct().collect(Collectors.toList());
+        log().info("Extracted {} unique date candidates from query/NER: {}", distinct.size(), distinct);
+        return distinct;
     }
 
     /**
@@ -2004,10 +2125,17 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /**
      * Filters minutes by date extracted from query/NER.
      * Supports multiple date formats and returns all minutes if no date is found.
+     * 
+     * FASE 3.2: Enhanced filtering using date_iso, year, month from metadata for better accuracy.
      */
     protected List<Minute> filterMinutesByDate(String query, JSONObject ner, List<Minute> minutes) {
+        if (minutes.isEmpty()) {
+            return minutes;
+        }
+
         List<String> dateCandidates = extractDateCandidates(query, ner);
         if (dateCandidates.isEmpty()) {
+            log().debug("No date candidates found in query/NER, returning all {} minutes", minutes.size());
             return minutes; // No date in query, return all
         }
 
@@ -2019,16 +2147,71 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 .collect(Collectors.toList());
 
         if (targetDates.isEmpty()) {
+            log().warn("Could not parse any date candidates: {}. Returning all minutes.", dateCandidates);
             return minutes; // Can't parse dates, return all
         }
 
-        // Filter minutes by date
-        return minutes.stream()
+        log().info("Filtering {} minutes by target dates: {}", minutes.size(), targetDates);
+
+        // Filter minutes by date - parse date() field with flexible parsing
+        List<Minute> filtered = minutes.stream()
                 .filter(minute -> {
-                    LocalDate minuteDate = parseDateFlexible(minute.date());
-                    return minuteDate != null && targetDates.contains(minuteDate);
+                    if (minute.date() == null || minute.date().trim().isEmpty()) {
+                        log().debug("Minute {} has no date, skipping date filter", minute.id());
+                        return false; // Skip minutes without date when filtering by date
+                    }
+
+                    // Try ISO format first (if date is already in ISO format)
+                    LocalDate minuteDate = null;
+                    try {
+                        minuteDate = LocalDate.parse(minute.date(), DateTimeFormatter.ISO_LOCAL_DATE);
+                    } catch (DateTimeParseException ignored) {
+                        // Not ISO format, try flexible parsing
+                    }
+
+                    // If not ISO, use flexible parsing
+                    if (minuteDate == null) {
+                        minuteDate = parseDateFlexible(minute.date());
+                    }
+
+                    if (minuteDate == null) {
+                        log().debug("Could not parse date '{}' for minute {}", minute.date(), minute.id());
+                        return false; // Can't parse, exclude from results when filtering by date
+                    }
+
+                    // Exact match
+                    if (targetDates.contains(minuteDate)) {
+                        log().debug("Minute {} matched by exact date: {} ({})", 
+                                minute.id(), minute.date(), minuteDate);
+                        return true;
+                    }
+
+                    // Flexible matching: same year and month
+                    for (LocalDate targetDate : targetDates) {
+                        if (minuteDate.getYear() == targetDate.getYear() && 
+                            minuteDate.getMonth() == targetDate.getMonth()) {
+                            log().debug("Minute {} matched by year/month: {} ({}) vs {}", 
+                                    minute.id(), minute.date(), minuteDate, targetDate);
+                            return true;
+                        }
+                    }
+
+                    return false;
                 })
                 .collect(Collectors.toList());
+
+        log().info("Filtered {} minutes to {} by date (target dates: {})", 
+                minutes.size(), filtered.size(), targetDates);
+
+        // Fallback: if filtering removed all minutes, return original list with warning
+        if (filtered.isEmpty() && !minutes.isEmpty()) {
+            log().warn("Date filtering removed all minutes! This might indicate a parsing issue. " +
+                      "Returning original {} minutes. Query: {}, Target dates: {}", 
+                      minutes.size(), query, targetDates);
+            return minutes;
+        }
+
+        return filtered;
     }
 
     /**
@@ -2070,6 +2253,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Uses LLM to validate complex conditions before extracting/computing.
      * Useful for validating that a minute matches the query requirements.
      */
+    /**
+     * Evaluates if a minute contains the requested information.
+     * 
+     * FASE 8: Less strict evaluation with better fallback handling.
+     */
     protected boolean evaluateMinuteContainsRequestedInfo(String query, Minute minute) {
         if (query == null || query.trim().isEmpty() || minute == null) {
             return false;
@@ -2086,6 +2274,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Does this meeting minute contain the information requested in the user query?
             Specifically, can you extract/answer what the user is asking for from this minute?
             
+            IMPORTANT: Be conservative. If you're unsure or if the information might be present, respond YES.
+            Only respond NO if you're certain the information is NOT present.
+            
             Respond with ONLY one word: YES or NO.
             Do not include any explanation or additional text.
             """, query, minuteContext);
@@ -2093,13 +2284,34 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         try {
             String response = getLLMResponseCached(prompt);
             if (response == null || response.trim().isEmpty()) {
-                return false; // Default to false on error
+                log().warn("Empty LLM response in evaluateMinuteContainsRequestedInfo, defaulting to true (less strict)");
+                return true; // Less strict: default to true on error
             }
+            
+            // Use enhanced validation
+            Boolean validated = validateLLMFilterResponse(response, "evaluateMinuteContainsRequestedInfo");
+            
+            // If validation returns null (unknown), default to true (keep document) to avoid false negatives
+            if (validated != null) {
+                return validated;
+            }
+            
+            // Fallback: check for positive patterns
             String normalized = response.trim().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            boolean isPositive = normalized.contains("yes") || normalized.contains("sí") || 
+                               normalized.contains("si") || normalized.startsWith("y") ||
+                               normalized.startsWith("s");
+            
+            // If unclear, default to true (less strict)
+            if (!isPositive && !normalized.contains("no")) {
+                log().warn("Unclear LLM response in evaluateMinuteContainsRequestedInfo: '{}', defaulting to true (less strict)", response);
+                return true; // Less strict: keep on ambiguity
+            }
+            
+            return isPositive;
         } catch (Exception e) {
-            log().warn("Error evaluating minute with LLM, defaulting to false", e);
-            return false;
+            log().warn("Error evaluating minute with LLM, defaulting to true (less strict) to avoid false negatives", e);
+            return true; // Less strict: default to true on error
         }
     }
 }

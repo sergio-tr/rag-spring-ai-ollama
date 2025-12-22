@@ -10,6 +10,7 @@ import com.uniovi.rag.services.tools.Tool;
 import com.uniovi.rag.services.retriever.AbstractContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
+import com.uniovi.rag.model.QueryResponse;
 import com.uniovi.rag.services.tools.ToolResult;
 import com.uniovi.rag.utils.LLMResponseValidator;
 import org.json.JSONObject;
@@ -82,11 +83,12 @@ public class ProcessQueryService implements QueryService {
     }
 
     @Override
-    public String generateResponse(String query) {
+    public QueryResponse generateResponse(String query) {
         try {
             if (query == null || query.trim().isEmpty()) {
                 log().warn("Empty query received");
-                return generateErrorResponse(query != null ? query : "");
+                String errorResponse = generateErrorResponse(query != null ? query : "");
+                return QueryResponse.fromLLM(errorResponse);
             }
             
             String expandedQuery = expand(query);
@@ -102,14 +104,15 @@ public class ProcessQueryService implements QueryService {
             if (response == null) {
                 String answer = askModel(expandedQuery, nerEntities, queryType);
                 log().info("Response generated with model directly: {}", answer);
-                return answer;
+                return QueryResponse.fromLLM(answer, queryType);
             }
 
             log().info("Response generated with tool {}: {}", response.source(), response.result());
-            return response.result();
+            return QueryResponse.fromTool(response.result(), response.source(), queryType);
         } catch (Exception e) {
             log().error("Unexpected error processing query : {}", query, e);
-            return generateErrorResponse(query);
+            String errorResponse = generateErrorResponse(query);
+            return QueryResponse.fromLLM(errorResponse);
         }
     }
     
