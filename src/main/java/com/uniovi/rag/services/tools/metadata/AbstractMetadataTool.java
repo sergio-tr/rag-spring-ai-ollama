@@ -199,7 +199,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Returns true if response is valid and indicates a match, false otherwise.
      * On error or invalid response, returns null to indicate "unknown" (should not filter).
      * 
-     * FASE 8: Enhanced validation with more patterns and less strict matching.
      */
     private Boolean validateLLMFilterResponse(String response, String context) {
         if (response == null || response.trim().isEmpty()) {
@@ -742,7 +741,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /**
      * Obtiene el valor de un campo específico del Minute.
      * 
-     * FASE 4.2: Enhanced field extraction with better handling of agenda field.
      */
     private Object getMinuteFieldValue(Minute minute, String field) {
         String fieldLower = field.toLowerCase();
@@ -1320,6 +1318,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /**
      * Cached LLM response with error handling and validation.
      * Returns empty string if LLM call fails or response is empty.
+     * 
+     * PHASE 10: Enhanced exception handling with specific timeout and retry logic.
      */
     @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
     protected String getLLMResponseCached(String prompt) {
@@ -1328,23 +1328,115 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return "";
         }
         
-        try {
-            String response = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
-            
-            if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in getLLMResponseCached");
+        // Retry logic for transient errors
+        int maxRetries = 2;
+        Exception lastException = null;
+        
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                if (attempt > 0) {
+                    log().debug("Retry attempt {} for LLM call", attempt);
+                    Thread.sleep(500 * attempt); // Exponential backoff
+                }
+                
+                String response = chatClient
+                        .prompt()
+                        .user(prompt)
+                        .call()
+                        .content();
+                
+                if (response == null || response.trim().isEmpty()) {
+                    log().warn("Empty response from LLM in getLLMResponseCached (attempt {})", attempt + 1);
+                    if (attempt < maxRetries) {
+                        continue; // Retry on empty response
+                    }
+                    return "";
+                }
+                
+                return response.strip();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log().error("Thread interrupted in getLLMResponseCached", e);
                 return "";
+            } catch (NullPointerException e) {
+                lastException = e;
+                log().error("NullPointerException in getLLMResponseCached (attempt {}): {}", attempt + 1, e.getMessage(), e);
+                // Don't retry on NPE, likely a code issue
+                return "";
+            } catch (IllegalArgumentException e) {
+                lastException = e;
+                log().error("IllegalArgumentException in getLLMResponseCached (attempt {}): {}", attempt + 1, e.getMessage(), e);
+                // Don't retry on illegal argument, likely a code issue
+                return "";
+            } catch (Exception e) {
+                lastException = e;
+                String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+                String className = e.getClass().getName();
+                
+                // Check if it's a timeout-related error (even if not explicitly TimeoutException)
+                boolean isTimeout = errorMsg.contains("timeout") || 
+                                  errorMsg.contains("timed out") ||
+                                  className.contains("Timeout");
+                
+                // Check if it's a network-related error
+                boolean isNetworkError = errorMsg.contains("connection") ||
+                                       errorMsg.contains("network") ||
+                                       errorMsg.contains("socket") ||
+                                       className.contains("Connection") ||
+                                       className.contains("Network");
+                
+                if (isTimeout || isNetworkError) {
+                    log().warn("Timeout/network error in getLLMResponseCached (attempt {}): {}", attempt + 1, e.getMessage());
+                } else {
+                    log().error("Error in getLLMResponseCached (attempt {}): {}", attempt + 1, e.getMessage(), e);
+                }
+                
+                // Retry on timeout/network errors or other retryable exceptions
+                if (attempt < maxRetries && (isTimeout || isNetworkError || isRetryableException(e))) {
+                    continue;
+                }
             }
-            
-            return response.strip();
-        } catch (Exception e) {
-            log().error("Error in getLLMResponseCached, returning empty string", e);
-            return "";
         }
+        
+        // All retries failed
+        if (lastException != null) {
+            log().error("Failed to get LLM response after {} attempts. Last error: {}", 
+                       maxRetries + 1, lastException.getMessage(), lastException);
+        }
+        return "";
+    }
+    
+    /**
+     * Determines if an exception is retryable.
+     * PHASE 10: Helper method to identify retryable exceptions.
+     */
+    private boolean isRetryableException(Throwable e) {
+        if (e == null) {
+            return false;
+        }
+        
+        String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+        String className = e.getClass().getName().toLowerCase();
+        
+        // Retry on network-related errors
+        if (className.contains("timeout") || 
+            className.contains("connection") ||
+            className.contains("network") ||
+            errorMsg.contains("timeout") ||
+            errorMsg.contains("connection") ||
+            errorMsg.contains("network")) {
+            return true;
+        }
+        
+        // Don't retry on programming errors
+        if (e instanceof NullPointerException ||
+            e instanceof IllegalArgumentException ||
+            e instanceof IllegalStateException) {
+            return false;
+        }
+        
+        // Default: retry on other exceptions (conservative approach)
+        return true;
     }
 
     /**
@@ -1726,6 +1818,104 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
+     * Generates a specific error message with contextual information.
+     * PHASE 9: Enhanced error messages with field, date, and document count information.
+     * 
+     * @param query The user query
+     * @param field The field that was requested (e.g., "president", "agenda", "duration")
+     * @param date The date that was searched (if applicable, can be null)
+     * @param documentsReviewed Number of documents that were reviewed
+     * @param reason The reason for the error (e.g., "field_not_found", "date_not_found", "no_matching_documents")
+     * @return A specific error message in the same language as the query
+     */
+    protected String generateSpecificErrorMessage(String query, String field, String date, int documentsReviewed, String reason) {
+        if (query == null || query.trim().isEmpty()) {
+            return generateFallbackNotFoundMessage("");
+        }
+        
+        StringBuilder contextInfo = new StringBuilder();
+        if (field != null && !field.trim().isEmpty()) {
+            contextInfo.append("Field requested: ").append(field).append(". ");
+        }
+        if (date != null && !date.trim().isEmpty()) {
+            contextInfo.append("Date searched: ").append(date).append(". ");
+        }
+        if (documentsReviewed > 0) {
+            contextInfo.append("Documents reviewed: ").append(documentsReviewed).append(". ");
+        }
+        if (reason != null && !reason.trim().isEmpty()) {
+            contextInfo.append("Reason: ").append(reason).append(".");
+        }
+        
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+            
+            Context information:
+            %s
+            
+            Write a short, helpful error message in the same language as the query that explains:
+            - What was searched for
+            - Why it wasn't found (if applicable)
+            - Be specific but concise
+            - Do not include technical details like "documents reviewed" or "field requested"
+            - Focus on what the user asked for and why it couldn't be found
+            
+            Examples:
+            - If field is "president" and date is provided: "No se encontró información sobre el presidente para la fecha [date]" (Spanish) or "No president information found for the date [date]" (English)
+            - If field is "agenda": "No se encontró el orden del día para la fecha especificada" (Spanish) or "No agenda found for the specified date" (English)
+            - If date is not found: "No se encontraron actas para la fecha [date]" (Spanish) or "No meeting minutes found for the date [date]" (English)
+            """, query, contextInfo.toString());
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().warn("Empty response from LLM in generateSpecificErrorMessage, using fallback");
+                return generateFallbackSpecificErrorMessage(query, field, date);
+            }
+            
+            return response.trim();
+        } catch (Exception e) {
+            log().error("Error generating specific error message, using fallback", e);
+            return generateFallbackSpecificErrorMessage(query, field, date);
+        }
+    }
+    
+    /**
+     * Generates a fallback specific error message when LLM fails.
+     * Detects language from query and responds accordingly.
+     */
+    private String generateFallbackSpecificErrorMessage(String query, String field, String date) {
+        String queryLower = query != null ? query.toLowerCase() : "";
+        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        
+        if (isSpanish) {
+            if (date != null && !date.trim().isEmpty()) {
+                if (field != null && !field.trim().isEmpty()) {
+                    return String.format("No se encontró información sobre %s para la fecha %s.", field, date);
+                }
+                return String.format("No se encontraron actas de reunión para la fecha %s.", date);
+            }
+            if (field != null && !field.trim().isEmpty()) {
+                return String.format("No se encontró información sobre %s en los metadatos disponibles.", field);
+            }
+            return "No se encontraron actas de reunión relevantes para esta consulta.";
+        } else {
+            if (date != null && !date.trim().isEmpty()) {
+                if (field != null && !field.trim().isEmpty()) {
+                    return String.format("No information found about %s for the date %s.", field, date);
+                }
+                return String.format("No meeting minutes found for the date %s.", date);
+            }
+            if (field != null && !field.trim().isEmpty()) {
+                return String.format("No information found about %s in the available metadata.", field);
+            }
+            return "No relevant meeting minutes were found for this query.";
+        }
+    }
+
+    /**
      * Generates no data message using LLM.
      * Uses English for internal processing, but response matches query language.
      */
@@ -1881,7 +2071,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Parses a date string flexibly, supporting multiple formats including full Spanish dates.
      * This is an improved version that handles more date formats than parseDateToLocalDate.
      * 
-     * FASE 3.1: Enhanced date parsing with more formats and better Spanish support.
      */
     protected LocalDate parseDateFlexible(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) {
@@ -1957,8 +2146,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /**
      * Extracts date candidates from query and NER entities.
      * Supports multiple date formats and uses LLM for normalization when needed.
-     * 
-     * FASE 3.1: Enhanced date extraction with more regex patterns and better Spanish support.
      */
     protected List<String> extractDateCandidates(String query, JSONObject ner) {
         List<String> out = new ArrayList<>();
@@ -2126,7 +2313,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Filters minutes by date extracted from query/NER.
      * Supports multiple date formats and returns all minutes if no date is found.
      * 
-     * FASE 3.2: Enhanced filtering using date_iso, year, month from metadata for better accuracy.
      */
     protected List<Minute> filterMinutesByDate(String query, JSONObject ner, List<Minute> minutes) {
         if (minutes.isEmpty()) {
@@ -2256,7 +2442,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /**
      * Evaluates if a minute contains the requested information.
      * 
-     * FASE 8: Less strict evaluation with better fallback handling.
      */
     protected boolean evaluateMinuteContainsRequestedInfo(String query, Minute minute) {
         if (query == null || query.trim().isEmpty() || minute == null) {

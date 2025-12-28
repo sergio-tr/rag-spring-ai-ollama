@@ -175,7 +175,6 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                 return generateFallbackCountAnswer(query, analysis);
             }
             
-            // FASE 7: Remove echo of question if present
             String cleaned = removeQuestionEcho(trimmed, query);
             return cleaned;
         } catch (Exception e) {
@@ -201,7 +200,6 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
 
     /**
      * Removes question echo from response.
-     * FASE 7: Post-processing to eliminate question echo.
      */
     private String removeQuestionEcho(String response, String query) {
         if (response == null || query == null) {

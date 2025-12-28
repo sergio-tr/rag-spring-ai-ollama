@@ -8,6 +8,7 @@ import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
+import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -35,31 +36,35 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             ner
         );
         
+        // Extract date early for error messages and validation
+        List<String> dateCandidates = extractDateCandidates(query, ner);
+        String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
+        
         if (docs.isEmpty()) {
             log().info("No documents found for decision extraction query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, 0, "no_documents"), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for decision extraction query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, docs.size(), "no_valid_minutes"), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for decision extraction query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, minutes.size(), "no_relevant_minutes"), getClass());
         }
 
         // Step 4: Filter by date first (if query includes date) - early filtering reduces LLM calls
         List<Minute> dateFilteredMinutes = filterMinutesByDate(query, ner, relevantMinutes);
-        if (dateFilteredMinutes.isEmpty() && !extractDateCandidates(query, ner).isEmpty()) {
+        if (dateFilteredMinutes.isEmpty() && !dateCandidates.isEmpty()) {
             // User asked about a specific date but no minutes matched
             log().info("No minutes found for the specified date in query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, relevantMinutes.size(), "date_not_found"), getClass());
         }
         // If no date in query, use all relevant minutes
         List<Minute> minutesToEvaluate = dateFilteredMinutes.isEmpty() ? relevantMinutes : dateFilteredMinutes;
@@ -68,14 +73,46 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         List<Minute> validatedMinutes = evaluateMinutesWithLLM(query, minutesToEvaluate);
         if (validatedMinutes.isEmpty()) {
             log().info("No minutes validated by LLM for decision extraction query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, minutesToEvaluate.size(), "no_validated_minutes"), getClass());
+        }
+
+        // PHASE 6: Validate that minute dates match query date (if date was specified)
+        if (date != null && !date.trim().isEmpty()) {
+            List<Minute> dateValidatedMinutes = validatedMinutes.stream()
+                    .filter(minute -> {
+                        if (minute.date() == null) {
+                            return false; // Skip minutes without date when date was requested
+                        }
+                        // Use flexible date matching
+                        LocalDate queryDate = parseDateFlexible(date);
+                        LocalDate minuteDate = parseDateFlexible(minute.date());
+                        if (queryDate != null && minuteDate != null) {
+                            // Exact match or same year/month
+                            boolean matches = queryDate.equals(minuteDate) || 
+                                            (queryDate.getYear() == minuteDate.getYear() && 
+                                             queryDate.getMonth() == minuteDate.getMonth());
+                            if (!matches) {
+                                log().debug("Filtering out minute with date {} (requested: {})", minute.date(), date);
+                            }
+                            return matches;
+                        }
+                        // If parsing fails, keep the minute (conservative approach)
+                        return true;
+                    })
+                    .collect(Collectors.toList());
+            
+            if (dateValidatedMinutes.isEmpty()) {
+                log().warn("No minutes with matching date found after validation (query date: {})", date);
+                return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "date_mismatch"), getClass());
+            }
+            validatedMinutes = dateValidatedMinutes;
         }
 
         // Step 6: Extract decisions in parallel (only from validated minutes)
         List<Decision> decisions = extractDecisionsInParallel(query, validatedMinutes);
         if (decisions.isEmpty()) {
-            log().info("No relevant decisions found for query: {}", query);
-            return ToolResult.from(generateNoDataMessage(query), getClass());
+            log().info("No relevant decisions found for query: {} (checked {} minutes)", query, validatedMinutes.size());
+            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "no_decisions_in_metadata"), getClass());
         }
 
         // Step 7: Analyze and rank decisions

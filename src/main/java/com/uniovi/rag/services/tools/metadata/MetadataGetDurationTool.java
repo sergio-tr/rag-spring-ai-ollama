@@ -36,28 +36,31 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
             ner
         );
         
+        // Extract date early for error messages
+        List<String> dateCandidates = extractDateCandidates(query, ner);
+        String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
+        boolean hasDateInQuery = !dateCandidates.isEmpty();
+        
         if (docs.isEmpty()) {
             log().info("No documents found for get duration query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, "duration", date, 0, "no_documents"), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for get duration query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, "duration", date, docs.size(), "no_valid_minutes"), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for get duration query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, "duration", date, minutes.size(), "no_relevant_minutes"), getClass());
         }
 
         // Step 4: Check if query includes a date
-        List<String> dateCandidates = extractDateCandidates(query, ner);
-        boolean hasDateInQuery = !dateCandidates.isEmpty();
         log().info("Date candidates extracted: {} (hasDateInQuery: {})", dateCandidates, hasDateInQuery);
 
         List<Minute> targetMinutes;
@@ -77,7 +80,7 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
                         .distinct()
                         .collect(Collectors.toList());
                 log().info("Available dates in relevant minutes: {}", availableDates);
-                return ToolResult.from(generateNotFoundMessage(query), getClass());
+                return ToolResult.from(generateSpecificErrorMessage(query, "duration", date, relevantMinutes.size(), "date_not_found"), getClass());
             }
         } else {
             // No date in query: evaluate each minute with LLM to find the one being asked about
@@ -94,8 +97,8 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         // Step 5: Extract durations in parallel (only from target minutes)
         List<DurationResult> results = extractDurationsInParallel(targetMinutes);
         if (results.isEmpty()) {
-            log().info("No durations extracted for query: {}", query);
-            return ToolResult.from(generateNoDataMessage(query), getClass());
+            log().info("No durations extracted for query: {} (no startTime/endTime in {} minutes)", query, targetMinutes.size());
+            return ToolResult.from(generateSpecificErrorMessage(query, "duration", date, targetMinutes.size(), "no_start_end_time"), getClass());
         }
 
         // Step 6: Select the target minute
@@ -134,8 +137,6 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
 
     /**
      * Extracts duration for a minute with enhanced context.
-     * 
-     * FASE 5: Enhanced duration extraction with better logging and validation.
      */
     private DurationResult extractDuration(Minute minute) {
         if (minute.startTime() == null || minute.startTime().trim().isEmpty() ||
