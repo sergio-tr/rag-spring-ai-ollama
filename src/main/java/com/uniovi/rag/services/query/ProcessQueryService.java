@@ -84,6 +84,19 @@ public class ProcessQueryService implements QueryService {
 
     @Override
     public QueryResponse generateResponse(String query) {
+        boolean isProblematicConfig = featureConfig.isMetadataEnabled() && 
+                                      featureConfig.isNerEnabled() && 
+                                      !featureConfig.isToolsEnabled();
+        
+        if (isProblematicConfig) {
+            log().info("Processing query with problematic configuration: metadata=true, ner=true, tools=false");
+            log().info("Configuration details: expansion={}, ner={}, tools={}, metadata={}", 
+                      featureConfig.isExpansionEnabled(), 
+                      featureConfig.isNerEnabled(), 
+                      featureConfig.isToolsEnabled(), 
+                      featureConfig.isMetadataEnabled());
+        }
+        
         try {
             if (query == null || query.trim().isEmpty()) {
                 log().warn("Empty query received");
@@ -92,7 +105,18 @@ public class ProcessQueryService implements QueryService {
             }
             
             String expandedQuery = expand(query);
+            if (isProblematicConfig) {
+                log().debug("Expanded query: {}", expandedQuery);
+            }
+            
             JSONObject nerEntities = analyse(expandedQuery);
+            if (isProblematicConfig) {
+                log().debug("NER entities extracted: {}", nerEntities != null ? nerEntities.toString() : "null");
+                if (nerEntities != null) {
+                    log().debug("NER keys: {}", nerEntities.keySet());
+                }
+            }
+            
             QueryType queryType = classify(expandedQuery);
 
             log().info("Query expanded: {}", expandedQuery);
@@ -102,6 +126,9 @@ public class ProcessQueryService implements QueryService {
             ToolResult response = tryToolRoute(expandedQuery, nerEntities, queryType);
 
             if (response == null) {
+                if (isProblematicConfig) {
+                    log().debug("No tool route available, falling back to direct model query");
+                }
                 String answer = askModel(expandedQuery, nerEntities, queryType);
                 log().info("Response generated with model directly: {}", answer);
                 return QueryResponse.fromLLM(answer, queryType);
@@ -109,8 +136,32 @@ public class ProcessQueryService implements QueryService {
 
             log().info("Response generated with tool {}: {}", response.source(), response.result());
             return QueryResponse.fromTool(response.result(), response.source(), queryType);
+        } catch (NullPointerException e) {
+            log().error("NullPointerException processing query (config: metadata={}, ner={}, tools={}): {}", 
+                       featureConfig.isMetadataEnabled(), 
+                       featureConfig.isNerEnabled(), 
+                       featureConfig.isToolsEnabled(), 
+                       query, e);
+            log().error("Stack trace:", e);
+            String errorResponse = generateErrorResponse(query);
+            return QueryResponse.fromLLM(errorResponse);
+        } catch (IllegalArgumentException e) {
+            log().error("IllegalArgumentException processing query (config: metadata={}, ner={}, tools={}): {}", 
+                       featureConfig.isMetadataEnabled(), 
+                       featureConfig.isNerEnabled(), 
+                       featureConfig.isToolsEnabled(), 
+                       query, e);
+            log().error("Stack trace:", e);
+            String errorResponse = generateErrorResponse(query);
+            return QueryResponse.fromLLM(errorResponse);
         } catch (Exception e) {
-            log().error("Unexpected error processing query : {}", query, e);
+            log().error("Unexpected error processing query (config: metadata={}, ner={}, tools={}): {}", 
+                       featureConfig.isMetadataEnabled(), 
+                       featureConfig.isNerEnabled(), 
+                       featureConfig.isToolsEnabled(), 
+                       query, e);
+            log().error("Exception type: {}, Message: {}", e.getClass().getName(), e.getMessage());
+            log().error("Stack trace:", e);
             String errorResponse = generateErrorResponse(query);
             return QueryResponse.fromLLM(errorResponse);
         }
@@ -228,12 +279,36 @@ public class ProcessQueryService implements QueryService {
      * Retries up to MAX_RETRIES times if the response is invalid or an error occurs.
      */
     private String askModel(String query, JSONObject nerEntities, QueryType queryType) {
+        boolean isProblematicConfig = featureConfig.isMetadataEnabled() && 
+                                      featureConfig.isNerEnabled() && 
+                                      !featureConfig.isToolsEnabled();
+        
         List<Document> docs;
-        if (retriever instanceof AbstractContextRetriever && nerEntities != null && !nerEntities.isEmpty()) {
-            docs = ((AbstractContextRetriever) retriever).retrieveWithMetadataFilters(query, nerEntities);
-            log().info("Using optimized retrieval with metadata filters, retrieved {} documents", docs.size());
-        } else {
-            docs = retriever.retrieve(query);
+        try {
+            if (retriever instanceof AbstractContextRetriever && nerEntities != null && !nerEntities.isEmpty()) {
+                if (isProblematicConfig) {
+                    log().debug("Attempting retrieval with metadata filters and NER entities");
+                }
+                docs = ((AbstractContextRetriever) retriever).retrieveWithMetadataFilters(query, nerEntities);
+                log().info("Using optimized retrieval with metadata filters, retrieved {} documents", docs.size());
+            } else {
+                if (isProblematicConfig) {
+                    log().debug("Using standard retrieval (no metadata filters or NER)");
+                }
+                docs = retriever.retrieve(query);
+            }
+        } catch (NullPointerException e) {
+            log().error("NullPointerException during document retrieval (config: metadata={}, ner={}): {}", 
+                       featureConfig.isMetadataEnabled(), 
+                       featureConfig.isNerEnabled(), 
+                       e.getMessage(), e);
+            throw e;
+        } catch (Exception e) {
+            log().error("Exception during document retrieval (config: metadata={}, ner={}): {}", 
+                       featureConfig.isMetadataEnabled(), 
+                       featureConfig.isNerEnabled(), 
+                       e.getMessage(), e);
+            throw e;
         }
 
         String context = retriever.createContext(docs, query, nerEntities);

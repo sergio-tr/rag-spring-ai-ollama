@@ -35,31 +35,43 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             ner
         );
         
+        // Step 6: Classify field early to use in error messages
+        String detectedField = classifyFieldIntent(query, ner);
+        
         if (docs.isEmpty()) {
             log().info("No documents found for get field query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            List<String> dateCandidates = extractDateCandidates(query, ner);
+            String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
+            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, 0, "no_documents"), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for get field query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            List<String> dateCandidates = extractDateCandidates(query, ner);
+            String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
+            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, docs.size(), "no_valid_minutes"), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for get field query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            List<String> dateCandidates = extractDateCandidates(query, ner);
+            String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
+            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, minutes.size(), "no_relevant_minutes"), getClass());
         }
 
         // Step 4: Filter by date first (if query includes date) - early filtering reduces LLM calls
         List<Minute> dateFilteredMinutes = filterMinutesByDate(query, ner, relevantMinutes);
-        if (dateFilteredMinutes.isEmpty() && !extractDateCandidates(query, ner).isEmpty()) {
+        List<String> dateCandidates = extractDateCandidates(query, ner);
+        String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
+        
+        if (dateFilteredMinutes.isEmpty() && !dateCandidates.isEmpty()) {
             // User asked about a specific date but no minutes matched
             log().info("No minutes found for the specified date in query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, relevantMinutes.size(), "date_not_found"), getClass());
         }
         // If no date in query, use all relevant minutes
         List<Minute> minutesToEvaluate = dateFilteredMinutes.isEmpty() ? relevantMinutes : dateFilteredMinutes;
@@ -68,21 +80,36 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         List<Minute> validatedMinutes = evaluateMinutesWithLLM(query, minutesToEvaluate);
         if (validatedMinutes.isEmpty()) {
             log().info("No minutes validated by LLM for get field query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, minutesToEvaluate.size(), "no_validated_minutes"), getClass());
         }
 
-        // Step 6: Classify field by rules (no LLM)
-        String detectedField = classifyFieldIntent(query, ner);
+        // Step 6: Classify field by rules (no LLM) - already done above
         if (detectedField.equals("unknown")) {
             log().info("Could not classify field intent for query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(generateSpecificErrorMessage(query, null, date, validatedMinutes.size(), "field_classification_failed"), getClass());
         }
 
         // Step 7: Extract field values in parallel (only from validated minutes)
         List<FieldResult> results = extractFieldValuesInParallel(validatedMinutes, detectedField);
         if (results.isEmpty()) {
-            log().info("No field values extracted for query: {}", query);
-            return ToolResult.from(generateNoDataMessage(query), getClass());
+            log().info("No field values extracted for query: {} (field: {})", query, detectedField);
+            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, validatedMinutes.size(), "field_not_found_in_metadata"), getClass());
+        }
+        
+        // PHASE 4: Validate that extracted field matches requested field
+        // Check if we extracted the correct field type
+        for (FieldResult result : results) {
+            if (result.getFieldValue() != null && !result.getFieldValue().isBlank()) {
+                // Basic validation: if we asked for date but got a name, or vice versa
+                String value = result.getFieldValue().toLowerCase();
+                if (detectedField.equals("date") && (value.matches(".*[a-z].*") && !value.matches(".*\\d{4}.*"))) {
+                    // Got text that doesn't look like a date when date was requested
+                    log().warn("Possible field mismatch: requested 'date' but got text that doesn't look like date: {}", result.getFieldValue());
+                } else if ((detectedField.equals("president") || detectedField.equals("secretary")) && value.matches(".*\\d{4}.*")) {
+                    // Got something that looks like a date when person was requested
+                    log().warn("Possible field mismatch: requested '{}' but got text that looks like date: {}", detectedField, result.getFieldValue());
+                }
+            }
         }
 
         // Step 8: Analyze and rank field results
@@ -231,7 +258,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     }
 
     /**
-     * Genera respuesta directa usando solo metadatos.
+     * Generates direct answer using only metadata.
      */
     private String generateFieldAnswer(String query, List<FieldResult> results, String detectedField) {
         if (results == null || results.isEmpty()) {
