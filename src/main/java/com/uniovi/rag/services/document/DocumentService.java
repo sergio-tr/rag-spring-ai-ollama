@@ -23,4 +23,14 @@ public interface DocumentService extends Loggable {
      * @return true if there are documents in the database, false otherwise
      */
     boolean hasDocuments();
+    
+    /**
+     * Deletes all chunks of a document by document_id.
+     * Since documents are now split into chunks, this method deletes all chunks
+     * that belong to the same document_id.
+     * 
+     * @param documentId The document_id to delete (all chunks with this document_id will be removed)
+     * @return The number of chunks deleted
+     */
+    int deleteDocumentByDocumentId(String documentId);
 }

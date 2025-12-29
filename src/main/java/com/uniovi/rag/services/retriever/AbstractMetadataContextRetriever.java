@@ -29,7 +29,7 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
     @Override
     public List<Document> retrieveWithMetadataFilters(String query, JSONObject nerEntities) {
         if (nerEntities == null || nerEntities.isEmpty()) {
-            // No NER entities, use standard retrieval
+            // No NER entities, use standard retrieval (which already groups chunks)
             return retrieve(query);
         }
         
@@ -41,18 +41,21 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
         
         List<Document> retrievedDocs = vectorStore.similaritySearch(req);
         
+        // Group and combine chunks first (before filtering)
+        List<Document> groupedDocs = groupAndCombineChunks(retrievedDocs);
+        
         // Post-filter by metadata if NER entities are present
-        List<Document> filtered = filterDocumentsByMetadata(retrievedDocs, nerEntities);
+        List<Document> filtered = filterDocumentsByMetadata(groupedDocs, nerEntities);
         
         // If filtering removed all documents, try less aggressive filtering
-        if (filtered.isEmpty() && !retrievedDocs.isEmpty()) {
+        if (filtered.isEmpty() && !groupedDocs.isEmpty()) {
             log().info("Metadata filtering removed all documents, trying less aggressive filtering");
-            filtered = filterDocumentsByMetadataLenient(retrievedDocs, nerEntities);
+            filtered = filterDocumentsByMetadataLenient(groupedDocs, nerEntities);
             
             // If still empty, return unfiltered documents
             if (filtered.isEmpty()) {
                 log().info("Lenient filtering also removed all documents, returning unfiltered documents (limit: {})", topK);
-                return retrievedDocs.stream().limit(topK).collect(Collectors.toList());
+                return groupedDocs.stream().limit(topK).collect(Collectors.toList());
             }
         }
         

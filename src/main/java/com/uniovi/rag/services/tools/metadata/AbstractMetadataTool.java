@@ -1318,8 +1318,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /**
      * Cached LLM response with error handling and validation.
      * Returns empty string if LLM call fails or response is empty.
-     * 
-     * PHASE 10: Enhanced exception handling with specific timeout and retry logic.
      */
     @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
     protected String getLLMResponseCached(String prompt) {
@@ -1466,41 +1464,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .collect(Collectors.toList());
         }
 
-        // Deduplicate documents, selecting chunk with most complete metadata
-        List<Document> deduplicatedDocs = deduplicateDocuments(metadataDocs);
-
-        log().info("Retrieved {} unique documents from {} chunks ({} total retrieved, {} after metadata filter)",
-                deduplicatedDocs.size(), metadataDocs.size(), docs.size(), metadataDocs.size());
-        return deduplicatedDocs;
-    }
-    
-    /**
-     * Extracts the document_id from a document's metadata.
-     * Falls back to the document's id if document_id is not present.
-     */
-    private String getDocumentId(Document doc) {
-        if (doc == null) {
-            return null;
-        }
-        
-        Map<String, Object> metadata = doc.getMetadata();
-        if (metadata == null) {
-            return doc.getId();
-        }
-        
-        // Try to get document_id first (new documents)
-        Object docId = metadata.get("document_id");
-        if (docId != null) {
-            return docId.toString();
-        }
-        
-        // Fallback: try to get id from metadata (should be the same as document_id)
-        Object id = metadata.get("id");
-        if (id != null) {
-            return id.toString();
-        }
-
-        return doc.getId();
+        // Documents are already grouped and combined by the retriever
+        log().info("Retrieved {} documents ({} total retrieved, {} after metadata filter)",
+                metadataDocs.size(), docs.size(), metadataDocs.size());
+        return metadataDocs;
     }
     
     /**
@@ -1646,8 +1613,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         }
                     }
 
-                    // Deduplicate documents (selecting chunk with most complete metadata)
-                    docs = deduplicateDocuments(docs);
+                    // Documents are already grouped and combined by the retriever
 
                     if (!docs.isEmpty()) {
                         log().info("Retrieved {} documents using NER-based retrieval with metadata filters", docs.size());
@@ -1686,67 +1652,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      */
     protected List<Document> retrieveDocumentsWithFallback(String query, String[] relevantFields) {
         return retrieveDocumentsWithFallback(query, relevantFields, null);
-    }
-    
-    /**
-     * Deduplicates documents by document_id, selecting the chunk with most complete metadata.
-     * Improved selection based on metadata completeness.
-     */
-    private List<Document> deduplicateDocuments(List<Document> docs) {
-        if (docs == null || docs.isEmpty()) {
-            return docs;
-        }
-        
-        Map<String, Document> uniqueDocuments = docs.stream()
-                .collect(Collectors.toMap(
-                    doc -> getDocumentId(doc),
-                    doc -> doc,
-                    (existing, replacement) -> {
-                        int existingFields = countMetadataFields(existing);
-                        int replacementFields = countMetadataFields(replacement);
-                        if (replacementFields > existingFields) {
-                            log().info("Selecting replacement chunk with {} metadata fields (existing had {})", 
-                                      replacementFields, existingFields);
-                            return replacement;
-                        }
-                        return existing;
-                    }
-                ));
-        
-        List<Document> deduplicated = new ArrayList<>(uniqueDocuments.values());
-        log().info("Deduplicated {} documents from {} chunks", deduplicated.size(), docs.size());
-        return deduplicated;
-    }
-    
-    /**
-     * Counts non-null, non-empty metadata fields in a document.
-     * Used to select the chunk with most complete metadata when deduplicating.
-     */
-    private int countMetadataFields(Document doc) {
-        if (doc == null) {
-            return 0;
-        }
-        
-        Map<String, Object> metadata = doc.getMetadata();
-        if (metadata == null) {
-            return 0;
-        }
-        
-        int count = 0;
-        for (Object value : metadata.values()) {
-            if (value != null) {
-                if (value instanceof String && !((String) value).trim().isEmpty()) {
-                    count++;
-                } else if (value instanceof List && !((List<?>) value).isEmpty()) {
-                    count++;
-                } else if (value instanceof Map && !((Map<?, ?>) value).isEmpty()) {
-                    count++;
-                } else if (!(value instanceof String) && !(value instanceof List) && !(value instanceof Map)) {
-                    count++;
-                }
-            }
-        }
-        return count;
     }
     
     /**

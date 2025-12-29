@@ -41,7 +41,9 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
                 query(query).
                 withTopK(topK).
                 withSimilarityThreshold(similarityThreshold);
-        return vectorStore.similaritySearch(req);
+        List<Document> docs = vectorStore.similaritySearch(req);
+        // Group and combine chunks by document_id to ensure complete content
+        return groupAndCombineChunks(docs);
     }
 
     @Override
@@ -314,6 +316,175 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
                 .replaceAll("ñ", "n")
                 .trim()
                 .replaceAll("\\s+", " ");  // Multiple spaces to one
+    }
+    
+    /**
+     * Groups and combines chunks by document_id, merging content from all chunks.
+     * This ensures that when a document is split into multiple chunks, all content is preserved.
+     * The resulting Document contains the combined content and metadata from the chunk with most complete metadata.
+     * 
+     * This is the central place where chunk grouping happens - all retrievers use this method.
+     */
+    protected List<Document> groupAndCombineChunks(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return docs;
+        }
+        
+        // Group documents by document_id
+        java.util.Map<String, java.util.List<Document>> documentsById = docs.stream()
+                .collect(java.util.stream.Collectors.groupingBy(this::getDocumentId));
+        
+        // Combine chunks for each document
+        java.util.List<Document> combinedDocuments = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, java.util.List<Document>> entry : documentsById.entrySet()) {
+            String documentId = entry.getKey();
+            java.util.List<Document> chunks = entry.getValue();
+            
+            if (chunks.size() == 1) {
+                // Single chunk, use as-is
+                combinedDocuments.add(chunks.get(0));
+            } else {
+                // Multiple chunks, combine content
+                Document combined = combineChunks(chunks);
+                if (combined != null) {
+                    combinedDocuments.add(combined);
+                    log().info("Combined {} chunks for document_id: {} (total content length: {})", 
+                              chunks.size(), documentId, 
+                              combined.getContent() != null ? combined.getContent().length() : 0);
+                }
+            }
+        }
+        
+        log().info("Grouped and combined {} documents from {} chunks", 
+                  combinedDocuments.size(), docs.size());
+        return combinedDocuments;
+    }
+    
+    /**
+     * Combines multiple chunks of the same document into a single Document.
+     * Merges content in order (by chunk_index) and uses metadata from the chunk with most complete metadata.
+     */
+    protected Document combineChunks(java.util.List<Document> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return null;
+        }
+        
+        if (chunks.size() == 1) {
+            return chunks.get(0);
+        }
+        
+        // Sort chunks by chunk_index if available
+        java.util.List<Document> sortedChunks = new java.util.ArrayList<>(chunks);
+        sortedChunks.sort((d1, d2) -> {
+            Integer idx1 = getChunkIndex(d1);
+            Integer idx2 = getChunkIndex(d2);
+            if (idx1 == null && idx2 == null) return 0;
+            if (idx1 == null) return 1;
+            if (idx2 == null) return -1;
+            return idx1.compareTo(idx2);
+        });
+        
+        // Combine content from all chunks
+        StringBuilder combinedContent = new StringBuilder();
+        for (Document chunk : sortedChunks) {
+            String content = chunk.getContent();
+            if (content != null && !content.trim().isEmpty()) {
+                if (combinedContent.length() > 0) {
+                    combinedContent.append("\n\n");
+                }
+                combinedContent.append(content.trim());
+            }
+        }
+        
+        // Select chunk with most complete metadata
+        Document bestMetadataChunk = sortedChunks.stream()
+                .max((d1, d2) -> Integer.compare(
+                    countMetadataFields(d1), 
+                    countMetadataFields(d2)
+                ))
+                .orElse(sortedChunks.get(0));
+        
+        // Create new Document with combined content and best metadata
+        java.util.Map<String, Object> combinedMetadata = new java.util.HashMap<>(bestMetadataChunk.getMetadata());
+        // Remove chunk-specific metadata
+        combinedMetadata.remove("chunk_index");
+        combinedMetadata.remove("total_chunks");
+        
+        return new Document(combinedContent.toString(), combinedMetadata);
+    }
+    
+    /**
+     * Gets the chunk index from document metadata.
+     */
+    private Integer getChunkIndex(Document doc) {
+        if (doc == null || doc.getMetadata() == null) {
+            return null;
+        }
+        Object chunkIndex = doc.getMetadata().get("chunk_index");
+        if (chunkIndex instanceof Number) {
+            return ((Number) chunkIndex).intValue();
+        }
+        return null;
+    }
+    
+    /**
+     * Extracts the document_id from a document's metadata.
+     * Falls back to the document's id if document_id is not present.
+     */
+    private String getDocumentId(Document doc) {
+        if (doc == null) {
+            return null;
+        }
+        
+        java.util.Map<String, Object> metadata = doc.getMetadata();
+        if (metadata == null) {
+            return doc.getId();
+        }
+        
+        // Try to get document_id first (new documents)
+        Object docId = metadata.get("document_id");
+        if (docId != null) {
+            return docId.toString();
+        }
+        
+        // Fallback: try to get id from metadata (should be the same as document_id)
+        Object id = metadata.get("id");
+        if (id != null) {
+            return id.toString();
+        }
+
+        return doc.getId();
+    }
+    
+    /**
+     * Counts non-null, non-empty metadata fields in a document.
+     * Used to select the chunk with most complete metadata when combining.
+     */
+    private int countMetadataFields(Document doc) {
+        if (doc == null) {
+            return 0;
+        }
+        
+        java.util.Map<String, Object> metadata = doc.getMetadata();
+        if (metadata == null) {
+            return 0;
+        }
+        
+        int count = 0;
+        for (Object value : metadata.values()) {
+            if (value != null) {
+                if (value instanceof String && !((String) value).trim().isEmpty()) {
+                    count++;
+                } else if (value instanceof java.util.List && !((java.util.List<?>) value).isEmpty()) {
+                    count++;
+                } else if (value instanceof java.util.Map && !((java.util.Map<?, ?>) value).isEmpty()) {
+                    count++;
+                } else if (!(value instanceof String) && !(value instanceof java.util.List) && !(value instanceof java.util.Map)) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 
 }

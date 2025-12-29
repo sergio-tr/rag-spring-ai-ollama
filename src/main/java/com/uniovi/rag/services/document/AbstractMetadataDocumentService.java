@@ -68,9 +68,26 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
             // Step 5: Validate critical metadata fields
             validateMetadata(metadata, filename);
             
-            // Step 6: Create document and add to vector store
-            Document document = new Document(content, metadata);
-            add(List.of(document));
+            // Step 6: Split content into chunks for embedding (embedding models have lower context limits)
+            List<String> chunks = splitContentIntoChunks(content, 150);
+            
+            log().info("Content split into {} chunks for embedding (original length: {})", 
+                      chunks.size(), content.length());
+            
+            // Step 7: Create multiple documents (one per chunk) with same metadata
+            // Add chunk index to metadata for each chunk to enable proper grouping
+            List<Document> documents = new java.util.ArrayList<>();
+            for (int i = 0; i < chunks.size(); i++) {
+                Map<String, Object> chunkMetadata = new java.util.HashMap<>(metadata);
+                chunkMetadata.put("chunk_index", i);
+                chunkMetadata.put("total_chunks", chunks.size());
+                documents.add(new Document(chunks.get(i), chunkMetadata));
+            }
+            
+            add(documents);
+            
+            log().info("Successfully processed document: {} with {} chunks and {} metadata fields", 
+                      filename, documents.size(), metadata.size());
             
             log().info("Successfully processed document: {} with {} metadata fields", filename, metadata.size());
         } catch (IllegalArgumentException e) {
@@ -173,5 +190,60 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
                           filename, numberOfAttendees.getClass().getName());
             }
         }
+    }
+    
+    /**
+     * Splits content into chunks that fit within embedding model context limits.
+     * Each chunk will be stored as a separate document with the same metadata.
+     * This preserves all content while respecting embedding model limits.
+     * 
+     * @param content The full content to split
+     * @param maxCharsPerChunk Maximum characters per chunk (conservative limit for embedding models)
+     * @return List of content chunks
+     */
+    protected List<String> splitContentIntoChunks(String content, int maxCharsPerChunk) {
+        if (content == null || content.trim().isEmpty()) {
+            return List.of("");
+        }
+        
+        String trimmed = content.trim();
+        
+        // If content fits in one chunk, return as single chunk
+        if (trimmed.length() <= maxCharsPerChunk) {
+            return List.of(trimmed);
+        }
+        
+        List<String> chunks = new java.util.ArrayList<>();
+        int start = 0;
+        
+        while (start < trimmed.length()) {
+            int end = Math.min(start + maxCharsPerChunk, trimmed.length());
+            
+            // Try to break at word boundary to avoid splitting words
+            if (end < trimmed.length()) {
+                // Look for last space, newline, or punctuation before the limit
+                int lastBreak = end;
+                for (int i = end - 1; i > start + (maxCharsPerChunk * 2 / 3); i--) {
+                    char c = trimmed.charAt(i);
+                    if (c == '\n' || c == '.' || c == '!' || c == '?' || c == ' ') {
+                        lastBreak = i + 1;
+                        break;
+                    }
+                }
+                end = lastBreak;
+            }
+            
+            String chunk = trimmed.substring(start, end).trim();
+            if (!chunk.isEmpty()) {
+                chunks.add(chunk);
+            }
+            
+            start = end;
+        }
+        
+        log().info("Split content into {} chunks (max {} chars per chunk, total {} chars)", 
+                  chunks.size(), maxCharsPerChunk, trimmed.length());
+        
+        return chunks;
     }
 }

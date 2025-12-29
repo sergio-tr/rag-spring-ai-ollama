@@ -60,6 +60,44 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             return false;
         }
     }
+    
+    @Override
+    public int deleteDocumentByDocumentId(String documentId) {
+        if (documentId == null || documentId.trim().isEmpty()) {
+            log().warn("Attempted to delete document with null or empty document_id");
+            return 0;
+        }
+        
+        try {
+            // Delete all chunks with this document_id from vector_store
+            int deletedChunks = jdbcTemplate.update(
+                "DELETE FROM vector_store WHERE metadata->>'document_id' = ?",
+                documentId
+            );
+            
+            // Also try to delete by id field in metadata (fallback for older documents)
+            if (deletedChunks == 0) {
+                deletedChunks = jdbcTemplate.update(
+                    "DELETE FROM vector_store WHERE metadata->>'id' = ?",
+                    documentId
+                );
+            }
+            
+            // Delete from documents table if document_name matches
+            int deletedDocs = jdbcTemplate.update(
+                "DELETE FROM documents WHERE document_name = ? OR (metadata->>'document_id')::text = ?",
+                documentId, documentId
+            );
+            
+            log().info("Deleted {} chunks and {} document entries for document_id: {}", 
+                      deletedChunks, deletedDocs, documentId);
+            
+            return deletedChunks;
+        } catch (Exception e) {
+            log().error("Error deleting document by document_id: {}", documentId, e);
+            throw new RuntimeException("Failed to delete document: " + documentId, e);
+        }
+    }
 
     protected String extractContent(MultipartFile file) {
         String contentType = file.getContentType();
