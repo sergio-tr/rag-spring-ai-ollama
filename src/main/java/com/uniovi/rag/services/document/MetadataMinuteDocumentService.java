@@ -98,7 +98,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         String startTime = extractStartTime(content);
         String endTime = extractEndTime(content);
         String president = extractSingle(content, "(?i)•\\s*(.+?)\\s*\\(Presidente\\)");
-        String secretary = extractSingle(content, "(?i)•\\s*(.+?)\\s*\\(Secretari[ao]\\)");
+        // Extract secretary name only, stopping at the next bullet or newline
+        String secretary = extractSingle(content, "(?i)•\\s*([^•\\n]+?)\\s*\\(Secretari[ao]\\)");
         List<String> attendees = extractAttendees(content);
         Map<String, String> agenda = extractAgendaMap(content);
 
@@ -197,11 +198,14 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return new ArrayList<>();
         }
         
+        // Truncate content to prevent context length errors (max 8000 chars to leave room for prompt)
+        String truncatedContent = truncateForPrompt(content, 8000);
+        
         try {
             String rawResponse = chatClient
                     .prompt()
                     .system(SYSTEM_PROMPT_LINE_DATA)
-                    .user(prompt + "\nTexto del acta:\n" + content)
+                    .user(prompt + "\nTexto del acta:\n" + truncatedContent)
                     .call()
                     .content();
 
@@ -224,7 +228,31 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             log().info("Extracted {} items using LLM prompt", extracted.size());
             return extracted;
         } catch (Exception e) {
-            log().error("Error extracting information with LLM prompt, trying regex fallback", e);
+            // Check if error is related to context length
+            String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+            if (errorMsg.contains("context length") || errorMsg.contains("input length exceeds") || 
+                errorMsg.contains("token") && errorMsg.contains("limit")) {
+                log().error("Context length error in extractWithPrompt, trying with more aggressive truncation", e);
+                // Try with even more aggressive truncation
+                String moreTruncated = truncateForPrompt(content, 4000);
+                try {
+                    String rawResponse = chatClient
+                            .prompt()
+                            .system(SYSTEM_PROMPT_LINE_DATA)
+                            .user(prompt + "\nTexto del acta:\n" + moreTruncated)
+                            .call()
+                            .content();
+                    if (rawResponse != null && !rawResponse.trim().isEmpty()) {
+                        List<String> extracted = cleanLLMResponse(rawResponse);
+                        log().info("Extracted {} items using LLM prompt with aggressive truncation", extracted.size());
+                        return extracted;
+                    }
+                } catch (Exception e2) {
+                    log().error("Error even with aggressive truncation, trying regex fallback", e2);
+                }
+            } else {
+                log().error("Error extracting information with LLM prompt, trying regex fallback", e);
+            }
             return extractWithRegexFallback(content, prompt);
         }
     }
@@ -381,11 +409,14 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return generateFallbackSummary(content);
         }
         
+        // Truncate content to prevent context length errors (max 8000 chars to leave room for prompt)
+        String truncatedContent = truncateForPrompt(content, 8000);
+        
         try {
             String summary = chatClient
                     .prompt()
                     .system(SYSTEM_PROMPT_SUMMARY)
-                    .user(prompt + "\nTexto del acta:\n" + content)
+                    .user(prompt + "\nTexto del acta:\n" + truncatedContent)
                     .call()
                     .content();
             
@@ -398,7 +429,31 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             log().info("Extracted summary with {} characters", trimmed.length());
             return trimmed;
         } catch (Exception e) {
-            log().error("Error extracting summary with LLM, using fallback", e);
+            // Check if error is related to context length
+            String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+            if (errorMsg.contains("context length") || errorMsg.contains("input length exceeds") || 
+                errorMsg.contains("token") && errorMsg.contains("limit")) {
+                log().error("Context length error in extractSummaryWithPrompt, trying with more aggressive truncation", e);
+                // Try with even more aggressive truncation
+                String moreTruncated = truncateForPrompt(content, 4000);
+                try {
+                    String summary = chatClient
+                            .prompt()
+                            .system(SYSTEM_PROMPT_SUMMARY)
+                            .user(prompt + "\nTexto del acta:\n" + moreTruncated)
+                            .call()
+                            .content();
+                    if (summary != null && !summary.trim().isEmpty()) {
+                        String trimmed = summary.trim();
+                        log().info("Extracted summary with {} characters using aggressive truncation", trimmed.length());
+                        return trimmed;
+                    }
+                } catch (Exception e2) {
+                    log().error("Error even with aggressive truncation, using fallback", e2);
+                }
+            } else {
+                log().error("Error extracting summary with LLM, using fallback", e);
+            }
             return generateFallbackSummary(content);
         }
     }
@@ -1633,5 +1688,25 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         Pattern pattern = Pattern.compile(startRegex + "(.*?)" + endRegex, Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(text);
         return matcher.find() ? matcher.group(1).trim() : "";
+    }
+    
+    /**
+     * Truncates content before sending to LLM prompt to avoid context length errors.
+     * Preserves header and footer to maintain relevant signal.
+     */
+    private String truncateForPrompt(String content, int maxChars) {
+        if (content == null) {
+            return "";
+        }
+        String trimmed = content.trim();
+        if (trimmed.length() <= maxChars) {
+            return trimmed;
+        }
+
+        int head = (int) (maxChars * 0.65); // Keep more header
+        int tail = maxChars - head;
+        String truncated = trimmed.substring(0, head) + "\n...\n" + trimmed.substring(trimmed.length() - tail);
+        log().info("Prompt content truncated from {} to {} characters", trimmed.length(), truncated.length());
+        return truncated;
     }
 }
