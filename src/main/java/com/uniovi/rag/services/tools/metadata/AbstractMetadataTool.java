@@ -1310,7 +1310,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return null;
         }
         
-        String v = dateStr.trim();
+        // Normalize to lowercase to handle case variations (e.g., "Agosto" vs "agosto")
+        String v = dateStr.trim().toLowerCase();
         
         // Try ISO format first (most common after normalization)
         try {
@@ -2700,7 +2701,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (dateStr == null || dateStr.trim().isEmpty()) {
             return null;
         }
-        String v = dateStr.trim();
+        // Normalize to lowercase to handle case variations (e.g., "Agosto" vs "agosto")
+        String v = dateStr.trim().toLowerCase();
 
         // Try ISO first (most common after LLM normalization)
         try {
@@ -3175,7 +3177,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (dateValue != null) {
             String dateStr = dateValue.toString().trim();
             if (!dateStr.isEmpty()) {
-                // Try to parse and normalize to ISO
+                // Try to parse and normalize to ISO (parseDateFlexible handles case normalization)
                 LocalDate parsed = parseDateFlexible(dateStr);
                 if (parsed != null) {
                     String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
