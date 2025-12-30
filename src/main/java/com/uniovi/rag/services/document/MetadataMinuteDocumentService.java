@@ -712,26 +712,57 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
     }
 
+    /**
+     * Parses a date string to LocalDate using multiple formatters.
+     * Enhanced to match the formatters used in AbstractMetadataTool.parseDateFlexible for consistency.
+     */
     private LocalDate parseDateToLocalDate(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) {
             return null;
         }
 
+        String v = dateStr.trim();
+
+        // Try ISO format first (most common after normalization)
+        try {
+            return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+        }
+
+        // Try Spanish formats with quotes
         List<DateTimeFormatter> formatters = Arrays.asList(
                 DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
                 DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+                // Spanish formats without quotes
+                DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
+                // Abbreviated month names
+                DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
+                // Without "de" between day and month
+                DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
+                // Numeric formats
                 DateTimeFormatter.ofPattern("d/M/yyyy"),
                 DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+                DateTimeFormatter.ofPattern("d-M-yyyy"),
+                DateTimeFormatter.ofPattern("dd-MM-yyyy"),
                 DateTimeFormatter.ofPattern("yyyy-MM-dd"),
-                DateTimeFormatter.ofPattern("dd-MM-yyyy")
+                DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+                DateTimeFormatter.ofPattern("yyyy.MM.dd")
         );
 
         for (DateTimeFormatter formatter : formatters) {
             try {
-                return LocalDate.parse(dateStr.trim(), formatter);
+                return LocalDate.parse(v, formatter);
             } catch (DateTimeParseException ignored) {
+                // Try next formatter
             }
         }
+        
+        log().debug("Could not parse date: {}", dateStr);
         return null;
     }
 

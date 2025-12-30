@@ -10,6 +10,8 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import java.util.List;
 import java.util.Map;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.stream.Collectors;
 
 public abstract class AbstractMetadataContextRetriever extends AbstractContextRetriever {
@@ -261,18 +263,45 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
     }
 
     /**
-     * Obtiene la fecha preferida de los metadatos usando derivados si existen.
+     * Gets the preferred date from metadata, prioritizing date_iso (ISO format) over date (Spanish format).
+     * Always returns ISO format if date_iso exists, otherwise returns date field (may need parsing).
      */
     private String getMetadataDate(Map<String, Object> metadata) {
         if (metadata == null) return null;
+        
+        // PRIORITY 1: Use date_iso if available (already in ISO format)
         Object dateIso = metadata.get("date_iso");
         if (dateIso instanceof String s && !s.trim().isEmpty()) {
-            return s;
+            // Validate it's actually ISO format
+            try {
+                LocalDate.parse(s, DateTimeFormatter.ISO_LOCAL_DATE);
+                return s;
+            } catch (DateTimeParseException e) {
+                log().warn("date_iso field '{}' is not valid ISO format, will try date field", s);
+            }
         }
+        
+        // PRIORITY 2: Use date field (may be in Spanish format, needs parsing)
         Object date = metadata.get("date");
         if (date instanceof String s && !s.trim().isEmpty()) {
-            return s;
+            // Try to parse and normalize to ISO format
+            LocalDate parsed = parseDateToLocalDate(s);
+            if (parsed != null) {
+                String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                log().debug("Normalized date field to ISO: {} -> {}", s, normalized);
+                return normalized;
+            }
+            // If parsing fails, check if already in ISO format
+            try {
+                LocalDate.parse(s, DateTimeFormatter.ISO_LOCAL_DATE);
+                return s;
+            } catch (DateTimeParseException ignored) {
+                // Not ISO format and can't parse, return as-is
+                log().warn("Could not parse date '{}' from metadata, returning as-is", s);
+                return s;
+            }
         }
+        
         return null;
     }
 
