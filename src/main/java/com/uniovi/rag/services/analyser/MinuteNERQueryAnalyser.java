@@ -387,7 +387,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         if (lower.contains("pasada") || lower.contains("past")) return "past";
         if (lower.contains("próxima") || lower.contains("next")) return "future";
         
-        // Try ISO format first (most reliable and fastest)
+        // Try ISO format first (most reliable and fastest) - use original trimmed for ISO
         try {
             LocalDate date = LocalDate.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE);
             return date.format(DateTimeFormatter.ISO_LOCAL_DATE);
@@ -395,10 +395,13 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             // Not ISO format, continue to other formatters
         }
         
-        // Try to parse with different formatters
+        // Try to parse with different formatters - use lowercase for Spanish formats
         for (DateTimeFormatter formatter : DATE_FORMATTERS) {
             try {
-                LocalDate date = LocalDate.parse(trimmed, formatter);
+                // Use lowercase for parsing to handle case variations (e.g., "Agosto" vs "agosto")
+                String toParse = formatter.getLocale() != null && formatter.getLocale().getLanguage().equals("es") 
+                    ? lower : trimmed;
+                LocalDate date = LocalDate.parse(toParse, formatter);
                 // Always return in ISO format for consistency
                 return date.format(DateTimeFormatter.ISO_LOCAL_DATE);
             } catch (DateTimeParseException ignored) {

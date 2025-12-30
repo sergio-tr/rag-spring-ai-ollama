@@ -521,6 +521,15 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
         // Derived and reinforced fields
         addDerivedFields(metadata);
+        
+        // Validate that date_iso was generated successfully
+        if (metadata.containsKey("date") && !metadata.containsKey("date_iso")) {
+            String dateValue = metadata.get("date") != null ? metadata.get("date").toString() : "null";
+            log().warn("date_iso was not generated for document with date: {}. This may cause date filtering issues.", dateValue);
+        } else if (metadata.containsKey("date_iso")) {
+            log().debug("date_iso successfully generated: {}", metadata.get("date_iso"));
+        }
+        
         warnIfMissingOptionalContent(metadata);
         validateSignalPresence(metadata, minute.filename());
         
@@ -632,11 +641,15 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // date_iso, year, month
         Object dateObj = metadata.get("date");
         if (dateObj instanceof String) {
-            LocalDate parsed = parseDateToLocalDate((String) dateObj);
+            String dateStr = (String) dateObj;
+            // parseDateToLocalDate now handles case normalization internally
+            LocalDate parsed = parseDateToLocalDate(dateStr);
             if (parsed != null) {
                 metadata.put("date_iso", parsed.format(DateTimeFormatter.ISO_LOCAL_DATE));
                 metadata.put("year", parsed.getYear());
                 metadata.put("month", parsed.getMonthValue());
+            } else {
+                log().warn("Could not parse date '{}' to generate date_iso field. Date will not be searchable by ISO format.", dateStr);
             }
         }
 
@@ -721,7 +734,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return null;
         }
 
-        String v = dateStr.trim();
+        // Normalize to lowercase to handle case variations (e.g., "Agosto" vs "agosto")
+        String v = dateStr.trim().toLowerCase();
 
         // Try ISO format first (most common after normalization)
         try {
@@ -762,7 +776,10 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        log().debug("Could not parse date: {}", dateStr);
+        // Enhanced logging: show which formatters were tried
+        log().warn("Could not parse date '{}' (normalized to '{}') with any of {} formatters. " +
+                  "This may prevent date_iso generation and cause date filtering issues.", 
+                  dateStr, v, formatters.size());
         return null;
     }
 
@@ -827,15 +844,16 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     }
     
     /**
-     * Normalizes the date to standard format "DD de MES de YYYY".
+     * Normalizes the date to standard format "DD de mes de YYYY" (lowercase month).
+     * This ensures consistency and allows proper parsing regardless of original capitalization.
      */
     private String normalizeDate(String date) {
         if (date == null) return null;
         
         try {
-            // If already in format "day of month of year", only capitalize
+            // If already in format "day of month of year", normalize to lowercase
             if (date.matches("(?i)\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4}")) {
-                return capitalizeDate(date);
+                return normalizeToLowercaseDate(date);
             }
             
             // If in numeric format, convert
@@ -847,25 +865,20 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 return convertISODate(date);
             }
             
-            return date; // Return original if not possible to normalize
+            // Return lowercase version if possible to ensure consistency
+            return date.toLowerCase();
         } catch (Exception e) {
             log().warn("Error normalizing date: {}", date, e);
-            return date;
+            return date != null ? date.toLowerCase() : null;
         }
     }
     
-    private String capitalizeDate(String date) {
-        String[] months = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
-                         "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
-        
-        String lower = date.toLowerCase();
-        for (String month : months) {
-            if (lower.contains(month)) {
-                String capitalized = month.substring(0, 1).toUpperCase() + month.substring(1);
-                return date.replaceAll("(?i)" + month, capitalized);
-            }
-        }
-        return date;
+    /**
+     * Normalizes date to lowercase format to ensure consistent parsing.
+     */
+    private String normalizeToLowercaseDate(String date) {
+        // Return lowercase version to ensure consistent parsing
+        return date.toLowerCase();
     }
     
     private String convertNumericDate(String date) {

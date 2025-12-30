@@ -207,7 +207,8 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return null;
         }
         
-        String v = dateStr.trim();
+        // Normalize to lowercase to handle case variations (e.g., "Agosto" vs "agosto")
+        String v = dateStr.trim().toLowerCase();
         
         // Try ISO format first (most common after normalization)
         try {
