@@ -111,13 +111,38 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     private final ChatClient chatClient;
     
-    // Date patterns for normalization
+    // Date patterns for normalization - enhanced to match parseDateFlexible and parseDateToLocalDate
+    // These formatters are used to normalize dates extracted from NER
     private static final List<DateTimeFormatter> DATE_FORMATTERS = Arrays.asList(
+        // ISO format first (most reliable)
+        DateTimeFormatter.ISO_LOCAL_DATE,
+        // Spanish formats with quotes
         DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        // Spanish formats without quotes
+        DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
+        // Abbreviated month names
+        DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
+        // Without "de" between day and month
+        DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
+        // English formats
         DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH),
+        // Numeric formats
         DateTimeFormatter.ofPattern("d/M/yyyy"),
-        DateTimeFormatter.ofPattern("yyyy-MM-dd"),
-        DateTimeFormatter.ofPattern("d-MM-yyyy")
+        DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+        DateTimeFormatter.ofPattern("d-M-yyyy"),
+        DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+        DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+        DateTimeFormatter.ofPattern("yyyy.MM.dd"),
+        // With day of the week
+        DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH)
     );
     
     // Patterns for common entity types
@@ -347,29 +372,42 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     }
 
     /**
-     * Normalizes a single date string
+     * Normalizes a single date string to ISO format (yyyy-MM-dd).
+     * Handles relative dates and various date formats consistently with the rest of the system.
      */
     private String normalizeDate(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) return null;
         
-        String lower = dateStr.toLowerCase().trim();
+        String trimmed = dateStr.trim();
+        String lower = trimmed.toLowerCase();
         
-        // Handle relative dates
+        // Handle relative dates (keep as-is for temporal context, don't normalize to ISO)
         if (lower.contains("última") || lower.contains("last")) return "latest";
         if (lower.contains("primera") || lower.contains("first")) return "oldest";
         if (lower.contains("pasada") || lower.contains("past")) return "past";
         if (lower.contains("próxima") || lower.contains("next")) return "future";
         
+        // Try ISO format first (most reliable and fastest)
+        try {
+            LocalDate date = LocalDate.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE);
+            return date.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+            // Not ISO format, continue to other formatters
+        }
+        
         // Try to parse with different formatters
         for (DateTimeFormatter formatter : DATE_FORMATTERS) {
             try {
-                LocalDate date = LocalDate.parse(dateStr, formatter);
-                return date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                LocalDate date = LocalDate.parse(trimmed, formatter);
+                // Always return in ISO format for consistency
+                return date.format(DateTimeFormatter.ISO_LOCAL_DATE);
             } catch (DateTimeParseException ignored) {
                 // Continue to next formatter
             }
         }
         
+        // If all parsing fails, log for debugging but return original
+        log().debug("Could not normalize date: {}", dateStr);
         return null; // Could not normalize
     }
 

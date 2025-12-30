@@ -1301,24 +1301,53 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     
     /**
      * Parses a date string to LocalDate using multiple formatters.
+     * Enhanced to match parseDateFlexible for consistency across the system.
+     * Always tries ISO format first for better performance.
+     * Note: This method is kept for backward compatibility but parseDateFlexible should be preferred.
      */
     private LocalDate parseDateToLocalDate(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) {
             return null;
         }
         
+        String v = dateStr.trim();
+        
+        // Try ISO format first (most common after normalization)
+        try {
+            return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+        }
+        
+        // Try Spanish formats with quotes
         List<DateTimeFormatter> formatters = Arrays.asList(
             DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
             DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.ENGLISH)
+            // Spanish formats without quotes
+            DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
+            // Abbreviated month names
+            DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
+            // Without "de" between day and month
+            DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
+            // Numeric formats
+            DateTimeFormatter.ofPattern("d/M/yyyy"),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+            DateTimeFormatter.ofPattern("d-M-yyyy"),
+            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+            DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+            DateTimeFormatter.ofPattern("yyyy.MM.dd"),
+            // With day of the week
+            DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH)
         );
         
         for (DateTimeFormatter formatter : formatters) {
             try {
-                return LocalDate.parse(dateStr.trim(), formatter);
+                return LocalDate.parse(v, formatter);
             } catch (DateTimeParseException ignored) {
                 // Try next formatter
             }
@@ -3124,20 +3153,62 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
         Map<String, Object> metadata = doc.getMetadata();
 
-        // Try different possible field names for date
-        String[] dateFields = {"date", "fecha", "meeting_date", "document_date"};
-        for (String field : dateFields) {
-            Object dateValue = metadata.get(field);
-            if (dateValue != null) {
-                String dateStr = dateValue.toString().trim();
+        // PRIORITY 1: Try date_iso first (most reliable - already in ISO format)
+        Object dateIsoValue = metadata.get("date_iso");
+        if (dateIsoValue != null) {
+            String dateIsoStr = dateIsoValue.toString().trim();
+            if (!dateIsoStr.isEmpty()) {
+                // Validate it's actually ISO format
+                try {
+                    LocalDate.parse(dateIsoStr, DateTimeFormatter.ISO_LOCAL_DATE);
+                    log().debug("Using date_iso field for document {}: {}", doc.getId(), dateIsoStr);
+                    return dateIsoStr;
+                } catch (DateTimeParseException e) {
+                    log().warn("date_iso field '{}' for document {} is not valid ISO format, will try other fields", 
+                              dateIsoStr, doc.getId());
+                }
+            }
+        }
+
+        // PRIORITY 2: Try date field (may be in Spanish format, needs parsing)
+        Object dateValue = metadata.get("date");
+        if (dateValue != null) {
+            String dateStr = dateValue.toString().trim();
+            if (!dateStr.isEmpty()) {
+                // Try to parse and normalize to ISO
+                LocalDate parsed = parseDateFlexible(dateStr);
+                if (parsed != null) {
+                    String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                    log().debug("Parsed and normalized date field for document {}: {} -> {}", 
+                              doc.getId(), dateStr, normalized);
+                    return normalized;
+                }
+                // Check if already in ISO format
+                try {
+                    LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE);
+                    log().debug("Date field for document {} is already in ISO format: {}", doc.getId(), dateStr);
+                    return dateStr;
+                } catch (DateTimeParseException ignored) {
+                    log().warn("Could not parse date '{}' from 'date' field for document {}, trying other fields", 
+                              dateStr, doc.getId());
+                }
+            }
+        }
+
+        // PRIORITY 3: Try other possible field names
+        String[] otherDateFields = {"fecha", "meeting_date", "document_date"};
+        for (String field : otherDateFields) {
+            Object fieldValue = metadata.get(field);
+            if (fieldValue != null) {
+                String dateStr = fieldValue.toString().trim();
                 if (!dateStr.isEmpty()) {
-                    // Try to parse and normalize
                     LocalDate parsed = parseDateFlexible(dateStr);
                     if (parsed != null) {
-                        return parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                        String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                        log().debug("Parsed and normalized date from field '{}' for document {}: {} -> {}", 
+                                  field, doc.getId(), dateStr, normalized);
+                        return normalized;
                     }
-                    // If parsing fails but value exists, return as-is (might be already normalized)
-                    return dateStr;
                 }
             }
         }
@@ -3189,10 +3260,19 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         return false; // Exclude documents without date when filtering by date
                     }
 
-                    // Try to parse document date
-                    LocalDate docLocalDate = parseDateFlexible(docDate);
+                    // getDocumentDate should return ISO format, but parse again to be safe
+                    // First check if already in ISO format
+                    LocalDate docLocalDate = null;
+                    try {
+                        docLocalDate = LocalDate.parse(docDate, DateTimeFormatter.ISO_LOCAL_DATE);
+                    } catch (DateTimeParseException ignored) {
+                        // Not ISO format, try flexible parsing
+                        docLocalDate = parseDateFlexible(docDate);
+                    }
+                    
                     if (docLocalDate == null) {
-                        log().debug("Could not parse document date '{}' for document {}, excluding", docDate, doc.getId());
+                        log().warn("Could not parse document date '{}' for document {}, excluding. Requested date: {}", 
+                                  docDate, doc.getId(), requestedNormalized);
                         return false; // Can't parse, exclude
                     }
 
@@ -3202,14 +3282,56 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     if (matches) {
                         log().debug("Document {} matches requested date: {} ({})", 
                                    doc.getId(), docDate, docNormalized);
+                    } else {
+                        log().debug("Document {} date mismatch: {} ({}) vs requested {} ({})", 
+                                   doc.getId(), docDate, docNormalized, requestedDate, requestedNormalized);
                     }
                     
                     return matches;
                 })
                 .collect(Collectors.toList());
 
-        log().info("Date validation: {} documents matched date {} out of {} total documents", 
-                  filtered.size(), requestedDate, docs.size());
+        log().info("Date validation: {} documents matched date {} (normalized: {}) out of {} total documents", 
+                  filtered.size(), requestedDate, requestedNormalized, docs.size());
+        
+        // Enhanced logging: show sample document dates when no matches found
+        if (filtered.isEmpty() && !docs.isEmpty()) {
+            List<String> sampleDates = docs.stream()
+                    .limit(5)
+                    .map(doc -> {
+                        String date = getDocumentDate(doc);
+                        if (date != null) {
+                            try {
+                                LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE);
+                                return date + " (ISO)";
+                            } catch (DateTimeParseException e) {
+                                LocalDate parsed = parseDateFlexible(date);
+                                return date + (parsed != null ? " (parsed: " + parsed.format(DateTimeFormatter.ISO_LOCAL_DATE) + ")" : " (parse failed)");
+                            }
+                        }
+                        return "no date";
+                    })
+                    .collect(Collectors.toList());
+            log().warn("Date validation failed: Requested date {} (normalized: {}) not found. Sample document dates: {}", 
+                      requestedDate, requestedNormalized, sampleDates);
+        }
+        
+        // Enhanced logging: show sample document dates when no matches found
+        if (filtered.isEmpty() && !docs.isEmpty()) {
+            List<String> sampleDates = docs.stream()
+                    .limit(5)
+                    .map(doc -> {
+                        String date = getDocumentDate(doc);
+                        if (date != null) {
+                            LocalDate parsed = parseDateFlexible(date);
+                            return date + (parsed != null ? " (parsed: " + parsed.format(DateTimeFormatter.ISO_LOCAL_DATE) + ")" : " (parse failed)");
+                        }
+                        return "no date";
+                    })
+                    .collect(Collectors.toList());
+            log().warn("Date validation failed: Requested date {} (normalized: {}) not found. Sample document dates: {}", 
+                      requestedDate, requestedNormalized, sampleDates);
+        }
 
         return filtered;
     }

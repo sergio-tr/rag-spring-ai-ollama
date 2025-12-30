@@ -29,13 +29,37 @@ public class EnhancedNERHandler implements Loggable {
 
     private final ChatClient chatClient;
     
-    // Date patterns for normalization
+    // Date patterns for normalization - enhanced to match parseDateFlexible for consistency
     private static final List<DateTimeFormatter> DATE_FORMATTERS = Arrays.asList(
+        // ISO format first (most reliable)
+        DateTimeFormatter.ISO_LOCAL_DATE,
+        // Spanish formats with quotes
         DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        // Spanish formats without quotes
+        DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
+        // Abbreviated month names
+        DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
+        // Without "de" between day and month
+        DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
+        // English formats
         DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH),
+        // Numeric formats
         DateTimeFormatter.ofPattern("d/M/yyyy"),
-        DateTimeFormatter.ofPattern("yyyy-MM-dd"),
-        DateTimeFormatter.ofPattern("d-MM-yyyy")
+        DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+        DateTimeFormatter.ofPattern("d-M-yyyy"),
+        DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+        DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+        DateTimeFormatter.ofPattern("yyyy.MM.dd"),
+        // With day of the week
+        DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH)
     );
     
     // Patterns for common entity types

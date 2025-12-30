@@ -136,20 +136,41 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     
     /**
      * Normalizes and matches dates for better comparison using LocalDate parsing.
-     * Handles different date formats (e.g., "25 de agosto de 2026" vs "25/08/2026").
+     * Handles different date formats (e.g., "25 de agosto de 2026" vs "25/08/2026" vs "2026-08-25").
+     * Prioritizes ISO format parsing for better accuracy.
      */
     protected boolean normalizedDateMatches(String date1, String date2) {
         if (date1 == null || date2 == null) {
             return false;
         }
         
-        // Try to parse both dates to LocalDate for precise comparison
-        LocalDate parsed1 = parseDateToLocalDate(date1);
-        LocalDate parsed2 = parseDateToLocalDate(date2);
+        // Try ISO format first (most reliable)
+        LocalDate parsed1 = null;
+        LocalDate parsed2 = null;
+        
+        try {
+            parsed1 = LocalDate.parse(date1.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+            // Not ISO format, try flexible parsing
+            parsed1 = parseDateToLocalDate(date1);
+        }
+        
+        try {
+            parsed2 = LocalDate.parse(date2.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+            // Not ISO format, try flexible parsing
+            parsed2 = parseDateToLocalDate(date2);
+        }
         
         if (parsed1 != null && parsed2 != null) {
             // Both dates parsed successfully, compare directly
-            return parsed1.equals(parsed2);
+            boolean matches = parsed1.equals(parsed2);
+            if (!matches) {
+                log().debug("Date comparison: {} ({}) vs {} ({}) - no match", 
+                          date1, parsed1.format(DateTimeFormatter.ISO_LOCAL_DATE),
+                          date2, parsed2.format(DateTimeFormatter.ISO_LOCAL_DATE));
+            }
+            return matches;
         }
         
         // Fallback to string-based matching if parsing fails
@@ -178,24 +199,52 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     
     /**
      * Parses a date string to LocalDate using multiple formatters.
+     * Enhanced to match parseDateFlexible for consistency across the system.
+     * Always tries ISO format first for better performance.
      */
     protected LocalDate parseDateToLocalDate(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) {
             return null;
         }
         
+        String v = dateStr.trim();
+        
+        // Try ISO format first (most common after normalization)
+        try {
+            return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+        }
+        
+        // Try Spanish formats with quotes
         List<DateTimeFormatter> formatters = Arrays.asList(
             DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
             DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ENGLISH),
-            DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.ENGLISH)
+            // Spanish formats without quotes
+            DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
+            // Abbreviated month names
+            DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
+            // Without "de" between day and month
+            DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
+            // Numeric formats
+            DateTimeFormatter.ofPattern("d/M/yyyy"),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+            DateTimeFormatter.ofPattern("d-M-yyyy"),
+            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+            DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+            DateTimeFormatter.ofPattern("yyyy.MM.dd"),
+            // With day of the week
+            DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH)
         );
         
         for (DateTimeFormatter formatter : formatters) {
             try {
-                return LocalDate.parse(dateStr.trim(), formatter);
+                return LocalDate.parse(v, formatter);
             } catch (DateTimeParseException ignored) {
                 // Try next formatter
             }
