@@ -154,10 +154,8 @@ public class DecisionExtractionTool extends AbstractTool {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            // Check for positive responses in multiple languages
-            return normalized.contains("yes") || normalized.contains("sí") || normalized.contains("si") || 
-                   normalized.contains("oui") || normalized.contains("ja") || normalized.contains("da");
+            // Use LLM to interpret the response as yes/no
+            return interpretBooleanResponse(result, "isDecisionRelevantToQuery");
         } catch (Exception e) {
             log().error("Error in isDecisionRelevantToQuery, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
@@ -244,33 +242,112 @@ public class DecisionExtractionTool extends AbstractTool {
     
     /**
      * Generates a fallback response when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackResponse(String query, List<String> decisions) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String decisionsText = decisions.stream()
+                .limit(5)
+                .collect(Collectors.joining("\n\n"));
         
-        if (isSpanish) {
-            return "Se encontraron las siguientes decisiones relevantes:\n\n" + 
-                   decisions.stream().limit(5).collect(Collectors.joining("\n\n"));
-        } else {
-            return "Found the following relevant decisions:\n\n" + 
-                   decisions.stream().limit(5).collect(Collectors.joining("\n\n"));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found the following relevant decisions:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found decisions.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", decisionsText);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback response with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "Found the following relevant decisions:\n\n" + decisionsText;
     }
     
     /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
+    }
+
+    /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No relevant decisions were found in the available documents for this query.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no relevant decisions were found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query);
         
-        if (isSpanish) {
-            return "No se encontraron decisiones relevantes en los documentos disponibles para esta consulta.";
-        } else {
-            return "No relevant decisions were found in the available documents for this query.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip();
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No relevant decisions were found in the available documents for this query.";
     }
 }

@@ -159,10 +159,25 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts field value for a minute (metadata-first)
+     * Extracts field value for a minute (metadata-first).
+     * Tries multiple field name variations and synonyms.
      */
     private FieldResult extractFieldValue(Minute minute, String detectedField) {
+        // Try to extract with detected field name
         String fieldValue = extractFieldFromMinute(detectedField, minute);
+        
+        // If not found, try alternative field names
+        if (fieldValue == null || fieldValue.isBlank()) {
+            // Try synonyms for common fields
+            String[] alternativeNames = getAlternativeFieldNames(detectedField);
+            for (String altName : alternativeNames) {
+                fieldValue = extractFieldFromMinute(altName, minute);
+                if (fieldValue != null && !fieldValue.isBlank()) {
+                    log().info("Found field '{}' using alternative name '{}'", detectedField, altName);
+                    break;
+                }
+            }
+        }
         
         if (fieldValue == null || fieldValue.isBlank()) {
             return null;
@@ -175,6 +190,34 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             detectedField,
             fieldValue
         );
+    }
+
+    /**
+     * Gets alternative field names for a given field.
+     * Returns array of alternative names to try.
+     */
+    private String[] getAlternativeFieldNames(String field) {
+        if (field == null) {
+            return new String[0];
+        }
+        
+        String fieldLower = field.toLowerCase();
+        
+        // Return alternative names based on field type
+        return switch (fieldLower) {
+            case "secretary", "secretario", "secretaria" -> new String[]{"secretary", "secretario", "secretaria"};
+            case "agenda", "orden_del_dia", "orden del día" -> new String[]{"agenda", "orden_del_dia", "order_of_day", "agenda_raw"};
+            case "date", "fecha" -> new String[]{"date", "fecha", "date_iso"};
+            case "place", "lugar" -> new String[]{"place", "lugar", "ubicación"};
+            case "president", "presidente" -> new String[]{"president", "presidente"};
+            case "starttime", "hora_inicio" -> new String[]{"startTime", "hora_inicio", "start_time"};
+            case "endtime", "hora_fin" -> new String[]{"endTime", "hora_fin", "end_time"};
+            case "topics", "temas" -> new String[]{"topics", "temas"};
+            case "decisions", "decisiones" -> new String[]{"decisions", "decisiones", "acuerdos"};
+            case "summary", "resumen" -> new String[]{"summary", "resumen"};
+            case "attendees", "asistentes" -> new String[]{"attendees", "asistentes", "participantes"};
+            default -> new String[0];
+        };
     }
 
     /**
@@ -259,64 +302,60 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
     /**
      * Generates direct answer using only metadata.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFieldAnswer(String query, List<FieldResult> results, String detectedField) {
         if (results == null || results.isEmpty()) {
             return generateNotFoundMessage(query);
         }
-        
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
 
         // Direct answer style (no "se encontraron X...")
         List<FieldResult> top = results.stream().limit(5).collect(Collectors.toList());
 
-        // If only one result, answer as a single sentence.
+        // Build field data for prompt
+        StringBuilder fieldData = new StringBuilder();
+        for (FieldResult r : top) {
+            String date = r.getDate() != null ? r.getDate() : "unknown date";
+            String value = r.getFieldValue();
+            fieldData.append(String.format("- Date: %s, %s: %s\n", date, detectedField, value));
+        }
+
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Field requested: %s
+            
+            Found the following values:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating the field values found.
+            If there's only one value, format it as a single sentence.
+            If there are multiple values, format them as a list.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query, detectedField, fieldData.toString());
+
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating field answer with LLM", e);
+        }
+
+        // Fallback
         if (top.size() == 1) {
             FieldResult r = top.get(0);
-            String date = r.getDate() != null ? r.getDate() : (isSpanish ? "fecha desconocida" : "unknown date");
-            String value = r.getFieldValue();
-            String label = fieldLabel(detectedField, isSpanish);
-
-            if (isSpanish) {
-                return String.format("En el acta del %s, %s: %s.", date, label, value);
-            }
-            return String.format("In the meeting minutes on %s, %s: %s.", date, label, value);
+            String date = r.getDate() != null ? r.getDate() : "unknown date";
+            return String.format("In the meeting minutes on %s, %s: %s.", date, detectedField, r.getFieldValue());
+        } else {
+            String joined = top.stream()
+                    .map(r -> String.format("- %s: %s", r.getDate() != null ? r.getDate() : "unknown date", r.getFieldValue()))
+                    .collect(Collectors.joining("\n"));
+            return String.format("I found these values:\n%s", joined);
         }
-
-        // Multiple candidates: provide a compact list, each line answers with date + value.
-        String joined = top.stream()
-                .map(r -> {
-                    String date = r.getDate() != null ? r.getDate() : (isSpanish ? "fecha desconocida" : "unknown date");
-                    return isSpanish
-                            ? String.format("- Acta del %s: %s", date, r.getFieldValue())
-                            : String.format("- %s: %s", date, r.getFieldValue());
-                })
-                .collect(Collectors.joining("\n"));
-
-        if (isSpanish) {
-            return String.format("He encontrado estos valores:\n%s", joined);
-        }
-        return String.format("I found these values:\n%s", joined);
-    }
-
-    private String fieldLabel(String detectedField, boolean isSpanish) {
-        String f = detectedField != null ? detectedField.toLowerCase() : "";
-        return switch (f) {
-            case "date", "fecha" -> isSpanish ? "la fecha es" : "date is";
-            case "place", "lugar" -> isSpanish ? "el lugar es" : "place is";
-            case "starttime", "hora_inicio", "starttime " -> isSpanish ? "la hora de inicio es" : "start time is";
-            case "endtime", "hora_fin" -> isSpanish ? "la hora de fin es" : "end time is";
-            case "president", "presidente" -> isSpanish ? "el presidente es" : "president is";
-            case "secretary", "secretario" -> isSpanish ? "el secretario es" : "secretary is";
-            case "attendees", "asistentes" -> isSpanish ? "los asistentes son" : "attendees are";
-            case "attendeescount", "numberofattendees" -> isSpanish ? "el número de asistentes es" : "attendees count is";
-            case "durationminutes" -> isSpanish ? "la duración es" : "duration is";
-            case "topics", "temas" -> isSpanish ? "los temas son" : "topics are";
-            case "decisions", "decisiones" -> isSpanish ? "las decisiones son" : "decisions are";
-            case "summary", "resumen" -> isSpanish ? "el resumen es" : "summary is";
-            default -> isSpanish ? "el valor es" : "value is";
-        };
     }
 
 

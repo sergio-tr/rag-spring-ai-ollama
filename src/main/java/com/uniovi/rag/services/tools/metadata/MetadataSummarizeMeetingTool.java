@@ -35,6 +35,16 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"},
             ner
         );
+        
+        // Validate date if present in query
+        String requestedDate = extractDateFromQuery(query, ner);
+        if (requestedDate != null && docs.isEmpty()) {
+            // Date was specified but no documents match
+            String errorMessage = generateDateNotFoundMessage(query, requestedDate);
+            log().info("No documents found for specified date: {} in query: {}", requestedDate, query);
+            return ToolResult.from(errorMessage, getClass());
+        }
+        
         if (docs.isEmpty()) {
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
@@ -182,25 +192,43 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             return generateNotFoundMessage(query);
         }
 
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
-
-        StringBuilder sb = new StringBuilder();
-
+        // Build summary content
+        StringBuilder summaryContent = new StringBuilder();
         results.stream().limit(5).forEach(r -> {
             if (r.getDate() != null) {
-                sb.append(isSpanish ? "Reunión del " : "Meeting on ").append(r.getDate());
+                summaryContent.append("Date: ").append(r.getDate());
                 if (r.getPlace() != null) {
-                    sb.append(" (").append(r.getPlace()).append(")");
+                    summaryContent.append(", Place: ").append(r.getPlace());
                 }
-                sb.append(":\n");
+                summaryContent.append("\n");
             }
             String content = r.getSummary() != null ? r.getSummary() : "";
-            sb.append(content.length() > 400 ? content.substring(0, 400) + "..." : content);
-            sb.append("\n\n");
+            summaryContent.append(content.length() > 400 ? content.substring(0, 400) + "..." : content);
+            summaryContent.append("\n\n");
         });
 
-        return sb.toString().trim();
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Meeting summary information:
+            %s
+            
+            Format and present this summary information in the EXACT SAME LANGUAGE as the user's question.
+            Keep the structure clear and readable.
+            Do not repeat the question.
+            """, query, summaryContent.toString());
+
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating summary answer with LLM, using raw content", e);
+        }
+
+        // Fallback: return raw content
+        return summaryContent.toString().trim();
     }
 
 }

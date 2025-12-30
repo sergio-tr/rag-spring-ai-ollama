@@ -54,8 +54,8 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
         }
 
-        // Step 4: Extract entities in parallel
-        List<Entity> entities = extractEntitiesInParallel(query, relevantMinutes);
+        // Step 4: Extract entities in parallel (prioritize metadata)
+        List<Entity> entities = extractEntitiesInParallel(query, relevantMinutes, docs);
         if (entities.isEmpty()) {
             log().info("No relevant entities found for query: {}", query);
             return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
@@ -77,18 +77,43 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
 
 
     /**
-     * Extracts entities in parallel
+     * Extracts entities in parallel, prioritizing metadata from documents
      */
-    private List<Entity> extractEntitiesInParallel(String query, List<Minute> minutes) {
+    private List<Entity> extractEntitiesInParallel(String query, List<Minute> minutes, List<Document> docs) {
+        List<Entity> entities = new ArrayList<>();
+        
+        // First: Extract attendees from document metadata (highest priority)
+        if (query != null && (query.toLowerCase().contains("asistente") || query.toLowerCase().contains("attendee") || 
+            query.toLowerCase().contains("quién") || query.toLowerCase().contains("who"))) {
+            for (Document doc : docs) {
+                List<String> attendees = extractAttendeesFromMetadata(doc);
+                for (String attendee : attendees) {
+                    if (attendee != null && !attendee.isBlank() && !isGenericEntity(attendee)) {
+                        entities.add(new Entity(
+                            attendee,
+                            EntityType.PERSON,
+                            EntityRole.ATTENDEE
+                        ));
+                    }
+                }
+            }
+        }
+        
+        // Second: Extract entities from minutes in parallel
         List<CompletableFuture<List<Entity>>> futures = minutes.stream()
                 .map(minute -> CompletableFuture.supplyAsync(() -> extractEntitiesFromMinute(query, minute)))
                 .collect(Collectors.toList());
 
-        return futures.stream()
+        List<Entity> minuteEntities = futures.stream()
                 .map(CompletableFuture::join)
                 .flatMap(List::stream)
                 .filter(Objects::nonNull)
+                .filter(e -> !isGenericEntity(e.getName())) // Filter out generic entities
                 .collect(Collectors.toList());
+        
+        entities.addAll(minuteEntities);
+
+        return entities;
     }
 
     /**
@@ -130,10 +155,10 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             ));
         }
         
-        // Extract attendees
+        // Extract attendees (filter out generic entities)
         if (minute.attendees() != null) {
             for (String attendee : minute.attendees()) {
-                if (attendee != null && !attendee.isBlank()) {
+                if (attendee != null && !attendee.isBlank() && !isGenericEntity(attendee)) {
                     entities.add(new Entity(
                         attendee,
                         EntityType.PERSON,
@@ -152,10 +177,10 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             ));
         }
         
-        // Extract mentionedEntities directly from metadata
+        // Extract mentionedEntities directly from metadata (filter out generic entities)
         if (minute.mentionedEntities() != null && !minute.mentionedEntities().isEmpty()) {
             for (String entity : minute.mentionedEntities()) {
-                if (entity != null && !entity.isBlank()) {
+                if (entity != null && !entity.isBlank() && !isGenericEntity(entity)) {
                     // Try to infer type: if it's a person name (capitalized words), treat as PERSON
                     EntityType entityType = inferEntityType(entity);
                     entities.add(new Entity(
@@ -528,28 +553,85 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
     
     /**
+     * Checks if an entity is generic (should be filtered out).
+     * Uses LLM to determine if entity is generic.
+     */
+    private boolean isGenericEntity(String entityName) {
+        if (entityName == null || entityName.isBlank()) {
+            return true;
+        }
+        
+        // Common generic terms to filter out
+        String lower = entityName.toLowerCase().trim();
+        if (lower.equals("vecinos") || lower.equals("residentes") || lower.equals("propietarios") ||
+            lower.equals("neighbors") || lower.equals("residents") || lower.equals("owners") ||
+            lower.equals("asistentes") || lower.equals("attendees") || lower.equals("participantes") ||
+            lower.equals("participants") || lower.equals("miembros") || lower.equals("members")) {
+            return true;
+        }
+        
+        // Use LLM to check if it's a proper name vs generic term
+        String prompt = String.format("""
+            Task: Determine if the following entity name is a proper name (specific person/organization) or a generic term.
+            
+            Entity name: "%s"
+            
+            Examples of generic terms: "vecinos", "residentes", "propietarios", "asistentes", "miembros"
+            Examples of proper names: "Juan Pérez", "María González", "Comunidad de Vecinos", "Empresa XYZ"
+            
+            Respond with ONLY one word: PROPER if it's a proper name, GENERIC if it's a generic term.
+            """, entityName);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return response.contains("GENERIC");
+        } catch (Exception e) {
+            log().debug("Error checking if entity is generic, defaulting to false (keep entity): {}", e.getMessage());
+            return false; // Default to keeping entity to avoid false negatives
+        }
+    }
+
+    /**
      * Generates a fallback entity answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackEntityAnswer(String query, List<Entity> entities) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String entitiesText = entities.stream()
+                .limit(5)
+                .map(e -> String.format("- %s (%s)", e.getName(), e.getType()))
+                .collect(Collectors.joining("\n"));
         
-        if (isSpanish) {
-            return String.format("Se encontraron %d entidades relevantes:\n%s",
-                              entities.size(),
-                              entities.stream()
-                                      .limit(5)
-                                      .map(e -> String.format("- %s (%s)", e.getName(), e.getType()))
-                                      .collect(Collectors.joining("\n")));
-        } else {
-            return String.format("Found %d relevant entities:\n%s",
-                              entities.size(),
-                              entities.stream()
-                                      .limit(5)
-                                      .map(e -> String.format("- %s (%s)", e.getName(), e.getType()))
-                                      .collect(Collectors.joining("\n")));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found %d relevant entities:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found entities.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query, entities.size(), entitiesText);
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback entity answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return String.format("Found %d relevant entities:\n%s",
+                          entities.size(), entitiesText);
     }
 
     /**
@@ -623,17 +705,31 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     
     /**
      * Generates a fallback "entity not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackEntityNotFoundMessage(String query) {
-        String queryLower = query != null ? query.toLowerCase() : "";
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No relevant entities were found for this query in the available documents.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no relevant entities were found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "No se encontraron entidades relevantes para esta consulta en los documentos disponibles.";
-        } else {
-            return "No relevant entities were found for this query in the available documents.";
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback entity not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No relevant entities were found for this query in the available documents.";
     }
 
 }

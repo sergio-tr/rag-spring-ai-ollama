@@ -162,13 +162,49 @@ public class FindParagraphTool extends AbstractTool {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            // Check for positive responses in multiple languages
-            return normalized.startsWith("yes") || normalized.contains("sí") || normalized.contains("si") || 
-                   normalized.contains("oui") || normalized.contains("ja") || normalized.contains("da");
+            // Use LLM to interpret the response as yes/no
+            return interpretBooleanResponse(result, "isParagraphRelevantByLLM");
         } catch (Exception e) {
             log().error("Error in isParagraphRelevantByLLM, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
+        }
+    }
+
+    /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
         }
     }
 
@@ -251,33 +287,74 @@ public class FindParagraphTool extends AbstractTool {
     
     /**
      * Generates a fallback answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackAnswer(String query, List<String> results) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String resultsText = results.stream()
+                .limit(5)
+                .collect(java.util.stream.Collectors.joining("\n\n"));
         
-        if (isSpanish) {
-            return "Párrafos relevantes encontrados:\n\n" + 
-                   results.stream().limit(5).collect(java.util.stream.Collectors.joining("\n\n"));
-        } else {
-            return "Relevant paragraphs found:\n\n" + 
-                   results.stream().limit(5).collect(java.util.stream.Collectors.joining("\n\n"));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found the following relevant paragraphs:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found paragraphs.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", resultsText);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "Relevant paragraphs found:\n\n" + resultsText;
     }
     
     /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No relevant paragraphs were found in the available documents for this query.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no relevant paragraphs were found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query);
         
-        if (isSpanish) {
-            return "No se encontraron párrafos relevantes en los documentos disponibles para esta consulta.";
-        } else {
-            return "No relevant paragraphs were found in the available documents for this query.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip();
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No relevant paragraphs were found in the available documents for this query.";
     }
 }

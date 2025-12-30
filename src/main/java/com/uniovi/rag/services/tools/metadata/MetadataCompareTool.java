@@ -11,6 +11,7 @@ import org.springframework.ai.document.Document;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import java.util.Objects;
 
 /**
  * Enhanced MetadataCompareTool for comparing meeting minutes across different dimensions.
@@ -34,6 +35,20 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"},
             ner
         );
+        
+        // Step 1.5: Extract and validate years from query to avoid confusion (2025 vs 2026)
+        List<String> requestedYears = extractYearsFromQuery(query, ner);
+        if (!requestedYears.isEmpty() && !docs.isEmpty()) {
+            log().info("Filtering documents by requested years: {}", requestedYears);
+            List<Document> filteredDocs = filterDocumentsByYears(docs, requestedYears);
+            if (filteredDocs.isEmpty()) {
+                log().info("No documents found for requested years {} in query: {}", requestedYears, query);
+                String errorMessage = generateSpecificErrorMessage(query, "years", String.join(", ", requestedYears), docs.size(), "No documents found for these years");
+                return ToolResult.from(errorMessage, getClass());
+            }
+            docs = filteredDocs;
+            log().info("Filtered to {} documents for years {}", docs.size(), requestedYears);
+        }
         
         if (docs.isEmpty()) {
             log().info("No documents found for comparison query: {}", query);
@@ -95,46 +110,174 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * Rule-based field inference for common comparison patterns
+     * Extracts years from query using NER or LLM.
+     * Returns list of years mentioned in the query.
+     */
+    private List<String> extractYearsFromQuery(String query, JSONObject ner) {
+        List<String> years = new ArrayList<>();
+        
+        if (query == null || query.trim().isEmpty()) {
+            return years;
+        }
+        
+        // Try to extract from NER first
+        if (ner != null && !ner.isEmpty()) {
+            try {
+                if (ner.has("filters") && !ner.isNull("filters")) {
+                    JSONObject filters = ner.getJSONObject("filters");
+                    if (filters.has("date") && !filters.isNull("date")) {
+                        org.json.JSONArray dates = filters.getJSONArray("date");
+                        for (int i = 0; i < dates.length(); i++) {
+                            String dateStr = dates.getString(i);
+                            // Extract year from date string
+                            java.util.regex.Pattern yearPattern = java.util.regex.Pattern.compile("\\b(20\\d{2})\\b");
+                            java.util.regex.Matcher matcher = yearPattern.matcher(dateStr);
+                            while (matcher.find()) {
+                                String year = matcher.group(1);
+                                if (!years.contains(year)) {
+                                    years.add(year);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log().debug("Error extracting years from NER: {}", e.getMessage());
+            }
+        }
+        
+        // Extract years from query using regex
+        java.util.regex.Pattern yearPattern = java.util.regex.Pattern.compile("\\b(20\\d{2})\\b");
+        java.util.regex.Matcher matcher = yearPattern.matcher(query);
+        while (matcher.find()) {
+            String year = matcher.group(1);
+            if (!years.contains(year)) {
+                years.add(year);
+            }
+        }
+        
+        log().info("Extracted years from query: {}", years);
+        return years;
+    }
+
+    /**
+     * Filters documents by years.
+     * 
+     * @param docs List of documents to filter
+     * @param years List of years to filter by (e.g., ["2025", "2026"])
+     * @return Filtered list of documents from the specified years
+     */
+    private List<Document> filterDocumentsByYears(List<Document> docs, List<String> years) {
+        if (docs == null || docs.isEmpty() || years == null || years.isEmpty()) {
+            return docs != null ? docs : new ArrayList<>();
+        }
+        
+        log().info("Filtering {} documents by years: {}", docs.size(), years);
+        
+        List<Document> filtered = new ArrayList<>();
+        
+        for (Document doc : docs) {
+            if (doc == null) continue;
+            
+            String docDate = getDocumentDate(doc);
+            if (docDate != null) {
+                // Check if document date contains any of the requested years
+                boolean matches = false;
+                for (String year : years) {
+                    if (docDate.contains(year)) {
+                        matches = true;
+                        break;
+                    } else {
+                        // Try parsing the date to extract year
+                        try {
+                            java.time.LocalDate parsedDate = parseDateFlexible(docDate);
+                            if (parsedDate != null) {
+                                String docYear = String.valueOf(parsedDate.getYear());
+                                if (docYear.equals(year)) {
+                                    matches = true;
+                                    break;
+                                }
+                            }
+                        } catch (Exception e) {
+                            log().debug("Error parsing date '{}' for year filtering: {}", docDate, e.getMessage());
+                        }
+                    }
+                }
+                
+                if (matches) {
+                    filtered.add(doc);
+                }
+            }
+        }
+        
+        log().info("Filtered {} documents by years {}: {} documents match", docs.size(), years, filtered.size());
+        
+        // Detailed logging for debugging
+        if (filtered.isEmpty() && !docs.isEmpty()) {
+            log().warn("Year filtering failed: Years {} not found in any of {} documents. Sample document dates: {}", 
+                      years, docs.size(),
+                      docs.stream()
+                          .limit(3)
+                          .map(doc -> getDocumentDate(doc))
+                          .filter(Objects::nonNull)
+                          .collect(Collectors.joining(", ")));
+        } else if (!filtered.isEmpty()) {
+            log().debug("Year filtering succeeded: Years {} found in {} documents", years, filtered.size());
+        }
+        
+        return filtered;
+    }
+
+    /**
+     * Rule-based field inference using LLM for better accuracy.
      */
     private ComparisonField inferFieldByRules(String query) {
-        String queryLower = query.toLowerCase();
-        
-        // Attendees patterns
-        if (queryLower.contains("asistentes") || queryLower.contains("attendees") || 
-            queryLower.contains("personas") || queryLower.contains("people")) {
-            return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
+        if (query == null || query.trim().isEmpty()) {
+            return null;
         }
         
-        // Duration patterns
-        if (queryLower.contains("duración") || queryLower.contains("duration") || 
-            queryLower.contains("tiempo") || queryLower.contains("time") ||
-            queryLower.contains("horas") || queryLower.contains("hours")) {
-            return new ComparisonField("duration", ComparisonType.NUMERIC);
-        }
+        // Use LLM to infer comparison field
+        String prompt = String.format("""
+            Task: Determine what field the user wants to compare in this query about meeting minutes.
+            
+            Query (may be in any language): "%s"
+            
+            Possible comparison fields:
+            - numberOfAttendees: number of attendees, people present
+            - duration: meeting duration, time length
+            - date: dates of meetings
+            - place: meeting places, locations
+            - topics: number of topics discussed
+            - decisions: number of decisions made
+            
+            Respond with ONLY the field name (e.g., "numberOfAttendees", "duration", "date", "place", "topics", "decisions").
+            If unclear, respond with "UNKNOWN".
+            """, query);
         
-        // Date patterns
-        if (queryLower.contains("fecha") || queryLower.contains("date") || 
-            queryLower.contains("cuándo") || queryLower.contains("when")) {
-            return new ComparisonField("date", ComparisonType.DATE);
-        }
-        
-        // Place patterns
-        if (queryLower.contains("lugar") || queryLower.contains("place") || 
-            queryLower.contains("dónde") || queryLower.contains("where")) {
-            return new ComparisonField("place", ComparisonType.TEXT);
-        }
-        
-        // Topics patterns
-        if (queryLower.contains("temas") || queryLower.contains("topics") || 
-            queryLower.contains("asuntos") || queryLower.contains("subjects")) {
-            return new ComparisonField("topics", ComparisonType.COUNT);
-        }
-        
-        // Decisions patterns
-        if (queryLower.contains("decisiones") || queryLower.contains("decisions") || 
-            queryLower.contains("acuerdos") || queryLower.contains("agreements")) {
-            return new ComparisonField("decisions", ComparisonType.COUNT);
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toLowerCase();
+            
+            if (response.contains("numberofattendees") || response.contains("attendees") || response.contains("people")) {
+                return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
+            } else if (response.contains("duration") || response.contains("time") || response.contains("length")) {
+                return new ComparisonField("duration", ComparisonType.NUMERIC);
+            } else if (response.contains("date") || response.contains("when")) {
+                return new ComparisonField("date", ComparisonType.DATE);
+            } else if (response.contains("place") || response.contains("location") || response.contains("where")) {
+                return new ComparisonField("place", ComparisonType.TEXT);
+            } else if (response.contains("topics") || response.contains("subjects")) {
+                return new ComparisonField("topics", ComparisonType.COUNT);
+            } else if (response.contains("decisions") || response.contains("agreements")) {
+                return new ComparisonField("decisions", ComparisonType.COUNT);
+            }
+        } catch (Exception e) {
+            log().warn("Error inferring comparison field with LLM: {}", e.getMessage());
         }
         
         return null;
@@ -223,9 +366,30 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts comparison value from a minute
+     * Extracts comparison value from a minute, validating it belongs to the correct period.
      */
     private Map.Entry<String, ComparisonValue> extractComparisonValue(Minute minute, ComparisonField field, JSONObject ner) {
+        // Validate that minute belongs to the requested period if years are specified
+        if (ner != null && minute.date() != null) {
+            String docDate = minute.date();
+            // Extract year from document date
+            String docYear = null;
+            try {
+                java.time.LocalDate parsedDate = parseDateFlexible(docDate);
+                if (parsedDate != null) {
+                    docYear = String.valueOf(parsedDate.getYear());
+                }
+            } catch (Exception e) {
+                log().debug("Error parsing date for validation: {}", e.getMessage());
+            }
+            
+            // If we have a year, validate it matches requested years (if any)
+            // This validation is done at document level, so we just log here
+            if (docYear != null) {
+                log().debug("Extracting comparison value for minute dated {} (year: {})", docDate, docYear);
+            }
+        }
+        
         String label = buildEnhancedLabel(minute);
         Object value = extractFieldValue(minute, field);
         
@@ -366,33 +530,50 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     
     /**
      * Generates a fallback comparison answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackComparisonAnswer(String query, Map<String, ComparisonValue> comparables, ComparisonAnalysis analysis) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String comparisonData = comparables.entrySet().stream()
+                .limit(5)
+                .map(entry -> String.format("- %s: %s", entry.getKey(), entry.getValue().value))
+                .collect(Collectors.joining("\n"));
         
-        if (isSpanish) {
-            StringBuilder answer = new StringBuilder();
-            answer.append("Comparación obtenida:\n");
-            comparables.entrySet().stream().limit(5).forEach(entry -> 
-                answer.append(String.format("- %s: %s\n", entry.getKey(), entry.getValue().value)));
-            if (analysis != null && analysis.min != null) {
-                answer.append(String.format("\nEstadísticas: Min=%d, Max=%d, Promedio=%.1f", 
-                    analysis.min.intValue(), analysis.max.intValue(), analysis.avg));
-            }
-            return answer.toString();
-        } else {
-            StringBuilder answer = new StringBuilder();
-            answer.append("Comparison obtained:\n");
-            comparables.entrySet().stream().limit(5).forEach(entry -> 
-                answer.append(String.format("- %s: %s\n", entry.getKey(), entry.getValue().value)));
-            if (analysis != null && analysis.min != null) {
-                answer.append(String.format("\nStatistics: Min=%d, Max=%d, Average=%.1f", 
-                    analysis.min.intValue(), analysis.max.intValue(), analysis.avg));
-            }
-            return answer.toString();
+        String statsText = "";
+        if (analysis != null && analysis.min != null) {
+            statsText = String.format("\nStatistics: Min=%.1f, Max=%.1f, Average=%.1f", 
+                analysis.min, analysis.max, analysis.avg);
         }
+        
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Comparison data:
+            %s
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            presenting the comparison results.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query, comparisonData, statsText);
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback comparison answer with LLM", e);
+        }
+        
+        // Ultimate fallback
+        StringBuilder answer = new StringBuilder();
+        answer.append("Comparison obtained:\n");
+        answer.append(comparisonData);
+        if (!statsText.isEmpty()) {
+            answer.append(statsText);
+        }
+        return answer.toString();
     }
 
     /**
@@ -455,17 +636,31 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     
     /**
      * Generates a fallback "unknown field" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackUnknownFieldMessage(String query) {
-        String queryLower = query != null ? query.toLowerCase() : "";
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            It was not possible to determine what field to compare in this query.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that it was not possible to determine what to compare.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "No fue posible determinar qué campo comparar en esta consulta.";
-        } else {
-            return "It was not possible to determine what field to compare in this query.";
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback unknown field message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "It was not possible to determine what field to compare in this query.";
     }
 
     /**
@@ -500,17 +695,31 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     
     /**
      * Generates a fallback "no data" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNoDataMessage(String field, String query) {
-        String queryLower = query != null ? query.toLowerCase() : "";
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No data was found for the field '%s' in this query.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no data was found for the field.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", field);
         
-        if (isSpanish) {
-            return String.format("No se encontraron datos para el campo '%s' en esta consulta.", field);
-        } else {
-            return String.format("No data was found for the field '%s' in this query.", field);
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback no data message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return String.format("No data was found for the field '%s' in this query.", field);
     }
 
     /**

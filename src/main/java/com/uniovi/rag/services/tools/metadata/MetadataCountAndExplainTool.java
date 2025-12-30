@@ -352,79 +352,79 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     
     /**
      * Generates a fallback final answer when LLM fails.
-     * Detects language from query and responds accordingly.
      */
     private String generateFallbackFinalAnswer(String query, List<Explanation> explanations) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String explanationsText = explanations.stream()
+                .limit(3)
+                .map(e -> String.format("- %s: %s", 
+                    e.getDate() != null ? e.getDate() : "unknown date",
+                    e.getContent() != null && e.getContent().length() > 200 ? e.getContent().substring(0, 200) + "..." : (e.getContent() != null ? e.getContent() : "")))
+                .collect(Collectors.joining("\n\n"));
         
-        if (isSpanish) {
-            return String.format("Se encontraron %d acta(s) relevante(s).\n\nExplicaciones:\n%s",
-                               explanations.size(),
-                               explanations.stream()
-                                       .limit(3)
-                                       .map(e -> String.format("- %s: %s", 
-                                           e.getDate() != null ? e.getDate() : "fecha desconocida",
-                                           e.getContent() != null && e.getContent().length() > 200 ? e.getContent().substring(0, 200) + "..." : (e.getContent() != null ? e.getContent() : "")))
-                                       .collect(Collectors.joining("\n\n")));
-        } else {
-            return String.format("Found %d relevant minute(s).\n\nExplanations:\n%s",
-                               explanations.size(),
-                               explanations.stream()
-                                       .limit(3)
-                                       .map(e -> String.format("- %s: %s", 
-                                           e.getDate() != null ? e.getDate() : "unknown date",
-                                           e.getContent() != null && e.getContent().length() > 200 ? e.getContent().substring(0, 200) + "..." : (e.getContent() != null ? e.getContent() : "")))
-                                       .collect(Collectors.joining("\n\n")));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found %d relevant meeting minutes with the following explanations:
+            
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating how many meeting minutes were found and summarizing the explanations.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query, explanations.size(), explanationsText);
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback final answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return String.format("Found %d relevant minute(s).\n\nExplanations:\n%s",
+                           explanations.size(), explanationsText);
     }
 
     /**
-     * Removes question echo from response.
+     * Removes question echo from response using LLM.
+     * The LLM analyzes if the response repeats the question and extracts only the answer.
      */
     private String removeQuestionEcho(String response, String query) {
-        if (response == null || query == null) {
+        if (response == null || query == null || response.trim().isEmpty()) {
             return response;
         }
         
-        // Remove common echo patterns
-        String lowerResponse = response.toLowerCase();
-        String lowerQuery = query.toLowerCase();
-        
-        // If response starts with the question, remove it
-        if (lowerResponse.startsWith(lowerQuery)) {
-            String cleaned = response.substring(query.length()).trim();
-            // Remove common separators
-            cleaned = cleaned.replaceAll("^[.:;,\\-\\s]+", "").trim();
-            if (!cleaned.isEmpty()) {
-                log().debug("Removed question echo from response");
-                return cleaned;
-            }
+        // If response is very short, likely no echo
+        if (response.length() < 20) {
+            return response;
         }
         
-        // Check for common echo patterns like "La pregunta era...", "The question was..."
-        String[] echoPatterns = {
-            "la pregunta era", "la pregunta es", "la consulta era", "la consulta es",
-            "the question was", "the question is", "the query was", "the query is",
-            "en cuántas actas", "dime qué actas", "qué actas"
-        };
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            The system generated this response: "%s"
+            
+            Task: If the response repeats or echoes the question, extract ONLY the actual answer part.
+            Remove any phrases like "the question was", "la pregunta era", "the user asked", etc.
+            Remove the question itself if it appears at the beginning.
+            
+            Return ONLY the cleaned answer, without any explanation or additional text.
+            If the response doesn't echo the question, return it as-is.
+            """, query, response);
         
-        for (String pattern : echoPatterns) {
-            if (lowerResponse.contains(pattern)) {
-                // Try to find where the actual answer starts
-                int patternIndex = lowerResponse.indexOf(pattern);
-                if (patternIndex >= 0 && patternIndex < response.length() / 2) {
-                    // Pattern is in first half, likely an echo
-                    String afterPattern = response.substring(patternIndex + pattern.length()).trim();
-                    afterPattern = afterPattern.replaceAll("^[.:;,\\-\\s]+", "").trim();
-                    if (!afterPattern.isEmpty() && afterPattern.length() > 10) {
-                        log().debug("Removed echo pattern '{}' from response", pattern);
-                        return afterPattern;
-                    }
-                }
+        try {
+            String cleaned = getLLMResponseCached(prompt);
+            if (cleaned != null && !cleaned.trim().isEmpty()) {
+                return cleaned.trim();
             }
+        } catch (Exception e) {
+            log().warn("Error removing question echo with LLM, returning original response", e);
         }
         
+        // Fallback: return original response
         return response;
     }
 

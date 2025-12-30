@@ -41,6 +41,15 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
         boolean hasDateInQuery = !dateCandidates.isEmpty();
         
+        // Validate date if present in query
+        String requestedDate = extractDateFromQuery(query, ner);
+        if (requestedDate != null && docs.isEmpty()) {
+            // Date was specified but no documents match
+            String errorMessage = generateDateNotFoundMessage(query, requestedDate);
+            log().info("No documents found for specified date: {} in query: {}", requestedDate, query);
+            return ToolResult.from(errorMessage, getClass());
+        }
+        
         if (docs.isEmpty()) {
             log().info("No documents found for get duration query: {}", query);
             return ToolResult.from(generateSpecificErrorMessage(query, "duration", date, 0, "no_documents"), getClass());
@@ -224,48 +233,83 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
 
     /**
      * Final answer: only the selected minute.
+     * Uses LLM to generate answer in correct language.
      */
     private String generateSingleDurationAnswer(String query, DurationResult r) {
-        boolean isSpanish = query != null && query.toLowerCase().matches(".*[áéíóúñ¿¡].*");
-        String date = r.getDate() != null ? r.getDate() : (isSpanish ? "fecha desconocida" : "unknown date");
+        String date = r.getDate() != null ? r.getDate() : "unknown date";
         String start = r.getStartTime() != null ? r.getStartTime() : "?";
         String end = r.getEndTime() != null ? r.getEndTime() : "?";
-
-        int minutes = r.getDurationMinutes();
-        String human = formatDurationHuman(minutes, isSpanish);
-
-        if (isSpanish) {
-            return String.format("La reunión del %s comenzó a las %s y finalizó a las %s. Duración: %s.", date, start, end, human);
+        int totalMinutes = r.getDurationMinutes();
+        
+        // Calculate hours and minutes for LLM
+        int hours = totalMinutes / 60;
+        int mins = totalMinutes % 60;
+        
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Meeting information:
+            - Date: %s
+            - Start time: %s
+            - End time: %s
+            - Duration: %d minutes (%d hours and %d minutes)
+            
+            Respond with a short, clear answer in the EXACT SAME LANGUAGE as the question,
+            stating the meeting duration information in a natural way.
+            Format the duration appropriately for the language (e.g., "1 hour and 30 minutes" in English, 
+            "1 hora y 30 minutos" in Spanish).
+            Be concise and direct.
+            Do not repeat the question.
+            """, query, date, start, end, totalMinutes, hours, mins);
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating duration answer with LLM, using fallback", e);
         }
-        return String.format("The meeting on %s started at %s and ended at %s. Duration: %s.", date, start, end, human);
+        
+        // Fallback - simple format
+        String durationStr = hours > 0 && mins > 0 
+            ? String.format("%d hour%s %d min", hours, hours == 1 ? "" : "s", mins)
+            : hours > 0 
+                ? String.format("%d hour%s", hours, hours == 1 ? "" : "s")
+                : String.format("%d min", mins);
+        return String.format("The meeting on %s started at %s and ended at %s. Duration: %s.", date, start, end, durationStr);
     }
 
     /**
      * If the query doesn't specify the minute (date), ask for clarification.
+     * Uses LLM to generate message in correct language.
      */
     private String generateClarificationMessage(String query) {
-        boolean isSpanish = query != null && query.toLowerCase().matches(".*[áéíóúñ¿¡].*");
-        if (isSpanish) {
-            return "¿De qué acta o fecha concreta necesitas la duración? (por ejemplo: “24 de febrero de 2025”).";
+        if (query == null || query.trim().isEmpty()) {
+            return "Which meeting minute/date do you need the duration for?";
         }
-        return "Which meeting minute/date do you need the duration for? (e.g., “24 February 2025”).";
-    }
-
-    private String formatDurationHuman(int minutes, boolean isSpanish) {
-        if (minutes <= 0) {
-            return isSpanish ? "duración desconocida" : "unknown duration";
+        
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            The question is about meeting duration but doesn't specify which meeting/date.
+            
+            Respond with a short clarification question in the EXACT SAME LANGUAGE as the user's question,
+            asking which specific meeting or date they need the duration for.
+            Be polite and helpful.
+            """, query);
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating clarification message with LLM", e);
         }
-        int h = minutes / 60;
-        int m = minutes % 60;
-        if (h <= 0) {
-            return String.format("%d min", m);
-        }
-        if (m == 0) {
-            return isSpanish ? String.format("%d hora%s", h, h == 1 ? "" : "s") : String.format("%d hour%s", h, h == 1 ? "" : "s");
-        }
-        return isSpanish
-                ? String.format("%d hora%s y %d min", h, h == 1 ? "" : "s", m)
-                : String.format("%d hour%s %d min", h, h == 1 ? "" : "s", m);
+        
+        // Fallback
+        return "Which meeting minute/date do you need the duration for?";
     }
 
 

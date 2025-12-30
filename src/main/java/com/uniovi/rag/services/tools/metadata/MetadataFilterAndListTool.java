@@ -254,31 +254,45 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     
     /**
      * Generates a fallback filter answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackFilterAnswer(String query, List<FilterResult> results) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String resultsText = results.stream()
+                .limit(5)
+                .map(r -> String.format("- %s: %s", 
+                    r.getDate() != null ? r.getDate() : "unknown date",
+                    r.getSummary() != null && r.getSummary().length() > 150 ? r.getSummary().substring(0, 150) + "..." : (r.getSummary() != null ? r.getSummary() : "")))
+                .collect(Collectors.joining("\n\n"));
         
-        if (isSpanish) {
-            return String.format("Se encontraron %d reuniones relevantes:\n%s",
-                              results.size(),
-                              results.stream()
-                                      .limit(5)
-                                      .map(r -> String.format("- %s: %s", 
-                                          r.getDate() != null ? r.getDate() : "fecha desconocida",
-                                          r.getSummary() != null && r.getSummary().length() > 150 ? r.getSummary().substring(0, 150) + "..." : (r.getSummary() != null ? r.getSummary() : "")))
-                                      .collect(Collectors.joining("\n\n")));
-        } else {
-            return String.format("Found %d relevant meetings:\n%s",
-                              results.size(),
-                              results.stream()
-                                      .limit(5)
-                                      .map(r -> String.format("- %s: %s", 
-                                          r.getDate() != null ? r.getDate() : "unknown date",
-                                          r.getSummary() != null && r.getSummary().length() > 150 ? r.getSummary().substring(0, 150) + "..." : (r.getSummary() != null ? r.getSummary() : "")))
-                                      .collect(Collectors.joining("\n\n")));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found %d relevant meetings:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found meetings.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", results.size(), resultsText);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback filter answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return String.format("Found %d relevant meetings:\n%s",
+                          results.size(), resultsText);
     }
 
     /**

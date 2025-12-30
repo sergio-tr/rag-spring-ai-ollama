@@ -90,8 +90,7 @@ public class CountDocumentsTool extends AbstractTool {
         try {
             String raw = chatClient.prompt().user(prompt).call().content();
             if (raw == null) return false;
-            String normalized = raw.trim().toLowerCase();
-            return normalized.equals("yes") || normalized.equals("sí") || normalized.equals("si");
+            return interpretBooleanResponse(raw, "matchesQueryWithLLM");
         } catch (Exception e) {
             log().warn("LLM match check failed, defaulting to NO: {}", e.getMessage());
             return false;
@@ -130,9 +129,7 @@ public class CountDocumentsTool extends AbstractTool {
             return raw == null ? "" : raw.trim();
         } catch (Exception e) {
             log().warn("Failed to generate final answer with LLM: {}", e.getMessage());
-            // Deterministic fallback (Spanish default per project convention)
-            if (uniqueIds.isEmpty()) return "No se encontró ninguna acta que cumpla las condiciones indicadas.";
-            return "He encontrado actas que cumplen las condiciones, pero no he podido generar una respuesta final ahora mismo.";
+            return generateFallbackAnswer(query, uniqueIds);
         }
     }
 
@@ -164,5 +161,86 @@ public class CountDocumentsTool extends AbstractTool {
         Matcher m2 = Pattern.compile("(?i)(\\d{1,2}\\s+de\\s+[a-záéíóú]+\\s+de\\s+\\d{4})").matcher(content);
         if (m2.find()) return m2.group(1).trim();
         return null;
+    }
+
+    /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
+    }
+
+    /**
+     * Generates a fallback answer when LLM fails.
+     * Uses LLM to generate message in correct language.
+     */
+    private String generateFallbackAnswer(String query, List<String> uniqueIds) {
+        String idsText = uniqueIds.isEmpty() 
+            ? "(none)" 
+            : uniqueIds.stream().map(s -> "- " + s).collect(Collectors.joining("\n"));
+        
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Matching meeting minutes (identifiers):
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question.
+            If there are no matching minutes, state that clearly.
+            Otherwise, provide the count.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", idsText);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback answer with LLM", e);
+        }
+        
+        // Ultimate fallback
+        if (uniqueIds.isEmpty()) {
+            return "No meeting minutes were found that match the specified conditions.";
+        }
+        return String.format("Found %d meeting minutes that match the conditions.", uniqueIds.size());
     }
 }

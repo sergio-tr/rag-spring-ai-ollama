@@ -419,27 +419,43 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     
     /**
      * Generates a fallback decision answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackDecisionAnswer(String query, List<Decision> decisions) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String decisionsText = decisions.stream()
+                .limit(5)
+                .map(d -> String.format("- %s", d.getDecisionText()))
+                .collect(Collectors.joining("\n"));
         
-        if (isSpanish) {
-            return String.format("Se encontraron %d decisiones relevantes:\n%s",
-                              decisions.size(),
-                              decisions.stream()
-                                      .limit(5)
-                                      .map(d -> String.format("- %s", d.getDecisionText()))
-                                      .collect(Collectors.joining("\n")));
-        } else {
-            return String.format("Found %d relevant decisions:\n%s",
-                              decisions.size(),
-                              decisions.stream()
-                                      .limit(5)
-                                      .map(d -> String.format("- %s", d.getDecisionText()))
-                                      .collect(Collectors.joining("\n")));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found %d relevant decisions:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found decisions.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", decisions.size(), decisionsText);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback decision answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return String.format("Found %d relevant decisions:\n%s",
+                          decisions.size(), decisionsText);
     }
 
     /**

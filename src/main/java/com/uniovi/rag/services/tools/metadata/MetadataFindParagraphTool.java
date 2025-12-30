@@ -319,31 +319,45 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     
     /**
      * Generates a fallback paragraph answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackParagraphAnswer(String query, List<ParagraphResult> results) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String resultsText = results.stream()
+                .limit(3)
+                .map(r -> String.format("Meeting on %s:\n%s", 
+                    r.getDate() != null ? r.getDate() : "unknown date",
+                    r.getParagraph() != null && r.getParagraph().length() > 300 ? r.getParagraph().substring(0, 300) + "..." : (r.getParagraph() != null ? r.getParagraph() : "")))
+                .collect(Collectors.joining("\n\n"));
         
-        if (isSpanish) {
-            return String.format("Se encontraron %d párrafos relevantes:\n%s",
-                              results.size(),
-                              results.stream()
-                                      .limit(3)
-                                      .map(r -> String.format("Reunión del %s:\n%s", 
-                                          r.getDate() != null ? r.getDate() : "fecha desconocida",
-                                          r.getParagraph() != null && r.getParagraph().length() > 300 ? r.getParagraph().substring(0, 300) + "..." : (r.getParagraph() != null ? r.getParagraph() : "")))
-                                      .collect(Collectors.joining("\n\n")));
-        } else {
-            return String.format("Found %d relevant paragraphs:\n%s",
-                              results.size(),
-                              results.stream()
-                                      .limit(3)
-                                      .map(r -> String.format("Meeting on %s:\n%s", 
-                                          r.getDate() != null ? r.getDate() : "unknown date",
-                                          r.getParagraph() != null && r.getParagraph().length() > 300 ? r.getParagraph().substring(0, 300) + "..." : (r.getParagraph() != null ? r.getParagraph() : "")))
-                                      .collect(Collectors.joining("\n\n")));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found %d relevant paragraphs:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found paragraphs.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", results.size(), resultsText);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback paragraph answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return String.format("Found %d relevant paragraphs:\n%s",
+                          results.size(), resultsText);
     }
 
     /**
