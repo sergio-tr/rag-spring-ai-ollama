@@ -71,8 +71,8 @@ public class EnhancedNERHandler implements Loggable {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            // Use LLM to interpret the response as yes/no
+            return interpretBooleanResponse(result, "matchesDocumentWithNER");
         } catch (Exception e) {
             log().error("Error in matchesDocumentWithNER, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
@@ -104,17 +104,8 @@ public class EnhancedNERHandler implements Loggable {
                 return true;
             }
             
-            // Validate and parse response
-            String normalized = result.strip().toLowerCase();
-            boolean matches = normalized.contains("yes") || normalized.contains("sí");
-            
-            // Additional validation: if response is unclear, default to true
-            if (!matches && !normalized.contains("no") && !normalized.contains("no")) {
-                log().warn("Unclear LLM response in matchesMinuteWithNER: '{}', defaulting to true", result);
-                return true;
-            }
-            
-            return matches;
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "matchesMinuteWithNER");
         } catch (Exception e) {
             log().error("Error in matchesMinuteWithNER, defaulting to true to avoid false negatives", e);
             return true;
@@ -412,8 +403,8 @@ public class EnhancedNERHandler implements Loggable {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "matchesTemporalContext");
         } catch (Exception e) {
             log().error("Error in matchesTemporalContext, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
@@ -478,8 +469,8 @@ public class EnhancedNERHandler implements Loggable {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "matchesMinuteTemporalContext");
         } catch (Exception e) {
             log().error("Error in matchesMinuteTemporalContext, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
@@ -645,5 +636,43 @@ public class EnhancedNERHandler implements Loggable {
         }
         
         return normalized.toString();
+    }
+
+    /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
     }
 }

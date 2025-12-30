@@ -64,10 +64,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                             .user(prompt)
                             .call()
                             .content()
-                            .strip()
-                            .toLowerCase();
+                            .strip();
 
-                    if (result.contains("yes") || result.contains("sí")) {
+                    // Use validateLLMFilterResponse for consistent validation
+                    Boolean validated = validateLLMFilterResponse(result, "NER-based metadata matching");
+                    if (validated != null && validated) {
                         return true;
                     }
                 } catch (Exception e) {
@@ -139,10 +140,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .user(prompt)
                     .call()
                     .content()
-                    .strip()
-                    .toLowerCase();
+                    .strip();
 
-            return result.contains("yes") || result.contains("sí");
+            // Use validateLLMFilterResponse for consistent validation
+            Boolean validated = validateLLMFilterResponse(result, "semantic content matching");
+            return validated != null && validated;
         } catch (Exception e) {
             log().warn("Error in semantic content matching, defaulting to false", e);
             return false;
@@ -195,8 +197,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
     
     /**
-     * Validates LLM response for filtering operations.
-     * Returns true if response is valid and indicates a match, false otherwise.
+     * Validates LLM filter response (yes/no/unknown) using another LLM call.
      * On error or invalid response, returns null to indicate "unknown" (should not filter).
      * 
      */
@@ -206,40 +207,45 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return null; // Unknown, don't filter
         }
         
-        String cleaned = response.trim().toLowerCase();
+        // Use LLM to interpret the response as yes/no/unknown
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE/MATCH/RELEVANT, respond with: YES
+            - If it means NO/FALSE/NEGATIVE/NO_MATCH/IRRELEVANT, respond with: NO
+            - If it's UNCLEAR/AMBIGUOUS/UNCERTAIN, respond with: UNKNOWN
+            
+            Consider semantic meaning, not just exact words.
+            For ambiguous responses (probably, maybe, possibly), respond with: UNKNOWN
+            
+            Respond with ONLY one word: YES, NO, or UNKNOWN.
+            """, context, response);
         
-        // Check for positive responses (expanded patterns)
-        if (cleaned.contains("yes") || cleaned.contains("sí") || cleaned.contains("si") ||
-            cleaned.contains("true") || cleaned.contains("verdadero") ||
-            cleaned.contains("correct") || cleaned.contains("correcto") ||
-            cleaned.contains("match") || cleaned.contains("coincide") ||
-            cleaned.contains("relevant") || cleaned.contains("relevante") ||
-            cleaned.contains("contains") || cleaned.contains("contiene") ||
-            cleaned.startsWith("y") || cleaned.startsWith("s")) {
-            return true;
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            if (interpretation.contains("YES")) {
+                return true;
+            } else if (interpretation.contains("NO")) {
+                return false;
+            } else {
+                // UNKNOWN or unclear - don't filter (default to keeping the document)
+                log().debug("LLM interpreted response in {} as UNKNOWN: '{}'", context, response);
+                return null;
+            }
+        } catch (Exception e) {
+            log().warn("Error validating LLM filter response in {}, defaulting to keep document", context, e);
+            return null; // Unknown, don't filter
         }
-        
-        // Check for negative responses (expanded patterns)
-        if (cleaned.contains("no") || cleaned.contains("false") || cleaned.contains("falso") ||
-            cleaned.contains("not") || cleaned.contains("no ") ||
-            cleaned.contains("doesn't") || cleaned.contains("no contiene") ||
-            cleaned.contains("irrelevant") || cleaned.contains("irrelevante") ||
-            cleaned.startsWith("n")) {
-            return false;
-        }
-        
-        // Check for ambiguous/uncertain responses - treat as positive (less strict)
-        if (cleaned.contains("probably") || cleaned.contains("probablemente") ||
-            cleaned.contains("possibly") || cleaned.contains("posiblemente") ||
-            cleaned.contains("maybe") || cleaned.contains("quizás") ||
-            cleaned.contains("might") || cleaned.contains("podría")) {
-            log().debug("Ambiguous LLM response in {}: '{}', defaulting to keep document (less strict)", context, response);
-            return true; // Less strict: keep on ambiguity
-        }
-        
-        // If unclear, don't filter (default to keeping the document)
-        log().warn("Unclear LLM response in {}: '{}', defaulting to keep document", context, response);
-        return null; // Unknown, don't filter
     }
 
     /**
@@ -292,21 +298,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Boolean validated = validateLLMFilterResponse(result, "semanticallyMatchesMinute");
             
             // If validation returns null (unknown), default to true (keep document) to avoid false negatives
-            if (validated != null) {
-                return validated;
-            }
-            
-            // Fallback: parse response manually
-            String normalized = result.strip().toLowerCase();
-            boolean matches = normalized.contains("yes") || normalized.contains("sí");
-            
-            // If response is unclear, default to true
-            if (!matches && !normalized.contains("no") && !normalized.contains("no")) {
-                log().warn("Unclear LLM response in semanticallyMatchesMinute: '{}', defaulting to true", result);
-                return true; // Default to true when response is unclear
-            }
-            
-            return matches;
+            return validated != null ? validated : true;
         } catch (Exception e) {
             log().warn("Error in semantic minute matching, defaulting to true to avoid false negatives", e);
             return true; // Avoid false negatives
@@ -587,9 +579,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .user(prompt)
                     .call()
                     .content()
-                    .strip()
-                    .toLowerCase();
-            return result.contains("yes") || result.contains("sí");
+                    .strip();
+            
+            // Use validateLLMFilterResponse for consistent validation
+            Boolean validated = validateLLMFilterResponse(result, "minute matching with NER");
+            return validated != null ? validated : true; // Default to true to avoid false negatives
         } catch (Exception e) {
             log().warn("Error matching minute with NER, defaulting to true to avoid false negatives", e);
             return true; // Avoid false negatives (consistent with EnhancedNERHandler)
@@ -597,10 +591,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
     
     /**
-     * Checks if minute's agenda items match NER agenda items.
-     * This is a direct filter before LLM call for better efficiency.
-     * 
-     * MEJORA: Added direct filtering by agenda items to improve correlation.
+     * Checks if minute's agenda items match NER agenda items using LLM.
      */
     private boolean matchesAgendaItems(Minute minute, JSONObject ner) {
         if (minute.agenda() == null || minute.agenda().isEmpty()) {
@@ -615,40 +606,63 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return true; // No agenda items to match
             }
             
-            // Build a searchable string from all agenda items (values from the map)
-            String agendaStr = minute.agenda().values().stream()
+            // Build agenda items list from minute
+            List<String> minuteAgendaItems = minute.agenda().values().stream()
                     .filter(item -> item != null && !item.trim().isEmpty())
-                    .map(String::toLowerCase)
-                    .collect(Collectors.joining(" "));
+                    .collect(Collectors.toList());
             
-            if (agendaStr.isEmpty()) {
+            if (minuteAgendaItems.isEmpty()) {
                 return true; // No agenda content to search
             }
             
-            // Check if any NER agenda item matches any minute agenda item (case-insensitive, partial matching)
+            // Build NER agenda items list
+            List<String> nerAgendaItems = new ArrayList<>();
             for (int i = 0; i < nerAgenda.length(); i++) {
-                String nerAgendaItem = nerAgenda.getString(i).toLowerCase().trim();
-                if (nerAgendaItem.isEmpty()) continue;
-                
-                // Check if NER agenda item is contained in any agenda value
-                boolean found = minute.agenda().values().stream()
-                        .anyMatch(agendaValue -> {
-                            if (agendaValue == null || agendaValue.trim().isEmpty()) return false;
-                            String agendaValueLower = agendaValue.toLowerCase().trim();
-                            return agendaValueLower.contains(nerAgendaItem) || 
-                                   nerAgendaItem.contains(agendaValueLower) ||
-                                   agendaValueLower.equals(nerAgendaItem);
-                        });
-                
-                if (found) {
-                    log().info("Found matching agenda item: NER='{}' matches Minute agenda", nerAgendaItem);
-                    return true; // At least one match found
+                String item = nerAgenda.getString(i).trim();
+                if (!item.isEmpty()) {
+                    nerAgendaItems.add(item);
                 }
             }
             
-            log().info("No matching agenda items found. NER agenda: {}, Minute agenda: {}", 
-                       nerAgenda, minute.agenda());
-            return false; // No matches found
+            if (nerAgendaItems.isEmpty()) {
+                return true; // No NER agenda items to match
+            }
+            
+            // Use LLM to check if any NER agenda item semantically matches any minute agenda item
+            String prompt = String.format("""
+                Task: Check if any of the NER agenda items semantically match any of the minute agenda items.
+                
+                NER agenda items (extracted from query):
+                %s
+                
+                Minute agenda items:
+                %s
+                
+                Consider semantic meaning, synonyms, and related concepts, not just exact word matches.
+                
+                Respond with ONLY one word: YES if at least one match is found, NO otherwise.
+                """, String.join(", ", nerAgendaItems), String.join(", ", minuteAgendaItems));
+            
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip();
+            
+            // Use validateLLMFilterResponse for consistent validation
+            Boolean validated = validateLLMFilterResponse(result, "agenda items matching");
+            boolean matches = validated != null ? validated : true; // Default to true to avoid false negatives
+            
+            if (matches) {
+                log().info("Found matching agenda items. NER agenda: {}, Minute agenda: {}", 
+                           nerAgendaItems, minuteAgendaItems);
+            } else {
+                log().info("No matching agenda items found. NER agenda: {}, Minute agenda: {}", 
+                           nerAgendaItems, minuteAgendaItems);
+            }
+            
+            return matches;
         } catch (Exception e) {
             log().warn("Error matching agenda items, allowing through to LLM", e);
             return true; // On error, let LLM decide
@@ -674,29 +688,63 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return true; // No entities to match
             }
             
-            // Check if any NER entity matches any minute entity (case-insensitive, partial matching)
+            // Build entity lists
+            List<String> nerEntityList = new ArrayList<>();
             for (int i = 0; i < nerEntities.length(); i++) {
-                String nerEntity = nerEntities.getString(i).toLowerCase().trim();
-                if (nerEntity.isEmpty()) continue;
-                
-                for (String minuteEntity : minute.mentionedEntities()) {
-                    if (minuteEntity == null || minuteEntity.trim().isEmpty()) continue;
-                    
-                    String minuteEntityLower = minuteEntity.toLowerCase().trim();
-                    
-                    // Exact match or substring match (entity name might be part of longer string)
-                    if (minuteEntityLower.equals(nerEntity) ||
-                        minuteEntityLower.contains(nerEntity) ||
-                        nerEntity.contains(minuteEntityLower)) {
-                        log().info("Found matching entity: NER='{}' matches Minute='{}'", nerEntity, minuteEntity);
-                        return true; // At least one match found
-                    }
+                String entity = nerEntities.getString(i).trim();
+                if (!entity.isEmpty()) {
+                    nerEntityList.add(entity);
                 }
             }
             
-            log().info("No matching entities found. NER entities: {}, Minute entities: {}", 
-                       nerEntities, minute.mentionedEntities());
-            return false; // No matches found
+            if (nerEntityList.isEmpty()) {
+                return true; // No NER entities to match
+            }
+            
+            List<String> minuteEntityList = minute.mentionedEntities().stream()
+                    .filter(e -> e != null && !e.trim().isEmpty())
+                    .collect(Collectors.toList());
+            
+            if (minuteEntityList.isEmpty()) {
+                return false; // No minute entities to match against
+            }
+            
+            // Use LLM to check if any NER entity semantically matches any minute entity
+            String prompt = String.format("""
+                Task: Check if any of the NER entities semantically match any of the minute entities.
+                
+                NER entities (extracted from query):
+                %s
+                
+                Minute entities:
+                %s
+                
+                Consider semantic meaning, synonyms, variations, and related names, not just exact word matches.
+                For example, "Juan Pérez" should match "Juan Pérez Gutiérrez", and vice versa.
+                
+                Respond with ONLY one word: YES if at least one match is found, NO otherwise.
+                """, String.join(", ", nerEntityList), String.join(", ", minuteEntityList));
+            
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip();
+            
+            // Use validateLLMFilterResponse for consistent validation
+            Boolean validated = validateLLMFilterResponse(result, "entities matching");
+            boolean matches = validated != null ? validated : false; // Default to false for entity matching
+            
+            if (matches) {
+                log().info("Found matching entities. NER entities: {}, Minute entities: {}", 
+                           nerEntityList, minuteEntityList);
+            } else {
+                log().info("No matching entities found. NER entities: {}, Minute entities: {}", 
+                           nerEntityList, minuteEntityList);
+            }
+            
+            return matches;
         } catch (Exception e) {
             log().warn("Error matching mentionedEntities, allowing through to LLM", e);
             return true; // On error, let LLM decide
@@ -739,22 +787,117 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Obtiene el valor de un campo específico del Minute.
+     * Field name synonyms mapping for flexible field search.
+     */
+    private static final Map<String, String> FIELD_SYNONYMS = Map.ofEntries(
+        Map.entry("secretaria", "secretary"),
+        Map.entry("secretario", "secretary"),
+        Map.entry("orden del día", "agenda"),
+        Map.entry("orden_del_dia", "agenda"),
+        Map.entry("order_of_day", "agenda"),
+        Map.entry("puntos del día", "agenda"),
+        Map.entry("puntos_del_dia", "agenda"),
+        Map.entry("fecha", "date"),
+        Map.entry("lugar", "place"),
+        Map.entry("ubicación", "place"),
+        Map.entry("presidente", "president"),
+        Map.entry("hora_inicio", "startTime"),
+        Map.entry("hora de inicio", "startTime"),
+        Map.entry("hora_fin", "endTime"),
+        Map.entry("hora de fin", "endTime"),
+        Map.entry("temas", "topics"),
+        Map.entry("decisiones", "decisions"),
+        Map.entry("acuerdos", "decisions"),
+        Map.entry("resumen", "summary"),
+        Map.entry("asistentes", "attendees"),
+        Map.entry("participantes", "attendees")
+    );
+
+    /**
+     * Normalizes field name using synonyms mapping and returns canonical field name.
      * 
+     * @param field Field name (may be in any language or format)
+     * @return Canonical field name or original if no mapping found
+     */
+    private String normalizeFieldName(String field) {
+        if (field == null || field.trim().isEmpty()) {
+            return field;
+        }
+        
+        String fieldLower = field.toLowerCase().trim();
+        
+        // Check direct mapping
+        if (FIELD_SYNONYMS.containsKey(fieldLower)) {
+            String canonical = FIELD_SYNONYMS.get(fieldLower);
+            log().debug("Mapped field synonym '{}' to canonical '{}'", field, canonical);
+            return canonical;
+        }
+        
+        // Check if field contains any synonym as substring
+        for (Map.Entry<String, String> entry : FIELD_SYNONYMS.entrySet()) {
+            if (fieldLower.contains(entry.getKey())) {
+                String canonical = entry.getValue();
+                log().debug("Mapped field '{}' containing synonym '{}' to canonical '{}'", field, entry.getKey(), canonical);
+                return canonical;
+            }
+        }
+        
+        return fieldLower;
+    }
+
+    /**
+     * Gets field value from Minute object, searching in multiple possible field names.
+     * Uses synonym mapping and tries multiple variations.
+     * 
+     * @param minute Minute object
+     * @param field Field name (may be in any language or format)
+     * @return Field value or null if not found
      */
     private Object getMinuteFieldValue(Minute minute, String field) {
-        String fieldLower = field.toLowerCase();
-        return switch (fieldLower) {
-            case "date", "fecha" -> minute.date();
-            case "place", "lugar" -> minute.place();
-            case "president", "presidente" -> minute.president();
-            case "secretary", "secretario" -> minute.secretary();
-            case "starttime", "hora_inicio" -> minute.startTime();
-            case "endtime", "hora_fin" -> minute.endTime();
-            case "topics", "temas" -> minute.topics();
-            case "decisions", "decisiones" -> minute.decisions();
-            case "summary", "resumen" -> minute.summary();
-            case "agenda" -> {
+        if (minute == null || field == null || field.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Normalize field name using synonyms
+        String normalizedField = normalizeFieldName(field);
+        
+        // Try to get value using normalized field name
+        Object value = getFieldValueByCanonicalName(minute, normalizedField);
+        if (value != null) {
+            log().debug("Found field '{}' (normalized: '{}') in minute", field, normalizedField);
+            return value;
+        }
+        
+        // Try original field name as fallback
+        value = getFieldValueByCanonicalName(minute, field.toLowerCase());
+        if (value != null) {
+            log().debug("Found field '{}' using original name in minute", field);
+            return value;
+        }
+        
+        log().debug("Field '{}' (normalized: '{}') not found in minute", field, normalizedField);
+        return null;
+    }
+
+    /**
+     * Gets field value by canonical field name.
+     * 
+     * @param minute Minute object
+     * @param canonicalField Canonical field name (lowercase, normalized)
+     * @return Field value or null if not found
+     */
+    private Object getFieldValueByCanonicalName(Minute minute, String canonicalField) {
+        return switch (canonicalField) {
+            case "date" -> minute.date();
+            case "place" -> minute.place();
+            case "president" -> minute.president();
+            case "secretary" -> minute.secretary();
+            case "starttime" -> minute.startTime();
+            case "endtime" -> minute.endTime();
+            case "topics" -> minute.topics();
+            case "decisions" -> minute.decisions();
+            case "summary" -> minute.summary();
+            case "agenda", "orden_del_dia", "order_of_day" -> {
                 // Agenda is a Map<String, String>, convert to readable format
                 Map<String, String> agenda = minute.agenda();
                 if (agenda == null || agenda.isEmpty()) {
@@ -765,7 +908,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         .map(e -> e.getKey() + ": " + e.getValue())
                         .collect(Collectors.joining("; "));
             }
-            case "attendees", "asistentes" -> minute.attendees();
+            case "attendees" -> minute.attendees();
+            case "numberofattendees", "attendeescount" -> minute.numberOfAttendees();
+            case "durationminutes", "duration" -> {
+                int duration = calculateDurationFromMinute(minute);
+                yield duration > 0 ? duration : null;
+            }
             default -> null;
         };
     }
@@ -1289,28 +1437,64 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Analyzes query type to generate more specific prompts
+     * Analyzes query type to generate more specific prompts using LLM.
      */
     protected String analyzeQueryType(String query) {
-        String queryLower = query.toLowerCase();
+        if (query == null || query.trim().isEmpty()) {
+            return "general";
+        }
         
-        if (queryLower.contains("decision") || queryLower.contains("decid") || queryLower.contains("acord")) {
-            return "decision-focused";
-        } else if (queryLower.contains("topic") || queryLower.contains("tema") || queryLower.contains("discut")) {
-            return "topic-focused";
-        } else if (queryLower.contains("person") || queryLower.contains("president") || queryLower.contains("secretary")) {
-            return "person-focused";
-        } else if (queryLower.contains("date") || queryLower.contains("fecha") || queryLower.contains("when")) {
-            return "date-focused";
-        } else if (queryLower.contains("place") || queryLower.contains("lugar") || queryLower.contains("where")) {
-            return "location-focused";
-        } else if (queryLower.contains("entity") || queryLower.contains("entidad") || queryLower.contains("persona")) {
-            return "entity-focused";
-        } else if (queryLower.contains("count") || queryLower.contains("cuántos") || queryLower.contains("cuantos")) {
-            return "count-focused";
-        } else if (queryLower.contains("compare") || queryLower.contains("comparar") || queryLower.contains("comparación")) {
-            return "comparison-focused";
-        } else {
+        String prompt = String.format("""
+            Analyze this user query and determine its primary focus:
+            
+            Query: "%s"
+            
+            Possible query types:
+            - decision-focused: about decisions, agreements, approvals
+            - topic-focused: about topics, discussions, subjects
+            - person-focused: about people, president, secretary, attendees
+            - date-focused: about dates, when something happened
+            - location-focused: about places, where something happened
+            - entity-focused: about entities, persons, organizations
+            - count-focused: about counting, how many
+            - comparison-focused: about comparing, differences
+            - general: general query without specific focus
+            
+            Respond with ONLY the query type (e.g., "decision-focused", "topic-focused", etc.).
+            If unsure, respond with "general".
+            """, query);
+        
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toLowerCase();
+            
+            // Validate and return the result
+            if (result.contains("decision")) {
+                return "decision-focused";
+            } else if (result.contains("topic")) {
+                return "topic-focused";
+            } else if (result.contains("person")) {
+                return "person-focused";
+            } else if (result.contains("date")) {
+                return "date-focused";
+            } else if (result.contains("location") || result.contains("place")) {
+                return "location-focused";
+            } else if (result.contains("entity")) {
+                return "entity-focused";
+            } else if (result.contains("count")) {
+                return "count-focused";
+            } else if (result.contains("comparison") || result.contains("compare")) {
+                return "comparison-focused";
+            } else {
+                return "general";
+            }
+        } catch (Exception e) {
+            log().warn("Error analyzing query type, defaulting to general", e);
             return "general";
         }
     }
@@ -1617,6 +1801,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
                     if (!docs.isEmpty()) {
                         log().info("Retrieved {} documents using NER-based retrieval with metadata filters", docs.size());
+                        // Validate date match if date is present in query
+                        docs = validateDateMatchIfPresent(docs, query, ner);
                         return docs;
                     } else {
                         log().info("NER-based retrieval returned no documents after filtering, trying fallback");
@@ -1638,12 +1824,464 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             docs = retrieveDocuments(query);
         }
         
-        // Fallback 2: If still empty, try with higher topK and lower threshold
+        // Fallback 2: If still empty, log and continue (will return empty list, not null)
         if (docs.isEmpty()) {
-            log().info("Basic retrieval returned no documents after metadata filter");
+            log().info("Basic retrieval returned no documents after metadata filter for query: {}", query);
         }
         
-        return docs;
+        // Validate date match if date is present in query
+        docs = validateDateMatchIfPresent(docs, query, ner);
+        
+        // Always return a list (never null), even if empty
+        return docs != null ? docs : new ArrayList<>();
+    }
+
+    /**
+     * Filters documents by topic/keyword using LLM semantic matching.
+     * Searches for the topic in metadata fields (topics, summary, decisions) and content.
+     * 
+     * @param docs List of documents to filter
+     * @param topic Topic or keyword to search for
+     * @return Filtered list of documents that mention the topic
+     */
+    protected List<Document> filterDocumentsByTopic(List<Document> docs, String topic) {
+        if (docs == null || docs.isEmpty() || topic == null || topic.trim().isEmpty()) {
+            return docs != null ? docs : new ArrayList<>();
+        }
+        
+        log().info("Filtering {} documents by topic: {}", docs.size(), topic);
+        
+        List<Document> filtered = new ArrayList<>();
+        
+        for (Document doc : docs) {
+            if (doc == null) continue;
+            
+            // Build context from metadata and content
+            StringBuilder context = new StringBuilder();
+            
+            // Add metadata fields
+            Map<String, Object> metadata = doc.getMetadata();
+            if (metadata != null) {
+                if (metadata.containsKey("topics")) {
+                    Object topicsObj = metadata.get("topics");
+                    if (topicsObj instanceof List) {
+                        context.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
+                    } else if (topicsObj instanceof String) {
+                        context.append("Topics: ").append(topicsObj).append("\n");
+                    }
+                }
+                if (metadata.containsKey("summary")) {
+                    Object summaryObj = metadata.get("summary");
+                    if (summaryObj != null) {
+                        context.append("Summary: ").append(summaryObj.toString()).append("\n");
+                    }
+                }
+                if (metadata.containsKey("decisions")) {
+                    Object decisionsObj = metadata.get("decisions");
+                    if (decisionsObj instanceof List) {
+                        context.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
+                    } else if (decisionsObj instanceof String) {
+                        context.append("Decisions: ").append(decisionsObj).append("\n");
+                    }
+                }
+            }
+            
+            // Add content (truncated for efficiency)
+            String content = doc.getContent();
+            if (content != null && !content.trim().isEmpty()) {
+                String truncatedContent = content.length() > 1000 ? content.substring(0, 1000) + "..." : content;
+                context.append("Content: ").append(truncatedContent);
+            }
+            
+            if (context.length() == 0) {
+                continue; // Skip documents with no context
+            }
+            
+            // Use LLM to check if document mentions the topic
+            String prompt = String.format("""
+                Task: Determine if the following document mentions or discusses the topic/keyword.
+                
+                Topic/Keyword to search for: "%s"
+                
+                Document information:
+                %s
+                
+                Consider semantic meaning, synonyms, and related concepts, not just exact word matches.
+                
+                Respond with ONLY one word: YES if the document mentions or discusses the topic, NO otherwise.
+                """, topic, context.toString());
+            
+            try {
+                String result = chatClient
+                        .prompt()
+                        .user(prompt)
+                        .call()
+                        .content()
+                        .strip();
+                
+                Boolean validated = validateLLMFilterResponse(result, "filterDocumentsByTopic");
+                if (validated != null && validated) {
+                    filtered.add(doc);
+                }
+            } catch (Exception e) {
+                log().warn("Error filtering document by topic '{}', including document to avoid false negatives: {}", topic, e.getMessage());
+                // Include document on error to avoid false negatives
+                filtered.add(doc);
+            }
+        }
+        
+        log().info("Filtered {} documents by topic '{}': {} documents match", docs.size(), topic, filtered.size());
+        
+        // Detailed logging for debugging
+        if (filtered.isEmpty() && !docs.isEmpty()) {
+            log().warn("Topic filtering failed: Topic '{}' not found in any of {} documents", topic, docs.size());
+        } else if (!filtered.isEmpty()) {
+            log().debug("Topic filtering succeeded: Topic '{}' found in {} documents", topic, filtered.size());
+        }
+        
+        return filtered;
+    }
+
+    /**
+     * Extracts topic/keyword from query using NER and LLM.
+     * 
+     * @param query User query
+     * @param ner NER entities (optional)
+     * @return Extracted topic/keyword or null if not found
+     */
+    protected String extractTopicFromQuery(String query, JSONObject ner) {
+        if (query == null || query.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Try to extract from NER first
+        if (ner != null && !ner.isEmpty()) {
+            // Check for topics in NER
+            if (ner.has("topics") && !ner.isNull("topics")) {
+                try {
+                    org.json.JSONArray topics = ner.getJSONArray("topics");
+                    if (topics.length() > 0) {
+                        String topic = topics.getString(0).trim();
+                        if (!topic.isEmpty()) {
+                            log().info("Extracted topic from NER: {}", topic);
+                            return topic;
+                        }
+                    }
+                } catch (Exception e) {
+                    log().debug("Error extracting topic from NER: {}", e.getMessage());
+                }
+            }
+            
+            // Check for mentionedEntities that might be topics
+            if (ner.has("mentionedEntities") && !ner.isNull("mentionedEntities")) {
+                try {
+                    org.json.JSONArray entities = ner.getJSONArray("mentionedEntities");
+                    if (entities.length() > 0) {
+                        // Use first entity as potential topic
+                        String entity = entities.getString(0).trim();
+                        if (!entity.isEmpty()) {
+                            log().info("Extracted potential topic from NER entities: {}", entity);
+                            return entity;
+                        }
+                    }
+                } catch (Exception e) {
+                    log().debug("Error extracting topic from NER entities: {}", e.getMessage());
+                }
+            }
+        }
+        
+        // Use LLM to extract topic/keyword from query
+        String prompt = String.format("""
+            Task: Extract the main topic or keyword from the following question about meeting minutes.
+            
+            Question (may be in any language): "%s"
+            
+            Extract the main topic, keyword, or subject that the question is asking about.
+            Examples:
+            - "How many meetings discussed the elevator?" → topic: "elevator"
+            - "¿Cuántas actas hay sobre el ascensor?" → topic: "ascensor" or "elevator"
+            - "How many meetings mentioned the budget?" → topic: "budget"
+            - "¿En cuántas reuniones se habló del presupuesto?" → topic: "presupuesto" or "budget"
+            
+            If the question is asking about a count without a specific topic (e.g., "How many meetings were there?"),
+            respond with "NONE".
+            
+            Return ONLY the topic/keyword, or "NONE" if no specific topic is mentioned.
+            Do not include explanations or additional text.
+            """, query);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip();
+            
+            if (response != null && !response.trim().isEmpty() && !response.trim().equalsIgnoreCase("NONE")) {
+                String topic = response.trim();
+                log().info("Extracted topic from query using LLM: {}", topic);
+                return topic;
+            }
+        } catch (Exception e) {
+            log().warn("Error extracting topic from query using LLM: {}", e.getMessage());
+        }
+        
+        return null;
+    }
+
+    /**
+     * Validates that a keyword actually exists in the documents using LLM semantic matching.
+     * 
+     * @param docs List of documents to search
+     * @param keyword Keyword to validate
+     * @return true if keyword is found in at least one document, false otherwise
+     */
+    protected boolean validateKeywordExists(List<Document> docs, String keyword) {
+        if (docs == null || docs.isEmpty() || keyword == null || keyword.trim().isEmpty()) {
+            return false;
+        }
+        
+        log().info("Validating keyword '{}' exists in {} documents", keyword, docs.size());
+        
+        // Check a sample of documents (first 5) to avoid too many LLM calls
+        int sampleSize = Math.min(5, docs.size());
+        List<Document> sampleDocs = docs.subList(0, sampleSize);
+        
+        for (Document doc : sampleDocs) {
+            if (doc == null) continue;
+            
+            // Build context from metadata and content
+            StringBuilder context = new StringBuilder();
+            
+            Map<String, Object> metadata = doc.getMetadata();
+            if (metadata != null) {
+                if (metadata.containsKey("topics")) {
+                    Object topicsObj = metadata.get("topics");
+                    if (topicsObj instanceof List) {
+                        context.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
+                    } else if (topicsObj instanceof String) {
+                        context.append("Topics: ").append(topicsObj).append("\n");
+                    }
+                }
+                if (metadata.containsKey("summary")) {
+                    Object summaryObj = metadata.get("summary");
+                    if (summaryObj != null) {
+                        context.append("Summary: ").append(summaryObj.toString()).append("\n");
+                    }
+                }
+                if (metadata.containsKey("decisions")) {
+                    Object decisionsObj = metadata.get("decisions");
+                    if (decisionsObj instanceof List) {
+                        context.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
+                    } else if (decisionsObj instanceof String) {
+                        context.append("Decisions: ").append(decisionsObj).append("\n");
+                    }
+                }
+            }
+            
+            String content = doc.getContent();
+            if (content != null && !content.trim().isEmpty()) {
+                String truncatedContent = content.length() > 500 ? content.substring(0, 500) + "..." : content;
+                context.append("Content: ").append(truncatedContent);
+            }
+            
+            if (context.length() == 0) {
+                continue;
+            }
+            
+            // Use LLM to check if keyword exists
+            String prompt = String.format("""
+                Task: Determine if the following document mentions or contains the keyword.
+                
+                Keyword to search for: "%s"
+                
+                Document information:
+                %s
+                
+                Consider semantic meaning, synonyms, and related concepts, not just exact word matches.
+                
+                Respond with ONLY one word: YES if the keyword is mentioned or discussed, NO otherwise.
+                """, keyword, context.toString());
+            
+            try {
+                String result = chatClient
+                        .prompt()
+                        .user(prompt)
+                        .call()
+                        .content()
+                        .strip();
+                
+                Boolean validated = validateLLMFilterResponse(result, "validateKeywordExists");
+                if (validated != null && validated) {
+                    log().info("Keyword '{}' found in document", keyword);
+                    return true;
+                }
+            } catch (Exception e) {
+                log().warn("Error validating keyword '{}' in document: {}", keyword, e.getMessage());
+            }
+        }
+        
+        log().info("Keyword '{}' not found in sampled documents (checked {} of {} documents)", keyword, sampleSize, docs.size());
+        return false;
+    }
+
+    /**
+     * Extracts year from query using NER or LLM.
+     * 
+     * @param query User query
+     * @param ner NER entities (optional)
+     * @return Extracted year as string (e.g., "2025") or null if not found
+     */
+    protected String extractYearFromQuery(String query, JSONObject ner) {
+        if (query == null || query.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Try to extract from NER first
+        if (ner != null && !ner.isEmpty()) {
+            try {
+                if (ner.has("filters") && !ner.isNull("filters")) {
+                    JSONObject filters = ner.getJSONObject("filters");
+                    if (filters.has("date") && !filters.isNull("date")) {
+                        org.json.JSONArray dates = filters.getJSONArray("date");
+                        for (int i = 0; i < dates.length(); i++) {
+                            String dateStr = dates.getString(i);
+                            // Try to extract year from date string
+                            java.util.regex.Pattern yearPattern = java.util.regex.Pattern.compile("\\b(20\\d{2})\\b");
+                            java.util.regex.Matcher matcher = yearPattern.matcher(dateStr);
+                            if (matcher.find()) {
+                                String year = matcher.group(1);
+                                log().info("Extracted year from NER: {}", year);
+                                return year;
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log().debug("Error extracting year from NER: {}", e.getMessage());
+            }
+        }
+        
+        // Use LLM to extract year
+        String prompt = String.format("""
+            Task: Extract the year from the following question about meeting minutes.
+            
+            Question (may be in any language): "%s"
+            
+            Extract the year (e.g., 2025, 2026) if mentioned in the question.
+            If no year is mentioned, respond with "NONE".
+            
+            Return ONLY the year (e.g., "2025") or "NONE".
+            Do not include explanations or additional text.
+            """, query);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip();
+            
+            if (response != null && !response.trim().isEmpty() && !response.trim().equalsIgnoreCase("NONE")) {
+                // Validate it's a year (4 digits starting with 20)
+                if (response.matches("20\\d{2}")) {
+                    log().info("Extracted year from query using LLM: {}", response);
+                    return response;
+                }
+            }
+        } catch (Exception e) {
+            log().warn("Error extracting year from query using LLM: {}", e.getMessage());
+        }
+        
+        return null;
+    }
+
+    /**
+     * Filters documents by year using date metadata.
+     * 
+     * @param docs List of documents to filter
+     * @param year Year to filter by (e.g., "2025")
+     * @return Filtered list of documents from the specified year
+     */
+    protected List<Document> filterDocumentsByYear(List<Document> docs, String year) {
+        if (docs == null || docs.isEmpty() || year == null || year.trim().isEmpty()) {
+            return docs != null ? docs : new ArrayList<>();
+        }
+        
+        log().info("Filtering {} documents by year: {}", docs.size(), year);
+        
+        List<Document> filtered = new ArrayList<>();
+        
+        for (Document doc : docs) {
+            if (doc == null) continue;
+            
+            String docDate = getDocumentDate(doc);
+            if (docDate != null) {
+                // Check if document date contains the year
+                if (docDate.contains(year)) {
+                    filtered.add(doc);
+                } else {
+                    // Try parsing the date to extract year
+                    try {
+                        java.time.LocalDate parsedDate = parseDateFlexible(docDate);
+                        if (parsedDate != null) {
+                            String docYear = String.valueOf(parsedDate.getYear());
+                            if (docYear.equals(year)) {
+                                filtered.add(doc);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log().debug("Error parsing date '{}' for year filtering: {}", docDate, e.getMessage());
+                    }
+                }
+            }
+        }
+        
+        log().info("Filtered {} documents by year '{}': {} documents match", docs.size(), year, filtered.size());
+        
+        // Detailed logging for debugging
+        if (filtered.isEmpty() && !docs.isEmpty()) {
+            log().warn("Year filtering failed: Year '{}' not found in any of {} documents. Sample document dates: {}", 
+                      year, docs.size(),
+                      docs.stream()
+                          .limit(3)
+                          .map(this::getDocumentDate)
+                          .filter(Objects::nonNull)
+                          .collect(Collectors.joining(", ")));
+        } else if (!filtered.isEmpty()) {
+            log().debug("Year filtering succeeded: Year '{}' found in {} documents", year, filtered.size());
+        }
+        
+        return filtered;
+    }
+
+    /**
+     * Validates date match if a date is present in the query.
+     * Returns filtered documents or empty list if no documents match the date.
+     */
+    private List<Document> validateDateMatchIfPresent(List<Document> docs, String query, JSONObject ner) {
+        if (docs == null || docs.isEmpty()) {
+            return docs != null ? docs : new ArrayList<>();
+        }
+
+        // Extract date from query
+        String requestedDate = extractDateFromQuery(query, ner);
+        if (requestedDate == null) {
+            // No date in query, return all documents
+            return docs;
+        }
+
+        // Validate date match
+        List<Document> filtered = validateDateMatch(docs, requestedDate);
+        
+        if (filtered.isEmpty() && !docs.isEmpty()) {
+            log().warn("Date validation filtered out all {} documents for requested date: {}", 
+                      docs.size(), requestedDate);
+        }
+
+        return filtered;
     }
     
     /**
@@ -1706,20 +2344,32 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     
     /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses a simple prompt to LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*") || 
-                           queryLower.contains("quién") || queryLower.contains("qué") || 
-                           queryLower.contains("cuándo") || queryLower.contains("dónde") ||
-                           queryLower.contains("cuántos") || queryLower.contains("cómo");
-        
-        if (isSpanish) {
-            return "Lo siento, no se encontraron actas de reunión relevantes para esta consulta.";
-        } else {
-            return "I'm sorry, no relevant meeting minutes were found for this query.";
+        if (query == null || query.trim().isEmpty()) {
+            return "No relevant meeting minutes were found for this query.";
         }
+        
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question, 
+            indicating that no relevant meeting minutes were found.
+            Be concise and polite.
+            """, query);
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
+        }
+        
+        // Ultimate fallback - generic message
+        return "No relevant meeting minutes were found for this query.";
     }
 
     /**
@@ -1789,35 +2439,75 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     
     /**
      * Generates a fallback specific error message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackSpecificErrorMessage(String query, String field, String date) {
-        String queryLower = query != null ? query.toLowerCase() : "";
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
-        
-        if (isSpanish) {
-            if (date != null && !date.trim().isEmpty()) {
-                if (field != null && !field.trim().isEmpty()) {
-                    return String.format("No se encontró información sobre %s para la fecha %s.", field, date);
-                }
-                return String.format("No se encontraron actas de reunión para la fecha %s.", date);
-            }
-            if (field != null && !field.trim().isEmpty()) {
-                return String.format("No se encontró información sobre %s en los metadatos disponibles.", field);
-            }
-            return "No se encontraron actas de reunión relevantes para esta consulta.";
-        } else {
-            if (date != null && !date.trim().isEmpty()) {
-                if (field != null && !field.trim().isEmpty()) {
-                    return String.format("No information found about %s for the date %s.", field, date);
-                }
-                return String.format("No meeting minutes found for the date %s.", date);
-            }
-            if (field != null && !field.trim().isEmpty()) {
-                return String.format("No information found about %s in the available metadata.", field);
-            }
+        if (query == null || query.trim().isEmpty()) {
             return "No relevant meeting minutes were found for this query.";
         }
+        
+        StringBuilder context = new StringBuilder();
+        if (field != null && !field.trim().isEmpty()) {
+            context.append("Field: ").append(field).append(". ");
+        }
+        if (date != null && !date.trim().isEmpty()) {
+            context.append("Date: ").append(date).append(". ");
+        }
+        
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Context: %s
+            
+            Respond with a short error message in the EXACT SAME LANGUAGE as the question,
+            explaining that the requested information was not found.
+            Be concise and helpful.
+            """, query, context.toString());
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback specific error message with LLM", e);
+        }
+        
+        // Ultimate fallback - generic message
+        return "No relevant meeting minutes were found for this query.";
+    }
+
+    /**
+     * Generates a date not found error message using LLM.
+     * Ensures response language matches query language.
+     */
+    protected String generateDateNotFoundMessage(String query, String date) {
+        if (query == null || query.trim().isEmpty()) {
+            return "No meeting minutes found for the specified date.";
+        }
+        
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            The requested date is: %s
+            
+            Respond with a short, clear message in the EXACT SAME LANGUAGE as the question,
+            indicating that no meeting minutes were found for this date.
+            Be concise and helpful.
+            Do not repeat the question.
+            """, query, date != null ? date : "unknown");
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating date not found message with LLM, using fallback", e);
+        }
+        
+        // Fallback
+        return generateFallbackNotFoundMessage(query);
     }
 
     /**
@@ -2386,23 +3076,209 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return validated;
             }
             
-            // Fallback: check for positive patterns
-            String normalized = response.trim().toLowerCase();
-            boolean isPositive = normalized.contains("yes") || normalized.contains("sí") || 
-                               normalized.contains("si") || normalized.startsWith("y") ||
-                               normalized.startsWith("s");
-            
-            // If unclear, default to true (less strict)
-            if (!isPositive && !normalized.contains("no")) {
-                log().warn("Unclear LLM response in evaluateMinuteContainsRequestedInfo: '{}', defaulting to true (less strict)", response);
-                return true; // Less strict: keep on ambiguity
-            }
-            
-            return isPositive;
+            // Fallback: default to true (less strict) if validation returned null
+            return true;
         } catch (Exception e) {
             log().warn("Error evaluating minute with LLM, defaulting to true (less strict) to avoid false negatives", e);
             return true; // Less strict: default to true on error
         }
+    }
+
+    /**
+     * Extracts date from query using NER or parsing.
+     * Returns normalized date string (ISO format) or null if no date found.
+     * This method is used to validate that documents match the requested date.
+     */
+    protected String extractDateFromQuery(String query, JSONObject nerEntities) {
+        if (query == null || query.trim().isEmpty()) {
+            return null;
+        }
+
+        // Try to extract from NER first (most accurate)
+        List<String> dateCandidates = extractDateCandidates(query, nerEntities);
+        if (!dateCandidates.isEmpty()) {
+            // Try each candidate until we find one that parses successfully
+            for (String candidate : dateCandidates) {
+                LocalDate parsed = parseDateFlexible(candidate);
+                if (parsed != null) {
+                    // Normalize to ISO format for comparison
+                    String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                    log().debug("Extracted and normalized date from query: {} -> {}", candidate, normalized);
+                    return normalized;
+                }
+            }
+        }
+
+        log().debug("No valid date found in query: {}", query);
+        return null;
+    }
+
+    /**
+     * Gets document date from metadata.
+     * Tries multiple metadata field names and returns normalized date string or null.
+     */
+    protected String getDocumentDate(Document doc) {
+        if (doc == null || doc.getMetadata() == null) {
+            return null;
+        }
+
+        Map<String, Object> metadata = doc.getMetadata();
+
+        // Try different possible field names for date
+        String[] dateFields = {"date", "fecha", "meeting_date", "document_date"};
+        for (String field : dateFields) {
+            Object dateValue = metadata.get(field);
+            if (dateValue != null) {
+                String dateStr = dateValue.toString().trim();
+                if (!dateStr.isEmpty()) {
+                    // Try to parse and normalize
+                    LocalDate parsed = parseDateFlexible(dateStr);
+                    if (parsed != null) {
+                        return parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                    }
+                    // If parsing fails but value exists, return as-is (might be already normalized)
+                    return dateStr;
+                }
+            }
+        }
+
+        // Try to get date from Minute object if available
+        try {
+            Minute minute = getMinuteFromMetadata(doc);
+            if (minute != null && minute.date() != null && !minute.date().trim().isEmpty()) {
+                LocalDate parsed = parseDateFlexible(minute.date());
+                if (parsed != null) {
+                    return parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                }
+                return minute.date();
+            }
+        } catch (Exception e) {
+            log().debug("Could not extract date from Minute object for document: {}", doc.getId());
+        }
+
+        return null;
+    }
+
+    /**
+     * Validates that documents match the requested date.
+     * Filters documents to only those that match the requested date.
+     * Returns empty list if no documents match.
+     */
+    protected List<Document> validateDateMatch(List<Document> docs, String requestedDate) {
+        if (docs == null || docs.isEmpty() || requestedDate == null || requestedDate.trim().isEmpty()) {
+            return docs != null ? docs : new ArrayList<>();
+        }
+
+        // Parse requested date
+        LocalDate requestedLocalDate = parseDateFlexible(requestedDate);
+        if (requestedLocalDate == null) {
+            log().warn("Could not parse requested date: {}, returning all documents", requestedDate);
+            return docs; // Can't parse, return all (don't filter)
+        }
+
+        String requestedNormalized = requestedLocalDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        log().debug("Validating {} documents against requested date: {} (normalized: {})", 
+                   docs.size(), requestedDate, requestedNormalized);
+
+        // Filter documents by date
+        List<Document> filtered = docs.stream()
+                .filter(doc -> {
+                    String docDate = getDocumentDate(doc);
+                    if (docDate == null) {
+                        log().debug("Document {} has no date, excluding from date-filtered results", doc.getId());
+                        return false; // Exclude documents without date when filtering by date
+                    }
+
+                    // Try to parse document date
+                    LocalDate docLocalDate = parseDateFlexible(docDate);
+                    if (docLocalDate == null) {
+                        log().debug("Could not parse document date '{}' for document {}, excluding", docDate, doc.getId());
+                        return false; // Can't parse, exclude
+                    }
+
+                    String docNormalized = docLocalDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                    boolean matches = docNormalized.equals(requestedNormalized);
+                    
+                    if (matches) {
+                        log().debug("Document {} matches requested date: {} ({})", 
+                                   doc.getId(), docDate, docNormalized);
+                    }
+                    
+                    return matches;
+                })
+                .collect(Collectors.toList());
+
+        log().info("Date validation: {} documents matched date {} out of {} total documents", 
+                  filtered.size(), requestedDate, docs.size());
+
+        return filtered;
+    }
+
+    /**
+     * Extracts attendees from document metadata.
+     * Prioritizes metadata over content extraction.
+     * 
+     * @param doc Document to extract attendees from
+     * @return List of attendee names
+     */
+    protected List<String> extractAttendeesFromMetadata(Document doc) {
+        if (doc == null) {
+            return new ArrayList<>();
+        }
+        
+        List<String> attendees = new ArrayList<>();
+        Map<String, Object> metadata = doc.getMetadata();
+        
+        if (metadata == null) {
+            return attendees;
+        }
+        
+        // Try to get attendees from metadata
+        Object attendeesObj = metadata.get("attendees");
+        if (attendeesObj != null) {
+            if (attendeesObj instanceof List) {
+                List<?> attendeesList = (List<?>) attendeesObj;
+                for (Object item : attendeesList) {
+                    if (item != null) {
+                        String attendee = item.toString().trim();
+                        if (!attendee.isEmpty()) {
+                            attendees.add(attendee);
+                        }
+                    }
+                }
+            } else if (attendeesObj instanceof String) {
+                String attendeesStr = (String) attendeesObj;
+                // Try to parse comma-separated or newline-separated list
+                String[] parts = attendeesStr.split("[,\n•]");
+                for (String part : parts) {
+                    String attendee = part.trim();
+                    if (!attendee.isEmpty()) {
+                        // Remove role indicators like "(Secretario)", "(Presidente)", etc.
+                        attendee = attendee.replaceAll("\\([^)]*\\)", "").trim();
+                        if (!attendee.isEmpty()) {
+                            attendees.add(attendee);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Also try to get from minute object if available
+        try {
+            Minute minute = getMinuteFromMetadata(doc);
+            if (minute != null && minute.attendees() != null) {
+                for (String attendee : minute.attendees()) {
+                    if (attendee != null && !attendee.isBlank() && !attendees.contains(attendee)) {
+                        attendees.add(attendee);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log().debug("Error extracting attendees from minute object: {}", e.getMessage());
+        }
+        
+        log().info("Extracted {} attendees from document metadata", attendees.size());
+        return attendees;
     }
 }
 

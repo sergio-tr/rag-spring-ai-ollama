@@ -169,20 +169,36 @@ public class ProcessQueryService implements QueryService {
     
     /**
      * Generates an error response in the same language as the query.
+     * Uses LLM to generate message in correct language.
      */
     private String generateErrorResponse(String query) {
-        // Detect query language (simple heuristic)
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*") || 
-                           queryLower.contains("quién") || queryLower.contains("qué") || 
-                           queryLower.contains("cuándo") || queryLower.contains("dónde") ||
-                           queryLower.contains("cuántos") || queryLower.contains("cómo");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            An error occurred while processing this query.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            apologizing for the error and asking the user to try again.
+            Be concise and polite.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "Lo siento, ocurrió un error al procesar tu consulta. Por favor, inténtalo de nuevo.";
-        } else {
-            return "I'm sorry, an error occurred while processing your query. Please try again.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating error response with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "I'm sorry, an error occurred while processing your query. Please try again.";
     }
 
     private String expand(String query) {
@@ -224,12 +240,13 @@ public class ProcessQueryService implements QueryService {
                         tool.execute(ToolExecutionContext.of(query, queryType, nerEntities)) :
                         tool.execute(ToolExecutionContext.of(query, queryType));
                 
-                if (result != null && result.result() != null) {
+                if (result != null && result.result() != null && !result.result().trim().isEmpty()) {
                     // Validate tool result
                     String validatedResult = LLMResponseValidator.validateAndClean(result.result(), "Tool-" + queryType);
-                    if (validatedResult != null) {
+                    if (validatedResult != null && !validatedResult.trim().isEmpty()) {
                         log().info("Successfully executed tool {} on attempt {}", queryType, attempt + 1);
                         // Create new ToolResult with validated result, preserving original source
+                        // Note: Informative messages (like "no documents found") are considered valid responses
                         return new ToolResult(validatedResult, result.source());
                     } else {
                         log().warn("Tool {} returned invalid result on attempt {}", queryType, attempt + 1);
@@ -238,7 +255,7 @@ public class ProcessQueryService implements QueryService {
                         }
                     }
                 } else {
-                    log().warn("Tool {} returned null result on attempt {}", queryType, attempt + 1);
+                    log().warn("Tool {} returned null or empty result on attempt {}", queryType, attempt + 1);
                     if (attempt < MAX_RETRIES) {
                         continue; // Retry
                     }
@@ -389,21 +406,36 @@ public class ProcessQueryService implements QueryService {
     
     /**
      * Generates a response when no context is available.
-     * The response language matches the query language.
+     * Uses LLM to generate message in correct language.
      */
     private String generateNoContextResponse(String query) {
-        // Detect query language (simple heuristic)
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*") || 
-                           queryLower.contains("quién") || queryLower.contains("qué") || 
-                           queryLower.contains("cuándo") || queryLower.contains("dónde") ||
-                           queryLower.contains("cuántos") || queryLower.contains("cómo");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No relevant information was found in the available documents to answer this question.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            apologizing and stating that no relevant information was found.
+            Be concise and polite.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "Lo siento, no se encontró información relevante en los documentos disponibles para responder a tu pregunta.";
-        } else {
-            return "I'm sorry, I couldn't find relevant information in the available documents to answer your question.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            // Fallback if LLM fails
         }
+        
+        // Ultimate fallback
+        return "I'm sorry, I couldn't find relevant information in the available documents to answer your question.";
     }
 }
 

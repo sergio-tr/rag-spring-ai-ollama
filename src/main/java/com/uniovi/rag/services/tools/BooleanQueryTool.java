@@ -141,8 +141,8 @@ public class BooleanQueryTool extends AbstractTool {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "fragmentConfirmsClaim");
         } catch (Exception e) {
             log().error("Error in fragmentConfirmsClaim, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
@@ -238,20 +238,74 @@ public class BooleanQueryTool extends AbstractTool {
     }
     
     /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
+    }
+
+    /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*") || 
-                           queryLower.contains("quién") || queryLower.contains("qué") || 
-                           queryLower.contains("cuándo") || queryLower.contains("dónde") ||
-                           queryLower.contains("cuántos") || queryLower.contains("cómo");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No evidence was found in the available documents to confirm this claim.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no evidence was found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "No se encontró evidencia en los documentos disponibles para confirmar esta afirmación.";
-        } else {
-            return "No evidence was found in the available documents to confirm this claim.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No evidence was found in the available documents to confirm this claim.";
     }
 }

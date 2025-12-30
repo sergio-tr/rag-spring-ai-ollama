@@ -31,6 +31,31 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "decisions", "topics", "summary"}, ner);
         
+        // Step 1.5: Extract keyword from query and validate it exists
+        String keyword = extractTopicFromQuery(query, ner);
+        if (keyword != null && !docs.isEmpty()) {
+            log().info("Validating keyword '{}' exists in documents", keyword);
+            if (!validateKeywordExists(docs, keyword)) {
+                log().info("Keyword '{}' not found in any documents for query: {}", keyword, query);
+                String errorMessage = generateSpecificErrorMessage(query, "keyword", keyword, docs.size(), "The keyword was not found in any documents");
+                return ToolResult.from(errorMessage, getClass());
+            }
+        }
+        
+        // Step 1.6: Filter by year if mentioned in query
+        String requestedYear = extractYearFromQuery(query, ner);
+        if (requestedYear != null && !docs.isEmpty()) {
+            log().info("Filtering documents by year: {}", requestedYear);
+            List<Document> filteredDocs = filterDocumentsByYear(docs, requestedYear);
+            if (filteredDocs.isEmpty()) {
+                log().info("No documents found for year {} in query: {}", requestedYear, query);
+                String errorMessage = generateSpecificErrorMessage(query, "year", requestedYear, docs.size(), "No documents found for this year");
+                return ToolResult.from(errorMessage, getClass());
+            }
+            docs = filteredDocs;
+            log().info("Filtered to {} documents for year {}", docs.size(), requestedYear);
+        }
+        
         if (docs.isEmpty()) {
             log().info("No documents found for query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
@@ -189,7 +214,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
     }
     
     /**
-     * Builds evidence directly from minute metadata when LLM extraction fails.
+     * Builds evidence directly from minute metadata using LLM to determine relevance.
      * This is a fallback to avoid false negatives.
      */
     private String buildEvidenceFromMetadata(Minute minute, String query) {
@@ -197,58 +222,89 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             return "";
         }
         
-        StringBuilder evidence = new StringBuilder();
-        
-        // Extract relevant fields based on query keywords
-        String queryLower = query.toLowerCase();
-        
-        if (queryLower.contains("decisión") || queryLower.contains("decision") || 
-            queryLower.contains("acuerdo") || queryLower.contains("acord")) {
-            if (minute.decisions() != null && !minute.decisions().isEmpty()) {
-                evidence.append("Decisiones: ").append(String.join(", ", minute.decisions())).append("\n");
-            }
-        }
-        
-        if (queryLower.contains("tema") || queryLower.contains("topic") || 
-            queryLower.contains("asunto") || queryLower.contains("subject")) {
-            if (minute.topics() != null && !minute.topics().isEmpty()) {
-                evidence.append("Temas: ").append(String.join(", ", minute.topics())).append("\n");
-            }
-        }
-        
-        if (queryLower.contains("resumen") || queryLower.contains("summary")) {
-            if (minute.summary() != null && !minute.summary().trim().isEmpty()) {
-                evidence.append("Resumen: ").append(minute.summary()).append("\n");
-            }
-        }
-        
-        // Always include date and place for context
+        // Build minute context
+        StringBuilder context = new StringBuilder();
         if (minute.date() != null) {
-            evidence.append("Fecha: ").append(minute.date()).append("\n");
+            context.append("Date: ").append(minute.date()).append("\n");
         }
         if (minute.place() != null) {
-            evidence.append("Lugar: ").append(minute.place()).append("\n");
+            context.append("Place: ").append(minute.place()).append("\n");
+        }
+        if (minute.decisions() != null && !minute.decisions().isEmpty()) {
+            context.append("Decisions: ").append(String.join(", ", minute.decisions())).append("\n");
+        }
+        if (minute.topics() != null && !minute.topics().isEmpty()) {
+            context.append("Topics: ").append(String.join(", ", minute.topics())).append("\n");
+        }
+        if (minute.summary() != null && !minute.summary().trim().isEmpty()) {
+            context.append("Summary: ").append(minute.summary()).append("\n");
         }
         
-        return evidence.toString().trim();
+        if (context.length() == 0) {
+            return "";
+        }
+        
+        // Use LLM to extract relevant evidence based on query
+        String prompt = String.format("""
+            Task: Extract relevant evidence from meeting minute metadata that helps answer the query.
+            
+            Query (may be in any language): "%s"
+            
+            Meeting minute metadata:
+            %s
+            
+            Extract only the fields that are relevant to answering the query.
+            Format each piece of evidence with its type (Decision/Topic/Summary/Date/Place).
+            If no evidence is relevant, return an empty string.
+            
+            Return ONLY the relevant evidence, without explanations.
+            """, query, context.toString());
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error building evidence from metadata with LLM: {}", e.getMessage());
+        }
+        
+        // Fallback: return all metadata
+        return context.toString().trim();
     }
     
     /**
      * Generates a fallback answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackAnswer(String query, List<String> evidence) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String evidenceText = evidence.stream()
+                .limit(3)
+                .collect(Collectors.joining("; "));
         
-        if (isSpanish) {
-            return String.format("Basándome en la evidencia encontrada (%d piezas), la respuesta es: SÍ/NO/PARCIALMENTE. Evidencia: %s",
-                              evidence.size(), 
-                              evidence.stream().limit(3).collect(Collectors.joining("; ")));
-        } else {
-            return String.format("Based on the evidence found (%d pieces), the answer is: YES/NO/PARTIALLY. Evidence: %s",
-                              evidence.size(),
-                              evidence.stream().limit(3).collect(Collectors.joining("; ")));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found %d pieces of evidence:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            indicating if the evidence allows to answer YES, NO, or PARTIALLY.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query, evidence.size(), evidenceText);
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return String.format("Based on the evidence found (%d pieces), the answer is: YES/NO/PARTIALLY. Evidence: %s",
+                          evidence.size(), evidenceText);
     }
 }

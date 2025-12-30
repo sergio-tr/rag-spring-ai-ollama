@@ -192,19 +192,41 @@ public class ExtractEntitiesTool extends AbstractTool {
     
     /**
      * Generates a fallback response when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackResponse(String query, List<String> results) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String resultsText = results.stream()
+                .limit(5)
+                .collect(Collectors.joining("\n\n"));
         
-        if (isSpanish) {
-            return "Entidades relevantes encontradas:\n\n" + 
-                   results.stream().limit(5).collect(Collectors.joining("\n\n"));
-        } else {
-            return "Relevant entities found:\n\n" + 
-                   results.stream().limit(5).collect(Collectors.joining("\n\n"));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found the following relevant entities:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found entities.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", resultsText);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback response with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "Relevant entities found:\n\n" + resultsText;
     }
 
     /**
@@ -244,16 +266,35 @@ public class ExtractEntitiesTool extends AbstractTool {
     
     /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query != null ? query.toLowerCase() : "";
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No relevant entities were found in the available documents for this query.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no relevant entities were found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "No se encontraron entidades relevantes en los documentos disponibles para esta consulta.";
-        } else {
-            return "No relevant entities were found in the available documents for this query.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No relevant entities were found in the available documents for this query.";
     }
 }
