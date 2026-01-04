@@ -32,24 +32,33 @@ public class GetFieldTool extends AbstractTool {
         log().info("Executing get field query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for get field query", docs.size());
 
         // Try with NER filtering if available
         if (ner != null && !docs.isEmpty()) {
             // Use EnhancedNERHandler for intelligent filtering
             List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+            log().debug("Filtered {} documents by temporal context, {} remaining", docs.size(), filteredDocs.size());
             
+            int matchedCount = 0;
             for (Document doc : filteredDocs) {
                 if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    log().debug("Skipping document {}: null or empty content", doc != null ? doc.getId() : "null");
                     continue;
                 }
                 
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
+                    matchedCount++;
                     String value = extractLiteralFieldByIntent(query, ner, doc.getContent());
                     if (value != null && !value.isBlank()) {
+                        log().info("Found field value for query: {} in document {}", query, doc.getId());
                         return ToolResult.from(value, getClass());
+                    } else {
+                        log().debug("Document {} matched NER but no field value extracted", doc.getId());
                     }
                 }
             }
+            log().debug("NER filtering: {} documents matched NER conditions out of {} filtered", matchedCount, filteredDocs.size());
         }
         
         if (!docs.isEmpty()) {

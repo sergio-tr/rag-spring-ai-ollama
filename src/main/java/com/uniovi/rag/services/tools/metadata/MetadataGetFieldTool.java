@@ -35,7 +35,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             ner
         );
         
-        // Step 6: Classify field early to use in error messages
+        // Step 6: Classify field early to use in error messages and filtering
         String detectedField = classifyFieldIntent(query, ner);
         
         if (docs.isEmpty()) {
@@ -63,7 +63,16 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, minutes.size(), "no_relevant_minutes"), getClass());
         }
 
-        // Step 4: Filter by date first (if query includes date) - early filtering reduces LLM calls
+        // Step 4: Filter by person/president if query asks for "fecha del acta donde [persona]"
+        // Example: "Proporciona la fecha del acta donde Juan Pérez Gutiérrez actuó como presidente"
+        if (detectedField.equals("date") && detectDateWherePersonQuery(query)) {
+            List<Minute> personFilteredMinutes = filterMinutesByPerson(query, relevantMinutes, ner);
+            log().info("Filtered {} minutes by person condition, {} remaining (applied filter even if empty)", 
+                      relevantMinutes.size(), personFilteredMinutes.size());
+            relevantMinutes = personFilteredMinutes; // Apply filter even if empty - this indicates no matches
+        }
+        
+        // Step 5: Filter by date first (if query includes date) - early filtering reduces LLM calls
         List<Minute> dateFilteredMinutes = filterMinutesByDate(query, ner, relevantMinutes);
         List<String> dateCandidates = extractDateCandidates(query, ner);
         String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
@@ -357,6 +366,114 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             return String.format("I found these values:\n%s", joined);
         }
     }
-
+    
+    /**
+     * Filters minutes by person (president/secretary) when query asks for "fecha del acta donde [persona]"
+     * Example: "Proporciona la fecha del acta donde Juan Pérez Gutiérrez actuó como presidente"
+     */
+    private List<Minute> filterMinutesByPerson(String query, List<Minute> minutes, JSONObject ner) {
+        if (minutes.isEmpty() || query == null) {
+            return minutes;
+        }
+        
+        String queryLower = query.toLowerCase();
+        
+        // Check if query asks for date WHERE person was president/secretary
+        // Note: detectedField is not accessible here, so we check directly
+        boolean asksForDateWherePerson = (queryLower.contains("fecha") || queryLower.contains("date")) &&
+                                         (queryLower.contains("donde") || queryLower.contains("where")) &&
+                                         (queryLower.contains("presidente") || queryLower.contains("president") ||
+                                          queryLower.contains("secretario") || queryLower.contains("secretary") ||
+                                          queryLower.contains("secretaria"));
+        
+        if (!asksForDateWherePerson) {
+            return minutes; // No person filtering needed
+        }
+        
+        // Extract person name from query or NER
+        String personName = null;
+        if (ner != null && ner.has("person")) {
+            try {
+                org.json.JSONArray persons = ner.getJSONArray("person");
+                if (persons.length() > 0) {
+                    personName = persons.getString(0).trim();
+                }
+            } catch (Exception e) {
+                log().debug("Could not extract person from NER", e);
+            }
+        }
+        
+        // If no person in NER, try to extract from query
+        if (personName == null || personName.isEmpty()) {
+            // Look for patterns like "donde [Nombre] actuó" or "where [Name] acted"
+            // Try multiple patterns to capture full names
+            java.util.regex.Pattern[] patterns = {
+                // Pattern 1: "donde [Nombre Completo] actuó"
+                java.util.regex.Pattern.compile(
+                    "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted|fue|was)",
+                    java.util.regex.Pattern.CASE_INSENSITIVE
+                ),
+                // Pattern 2: "donde [Nombre Completo]"
+                java.util.regex.Pattern.compile(
+                    "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
+                    java.util.regex.Pattern.CASE_INSENSITIVE
+                ),
+                // Pattern 3: "[Nombre Completo] actuó como presidente"
+                java.util.regex.Pattern.compile(
+                    "(?i)([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted)\\s+como",
+                    java.util.regex.Pattern.CASE_INSENSITIVE
+                )
+            };
+            
+            for (java.util.regex.Pattern pattern : patterns) {
+                java.util.regex.Matcher matcher = pattern.matcher(query);
+                if (matcher.find()) {
+                    personName = matcher.group(1).trim();
+                    log().debug("Extracted person name using pattern: {}", personName);
+                    break;
+                }
+            }
+        }
+        
+        if (personName == null || personName.isEmpty()) {
+            log().debug("Could not extract person name from query for filtering: {}", query);
+            return minutes; // Can't filter, return all
+        }
+        
+        log().info("Filtering {} minutes by person: {}", minutes.size(), personName);
+        
+        // Determine if filtering by president or secretary
+        boolean filterByPresident = queryLower.contains("presidente") || queryLower.contains("president");
+        boolean filterBySecretary = queryLower.contains("secretario") || queryLower.contains("secretary") || 
+                                    queryLower.contains("secretaria");
+        
+        final String finalPersonName = personName.toLowerCase();
+        final boolean byPresident = filterByPresident;
+        final boolean bySecretary = filterBySecretary;
+        
+        List<Minute> filtered = minutes.stream()
+                .filter(minute -> {
+                    if (byPresident && minute.president() != null) {
+                        String president = minute.president().toLowerCase();
+                        // Check if president matches (case-insensitive, allow partial match for full names)
+                        if (president.contains(finalPersonName) || finalPersonName.contains(president)) {
+                            return true;
+                        }
+                    }
+                    if (bySecretary && minute.secretary() != null) {
+                        String secretary = minute.secretary().toLowerCase();
+                        if (secretary.contains(finalPersonName) || finalPersonName.contains(secretary)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                })
+                .collect(Collectors.toList());
+        
+        log().info("Filtered {} minutes by person '{}', {} remaining", 
+                  minutes.size(), personName, filtered.size());
+        
+        return filtered;
+    }
 
 }

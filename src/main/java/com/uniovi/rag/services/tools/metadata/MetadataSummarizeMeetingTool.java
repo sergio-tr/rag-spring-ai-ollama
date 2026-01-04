@@ -150,8 +150,12 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             Agenda: %s
             Previous summary: %s
             
-            Write a concise summary (3-4 sentences) that directly addresses the user's query.
-            Make sure the summary is relevant to what was asked, not just a generic meeting description.
+            Write a CONCISE summary (2-3 sentences maximum) that directly addresses the user's query.
+            - Focus ONLY on what the user is asking for
+            - If the query asks about a specific topic/aspect, prioritize that
+            - Remove any redundant or unnecessary information
+            - Be brief and to the point
+            - Do NOT include generic meeting descriptions unless specifically requested
             """,
             query,
             minute.date() != null ? minute.date() : "unknown",
@@ -203,7 +207,8 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
                 summaryContent.append("\n");
             }
             String content = r.getSummary() != null ? r.getSummary() : "";
-            summaryContent.append(content.length() > 400 ? content.substring(0, 400) + "..." : content);
+            // Limit content to 300 characters to encourage concise summaries
+            summaryContent.append(content.length() > 300 ? content.substring(0, 300) + "..." : content);
             summaryContent.append("\n\n");
         });
 
@@ -213,9 +218,16 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             Meeting summary information:
             %s
             
-            Format and present this summary information in the EXACT SAME LANGUAGE as the user's question.
-            Keep the structure clear and readable.
-            Do not repeat the question.
+            CRITICAL RULES:
+            1. Write in the EXACT SAME LANGUAGE as the user's question
+            2. Be CONCISE - maximum 3-4 sentences per meeting, focus on key points
+            3. Do NOT repeat the question
+            4. Do NOT include redundant information
+            5. Focus on what the user is asking for - if they ask about a specific topic, prioritize that
+            6. If multiple meetings, summarize each briefly (2-3 sentences max)
+            7. Remove any technical details or internal processing information
+            
+            Format and present this summary information concisely and clearly.
             """, query, summaryContent.toString());
 
         try {

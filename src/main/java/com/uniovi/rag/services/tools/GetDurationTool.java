@@ -145,14 +145,45 @@ public class GetDurationTool extends AbstractTool {
     }
 
     /**
-     * Extracts meeting duration from document
+     * Extracts meeting duration from document with validation
      */
     private MeetingDuration extractMeetingDuration(Document doc) {
+        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+            log().debug("Cannot extract duration: document is null or empty");
+            return null;
+        }
+        
         String content = doc.getContent();
         String date = extractDate(content);
         String startTime = extractTime(content, "start");
         String endTime = extractTime(content, "end");
+        
+        // Validate times
+        if (startTime == null || startTime.trim().isEmpty()) {
+            log().debug("Cannot extract duration: startTime is null or empty for document {}", doc.getId());
+            return null;
+        }
+        
+        if (endTime == null || endTime.trim().isEmpty()) {
+            log().debug("Cannot extract duration: endTime is null or empty for document {}", doc.getId());
+            return null;
+        }
+        
         int duration = calculateDuration(content);
+        
+        // Validate duration (should be between 1 minute and 24 hours)
+        if (duration <= 0) {
+            log().debug("Invalid duration: {} minutes (too short) for document {}", duration, doc.getId());
+            return null;
+        }
+        if (duration > 24 * 60) {
+            log().warn("Invalid duration: {} minutes (too long, >24h) for document {}", duration, doc.getId());
+            return null;
+        }
+        
+        log().debug("Extracted duration for document {}: {} minutes ({} - {})", 
+                   doc.getId(), duration, startTime, endTime);
+        
         return new MeetingDuration(date, startTime, endTime, duration);
     }
 
@@ -206,6 +237,13 @@ public class GetDurationTool extends AbstractTool {
             
             The following meetings were found (date, start, end, duration in minutes):
             %s
+            
+            CRITICAL RULES:
+            1. Write in the EXACT SAME LANGUAGE as the user's question
+            2. Be CONCISE - maximum 2-3 sentences per meeting
+            3. Do NOT repeat the question
+            4. Focus on the duration and key details
+            5. If multiple meetings, summarize each briefly
             
             Write a brief and clear answer, in the same language as the query, 
             indicating the duration and details of each meeting found.

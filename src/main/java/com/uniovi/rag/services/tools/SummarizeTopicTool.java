@@ -37,17 +37,22 @@ public class SummarizeTopicTool extends AbstractTool {
         if (ner != null && !docs.isEmpty()) {
             // Use EnhancedNERHandler for intelligent filtering
             List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+            log().debug("Filtered {} documents by temporal context, {} remaining", docs.size(), filteredDocs.size());
             
+            int matchedCount = 0;
             for (Document doc : filteredDocs) {
                 if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    log().debug("Skipping document {}: null or empty content", doc != null ? doc.getId() : "null");
                     continue;
                 }
                 
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
+                    matchedCount++;
                     fragments.addAll(extractRelevantFragments(doc, query));
                 }
                 if (fragments.size() >= 10) break;
             }
+            log().debug("NER filtering: {} documents matched NER conditions, extracted {} fragments", matchedCount, fragments.size());
         }
         
         if (fragments.isEmpty() && !docs.isEmpty()) {
@@ -213,6 +218,14 @@ public class SummarizeTopicTool extends AbstractTool {
             
             The following are relevant fragments from the minutes:
             %s
+            
+            CRITICAL RULES:
+            1. Write in the EXACT SAME LANGUAGE as the user's question
+            2. Be CONCISE - maximum 3-4 sentences total, focus on key points about the topic
+            3. Do NOT repeat the question
+            4. Do NOT include redundant information
+            5. Focus ONLY on what the user is asking about the topic
+            6. Remove any technical details or internal processing information
             
             Write a brief and clear summary in the same language as the query, 
             indicating the key points mentioned about the topic. 

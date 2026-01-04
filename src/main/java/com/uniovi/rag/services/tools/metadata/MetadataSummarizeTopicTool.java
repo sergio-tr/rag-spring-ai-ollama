@@ -62,6 +62,25 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             log().info("No relevant minutes found for summarize topic query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
+        
+        // Step 3.5: Additional filtering by specific topic with relevance threshold
+        // Only include minutes where the topic is actually mentioned (not just vaguely related)
+        String topic = extractTopicFromQuery(query, ner);
+        if (topic != null && !topic.isEmpty()) {
+            // Check if query explicitly asks about a specific topic (not just general summary)
+            if (detectSpecificTopicQuery(query)) {
+                List<Minute> topicFiltered = filterMinutesByTopicWithThreshold(relevantMinutes, topic);
+                if (!topicFiltered.isEmpty()) {
+                    log().info("Filtered {} minutes by topic '{}' with relevance threshold, {} remaining", 
+                              relevantMinutes.size(), topic, topicFiltered.size());
+                    relevantMinutes = topicFiltered;
+                } else {
+                    // Topic was specified but no minutes match - this indicates absence of information
+                    log().info("Topic '{}' was specified but no minutes match the relevance threshold", topic);
+                    return ToolResult.from(generateTopicNotFoundMessage(query, topic), getClass());
+                }
+            }
+        }
 
         // Step 4: Generate topic summaries in parallel (metadata-first, LLM fallback)
         List<TopicResult> results = generateTopicSummariesInParallel(query, relevantMinutes);
@@ -235,5 +254,86 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
         // Fallback: return raw content
         return summaryContent.toString().trim();
+    }
+    
+    /**
+     * Filters minutes by topic with relevance threshold.
+     * Only includes minutes where the topic is actually mentioned (not just vaguely related).
+     * 
+     * @param minutes List of minutes to filter
+     * @param topic Topic to filter by
+     * @return Filtered list of minutes that mention the topic
+     */
+    private List<Minute> filterMinutesByTopicWithThreshold(List<Minute> minutes, String topic) {
+        if (minutes.isEmpty() || topic == null || topic.isEmpty()) {
+            return minutes;
+        }
+        
+        String topicLower = topic.toLowerCase();
+        
+        log().info("Filtering {} minutes by topic '{}' with relevance threshold", minutes.size(), topic);
+        
+        List<Minute> filtered = minutes.stream()
+                .filter(minute -> {
+                    // Check if topic is mentioned in topics list (exact or partial match)
+                    boolean inTopics = false;
+                    if (minute.topics() != null) {
+                        inTopics = minute.topics().stream()
+                                .anyMatch(t -> t != null && t.toLowerCase().contains(topicLower));
+                    }
+                    
+                    // Check if topic is mentioned in decisions (exact or partial match)
+                    boolean inDecisions = false;
+                    if (minute.decisions() != null) {
+                        inDecisions = minute.decisions().stream()
+                                .anyMatch(d -> d != null && d.toLowerCase().contains(topicLower));
+                    }
+                    
+                    // Check if topic is mentioned in summary (exact or partial match)
+                    boolean inSummary = minute.summary() != null && 
+                                       minute.summary().toLowerCase().contains(topicLower);
+                    
+                    // Topic must be mentioned in at least one of these fields (relevance threshold)
+                    return inTopics || inDecisions || inSummary;
+                })
+                .collect(Collectors.toList());
+        
+        log().info("Filtered {} minutes by topic '{}', {} remaining (relevance threshold met)", 
+                  minutes.size(), topic, filtered.size());
+        
+        return filtered;
+    }
+    
+    /**
+     * Generates a message when topic is not found in any minutes.
+     */
+    private String generateTopicNotFoundMessage(String query, String topic) {
+        if (query == null || query.trim().isEmpty()) {
+            return String.format("No se encontró información sobre el tema '%s' en las actas disponibles.", topic);
+        }
+        
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            The topic '%s' was not found in any of the available meeting minutes.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no information was found about this topic.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query, topic != null ? topic : "the requested topic");
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating topic not found message with LLM", e);
+        }
+        
+        // Fallback
+        return String.format("No se encontró información sobre el tema '%s' en las actas disponibles.", 
+                            topic != null ? topic : "solicitado");
     }
 }

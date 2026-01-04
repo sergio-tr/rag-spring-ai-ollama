@@ -777,11 +777,84 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Calcula la duración de una reunión en minutos
      */
     protected int calculateDurationFromMinute(Minute minute) {
+        if (minute == null) {
+            log().warn("Cannot calculate duration: minute is null");
+            return 0;
+        }
+        
+        String startTimeStr = minute.startTime();
+        String endTimeStr = minute.endTime();
+        
+        if (startTimeStr == null || startTimeStr.trim().isEmpty()) {
+            log().warn("Cannot calculate duration: startTime is null or empty for minute {}", minute.id());
+            return 0;
+        }
+        
+        if (endTimeStr == null || endTimeStr.trim().isEmpty()) {
+            log().warn("Cannot calculate duration: endTime is null or empty for minute {}", minute.id());
+            return 0;
+        }
+        
         try {
-            LocalTime start = LocalTime.parse(minute.startTime(), TIME_FORMATTER);
-            LocalTime end = LocalTime.parse(minute.endTime(), TIME_FORMATTER);
-            return (end.getHour() * 60 + end.getMinute()) - (start.getHour() * 60 + start.getMinute());
-        } catch (DateTimeParseException | NullPointerException ex) {
+            // Normalize time strings (remove extra spaces, ensure HH:mm format)
+            startTimeStr = startTimeStr.trim();
+            endTimeStr = endTimeStr.trim();
+            
+            // Try parsing with TIME_FORMATTER (HH:mm)
+            LocalTime start = LocalTime.parse(startTimeStr, TIME_FORMATTER);
+            LocalTime end = LocalTime.parse(endTimeStr, TIME_FORMATTER);
+            
+            // Validate: end time should be after start time
+            if (end.isBefore(start) || end.equals(start)) {
+                log().warn("Invalid duration: endTime ({}) is not after startTime ({}) for minute {}", 
+                          endTimeStr, startTimeStr, minute.id());
+                // Check if end time is on next day (e.g., meeting ends at 01:00 next day)
+                if (end.isBefore(start)) {
+                    // Assume next day: add 24 hours
+                    int duration = (24 * 60) - (start.getHour() * 60 + start.getMinute()) + 
+                                  (end.getHour() * 60 + end.getMinute());
+                    log().debug("Calculated duration assuming next day: {} minutes for minute {}", 
+                              duration, minute.id());
+                    return duration;
+                }
+                return 0;
+            }
+            
+            int duration = (end.getHour() * 60 + end.getMinute()) - (start.getHour() * 60 + start.getMinute());
+            
+            // Validate: duration should be reasonable (between 1 minute and 24 hours)
+            if (duration < 1) {
+                log().warn("Invalid duration: {} minutes (too short) for minute {}", duration, minute.id());
+                return 0;
+            }
+            if (duration > 24 * 60) {
+                log().warn("Invalid duration: {} minutes (too long, >24h) for minute {}", duration, minute.id());
+                return 0;
+            }
+            
+            log().debug("Calculated duration: {} minutes ({} - {}) for minute {}", 
+                      duration, startTimeStr, endTimeStr, minute.id());
+            return duration;
+        } catch (DateTimeParseException e) {
+            log().warn("Cannot parse times for duration calculation: startTime='{}', endTime='{}' for minute {}. Error: {}", 
+                      startTimeStr, endTimeStr, minute.id(), e.getMessage());
+            
+            // Try alternative formats
+            try {
+                // Try HH:mm:ss format
+                LocalTime start = LocalTime.parse(startTimeStr, 
+                    java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
+                LocalTime end = LocalTime.parse(endTimeStr, 
+                    java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
+                int duration = (end.getHour() * 60 + end.getMinute()) - (start.getHour() * 60 + start.getMinute());
+                log().debug("Parsed times with HH:mm:ss format, duration: {} minutes", duration);
+                return duration > 0 && duration <= 24 * 60 ? duration : 0;
+            } catch (DateTimeParseException e2) {
+                log().warn("Failed to parse times with alternative format for minute {}", minute.id());
+                return 0;
+            }
+        } catch (Exception ex) {
+            log().error("Unexpected error calculating duration for minute {}: {}", minute.id(), ex.getMessage(), ex);
             return 0;
         }
     }
@@ -2020,23 +2093,28 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
         
-        // Use LLM to extract topic/keyword from query
+        // Use LLM to extract topic/keyword from query (handles compound topics)
         String prompt = String.format("""
             Task: Extract the main topic or keyword from the following question about meeting minutes.
             
             Question (may be in any language): "%s"
             
             Extract the main topic, keyword, or subject that the question is asking about.
+            IMPORTANT: If the question mentions a compound topic (e.g., "climatización de la piscina"), 
+            extract the FULL compound topic, not just part of it.
+            
             Examples:
             - "How many meetings discussed the elevator?" → topic: "elevator"
             - "¿Cuántas actas hay sobre el ascensor?" → topic: "ascensor" or "elevator"
             - "How many meetings mentioned the budget?" → topic: "budget"
             - "¿En cuántas reuniones se habló del presupuesto?" → topic: "presupuesto" or "budget"
+            - "Resume lo tratado sobre la climatización de la piscina" → topic: "climatización de la piscina" (FULL compound topic)
+            - "¿Qué se dijo sobre el control de plagas?" → topic: "control de plagas" (FULL compound topic)
             
             If the question is asking about a count without a specific topic (e.g., "How many meetings were there?"),
             respond with "NONE".
             
-            Return ONLY the topic/keyword, or "NONE" if no specific topic is mentioned.
+            Return ONLY the topic/keyword (full compound topic if applicable), or "NONE" if no specific topic is mentioned.
             Do not include explanations or additional text.
             """, query);
         
@@ -2060,6 +2138,236 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return null;
     }
 
+    /**
+     * Uses LLM to detect if query asks about number of attendees with a comparison operator.
+     * Returns structured information about the comparison (operator and threshold).
+     * 
+     * @param query User query
+     * @return AttendeesCountQueryInfo with operator and threshold, or null if not applicable
+     */
+    protected AttendeesCountQueryInfo detectAttendeesCountQuery(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return null;
+        }
+        
+        String prompt = String.format("""
+            Task: Analyze if this query asks about the number of attendees/participants with a comparison.
+            
+            Query (may be in any language): "%s"
+            
+            Determine:
+            1. Does the query ask about number of attendees/participants/people present?
+            2. If yes, what comparison operator is used? (less than, more than, equal to, etc.)
+            3. What is the threshold number mentioned?
+            
+            Examples:
+            - "En cuántas actas participaron menos de diez personas" → operator: "less_than", threshold: 10
+            - "How many meetings had more than 15 attendees" → operator: "more_than", threshold: 15
+            - "¿Cuántas reuniones tuvieron exactamente 20 asistentes?" → operator: "equal", threshold: 20
+            - "Número de actas" → null (no comparison)
+            
+            Respond with JSON format:
+            {
+              "isAttendeesQuery": true/false,
+              "operator": "less_than" | "more_than" | "equal" | null,
+              "threshold": number or null
+            }
+            
+            If not an attendees count query, respond: {"isAttendeesQuery": false}
+            """, query);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip();
+            
+            // Parse JSON response
+            JSONObject json = new JSONObject(response);
+            if (json.optBoolean("isAttendeesQuery", false)) {
+                String operator = json.optString("operator", null);
+                Integer threshold = json.has("threshold") && !json.isNull("threshold") 
+                    ? json.getInt("threshold") : null;
+                
+                if (operator != null && threshold != null) {
+                    log().info("Detected attendees count query: operator={}, threshold={}", operator, threshold);
+                    return new AttendeesCountQueryInfo(operator, threshold);
+                }
+            }
+        } catch (Exception e) {
+            log().debug("Error detecting attendees count query with LLM: {}", e.getMessage());
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Uses LLM to detect if query asks for date where a specific person acted as president/secretary.
+     * 
+     * @param query User query
+     * @return true if query asks for date where person acted, false otherwise
+     */
+    protected boolean detectDateWherePersonQuery(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Task: Determine if this query asks for the date of a meeting where a specific person acted as president or secretary.
+            
+            Query (may be in any language): "%s"
+            
+            Examples:
+            - "Proporciona la fecha del acta donde Juan Pérez Gutiérrez actuó como presidente" → YES
+            - "¿Cuándo presidió Juan Pérez Gutiérrez?" → YES
+            - "Fecha del acta donde [nombre] fue secretario" → YES
+            - "Dime la fecha del acta" → NO (no person mentioned)
+            - "¿Quién presidió el 25 de agosto?" → NO (asks for person, not date)
+            
+            Respond with ONLY: YES or NO
+            """, query);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            boolean result = response.contains("YES");
+            log().debug("Detected date where person query: {} for query: {}", result, query);
+            return result;
+        } catch (Exception e) {
+            log().debug("Error detecting date where person query with LLM: {}", e.getMessage());
+            // Fallback to simple check
+            String queryLower = query.toLowerCase();
+            return queryLower.contains("donde") || queryLower.contains("where") ||
+                   queryLower.contains("actuó") || queryLower.contains("acted");
+        }
+    }
+    
+    /**
+     * Uses LLM to detect if query requires filtering by both topic AND person.
+     * 
+     * @param query User query
+     * @return true if query requires topic + person filtering (AND logic)
+     */
+    protected boolean detectTopicAndPersonFilter(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Task: Determine if this query requires filtering meetings by BOTH a topic AND a person (AND logic).
+            
+            Query (may be in any language): "%s"
+            
+            Examples that require topic + person filtering:
+            - "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez" → YES
+            - "Asistentes de reuniones donde se habló de climatización y que fueran presididas por Natalia" → YES
+            - "Actas sobre seguridad presididas por [nombre]" → YES
+            
+            Examples that do NOT require this filtering:
+            - "Dime qué actas mencionan el ascensor" → NO (only topic)
+            - "¿Quién presidió la reunión del 25 de agosto?" → NO (only person/date)
+            - "Actas sobre seguridad" → NO (only topic)
+            
+            Respond with ONLY: YES or NO
+            """, query);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            boolean result = response.contains("YES");
+            log().debug("Detected topic + person filter requirement: {} for query: {}", result, query);
+            return result;
+        } catch (Exception e) {
+            log().debug("Error detecting topic + person filter with LLM: {}", e.getMessage());
+            // Fallback to simple check
+            String queryLower = query.toLowerCase();
+            boolean hasTopic = queryLower.contains("mencionan") || queryLower.contains("hablaron") ||
+                              queryLower.contains("menciona") || queryLower.contains("habló") ||
+                              queryLower.contains("sobre") || queryLower.contains("about");
+            boolean hasPerson = queryLower.contains("presididas por") || queryLower.contains("presidida por") ||
+                               queryLower.contains("presidió") || queryLower.contains("presided");
+            boolean hasAnd = queryLower.contains(" y ") || queryLower.contains(" and ");
+            return hasTopic && hasPerson && hasAnd;
+        }
+    }
+    
+    /**
+     * Uses LLM to detect if query asks about a specific topic (not just general summary).
+     * 
+     * @param query User query
+     * @return true if query asks about a specific topic
+     */
+    protected boolean detectSpecificTopicQuery(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Task: Determine if this query asks about a SPECIFIC topic (not just a general summary).
+            
+            Query (may be in any language): "%s"
+            
+            Examples that ask about specific topics:
+            - "Resume lo tratado sobre la climatización de la piscina" → YES
+            - "¿Qué se dijo sobre el ascensor?" → YES
+            - "Dime lo comentado sobre control de plagas" → YES
+            
+            Examples that do NOT ask about specific topics:
+            - "Resume las reuniones" → NO (general summary)
+            - "Dime qué se trató" → NO (too general)
+            - "Cuéntame sobre las actas" → NO (too general)
+            
+            Respond with ONLY: YES or NO
+            """, query);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            boolean result = response.contains("YES");
+            log().debug("Detected specific topic query: {} for query: {}", result, query);
+            return result;
+        } catch (Exception e) {
+            log().debug("Error detecting specific topic query with LLM: {}", e.getMessage());
+            // Fallback to simple check
+            String queryLower = query.toLowerCase();
+            return queryLower.contains("sobre") || queryLower.contains("about") ||
+                   queryLower.contains("relativo a") || queryLower.contains("relating to");
+        }
+    }
+    
+    /**
+     * Data class to hold attendees count query information
+     */
+    protected static class AttendeesCountQueryInfo {
+        public final String operator; // "less_than", "more_than", "equal"
+        public final int threshold;
+        
+        public AttendeesCountQueryInfo(String operator, int threshold) {
+            this.operator = operator;
+            this.threshold = threshold;
+        }
+    }
+    
     /**
      * Validates that a keyword actually exists in the documents using LLM semantic matching.
      * 
@@ -3185,13 +3493,26 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                               doc.getId(), dateStr, normalized);
                     return normalized;
                 }
+                
+                // Fallback: Try normalizing to lowercase manually and retry
+                String lowerDateStr = dateStr.toLowerCase();
+                if (!lowerDateStr.equals(dateStr)) {
+                    parsed = parseDateFlexible(lowerDateStr);
+                    if (parsed != null) {
+                        String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                        log().debug("Parsed and normalized date field (after lowercase normalization) for document {}: {} -> {}", 
+                                  doc.getId(), dateStr, normalized);
+                        return normalized;
+                    }
+                }
+                
                 // Check if already in ISO format
                 try {
                     LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE);
                     log().debug("Date field for document {} is already in ISO format: {}", doc.getId(), dateStr);
                     return dateStr;
                 } catch (DateTimeParseException ignored) {
-                    log().warn("Could not parse date '{}' from 'date' field for document {}, trying other fields", 
+                    log().warn("Could not parse date '{}' from 'date' field for document {} (tried original and lowercase), trying other fields", 
                               dateStr, doc.getId());
                 }
             }
@@ -3301,37 +3622,42 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             List<String> sampleDates = docs.stream()
                     .limit(5)
                     .map(doc -> {
+                        Map<String, Object> docMetadata = doc.getMetadata();
+                        String dateIso = docMetadata != null && docMetadata.containsKey("date_iso") ? 
+                                        docMetadata.get("date_iso").toString() : null;
+                        String dateRaw = docMetadata != null && docMetadata.containsKey("date") ? 
+                                        docMetadata.get("date").toString() : null;
+                        
                         String date = getDocumentDate(doc);
+                        StringBuilder info = new StringBuilder();
                         if (date != null) {
                             try {
                                 LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE);
-                                return date + " (ISO)";
+                                info.append(date).append(" (ISO)");
                             } catch (DateTimeParseException e) {
                                 LocalDate parsed = parseDateFlexible(date);
-                                return date + (parsed != null ? " (parsed: " + parsed.format(DateTimeFormatter.ISO_LOCAL_DATE) + ")" : " (parse failed)");
+                                info.append(date).append(parsed != null ? 
+                                    " (parsed: " + parsed.format(DateTimeFormatter.ISO_LOCAL_DATE) + ")" : 
+                                    " (parse failed)");
                             }
+                        } else {
+                            info.append("no date");
                         }
-                        return "no date";
+                        
+                        // Add metadata info for debugging
+                        if (dateIso != null) {
+                            info.append(" [date_iso: ").append(dateIso).append("]");
+                        }
+                        if (dateRaw != null) {
+                            info.append(" [date_raw: ").append(dateRaw).append("]");
+                        }
+                        
+                        return info.toString();
                     })
                     .collect(Collectors.toList());
-            log().warn("Date validation failed: Requested date {} (normalized: {}) not found. Sample document dates: {}", 
-                      requestedDate, requestedNormalized, sampleDates);
-        }
-        
-        // Enhanced logging: show sample document dates when no matches found
-        if (filtered.isEmpty() && !docs.isEmpty()) {
-            List<String> sampleDates = docs.stream()
-                    .limit(5)
-                    .map(doc -> {
-                        String date = getDocumentDate(doc);
-                        if (date != null) {
-                            LocalDate parsed = parseDateFlexible(date);
-                            return date + (parsed != null ? " (parsed: " + parsed.format(DateTimeFormatter.ISO_LOCAL_DATE) + ")" : " (parse failed)");
-                        }
-                        return "no date";
-                    })
-                    .collect(Collectors.toList());
-            log().warn("Date validation failed: Requested date {} (normalized: {}) not found. Sample document dates: {}", 
+            log().warn("Date validation failed: Requested date {} (normalized: {}) not found. " +
+                      "This may indicate: 1) date_iso missing in metadata, 2) date parsing failed, or 3) dates don't match. " +
+                      "Sample document dates: {}", 
                       requestedDate, requestedNormalized, sampleDates);
         }
 
@@ -3403,6 +3729,80 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         log().info("Extracted {} attendees from document metadata", attendees.size());
         return attendees;
+    }
+    
+    /**
+     * Extracts attendeesCount from document metadata robustly.
+     * Handles both Integer and String formats.
+     * 
+     * @param doc Document to extract attendeesCount from
+     * @return Integer count or null if not available
+     */
+    protected Integer getAttendeesCount(Document doc) {
+        if (doc == null || doc.getMetadata() == null) {
+            return null;
+        }
+        
+        Map<String, Object> metadata = doc.getMetadata();
+        
+        // Try attendeesCount first (derived field)
+        Object countObj = metadata.get("attendeesCount");
+        if (countObj != null) {
+            if (countObj instanceof Integer) {
+                return (Integer) countObj;
+            }
+            if (countObj instanceof Number) {
+                return ((Number) countObj).intValue();
+            }
+            if (countObj instanceof String) {
+                try {
+                    return Integer.parseInt(((String) countObj).trim());
+                } catch (NumberFormatException e) {
+                    log().warn("Could not parse attendeesCount as integer: {}", countObj);
+                }
+            }
+        }
+        
+        // Try numberOfAttendees (alternative field name)
+        countObj = metadata.get("numberOfAttendees");
+        if (countObj != null) {
+            if (countObj instanceof Integer) {
+                return (Integer) countObj;
+            }
+            if (countObj instanceof Number) {
+                return ((Number) countObj).intValue();
+            }
+            if (countObj instanceof String) {
+                try {
+                    return Integer.parseInt(((String) countObj).trim());
+                } catch (NumberFormatException e) {
+                    log().warn("Could not parse numberOfAttendees as integer: {}", countObj);
+                }
+            }
+        }
+        
+        // Fallback: count from attendees list
+        List<String> attendees = extractAttendeesFromMetadata(doc);
+        if (!attendees.isEmpty()) {
+            return attendees.size();
+        }
+        
+        // Try to get from Minute object
+        try {
+            Minute minute = getMinuteFromMetadata(doc);
+            if (minute != null) {
+                if (minute.numberOfAttendees() > 0) {
+                    return minute.numberOfAttendees();
+                }
+                if (minute.attendees() != null && !minute.attendees().isEmpty()) {
+                    return minute.attendees().size();
+                }
+            }
+        } catch (Exception e) {
+            log().debug("Could not extract attendeesCount from Minute object: {}", e.getMessage());
+        }
+        
+        return null;
     }
 }
 
