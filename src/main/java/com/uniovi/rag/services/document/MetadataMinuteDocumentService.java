@@ -102,6 +102,13 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         String secretary = extractSingle(content, "(?i)•\\s*([^•\\n]+?)\\s*\\(Secretari[ao]\\)");
         List<String> attendees = extractAttendees(content);
         Map<String, String> agenda = extractAgendaMap(content);
+        
+        // Log agenda extraction result
+        if (agenda == null || agenda.isEmpty()) {
+            log().warn("Agenda is empty for document: {}. Will try fallback from topics.", filename);
+        } else {
+            log().info("Extracted agenda with {} items for document: {}", agenda.size(), filename);
+        }
 
         CompletableFuture<List<String>> decisionsFuture = 
             CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_DECISIONS))
@@ -145,16 +152,25 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             merged.addAll(topics != null ? topics : List.of());
             merged.addAll(agendaKeys);
             topics = new ArrayList<>(merged);
+        } else if ((agenda == null || agenda.isEmpty()) && topics != null && !topics.isEmpty()) {
+            // Fallback: If agenda is empty but topics exist, create agenda from topics
+            log().info("Agenda is empty for document: {}. Creating agenda from {} topics as fallback.", 
+                      filename, topics != null ? topics.size() : 0);
+            agenda = createAgendaFromTopics(topics);
+            if (agenda != null) {
+                log().info("Created agenda with {} items from topics for document: {}", agenda.size(), filename);
+            }
         }
         
-        if (date == null && place == null && attendees.isEmpty() && decisions.isEmpty() && topics.isEmpty()) {
+        if (date == null && place == null && attendees.isEmpty() && decisions.isEmpty() && (topics == null || topics.isEmpty())) {
             log().warn("Failed to extract critical fields from document: {} (date: {}, place: {}, attendees: {}, decisions: {}, topics: {})", 
-                      filename, date != null, place != null, attendees.size(), decisions.size(), topics.size());
+                      filename, date != null, place != null, attendees.size(), decisions.size(), topics != null ? topics.size() : 0);
         }
 
         // Log the extracted fields
         log().info("Extracted fields for file: {} - Date: {}, Place: {}, Start Time: {}, End Time: {}, President: {}, Secretary: {}, Attendees: {}, Decisions: {}, Mentioned Entities: {}, Topics: {}, Summary: {}",
-                      filename, date, place, startTime, endTime, president, secretary, attendees.size(), decisions.size(), mentionedEntities.size(), topics.size(), summary);
+                      filename, date, place, startTime, endTime, president, secretary, attendees.size(), decisions.size(), 
+                      mentionedEntities != null ? mentionedEntities.size() : 0, topics != null ? topics.size() : 0, summary);
 
         return sanitizeMinute(new Minute(
                 UUID.randomUUID().toString(),
@@ -1628,6 +1644,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     private Map<String, String> extractAgendaMap(String content) {
         Map<String, String> agenda = new LinkedHashMap<>();
         if (content == null || content.trim().isEmpty()) {
+            log().debug("Content is null or empty, cannot extract agenda");
             return agenda;
         }
         
@@ -1635,9 +1652,11 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         String agendaBlock = extractAgendaBlock(content);
         if (agendaBlock == null || agendaBlock.trim().isEmpty()) {
             // Not critical - the agenda is optional and may be in other formats
-            log().info("No found agenda block (this is optional and does not affect functionality)");
+            log().debug("No agenda block found in content (this is optional and does not affect functionality)");
             return agenda;
         }
+        
+        log().debug("Found agenda block (length: {} chars), parsing items", agendaBlock.length());
         
         // Divide into main items
         String[] lines = agendaBlock.split("\\n");
@@ -1674,6 +1693,36 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             agenda.put(currentKey, currentValue.toString().trim());
         }
         
+        log().debug("Extracted {} agenda items from agenda block", agenda.size());
+        if (agenda.isEmpty()) {
+            log().warn("Agenda map is empty after parsing agenda block. Content may not have structured agenda format.");
+        }
+        
+        return agenda;
+    }
+    
+    /**
+     * Creates an agenda map from topics list as fallback when agenda extraction fails.
+     * Each topic becomes an agenda item with the topic as both key and value.
+     * 
+     * @param topics List of topics to convert to agenda
+     * @return Map representing agenda (key: topic, value: topic)
+     */
+    private Map<String, String> createAgendaFromTopics(List<String> topics) {
+        Map<String, String> agenda = new LinkedHashMap<>();
+        if (topics == null || topics.isEmpty()) {
+            return agenda;
+        }
+        
+        for (String topic : topics) {
+            if (topic != null && !topic.trim().isEmpty()) {
+                String trimmedTopic = topic.trim();
+                // Use topic as both key and value
+                agenda.put(trimmedTopic, trimmedTopic);
+            }
+        }
+        
+        log().debug("Created agenda from {} topics", agenda.size());
         return agenda;
     }
     

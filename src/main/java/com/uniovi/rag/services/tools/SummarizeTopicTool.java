@@ -28,9 +28,12 @@ public class SummarizeTopicTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().info("Executing summarize topic query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing summarize topic query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for summarize topic query", docs.size());
         List<String> fragments = new ArrayList<>();
 
         // Try with NER filtering if available
@@ -50,7 +53,7 @@ public class SummarizeTopicTool extends AbstractTool {
                     matchedCount++;
                     fragments.addAll(extractRelevantFragments(doc, query));
                 }
-                if (fragments.size() >= 10) break;
+                if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
             }
             log().debug("NER filtering: {} documents matched NER conditions, extracted {} fragments", matchedCount, fragments.size());
         }
@@ -65,7 +68,7 @@ public class SummarizeTopicTool extends AbstractTool {
                 if (isRelevantByLLM(doc.getContent(), query)) {
                     fragments.addAll(extractRelevantFragments(doc, query));
                 }
-                if (fragments.size() >= 10) break;
+                if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
             }
         }
         
@@ -80,18 +83,33 @@ public class SummarizeTopicTool extends AbstractTool {
                     if (isRelevantByLLM(doc.getContent(), query)) {
                         fragments.addAll(extractRelevantFragments(doc, query));
                     }
-                    if (fragments.size() >= 10) break;
+                    if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
                 }
             }
         }
 
         if (fragments.isEmpty()) {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No fragments found for summarize topic query: '{}' (execution time: {} ms)", query, totalTime);
             String notFound = generateNotFoundMessage(query);
-            return ToolResult.from(notFound, getClass());
+            // Apply formatResponse to clean the not found message
+            String formattedNotFound = formatResponse(notFound, query);
+            return ToolResult.from(formattedNotFound, getClass());
         }
 
-        String summary = generateSummaryWithLLM(query, fragments);
-        return ToolResult.from(summary, getClass());
+        log().debug("Extracted {} fragments for summarize topic query, limiting to 3 for conciseness", fragments.size());
+        // Limit fragments to 3 maximum for conciseness
+        List<String> limitedFragments = fragments.stream().limit(3).collect(java.util.stream.Collectors.toList());
+        
+        String summary = generateSummaryWithLLM(query, limitedFragments);
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated summarize topic answer for query: '{}' (execution time: {} ms, fragments used: {})", 
+                  query, totalTime, limitedFragments.size());
+        
+        // Note: generateSummaryWithLLM already applies formatResponse, but we apply it again for consistency
+        // (formatResponse is idempotent, so it's safe)
+        String formattedSummary = formatResponse(summary, query);
+        return ToolResult.from(formattedSummary, getClass());
     }
 
     /**
@@ -147,7 +165,12 @@ public class SummarizeTopicTool extends AbstractTool {
         String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
         for (String p : paragraphs) {
             if (p != null && !p.trim().isEmpty() && isParagraphRelevantByLLM(query, p)) {
-                relevant.add(p.trim());
+                // Limit fragment length to 250 characters for conciseness
+                String fragment = p.trim();
+                if (fragment.length() > 250) {
+                    fragment = fragment.substring(0, 250) + "...";
+                }
+                relevant.add(fragment);
             }
         }
         return relevant;
@@ -221,11 +244,20 @@ public class SummarizeTopicTool extends AbstractTool {
             
             CRITICAL RULES:
             1. Write in the EXACT SAME LANGUAGE as the user's question
-            2. Be CONCISE - maximum 3-4 sentences total, focus on key points about the topic
-            3. Do NOT repeat the question
-            4. Do NOT include redundant information
-            5. Focus ONLY on what the user is asking about the topic
-            6. Remove any technical details or internal processing information
+            2. Be CONCISE - maximum 2-3 sentences TOTAL (not per fragment), focus on key points only
+            3. DO NOT repeat the question or any part of it at the beginning
+            4. DO NOT start with phrases like "Resume lo tratado...", "Dime qué...", "The user asked...", etc.
+            5. Start directly with the summary content
+            6. Do NOT include redundant information - every word must add value
+            7. Focus ONLY on what the user is asking about the topic
+            8. Remove any technical details or internal processing information
+            9. If multiple fragments, provide a unified summary of key points across all, not individual summaries
+            10. Use the most important information first - prioritize relevance over completeness
+            
+            Examples of CORRECT responses:
+            - Query: "Resume lo tratado en las reuniones sobre la climatización de la piscina"
+              Correct: "Basado en las reuniones: [concise summary of key points]"
+              Wrong: "Resume lo tratado en las reuniones sobre la climatización de la piscina.\\n\\nBasado en las reuniones: [summary]"
             
             Write a brief and clear summary in the same language as the query, 
             indicating the key points mentioned about the topic. 
@@ -240,11 +272,12 @@ public class SummarizeTopicTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateSummaryWithLLM, using fallback");
+                log().warn("Empty response from LLM in generateSummaryWithLLM for query: '{}', using fallback", query);
                 return generateFallbackSummary(query, fragments);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating summary with LLM, using fallback", e);
             return generateFallbackSummary(query, fragments);
@@ -275,7 +308,8 @@ public class SummarizeTopicTool extends AbstractTool {
                 return generateFallbackNotFoundMessage(query);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating not found message, using fallback", e);
             return generateFallbackNotFoundMessage(query);
@@ -349,14 +383,16 @@ public class SummarizeTopicTool extends AbstractTool {
                     .content();
             
             if (response != null && !response.trim().isEmpty()) {
-                return response.trim();
+                // Apply formatResponse to clean the response
+                return formatResponse(response.trim(), query);
             }
         } catch (Exception e) {
             log().warn("Error generating fallback summary with LLM", e);
         }
         
         // Ultimate fallback
-        return "Summary of relevant fragments found:\n\n" + fragmentsText;
+        String fallback = "Summary of relevant fragments found:\n\n" + fragmentsText;
+        return formatResponse(fallback, query);
     }
 
     /**

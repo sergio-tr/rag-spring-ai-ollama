@@ -150,12 +150,14 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             Agenda: %s
             Previous summary: %s
             
-            Write a CONCISE summary (2-3 sentences maximum) that directly addresses the user's query.
+            Write a CONCISE summary (2-3 sentences maximum, ideally 2 sentences) that directly addresses the user's query.
             - Focus ONLY on what the user is asking for
             - If the query asks about a specific topic/aspect, prioritize that
             - Remove any redundant or unnecessary information
-            - Be brief and to the point
+            - Be brief and to the point - every word counts
             - Do NOT include generic meeting descriptions unless specifically requested
+            - Do NOT repeat information that's already obvious from the context
+            - Use the most important information first
             """,
             query,
             minute.date() != null ? minute.date() : "unknown",
@@ -196,9 +198,9 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             return generateNotFoundMessage(query);
         }
 
-        // Build summary content
+        // Build summary content (limit to 3 meetings max, 200 chars per summary for conciseness)
         StringBuilder summaryContent = new StringBuilder();
-        results.stream().limit(5).forEach(r -> {
+        results.stream().limit(3).forEach(r -> {
             if (r.getDate() != null) {
                 summaryContent.append("Date: ").append(r.getDate());
                 if (r.getPlace() != null) {
@@ -207,8 +209,8 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
                 summaryContent.append("\n");
             }
             String content = r.getSummary() != null ? r.getSummary() : "";
-            // Limit content to 300 characters to encourage concise summaries
-            summaryContent.append(content.length() > 300 ? content.substring(0, 300) + "..." : content);
+            // Limit content to 200 characters per summary for better conciseness
+            summaryContent.append(content.length() > 200 ? content.substring(0, 200) + "..." : content);
             summaryContent.append("\n\n");
         });
 
@@ -220,12 +222,24 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             
             CRITICAL RULES:
             1. Write in the EXACT SAME LANGUAGE as the user's question
-            2. Be CONCISE - maximum 3-4 sentences per meeting, focus on key points
-            3. Do NOT repeat the question
-            4. Do NOT include redundant information
-            5. Focus on what the user is asking for - if they ask about a specific topic, prioritize that
-            6. If multiple meetings, summarize each briefly (2-3 sentences max)
-            7. Remove any technical details or internal processing information
+            2. Be CONCISE - maximum 2-3 sentences TOTAL (not per meeting), focus on key points only
+            3. DO NOT repeat the question or any part of it at the beginning
+            4. DO NOT start with phrases like "Dame un resumen...", "Hazme un resumen...", "Resume la reunión...", etc.
+            5. Start directly with the summary content
+            6. Do NOT include redundant information - every word must add value
+            7. Focus on what the user is asking for - if they ask about a specific topic, prioritize that
+            8. If multiple meetings, provide a unified summary of key points across all meetings, not individual summaries
+            9. Remove any technical details or internal processing information
+            10. Use the most important information first - prioritize relevance over completeness
+            
+            Examples of CORRECT responses:
+            - Query: "Dame un resumen de la reunión celebrada el 25 de agosto de 2026"
+              Correct: "La reunión de la Comunidad de Vecinos [summary content]"
+              Wrong: "Dame un resumen de la reunión celebrada el 25 de agosto de 2026.\\n\\nLa reunión..."
+            
+            - Query: "Resume la reunión del 24 de febrero de 2025"
+              Correct: "La reunión de la Comunidad de Vecinos [summary content]"
+              Wrong: "Resume la reunión del 24 de febrero de 2025.\\n\\nLa reunión..."
             
             Format and present this summary information concisely and clearly.
             """, query, summaryContent.toString());
@@ -233,7 +247,8 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         try {
             String response = getLLMResponseCached(prompt);
             if (response != null && !response.trim().isEmpty()) {
-                return response.trim();
+                // Post-process to format and clean response
+                return formatResponse(response, query);
             }
         } catch (Exception e) {
             log().warn("Error generating summary answer with LLM, using raw content", e);

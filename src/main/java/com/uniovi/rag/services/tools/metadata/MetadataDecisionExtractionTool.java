@@ -81,30 +81,49 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             List<Minute> dateValidatedMinutes = validatedMinutes.stream()
                     .filter(minute -> {
                         if (minute.date() == null) {
+                            log().debug("Minute {} has no date, excluding when date '{}' was requested", minute.id(), date);
                             return false; // Skip minutes without date when date was requested
                         }
-                        // Use flexible date matching
+                        // Use flexible date matching (parseDateFlexible normalizes to lowercase internally)
                         LocalDate queryDate = parseDateFlexible(date);
                         LocalDate minuteDate = parseDateFlexible(minute.date());
-                        if (queryDate != null && minuteDate != null) {
-                            // Exact match or same year/month
-                            boolean matches = queryDate.equals(minuteDate) || 
-                                            (queryDate.getYear() == minuteDate.getYear() && 
-                                             queryDate.getMonth() == minuteDate.getMonth());
-                            if (!matches) {
-                                log().debug("Filtering out minute with date {} (requested: {})", minute.date(), date);
-                            }
-                            return matches;
+                        
+                        if (queryDate == null) {
+                            log().warn("Could not parse query date '{}' for date validation. Keeping minute {} to avoid false negatives.", 
+                                      date, minute.id());
+                            return true; // If we can't parse query date, keep minute (conservative)
                         }
-                        // If parsing fails, keep the minute (conservative approach)
-                        return true;
+                        
+                        if (minuteDate == null) {
+                            log().warn("Could not parse minute date '{}' for minute {} (ID: {}). " +
+                                      "This may indicate an unsupported date format. Excluding from results.", 
+                                      minute.date(), minute.id(), minute.id());
+                            return false; // Can't parse minute date, exclude
+                        }
+                        
+                        // Exact match or same year/month
+                        boolean matches = queryDate.equals(minuteDate) || 
+                                        (queryDate.getYear() == minuteDate.getYear() && 
+                                         queryDate.getMonth() == minuteDate.getMonth());
+                        if (!matches) {
+                            log().debug("Filtering out minute {} with date {} (parsed: {}) - requested: {} (parsed: {})", 
+                                      minute.id(), minute.date(), minuteDate, date, queryDate);
+                        } else {
+                            log().debug("Minute {} date {} (parsed: {}) matches requested date {} (parsed: {})", 
+                                      minute.id(), minute.date(), minuteDate, date, queryDate);
+                        }
+                        return matches;
                     })
                     .collect(Collectors.toList());
             
             if (dateValidatedMinutes.isEmpty()) {
-                log().warn("No minutes with matching date found after validation (query date: {})", date);
+                log().warn("No minutes with matching date found after validation. Query date: '{}' (parsed: {}). " +
+                          "Validated {} minutes before date filtering. This may indicate a date parsing issue.", 
+                          date, parseDateFlexible(date), validatedMinutes.size());
                 return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "date_mismatch"), getClass());
             }
+            log().info("Date validation passed: {} minutes match date '{}' out of {} validated minutes", 
+                      dateValidatedMinutes.size(), date, validatedMinutes.size());
             validatedMinutes = dateValidatedMinutes;
         }
 

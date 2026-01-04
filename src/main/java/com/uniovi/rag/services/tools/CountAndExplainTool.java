@@ -34,14 +34,21 @@ public class CountAndExplainTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().info("Executing count and explain query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing count and explain query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for count and explain query", docs.size());
         List<String> explanations = new ArrayList<>();
         List<String> matchedIds = new ArrayList<>();
 
         if (docs == null || docs.isEmpty()) {
-            return ToolResult.from(generateFinalAnswerWithLLM(query, List.of(), List.of()), getClass());
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No documents found for count and explain query: '{}' (execution time: {} ms)", query, totalTime);
+            String response = generateFinalAnswerWithLLM(query, List.of(), List.of());
+            String formattedResponse = formatResponse(response, query);
+            return ToolResult.from(formattedResponse, getClass());
         }
 
         // Filter documents based on NER if available
@@ -73,8 +80,15 @@ public class CountAndExplainTool extends AbstractTool {
             }
         }
 
+        log().debug("Matched {} documents with {} explanations for count and explain query", 
+                   matchedIds.size(), explanations.size());
         String response = generateFinalAnswerWithLLM(query, matchedIds, explanations);
-        return ToolResult.from(response, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated count and explain answer for query: '{}' (execution time: {} ms, matched: {})", 
+                  query, totalTime, matchedIds.size());
+        // Apply formatResponse to clean the response
+        String formattedResponse = formatResponse(response, query);
+        return ToolResult.from(formattedResponse, getClass());
     }
 
     /**
@@ -163,7 +177,16 @@ public class CountAndExplainTool extends AbstractTool {
         String prompt = String.format("""
             You are answering a user question about meeting minutes.
             Respond in the SAME language as the user's question.
-            Do NOT repeat the user's question.
+            
+            CRITICAL RULES:
+            1. DO NOT repeat the user's question or any part of it at the beginning
+            2. DO NOT start with phrases like "The user asked...", "La pregunta era...", etc.
+            3. Start directly with the answer content
+            4. Be concise and direct - maximum 3-4 sentences for the count, then brief explanations
+            5. If there are no matching minutes, answer clearly that no meeting minutes match the conditions
+            6. Otherwise, answer with (1) the count and (2) a short explanation grounded in the snippets
+            7. If the user is asking "which minutes", include the list
+            8. Keep explanations brief - one sentence per minute maximum
 
             User question:
             "%s"
@@ -173,12 +196,6 @@ public class CountAndExplainTool extends AbstractTool {
 
             Relevant evidence snippets (may be empty):
             %s
-
-            Task:
-            - If there are no matching minutes, answer clearly that no meeting minutes match the conditions or oconstraints told by the user.
-            - Otherwise, answer with (1) the count and (2) a short explanation grounded in the snippets.
-            - If the user is asking "which minutes", include the list.
-            Keep it concise.
             """, query, idsBlock, explBlock.isBlank() ? "(none)" : explBlock);
 
         try {

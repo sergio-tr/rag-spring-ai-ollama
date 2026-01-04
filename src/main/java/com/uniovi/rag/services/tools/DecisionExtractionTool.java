@@ -32,9 +32,12 @@ public class DecisionExtractionTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().info("Executing decision extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing decision extraction query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for decision extraction query", docs.size());
         List<String> decisions = new ArrayList<>();
 
         // Try with NER filtering if available
@@ -100,11 +103,21 @@ public class DecisionExtractionTool extends AbstractTool {
 
         String response;
         if (!decisions.isEmpty()) {
-            response = generateResponseWithLLM(query, decisions);
+            log().debug("Extracted {} decisions for query, limiting to 5 for conciseness", decisions.size());
+            // Limit decisions to 5 maximum for conciseness
+            List<String> limitedDecisions = decisions.stream().limit(5).collect(java.util.stream.Collectors.toList());
+            response = generateResponseWithLLM(query, limitedDecisions);
         } else {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No decisions found for query: '{}' (execution time: {} ms)", query, totalTime);
             response = generateNotFoundResponse(query);
         }
-        return ToolResult.from(response, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated decision extraction answer for query: '{}' (execution time: {} ms, decisions: {})", 
+                  query, totalTime, decisions.size());
+        // Apply formatResponse to clean the response
+        String formattedResponse = formatResponse(response, query);
+        return ToolResult.from(formattedResponse, getClass());
     }
 
     /**
@@ -188,6 +201,10 @@ public class DecisionExtractionTool extends AbstractTool {
             
             Write a brief and clear response in the same language as the query, 
             summarizing the decisions found and their context.
+            DO NOT repeat the question or any part of it at the beginning.
+            DO NOT start with phrases like "Dime qué...", "The user asked...", etc.
+            Start directly with the answer content.
+            Be concise - maximum 3-4 sentences.
             """, query, joined);
         
         try {
@@ -198,11 +215,12 @@ public class DecisionExtractionTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
+                log().warn("Empty response from LLM in generateResponseWithLLM for query: '{}', using fallback", query);
                 return generateFallbackResponse(query, decisions);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating response with LLM, using fallback", e);
             return generateFallbackResponse(query, decisions);
@@ -220,6 +238,8 @@ public class DecisionExtractionTool extends AbstractTool {
             No relevant decisions were found for this query in the available meeting minutes.
             
             Write a polite response in the same language as the query explaining that no relevant decisions were found.
+            Be concise and direct.
+            DO NOT repeat the question or any part of it.
             """, query);
         
         try {

@@ -30,10 +30,20 @@ public class CompareTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
+        
+        log().info("Executing compare query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
+        
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for compare query", docs.size());
         
         if (docs.isEmpty()) {
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No documents found for compare query: '{}' (execution time: {} ms)", query, totalTime);
+            String notFound = generateNotFoundMessage(query);
+            String formattedNotFound = formatResponse(notFound, query);
+            return ToolResult.from(formattedNotFound, getClass());
         }
 
         Map<String, MinuteInfo> summary = new LinkedHashMap<>();
@@ -59,14 +69,24 @@ public class CompareTool extends AbstractTool {
         }
 
         if (summary.isEmpty()) {
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No summary data for compare query: '{}' (execution time: {} ms)", query, totalTime);
+            String notFound = generateNotFoundMessage(query);
+            String formattedNotFound = formatResponse(notFound, query);
+            return ToolResult.from(formattedNotFound, getClass());
         }
 
+        log().debug("Built summary with {} entries for compare query", summary.size());
         String comparisonType = nerHandler.determineComparisonType(query, ner);
         String comparison = compareValues(summary, comparisonType, query);
         String response = generateResponseWithLLM(query, comparison);
         
-        return ToolResult.from(response, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated compare answer for query: '{}' (execution time: {} ms, comparison type: {})", 
+                  query, totalTime, comparisonType);
+        // Apply formatResponse to clean the response
+        String formattedResponse = formatResponse(response, query);
+        return ToolResult.from(formattedResponse, getClass());
     }
 
     /**
@@ -223,7 +243,11 @@ public class CompareTool extends AbstractTool {
             Provide only the information requested by the user.
             DO NOT mention any technical details like "comparison obtained", "análisis", "analysis", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            DO NOT repeat the question or any part of it at the beginning.
+            DO NOT start with phrases like "Dime qué...", "The user asked...", etc.
+            Start directly with the answer content.
             Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            Be concise and direct - maximum 3-4 sentences.
             """, query, comparison);
         
         try {
@@ -234,11 +258,12 @@ public class CompareTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
+                log().warn("Empty response from LLM in generateResponseWithLLM for query: '{}', using fallback", query);
                 return generateFallbackResponse(query, comparison);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating response with LLM, using fallback", e);
             return generateFallbackResponse(query, comparison);

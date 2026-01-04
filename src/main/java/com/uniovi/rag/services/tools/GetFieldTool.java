@@ -29,7 +29,9 @@ public class GetFieldTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().info("Executing get field query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing get field query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
         log().debug("Retrieved {} documents for get field query", docs.size());
@@ -51,8 +53,12 @@ public class GetFieldTool extends AbstractTool {
                     matchedCount++;
                     String value = extractLiteralFieldByIntent(query, ner, doc.getContent());
                     if (value != null && !value.isBlank()) {
-                        log().info("Found field value for query: {} in document {}", query, doc.getId());
-                        return ToolResult.from(value, getClass());
+                        long totalTime = System.currentTimeMillis() - startTime;
+                        log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
+                                 query, doc.getId(), totalTime);
+                        // Apply formatResponse to clean the extracted value
+                        String formattedValue = formatResponse(value, query);
+                        return ToolResult.from(formattedValue, getClass());
                     } else {
                         log().debug("Document {} matched NER but no field value extracted", doc.getId());
                     }
@@ -71,7 +77,12 @@ public class GetFieldTool extends AbstractTool {
                 if (isRelevantByLLM(doc.getContent(), query)) {
                     String value = extractLiteralFieldByIntent(query, null, doc.getContent());
                     if (value != null && !value.isBlank()) {
-                        return ToolResult.from(value, getClass());
+                        long totalTime = System.currentTimeMillis() - startTime;
+                        log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
+                                 query, doc.getId(), totalTime);
+                        // Apply formatResponse to clean the extracted value
+                        String formattedValue = formatResponse(value, query);
+                        return ToolResult.from(formattedValue, getClass());
                     }
                 }
             }
@@ -87,14 +98,24 @@ public class GetFieldTool extends AbstractTool {
                 if (isRelevantByLLM(doc.getContent(), query)) {
                     String value = extractLiteralFieldByIntent(query, null, doc.getContent());
                     if (value != null && !value.isBlank()) {
-                        return ToolResult.from(value, getClass());
+                        long totalTime = System.currentTimeMillis() - startTime;
+                        log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
+                                 query, doc.getId(), totalTime);
+                        // Apply formatResponse to clean the extracted value
+                        String formattedValue = formatResponse(value, query);
+                        return ToolResult.from(formattedValue, getClass());
                     }
                 }
             }
         }
         
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("No field value found for query: '{}' (execution time: {} ms, documents checked: {})", 
+                  query, totalTime, docs.size());
         String notFound = generateNotFoundMessage(query);
-        return ToolResult.from(notFound, getClass());
+        // Apply formatResponse to clean the not found message
+        String formattedNotFound = formatResponse(notFound, query);
+        return ToolResult.from(formattedNotFound, getClass());
     }
 
     /**
@@ -219,6 +240,8 @@ public class GetFieldTool extends AbstractTool {
             
             Write a short message indicating that no information was found related to the query, 
             in the same language as the query.
+            Be concise and direct.
+            Do NOT repeat the question or any part of it.
             """, query);
         
         try {
