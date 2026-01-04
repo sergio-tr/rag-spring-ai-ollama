@@ -37,27 +37,40 @@ public class ExtractEntitiesTool extends AbstractTool {
         if (ner != null) {
             // Use enhanced NER filtering with semantic analysis
             List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+            log().debug("Filtered {} documents by temporal context, {} remaining", docs.size(), filteredDocs.size());
             
+            int matchedCount = 0;
+            int entitiesFoundCount = 0;
             for (Document doc : filteredDocs) {
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
+                    matchedCount++;
                     String content = doc.getContent();
                     String date = extractDate(content);
                     String entities = extractRequestedEntities(content, query, ner);
                     if (!entities.isBlank()) {
+                        entitiesFoundCount++;
                         results.add(generateEntityResult(date, entities));
+                    } else {
+                        log().debug("Document {} matched NER but no entities extracted", doc.getId());
                     }
                 }
             }
+            log().debug("NER filtering: {} documents matched NER, {} had entities extracted out of {} filtered", 
+                       matchedCount, entitiesFoundCount, filteredDocs.size());
         } else {
             // Baseline: extract entities from all documents
+            log().debug("No NER available, extracting entities from all {} documents", docs.size());
+            int entitiesFoundCount = 0;
             for (Document doc : docs) {
                 String content = doc.getContent();
                 String date = extractDate(content);
                 String entities = extractRequestedEntities(content, query, null);
                 if (!entities.isBlank()) {
+                    entitiesFoundCount++;
                     results.add(generateEntityResult(date, entities));
                 }
             }
+            log().debug("Extracted entities from {} documents out of {} total", entitiesFoundCount, docs.size());
         }
 
         String response;

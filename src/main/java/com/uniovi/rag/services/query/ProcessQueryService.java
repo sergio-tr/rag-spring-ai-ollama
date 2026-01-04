@@ -218,13 +218,23 @@ public class ProcessQueryService implements QueryService {
      * Falls back to direct model query if tool execution fails.
      */
     private ToolResult tryToolRoute(String query, JSONObject nerEntities, QueryType queryType) {
-        if (!featureConfig.isToolsEnabled() || queryType == null) return null;
+        if (!featureConfig.isToolsEnabled()) {
+            log().debug("Tools are disabled in configuration, skipping tool routing");
+            return null;
+        }
+        
+        if (queryType == null) {
+            log().debug("Query type is null, cannot route to tool");
+            return null;
+        }
 
         Tool tool = toolsConfig.getTool(queryType);
         if (tool == null) {
-            log().info("No tool found for query type: {}", queryType);
+            log().warn("No tool found for query type: {}. This may indicate a configuration issue.", queryType);
             return null;
         }
+        
+        log().debug("Routing query to tool: {} for query type: {}", tool.getClass().getSimpleName(), queryType);
 
         // Retry logic for tool execution
         Exception lastException = null;
@@ -249,13 +259,20 @@ public class ProcessQueryService implements QueryService {
                         // Note: Informative messages (like "no documents found") are considered valid responses
                         return new ToolResult(validatedResult, result.source());
                     } else {
-                        log().warn("Tool {} returned invalid result on attempt {}", queryType, attempt + 1);
+                        log().warn("Tool {} returned result that failed validation on attempt {}. " +
+                                  "Original result length: {}, Validated result: null or empty. " +
+                                  "This may indicate LLMResponseValidator rejected the response.",
+                                  queryType, attempt + 1, result.result().length());
                         if (attempt < MAX_RETRIES) {
                             continue; // Retry
                         }
                     }
                 } else {
-                    log().warn("Tool {} returned null or empty result on attempt {}", queryType, attempt + 1);
+                    String resultInfo = result == null ? "null" : 
+                                      (result.result() == null ? "result() is null" : 
+                                      (result.result().trim().isEmpty() ? "result() is empty" : "unknown"));
+                    log().warn("Tool {} returned {} on attempt {}. Tool class: {}", 
+                              queryType, resultInfo, attempt + 1, tool.getClass().getSimpleName());
                     if (attempt < MAX_RETRIES) {
                         continue; // Retry
                     }

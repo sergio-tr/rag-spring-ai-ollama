@@ -77,10 +77,16 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         }
 
         // Step 5: Extract comparison data in parallel
-        Map<String, ComparisonValue> comparables = extractComparisonDataInParallel(relevantMinutes, fieldToCompare, ner);
+        Map<String, ComparisonValue> comparables = extractComparisonDataInParallel(relevantMinutes, fieldToCompare, ner, query);
         if (comparables.isEmpty()) {
             log().info("No comparison data found for field: {}", fieldToCompare.fieldName);
             return ToolResult.from(generateNoDataMessage(fieldToCompare.fieldName, query), getClass());
+        }
+
+        // Step 5.5: Aggregate mentions by month if this is a mentions_by_month comparison
+        if ("mentions_by_month".equals(fieldToCompare.fieldName)) {
+            comparables = aggregateMentionsByMonth(comparables);
+            log().info("Aggregated mentions by month: {}", comparables);
         }
 
         // Step 6: Perform statistical analysis
@@ -230,10 +236,23 @@ public class MetadataCompareTool extends AbstractMetadataTool {
 
     /**
      * Rule-based field inference using LLM for better accuracy.
+     * Handles special cases like mentions comparison by month.
      */
     private ComparisonField inferFieldByRules(String query) {
         if (query == null || query.trim().isEmpty()) {
             return null;
+        }
+        
+        String queryLower = query.toLowerCase();
+        
+        // Special case: Comparison of mentions by month (e.g., "más menciones a problemas de seguridad en febrero o en agosto")
+        if ((queryLower.contains("menciones") || queryLower.contains("mentions") || queryLower.contains("menciona")) &&
+            (queryLower.contains("febrero") || queryLower.contains("february") || 
+             queryLower.contains("agosto") || queryLower.contains("august") ||
+             queryLower.contains("mes") || queryLower.contains("month"))) {
+            // This is a mentions comparison query - we need to count mentions of a topic by month
+            log().info("Detected mentions comparison query, will use special comparison logic");
+            return new ComparisonField("mentions_by_month", ComparisonType.COUNT);
         }
         
         // Use LLM to infer comparison field
@@ -249,8 +268,9 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             - place: meeting places, locations
             - topics: number of topics discussed
             - decisions: number of decisions made
+            - mentions_by_month: counting mentions of a topic/keyword by month (special case)
             
-            Respond with ONLY the field name (e.g., "numberOfAttendees", "duration", "date", "place", "topics", "decisions").
+            Respond with ONLY the field name (e.g., "numberOfAttendees", "duration", "date", "place", "topics", "decisions", "mentions_by_month").
             If unclear, respond with "UNKNOWN".
             """, query);
         
@@ -263,7 +283,9 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                     .strip()
                     .toLowerCase();
             
-            if (response.contains("numberofattendees") || response.contains("attendees") || response.contains("people")) {
+            if (response.contains("mentions_by_month") || response.contains("mentions by month")) {
+                return new ComparisonField("mentions_by_month", ComparisonType.COUNT);
+            } else if (response.contains("numberofattendees") || response.contains("attendees") || response.contains("people")) {
                 return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
             } else if (response.contains("duration") || response.contains("time") || response.contains("length")) {
                 return new ComparisonField("duration", ComparisonType.NUMERIC);
@@ -349,9 +371,9 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     /**
      * Extracts comparison data in parallel
      */
-    private Map<String, ComparisonValue> extractComparisonDataInParallel(List<Minute> minutes, ComparisonField field, JSONObject ner) {
+    private Map<String, ComparisonValue> extractComparisonDataInParallel(List<Minute> minutes, ComparisonField field, JSONObject ner, String query) {
         List<CompletableFuture<Map.Entry<String, ComparisonValue>>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> extractComparisonValue(minute, field, ner)))
+                .map(minute -> CompletableFuture.supplyAsync(() -> extractComparisonValue(minute, field, ner, query)))
                 .collect(Collectors.toList());
 
         return futures.stream()
@@ -368,7 +390,12 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     /**
      * Extracts comparison value from a minute, validating it belongs to the correct period.
      */
-    private Map.Entry<String, ComparisonValue> extractComparisonValue(Minute minute, ComparisonField field, JSONObject ner) {
+    private Map.Entry<String, ComparisonValue> extractComparisonValue(Minute minute, ComparisonField field, JSONObject ner, String query) {
+        // Special handling for mentions_by_month comparison
+        if ("mentions_by_month".equals(field.fieldName)) {
+            return extractMentionsByMonthValue(minute, field, ner, query);
+        }
+        
         // Validate that minute belongs to the requested period if years are specified
         if (ner != null && minute.date() != null) {
             String docDate = minute.date();
@@ -398,6 +425,124 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         }
         
         return null;
+    }
+    
+    /**
+     * Extracts mentions count by month for comparison queries.
+     * Example: "Indica si hubo más menciones a problemas de seguridad en febrero o en agosto"
+     */
+    private Map.Entry<String, ComparisonValue> extractMentionsByMonthValue(Minute minute, ComparisonField field, JSONObject ner, String query) {
+        // Extract the topic/keyword to count mentions for
+        String topic = extractTopicFromQuery(query, ner);
+        
+        if (topic == null || topic.isEmpty()) {
+            log().debug("Could not extract topic for mentions comparison");
+            return null;
+        }
+        
+        // Extract month from minute date
+        if (minute.date() == null) {
+            return null;
+        }
+        
+        try {
+            java.time.LocalDate parsedDate = parseDateFlexible(minute.date());
+            if (parsedDate == null) {
+                return null;
+            }
+            
+            int month = parsedDate.getMonthValue();
+            String monthName = getMonthName(month);
+            
+            // Count mentions of the topic in this minute
+            int mentionCount = countTopicMentions(minute, topic);
+            
+            // Use month as label (e.g., "febrero", "agosto")
+            String label = monthName;
+            
+            return new AbstractMap.SimpleEntry<>(label, new ComparisonValue(mentionCount, ComparisonType.COUNT));
+        } catch (Exception e) {
+            log().debug("Error extracting mentions by month value: {}", e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Counts mentions of a topic in a minute (in topics, decisions, summary)
+     */
+    private int countTopicMentions(Minute minute, String topic) {
+        if (topic == null || topic.isEmpty() || minute == null) {
+            return 0;
+        }
+        
+        String topicLower = topic.toLowerCase();
+        int count = 0;
+        
+        // Count in topics
+        if (minute.topics() != null) {
+            count += minute.topics().stream()
+                    .filter(t -> t != null && t.toLowerCase().contains(topicLower))
+                    .count();
+        }
+        
+        // Count in decisions
+        if (minute.decisions() != null) {
+            count += minute.decisions().stream()
+                    .filter(d -> d != null && d.toLowerCase().contains(topicLower))
+                    .count();
+        }
+        
+        // Count in summary
+        if (minute.summary() != null) {
+            String summaryLower = minute.summary().toLowerCase();
+            // Count occurrences of topic in summary
+            int index = 0;
+            while ((index = summaryLower.indexOf(topicLower, index)) != -1) {
+                count++;
+                index += topicLower.length();
+            }
+        }
+        
+        return count;
+    }
+    
+    /**
+     * Gets Spanish month name from month number (1-12)
+     */
+    private String getMonthName(int month) {
+        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+        if (month >= 1 && month <= 12) {
+            return monthNames[month - 1];
+        }
+        return "unknown";
+    }
+    
+    /**
+     * Aggregates mentions by month for comparison queries.
+     * Groups minutes by month and sums mention counts.
+     */
+    private Map<String, ComparisonValue> aggregateMentionsByMonth(Map<String, ComparisonValue> comparables) {
+        Map<String, Integer> monthCounts = new HashMap<>();
+        
+        for (Map.Entry<String, ComparisonValue> entry : comparables.entrySet()) {
+            String month = entry.getKey();
+            Object value = entry.getValue().value;
+            
+            if (value instanceof Number) {
+                int count = ((Number) value).intValue();
+                monthCounts.merge(month, count, Integer::sum);
+            }
+        }
+        
+        // Convert back to ComparisonValue map
+        return monthCounts.entrySet().stream()
+                .collect(Collectors.toMap(
+                    Map.Entry::getKey,
+                    e -> new ComparisonValue(e.getValue(), ComparisonType.COUNT),
+                    (existing, replacement) -> existing,
+                    LinkedHashMap::new
+                ));
     }
 
     /**

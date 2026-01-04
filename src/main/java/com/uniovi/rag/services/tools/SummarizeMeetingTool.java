@@ -180,6 +180,15 @@ public class SummarizeMeetingTool extends AbstractTool {
             "%s"
             The following are relevant fragments from the minutes (may be in any language):
             "%s"
+            
+            CRITICAL RULES:
+            1. Write in the EXACT SAME LANGUAGE as the user's question
+            2. Be CONCISE - maximum 3-4 sentences total, focus on key points
+            3. Do NOT repeat the question
+            4. Do NOT include redundant information
+            5. Focus on what the user is asking for - if they ask about a specific topic, prioritize that
+            6. Remove any technical details or internal processing information
+            
             Write a brief and clear summary in the same language as the query, 
             indicating the key points mentioned. Avoid literal repetition and organize the information clearly.
             """, query, joined);

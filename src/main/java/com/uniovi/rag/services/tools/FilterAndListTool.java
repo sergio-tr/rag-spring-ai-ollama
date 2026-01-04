@@ -134,6 +134,13 @@ public class FilterAndListTool extends AbstractTool {
             Text (may be in any language):
             %s
             
+            CRITICAL RULES:
+            1. Write in the EXACT SAME LANGUAGE as the user's question
+            2. Be CONCISE - maximum 2 sentences
+            3. Focus ONLY on what answers the query
+            4. Do NOT include redundant information
+            5. Remove any technical details
+            
             Write the summary in the same language as the query.
             """, query, fragment);
         

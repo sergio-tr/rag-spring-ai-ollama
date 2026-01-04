@@ -712,16 +712,101 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     }
 
     private Integer calculateDurationMinutes(String start, String end) {
-        if (start == null || end == null) {
+        if (start == null || end == null || start.trim().isEmpty() || end.trim().isEmpty()) {
             return null;
         }
-        try {
-            LocalTime s = LocalTime.parse(start, DateTimeFormatter.ofPattern("HH:mm"));
-            LocalTime e = LocalTime.parse(end, DateTimeFormatter.ofPattern("HH:mm"));
-            int diff = (e.getHour() * 60 + e.getMinute()) - (s.getHour() * 60 + s.getMinute());
-            return diff >= 0 ? diff : null;
-        } catch (DateTimeParseException ex) {
+        
+        // Normalize time strings (remove extra spaces, ensure HH:mm format)
+        String startNormalized = normalizeTimeFormat(start.trim());
+        String endNormalized = normalizeTimeFormat(end.trim());
+        
+        if (startNormalized == null || endNormalized == null) {
+            log().warn("Could not normalize time format: start='{}', end='{}'", start, end);
             return null;
+        }
+        
+        try {
+            // Try HH:mm format first
+            LocalTime s = LocalTime.parse(startNormalized, DateTimeFormatter.ofPattern("HH:mm"));
+            LocalTime e = LocalTime.parse(endNormalized, DateTimeFormatter.ofPattern("HH:mm"));
+            
+            // Validate: end time should be after start time
+            if (e.isBefore(s) || e.equals(s)) {
+                log().warn("Invalid duration: endTime ({}) is not after startTime ({})", endNormalized, startNormalized);
+                // Check if end time is on next day (e.g., meeting ends at 01:00 next day)
+                if (e.isBefore(s)) {
+                    // Assume next day: add 24 hours
+                    int diff = (24 * 60) - (s.getHour() * 60 + s.getMinute()) + (e.getHour() * 60 + e.getMinute());
+                    log().debug("Calculated duration assuming next day: {} minutes", diff);
+                    return diff > 0 && diff <= 24 * 60 ? diff : null;
+                }
+                return null;
+            }
+            
+            int diff = (e.getHour() * 60 + e.getMinute()) - (s.getHour() * 60 + s.getMinute());
+            
+            // Validate: duration should be reasonable (between 1 minute and 24 hours)
+            if (diff < 1) {
+                log().warn("Invalid duration: {} minutes (too short)", diff);
+                return null;
+            }
+            if (diff > 24 * 60) {
+                log().warn("Invalid duration: {} minutes (too long, >24h)", diff);
+                return null;
+            }
+            
+            return diff;
+        } catch (DateTimeParseException ex) {
+            // Try alternative formats
+            try {
+                // Try HH:mm:ss format
+                LocalTime s = LocalTime.parse(startNormalized, DateTimeFormatter.ofPattern("HH:mm:ss"));
+                LocalTime e = LocalTime.parse(endNormalized, DateTimeFormatter.ofPattern("HH:mm:ss"));
+                int diff = (e.getHour() * 60 + e.getMinute()) - (s.getHour() * 60 + s.getMinute());
+                return diff > 0 && diff <= 24 * 60 ? diff : null;
+            } catch (DateTimeParseException ex2) {
+                log().warn("Could not parse times: start='{}', end='{}'. Error: {}", 
+                          startNormalized, endNormalized, ex.getMessage());
+                return null;
+            }
+        }
+    }
+    
+    /**
+     * Normalizes time format to HH:mm.
+     * Handles various input formats and converts them to HH:mm.
+     */
+    private String normalizeTimeFormat(String timeStr) {
+        if (timeStr == null || timeStr.trim().isEmpty()) {
+            return null;
+        }
+        
+        String normalized = timeStr.trim();
+        
+        // Remove common prefixes/suffixes
+        normalized = normalized.replaceAll("(?i)^(hora|time|h):\\s*", "");
+        normalized = normalized.replaceAll("\\s*$", "");
+        
+        // Try to parse and reformat to HH:mm
+        try {
+            // Try HH:mm format first
+            LocalTime time = LocalTime.parse(normalized, DateTimeFormatter.ofPattern("HH:mm"));
+            return time.format(DateTimeFormatter.ofPattern("HH:mm"));
+        } catch (DateTimeParseException ignored) {
+            // Try HH:mm:ss format
+            try {
+                LocalTime time = LocalTime.parse(normalized, DateTimeFormatter.ofPattern("HH:mm:ss"));
+                return time.format(DateTimeFormatter.ofPattern("HH:mm"));
+            } catch (DateTimeParseException ignored2) {
+                // Try H:mm format (single digit hour)
+                try {
+                    LocalTime time = LocalTime.parse(normalized, DateTimeFormatter.ofPattern("H:mm"));
+                    return time.format(DateTimeFormatter.ofPattern("HH:mm"));
+                } catch (DateTimeParseException ignored3) {
+                    log().debug("Could not normalize time format: {}", timeStr);
+                    return null;
+                }
+            }
         }
     }
 

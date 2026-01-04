@@ -57,6 +57,18 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             log().info("Filtered to {} documents that mention topic '{}'", docs.size(), topic);
         }
         
+        // Step 1.7: Filter by attendeesCount if query asks about number of attendees
+        // Example: "En cuántas actas participaron menos de diez personas"
+        AttendeesCountQueryInfo attendeesQueryInfo = detectAttendeesCountQuery(query);
+        if (attendeesQueryInfo != null) {
+            log().info("Query asks about number of attendees (operator={}, threshold={}), filtering documents", 
+                      attendeesQueryInfo.operator, attendeesQueryInfo.threshold);
+            List<Document> filteredByAttendees = filterDocumentsByAttendeesCount(attendeesQueryInfo, docs);
+            log().info("Filtered {} documents by attendees count criteria, {} remaining (applied filter even if empty)", 
+                      docs.size(), filteredByAttendees.size());
+            docs = filteredByAttendees; // Apply filter even if empty - this indicates no matches
+        }
+        
         if (docs.isEmpty()) {
             log().info("No documents found for count query: {}", query);
             return ToolResult.from(generateNotFoundMessage(query), getClass());
@@ -101,12 +113,42 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         // Extract and analyze topics
         List<String> topics = extractAndAnalyzeTopics(minutes);
         
+        // Extract and analyze attendeesCount if query asks about attendees
+        List<Integer> attendeesCounts = null;
+        if (query != null && (query.toLowerCase().contains("asistente") || 
+                              query.toLowerCase().contains("attendee") ||
+                              query.toLowerCase().contains("participaron") ||
+                              query.toLowerCase().contains("personas"))) {
+            attendeesCounts = extractAndAnalyzeAttendeesCounts(minutes);
+        }
+        
         return new CountingAnalysis(
             totalCount,
             dates,
             places,
-            topics
+            topics,
+            attendeesCounts
         );
+    }
+    
+    /**
+     * Extracts and analyzes attendeesCount from minutes
+     */
+    private List<Integer> extractAndAnalyzeAttendeesCounts(List<Minute> minutes) {
+        return minutes.stream()
+                .map(minute -> {
+                    if (minute.numberOfAttendees() > 0) {
+                        return minute.numberOfAttendees();
+                    }
+                    if (minute.attendees() != null && !minute.attendees().isEmpty()) {
+                        return minute.attendees().size();
+                    }
+                    return null;
+                })
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
     }
 
     /**
@@ -295,7 +337,52 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         if (analysis.getTopics() != null && !analysis.getTopics().isEmpty()) {
             data.append("Temas principales: ").append(String.join(", ", analysis.getTopics().stream().limit(10).collect(Collectors.toList()))).append("\n");
         }
+        
+        if (analysis.getAttendeesCounts() != null && !analysis.getAttendeesCounts().isEmpty()) {
+            String countsStr = analysis.getAttendeesCounts().stream()
+                    .map(String::valueOf)
+                    .collect(Collectors.joining(", "));
+            data.append("Número de asistentes por acta: ").append(countsStr).append("\n");
+        }
+        
         return data.toString();
+    }
+    
+    /**
+     * Filters documents by attendeesCount based on query criteria.
+     * Uses structured information from LLM detection instead of hardcoded string checks.
+     */
+    private List<Document> filterDocumentsByAttendeesCount(AttendeesCountQueryInfo queryInfo, List<Document> docs) {
+        if (docs.isEmpty() || queryInfo == null) {
+            return docs;
+        }
+        
+        final int threshold = queryInfo.threshold;
+        final String operator = queryInfo.operator;
+        
+        List<Document> filtered = docs.stream()
+                .filter(doc -> {
+                    Integer count = getAttendeesCount(doc);
+                    if (count == null) {
+                        return false; // Exclude documents without attendeesCount
+                    }
+                    
+                    return switch (operator) {
+                        case "less_than" -> count < threshold;
+                        case "more_than" -> count > threshold;
+                        case "equal" -> count == threshold;
+                        default -> {
+                            log().warn("Unknown operator: {}, defaulting to less_than", operator);
+                            yield count < threshold;
+                        }
+                    };
+                })
+                .collect(Collectors.toList());
+        
+        log().info("Filtered {} documents by attendeesCount (operator: {}, threshold: {}), {} remaining", 
+                  docs.size(), operator, threshold, filtered.size());
+        
+        return filtered;
     }
 
 }
