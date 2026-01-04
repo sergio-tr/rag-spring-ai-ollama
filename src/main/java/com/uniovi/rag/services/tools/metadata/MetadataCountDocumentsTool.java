@@ -25,9 +25,11 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().info("Executing count documents query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing count documents query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        long startTime = System.currentTimeMillis();
         List<Document> docs = retrieveDocumentsWithFallback(
             query,
             new String[] {"date", "place", "topics", "decisions", "summary"},
@@ -88,12 +90,22 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             return ToolResult.from(generateNotFoundMessage(query), getClass());
         }
 
+        // Step 3.5: Check if query asks for month comparison
+        // Example: "¿Qué mes tuvo más reuniones registradas, febrero o abril?"
+        if (detectMonthComparisonQuery(query)) {
+            log().info("Query asks for month comparison, processing accordingly");
+            String answer = generateMonthComparisonAnswer(query, relevantMinutes);
+            return ToolResult.from(answer, getClass());
+        }
+        
         // Step 4: Perform comprehensive counting analysis
         CountingAnalysis analysis = performCountingAnalysis(query, relevantMinutes);
-
+        
         // Step 5: Generate enhanced count answer
         String answer = generateEnhancedCountAnswer(query, analysis);
-        log().info("Generated count answer for query: {} with {} documents", query, analysis.getTotalCount());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated count answer for query: '{}' with {} documents (total execution time: {} ms)", 
+                  query, analysis.getTotalCount(), totalTime);
         
         return ToolResult.from(answer, getClass());
     }
@@ -360,14 +372,18 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         final int threshold = queryInfo.threshold;
         final String operator = queryInfo.operator;
         
+        log().info("Filtering {} documents by attendeesCount (operator: {}, threshold: {})", 
+                  docs.size(), operator, threshold);
+        
         List<Document> filtered = docs.stream()
                 .filter(doc -> {
                     Integer count = getAttendeesCount(doc);
                     if (count == null) {
+                        log().debug("Document {} has no attendeesCount, excluding from filter", doc.getId());
                         return false; // Exclude documents without attendeesCount
                     }
                     
-                    return switch (operator) {
+                    boolean matches = switch (operator) {
                         case "less_than" -> count < threshold;
                         case "more_than" -> count > threshold;
                         case "equal" -> count == threshold;
@@ -376,13 +392,208 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                             yield count < threshold;
                         }
                     };
+                    
+                    if (matches) {
+                        log().debug("Document {} passed filter: count={} {} threshold={}", 
+                                  doc.getId(), count, operator, threshold);
+                    } else {
+                        log().debug("Document {} filtered out: count={} does NOT {} threshold={}", 
+                                  doc.getId(), count, operator, threshold);
+                    }
+                    
+                    return matches;
                 })
                 .collect(Collectors.toList());
         
-        log().info("Filtered {} documents by attendeesCount (operator: {}, threshold: {}), {} remaining", 
+        log().info("Filtered {} documents by attendeesCount (operator: {}, threshold: {}), {} remaining. " +
+                  "This filter was applied even if it results in 0 documents.", 
                   docs.size(), operator, threshold, filtered.size());
         
         return filtered;
+    }
+    
+    /**
+     * Detects if query asks for month comparison.
+     * Example: "¿Qué mes tuvo más reuniones registradas, febrero o abril?"
+     */
+    private boolean detectMonthComparisonQuery(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return false;
+        }
+        
+        String queryLower = query.toLowerCase();
+        boolean hasMonthComparison = (queryLower.contains("qué mes") || queryLower.contains("which month") ||
+                                     queryLower.contains("qué mes tuvo") || queryLower.contains("which month had")) &&
+                                    (queryLower.contains("más") || queryLower.contains("more") ||
+                                     queryLower.contains("menos") || queryLower.contains("less")) &&
+                                    (queryLower.contains(" o ") || queryLower.contains(" or "));
+        
+        // Also check for explicit month names
+        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+                              "january", "february", "march", "april", "may", "june",
+                              "july", "august", "september", "october", "november", "december"};
+        int monthCount = 0;
+        for (String month : monthNames) {
+            if (queryLower.contains(month)) {
+                monthCount++;
+            }
+        }
+        
+        boolean hasMultipleMonths = monthCount >= 2;
+        
+        log().debug("Month comparison detection: hasMonthComparison={}, hasMultipleMonths={}, monthCount={}", 
+                   hasMonthComparison, hasMultipleMonths, monthCount);
+        
+        return hasMonthComparison || hasMultipleMonths;
+    }
+    
+    /**
+     * Generates answer for month comparison queries.
+     * Example: "¿Qué mes tuvo más reuniones registradas, febrero o abril?"
+     */
+    private String generateMonthComparisonAnswer(String query, List<Minute> minutes) {
+        if (minutes == null || minutes.isEmpty()) {
+            return generateNotFoundMessage(query);
+        }
+        
+        // Extract months from query
+        List<String> requestedMonths = extractMonthsFromQuery(query);
+        log().info("Extracted months from query: {}", requestedMonths);
+        
+        // Count meetings by month
+        Map<String, Integer> meetingsByMonth = countMeetingsByMonth(minutes, requestedMonths);
+        log().info("Meetings by month: {}", meetingsByMonth);
+        
+        // Build comparison data
+        StringBuilder comparisonData = new StringBuilder();
+        for (Map.Entry<String, Integer> entry : meetingsByMonth.entrySet()) {
+            comparisonData.append(String.format("- %s: %d reuniones\n", entry.getKey(), entry.getValue()));
+        }
+        
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Meeting counts by month:
+            %s
+            
+            CRITICAL INSTRUCTIONS:
+            1. Respond in the EXACT SAME LANGUAGE as the question
+            2. Compare the months and clearly state which month has MORE meetings
+            3. If months have the same count, state that clearly
+            4. If a requested month has no meetings, state that clearly
+            5. Be concise and direct
+            6. Do NOT repeat the question
+            7. Start directly with the comparison answer
+            
+            Examples:
+            - If febrero has 2 and abril has 0: "Febrero tiene varias reuniones registradas en diferentes años. No se encuentran actas correspondientes al mes de abril."
+            - If both have the same count: "Ambos meses tienen el mismo número de reuniones: X reuniones cada uno."
+            """, query, comparisonData.toString());
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating month comparison answer with LLM", e);
+        }
+        
+        // Fallback
+        return formatMonthComparisonFallback(meetingsByMonth);
+    }
+    
+    /**
+     * Extracts month names from query.
+     */
+    private List<String> extractMonthsFromQuery(String query) {
+        List<String> months = new ArrayList<>();
+        if (query == null || query.trim().isEmpty()) {
+            return months;
+        }
+        
+        String queryLower = query.toLowerCase();
+        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+        
+        for (String month : monthNames) {
+            if (queryLower.contains(month)) {
+                months.add(month);
+            }
+        }
+        
+        return months;
+    }
+    
+    /**
+     * Counts meetings by month.
+     */
+    private Map<String, Integer> countMeetingsByMonth(List<Minute> minutes, List<String> requestedMonths) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        
+        // Initialize counts for requested months
+        for (String month : requestedMonths) {
+            counts.put(month, 0);
+        }
+        
+        // Count meetings by month
+        for (Minute minute : minutes) {
+            if (minute.date() == null) {
+                continue;
+            }
+            
+            try {
+                java.time.LocalDate parsedDate = parseDateFlexible(minute.date());
+                if (parsedDate == null) {
+                    log().debug("Could not parse date '{}' for minute {}", minute.date(), minute.id());
+                    continue;
+                }
+                
+                int monthValue = parsedDate.getMonthValue();
+                String monthName = getMonthName(monthValue);
+                
+                // Only count if month was requested, or if no months were requested (count all)
+                if (requestedMonths.isEmpty() || requestedMonths.contains(monthName)) {
+                    counts.put(monthName, counts.getOrDefault(monthName, 0) + 1);
+                    log().debug("Counted meeting for month '{}' (minute {}, date: {})", 
+                              monthName, minute.id(), minute.date());
+                }
+            } catch (Exception e) {
+                log().warn("Error extracting month from date '{}' for minute {}: {}", 
+                          minute.date(), minute.id(), e.getMessage());
+            }
+        }
+        
+        return counts;
+    }
+    
+    /**
+     * Gets Spanish month name from month number (1-12).
+     */
+    private String getMonthName(int month) {
+        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+        if (month >= 1 && month <= 12) {
+            return monthNames[month - 1];
+        }
+        return "unknown";
+    }
+    
+    /**
+     * Formats fallback month comparison answer.
+     */
+    private String formatMonthComparisonFallback(Map<String, Integer> meetingsByMonth) {
+        if (meetingsByMonth.isEmpty()) {
+            return "No se encontraron reuniones para los meses solicitados.";
+        }
+        
+        StringBuilder answer = new StringBuilder();
+        for (Map.Entry<String, Integer> entry : meetingsByMonth.entrySet()) {
+            answer.append(String.format("%s: %d reuniones\n", entry.getKey(), entry.getValue()));
+        }
+        
+        return answer.toString().trim();
     }
 
 }

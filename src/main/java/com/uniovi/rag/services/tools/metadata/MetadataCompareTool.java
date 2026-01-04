@@ -436,18 +436,20 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         String topic = extractTopicFromQuery(query, ner);
         
         if (topic == null || topic.isEmpty()) {
-            log().debug("Could not extract topic for mentions comparison");
+            log().warn("Could not extract topic for mentions comparison from query: '{}'", query);
             return null;
         }
         
         // Extract month from minute date
         if (minute.date() == null) {
+            log().debug("Minute {} has no date, cannot extract month", minute.id());
             return null;
         }
         
         try {
             java.time.LocalDate parsedDate = parseDateFlexible(minute.date());
             if (parsedDate == null) {
+                log().warn("Could not parse date '{}' for minute {} to extract month", minute.date(), minute.id());
                 return null;
             }
             
@@ -457,53 +459,115 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             // Count mentions of the topic in this minute
             int mentionCount = countTopicMentions(minute, topic);
             
+            log().info("Minute {} (date: {}, month: {}) has {} mention(s) of topic '{}'", 
+                      minute.id(), minute.date(), monthName, mentionCount, topic);
+            
             // Use month as label (e.g., "febrero", "agosto")
             String label = monthName;
             
             return new AbstractMap.SimpleEntry<>(label, new ComparisonValue(mentionCount, ComparisonType.COUNT));
         } catch (Exception e) {
-            log().debug("Error extracting mentions by month value: {}", e.getMessage());
+            log().error("Error extracting mentions by month value for minute {}: {}", minute.id(), e.getMessage(), e);
             return null;
         }
     }
     
     /**
-     * Counts mentions of a topic in a minute (in topics, decisions, summary)
+     * Counts mentions of a topic in a minute (in topics, decisions, summary).
+     * Uses semantic matching to find related terms, not just exact matches.
+     * For example, "problemas de seguridad" should match "seguridad", "vigilancia", "iluminación y vigilancia", etc.
      */
     private int countTopicMentions(Minute minute, String topic) {
         if (topic == null || topic.isEmpty() || minute == null) {
             return 0;
         }
         
-        String topicLower = topic.toLowerCase();
+        String topicLower = topic.toLowerCase().trim();
         int count = 0;
+        
+        // Extract key terms from the topic (e.g., "problemas de seguridad" -> ["seguridad", "problemas"])
+        List<String> keyTerms = extractKeyTermsFromTopic(topicLower);
+        log().debug("Counting mentions of topic '{}' (key terms: {}) in minute {}", topic, keyTerms, minute.id());
         
         // Count in topics
         if (minute.topics() != null) {
-            count += minute.topics().stream()
-                    .filter(t -> t != null && t.toLowerCase().contains(topicLower))
-                    .count();
+            for (String t : minute.topics()) {
+                if (t != null) {
+                    String topicField = t.toLowerCase();
+                    // Check if any key term appears in the topic field
+                    boolean matches = keyTerms.stream().anyMatch(term -> topicField.contains(term));
+                    if (matches) {
+                        count++;
+                        log().debug("Found topic match in topics field: '{}' matches topic '{}'", t, topic);
+                    }
+                }
+            }
         }
         
         // Count in decisions
         if (minute.decisions() != null) {
-            count += minute.decisions().stream()
-                    .filter(d -> d != null && d.toLowerCase().contains(topicLower))
-                    .count();
-        }
-        
-        // Count in summary
-        if (minute.summary() != null) {
-            String summaryLower = minute.summary().toLowerCase();
-            // Count occurrences of topic in summary
-            int index = 0;
-            while ((index = summaryLower.indexOf(topicLower, index)) != -1) {
-                count++;
-                index += topicLower.length();
+            for (String d : minute.decisions()) {
+                if (d != null) {
+                    String decisionField = d.toLowerCase();
+                    // Check if any key term appears in the decision field
+                    boolean matches = keyTerms.stream().anyMatch(term -> decisionField.contains(term));
+                    if (matches) {
+                        count++;
+                        log().debug("Found topic match in decisions field: '{}' matches topic '{}'", d, topic);
+                    }
+                }
             }
         }
         
+        // Count in summary (count occurrences, not just presence)
+        if (minute.summary() != null) {
+            String summaryLower = minute.summary().toLowerCase();
+            // Count occurrences of each key term
+            for (String term : keyTerms) {
+                int index = 0;
+                while ((index = summaryLower.indexOf(term, index)) != -1) {
+                    count++;
+                    index += term.length();
+                }
+            }
+            if (count > 0) {
+                log().debug("Found {} mention(s) of topic '{}' in summary", count, topic);
+            }
+        }
+        
+        log().debug("Total mentions of topic '{}' in minute {}: {}", topic, minute.id(), count);
         return count;
+    }
+    
+    /**
+     * Extracts key terms from a topic phrase for semantic matching.
+     * For example, "problemas de seguridad" -> ["seguridad", "problemas"]
+     * This allows matching related terms like "vigilancia", "iluminación y vigilancia", etc.
+     */
+    private List<String> extractKeyTermsFromTopic(String topic) {
+        if (topic == null || topic.isEmpty()) {
+            return Collections.emptyList();
+        }
+        
+        List<String> keyTerms = new ArrayList<>();
+        
+        // Split by common prepositions and conjunctions
+        String[] parts = topic.split("\\s+(de|del|la|el|y|and|con|with)\\s+");
+        for (String part : parts) {
+            String trimmed = part.trim().toLowerCase();
+            if (!trimmed.isEmpty() && trimmed.length() > 2) { // Ignore very short words
+                keyTerms.add(trimmed);
+            }
+        }
+        
+        // Also add the full topic as a key term
+        keyTerms.add(topic.toLowerCase());
+        
+        // Remove duplicates and sort by length (longer terms first for more specific matching)
+        return keyTerms.stream()
+                .distinct()
+                .sorted((a, b) -> Integer.compare(b.length(), a.length()))
+                .collect(Collectors.toList());
     }
     
     /**
@@ -525,18 +589,41 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     private Map<String, ComparisonValue> aggregateMentionsByMonth(Map<String, ComparisonValue> comparables) {
         Map<String, Integer> monthCounts = new HashMap<>();
         
+        log().info("Aggregating mentions by month from {} entries", comparables.size());
+        
         for (Map.Entry<String, ComparisonValue> entry : comparables.entrySet()) {
             String month = entry.getKey();
             Object value = entry.getValue().value;
             
             if (value instanceof Number) {
                 int count = ((Number) value).intValue();
-                monthCounts.merge(month, count, Integer::sum);
+                int previousCount = monthCounts.getOrDefault(month, 0);
+                monthCounts.put(month, previousCount + count);
+                log().debug("Month '{}': added {} mentions (total: {})", month, count, monthCounts.get(month));
+            } else {
+                log().warn("Unexpected value type for month '{}': {}", month, value != null ? value.getClass() : "null");
             }
         }
         
-        // Convert back to ComparisonValue map
-        return monthCounts.entrySet().stream()
+        log().info("Aggregated mentions by month: {}", monthCounts);
+        
+        // Convert back to ComparisonValue map, sorted by month name for consistent ordering
+        Map<String, Integer> sortedMonths = new LinkedHashMap<>();
+        String[] monthOrder = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+        for (String month : monthOrder) {
+            if (monthCounts.containsKey(month)) {
+                sortedMonths.put(month, monthCounts.get(month));
+            }
+        }
+        // Add any months not in the standard order
+        for (Map.Entry<String, Integer> entry : monthCounts.entrySet()) {
+            if (!sortedMonths.containsKey(entry.getKey())) {
+                sortedMonths.put(entry.getKey(), entry.getValue());
+            }
+        }
+        
+        return sortedMonths.entrySet().stream()
                 .collect(Collectors.toMap(
                     Map.Entry::getKey,
                     e -> new ComparisonValue(e.getValue(), ComparisonType.COUNT),
@@ -656,6 +743,13 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             DO NOT mention any technical details like "statistical analysis", "análisis estadístico", "comparison data", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
             Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            
+            IMPORTANT: 
+            - If comparing months (e.g., "febrero" vs "agosto"), clearly state which month has MORE mentions.
+            - If comparing attendees (e.g., "febrero" vs "agosto"), clearly state which month/meeting has MORE attendees.
+            - The comparison data is sorted in descending order (highest value first), so the first entry has the highest value.
+            - Use the comparison data provided to determine the correct answer.
+            - Be precise: if the data shows "febrero: 20 asistentes" and "agosto: 18 asistentes", then febrero has MORE attendees.
             """, query, comparisonData, simpleStats != null ? simpleStats : "");
         
         try {
@@ -725,13 +819,61 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      * Formats comparison data for LLM prompt
      */
     private String formatComparisonData(Map<String, ComparisonValue> comparables, ComparisonField field) {
+        if ("mentions_by_month".equals(field.fieldName)) {
+            // For month comparisons, format clearly showing which month has more
+            return comparables.entrySet().stream()
+                    .sorted(Map.Entry.<String, ComparisonValue>comparingByValue((a, b) -> {
+                        if (a.value instanceof Number && b.value instanceof Number) {
+                            return Double.compare(((Number) b.value).doubleValue(), ((Number) a.value).doubleValue());
+                        }
+                        return 0;
+                    }).reversed()) // Sort descending (highest first)
+                    .map(entry -> {
+                        String month = entry.getKey();
+                        Object value = entry.getValue().value;
+                        return String.format("- %s: %s menciones", month, value);
+                    })
+                    .collect(Collectors.joining("\n"));
+        }
+        
+        // For attendees comparison, sort descending (highest first) and format clearly
+        if ("numberOfAttendees".equals(field.fieldName)) {
+            log().info("Formatting attendees comparison data. Total entries: {}", comparables.size());
+            List<Map.Entry<String, ComparisonValue>> sorted = comparables.entrySet().stream()
+                    .sorted(Map.Entry.<String, ComparisonValue>comparingByValue((a, b) -> {
+                        if (a.value instanceof Number && b.value instanceof Number) {
+                            double aVal = ((Number) a.value).doubleValue();
+                            double bVal = ((Number) b.value).doubleValue();
+                            log().debug("Comparing attendees: {} vs {}", aVal, bVal);
+                            return Double.compare(bVal, aVal); // Descending: higher first
+                        }
+                        return 0;
+                    }).reversed())
+                    .collect(Collectors.toList());
+            
+            log().info("Sorted attendees comparison (descending): {}", 
+                      sorted.stream()
+                          .map(e -> String.format("%s: %s", e.getKey(), e.getValue().value))
+                          .collect(Collectors.joining(", ")));
+            
+            return sorted.stream()
+                    .map(entry -> {
+                        String label = entry.getKey();
+                        Object value = entry.getValue().value;
+                        log().debug("Formatting attendees entry: {} = {}", label, value);
+                        return String.format("- %s: %s asistentes", label, value);
+                    })
+                    .collect(Collectors.joining("\n"));
+        }
+        
+        // Default formatting for other comparison types (sort descending for numeric/count)
         return comparables.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue((a, b) -> {
+                .sorted(Map.Entry.<String, ComparisonValue>comparingByValue((a, b) -> {
                     if (a.value instanceof Number && b.value instanceof Number) {
                         return Double.compare(((Number) b.value).doubleValue(), ((Number) a.value).doubleValue());
                     }
                     return 0;
-                }))
+                }).reversed()) // Sort descending (highest first)
                 .map(entry -> String.format("- %s: %s", entry.getKey(), entry.getValue().value))
                 .collect(Collectors.joining("\n"));
     }

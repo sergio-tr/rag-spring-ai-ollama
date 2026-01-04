@@ -34,9 +34,12 @@ public class GetDurationTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().info("Executing get duration query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing get duration query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for get duration query", docs.size());
         List<MeetingDuration> durations = new ArrayList<>();
 
         // Try with NER filtering if available
@@ -94,11 +97,18 @@ public class GetDurationTool extends AbstractTool {
 
         String answer;
         if (!durations.isEmpty()) {
+            log().debug("Found {} durations for query, generating answer", durations.size());
             answer = generateFinalAnswer(query, durations);
         } else {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No durations found for query: '{}' (execution time: {} ms)", query, totalTime);
             answer = generateNotFoundMessage(query);
         }
-        return ToolResult.from(answer, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated get duration answer for query: '{}' (execution time: {} ms)", query, totalTime);
+        // Apply formatResponse to clean the response
+        String formattedAnswer = formatResponse(answer, query);
+        return ToolResult.from(formattedAnswer, getClass());
     }
 
     /**
@@ -209,6 +219,9 @@ public class GetDurationTool extends AbstractTool {
                     
                     Write a brief and clear answer, in the same language as the query, 
                     indicating which meeting had the longest/shortest duration and its details.
+                    DO NOT repeat the question or any part of it.
+                    Start directly with the answer content.
+                    Be concise and direct.
                     """, query, durations.stream().map(MeetingDuration::toString).collect(Collectors.joining("\n")));
                 
                 try {
@@ -219,11 +232,12 @@ public class GetDurationTool extends AbstractTool {
                             .content();
                     
                     if (response == null || response.trim().isEmpty()) {
-                        log().warn("Empty response from LLM in generateFinalAnswer (comparison), using fallback");
+                        log().warn("Empty response from LLM in generateFinalAnswer (comparison) for query: '{}', using fallback", query);
                         return generateFallbackAnswer(query, durations, result);
                     }
                     
-                    return response.strip();
+                    // Apply formatResponse to clean and format the response
+                    return formatResponse(response.strip(), query);
                 } catch (Exception e) {
                     log().error("Error generating final answer (comparison), using fallback", e);
                     return generateFallbackAnswer(query, durations, result);
@@ -247,6 +261,9 @@ public class GetDurationTool extends AbstractTool {
             
             Write a brief and clear answer, in the same language as the query, 
             indicating the duration and details of each meeting found.
+            DO NOT repeat the question or any part of it.
+            Start directly with the answer content.
+            Be concise and direct.
             """, query, durations.stream().map(MeetingDuration::toString).collect(Collectors.joining("\n")));
         
         try {
@@ -257,11 +274,12 @@ public class GetDurationTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateFinalAnswer, using fallback");
+                log().warn("Empty response from LLM in generateFinalAnswer for query: '{}', using fallback", query);
                 return generateFallbackAnswer(query, durations, null);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating final answer, using fallback", e);
             return generateFallbackAnswer(query, durations, null);

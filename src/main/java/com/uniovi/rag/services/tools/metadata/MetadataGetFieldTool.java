@@ -172,15 +172,27 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
      * Tries multiple field name variations and synonyms.
      */
     private FieldResult extractFieldValue(Minute minute, String detectedField) {
+        log().debug("Extracting field '{}' from minute {} (date: {})", 
+                   detectedField, minute.id(), minute.date());
+        
         // Try to extract with detected field name
         String fieldValue = extractFieldFromMinute(detectedField, minute);
+        log().debug("Extracted field '{}' with name '{}': {}", detectedField, detectedField, 
+                   fieldValue != null ? fieldValue : "null");
         
         // If not found, try alternative field names
         if (fieldValue == null || fieldValue.isBlank()) {
             // Try synonyms for common fields
             String[] alternativeNames = getAlternativeFieldNames(detectedField);
+            log().debug("Trying alternative names for field '{}': {}", detectedField, 
+                       java.util.Arrays.toString(alternativeNames));
             for (String altName : alternativeNames) {
+                if (altName.equals(detectedField)) {
+                    continue; // Skip if same as detected field (already tried)
+                }
                 fieldValue = extractFieldFromMinute(altName, minute);
+                log().debug("Tried alternative name '{}' for field '{}': {}", altName, detectedField, 
+                           fieldValue != null ? fieldValue : "null");
                 if (fieldValue != null && !fieldValue.isBlank()) {
                     log().info("Found field '{}' using alternative name '{}'", detectedField, altName);
                     break;
@@ -189,8 +201,16 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
         
         if (fieldValue == null || fieldValue.isBlank()) {
+            log().warn("Could not extract field '{}' from minute {} (date: {}). " +
+                      "Minute has secretary: {}, president: {}", 
+                      detectedField, minute.id(), minute.date(),
+                      minute.secretary() != null ? minute.secretary() : "null",
+                      minute.president() != null ? minute.president() : "null");
             return null;
         }
+        
+        log().debug("Successfully extracted field '{}' from minute {}: '{}'", 
+                   detectedField, minute.id(), fieldValue);
 
         return new FieldResult(
             minute.id(),
@@ -261,7 +281,10 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         if (containsAny(q, "inicio", "start time", "hora de inicio", "comienzo")) return "startTime";
         if (containsAny(q, "fin", "final", "end time", "hora de cierre", "termin")) return "endTime";
         if (containsAny(q, "presidente", "president", "quién presidió", "who presided")) return "president";
-        if (containsAny(q, "secretario", "secretary")) return "secretary";
+        if (containsAny(q, "secretario", "secretary", "secretaria", "quién fue la secretaria", "who was the secretary")) {
+            log().debug("Classified as 'secretary' based on query: '{}'", query);
+            return "secretary";
+        }
         if (containsAny(q, "asistente", "attendee", "participante", "personas")) return "attendees";
         if (containsAny(q, "número de asistentes", "cuántos asistieron", "attendees count")) return "attendeesCount";
         if (containsAny(q, "tema", "topics")) return "topics";
@@ -337,18 +360,31 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             Found the following values:
             %s
             
-            Respond with a short message in the EXACT SAME LANGUAGE as the question,
-            stating the field values found.
-            If there's only one value, format it as a single sentence.
-            If there are multiple values, format them as a list.
-            Be concise and direct.
-            Do not repeat the question.
+            CRITICAL INSTRUCTIONS:
+            1. Respond with a short message in the EXACT SAME LANGUAGE as the question
+            2. State the field values found directly - start with the answer immediately
+            3. If there's only one value, format it as a single sentence
+            4. If there are multiple values, format them as a list
+            5. Be concise and direct
+            6. DO NOT repeat the question or any part of it
+            7. DO NOT start with phrases like "Dime que", "The user asked", "La pregunta era", etc.
+            8. Start directly with the answer (e.g., "El presidente fue..." or "The president was...")
+            
+            Examples of CORRECT responses:
+            - Query: "Dime quién presidió la reunión del 25 de agosto de 2026"
+              Correct: "El presidente en la reunión del 25 de agosto de 2026 fue Manuel Ortega Medina."
+              Wrong: "Dime que el presidente fue Manuel Ortega Medina."
+            
+            - Query: "Who was the president on August 25, 2026?"
+              Correct: "The president on August 25, 2026 was Manuel Ortega Medina."
+              Wrong: "The user asked who was the president. The president was Manuel Ortega Medina."
             """, query, detectedField, fieldData.toString());
 
         try {
             String response = getLLMResponseCached(prompt);
             if (response != null && !response.trim().isEmpty()) {
-                return response.trim();
+                // Post-process to format and clean response
+                return formatResponse(response, query);
             }
         } catch (Exception e) {
             log().warn("Error generating field answer with LLM", e);
@@ -370,6 +406,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     /**
      * Filters minutes by person (president/secretary) when query asks for "fecha del acta donde [persona]"
      * Example: "Proporciona la fecha del acta donde Juan Pérez Gutiérrez actuó como presidente"
+     * Also handles queries about attendees: "¿Cuándo y en qué reuniones asistió Alejandro Torres Rojas?"
      */
     private List<Minute> filterMinutesByPerson(String query, List<Minute> minutes, JSONObject ner) {
         if (minutes.isEmpty() || query == null) {
@@ -378,95 +415,96 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         
         String queryLower = query.toLowerCase();
         
-        // Check if query asks for date WHERE person was president/secretary
-        // Note: detectedField is not accessible here, so we check directly
-        boolean asksForDateWherePerson = (queryLower.contains("fecha") || queryLower.contains("date")) &&
-                                         (queryLower.contains("donde") || queryLower.contains("where")) &&
-                                         (queryLower.contains("presidente") || queryLower.contains("president") ||
-                                          queryLower.contains("secretario") || queryLower.contains("secretary") ||
-                                          queryLower.contains("secretaria"));
+        // Check if query asks for date WHERE person was president/secretary OR asks about when person attended
+        boolean asksForDateWherePerson = detectDateWherePersonQuery(query);
+        boolean asksAboutAttendee = queryLower.contains("asistió") || queryLower.contains("attended") ||
+                                   queryLower.contains("participó") || queryLower.contains("participated");
         
-        if (!asksForDateWherePerson) {
+        if (!asksForDateWherePerson && !asksAboutAttendee) {
+            log().debug("Query does not require person filtering: {}", query);
             return minutes; // No person filtering needed
         }
         
-        // Extract person name from query or NER
-        String personName = null;
-        if (ner != null && ner.has("person")) {
-            try {
-                org.json.JSONArray persons = ner.getJSONArray("person");
-                if (persons.length() > 0) {
-                    personName = persons.getString(0).trim();
-                }
-            } catch (Exception e) {
-                log().debug("Could not extract person from NER", e);
-            }
-        }
-        
-        // If no person in NER, try to extract from query
-        if (personName == null || personName.isEmpty()) {
-            // Look for patterns like "donde [Nombre] actuó" or "where [Name] acted"
-            // Try multiple patterns to capture full names
-            java.util.regex.Pattern[] patterns = {
-                // Pattern 1: "donde [Nombre Completo] actuó"
-                java.util.regex.Pattern.compile(
-                    "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted|fue|was)",
-                    java.util.regex.Pattern.CASE_INSENSITIVE
-                ),
-                // Pattern 2: "donde [Nombre Completo]"
-                java.util.regex.Pattern.compile(
-                    "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
-                    java.util.regex.Pattern.CASE_INSENSITIVE
-                ),
-                // Pattern 3: "[Nombre Completo] actuó como presidente"
-                java.util.regex.Pattern.compile(
-                    "(?i)([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted)\\s+como",
-                    java.util.regex.Pattern.CASE_INSENSITIVE
-                )
-            };
-            
-            for (java.util.regex.Pattern pattern : patterns) {
-                java.util.regex.Matcher matcher = pattern.matcher(query);
-                if (matcher.find()) {
-                    personName = matcher.group(1).trim();
-                    log().debug("Extracted person name using pattern: {}", personName);
-                    break;
-                }
-            }
-        }
+        // Extract person name using the reusable method
+        String personName = extractPersonNameFromQuery(query, ner);
         
         if (personName == null || personName.isEmpty()) {
-            log().debug("Could not extract person name from query for filtering: {}", query);
-            return minutes; // Can't filter, return all
+            log().warn("Could not extract person name from query for filtering: '{}'", query);
+            return minutes; // Can't filter, return all to avoid false negatives
         }
         
-        log().info("Filtering {} minutes by person: {}", minutes.size(), personName);
+        // Normalize names for comparison
+        final String normalizedPersonName = normalizePersonName(personName);
         
-        // Determine if filtering by president or secretary
-        boolean filterByPresident = queryLower.contains("presidente") || queryLower.contains("president");
+        // Determine if filtering by president, secretary, or attendee
+        boolean filterByPresident = queryLower.contains("presidente") || queryLower.contains("president") ||
+                                    queryLower.contains("presidió") || queryLower.contains("presided");
         boolean filterBySecretary = queryLower.contains("secretario") || queryLower.contains("secretary") || 
                                     queryLower.contains("secretaria");
+        boolean filterByAttendee = asksAboutAttendee && !filterByPresident && !filterBySecretary;
         
-        final String finalPersonName = personName.toLowerCase();
-        final boolean byPresident = filterByPresident;
-        final boolean bySecretary = filterBySecretary;
+        log().info("Filtering {} minutes by person '{}' (normalized: '{}'). " +
+                  "Checking president: {}, secretary: {}, attendee: {}", 
+                  minutes.size(), personName, normalizedPersonName, 
+                  filterByPresident, filterBySecretary, filterByAttendee);
         
         List<Minute> filtered = minutes.stream()
                 .filter(minute -> {
-                    if (byPresident && minute.president() != null) {
-                        String president = minute.president().toLowerCase();
-                        // Check if president matches (case-insensitive, allow partial match for full names)
-                        if (president.contains(finalPersonName) || finalPersonName.contains(president)) {
+                    boolean matches = false;
+                    
+                    // Check president
+                    if (filterByPresident && minute.president() != null) {
+                        String presidentNormalized = normalizePersonName(minute.president());
+                        matches = presidentNormalized.equals(normalizedPersonName) ||
+                                 presidentNormalized.contains(normalizedPersonName) ||
+                                 normalizedPersonName.contains(presidentNormalized);
+                        if (matches) {
+                            log().debug("Minute {} person match (president): '{}' matches '{}'", 
+                                      minute.id(), minute.president(), personName);
                             return true;
                         }
                     }
-                    if (bySecretary && minute.secretary() != null) {
-                        String secretary = minute.secretary().toLowerCase();
-                        if (secretary.contains(finalPersonName) || finalPersonName.contains(secretary)) {
+                    
+                    // Check secretary
+                    if (!matches && filterBySecretary && minute.secretary() != null) {
+                        String secretaryNormalized = normalizePersonName(minute.secretary());
+                        matches = secretaryNormalized.equals(normalizedPersonName) ||
+                                 secretaryNormalized.contains(normalizedPersonName) ||
+                                 normalizedPersonName.contains(secretaryNormalized);
+                        if (matches) {
+                            log().debug("Minute {} person match (secretary): '{}' matches '{}'", 
+                                      minute.id(), minute.secretary(), personName);
                             return true;
                         }
                     }
-                    return false;
+                    
+                    // Check attendees
+                    if (!matches && filterByAttendee && minute.attendees() != null && !minute.attendees().isEmpty()) {
+                        for (String attendee : minute.attendees()) {
+                            if (attendee != null) {
+                                String attendeeNormalized = normalizePersonName(attendee);
+                                matches = attendeeNormalized.equals(normalizedPersonName) ||
+                                         attendeeNormalized.contains(normalizedPersonName) ||
+                                         normalizedPersonName.contains(attendeeNormalized);
+                                if (matches) {
+                                    log().debug("Minute {} person match (attendee): '{}' matches '{}'", 
+                                              minute.id(), attendee, personName);
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (!matches) {
+                        log().debug("Minute {} filtered out: person '{}' not found. " +
+                                  "President: '{}', Secretary: '{}', Attendees count: {}", 
+                                  minute.id(), personName,
+                                  minute.president() != null ? minute.president() : "null",
+                                  minute.secretary() != null ? minute.secretary() : "null",
+                                  minute.attendees() != null ? minute.attendees().size() : 0);
+                    }
+                    
+                    return matches;
                 })
                 .collect(Collectors.toList());
         

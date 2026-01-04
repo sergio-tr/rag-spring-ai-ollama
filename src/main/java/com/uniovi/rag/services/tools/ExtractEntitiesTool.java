@@ -31,7 +31,13 @@ public class ExtractEntitiesTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
+        
+        log().info("Executing extract entities query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
+        
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for extract entities query", docs.size());
         List<String> results = new ArrayList<>();
 
         if (ner != null) {
@@ -75,11 +81,18 @@ public class ExtractEntitiesTool extends AbstractTool {
 
         String response;
         if (!results.isEmpty()) {
+            log().debug("Extracted {} entities for query, generating response", results.size());
             response = generateResponseWithLLM(query, results);
         } else {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No entities found for query: '{}' (execution time: {} ms)", query, totalTime);
             response = generateNotFoundResponse(query);
         }
-        return ToolResult.from(response, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated extract entities answer for query: '{}' (execution time: {} ms)", query, totalTime);
+        // Apply formatResponse to clean the response
+        String formattedResponse = formatResponse(response, query);
+        return ToolResult.from(formattedResponse, getClass());
     }
 
     /**
@@ -181,7 +194,11 @@ public class ExtractEntitiesTool extends AbstractTool {
             Provide only the information requested by the user.
             DO NOT mention any technical details like "entities found", "extraction", "analysis", or internal processing.
             DO NOT include phrases like "La extracción de entidades ha identificado" or "Según el análisis".
+            DO NOT repeat the question or any part of it at the beginning.
+            DO NOT start with phrases like "Dime qué...", "The user asked...", etc.
+            Start directly with the answer content.
             Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            Be concise and direct.
             """, query, joinedResults);
         
         try {
@@ -192,11 +209,12 @@ public class ExtractEntitiesTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
+                log().warn("Empty response from LLM in generateResponseWithLLM for query: '{}', using fallback", query);
                 return generateFallbackResponse(query, results);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating response with LLM, using fallback", e);
             return generateFallbackResponse(query, results);

@@ -31,15 +31,17 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "decisions", "topics", "summary"}, ner);
         
-        // Step 1.5: Extract keyword from query and validate it exists
+        // Step 1.5: Extract keyword from query and validate it exists with precise matching
         String keyword = extractTopicFromQuery(query, ner);
         if (keyword != null && !docs.isEmpty()) {
-            log().info("Validating keyword '{}' exists in documents", keyword);
-            if (!validateKeywordExists(docs, keyword)) {
-                log().info("Keyword '{}' not found in any documents for query: {}", keyword, query);
+            log().info("Validating keyword '{}' exists in documents with precise matching", keyword);
+            boolean keywordExists = validateKeywordExistsPrecise(docs, keyword, query);
+            if (!keywordExists) {
+                log().info("Keyword '{}' not found in any documents (precise match) for query: {}", keyword, query);
                 String errorMessage = generateSpecificErrorMessage(query, "keyword", keyword, docs.size(), "The keyword was not found in any documents");
                 return ToolResult.from(errorMessage, getClass());
             }
+            log().info("Keyword '{}' validated as existing in documents", keyword);
         }
         
         // Step 1.6: Filter by year if mentioned in query
@@ -193,9 +195,22 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             Found %d relevant meeting minutes with the following evidence:
             %s
             
-            Write a clear and direct answer in the same language as the query, 
-            indicating if the evidence allows to answer YES, NO, or PARTIALLY to the query.
-            Be concise but informative. Include specific details from the evidence when relevant.
+            CRITICAL INSTRUCTIONS:
+            1. Write a clear and direct answer in the same language as the query
+            2. Answer YES, NO, or PARTIALLY based on the evidence provided
+            3. Be precise: if the query asks about a specific term (e.g., "radiación solar"), 
+               only answer YES if that EXACT term or very close variations are found.
+               Do NOT confuse related terms (e.g., "iluminación" is NOT the same as "radiación solar")
+            4. For queries about "votó" (voted) vs "acordó votar" (agreed to vote):
+               - "votó" means a vote actually happened (past tense, completed action)
+               - "acordó votar" means it was agreed to vote in the future (not yet voted)
+               - Only answer YES for "votó" if evidence shows a vote actually occurred
+            5. Be concise but informative. Include specific details from the evidence when relevant.
+            6. If evidence is ambiguous or unclear, answer PARTIALLY or NO (not YES)
+            
+            Examples:
+            - Query: "¿Se habló de la radiación solar?" → Answer NO if only "iluminación" is mentioned (not the same)
+            - Query: "¿Se votó algún tema?" → Answer YES only if evidence shows a vote occurred, not just "se acordó votar"
             """, query, minuteCount, joined);
         
         try {
@@ -244,7 +259,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             return "";
         }
         
-        // Use LLM to extract relevant evidence based on query
+        // Use LLM to extract relevant evidence based on query with precise matching
         String prompt = String.format("""
             Task: Extract relevant evidence from meeting minute metadata that helps answer the query.
             
@@ -253,7 +268,11 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             Meeting minute metadata:
             %s
             
-            Extract only the fields that are relevant to answering the query.
+            CRITICAL: Extract only evidence that DIRECTLY and PRECISELY relates to the query.
+            - For specific terms (e.g., "radiación solar"), only extract if the EXACT term or very close variations appear
+            - Do NOT extract related but different terms (e.g., "iluminación" is NOT evidence for "radiación solar")
+            - For queries about actions (e.g., "votó"), only extract if the action actually occurred, not just if it was planned
+            
             Format each piece of evidence with its type (Decision/Topic/Summary/Date/Place).
             If no evidence is relevant, return an empty string.
             
@@ -306,5 +325,106 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         // Ultimate fallback
         return String.format("Based on the evidence found (%d pieces), the answer is: YES/NO/PARTIALLY. Evidence: %s",
                           evidence.size(), evidenceText);
+    }
+    
+    /**
+     * Validates keyword exists with precise matching (not just related terms).
+     * For example, "radiación solar" should NOT match "iluminación".
+     * 
+     * @param docs Documents to check
+     * @param keyword Keyword to validate
+     * @param query Original query for context
+     * @return true if keyword exists with precise match, false otherwise
+     */
+    private boolean validateKeywordExistsPrecise(List<Document> docs, String keyword, String query) {
+        if (docs == null || docs.isEmpty() || keyword == null || keyword.trim().isEmpty()) {
+            return false;
+        }
+        
+        log().info("Validating keyword '{}' exists with PRECISE matching in {} documents", keyword, docs.size());
+        
+        // Check a sample of documents (first 5) to avoid too many LLM calls
+        int sampleSize = Math.min(5, docs.size());
+        List<Document> sampleDocs = docs.subList(0, sampleSize);
+        
+        for (Document doc : sampleDocs) {
+            if (doc == null) continue;
+            
+            // Build context from metadata
+            StringBuilder context = new StringBuilder();
+            Map<String, Object> metadata = doc.getMetadata();
+            if (metadata != null) {
+                if (metadata.containsKey("topics")) {
+                    Object topicsObj = metadata.get("topics");
+                    if (topicsObj instanceof List) {
+                        context.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
+                    } else if (topicsObj instanceof String) {
+                        context.append("Topics: ").append(topicsObj).append("\n");
+                    }
+                }
+                if (metadata.containsKey("summary")) {
+                    Object summaryObj = metadata.get("summary");
+                    if (summaryObj != null) {
+                        context.append("Summary: ").append(summaryObj.toString()).append("\n");
+                    }
+                }
+                if (metadata.containsKey("decisions")) {
+                    Object decisionsObj = metadata.get("decisions");
+                    if (decisionsObj instanceof List) {
+                        context.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
+                    } else if (decisionsObj instanceof String) {
+                        context.append("Decisions: ").append(decisionsObj).append("\n");
+                    }
+                }
+            }
+            
+            if (context.length() == 0) {
+                continue;
+            }
+            
+            // Use LLM to check if keyword exists with PRECISE matching
+            String prompt = String.format("""
+                Task: Check if the keyword exists in the document metadata with PRECISE matching.
+                
+                Original query: "%s"
+                Keyword to find: "%s"
+                
+                Document metadata:
+                %s
+                
+                CRITICAL: Only return YES if the EXACT keyword or very close variations appear.
+                Do NOT return YES for related but different terms.
+                
+                Examples:
+                - Keyword: "radiación solar" → YES only if "radiación solar" appears, NOT for "iluminación" or "luz"
+                - Keyword: "seguridad" → YES if "seguridad", "seguro", or "vigilancia" appear (close variations)
+                - Keyword: "ascensor" → YES if "ascensor" or "elevator" appear, NOT for "escalera"
+                
+                Respond with ONLY: YES or NO
+                """, query, keyword, context.toString());
+            
+            try {
+                String result = chatClient
+                        .prompt()
+                        .user(prompt)
+                        .call()
+                        .content()
+                        .strip()
+                        .toUpperCase();
+                
+                // Validate response (YES/NO)
+                boolean isValid = result.contains("YES");
+                if (isValid) {
+                    log().info("Keyword '{}' found with PRECISE match in document {}", keyword, doc.getId());
+                    return true;
+                }
+            } catch (Exception e) {
+                log().warn("Error validating keyword '{}' with precise matching in document: {}", keyword, e.getMessage());
+            }
+        }
+        
+        log().info("Keyword '{}' not found with PRECISE match in sampled documents (checked {} of {} documents)", 
+                  keyword, sampleSize, docs.size());
+        return false;
     }
 }

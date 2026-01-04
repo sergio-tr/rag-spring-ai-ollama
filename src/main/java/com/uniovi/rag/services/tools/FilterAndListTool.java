@@ -32,9 +32,12 @@ public class FilterAndListTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().info("Executing filter and list query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing filter and list query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for filter and list query", docs.size());
         List<String> results = new ArrayList<>();
 
         // Filter documents based on NER if available
@@ -64,11 +67,20 @@ public class FilterAndListTool extends AbstractTool {
 
         String answer;
         if (!results.isEmpty()) {
-            answer = generateFinalAnswer(query, results);
+            log().debug("Found {} results for filter and list query, limiting to 3 for conciseness", results.size());
+            // Limit results to 3 maximum for conciseness
+            List<String> limitedResults = results.stream().limit(3).collect(java.util.stream.Collectors.toList());
+            answer = generateFinalAnswer(query, limitedResults);
         } else {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No results found for filter and list query: '{}' (execution time: {} ms)", query, totalTime);
             answer = generateNotFoundResponse(query);
         }
-        return ToolResult.from(answer, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated filter and list answer for query: '{}' (execution time: {} ms)", query, totalTime);
+        // Apply formatResponse to clean the response
+        String formattedAnswer = formatResponse(answer, query);
+        return ToolResult.from(formattedAnswer, getClass());
     }
 
     /**
@@ -192,7 +204,11 @@ public class FilterAndListTool extends AbstractTool {
             Provide only the information requested by the user.
             DO NOT mention any technical details like "matched the filters", "análisis", "analysis", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            DO NOT repeat the question or any part of it at the beginning.
+            DO NOT start with phrases like "Dime qué...", "The user asked...", etc.
+            Start directly with the answer content.
             Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            Be concise and direct.
             """, query, joined);
         
         try {
@@ -203,11 +219,12 @@ public class FilterAndListTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateFinalAnswer, using fallback");
+                log().warn("Empty response from LLM in generateFinalAnswer for query: '{}', using fallback", query);
                 return generateFallbackAnswer(query, results);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating final answer, using fallback", e);
             return generateFallbackAnswer(query, results);

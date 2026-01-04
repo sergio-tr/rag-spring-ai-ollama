@@ -33,10 +33,19 @@ public class CountDocumentsTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
+        
+        log().info("Executing count documents query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
                 
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for count documents query", docs.size());
         if (docs == null || docs.isEmpty()) {
-            return ToolResult.from(generateFinalAnswerWithLLM(query, List.of()), getClass());
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No documents found for count query: '{}' (execution time: {} ms)", query, totalTime);
+            String response = generateFinalAnswerWithLLM(query, List.of());
+            String formattedResponse = formatResponse(response, query);
+            return ToolResult.from(formattedResponse, getClass());
         }
 
         // 1) Pre-filter with NER temporal context if available (cheap)
@@ -57,8 +66,14 @@ public class CountDocumentsTool extends AbstractTool {
             }
         }
 
+        log().debug("Matched {} documents for count query", matchedIds.size());
         String response = generateFinalAnswerWithLLM(query, matchedIds);
-        return ToolResult.from(response, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated count documents answer for query: '{}' (execution time: {} ms, matched: {})", 
+                  query, totalTime, matchedIds.size());
+        // Apply formatResponse to clean the response
+        String formattedResponse = formatResponse(response, query);
+        return ToolResult.from(formattedResponse, getClass());
     }
 
     /**
@@ -109,19 +124,21 @@ public class CountDocumentsTool extends AbstractTool {
         String prompt = String.format("""
             You are answering a user question about meeting minutes.
             Respond in the SAME language as the user's question.
-            Do NOT repeat the user's question.
+            
+            CRITICAL RULES:
+            1. DO NOT repeat the user's question or any part of it at the beginning
+            2. DO NOT start with phrases like "The user asked...", "La pregunta era...", etc.
+            3. Start directly with the answer content
+            4. Be concise and direct - maximum 2-3 sentences
+            5. If there are no matching minutes, answer clearly that no meeting minutes match the conditions
+            6. Otherwise, answer with the count
+            7. If the user is asking "which minutes", include the list
 
             User question:
             "%s"
 
             Matching meeting minutes (identifiers):
             %s
-
-            Task:
-            - If there are no matching minutes, answer clearly that no meeting minutes match the conditions.
-            - Otherwise, answer with the count.
-            - If the user is asking "which minutes", include the list.
-            Keep it concise.
             """, query, idsBlock);
 
         try {

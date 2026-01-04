@@ -30,9 +30,12 @@ public class FindParagraphTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().info("Executing find paragraph query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing find paragraph query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for find paragraph query", docs.size());
         List<String> results = new ArrayList<>();
 
         // Try with NER filtering if available
@@ -77,11 +80,21 @@ public class FindParagraphTool extends AbstractTool {
 
         String answer;
         if (!results.isEmpty()) {
-            answer = generateFinalAnswer(query, results);
+            log().debug("Found {} paragraphs for query, limiting to 3 for conciseness", results.size());
+            // Limit paragraphs to 3 maximum for conciseness
+            List<String> limitedResults = results.stream().limit(3).collect(java.util.stream.Collectors.toList());
+            answer = generateFinalAnswer(query, limitedResults);
         } else {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No paragraphs found for query: '{}' (execution time: {} ms)", query, totalTime);
             answer = generateNotFoundResponse(query);
         }
-        return ToolResult.from(answer, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated find paragraph answer for query: '{}' (execution time: {} ms, paragraphs: {})", 
+                  query, totalTime, results.size());
+        // Apply formatResponse to clean the response
+        String formattedAnswer = formatResponse(answer, query);
+        return ToolResult.from(formattedAnswer, getClass());
     }
 
     /**
@@ -233,6 +246,10 @@ public class FindParagraphTool extends AbstractTool {
             
             Write a brief and clear answer in the same language as the query, 
             summarizing the relevant information from all the paragraphs found.
+            DO NOT repeat the question or any part of it at the beginning.
+            DO NOT start with phrases like "Dime qué...", "The user asked...", etc.
+            Start directly with the answer content.
+            Be concise - maximum 3-4 sentences.
             """, query, joined);
         
         try {
@@ -243,11 +260,12 @@ public class FindParagraphTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateFinalAnswer, using fallback");
+                log().warn("Empty response from LLM in generateFinalAnswer for query: '{}', using fallback", query);
                 return generateFallbackAnswer(query, results);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating final answer, using fallback", e);
             return generateFallbackAnswer(query, results);
@@ -265,6 +283,8 @@ public class FindParagraphTool extends AbstractTool {
             No relevant paragraphs were found for this query in the available meeting minutes.
             
             Write a polite response in the same language as the query explaining that no relevant paragraphs were found.
+            Be concise and direct.
+            DO NOT repeat the question or any part of it.
             """, query);
         
         try {

@@ -215,11 +215,11 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             return generateNotFoundMessage(query);
         }
 
-        // Build topic summary content
+        // Build topic summary content (limit to 3 meetings max, 250 chars per summary)
         StringBuilder summaryContent = new StringBuilder();
         summaryContent.append(String.format("Based on %d meetings:\n\n", results.size()));
 
-        results.stream().limit(5).forEach(r -> {
+        results.stream().limit(3).forEach(r -> {
             if (r.getDate() != null) {
                 summaryContent.append("Date: ").append(r.getDate());
                 if (r.getPlace() != null) {
@@ -228,7 +228,8 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                 summaryContent.append("\n");
             }
             String txt = r.getTopicSummary() != null ? r.getTopicSummary() : "";
-            summaryContent.append(txt.length() > 400 ? txt.substring(0, 400) + "..." : txt);
+            // Limit to 250 characters per summary for conciseness
+            summaryContent.append(txt.length() > 250 ? txt.substring(0, 250) + "..." : txt);
             summaryContent.append("\n\n");
         });
 
@@ -238,15 +239,32 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             Topic summary information:
             %s
             
-            Format and present this topic summary in the EXACT SAME LANGUAGE as the user's question.
-            Keep the structure clear and readable.
-            Do not repeat the question.
+            CRITICAL INSTRUCTIONS:
+            1. Format and present this topic summary in the EXACT SAME LANGUAGE as the user's question
+            2. Be CONCISE - maximum 3-4 sentences total, focus on key points only
+            3. Keep the structure clear and readable
+            4. DO NOT repeat the question or any part of it at the beginning
+            5. DO NOT start with phrases like "Resume lo tratado...", "Dime qué...", "The user asked...", etc.
+            6. Start directly with the summary content
+            7. If the question starts with "Resume", "Dime", "Busca", etc., do NOT include those words in your response
+            8. Remove redundant information and focus on what's most relevant to the query
+            9. If multiple meetings, summarize the key points across all meetings, not each one individually
+            
+            Examples of CORRECT responses:
+            - Query: "Resume lo tratado en las reuniones sobre la climatización de la piscina"
+              Correct: "Basado en 5 reuniones: [concise summary of key points]"
+              Wrong: "Resume lo tratado en las reuniones sobre la climatización de la piscina.\\n\\nBasado en 5 reuniones: [summary]"
+            
+            - Query: "Dime qué se dijo sobre el ascensor"
+              Correct: "Basado en 5 reuniones: [concise summary]"
+              Wrong: "Dime qué se dijo sobre el ascensor.\\n\\nBasado en 5 reuniones: [summary]"
             """, query, summaryContent.toString());
 
         try {
             String response = getLLMResponseCached(prompt);
             if (response != null && !response.trim().isEmpty()) {
-                return response.trim();
+                // Post-process to format and clean response
+                return formatResponse(response, query);
             }
         } catch (Exception e) {
             log().warn("Error generating topic summary answer with LLM, using raw content", e);
@@ -269,39 +287,162 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             return minutes;
         }
         
-        String topicLower = topic.toLowerCase();
+        String topicLower = normalizePersonName(topic); // Reuse normalizePersonName for topic normalization
+        log().info("Filtering {} minutes by topic '{}' (normalized: '{}') with STRICT relevance threshold", 
+                  minutes.size(), topic, topicLower);
         
-        log().info("Filtering {} minutes by topic '{}' with relevance threshold", minutes.size(), topic);
+        // Extract key terms from compound topics (e.g., "climatización de la piscina" -> ["climatización", "piscina"])
+        List<String> keyTerms = extractKeyTermsFromTopic(topicLower);
+        log().debug("Extracted key terms from topic '{}': {}", topic, keyTerms);
+        
+        // For compound topics, require that ALL key terms appear (not just one)
+        boolean isCompoundTopic = keyTerms.size() > 1;
+        double relevanceThreshold = isCompoundTopic ? 0.8 : 0.6; // Higher threshold for compound topics
         
         List<Minute> filtered = minutes.stream()
                 .filter(minute -> {
-                    // Check if topic is mentioned in topics list (exact or partial match)
-                    boolean inTopics = false;
-                    if (minute.topics() != null) {
-                        inTopics = minute.topics().stream()
-                                .anyMatch(t -> t != null && t.toLowerCase().contains(topicLower));
+                    double relevanceScore = calculateTopicRelevance(minute, topicLower, keyTerms, isCompoundTopic);
+                    boolean passes = relevanceScore >= relevanceThreshold;
+                    
+                    if (passes) {
+                        log().debug("Minute {} passed topic filter: topic '{}', relevance score: {:.2f}", 
+                                  minute.id(), topic, relevanceScore);
+                    } else {
+                        log().debug("Minute {} filtered out: topic '{}', relevance score: {:.2f} < threshold {:.2f}", 
+                                  minute.id(), topic, String.format("%.2f", relevanceScore), String.format("%.2f", relevanceThreshold));
                     }
                     
-                    // Check if topic is mentioned in decisions (exact or partial match)
-                    boolean inDecisions = false;
-                    if (minute.decisions() != null) {
-                        inDecisions = minute.decisions().stream()
-                                .anyMatch(d -> d != null && d.toLowerCase().contains(topicLower));
-                    }
-                    
-                    // Check if topic is mentioned in summary (exact or partial match)
-                    boolean inSummary = minute.summary() != null && 
-                                       minute.summary().toLowerCase().contains(topicLower);
-                    
-                    // Topic must be mentioned in at least one of these fields (relevance threshold)
-                    return inTopics || inDecisions || inSummary;
+                    return passes;
                 })
                 .collect(Collectors.toList());
         
-        log().info("Filtered {} minutes by topic '{}', {} remaining (relevance threshold met)", 
-                  minutes.size(), topic, filtered.size());
+        log().info("Filtered {} minutes by topic '{}' with STRICT threshold, {} remaining (threshold: {})", 
+                  minutes.size(), topic, filtered.size(), String.format("%.2f", relevanceThreshold));
         
         return filtered;
+    }
+    
+    /**
+     * Calculates relevance score for a topic in a minute.
+     * For compound topics, requires that all key terms appear.
+     * 
+     * @param minute Minute to check
+     * @param topicNormalized Normalized topic string
+     * @param keyTerms List of key terms extracted from topic
+     * @param isCompoundTopic Whether this is a compound topic (multiple terms)
+     * @return Relevance score (0.0 to 1.0)
+     */
+    private double calculateTopicRelevance(Minute minute, String topicNormalized, List<String> keyTerms, boolean isCompoundTopic) {
+        if (keyTerms.isEmpty()) {
+            return 0.0;
+        }
+        
+        int foundTerms = 0;
+        int totalChecks = 0;
+        
+        // Check in topics
+        if (minute.topics() != null) {
+            for (String t : minute.topics()) {
+                if (t != null) {
+                    String topicField = normalizePersonName(t);
+                    totalChecks++;
+                    if (isCompoundTopic) {
+                        // For compound topics, check if ALL key terms appear
+                        boolean allTermsFound = keyTerms.stream()
+                                .allMatch(term -> topicField.contains(term));
+                        if (allTermsFound) {
+                            foundTerms += keyTerms.size();
+                        }
+                    } else {
+                        // For simple topics, check if the topic appears
+                        if (topicField.contains(topicNormalized)) {
+                            foundTerms++;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Check in decisions
+        if (minute.decisions() != null) {
+            for (String d : minute.decisions()) {
+                if (d != null) {
+                    String decisionField = normalizePersonName(d);
+                    totalChecks++;
+                    if (isCompoundTopic) {
+                        boolean allTermsFound = keyTerms.stream()
+                                .allMatch(term -> decisionField.contains(term));
+                        if (allTermsFound) {
+                            foundTerms += keyTerms.size();
+                        }
+                    } else {
+                        if (decisionField.contains(topicNormalized)) {
+                            foundTerms++;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Check in summary
+        if (minute.summary() != null) {
+            String summaryField = normalizePersonName(minute.summary());
+            totalChecks++;
+            if (isCompoundTopic) {
+                boolean allTermsFound = keyTerms.stream()
+                        .allMatch(term -> summaryField.contains(term));
+                if (allTermsFound) {
+                    foundTerms += keyTerms.size();
+                }
+            } else {
+                if (summaryField.contains(topicNormalized)) {
+                    foundTerms++;
+                }
+            }
+        }
+        
+        // Calculate relevance score
+        if (totalChecks == 0) {
+            return 0.0;
+        }
+        
+        if (isCompoundTopic) {
+            // For compound topics, require that at least one field contains ALL terms
+            return foundTerms >= keyTerms.size() ? 1.0 : 0.0;
+        } else {
+            // For simple topics, calculate based on how many fields contain the topic
+            return (double) foundTerms / Math.max(totalChecks, 1);
+        }
+    }
+    
+    /**
+     * Extracts key terms from a topic phrase for semantic matching.
+     * Similar to the method in MetadataCompareTool but adapted for this use case.
+     */
+    private List<String> extractKeyTermsFromTopic(String topic) {
+        if (topic == null || topic.isEmpty()) {
+            return Collections.emptyList();
+        }
+        
+        List<String> keyTerms = new ArrayList<>();
+        
+        // Split by common prepositions and conjunctions
+        String[] parts = topic.split("\\s+(de|del|la|el|y|and|con|with|en|in|sobre|about)\\s+");
+        for (String part : parts) {
+            String trimmed = part.trim().toLowerCase();
+            if (!trimmed.isEmpty() && trimmed.length() > 2) { // Ignore very short words
+                keyTerms.add(trimmed);
+            }
+        }
+        
+        // Also add the full topic as a key term
+        keyTerms.add(topic.toLowerCase());
+        
+        // Remove duplicates and sort by length (longer terms first for more specific matching)
+        return keyTerms.stream()
+                .distinct()
+                .sorted((a, b) -> Integer.compare(b.length(), a.length()))
+                .collect(Collectors.toList());
     }
     
     /**

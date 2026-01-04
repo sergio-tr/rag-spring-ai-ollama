@@ -234,35 +234,50 @@ public class ProcessQueryService implements QueryService {
             return null;
         }
         
-        log().debug("Routing query to tool: {} for query type: {}", tool.getClass().getSimpleName(), queryType);
+        log().info("Routing query to tool: {} for query type: {}. Query: '{}'", 
+                  tool.getClass().getSimpleName(), queryType, query.length() > 100 ? query.substring(0, 100) + "..." : query);
 
         // Retry logic for tool execution
         Exception lastException = null;
         for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
             try {
                 if (attempt > 0) {
-                    log().info("Retry attempt {} for tool: {}", attempt, queryType);
+                    log().warn("Retry attempt {} for tool: {} (query: '{}')", 
+                              attempt, queryType, query.length() > 50 ? query.substring(0, 50) + "..." : query);
                     Thread.sleep(RETRY_DELAY_MS * attempt);
                 }
                 
-                log().info("Executing tool: {} (attempt {})", queryType, attempt + 1);
+                log().info("Executing tool: {} (attempt {} of {}) for query type: {}", 
+                          queryType, attempt + 1, MAX_RETRIES + 1, queryType);
+                long startTime = System.currentTimeMillis();
                 ToolResult result = featureConfig.isNerEnabled() ?
                         tool.execute(ToolExecutionContext.of(query, queryType, nerEntities)) :
                         tool.execute(ToolExecutionContext.of(query, queryType));
+                long executionTime = System.currentTimeMillis() - startTime;
+                log().debug("Tool {} execution completed in {} ms", queryType, executionTime);
                 
                 if (result != null && result.result() != null && !result.result().trim().isEmpty()) {
+                    String originalResult = result.result();
+                    log().debug("Tool {} returned result (length: {} chars) on attempt {}. Preview: {}", 
+                              queryType, originalResult.length(), attempt + 1,
+                              originalResult.length() > 100 ? originalResult.substring(0, 100) + "..." : originalResult);
+                    
                     // Validate tool result
-                    String validatedResult = LLMResponseValidator.validateAndClean(result.result(), "Tool-" + queryType);
+                    String validatedResult = LLMResponseValidator.validateAndClean(originalResult, "Tool-" + queryType);
                     if (validatedResult != null && !validatedResult.trim().isEmpty()) {
-                        log().info("Successfully executed tool {} on attempt {}", queryType, attempt + 1);
+                        log().info("Successfully executed tool {} on attempt {} (execution time: {} ms). " +
+                                  "Result length: {} chars, validated length: {} chars", 
+                                  queryType, attempt + 1, executionTime, 
+                                  originalResult.length(), validatedResult.length());
                         // Create new ToolResult with validated result, preserving original source
                         // Note: Informative messages (like "no documents found") are considered valid responses
                         return new ToolResult(validatedResult, result.source());
                     } else {
                         log().warn("Tool {} returned result that failed validation on attempt {}. " +
-                                  "Original result length: {}, Validated result: null or empty. " +
-                                  "This may indicate LLMResponseValidator rejected the response.",
-                                  queryType, attempt + 1, result.result().length());
+                                  "Original result length: {} chars, Validated result: null or empty. " +
+                                  "Original preview: {}. This may indicate LLMResponseValidator rejected the response.",
+                                  queryType, attempt + 1, originalResult.length(),
+                                  originalResult.length() > 200 ? originalResult.substring(0, 200) + "..." : originalResult);
                         if (attempt < MAX_RETRIES) {
                             continue; // Retry
                         }
@@ -271,8 +286,10 @@ public class ProcessQueryService implements QueryService {
                     String resultInfo = result == null ? "null" : 
                                       (result.result() == null ? "result() is null" : 
                                       (result.result().trim().isEmpty() ? "result() is empty" : "unknown"));
-                    log().warn("Tool {} returned {} on attempt {}. Tool class: {}", 
-                              queryType, resultInfo, attempt + 1, tool.getClass().getSimpleName());
+                    log().warn("Tool {} returned {} on attempt {} of {}. Tool class: {}. Query: '{}'", 
+                              queryType, resultInfo, attempt + 1, MAX_RETRIES + 1, 
+                              tool.getClass().getSimpleName(),
+                              query.length() > 50 ? query.substring(0, 50) + "..." : query);
                     if (attempt < MAX_RETRIES) {
                         continue; // Retry
                     }

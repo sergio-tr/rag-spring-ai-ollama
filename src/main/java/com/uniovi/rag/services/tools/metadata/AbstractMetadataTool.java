@@ -786,76 +786,143 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String endTimeStr = minute.endTime();
         
         if (startTimeStr == null || startTimeStr.trim().isEmpty()) {
-            log().warn("Cannot calculate duration: startTime is null or empty for minute {}", minute.id());
+            log().warn("Cannot calculate duration: startTime is null or empty for minute {} (date: {})", 
+                      minute.id(), minute.date());
             return 0;
         }
         
         if (endTimeStr == null || endTimeStr.trim().isEmpty()) {
-            log().warn("Cannot calculate duration: endTime is null or empty for minute {}", minute.id());
+            log().warn("Cannot calculate duration: endTime is null or empty for minute {} (date: {})", 
+                      minute.id(), minute.date());
             return 0;
         }
         
+        // Normalize time strings before parsing
+        String normalizedStart = normalizeTimeString(startTimeStr);
+        String normalizedEnd = normalizeTimeString(endTimeStr);
+        
+        if (normalizedStart == null || normalizedEnd == null) {
+            log().warn("Cannot normalize times for duration calculation: startTime='{}', endTime='{}' for minute {} (date: {})", 
+                      startTimeStr, endTimeStr, minute.id(), minute.date());
+            return 0;
+        }
+        
+        log().debug("Normalized times for minute {}: '{}' -> '{}', '{}' -> '{}'", 
+                   minute.id(), startTimeStr, normalizedStart, endTimeStr, normalizedEnd);
+        
         try {
-            // Normalize time strings (remove extra spaces, ensure HH:mm format)
-            startTimeStr = startTimeStr.trim();
-            endTimeStr = endTimeStr.trim();
-            
             // Try parsing with TIME_FORMATTER (HH:mm)
-            LocalTime start = LocalTime.parse(startTimeStr, TIME_FORMATTER);
-            LocalTime end = LocalTime.parse(endTimeStr, TIME_FORMATTER);
+            LocalTime start = LocalTime.parse(normalizedStart, TIME_FORMATTER);
+            LocalTime end = LocalTime.parse(normalizedEnd, TIME_FORMATTER);
             
             // Validate: end time should be after start time
             if (end.isBefore(start) || end.equals(start)) {
-                log().warn("Invalid duration: endTime ({}) is not after startTime ({}) for minute {}", 
-                          endTimeStr, startTimeStr, minute.id());
+                log().warn("Invalid duration: endTime ({}) is not after startTime ({}) for minute {} (date: {})", 
+                          normalizedEnd, normalizedStart, minute.id(), minute.date());
                 // Check if end time is on next day (e.g., meeting ends at 01:00 next day)
                 if (end.isBefore(start)) {
                     // Assume next day: add 24 hours
                     int duration = (24 * 60) - (start.getHour() * 60 + start.getMinute()) + 
                                   (end.getHour() * 60 + end.getMinute());
-                    log().debug("Calculated duration assuming next day: {} minutes for minute {}", 
-                              duration, minute.id());
-                    return duration;
+                    log().debug("Calculated duration assuming next day: {} minutes ({}h{}m) for minute {} (date: {})", 
+                              duration, duration / 60, duration % 60, minute.id(), minute.date());
+                    return duration > 0 && duration <= 24 * 60 ? duration : 0;
                 }
                 return 0;
             }
             
-            int duration = (end.getHour() * 60 + end.getMinute()) - (start.getHour() * 60 + start.getMinute());
+            // Calculate duration in minutes
+            int startMinutes = start.getHour() * 60 + start.getMinute();
+            int endMinutes = end.getHour() * 60 + end.getMinute();
+            int duration = endMinutes - startMinutes;
             
             // Validate: duration should be reasonable (between 1 minute and 24 hours)
             if (duration < 1) {
-                log().warn("Invalid duration: {} minutes (too short) for minute {}", duration, minute.id());
+                log().warn("Invalid duration: {} minutes (too short) for minute {} (date: {}, start: {}, end: {})", 
+                          duration, minute.id(), minute.date(), normalizedStart, normalizedEnd);
                 return 0;
             }
             if (duration > 24 * 60) {
-                log().warn("Invalid duration: {} minutes (too long, >24h) for minute {}", duration, minute.id());
+                log().warn("Invalid duration: {} minutes (too long, >24h) for minute {} (date: {}, start: {}, end: {})", 
+                          duration, minute.id(), minute.date(), normalizedStart, normalizedEnd);
                 return 0;
             }
             
-            log().debug("Calculated duration: {} minutes ({} - {}) for minute {}", 
-                      duration, startTimeStr, endTimeStr, minute.id());
+            log().info("Calculated duration: {} minutes ({}h{}m) for minute {} (date: {}, start: {}, end: {})", 
+                      duration, duration / 60, duration % 60, minute.id(), minute.date(), normalizedStart, normalizedEnd);
             return duration;
         } catch (DateTimeParseException e) {
-            log().warn("Cannot parse times for duration calculation: startTime='{}', endTime='{}' for minute {}. Error: {}", 
-                      startTimeStr, endTimeStr, minute.id(), e.getMessage());
+            log().warn("Cannot parse normalized times for duration calculation: startTime='{}', endTime='{}' for minute {} (date: {}). Error: {}", 
+                      normalizedStart, normalizedEnd, minute.id(), minute.date(), e.getMessage());
             
             // Try alternative formats
             try {
                 // Try HH:mm:ss format
-                LocalTime start = LocalTime.parse(startTimeStr, 
+                LocalTime start = LocalTime.parse(normalizedStart, 
                     java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
-                LocalTime end = LocalTime.parse(endTimeStr, 
+                LocalTime end = LocalTime.parse(normalizedEnd, 
                     java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
-                int duration = (end.getHour() * 60 + end.getMinute()) - (start.getHour() * 60 + start.getMinute());
-                log().debug("Parsed times with HH:mm:ss format, duration: {} minutes", duration);
+                int startMinutes = start.getHour() * 60 + start.getMinute();
+                int endMinutes = end.getHour() * 60 + end.getMinute();
+                int duration = endMinutes - startMinutes;
+                log().debug("Parsed times with HH:mm:ss format, duration: {} minutes ({}h{}m)", 
+                          duration, duration / 60, duration % 60);
                 return duration > 0 && duration <= 24 * 60 ? duration : 0;
             } catch (DateTimeParseException e2) {
-                log().warn("Failed to parse times with alternative format for minute {}", minute.id());
+                log().warn("Failed to parse times with alternative format for minute {} (date: {})", 
+                          minute.id(), minute.date());
                 return 0;
             }
         } catch (Exception ex) {
-            log().error("Unexpected error calculating duration for minute {}: {}", minute.id(), ex.getMessage(), ex);
+            log().error("Unexpected error calculating duration for minute {} (date: {}): {}", 
+                       minute.id(), minute.date(), ex.getMessage(), ex);
             return 0;
+        }
+    }
+    
+    /**
+     * Normalizes a time string to HH:mm format.
+     * Handles various input formats and normalizes them consistently.
+     * 
+     * @param timeStr Time string in any format (e.g., "19:00", "19:00:00", "19.00", "7:00 PM")
+     * @return Normalized time string in HH:mm format, or null if cannot be parsed
+     */
+    private String normalizeTimeString(String timeStr) {
+        if (timeStr == null || timeStr.trim().isEmpty()) {
+            return null;
+        }
+        
+        String normalized = timeStr.trim();
+        
+        // Remove common prefixes/suffixes
+        normalized = normalized.replaceAll("(?i)^(hora|time|h):\\s*", "");
+        normalized = normalized.replaceAll("\\s*$", "");
+        
+        // Replace dots with colons (e.g., "19.00" -> "19:00")
+        normalized = normalized.replace('.', ':');
+        
+        // Try to parse and reformat to HH:mm
+        try {
+            // Try HH:mm format first
+            LocalTime time = LocalTime.parse(normalized, TIME_FORMATTER);
+            return time.format(TIME_FORMATTER);
+        } catch (DateTimeParseException ignored) {
+            // Try HH:mm:ss format
+            try {
+                LocalTime time = LocalTime.parse(normalized, 
+                    java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
+                return time.format(TIME_FORMATTER);
+            } catch (DateTimeParseException ignored2) {
+                // Try H:mm format (single digit hour)
+                try {
+                    LocalTime time = LocalTime.parse(normalized, 
+                        java.time.format.DateTimeFormatter.ofPattern("H:mm"));
+                    return time.format(TIME_FORMATTER);
+                } catch (DateTimeParseException ignored3) {
+                    log().debug("Could not parse time string '{}' with any standard format", timeStr);
+                    return null;
+                }
+            }
         }
     }
 
@@ -2158,15 +2225,22 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Determine:
             1. Does the query ask about number of attendees/participants/people present?
             2. If yes, what comparison operator is used? (less than, more than, equal to, etc.)
-            3. What is the threshold number mentioned?
+            3. What is the threshold number mentioned? (extract the numeric value, e.g., "diez" = 10, "ten" = 10, "15" = 15)
             
             Examples:
-            - "En cuántas actas participaron menos de diez personas" → operator: "less_than", threshold: 10
-            - "How many meetings had more than 15 attendees" → operator: "more_than", threshold: 15
-            - "¿Cuántas reuniones tuvieron exactamente 20 asistentes?" → operator: "equal", threshold: 20
-            - "Número de actas" → null (no comparison)
+            - "En cuántas actas participaron menos de diez personas" → {"isAttendeesQuery": true, "operator": "less_than", "threshold": 10}
+            - "En cuántas actas participaron menos de 10 personas" → {"isAttendeesQuery": true, "operator": "less_than", "threshold": 10}
+            - "How many meetings had more than 15 attendees" → {"isAttendeesQuery": true, "operator": "more_than", "threshold": 15}
+            - "¿Cuántas reuniones tuvieron exactamente 20 asistentes?" → {"isAttendeesQuery": true, "operator": "equal", "threshold": 20}
+            - "Número de actas" → {"isAttendeesQuery": false}
+            - "Cuántas actas hay" → {"isAttendeesQuery": false}
             
-            Respond with JSON format:
+            IMPORTANT: 
+            - Extract numeric values correctly (e.g., "diez" = 10, "veinte" = 20, "quince" = 15)
+            - Recognize comparison operators: "menos de" = less_than, "más de" = more_than, "exactamente" = equal
+            - Only return true if the query explicitly asks about NUMBER of attendees with a comparison
+            
+            Respond with JSON format ONLY (no additional text):
             {
               "isAttendeesQuery": true/false,
               "operator": "less_than" | "more_than" | "equal" | null,
@@ -2266,15 +2340,20 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             
             Query (may be in any language): "%s"
             
-            Examples that require topic + person filtering:
+            Examples that require topic + person filtering (BOTH conditions must be met):
             - "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez" → YES
-            - "Asistentes de reuniones donde se habló de climatización y que fueran presididas por Natalia" → YES
+            - "Asistentes de reuniones donde se habló de climatización y que fueran presididas por Natalia Vázquez Gutiérrez" → YES
             - "Actas sobre seguridad presididas por [nombre]" → YES
+            - "Reuniones donde se trató el tema X y fueron presididas por Y" → YES
+            - "Actas que mencionan Z y fueron presididas por W" → YES
             
             Examples that do NOT require this filtering:
-            - "Dime qué actas mencionan el ascensor" → NO (only topic)
-            - "¿Quién presidió la reunión del 25 de agosto?" → NO (only person/date)
-            - "Actas sobre seguridad" → NO (only topic)
+            - "Dime qué actas mencionan el ascensor" → NO (only topic, no person filter)
+            - "¿Quién presidió la reunión del 25 de agosto?" → NO (only person/date, no topic filter)
+            - "Actas sobre seguridad" → NO (only topic, no person filter)
+            - "Actas presididas por Juan" → NO (only person, no topic filter)
+            
+            IMPORTANT: Both a topic AND a person must be mentioned for filtering. If only one is mentioned, respond NO.
             
             Respond with ONLY: YES or NO
             """, query);
@@ -2289,20 +2368,138 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .toUpperCase();
             
             boolean result = response.contains("YES");
-            log().debug("Detected topic + person filter requirement: {} for query: {}", result, query);
+            log().info("Detected topic + person filter requirement: {} for query: '{}'", result, query);
             return result;
         } catch (Exception e) {
-            log().debug("Error detecting topic + person filter with LLM: {}", e.getMessage());
+            log().warn("Error detecting topic + person filter with LLM: {}", e.getMessage());
             // Fallback to simple check
             String queryLower = query.toLowerCase();
             boolean hasTopic = queryLower.contains("mencionan") || queryLower.contains("hablaron") ||
                               queryLower.contains("menciona") || queryLower.contains("habló") ||
-                              queryLower.contains("sobre") || queryLower.contains("about");
+                              queryLower.contains("sobre") || queryLower.contains("about") ||
+                              queryLower.contains("trat") || queryLower.contains("discut");
             boolean hasPerson = queryLower.contains("presididas por") || queryLower.contains("presidida por") ||
-                               queryLower.contains("presidió") || queryLower.contains("presided");
-            boolean hasAnd = queryLower.contains(" y ") || queryLower.contains(" and ");
-            return hasTopic && hasPerson && hasAnd;
+                               queryLower.contains("presidió") || queryLower.contains("presided") ||
+                               queryLower.contains("presididas") || queryLower.contains("presidida");
+            boolean hasAnd = queryLower.contains(" y ") || queryLower.contains(" and ") ||
+                            queryLower.contains("donde") || queryLower.contains("where");
+            boolean result = hasTopic && hasPerson && hasAnd;
+            log().debug("Fallback detection: topic={}, person={}, and={}, result={}", hasTopic, hasPerson, hasAnd, result);
+            return result;
         }
+    }
+    
+    /**
+     * Normalizes a person name for comparison (lowercase, trim, remove extra spaces).
+     * This helps match names with variations in spacing or capitalization.
+     */
+    protected String normalizePersonName(String name) {
+        if (name == null || name.trim().isEmpty()) {
+            return "";
+        }
+        // Normalize: lowercase, trim, and collapse multiple spaces
+        return name.trim().toLowerCase().replaceAll("\\s+", " ");
+    }
+    
+    /**
+     * Extracts person name from query or NER using multiple strategies.
+     * Tries NER first, then regex patterns, then LLM as fallback.
+     * 
+     * @param query User query
+     * @param ner NER entities (may be null)
+     * @return Extracted person name or null if not found
+     */
+    protected String extractPersonNameFromQuery(String query, JSONObject ner) {
+        if (query == null || query.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Strategy 1: Try NER first
+        if (ner != null && ner.has("person")) {
+            try {
+                org.json.JSONArray persons = ner.getJSONArray("person");
+                if (persons.length() > 0) {
+                    String personName = persons.getString(0).trim();
+                    if (!personName.isEmpty()) {
+                        log().debug("Extracted person name from NER: {}", personName);
+                        return personName;
+                    }
+                }
+            } catch (Exception e) {
+                log().debug("Could not extract person from NER", e);
+            }
+        }
+        
+        // Strategy 2: Try regex patterns for common Spanish/English patterns
+        java.util.regex.Pattern[] patterns = {
+            // Pattern 1: "presididas por [Nombre Completo]" or "presidida por [Nombre Completo]"
+            java.util.regex.Pattern.compile(
+                "(?i)(?:presididas?|presidió|presided)\\s+por\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
+                java.util.regex.Pattern.CASE_INSENSITIVE
+            ),
+            // Pattern 2: "donde [Nombre Completo] actuó" or "where [Name] acted"
+            java.util.regex.Pattern.compile(
+                "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted|fue|was)",
+                java.util.regex.Pattern.CASE_INSENSITIVE
+            ),
+            // Pattern 3: "[Nombre Completo] actuó como presidente"
+            java.util.regex.Pattern.compile(
+                "(?i)([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted)\\s+como",
+                java.util.regex.Pattern.CASE_INSENSITIVE
+            ),
+            // Pattern 4: "donde [Nombre Completo]" (more general)
+            java.util.regex.Pattern.compile(
+                "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
+                java.util.regex.Pattern.CASE_INSENSITIVE
+            )
+        };
+        
+        for (java.util.regex.Pattern pattern : patterns) {
+            java.util.regex.Matcher matcher = pattern.matcher(query);
+            if (matcher.find()) {
+                String personName = matcher.group(1).trim();
+                if (!personName.isEmpty()) {
+                    log().debug("Extracted person name using regex pattern: {}", personName);
+                    return personName;
+                }
+            }
+        }
+        
+        // Strategy 3: Use LLM as fallback for complex cases
+        String prompt = String.format("""
+            Task: Extract the person name from this query about meeting minutes.
+            
+            Query (may be in any language): "%s"
+            
+            Extract the full name of the person mentioned in the query.
+            Examples:
+            - "presididas por Juan Pérez Gutiérrez" → "Juan Pérez Gutiérrez"
+            - "donde Natalia Vázquez Gutiérrez actuó" → "Natalia Vázquez Gutiérrez"
+            - "fue presidida por Manuel Ortega Medina" → "Manuel Ortega Medina"
+            
+            Return ONLY the person's full name, or "NONE" if no person is mentioned.
+            Do not include explanations or additional text.
+            """, query);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip();
+            
+            if (response != null && !response.trim().isEmpty() && !response.trim().equalsIgnoreCase("NONE")) {
+                String personName = response.trim();
+                log().debug("Extracted person name using LLM: {}", personName);
+                return personName;
+            }
+        } catch (Exception e) {
+            log().debug("Error extracting person name with LLM: {}", e.getMessage());
+        }
+        
+        log().warn("Could not extract person name from query: '{}'", query);
+        return null;
     }
     
     /**
@@ -3295,7 +3492,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     }
 
                     if (minuteDate == null) {
-                        log().debug("Could not parse date '{}' for minute {}", minute.date(), minute.id());
+                        log().warn("Could not parse date '{}' for minute {} (ID: {}). " +
+                                  "This may indicate an unsupported date format. Excluding from results.", 
+                                  minute.date(), minute.id(), minute.id());
                         return false; // Can't parse, exclude from results when filtering by date
                     }
 
@@ -3485,25 +3684,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (dateValue != null) {
             String dateStr = dateValue.toString().trim();
             if (!dateStr.isEmpty()) {
-                // Try to parse and normalize to ISO (parseDateFlexible handles case normalization)
+                // Try to parse and normalize to ISO (parseDateFlexible handles case normalization internally)
                 LocalDate parsed = parseDateFlexible(dateStr);
                 if (parsed != null) {
                     String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
-                    log().debug("Parsed and normalized date field for document {}: {} -> {}", 
+                    log().debug("Parsed and normalized date field for document {}: '{}' -> {}", 
                               doc.getId(), dateStr, normalized);
                     return normalized;
-                }
-                
-                // Fallback: Try normalizing to lowercase manually and retry
-                String lowerDateStr = dateStr.toLowerCase();
-                if (!lowerDateStr.equals(dateStr)) {
-                    parsed = parseDateFlexible(lowerDateStr);
-                    if (parsed != null) {
-                        String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
-                        log().debug("Parsed and normalized date field (after lowercase normalization) for document {}: {} -> {}", 
-                                  doc.getId(), dateStr, normalized);
-                        return normalized;
-                    }
                 }
                 
                 // Check if already in ISO format
@@ -3512,7 +3699,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     log().debug("Date field for document {} is already in ISO format: {}", doc.getId(), dateStr);
                     return dateStr;
                 } catch (DateTimeParseException ignored) {
-                    log().warn("Could not parse date '{}' from 'date' field for document {} (tried original and lowercase), trying other fields", 
+                    // Enhanced logging for debugging date parsing issues
+                    log().warn("Could not parse date '{}' from 'date' field for document {} (parseDateFlexible returned null). " +
+                              "This may indicate an unsupported date format. Trying other fields...", 
                               dateStr, doc.getId());
                 }
             }
@@ -3803,6 +3992,130 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         return null;
+    }
+    
+    /**
+     * Removes question repetition from LLM responses.
+     * Detects if the response starts with the question (complete or partially) and removes it.
+     * 
+     * @param response The LLM-generated response
+     * @param query The original user query
+     * @return Cleaned response without question repetition
+     */
+    protected String removeQuestionRepetition(String response, String query) {
+        if (response == null || query == null || response.trim().isEmpty() || query.trim().isEmpty()) {
+            return response;
+        }
+        
+        String responseLower = response.trim().toLowerCase();
+        String queryLower = query.trim().toLowerCase();
+        
+        // Check if response starts with the full question
+        if (responseLower.startsWith(queryLower)) {
+            String cleaned = response.substring(query.length()).trim();
+            // Remove common separators that might follow the question
+            cleaned = cleaned.replaceFirst("^[.\\n\\r\\-\\s]+", "");
+            log().debug("Removed full question repetition from response. Original length: {}, Cleaned length: {}", 
+                      response.length(), cleaned.length());
+            return cleaned.isEmpty() ? response : cleaned; // Return original if cleaning removes everything
+        }
+        
+        // Check if response starts with common question prefixes followed by part of the question
+        String[] questionPrefixes = {
+            "dime que", "dime qué", "dime", "tell me", "the user asked", "la pregunta era",
+            "resume lo tratado", "resume la reunión", "resume", "summarize",
+            "dame un resumen", "hazme un resumen", "haz un resumen", "give me a summary",
+            "busca lo comentado", "busca", "search", "find",
+            "proporciona la fecha", "proporciona", "provide"
+        };
+        
+        for (String prefix : questionPrefixes) {
+            if (responseLower.startsWith(prefix.toLowerCase())) {
+                // Check if what follows is part of the query
+                String afterPrefix = response.substring(prefix.length()).trim();
+                String afterPrefixLower = afterPrefix.toLowerCase();
+                
+                // If the next part matches a significant portion of the query, remove it
+                if (afterPrefixLower.length() > 10 && queryLower.contains(afterPrefixLower.substring(0, Math.min(20, afterPrefixLower.length())))) {
+                    // Find where the actual answer starts (usually after a newline or period)
+                    String[] separators = {"\n\n", "\n", ". ", ".\n"};
+                    for (String sep : separators) {
+                        int sepIndex = afterPrefix.indexOf(sep);
+                        if (sepIndex > 0 && sepIndex < afterPrefix.length() - 5) {
+                            String cleaned = afterPrefix.substring(sepIndex + sep.length()).trim();
+                            if (!cleaned.isEmpty()) {
+                                log().debug("Removed question prefix and repetition from response");
+                                return cleaned;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Check for common patterns where question is repeated at the start
+        // Pattern: "Question text.\n\nAnswer text"
+        int newlineIndex = response.indexOf("\n\n");
+        if (newlineIndex > 0 && newlineIndex < response.length() / 2) {
+            String beforeNewline = response.substring(0, newlineIndex).trim().toLowerCase();
+            // If the part before newline is similar to the query, it's likely a repetition
+            if (beforeNewline.length() > 10 && 
+                (queryLower.contains(beforeNewline.substring(0, Math.min(30, beforeNewline.length()))) ||
+                 beforeNewline.contains(queryLower.substring(0, Math.min(30, queryLower.length()))))) {
+                String cleaned = response.substring(newlineIndex + 2).trim();
+                if (!cleaned.isEmpty()) {
+                    log().debug("Removed question repetition before double newline");
+                    return cleaned;
+                }
+            }
+        }
+        
+        // No repetition detected, return original
+        return response;
+    }
+    
+    /**
+     * Formats and cleans LLM response for better presentation.
+     * Applies multiple formatting improvements:
+     * - Removes question repetition
+     * - Normalizes whitespace
+     * - Removes trailing punctuation issues
+     * - Ensures proper sentence endings
+     * 
+     * @param response Raw LLM response
+     * @param query Original user query (for removing repetition)
+     * @return Formatted and cleaned response
+     */
+    protected String formatResponse(String response, String query) {
+        if (response == null || response.trim().isEmpty()) {
+            return response;
+        }
+        
+        // Step 1: Remove question repetition
+        String cleaned = removeQuestionRepetition(response, query);
+        
+        // Step 2: Normalize whitespace (multiple spaces/newlines to single)
+        cleaned = cleaned.replaceAll("\\s+", " ").trim();
+        cleaned = cleaned.replaceAll("\\n\\s*\\n+", "\n\n"); // Normalize multiple newlines to double newline max
+        
+        // Step 3: Remove trailing punctuation issues (multiple periods, etc.)
+        cleaned = cleaned.replaceAll("\\.{3,}", "...");
+        cleaned = cleaned.replaceAll("\\?{2,}", "?");
+        cleaned = cleaned.replaceAll("!{2,}", "!");
+        
+        // Step 4: Ensure proper sentence structure (capitalize first letter if needed)
+        if (cleaned.length() > 0 && Character.isLowerCase(cleaned.charAt(0))) {
+            cleaned = Character.toUpperCase(cleaned.charAt(0)) + cleaned.substring(1);
+        }
+        
+        // Step 5: Remove common formatting artifacts
+        cleaned = cleaned.replaceAll("^\\s*[-•*]\\s+", ""); // Remove leading bullets
+        cleaned = cleaned.replaceAll("\\s*[-•*]\\s*$", ""); // Remove trailing bullets
+        
+        log().debug("Formatted response: original length={}, cleaned length={}", 
+                   response.length(), cleaned.length());
+        
+        return cleaned.trim();
     }
 }
 
