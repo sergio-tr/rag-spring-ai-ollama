@@ -78,8 +78,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         """;
 
 
-    public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate,
-                                     @Value("${rag.chunk.max-chars:400}") int chunkMaxChars) {
+    public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate,int chunkMaxChars) {
         super(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
     }
 

@@ -20,11 +20,13 @@ public class DatasetMinuteEvaluationService extends AbstractMinuteEvaluationServ
     private static final String EXCEL_CLASSPATH = "python/evaluation_dataset.xlsx";
 
     public DatasetMinuteEvaluationService(
-            RagFeatureConfiguration featureConfig,
-            ChatClient chatClient,
-            DocumentService documentService,
-            QueryService queryService) {
-        super(featureConfig, chatClient, documentService, queryService);
+        RagFeatureConfiguration featureConfig,
+        ChatClient chatClient,
+        DocumentService documentService,
+        QueryService queryService,
+        boolean cleanBeforeLoad
+    ) {
+        super(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
     }
 
     /** Expected answers should be verified against ACTA 1, 2, 3, 5, 6 as source of truth. */
