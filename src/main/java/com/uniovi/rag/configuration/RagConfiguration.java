@@ -107,12 +107,11 @@ public class RagConfiguration {
     }
 
     @Bean
-    public DocumentService documentService(RagFeatureConfiguration featureConfig, PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate) {
-
+    public DocumentService documentService(RagFeatureConfiguration featureConfig, PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate,
+                                          MetadataMinuteDocumentService metadataMinuteDocumentService) {
         if (featureConfig.isMetadataEnabled()) {
-            return new MetadataMinuteDocumentService(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
+            return metadataMinuteDocumentService;
         }
-        
         return new SimpleDocumentService<Minute>(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
     }
 
