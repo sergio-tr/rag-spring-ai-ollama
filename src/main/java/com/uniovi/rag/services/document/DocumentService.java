@@ -33,4 +33,13 @@ public interface DocumentService extends Loggable {
      * @return The number of chunks deleted
      */
     int deleteDocumentByDocumentId(String documentId);
+
+    /**
+     * Checks whether any chunk with the given document_id exists in the store.
+     * Used to avoid duplicate documents: if present, caller should delete then re-insert.
+     *
+     * @param documentId The document_id to look for (e.g. from filename+hash or metadata)
+     * @return true if at least one chunk has this document_id
+     */
+    boolean hasDocumentWithId(String documentId);
 }

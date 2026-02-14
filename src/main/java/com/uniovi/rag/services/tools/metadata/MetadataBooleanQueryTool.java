@@ -39,7 +39,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             if (!keywordExists) {
                 log().info("Keyword '{}' not found in any documents (precise match) for query: {}", keyword, query);
                 String errorMessage = generateSpecificErrorMessage(query, "keyword", keyword, docs.size(), "The keyword was not found in any documents");
-                return ToolResult.from(errorMessage, getClass());
+                return ToolResult.from(formatResponse(errorMessage, query), getClass());
             }
             log().info("Keyword '{}' validated as existing in documents", keyword);
         }
@@ -52,7 +52,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             if (filteredDocs.isEmpty()) {
                 log().info("No documents found for year {} in query: {}", requestedYear, query);
                 String errorMessage = generateSpecificErrorMessage(query, "year", requestedYear, docs.size(), "No documents found for this year");
-                return ToolResult.from(errorMessage, getClass());
+                return ToolResult.from(formatResponse(errorMessage, query), getClass());
             }
             docs = filteredDocs;
             log().info("Filtered to {} documents for year {}", docs.size(), requestedYear);
@@ -60,21 +60,21 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         
         if (docs.isEmpty()) {
             log().info("No documents found for query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 4: Extract evidence in parallel (metadata-first, LLM as fallback per minute)
@@ -82,14 +82,14 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         
         if (evidence.isEmpty()) {
             log().info("No evidence found for query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 5: Generate final answer
         String answer = generateBooleanAnswerWithLLM(query, evidence, relevantMinutes.size());
         log().info("Generated answer for query: {} with {} evidence pieces", query, evidence.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
     /**
@@ -201,12 +201,10 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             3. Be precise: if the query asks about a specific term (e.g., "radiación solar"), 
                only answer YES if that EXACT term or very close variations are found.
                Do NOT confuse related terms (e.g., "iluminación" is NOT the same as "radiación solar")
-            4. For queries about "votó" (voted) vs "acordó votar" (agreed to vote):
-               - "votó" means a vote actually happened (past tense, completed action)
-               - "acordó votar" means it was agreed to vote in the future (not yet voted)
-               - Only answer YES for "votó" if evidence shows a vote actually occurred
-            5. Be concise but informative. Include specific details from the evidence when relevant.
-            6. If evidence is ambiguous or unclear, answer PARTIALLY or NO (not YES)
+            4. For "¿Se votó?" / "was there a vote?": if the evidence shows decisions were made (e.g. "se decide", "se acordó", "se aprobó", "se decide contratar"), answer YES when the question is about whether the meeting voted or took decisions on topics.
+            5. For security/safety ("seguridad", "videovigilancia"): answer YES if any evidence mentions these topics or related measures.
+            6. Be concise but informative. Include specific details from the evidence when relevant.
+            7. If evidence is ambiguous or unclear, answer PARTIALLY or NO (not YES).
             
             Examples:
             - Query: "¿Se habló de la radiación solar?" → Answer NO if only "iluminación" is mentioned (not the same)

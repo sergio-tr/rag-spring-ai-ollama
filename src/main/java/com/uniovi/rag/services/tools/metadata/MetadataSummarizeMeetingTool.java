@@ -42,26 +42,26 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             // Date was specified but no documents match
             String errorMessage = generateDateNotFoundMessage(query, requestedDate);
             log().info("No documents found for specified date: {} in query: {}", requestedDate, query);
-            return ToolResult.from(errorMessage, getClass());
+            return ToolResult.from(formatResponse(errorMessage, query), getClass());
         }
         
         if (docs.isEmpty()) {
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         List<SummaryResult> results = generateSummariesInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
-            return ToolResult.from(generateNoDataMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNoDataMessage(query), query), getClass());
         }
 
         List<SummaryResult> rankedResults = analyzeAndRankSummaries(results);
@@ -69,7 +69,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         String answer = generateSummaryAnswer(query, rankedResults);
         log().info("Generated summarize meeting answer for query: {} with {} summaries", query, results.size());
 
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
     private List<SummaryResult> generateSummariesInParallel(String query, List<Minute> minutes) {

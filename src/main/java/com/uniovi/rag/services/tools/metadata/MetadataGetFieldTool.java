@@ -42,7 +42,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             log().info("No documents found for get field query: {}", query);
             List<String> dateCandidates = extractDateCandidates(query, ner);
             String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
-            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, 0, "no_documents"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, detectedField, date, 0, "no_documents"), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
@@ -51,7 +51,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             log().info("No valid minutes found for get field query: {}", query);
             List<String> dateCandidates = extractDateCandidates(query, ner);
             String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
-            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, docs.size(), "no_valid_minutes"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, detectedField, date, docs.size(), "no_valid_minutes"), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
@@ -60,7 +60,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             log().info("No relevant minutes found for get field query: {}", query);
             List<String> dateCandidates = extractDateCandidates(query, ner);
             String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
-            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, minutes.size(), "no_relevant_minutes"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, detectedField, date, minutes.size(), "no_relevant_minutes"), query), getClass());
         }
 
         // Step 4: Filter by person/president if query asks for "fecha del acta donde [persona]"
@@ -80,7 +80,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         if (dateFilteredMinutes.isEmpty() && !dateCandidates.isEmpty()) {
             // User asked about a specific date but no minutes matched
             log().info("No minutes found for the specified date in query: {}", query);
-            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, relevantMinutes.size(), "date_not_found"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, detectedField, date, relevantMinutes.size(), "date_not_found"), query), getClass());
         }
         // If no date in query, use all relevant minutes
         List<Minute> minutesToEvaluate = dateFilteredMinutes.isEmpty() ? relevantMinutes : dateFilteredMinutes;
@@ -89,20 +89,20 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         List<Minute> validatedMinutes = evaluateMinutesWithLLM(query, minutesToEvaluate);
         if (validatedMinutes.isEmpty()) {
             log().info("No minutes validated by LLM for get field query: {}", query);
-            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, minutesToEvaluate.size(), "no_validated_minutes"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, detectedField, date, minutesToEvaluate.size(), "no_validated_minutes"), query), getClass());
         }
 
         // Step 6: Classify field by rules (no LLM) - already done above
         if (detectedField.equals("unknown")) {
             log().info("Could not classify field intent for query: {}", query);
-            return ToolResult.from(generateSpecificErrorMessage(query, null, date, validatedMinutes.size(), "field_classification_failed"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, null, date, validatedMinutes.size(), "field_classification_failed"), query), getClass());
         }
 
         // Step 7: Extract field values in parallel (only from validated minutes)
         List<FieldResult> results = extractFieldValuesInParallel(validatedMinutes, detectedField);
         if (results.isEmpty()) {
             log().info("No field values extracted for query: {} (field: {})", query, detectedField);
-            return ToolResult.from(generateSpecificErrorMessage(query, detectedField, date, validatedMinutes.size(), "field_not_found_in_metadata"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, detectedField, date, validatedMinutes.size(), "field_not_found_in_metadata"), query), getClass());
         }
         
         // PHASE 4: Validate that extracted field matches requested field
@@ -129,7 +129,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         log().info("Generated get field answer for query: {} with {} field values for field: {}", 
                    query, results.size(), detectedField);
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
     /**
@@ -390,16 +390,17 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             log().warn("Error generating field answer with LLM", e);
         }
 
-        // Fallback
+        // Fallback: natural language (no raw key:value), then formatResponse
         if (top.size() == 1) {
             FieldResult r = top.get(0);
             String date = r.getDate() != null ? r.getDate() : "unknown date";
-            return String.format("In the meeting minutes on %s, %s: %s.", date, detectedField, r.getFieldValue());
+            String raw = String.format("In the meeting minutes on %s, %s: %s.", date, detectedField, r.getFieldValue());
+            return formatResponse(raw, query);
         } else {
             String joined = top.stream()
-                    .map(r -> String.format("- %s: %s", r.getDate() != null ? r.getDate() : "unknown date", r.getFieldValue()))
-                    .collect(Collectors.joining("\n"));
-            return String.format("I found these values:\n%s", joined);
+                    .map(r -> String.format("%s: %s", r.getDate() != null ? r.getDate() : "unknown date", r.getFieldValue()))
+                    .collect(Collectors.joining("; "));
+            return formatResponse("Found values: " + joined + ".", query);
         }
     }
     

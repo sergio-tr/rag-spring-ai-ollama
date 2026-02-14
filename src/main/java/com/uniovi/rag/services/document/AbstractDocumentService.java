@@ -99,6 +99,32 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
         }
     }
 
+    @Override
+    public boolean hasDocumentWithId(String documentId) {
+        if (documentId == null || documentId.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM vector_store WHERE metadata->>'document_id' = ?",
+                Integer.class,
+                documentId
+            );
+            if (count != null && count > 0) {
+                return true;
+            }
+            count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM vector_store WHERE metadata->>'id' = ?",
+                Integer.class,
+                documentId
+            );
+            return count != null && count > 0;
+        } catch (Exception e) {
+            log().warn("Error checking document_id existence: {}", documentId, e);
+            return false;
+        }
+    }
+
     protected String extractContent(MultipartFile file) {
         String contentType = file.getContentType();
         String fileName = file.getOriginalFilename();

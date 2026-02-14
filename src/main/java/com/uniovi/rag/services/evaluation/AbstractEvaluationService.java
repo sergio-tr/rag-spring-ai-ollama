@@ -6,6 +6,7 @@ import com.uniovi.rag.services.document.DocumentService;
 import com.uniovi.rag.services.query.QueryService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -21,6 +22,9 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     protected final QueryService queryService;
     protected final RagFeatureConfiguration featureConfig;
     protected boolean dataLoaded = false;
+
+    @Value("${evaluation.clean-before-load:true}")
+    private boolean cleanBeforeLoad = true;
     
     // For dynamic evaluation with custom configurations
     protected EvaluationServiceFactory evaluationServiceFactory;
@@ -106,8 +110,13 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             loadSpecificDataWithService(customDocService);
             dataLoaded = true;
         } else {
-            // Use default configuration
-            if (!dataLoaded) {
+            // Use default configuration: optionally clear and reload so BD is coherent with current config
+            if (cleanBeforeLoad) {
+                log().info("Clearing database and loading documents with default configuration (evaluation.clean-before-load=true)");
+                documentService.clearDatabase();
+                loadSpecificData();
+                dataLoaded = true;
+            } else if (!dataLoaded) {
                 if (documentService.hasDocuments()) {
                     log().info("Database already has documents, skipping load");
                 } else {
@@ -202,7 +211,24 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     /**
      * Evaluates all possible configuration combinations.
      * This generates 2^4 = 16 combinations (for 4 boolean flags: expansion, ner, tools, metadata).
-     * 
+     * For each combination the database is cleared and reloaded so results are coherent with that config.
+     * <p>
+     * Combination table (expansion × ner × tools × metadata):
+     * <ul>
+     *   <li>00: F,F,F,F - no expansion, no NER, no tools, no metadata (plain retrieval + askModel)</li>
+     *   <li>01: F,F,F,T - metadata only (metadata pipeline, no tools/NER/expansion)</li>
+     *   <li>02: F,F,T,F - tools without metadata</li>
+     *   <li>03: F,F,T,T - tools + metadata (e.g. results in tools-metadata.json)</li>
+     *   <li>04: F,T,F,F - NER only, retriever may not use NER unless 7.1 implemented</li>
+     *   <li>05: F,T,F,T - NER + metadata</li>
+     *   <li>06: F,T,T,F - NER + tools</li>
+     *   <li>07: F,T,T,T - NER + tools + metadata</li>
+     *   <li>08-15: same with expansion=true (query expansion; may degrade if LLM expands poorly)</li>
+     * </ul>
+     * Use GET /evaluate/all to run all 16; use POST /evaluate/custom with body
+     * {"expansion":bool,"ner":bool,"tools":bool,"metadata":bool} to test a single combination.
+     * Save results per config (e.g. tools-metadata-ner-true.json) for before/after comparison.
+     *
      * @return Map with configuration name as key and evaluation results as value
      */
     public Map<String, Map<String, Object>> evaluateAllConfigurations() {

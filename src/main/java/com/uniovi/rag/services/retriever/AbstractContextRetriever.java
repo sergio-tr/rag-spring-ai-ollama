@@ -10,9 +10,11 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public abstract class AbstractContextRetriever implements ContextRetriever, Loggable {
@@ -93,9 +95,78 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         return similarityThreshold;
     }
 
+    /**
+     * Builds content with optional metadata prefix (Acta: date. Presidente: X. Temas: Y. Contenido: )
+     * when the document has date_iso/date, president or topics in metadata. Otherwise returns content unchanged.
+     */
+    protected String buildContentWithOptionalMetadataPrefix(Document doc, String content) {
+        if (doc == null) {
+            return content != null ? content : "";
+        }
+        Map<String, Object> meta = doc.getMetadata();
+        if (meta == null || meta.isEmpty()) {
+            return content != null ? content : "";
+        }
+        String date = meta.containsKey("date_iso") ? String.valueOf(meta.get("date_iso")) : (meta.containsKey("date") ? String.valueOf(meta.get("date")) : null);
+        String president = meta.containsKey("president") ? String.valueOf(meta.get("president")) : null;
+        Object topicsObj = meta.get("topics");
+        String topicsStr = null;
+        if (topicsObj instanceof List<?> list) {
+            topicsStr = list.stream().map(String::valueOf).collect(Collectors.joining(", "));
+        } else if (topicsObj != null) {
+            topicsStr = topicsObj.toString();
+        }
+        if (date == null && president == null && (topicsStr == null || topicsStr.isBlank())) {
+            return content != null ? content : "";
+        }
+        StringBuilder prefix = new StringBuilder("Acta: ");
+        if (date != null) prefix.append(date).append(". ");
+        if (president != null) prefix.append("Presidente: ").append(president).append(". ");
+        if (topicsStr != null && !topicsStr.isBlank()) prefix.append("Temas: ").append(topicsStr).append(". ");
+        prefix.append("Contenido: ");
+        return prefix + (content != null ? content : "");
+    }
+
     public abstract String filterDocumentContent(Document doc, String query, JSONObject entities);
+    /**
+     * Retrieves documents and then filters by NER metadata (e.g. date).
+     * When ner=true, ProcessQueryService uses this so retrieval respects date from NER.
+     */
+    @Override
     public List<Document> retrieveWithMetadataFilters(String query, JSONObject nerEntities) {
-        throw new UnsupportedOperationException("The retriver does not support metadata filters");
+        List<Document> docs = retrieve(query);
+        if (nerEntities == null || !nerEntities.has("date")) {
+            return docs;
+        }
+        try {
+            org.json.JSONArray arr = nerEntities.getJSONArray("date");
+            List<LocalDate> requestedDates = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                LocalDate d = parseDateToLocalDate(arr.optString(i, "").trim());
+                if (d != null) requestedDates.add(d);
+            }
+            if (requestedDates.isEmpty()) return docs;
+            return docs.stream()
+                    .filter(doc -> {
+                        String docDate = getDocumentDateFromMetadata(doc);
+                        if (docDate == null) return true;
+                        LocalDate docLocal = parseDateToLocalDate(docDate);
+                        return docLocal != null && requestedDates.contains(docLocal);
+                    })
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log().warn("Error applying NER metadata filters, returning unfiltered docs: {}", e.getMessage());
+            return docs;
+        }
+    }
+
+    private String getDocumentDateFromMetadata(Document doc) {
+        if (doc == null || doc.getMetadata() == null) return null;
+        Map<String, Object> m = doc.getMetadata();
+        Object dateIso = m.get("date_iso");
+        if (dateIso != null && !dateIso.toString().trim().isEmpty()) return dateIso.toString().trim();
+        Object date = m.get("date");
+        return date != null ? date.toString().trim() : null;
     }
     
     /**

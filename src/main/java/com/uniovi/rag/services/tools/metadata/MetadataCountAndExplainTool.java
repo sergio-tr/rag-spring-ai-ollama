@@ -38,28 +38,28 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         
         if (docs.isEmpty()) {
             log().info("No documents found for count and explain query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for count and explain query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for count and explain query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 4: Generate explanations in parallel
         List<Explanation> explanations = generateExplanationsInParallel(query, relevantMinutes);
         if (explanations.isEmpty()) {
             log().info("No explanations generated for query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 5: Analyze and rank explanations
@@ -73,7 +73,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         log().info("Generated count and explain answer for query: {} with {} explanations in {} clusters", 
                    query, explanations.size(), clusters.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
     /**

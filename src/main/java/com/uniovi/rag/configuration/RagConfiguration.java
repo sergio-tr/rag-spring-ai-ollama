@@ -47,6 +47,15 @@ public class RagConfiguration {
     @Value("${spring.ai.ollama.similarity-threshold}")
     private double similarityThreshold;
 
+    @Value("${rag.classifier.python.executable:}")
+    private String pythonClassifierExecutable;
+
+    @Value("${rag.classifier.python.script:}")
+    private String pythonClassifierScript;
+
+    @Value("${rag.chunk.max-chars:400}")
+    private int chunkMaxChars;
+
     @Bean
     public RagToolsConfiguration toolsConfig(Map<QueryType, Tool> tools) {
         return new RagToolsConfiguration(tools);
@@ -101,16 +110,17 @@ public class RagConfiguration {
     public DocumentService documentService(RagFeatureConfiguration featureConfig, PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate) {
 
         if (featureConfig.isMetadataEnabled()) {
-            return new MetadataMinuteDocumentService(vectorStore, chatClient, jdbcTemplate);
+            return new MetadataMinuteDocumentService(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
         }
         
-        return new SimpleDocumentService<Minute>(vectorStore, chatClient, jdbcTemplate);
+        return new SimpleDocumentService<Minute>(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
     }
 
     @Bean
-    public EvaluationServiceFactory evaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore, 
+    public EvaluationServiceFactory evaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore,
                                                               JdbcTemplate jdbcTemplate) {
-        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold);
+        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
+                pythonClassifierExecutable, pythonClassifierScript, chunkMaxChars);
     }
 
     @Bean
@@ -129,7 +139,8 @@ public class RagConfiguration {
 
     @Bean
     public QueryClassifier queryClassifier(ChatClient chatClient) {
-        return new EnhancedQueryClassifier(new PythonQueryClassifier(), chatClient);
+        return new EnhancedQueryClassifier(
+                new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript), chatClient);
     }
 
     @Bean

@@ -1280,7 +1280,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
         
-        // STEP 4: Relevance filtering (only if we still have too many)
+        // STEP 4: Relevance filtering only when we have many minutes (avoid LLM when <= 10 to reduce false "no encontrado")
+        if (filtered.size() <= 10) {
+            log().info("Skipping LLM relevance filter ({} minutes <= 10), returning filtered list", filtered.size());
+            return filtered;
+        }
         if (filtered.size() > 30) {
             filtered = filtered.stream()
                     .filter(minute -> {
@@ -1297,8 +1301,25 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             log().info("Relevance filtering reduced to {} minutes", filtered.size());
         }
         
-        // Final fallback: if still empty, return at least some minutes (sorted by relevance)
+        // Conservative fallback: if filtered is empty but query had a date, return minutes that match that date
         if (filtered.isEmpty() && !minutes.isEmpty()) {
+            List<String> dateCandidates = extractDateCandidates(query, ner);
+            for (String candidate : dateCandidates) {
+                LocalDate requested = parseDateFlexible(candidate);
+                if (requested != null) {
+                    String requestedIso = requested.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                    List<Minute> sameDate = minutes.stream()
+                            .filter(m -> {
+                                LocalDate md = parseDateFlexible(m.date());
+                                return md != null && md.format(DateTimeFormatter.ISO_LOCAL_DATE).equals(requestedIso);
+                            })
+                            .collect(Collectors.toList());
+                    if (!sameDate.isEmpty()) {
+                        log().warn("Filtering left 0 minutes but {} minutes match requested date {}; returning them as conservative fallback", sameDate.size(), requestedIso);
+                        return sameDate;
+                    }
+                }
+            }
             log().warn("All filtering failed, returning top {} minutes sorted by date as last resort", 
                       Math.min(10, minutes.size()));
             // Sort by date (most recent first) as a basic relevance indicator
@@ -1510,9 +1531,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Cached NER matching evaluation
+     * Cached NER matching evaluation.
+     * Key must include both minute and NER so a "not relevant" for one query/minute is not reused for another.
      */
-    @Cacheable(value = "nerMatching", key = "#minute.hashCode() + '_' + #ner.hashCode()")
+    @Cacheable(value = "nerMatching", key = "#minute.id() + '_' + (#ner != null ? #ner.toString() : 'null')")
     protected boolean matchesMinuteWithNERCached(Minute minute, JSONObject ner) {
         return matchesMinuteWithNER(minute, ner);
     }
@@ -1529,9 +1551,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Cached query relevance evaluation
+     * Cached query relevance evaluation.
+     * Key must include both query and minute so a "not relevant" for one pair is not reused for another.
      */
-    @Cacheable(value = "queryRelevance", key = "#query.hashCode() + '_' + #minute.hashCode()")
+    @Cacheable(value = "queryRelevance", key = "#query + '_' + #minute.id()")
     protected boolean isRelevantToQueryCached(String query, Minute minute) {
         return isRelevantToQueryByLLM(query, minute);
     }
@@ -3269,8 +3292,71 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
 
+        // Regex fallback: "d de mes de yyyy" or "dd de mes de yyyy" (Spanish month name, any case)
+        java.util.regex.Pattern spanishPattern = java.util.regex.Pattern.compile(
+            "(\\d{1,2})\\s+de\\s+(\\p{L}+)\\s+de\\s+(\\d{4})",
+            java.util.regex.Pattern.CASE_INSENSITIVE
+        );
+        java.util.regex.Matcher matcher = spanishPattern.matcher(v);
+        if (matcher.matches()) {
+            int day = Integer.parseInt(matcher.group(1));
+            String monthStr = matcher.group(2).toLowerCase();
+            int year = Integer.parseInt(matcher.group(3));
+            int month = spanishMonthToNumber(monthStr);
+            if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                try {
+                    return LocalDate.of(year, month, Math.min(day, LocalDate.of(year, month, 1).lengthOfMonth()));
+                } catch (Exception ignored) {
+                }
+            }
+        }
+
         // If all parsing fails, log for debugging
         log().debug("Could not parse date: {}", dateStr);
+        return null;
+    }
+
+    private static final Map<String, Integer> SPANISH_MONTHS = new HashMap<>(Map.ofEntries(
+        Map.entry("enero", 1), Map.entry("febrero", 2), Map.entry("marzo", 3), Map.entry("abril", 4),
+        Map.entry("mayo", 5), Map.entry("junio", 6), Map.entry("julio", 7), Map.entry("agosto", 8),
+        Map.entry("septiembre", 9), Map.entry("setiembre", 9), Map.entry("octubre", 10),
+        Map.entry("noviembre", 11), Map.entry("diciembre", 12)
+    ));
+
+    private static int spanishMonthToNumber(String monthStr) {
+        return SPANISH_MONTHS.getOrDefault(monthStr != null ? monthStr.toLowerCase() : "", -1);
+    }
+
+    /**
+     * Regex fallback for getDocumentDate when parseDateFlexible fails.
+     * Tries "d de mes de yyyy" and "yyyy" only to avoid excluding documents.
+     */
+    private LocalDate parseDateByRegexFallback(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) return null;
+        String v = dateStr.trim();
+        java.util.regex.Pattern spanishPattern = java.util.regex.Pattern.compile(
+            "(\\d{1,2})\\s+de\\s+(\\p{L}+)\\s+de\\s+(\\d{4})",
+            java.util.regex.Pattern.CASE_INSENSITIVE
+        );
+        java.util.regex.Matcher m = spanishPattern.matcher(v);
+        if (m.find()) {
+            int day = Integer.parseInt(m.group(1));
+            int month = spanishMonthToNumber(m.group(2));
+            int year = Integer.parseInt(m.group(3));
+            if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                try {
+                    return LocalDate.of(year, month, Math.min(day, LocalDate.of(year, month, 1).lengthOfMonth()));
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        java.util.regex.Matcher yearOnly = java.util.regex.Pattern.compile("(\\d{4})").matcher(v);
+        if (yearOnly.find()) {
+            int year = Integer.parseInt(yearOnly.group(1));
+            if (year >= 1900 && year <= 2100) {
+                return LocalDate.of(year, 1, 1);
+            }
+        }
         return null;
     }
 
@@ -3699,11 +3785,17 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     log().debug("Date field for document {} is already in ISO format: {}", doc.getId(), dateStr);
                     return dateStr;
                 } catch (DateTimeParseException ignored) {
-                    // Enhanced logging for debugging date parsing issues
-                    log().warn("Could not parse date '{}' from 'date' field for document {} (parseDateFlexible returned null). " +
-                              "This may indicate an unsupported date format. Trying other fields...", 
-                              dateStr, doc.getId());
                 }
+                // Fallback: try regex to extract year (at least) and build a date for filtering
+                LocalDate fallback = parseDateByRegexFallback(dateStr);
+                if (fallback != null) {
+                    log().warn("Parsed date '{}' from 'date' field for document {} via regex fallback -> {}. " +
+                              "Consider populating date_iso in metadata for reliability.",
+                              dateStr, doc.getId(), fallback.format(DateTimeFormatter.ISO_LOCAL_DATE));
+                    return fallback.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                }
+                log().warn("Could not parse date '{}' from 'date' field for document {} (parseDateFlexible and regex fallback failed). " +
+                          "Document may be excluded from date filtering.", dateStr, doc.getId());
             }
         }
 

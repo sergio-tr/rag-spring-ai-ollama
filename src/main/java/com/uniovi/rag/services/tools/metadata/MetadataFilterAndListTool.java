@@ -38,21 +38,21 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         
         if (docs.isEmpty()) {
             log().info("No documents found for filter and list query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for filter and list query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for filter and list query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
         
         // Step 3.5: Additional filtering by topic + person if query requires it (AND logic)
@@ -68,7 +68,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         List<FilterResult> results = generateSummariesInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
             log().info("No summaries generated for query: {}", query);
-            return ToolResult.from(generateNoDataMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNoDataMessage(query), query), getClass());
         }
 
         // Step 5: Analyze and rank results
@@ -82,7 +82,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         log().info("Generated filter and list answer for query: {} with {} results in {} clusters", 
                    query, results.size(), clusters.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
     /**

@@ -40,7 +40,7 @@ public class ProcessQueryService implements QueryService {
         1. You must PROCESS the context - do not just copy or summarize it. Extract the specific answer.
         2. Base your answer ONLY on the information provided in the context
         3. If the context is empty or does not contain enough information to answer the question, you MUST clearly state that you cannot find the information in the available documents. DO NOT invent, guess, or make up information.
-        4. NEVER invent names, dates, places, or any other information that is not explicitly in the context
+        4. NEVER invent names, dates, places, actas, or any other information that is not explicitly in the context. Do not invent acta dates or mix information from different actas. Only use information that appears in the context.
         5. NEVER provide lists of names or details if they are not in the context
         6. If you cannot find the requested information, say so clearly in the same language as the question
         7. Be concise but complete - provide all relevant information from the context

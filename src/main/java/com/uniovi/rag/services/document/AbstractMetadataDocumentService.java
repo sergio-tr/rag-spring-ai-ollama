@@ -11,8 +11,11 @@ import java.util.Map;
 
 public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumentService<T> {
 
-    public AbstractMetadataDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate) {
+    protected final int chunkMaxChars;
+
+    public AbstractMetadataDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate, int chunkMaxChars) {
         super(vectorStore, chatClient, jdbcTemplate);
+        this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
     }
 
     protected abstract T extractModel(String fullText, String filename);
@@ -65,23 +68,34 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
                 throw new IllegalArgumentException("Metadata extraction returned null or empty for file: " + filename);
             }
             
+            // Step 4b: If document with same document_id already exists, remove it to avoid duplicates
+            Object docIdObj = metadata.get("document_id");
+            String documentId = docIdObj != null ? docIdObj.toString() : null;
+            if (documentId != null && !documentId.isBlank() && hasDocumentWithId(documentId)) {
+                log().info("Document already exists (document_id={}), removing previous chunks and re-inserting", documentId);
+                deleteDocumentByDocumentId(documentId);
+            }
+            
             // Step 5: Validate critical metadata fields
             validateMetadata(metadata, filename);
             
             // Step 6: Split content into chunks for embedding (embedding models have lower context limits)
-            List<String> chunks = splitContentIntoChunks(content, 150);
+            List<String> chunks = splitContentIntoChunks(content, chunkMaxChars);
             
             log().info("Content split into {} chunks for embedding (original length: {})", 
                       chunks.size(), content.length());
             
             // Step 7: Create multiple documents (one per chunk) with same metadata
-            // Add chunk index to metadata for each chunk to enable proper grouping
+            // Prepend short date/president prefix to chunk text so embedding reflects metadata (better similarity for date/person queries)
+            String metadataPrefix = buildChunkMetadataPrefix(metadata);
             List<Document> documents = new java.util.ArrayList<>();
             for (int i = 0; i < chunks.size(); i++) {
                 Map<String, Object> chunkMetadata = new java.util.HashMap<>(metadata);
                 chunkMetadata.put("chunk_index", i);
                 chunkMetadata.put("total_chunks", chunks.size());
-                documents.add(new Document(chunks.get(i), chunkMetadata));
+                String chunkText = chunks.get(i);
+                String contentForEmbedding = metadataPrefix.isEmpty() ? chunkText : (metadataPrefix + chunkText);
+                documents.add(new Document(contentForEmbedding, chunkMetadata));
             }
             
             add(documents);
@@ -245,5 +259,22 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
                   chunks.size(), maxCharsPerChunk, trimmed.length());
         
         return chunks;
+    }
+
+    /**
+     * Builds a short prefix from metadata (date, president) to prepend to chunk content for embedding.
+     * Improves similarity search for queries like "president on 25 feb 2026". Kept short to not exceed embedding limit.
+     */
+    protected String buildChunkMetadataPrefix(Map<String, Object> metadata) {
+        if (metadata == null) return "";
+        Object dateObj = metadata.get("date_iso") != null ? metadata.get("date_iso") : metadata.get("date");
+        Object presidentObj = metadata.get("president");
+        String dateStr = dateObj != null ? dateObj.toString().trim() : "";
+        String presidentStr = presidentObj != null ? presidentObj.toString().trim() : "";
+        if (dateStr.isEmpty() && presidentStr.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        if (!dateStr.isEmpty()) sb.append("Acta ").append(dateStr).append(". ");
+        if (!presidentStr.isEmpty()) sb.append("Presidente: ").append(presidentStr).append(". ");
+        return sb.toString();
     }
 }
