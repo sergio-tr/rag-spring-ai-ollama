@@ -6,7 +6,6 @@ import com.uniovi.rag.services.document.DocumentService;
 import com.uniovi.rag.services.query.QueryService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -23,8 +22,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     protected final RagFeatureConfiguration featureConfig;
     protected boolean dataLoaded = false;
 
-    @Value("${evaluation.clean-before-load:true}")
-    private boolean cleanBeforeLoad = true;
+    protected boolean cleanBeforeLoad = true;
     
     // For dynamic evaluation with custom configurations
     protected EvaluationServiceFactory evaluationServiceFactory;
@@ -79,7 +77,13 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
 
 
-    public AbstractEvaluationService(RagFeatureConfiguration featureConfig, ChatClient chatClient, DocumentService documentService, QueryService queryService) {
+    public AbstractEvaluationService(
+        RagFeatureConfiguration featureConfig, 
+        ChatClient chatClient, 
+        DocumentService documentService,
+        QueryService queryService,
+        boolean cleanBeforeLoad
+    ) {
         this.featureConfig = featureConfig;
         this.chatClient = chatClient;
         this.documentService = documentService;

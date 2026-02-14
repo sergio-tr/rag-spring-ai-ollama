@@ -17,11 +17,13 @@ import java.nio.charset.StandardCharsets;
 public abstract class AbstractMinuteEvaluationService extends AbstractEvaluationService {
 
     public AbstractMinuteEvaluationService(
-            RagFeatureConfiguration featureConfig,
-            ChatClient chatClient,
-            DocumentService documentService,
-            QueryService queryService) {
-        super(featureConfig, chatClient, documentService, queryService);
+        RagFeatureConfiguration featureConfig,
+        ChatClient chatClient,
+        DocumentService documentService,
+        QueryService queryService,
+        boolean cleanBeforeLoad
+    ) {
+        super(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
     }
 
     @Override

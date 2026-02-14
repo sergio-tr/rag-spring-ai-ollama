@@ -20,7 +20,6 @@ import com.uniovi.rag.services.retriever.BasicContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.*;
 import com.uniovi.rag.services.tools.metadata.*;
-import com.uniovi.rag.model.Minute;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -40,21 +39,6 @@ import java.util.Map;
 
 @Configuration
 public class RagConfiguration {
-
-    @Value("${spring.ai.ollama.top-k}")
-    private int topK;
-
-    @Value("${spring.ai.ollama.similarity-threshold}")
-    private double similarityThreshold;
-
-    @Value("${rag.classifier.python.executable:}")
-    private String pythonClassifierExecutable;
-
-    @Value("${rag.classifier.python.script:}")
-    private String pythonClassifierScript;
-
-    @Value("${rag.chunk.max-chars:400}")
-    private int chunkMaxChars;
 
     @Bean
     public RagToolsConfiguration toolsConfig(Map<QueryType, Tool> tools) {
@@ -107,26 +91,44 @@ public class RagConfiguration {
     }
 
     @Bean
-    public DocumentService documentService(RagFeatureConfiguration featureConfig, PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate,
-                                          MetadataMinuteDocumentService metadataMinuteDocumentService) {
+    public DocumentService documentService(
+        RagFeatureConfiguration featureConfig, 
+        PgVectorStore vectorStore, 
+        ChatClient chatClient, 
+        JdbcTemplate jdbcTemplate,
+        MetadataMinuteDocumentService metadataMinuteDocumentService,
+        SimpleDocumentService<?> simpleDocumentService
+    ) {
         if (featureConfig.isMetadataEnabled()) {
             return metadataMinuteDocumentService;
         }
-        return new SimpleDocumentService<Minute>(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
+        return simpleDocumentService;
     }
 
     @Bean
-    public EvaluationServiceFactory evaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore,
-                                                              JdbcTemplate jdbcTemplate) {
+    public EvaluationServiceFactory evaluationServiceFactory(
+        ChatClient chatClient, 
+        PgVectorStore vectorStore,
+        JdbcTemplate jdbcTemplate,
+        @Value("${spring.ai.ollama.top-k}") int topK,
+        @Value("${spring.ai.ollama.similarity-threshold}") double similarityThreshold,
+        @Value("${rag.classifier.python.executable:}") String pythonClassifierExecutable,
+        @Value("${rag.classifier.python.script:}") String pythonClassifierScript,
+        @Value("${rag.chunk.max-chars:400}") int chunkMaxChars
+    ) {
         return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
                 pythonClassifierExecutable, pythonClassifierScript, chunkMaxChars);
     }
 
     @Bean
-    public EvaluationService evaluationService(RagFeatureConfiguration featureConfig, ChatClient chatClient,
-                                               DocumentService documentService, QueryService queryService,
-                                               EvaluationServiceFactory evaluationServiceFactory) {
-        DatasetMinuteEvaluationService service = new DatasetMinuteEvaluationService(featureConfig, chatClient, documentService, queryService);
+    public EvaluationService evaluationService(RagFeatureConfiguration featureConfig, 
+        ChatClient chatClient,
+        DocumentService documentService, 
+        QueryService queryService,
+        EvaluationServiceFactory evaluationServiceFactory,
+        @Value("${evaluation.clean-before-load:true}") boolean cleanBeforeLoad
+    ) {
+        DatasetMinuteEvaluationService service = new DatasetMinuteEvaluationService(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
         service.setEvaluationServiceFactory(evaluationServiceFactory);
         return service;
     }
@@ -137,7 +139,11 @@ public class RagConfiguration {
     }
 
     @Bean
-    public QueryClassifier queryClassifier(ChatClient chatClient) {
+    public QueryClassifier queryClassifier(
+        ChatClient chatClient, 
+        @Value("${rag.classifier.python.executable:}") String pythonClassifierExecutable, 
+        @Value("${rag.classifier.python.script:}") String pythonClassifierScript
+    ) {
         return new EnhancedQueryClassifier(
                 new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript), chatClient);
     }
@@ -148,7 +154,13 @@ public class RagConfiguration {
     }
 
     @Bean
-    public ContextRetriever retriever(PgVectorStore vectorStore, ChatClient chatClient, RagFeatureConfiguration featureConfig) {
+    public ContextRetriever retriever(
+        PgVectorStore vectorStore, 
+        ChatClient chatClient, 
+        RagFeatureConfiguration featureConfig, 
+        @Value("${spring.ai.ollama.top-k}") int topK, 
+        @Value("${spring.ai.ollama.similarity-threshold}") double similarityThreshold
+    ) {
         //if (featureConfig.isCacheDocumentsEnabled()) {
         //    return new CachedContextRetriever(vectorStore, chatClient, featureConfig, topK, similarityThreshold);
         //}

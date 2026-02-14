@@ -33,8 +33,14 @@ public class SimpleMinuteEvaluationService extends AbstractMinuteEvaluationServi
             "¿En qué actas se mencionaron problemas con el sistema eléctrico?", "Los problemas con el sistema eléctrico fueron mencionados en el acta del 25 de agosto de 2026."
     );
 
-    public SimpleMinuteEvaluationService(RagFeatureConfiguration featureConfig, ChatClient chatClient, DocumentService documentService, QueryService queryService) {
-        super(featureConfig, chatClient, documentService, queryService);
+    public SimpleMinuteEvaluationService(
+        RagFeatureConfiguration featureConfig, 
+        ChatClient chatClient, 
+        DocumentService documentService, 
+        QueryService queryService,
+        boolean cleanBeforeLoad
+    ) {
+        super(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
     }
 
     @Override

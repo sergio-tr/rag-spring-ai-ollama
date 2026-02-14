@@ -24,6 +24,7 @@ import com.uniovi.rag.services.tools.metadata.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -43,10 +44,16 @@ public class EvaluationServiceFactory {
     private final String pythonClassifierScript;
     private final int chunkMaxChars;
 
-    public EvaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore, JdbcTemplate jdbcTemplate,
-                                    int topK, double similarityThreshold,
-                                    String pythonClassifierExecutable, String pythonClassifierScript,
-                                    int chunkMaxChars) {
+    public EvaluationServiceFactory(
+        ChatClient chatClient, 
+        PgVectorStore vectorStore, 
+        JdbcTemplate jdbcTemplate,
+        int topK,
+        double similarityThreshold,
+        String pythonClassifierExecutable,
+        String pythonClassifierScript,
+        int chunkMaxChars
+    ) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
@@ -92,10 +99,10 @@ public class EvaluationServiceFactory {
     /**
      * Creates an EvaluationService with a custom configuration.
      */
-    public EvaluationService createEvaluationService(RagFeatureConfiguration featureConfig) {
+    public EvaluationService createEvaluationService(RagFeatureConfiguration featureConfig, boolean cleanBeforeLoad) {
         DocumentService documentService = createDocumentService(featureConfig);
         QueryService queryService = createQueryService(featureConfig);
-        return new DatasetMinuteEvaluationService(featureConfig, chatClient, documentService, queryService);
+        return new DatasetMinuteEvaluationService(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
     }
 
     /**
