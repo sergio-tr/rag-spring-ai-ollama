@@ -41,43 +41,42 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             // Date was specified but no documents match
             String errorMessage = generateDateNotFoundMessage(query, requestedDate);
             log().info("No documents found for specified date: {} in query: {}", requestedDate, query);
-            return ToolResult.from(errorMessage, getClass());
+            return ToolResult.from(formatResponse(errorMessage, query), getClass());
         }
         
         if (docs.isEmpty()) {
             log().info("No documents found for summarize topic query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for summarize topic query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for summarize topic query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
         
         // Step 3.5: Additional filtering by specific topic with relevance threshold
-        // Only include minutes where the topic is actually mentioned (not just vaguely related)
+        // If threshold leaves 0 minutes, use conservative fallback: keep relevantMinutes so LLM can still summarize from metadata
         String topic = extractTopicFromQuery(query, ner);
         if (topic != null && !topic.isEmpty()) {
-            // Check if query explicitly asks about a specific topic (not just general summary)
             if (detectSpecificTopicQuery(query)) {
                 List<Minute> topicFiltered = filterMinutesByTopicWithThreshold(relevantMinutes, topic);
                 if (!topicFiltered.isEmpty()) {
-                    log().info("Filtered {} minutes by topic '{}' with relevance threshold, {} remaining", 
+                    log().info("Filtered {} minutes by topic '{}' with relevance threshold, {} remaining",
                               relevantMinutes.size(), topic, topicFiltered.size());
                     relevantMinutes = topicFiltered;
                 } else {
-                    // Topic was specified but no minutes match - this indicates absence of information
-                    log().info("Topic '{}' was specified but no minutes match the relevance threshold", topic);
-                    return ToolResult.from(generateTopicNotFoundMessage(query, topic), getClass());
+                    // Conservative fallback: no minutes passed strict threshold, but pass all relevantMinutes to summarizer
+                    // so the LLM can still try to answer from metadata (reduces false "no encontrado")
+                    log().info("Topic '{}' matched 0 minutes with threshold; using all {} relevant minutes for summarization", topic, relevantMinutes.size());
                 }
             }
         }
@@ -86,7 +85,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         List<TopicResult> results = generateTopicSummariesInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
             log().info("No topic summaries generated for query: {}", query);
-            return ToolResult.from(generateNoDataMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNoDataMessage(query), query), getClass());
         }
 
         // Step 5: Analyze and rank topic summaries
@@ -97,7 +96,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         log().info("Generated summarize topic answer for query: {} with {} topic summaries", 
                    query, results.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
     /**
@@ -295,9 +294,9 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         List<String> keyTerms = extractKeyTermsFromTopic(topicLower);
         log().debug("Extracted key terms from topic '{}': {}", topic, keyTerms);
         
-        // For compound topics, require that ALL key terms appear (not just one)
+        // For compound topics, require that ALL key terms appear (not just one); relaxed thresholds to reduce false "no encontrado"
         boolean isCompoundTopic = keyTerms.size() > 1;
-        double relevanceThreshold = isCompoundTopic ? 0.8 : 0.6; // Higher threshold for compound topics
+        double relevanceThreshold = isCompoundTopic ? 0.55 : 0.45;
         
         List<Minute> filtered = minutes.stream()
                 .filter(minute -> {

@@ -37,21 +37,21 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         
         if (docs.isEmpty()) {
             log().info("No documents found for entity extraction query: {}", query);
-            return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for entity extraction query: {}", query);
-            return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for entity extraction query: {}", query);
-            return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
         }
         
         // Step 3.5: Additional filtering by topic + person if query requires it
@@ -67,7 +67,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         List<Entity> entities = extractEntitiesInParallel(query, relevantMinutes, docs);
         if (entities.isEmpty()) {
             log().info("No relevant entities found for query: {}", query);
-            return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
         }
 
         // Step 5: Deduplicate and order entities (metadata-first heuristic)
@@ -81,7 +81,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         log().info("Generated entity extraction answer for query: {} with {} entities in {} clusters", 
                    query, entities.size(), clusters.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
 

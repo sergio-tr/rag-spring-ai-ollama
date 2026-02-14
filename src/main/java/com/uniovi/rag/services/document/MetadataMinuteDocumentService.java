@@ -77,8 +77,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         """;
 
 
-    public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate) {
-        super(vectorStore, chatClient, jdbcTemplate);
+    public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate, int chunkMaxChars) {
+        super(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
     }
 
     @Override
@@ -654,18 +654,23 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
      * and normalizes counts.
      */
     private void addDerivedFields(Map<String, Object> metadata) {
-        // date_iso, year, month
+        // date_iso, year, month - always set when date exists (fallback to year-only if full parse fails)
         Object dateObj = metadata.get("date");
         if (dateObj instanceof String) {
             String dateStr = (String) dateObj;
-            // parseDateToLocalDate now handles case normalization internally
             LocalDate parsed = parseDateToLocalDate(dateStr);
+            if (parsed == null) {
+                parsed = parseDateYearFallback(dateStr);
+                if (parsed != null) {
+                    log().warn("Could not fully parse date '{}'; set date_iso from year only: {}. Consider normalizing date format.", dateStr, parsed.format(DateTimeFormatter.ISO_LOCAL_DATE));
+                } else {
+                    log().warn("Could not parse date '{}' to generate date_iso field. Date will not be searchable by ISO format.", dateStr);
+                }
+            }
             if (parsed != null) {
                 metadata.put("date_iso", parsed.format(DateTimeFormatter.ISO_LOCAL_DATE));
                 metadata.put("year", parsed.getYear());
                 metadata.put("month", parsed.getMonthValue());
-            } else {
-                log().warn("Could not parse date '{}' to generate date_iso field. Date will not be searchable by ISO format.", dateStr);
             }
         }
 
@@ -877,12 +882,48 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Enhanced logging: show which formatters were tried
-        log().warn("Could not parse date '{}' (normalized to '{}') with any of {} formatters. " +
-                  "This may prevent date_iso generation and cause date filtering issues.", 
-                  dateStr, v, formatters.size());
         return null;
     }
+
+    /**
+     * Fallback: extract at least year from date string so date_iso can be set (yyyy-01-01).
+     * Supports "d de mes de yyyy" via regex and plain "yyyy".
+     */
+    private LocalDate parseDateYearFallback(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) return null;
+        String v = dateStr.trim();
+        java.util.regex.Pattern spanishPattern = java.util.regex.Pattern.compile(
+            "(\\d{1,2})\\s+de\\s+(\\p{L}+)\\s+de\\s+(\\d{4})",
+            java.util.regex.Pattern.CASE_INSENSITIVE
+        );
+        java.util.regex.Matcher m = spanishPattern.matcher(v);
+        if (m.find()) {
+            int day = Integer.parseInt(m.group(1));
+            int month = SPANISH_MONTH_MAP.getOrDefault(m.group(2).toLowerCase(), -1);
+            int year = Integer.parseInt(m.group(3));
+            if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                try {
+                    return LocalDate.of(year, month, Math.min(day, LocalDate.of(year, month, 1).lengthOfMonth()));
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        java.util.regex.Matcher yearMatcher = java.util.regex.Pattern.compile("(\\d{4})").matcher(v);
+        if (yearMatcher.find()) {
+            int year = Integer.parseInt(yearMatcher.group(1));
+            if (year >= 1900 && year <= 2100) {
+                return LocalDate.of(year, 1, 1);
+            }
+        }
+        return null;
+    }
+
+    private static final Map<String, Integer> SPANISH_MONTH_MAP = Map.ofEntries(
+        Map.entry("enero", 1), Map.entry("febrero", 2), Map.entry("marzo", 3), Map.entry("abril", 4),
+        Map.entry("mayo", 5), Map.entry("junio", 6), Map.entry("julio", 7), Map.entry("agosto", 8),
+        Map.entry("septiembre", 9), Map.entry("setiembre", 9), Map.entry("octubre", 10),
+        Map.entry("noviembre", 11), Map.entry("diciembre", 12)
+    );
 
     /**
      * Multiple date format extraction

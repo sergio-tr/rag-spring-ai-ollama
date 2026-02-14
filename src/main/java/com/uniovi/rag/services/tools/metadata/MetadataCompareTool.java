@@ -44,7 +44,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             if (filteredDocs.isEmpty()) {
                 log().info("No documents found for requested years {} in query: {}", requestedYears, query);
                 String errorMessage = generateSpecificErrorMessage(query, "years", String.join(", ", requestedYears), docs.size(), "No documents found for these years");
-                return ToolResult.from(errorMessage, getClass());
+                return ToolResult.from(formatResponse(errorMessage, query), getClass());
             }
             docs = filteredDocs;
             log().info("Filtered to {} documents for years {}", docs.size(), requestedYears);
@@ -52,35 +52,35 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         
         if (docs.isEmpty()) {
             log().info("No documents found for comparison query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for comparison query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for comparison query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 4: Infer comparison field with enhanced analysis
         ComparisonField fieldToCompare = inferComparisonFieldEnhanced(query, ner, relevantMinutes);
         if (fieldToCompare == null) {
             log().info("Could not infer comparison field for query: {}", query);
-            return ToolResult.from(generateUnknownFieldMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateUnknownFieldMessage(query), query), getClass());
         }
 
         // Step 5: Extract comparison data in parallel
         Map<String, ComparisonValue> comparables = extractComparisonDataInParallel(relevantMinutes, fieldToCompare, ner, query);
         if (comparables.isEmpty()) {
             log().info("No comparison data found for field: {}", fieldToCompare.fieldName);
-            return ToolResult.from(generateNoDataMessage(fieldToCompare.fieldName, query), getClass());
+            return ToolResult.from(formatResponse(generateNoDataMessage(fieldToCompare.fieldName, query), query), getClass());
         }
 
         // Step 5.5: Aggregate mentions by month if this is a mentions_by_month comparison
@@ -96,7 +96,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         String answer = generateEnhancedComparisonAnswer(query, fieldToCompare, comparables, analysis);
         log().info("Generated comparison answer for query: {} with {} data points", query, comparables.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
 
@@ -745,11 +745,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             Focus on answering the question naturally and concisely, as if you were a helpful assistant.
             
             IMPORTANT: 
-            - If comparing months (e.g., "febrero" vs "agosto"), clearly state which month has MORE mentions.
-            - If comparing attendees (e.g., "febrero" vs "agosto"), clearly state which month/meeting has MORE attendees.
-            - The comparison data is sorted in descending order (highest value first), so the first entry has the highest value.
-            - Use the comparison data provided to determine the correct answer.
-            - Be precise: if the data shows "febrero: 20 asistentes" and "agosto: 18 asistentes", then febrero has MORE attendees.
+            - Labels "febrero" / "Febrero" = February; "agosto" / "Agosto" = August. Do NOT invert the conclusion.
+            - If the data shows "Febrero: X" and "Agosto: Y", state which has more according to the numbers (e.g. "Febrero tiene más menciones que Agosto" if X > Y).
+            - The comparison data order and values are authoritative; do not swap or invert them.
+            - If comparing months (febrero vs agosto), clearly state which month has MORE mentions or attendees based on the numbers given.
+            - Be precise: if data shows febrero: 20 and agosto: 18, then February has MORE.
             """, query, comparisonData, simpleStats != null ? simpleStats : "");
         
         try {

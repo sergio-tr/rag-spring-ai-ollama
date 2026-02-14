@@ -64,11 +64,12 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
         }
         
         if (query == null || query.trim().isEmpty()) {
-            // If no query, return original content
-            return doc.getContent();
+            // If no query, return original content with optional metadata prefix
+            return buildContentWithOptionalMetadataPrefix(doc, doc.getContent());
         }
 
-        String promptContent = truncateForPrompt(doc.getContent(), DEFAULT_MAX_PROMPT_CHARS);
+        String contentWithPrefix = buildContentWithOptionalMetadataPrefix(doc, doc.getContent());
+        String promptContent = truncateForPrompt(contentWithPrefix, DEFAULT_MAX_PROMPT_CHARS);
 
         try {
             String filterPrompt = entities == null || entities.isEmpty() ?
@@ -94,8 +95,8 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
             return filteredContent;
         } catch (Exception e) {
             log().error("Error filtering document content, returning original content", e);
-            // Return original content as fallback instead of empty string
-            return doc.getContent();
+            // Return original content with optional metadata prefix as fallback
+            return contentWithPrefix;
         }
     }
 }

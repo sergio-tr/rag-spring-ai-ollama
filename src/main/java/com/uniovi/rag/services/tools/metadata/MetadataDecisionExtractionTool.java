@@ -42,21 +42,21 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         
         if (docs.isEmpty()) {
             log().info("No documents found for decision extraction query: {}", query);
-            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, 0, "no_documents"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, 0, "no_documents"), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for decision extraction query: {}", query);
-            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, docs.size(), "no_valid_minutes"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, docs.size(), "no_valid_minutes"), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for decision extraction query: {}", query);
-            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, minutes.size(), "no_relevant_minutes"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, minutes.size(), "no_relevant_minutes"), query), getClass());
         }
 
         // Step 4: Filter by date first (if query includes date) - early filtering reduces LLM calls
@@ -64,7 +64,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         if (dateFilteredMinutes.isEmpty() && !dateCandidates.isEmpty()) {
             // User asked about a specific date but no minutes matched
             log().info("No minutes found for the specified date in query: {}", query);
-            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, relevantMinutes.size(), "date_not_found"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, relevantMinutes.size(), "date_not_found"), query), getClass());
         }
         // If no date in query, use all relevant minutes
         List<Minute> minutesToEvaluate = dateFilteredMinutes.isEmpty() ? relevantMinutes : dateFilteredMinutes;
@@ -73,7 +73,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         List<Minute> validatedMinutes = evaluateMinutesWithLLM(query, minutesToEvaluate);
         if (validatedMinutes.isEmpty()) {
             log().info("No minutes validated by LLM for decision extraction query: {}", query);
-            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, minutesToEvaluate.size(), "no_validated_minutes"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, minutesToEvaluate.size(), "no_validated_minutes"), query), getClass());
         }
 
         // PHASE 6: Validate that minute dates match query date (if date was specified)
@@ -120,7 +120,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                 log().warn("No minutes with matching date found after validation. Query date: '{}' (parsed: {}). " +
                           "Validated {} minutes before date filtering. This may indicate a date parsing issue.", 
                           date, parseDateFlexible(date), validatedMinutes.size());
-                return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "date_mismatch"), getClass());
+                return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "date_mismatch"), query), getClass());
             }
             log().info("Date validation passed: {} minutes match date '{}' out of {} validated minutes", 
                       dateValidatedMinutes.size(), date, validatedMinutes.size());
@@ -131,7 +131,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         List<Decision> decisions = extractDecisionsInParallel(query, validatedMinutes);
         if (decisions.isEmpty()) {
             log().info("No relevant decisions found for query: {} (checked {} minutes)", query, validatedMinutes.size());
-            return ToolResult.from(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "no_decisions_in_metadata"), getClass());
+            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "no_decisions_in_metadata"), query), getClass());
         }
 
         // Step 7: Analyze and rank decisions
@@ -145,7 +145,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         log().info("Generated decision extraction answer for query: {} with {} decisions in {} clusters", 
                    query, decisions.size(), clusters.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
     /**

@@ -42,7 +42,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             // Date was specified but no documents match
             String errorMessage = generateDateNotFoundMessage(query, requestedDate);
             log().info("No documents found for specified date: {} in query: {}", requestedDate, query);
-            return ToolResult.from(errorMessage, getClass());
+            return ToolResult.from(formatResponse(errorMessage, query), getClass());
         }
         
         // Step 1.6: Filter by topic/keyword if present in query
@@ -53,7 +53,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             if (filteredDocs.isEmpty()) {
                 log().info("No documents found for topic '{}' in query: {}", topic, query);
                 String errorMessage = generateSpecificErrorMessage(query, "topic", topic, docs.size(), "No documents mention this topic");
-                return ToolResult.from(errorMessage, getClass());
+                return ToolResult.from(formatResponse(errorMessage, query), getClass());
             }
             docs = filteredDocs;
             log().info("Filtered to {} documents that mention topic '{}'", docs.size(), topic);
@@ -73,21 +73,22 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         
         if (docs.isEmpty()) {
             log().info("No documents found for count query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
-        // Step 2: Extract minutes in parallel
+        // Step 2: Extract minutes in parallel (chunks may repeat same document_id; count by unique acta)
         List<Minute> minutes = extractMinutesInParallel(docs);
+        minutes = dedupeMinutesByDocumentId(minutes);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for count query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for count query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3.5: Check if query asks for month comparison
@@ -95,7 +96,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         if (detectMonthComparisonQuery(query)) {
             log().info("Query asks for month comparison, processing accordingly");
             String answer = generateMonthComparisonAnswer(query, relevantMinutes);
-            return ToolResult.from(answer, getClass());
+            return ToolResult.from(formatResponse(answer, query), getClass());
         }
         
         // Step 4: Perform comprehensive counting analysis
@@ -107,7 +108,26 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         log().info("Generated count answer for query: '{}' with {} documents (total execution time: {} ms)", 
                   query, analysis.getTotalCount(), totalTime);
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    /**
+     * Deduplicates minutes by document_id (id) so count is by unique actas, not chunks.
+     */
+    private List<Minute> dedupeMinutesByDocumentId(List<Minute> minutes) {
+        if (minutes == null || minutes.isEmpty()) return minutes;
+        Set<String> seen = new LinkedHashSet<>();
+        List<Minute> out = new ArrayList<>();
+        for (Minute m : minutes) {
+            String id = m.id() != null ? m.id() : "";
+            if (seen.add(id)) {
+                out.add(m);
+            }
+        }
+        if (out.size() < minutes.size()) {
+            log().info("Deduped minutes by document_id: {} -> {} unique actas", minutes.size(), out.size());
+        }
+        return out;
     }
 
     /**

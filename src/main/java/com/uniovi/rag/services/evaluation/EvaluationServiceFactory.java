@@ -39,14 +39,22 @@ public class EvaluationServiceFactory {
     private final JdbcTemplate jdbcTemplate;
     private final int topK;
     private final double similarityThreshold;
+    private final String pythonClassifierExecutable;
+    private final String pythonClassifierScript;
+    private final int chunkMaxChars;
 
-    public EvaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore, JdbcTemplate jdbcTemplate, 
-                                     int topK, double similarityThreshold) {
+    public EvaluationServiceFactory(ChatClient chatClient, PgVectorStore vectorStore, JdbcTemplate jdbcTemplate,
+                                    int topK, double similarityThreshold,
+                                    String pythonClassifierExecutable, String pythonClassifierScript,
+                                    int chunkMaxChars) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
         this.topK = topK;
         this.similarityThreshold = similarityThreshold;
+        this.pythonClassifierExecutable = pythonClassifierExecutable != null ? pythonClassifierExecutable : "";
+        this.pythonClassifierScript = pythonClassifierScript != null ? pythonClassifierScript : "";
+        this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
     }
 
     /**
@@ -55,7 +63,8 @@ public class EvaluationServiceFactory {
     public QueryService createQueryService(RagFeatureConfiguration featureConfig) {
         QueryExpander expander = new MinuteDocumentStructureExpander(chatClient);
         QueryAnalyser analyser = new MinuteNERQueryAnalyser(chatClient);
-        QueryClassifier classifier = new EnhancedQueryClassifier(new PythonQueryClassifier(), chatClient);
+        QueryClassifier classifier = new EnhancedQueryClassifier(
+                new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript), chatClient);
         ContextRetriever retriever = new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
         RagToolsConfiguration toolsConfig = new RagToolsConfiguration(createTools(featureConfig, retriever));
 
@@ -75,9 +84,9 @@ public class EvaluationServiceFactory {
      */
     public DocumentService createDocumentService(RagFeatureConfiguration featureConfig) {
         if (featureConfig.isMetadataEnabled()) {
-            return new MetadataMinuteDocumentService(vectorStore, chatClient, jdbcTemplate);
+            return new MetadataMinuteDocumentService(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
         }
-        return new SimpleDocumentService<Minute>(vectorStore, chatClient, jdbcTemplate);
+        return new SimpleDocumentService<Minute>(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
     }
 
     /**

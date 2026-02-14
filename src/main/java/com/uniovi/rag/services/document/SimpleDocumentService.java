@@ -12,8 +12,11 @@ import java.util.List;
 @Service
 public class SimpleDocumentService<T> extends AbstractDocumentService<T> {
 
-    public SimpleDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate) {
+    private final int chunkMaxChars;
+
+    public SimpleDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate, int chunkMaxChars) {
         super(vectorStore, chatClient, jdbcTemplate);
+        this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
     }
 
     public void processDocument(MultipartFile file) {
@@ -24,15 +27,19 @@ public class SimpleDocumentService<T> extends AbstractDocumentService<T> {
         }
         
         // Split content into chunks for embedding (embedding models have lower context limits)
-        // Many Ollama embedding models have a limit around 128 tokens (~100-150 chars)
-        // Split document into multiple chunks to preserve all content
-        List<String> chunks = splitContentIntoChunks(content, 150);
+        List<String> chunks = splitContentIntoChunks(content, chunkMaxChars);
         
         log().info("Content split into {} chunks for embedding (original length: {})", 
                   chunks.size(), content.length());
         
         // Generate a unique document_id based on filename and content hash for chunk grouping
         String documentId = generateDocumentId(file.getOriginalFilename(), content);
+
+        // If the same document (same name+content) already exists, remove it and re-insert to avoid duplicates
+        if (hasDocumentWithId(documentId)) {
+            log().info("Document already exists (document_id={}), removing previous chunks and re-inserting", documentId);
+            deleteDocumentByDocumentId(documentId);
+        }
         
         // Create multiple documents (one per chunk) with basic metadata for grouping
         List<Document> documents = new java.util.ArrayList<>();

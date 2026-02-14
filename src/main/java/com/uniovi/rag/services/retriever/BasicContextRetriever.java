@@ -13,6 +13,7 @@ public class BasicContextRetriever extends AbstractContextRetriever {
 
     @Override
     public String filterDocumentContent(Document doc, String query, JSONObject entities) {
-        return doc.getContent();
+        String content = doc.getContent() != null ? doc.getContent() : "";
+        return buildContentWithOptionalMetadataPrefix(doc, content);
     }
 }

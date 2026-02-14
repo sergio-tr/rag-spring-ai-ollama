@@ -38,21 +38,21 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         
         if (docs.isEmpty()) {
             log().info("No documents found for find paragraph query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for find paragraph query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for find paragraph query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3.5: Create map of minute ID to document for content access
@@ -68,7 +68,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         List<ParagraphResult> results = findParagraphsInParallel(query, relevantMinutes, minuteIdToDoc);
         if (results.isEmpty()) {
             log().info("No paragraphs found for query: {}", query);
-            return ToolResult.from(generateNoDataMessage(query), getClass());
+            return ToolResult.from(formatResponse(generateNoDataMessage(query), query), getClass());
         }
 
         // Step 5: Analyze and rank paragraphs
@@ -82,7 +82,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         log().info("Generated find paragraph answer for query: {} with {} paragraphs in {} clusters", 
                    query, results.size(), clusters.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
     /**

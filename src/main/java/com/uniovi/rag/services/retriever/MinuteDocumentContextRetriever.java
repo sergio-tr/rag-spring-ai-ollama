@@ -88,11 +88,12 @@ public class MinuteDocumentContextRetriever extends AbstractMetadataContextRetri
         }
         
         if (query == null || query.trim().isEmpty()) {
-            // If no query, return original content
-            return doc.getContent();
+            // If no query, return original content with optional metadata prefix
+            return buildContentWithOptionalMetadataPrefix(doc, doc.getContent());
         }
 
-        String promptContent = truncateForPrompt(doc.getContent(), DEFAULT_MAX_PROMPT_CHARS);
+        String contentWithPrefix = buildContentWithOptionalMetadataPrefix(doc, doc.getContent());
+        String promptContent = truncateForPrompt(contentWithPrefix, DEFAULT_MAX_PROMPT_CHARS);
 
         // This prevents wasting LLM calls on documents that don't match basic criteria
         if (entities != null && !entities.isEmpty() && !matchesDocumentMetadata(doc, entities)) {
@@ -121,8 +122,8 @@ public class MinuteDocumentContextRetriever extends AbstractMetadataContextRetri
             return filteredContent;
         } catch (Exception e) {
             log().error("Error filtering document content, returning original content", e);
-            // Return original content as fallback instead of empty string
-            return doc.getContent();
+            // Return original content with optional metadata prefix as fallback
+            return contentWithPrefix;
         }
     }
     

@@ -11,6 +11,7 @@ public class LLMResponseValidator {
     
     private static final Logger log = LoggerFactory.getLogger(LLMResponseValidator.class);
     
+    /** Minimum length (e.g. "No.", "Si." = 3); short valid answers like "4 actas" are accepted. */
     private static final int MIN_RESPONSE_LENGTH = 3;
     private static final int MAX_RESPONSE_LENGTH = 10000;
     
@@ -34,8 +35,9 @@ public class LLMResponseValidator {
             return false;
         }
         
+        // Allow short valid answers: "Si.", "No.", "4 actas", numeric answers
         if (trimmed.length() < MIN_RESPONSE_LENGTH) {
-            log.warn("{}: Response too short (length: {})", context, trimmed.length());
+            log.warn("{}: Response too short (length: {}, min {})", context, trimmed.length(), MIN_RESPONSE_LENGTH);
             return false;
         }
         
@@ -55,19 +57,31 @@ public class LLMResponseValidator {
     
     /**
      * Checks if a response appears to be an error message rather than actual content.
-     * 
+     * Excludes negations (e.g. "no error", "ningun error") and requires clearly technical error context
+     * so valid answers like "No se encontro ningun error en el acta" are not rejected.
+     *
      * @param response The response to check
      * @return true if it looks like an error message
      */
     private static boolean isErrorResponse(String response) {
-        String lower = response.toLowerCase();
-        
-        // Common error patterns
-        return lower.contains("error") && (lower.contains("occurred") || lower.contains("processing")) ||
-               lower.contains("exception") ||
-               lower.contains("failed") && lower.contains("process") ||
-               lower.startsWith("error:") ||
-               lower.startsWith("exception:");
+        if (response == null || response.isEmpty()) return false;
+        String lower = response.toLowerCase().trim();
+
+        // Explicit negation patterns: do not treat as error
+        if (lower.matches("(?s).*\\b(no|ningún|ningun|sin)\\s+(ningún|ningun)?\\s*error\\b.*")) return false;
+        if (lower.matches("(?s).*\\bno\\s+hay\\s+error.*")) return false;
+        if (lower.matches("(?s).*\\bno\\s+se\\s+encontr[oó]\\s+(ningún|ningun)?\\s*error.*")) return false;
+
+        // Starts with error/exception prefix (technical)
+        if (lower.startsWith("error:") || lower.startsWith("exception:")) return true;
+
+        // Clearly technical error phrases (not just the word "error" in isolation)
+        if (lower.contains("error occurred") || lower.contains("an error occurred")) return true;
+        if (lower.contains("processing error") || lower.contains("processing exception")) return true;
+        if (lower.contains("exception") && (lower.contains("thrown") || lower.contains("caught") || lower.contains("at "))) return true;
+        if (lower.contains("failed to process") || lower.contains("failed to retrieve")) return true;
+
+        return false;
     }
     
     /**

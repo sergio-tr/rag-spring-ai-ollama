@@ -9,15 +9,15 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.core.io.ClassPathResource;
 
-
-import java.io.FileInputStream;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
 public class DatasetMinuteEvaluationService extends AbstractMinuteEvaluationService {
 
-    private static final String excelPath = "src/main/resources/python/evaluation_dataset.xlsx";
+    private static final String EXCEL_CLASSPATH = "python/evaluation_dataset.xlsx";
 
     public DatasetMinuteEvaluationService(
             RagFeatureConfiguration featureConfig,
@@ -27,12 +27,13 @@ public class DatasetMinuteEvaluationService extends AbstractMinuteEvaluationServ
         super(featureConfig, chatClient, documentService, queryService);
     }
 
+    /** Expected answers should be verified against ACTA 1, 2, 3, 5, 6 as source of truth. */
     @Override
     public Map<String, String> getQuestionsAndAnswers() {
         Map<String, String> qaList = new HashMap<>();
 
         try (
-                FileInputStream fis = new FileInputStream(excelPath);
+                InputStream fis = new ClassPathResource(EXCEL_CLASSPATH).getInputStream();
                 Workbook workbook = new XSSFWorkbook(fis)
         ) {
 
