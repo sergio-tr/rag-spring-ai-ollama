@@ -56,6 +56,19 @@ public class RagConfiguration {
     }
 
     @Bean
+    public int maxChunkSize(@Value("${rag.chunk.max-chars:400}") int chunkMaxChars) {
+        if (chunkMaxChars > 0) {
+            return chunkMaxChars;
+        }
+        return 400;
+    }
+
+    @Bean
+    public boolean cleanBeforeLoad(@Value("${evaluation.clean-before-load:true}") boolean cleanBeforeLoad) {
+        return cleanBeforeLoad;
+    }
+
+    @Bean
     public OllamaEmbeddingModel embeddingModel(
             @Value("${spring.ai.ollama.base-url}") String url,
             @Value("${spring.ai.ollama.embedding.model}") String chatModel
@@ -235,6 +248,5 @@ public class RagConfiguration {
                 chatClient
         );
     }
-
 
 }
