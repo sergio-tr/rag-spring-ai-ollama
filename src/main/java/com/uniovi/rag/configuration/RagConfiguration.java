@@ -2,7 +2,6 @@ package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.services.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.services.analyser.QueryAnalyser;
-import com.uniovi.rag.services.classifier.EnhancedQueryClassifier;
 import com.uniovi.rag.services.classifier.PythonQueryClassifier;
 import com.uniovi.rag.services.classifier.QueryClassifier;
 import com.uniovi.rag.services.classifier.QueryType;
@@ -159,8 +158,7 @@ public class RagConfiguration {
         @Value("${rag.classifier.python.executable:}") String pythonClassifierExecutable, 
         @Value("${rag.classifier.python.script:}") String pythonClassifierScript
     ) {
-        return new EnhancedQueryClassifier(
-                new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript), chatClient);
+        return new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript);
     }
 
     @Bean

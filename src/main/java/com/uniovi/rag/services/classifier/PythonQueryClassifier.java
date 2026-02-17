@@ -50,7 +50,7 @@ public class PythonQueryClassifier implements QueryClassifier {
 
     /**
      * Returns null if Python is not configured, script file does not exist, or execution fails.
-     * Does not throw so that EnhancedQueryClassifier can use LLM fallback.
+     * Does not throw so that PythonQueryClassifier can use LLM fallback.
      */
     public String classifyWithPython(String question) {
         if (scriptPath.isEmpty()) {
