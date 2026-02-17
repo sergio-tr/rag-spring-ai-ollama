@@ -818,7 +818,6 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     /**
      * Formats comparison data for LLM prompt
      */
-    /** P7: Explicit month labels and conclusion to avoid February/August inversion. */
     private String formatComparisonData(Map<String, ComparisonValue> comparables, ComparisonField field) {
         if ("mentions_by_month".equals(field.fieldName)) {
             // Preserve order: list each month with its count, then add explicit conclusion
@@ -829,7 +828,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                         return String.format("- %s: %s menciones", month, value);
                     })
                     .collect(Collectors.joining("\n"));
-            // P7: Append deterministic conclusion so LLM does not invert (e.g. "Agosto tiene más que Febrero" when data says otherwise)
+            // Append deterministic conclusion so LLM does not invert (e.g. "Agosto tiene más que Febrero" when data says otherwise)
             if (comparables.size() == 2) {
                 Map.Entry<String, ComparisonValue> e1 = comparables.entrySet().iterator().next();
                 Map.Entry<String, ComparisonValue> e2 = comparables.entrySet().stream().skip(1).findFirst().orElse(null);
