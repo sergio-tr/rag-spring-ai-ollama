@@ -54,7 +54,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
         }
         
-        // P6: When query asks for "quién presidió" or "quién fue la secretaria", return only that role (no attendee list)
+        // When query asks for "quién presidió" or "quién fue la secretaria", return only that role (no attendee list)
         if (asksForPresidentOrSecretaryOnly(query)) {
             String requestedDate = extractDateFromQuery(query, ner);
             List<Minute> forDate = requestedDate != null ? filterMinutesByDate(query, ner, relevantMinutes) : relevantMinutes;
@@ -62,7 +62,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                 Minute target = forDate.get(0);
                 String roleValue = asksForPresidentOnly(query) ? target.president() : target.secretary();
                 if (roleValue != null && !roleValue.isBlank()) {
-                    log().info("P6: Returning single role (president/secretary) for query: {}", query);
+                    log().info("Returning single role (president/secretary) for query: {}", query);
                     return ToolResult.from(formatResponse(roleValue, query), getClass());
                 }
             }
@@ -759,7 +759,6 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
      * Checks if query requires filtering by both topic and person (AND logic)
      * Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
      */
-    /** P6: Query asks for who was president/secretary (role only) - we return that field, not full attendee list. */
     private boolean asksForPresidentOrSecretaryOnly(String query) {
         if (query == null || query.trim().isEmpty()) return false;
         String q = query.toLowerCase();

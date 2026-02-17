@@ -127,7 +127,7 @@ public class ProcessQueryService implements QueryService {
             log().info("NER: {}", nerEntities);
             log().info("Query Type : {}", queryType);
 
-            // P1: Date existence guard - if no acta exists for requested date, return standard response without calling tool
+            // Date existence guard - if no acta exists for requested date, return standard response without calling tool
             if (featureConfig.isMetadataEnabled() && queryType != null) {
                 var guardResult = dateExistenceGuard.checkNoActaForDate(expandedQuery, queryType, nerEntities);
                 if (guardResult.isPresent()) {

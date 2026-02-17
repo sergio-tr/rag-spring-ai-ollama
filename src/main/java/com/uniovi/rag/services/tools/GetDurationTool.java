@@ -156,7 +156,7 @@ public class GetDurationTool extends AbstractTool {
         }
     }
 
-    /** P2: Prefer metadata startTime/endTime when present (avoids "No durations found" when data exists in metadata). */
+    /** Prefer metadata startTime/endTime when present (avoids "No durations found" when data exists in metadata). */
     private static final java.util.regex.Pattern TIME_PATTERN = Pattern.compile("(\\d{1,2}):(\\d{2})");
 
     /**
@@ -168,7 +168,7 @@ public class GetDurationTool extends AbstractTool {
             log().debug("Cannot extract duration: document is null");
             return null;
         }
-        // P2: Try metadata first (documents may have startTime/endTime from MetadataMinuteDocumentService)
+        // Try metadata first (documents may have startTime/endTime from MetadataMinuteDocumentService)
         Map<String, Object> meta = doc.getMetadata();
         if (meta != null) {
             Object startObj = meta.get("startTime");
