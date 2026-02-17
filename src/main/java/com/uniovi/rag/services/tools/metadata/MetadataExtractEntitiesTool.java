@@ -68,6 +68,17 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             }
         }
 
+        // When query asks for "list all X" (dates, places, presidents, secretaries, topics, decisions, attendees), return from metadata (no LLM)
+        ListableEntity listType = getRequestedListableEntity(query);
+        if (listType != null) {
+            List<String> items = buildListFromMinutes(listType, relevantMinutes);
+            if (!items.isEmpty()) {
+                String answer = formatListAnswer(items, listType);
+                log().info("Returning list of {} {} for query (no entity extraction)", items.size(), listType);
+                return ToolResult.from(formatResponse(answer, query), getClass());
+            }
+        }
+
         // Step 3.5: Additional filtering by topic + person if query requires it
         // Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
         if (requiresTopicAndPersonFilter(query)) {
@@ -771,6 +782,56 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         if (query == null) return true;
         String q = query.toLowerCase();
         return q.contains("presidió") || q.contains("presidente") || q.contains("presided") || q.contains("president");
+    }
+
+    /** Entity types that can be listed directly from metadata without LLM extraction. */
+    private enum ListableEntity {
+        DATES, PLACES, PRESIDENTS, SECRETARIES, TOPICS, DECISIONS, ATTENDEES
+    }
+
+    /** Detects if the query asks for a list of a specific entity type (dates, places, presidents, etc.). */
+    private static ListableEntity getRequestedListableEntity(String query) {
+        if (query == null || query.isBlank()) return null;
+        String q = query.toLowerCase();
+        boolean asksForList = q.contains("todas las") || q.contains("todas los") || q.contains("todos los") || q.contains("todos las")
+                || q.contains("diferentes") || q.contains("list all") || q.contains("listar") || q.contains("qué ") || q.contains("que ")
+                || q.contains("dime las") || q.contains("dime los") || q.contains("dime todas") || q.contains("las fechas de")
+                || q.contains("que tienes actas") || q.contains("cuáles son") || q.contains("cuales son")
+                || q.contains("what are the") || q.contains("which ") || q.contains("name all");
+        if (!asksForList) return null;
+        if (q.contains("fecha") || q.contains("date")) return ListableEntity.DATES;
+        if (q.contains("lugar") || q.contains("lugares") || q.contains("place") || q.contains("sitio") || q.contains("ubicación") || q.contains("location")) return ListableEntity.PLACES;
+        if (q.contains("presidente") || q.contains("presidentes") || q.contains("president") || q.contains("quién presidió")) return ListableEntity.PRESIDENTS;
+        if (q.contains("secretaria") || q.contains("secretarias") || q.contains("secretary") || q.contains("secretaries")) return ListableEntity.SECRETARIES;
+        if (q.contains("tema") || q.contains("temas") || q.contains("topic") || q.contains("topics") || q.contains("asunto")) return ListableEntity.TOPICS;
+        if (q.contains("decisión") || q.contains("decisiones") || q.contains("acuerdo") || q.contains("acuerdos") || q.contains("decision")) return ListableEntity.DECISIONS;
+        if (q.contains("asistente") || q.contains("asistentes") || q.contains("attendee") || q.contains("participante") || q.contains("personas que")) return ListableEntity.ATTENDEES;
+        if (q.contains("fecha") || q.contains("date")) return ListableEntity.DATES; // fallback for "todas las fechas"
+        return null;
+    }
+
+    /** Builds a deduplicated, sorted list of values from minutes for the given entity type. */
+    private List<String> buildListFromMinutes(ListableEntity type, List<Minute> minutes) {
+        if (minutes == null || minutes.isEmpty()) return Collections.emptyList();
+        return switch (type) {
+            case DATES -> minutes.stream().map(Minute::date).filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case PLACES -> minutes.stream().map(Minute::place).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case PRESIDENTS -> minutes.stream().map(Minute::president).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case SECRETARIES -> minutes.stream().map(Minute::secretary).filter(Objects::nonNull).filter(s -> !s.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case TOPICS -> minutes.stream().filter(m -> m.topics() != null).flatMap(m -> m.topics().stream())
+                    .filter(Objects::nonNull).filter(t -> !t.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case DECISIONS -> minutes.stream().filter(m -> m.decisions() != null).flatMap(m -> m.decisions().stream())
+                    .filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case ATTENDEES -> minutes.stream().filter(m -> m.attendees() != null).flatMap(m -> m.attendees().stream())
+                    .filter(Objects::nonNull).filter(a -> !a.isBlank()).filter(a -> !isGenericEntity(a)).distinct().sorted().collect(Collectors.toList());
+        };
+    }
+
+    /** Formats a list of items for the response (comma-separated or newlines for long lists). */
+    private static String formatListAnswer(List<String> items, ListableEntity type) {
+        if (items == null || items.isEmpty()) return "";
+        if (items.size() <= 8) return String.join(", ", items);
+        return String.join("\n", items);
     }
 
     private boolean requiresTopicAndPersonFilter(String query) {
