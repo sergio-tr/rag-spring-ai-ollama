@@ -161,8 +161,17 @@ public class GetFieldTool extends AbstractTool {
         }
     }
 
+    /** P3: Intent→field mapping: "fecha del acta donde X fue presidente" must return date, not president. */
+    private static boolean asksForDateOfActaWherePerson(String query) {
+        if (query == null) return false;
+        String q = query.toLowerCase();
+        return (q.contains("fecha del acta") || q.contains("date of the acta") || (q.contains("fecha") && q.contains("donde")))
+                && (q.contains("presidente") || q.contains("president") || q.contains("secretaria") || q.contains("secretary"));
+    }
+
     private String extractLiteralFieldByIntent(String query, JSONObject ner, String content) {
-        String detectedField = classifyLiteralIntentWithLLM(query);
+        // P3: When user asks for "date of the acta where X was president", extract date only (not president name)
+        String detectedField = asksForDateOfActaWherePerson(query) ? "date" : classifyLiteralIntentWithLLM(query);
         return switch (detectedField) {
             case "date", "fecha" -> extractDate(content);
             case "startTime", "hora_inicio" -> extractTime(content, "start");

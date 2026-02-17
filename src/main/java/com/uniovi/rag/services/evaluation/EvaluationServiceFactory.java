@@ -14,6 +14,8 @@ import com.uniovi.rag.services.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.services.document.SimpleDocumentService;
 import com.uniovi.rag.services.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.services.expand.QueryExpander;
+import com.uniovi.rag.services.guard.DateExistenceGuard;
+import com.uniovi.rag.services.guard.QueryDateExtractor;
 import com.uniovi.rag.services.query.ProcessQueryService;
 import com.uniovi.rag.services.query.QueryService;
 import com.uniovi.rag.services.retriever.BasicContextRetriever;
@@ -24,7 +26,6 @@ import com.uniovi.rag.services.tools.metadata.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.beans.factory.annotation.Value;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -74,6 +75,8 @@ public class EvaluationServiceFactory {
                 new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript), chatClient);
         ContextRetriever retriever = new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
         RagToolsConfiguration toolsConfig = new RagToolsConfiguration(createTools(featureConfig, retriever));
+        QueryDateExtractor queryDateExtractor = new QueryDateExtractor();
+        DateExistenceGuard dateExistenceGuard = new DateExistenceGuard(retriever, queryDateExtractor);
 
         return new ProcessQueryService(
                 featureConfig,
@@ -82,7 +85,8 @@ public class EvaluationServiceFactory {
                 analyser,
                 classifier,
                 retriever,
-                chatClient
+                chatClient,
+                dateExistenceGuard
         );
     }
 

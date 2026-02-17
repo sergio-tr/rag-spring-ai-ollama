@@ -818,22 +818,30 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     /**
      * Formats comparison data for LLM prompt
      */
+    /** P7: Explicit month labels and conclusion to avoid February/August inversion. */
     private String formatComparisonData(Map<String, ComparisonValue> comparables, ComparisonField field) {
         if ("mentions_by_month".equals(field.fieldName)) {
-            // For month comparisons, format clearly showing which month has more
-            return comparables.entrySet().stream()
-                    .sorted(Map.Entry.<String, ComparisonValue>comparingByValue((a, b) -> {
-                        if (a.value instanceof Number && b.value instanceof Number) {
-                            return Double.compare(((Number) b.value).doubleValue(), ((Number) a.value).doubleValue());
-                        }
-                        return 0;
-                    }).reversed()) // Sort descending (highest first)
+            // Preserve order: list each month with its count, then add explicit conclusion
+            String lines = comparables.entrySet().stream()
                     .map(entry -> {
                         String month = entry.getKey();
                         Object value = entry.getValue().value;
                         return String.format("- %s: %s menciones", month, value);
                     })
                     .collect(Collectors.joining("\n"));
+            // P7: Append deterministic conclusion so LLM does not invert (e.g. "Agosto tiene más que Febrero" when data says otherwise)
+            if (comparables.size() == 2) {
+                Map.Entry<String, ComparisonValue> e1 = comparables.entrySet().iterator().next();
+                Map.Entry<String, ComparisonValue> e2 = comparables.entrySet().stream().skip(1).findFirst().orElse(null);
+                if (e2 != null && e1.getValue().value instanceof Number n1 && e2.getValue().value instanceof Number n2) {
+                    double v1 = n1.doubleValue();
+                    double v2 = n2.doubleValue();
+                    String more = v1 >= v2 ? e1.getKey() : e2.getKey();
+                    String less = v1 >= v2 ? e2.getKey() : e1.getKey();
+                    lines += String.format("\nCONCLUSION: %s tiene más menciones que %s.", more, less);
+                }
+            }
+            return lines;
         }
         
         // For attendees comparison, sort descending (highest first) and format clearly

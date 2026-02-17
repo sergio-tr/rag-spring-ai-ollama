@@ -14,6 +14,8 @@ import com.uniovi.rag.services.evaluation.EvaluationService;
 import com.uniovi.rag.services.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.services.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.services.expand.QueryExpander;
+import com.uniovi.rag.services.guard.DateExistenceGuard;
+import com.uniovi.rag.services.guard.QueryDateExtractor;
 import com.uniovi.rag.services.query.ProcessQueryService;
 import com.uniovi.rag.services.query.QueryService;
 import com.uniovi.rag.services.retriever.BasicContextRetriever;
@@ -229,6 +231,16 @@ public class RagConfiguration {
     }
 
     @Bean
+    public QueryDateExtractor queryDateExtractor() {
+        return new QueryDateExtractor();
+    }
+
+    @Bean
+    public DateExistenceGuard dateExistenceGuard(ContextRetriever retriever, QueryDateExtractor queryDateExtractor) {
+        return new DateExistenceGuard(retriever, queryDateExtractor);
+    }
+
+    @Bean
     public QueryService queryService(
             RagFeatureConfiguration featureConfig,
             RagToolsConfiguration toolsConfig,
@@ -236,7 +248,8 @@ public class RagConfiguration {
             QueryAnalyser analyser,
             QueryClassifier classifier,
             ContextRetriever retriever,
-            ChatClient chatClient
+            ChatClient chatClient,
+            DateExistenceGuard dateExistenceGuard
     ) {
         return new ProcessQueryService(
                 featureConfig,
@@ -245,7 +258,8 @@ public class RagConfiguration {
                 analyser,
                 classifier,
                 retriever,
-                chatClient
+                chatClient,
+                dateExistenceGuard
         );
     }
 

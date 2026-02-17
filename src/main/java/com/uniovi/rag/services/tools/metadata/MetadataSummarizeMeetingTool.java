@@ -131,6 +131,13 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             return "";
         }
         
+        // P9: When user asks for "puntos tratados" or "qué se discutió", insist on including topics/agenda in the summary
+        boolean asksForTopics = query != null && (query.toLowerCase().contains("puntos tratados")
+                || query.toLowerCase().contains("qué se discutió") || query.toLowerCase().contains("temas de la reunión")
+                || query.toLowerCase().contains("qué se habló") || query.toLowerCase().contains("temas tratados"));
+        String topicInstruction = asksForTopics
+                ? " The user asked for topics/points discussed: you MUST include the list of topics (Temas) or agenda items in your summary, not only place and attendees."
+                : "";
         String prompt = String.format("""
             You are summarizing a meeting minute. The user asked: "%s"
             
@@ -138,7 +145,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             - Focus on the specific information requested in the query
             - If the query asks about a specific topic/aspect, prioritize that in your summary
             - If the query asks for a general summary, provide a comprehensive overview
-            - Write in the same language as the query
+            - Write in the same language as the query.%s
             
             Meeting information:
             Date: %s
@@ -160,6 +167,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             - Use the most important information first
             """,
             query,
+            topicInstruction,
             minute.date() != null ? minute.date() : "unknown",
             minute.place() != null ? minute.place() : "unknown",
             minute.president() != null ? minute.president() : "unknown",

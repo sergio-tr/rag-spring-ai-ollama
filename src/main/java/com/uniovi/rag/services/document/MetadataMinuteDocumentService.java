@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.model.Minute;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.PgVectorStore;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 

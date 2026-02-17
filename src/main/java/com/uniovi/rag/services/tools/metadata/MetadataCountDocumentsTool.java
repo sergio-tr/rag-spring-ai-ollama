@@ -13,6 +13,8 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataCountDocumentsTool for counting meeting minutes with intelligent analysis.
+ * P12: Count is by unique document_id (dedupeMinutesByDocumentId); attendees filter is strict
+ * (e.g. "menos de diez" uses count &lt; 10); date-existence guard for non-existent dates runs in orchestration (ProcessQueryService).
  */
 public class MetadataCountDocumentsTool extends AbstractMetadataTool {
 
@@ -381,7 +383,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
     }
     
     /**
-     * Filters documents by attendeesCount based on query criteria.
+     * Filters documents by attendeesCount based on query criteria (P12: strict &lt;10 for "menos de diez").
      * Uses structured information from LLM detection instead of hardcoded string checks.
      */
     private List<Document> filterDocumentsByAttendeesCount(AttendeesCountQueryInfo queryInfo, List<Document> docs) {
