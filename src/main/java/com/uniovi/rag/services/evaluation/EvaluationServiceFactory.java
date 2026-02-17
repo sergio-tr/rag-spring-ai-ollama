@@ -5,7 +5,6 @@ import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.model.Minute;
 import com.uniovi.rag.services.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.services.analyser.QueryAnalyser;
-import com.uniovi.rag.services.classifier.EnhancedQueryClassifier;
 import com.uniovi.rag.services.classifier.PythonQueryClassifier;
 import com.uniovi.rag.services.classifier.QueryClassifier;
 import com.uniovi.rag.services.classifier.QueryType;
@@ -71,8 +70,7 @@ public class EvaluationServiceFactory {
     public QueryService createQueryService(RagFeatureConfiguration featureConfig) {
         QueryExpander expander = new MinuteDocumentStructureExpander(chatClient);
         QueryAnalyser analyser = new MinuteNERQueryAnalyser(chatClient);
-        QueryClassifier classifier = new EnhancedQueryClassifier(
-                new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript), chatClient);
+        QueryClassifier classifier = new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript);
         ContextRetriever retriever = new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
         RagToolsConfiguration toolsConfig = new RagToolsConfiguration(createTools(featureConfig, retriever));
         QueryDateExtractor queryDateExtractor = new QueryDateExtractor();
