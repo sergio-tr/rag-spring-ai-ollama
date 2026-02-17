@@ -8,7 +8,9 @@ import org.springframework.ai.document.Document;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 import static com.uniovi.rag.utils.InfoExtractor.extractDate;
 import static com.uniovi.rag.utils.InfoExtractor.extractTime;
@@ -154,34 +156,58 @@ public class GetDurationTool extends AbstractTool {
         }
     }
 
+    /** P2: Prefer metadata startTime/endTime when present (avoids "No durations found" when data exists in metadata). */
+    private static final java.util.regex.Pattern TIME_PATTERN = Pattern.compile("(\\d{1,2}):(\\d{2})");
+
     /**
-     * Extracts meeting duration from document with validation
+     * Extracts meeting duration from document with validation.
+     * Uses metadata startTime/endTime when available (P2), otherwise parses content.
      */
     private MeetingDuration extractMeetingDuration(Document doc) {
-        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
-            log().debug("Cannot extract duration: document is null or empty");
+        if (doc == null) {
+            log().debug("Cannot extract duration: document is null");
             return null;
         }
-        
+        // P2: Try metadata first (documents may have startTime/endTime from MetadataMinuteDocumentService)
+        Map<String, Object> meta = doc.getMetadata();
+        if (meta != null) {
+            Object startObj = meta.get("startTime");
+            Object endObj = meta.get("endTime");
+            if (startObj != null && endObj != null) {
+                String startTime = startObj.toString().trim();
+                String endTime = endObj.toString().trim();
+                if (!startTime.isEmpty() && !endTime.isEmpty()) {
+                    int durationMinutes = durationMinutesFromTimes(startTime, endTime);
+                    if (durationMinutes > 0 && durationMinutes <= 24 * 60) {
+                        String date = null;
+                        if (meta.containsKey("date_iso")) date = meta.get("date_iso").toString().trim();
+                        else if (meta.containsKey("date")) date = meta.get("date").toString().trim();
+                        if (date == null || date.isEmpty()) date = "Unknown date";
+                        log().debug("Extracted duration from metadata for document {}: {} minutes ({} - {})",
+                                doc.getId(), durationMinutes, startTime, endTime);
+                        return new MeetingDuration(date, startTime, endTime, durationMinutes);
+                    }
+                }
+            }
+        }
+        // Fallback: content-based extraction
+        if (doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+            log().debug("Cannot extract duration: document content is null or empty");
+            return null;
+        }
         String content = doc.getContent();
         String date = extractDate(content);
         String startTime = extractTime(content, "start");
         String endTime = extractTime(content, "end");
-        
-        // Validate times
         if (startTime == null || startTime.trim().isEmpty()) {
             log().debug("Cannot extract duration: startTime is null or empty for document {}", doc.getId());
             return null;
         }
-        
         if (endTime == null || endTime.trim().isEmpty()) {
             log().debug("Cannot extract duration: endTime is null or empty for document {}", doc.getId());
             return null;
         }
-        
         int duration = calculateDuration(content);
-        
-        // Validate duration (should be between 1 minute and 24 hours)
         if (duration <= 0) {
             log().debug("Invalid duration: {} minutes (too short) for document {}", duration, doc.getId());
             return null;
@@ -190,11 +216,21 @@ public class GetDurationTool extends AbstractTool {
             log().warn("Invalid duration: {} minutes (too long, >24h) for document {}", duration, doc.getId());
             return null;
         }
-        
-        log().debug("Extracted duration for document {}: {} minutes ({} - {})", 
-                   doc.getId(), duration, startTime, endTime);
-        
+        log().debug("Extracted duration for document {}: {} minutes ({} - {})", doc.getId(), duration, startTime, endTime);
         return new MeetingDuration(date, startTime, endTime, duration);
+    }
+
+    /** Parses "HH:mm" or "H:mm" and returns duration in minutes; 0 if invalid. */
+    private int durationMinutesFromTimes(String startTime, String endTime) {
+        java.util.regex.Matcher startM = TIME_PATTERN.matcher(startTime);
+        java.util.regex.Matcher endM = TIME_PATTERN.matcher(endTime);
+        if (startM.find() && endM.find()) {
+            int startMin = Integer.parseInt(startM.group(1)) * 60 + Integer.parseInt(startM.group(2));
+            int endMin = Integer.parseInt(endM.group(1)) * 60 + Integer.parseInt(endM.group(2));
+            int d = endMin - startMin;
+            return d > 0 ? d : 0;
+        }
+        return 0;
     }
 
     /**

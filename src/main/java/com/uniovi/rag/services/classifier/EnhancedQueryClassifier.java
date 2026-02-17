@@ -93,6 +93,24 @@ public class EnhancedQueryClassifier implements QueryClassifier {
         }
     }
 
+    /** P10: Override refined type when it would route to a worse tool (e.g. COMPARE→BOOLEAN_QUERY, GET_FIELD→EXTRACT_ENTITIES). */
+    private static boolean queryClearlyCompares(String query) {
+        if (query == null) return false;
+        String q = query.toLowerCase();
+        return q.contains("compara") || q.contains("comparar") || q.contains("comparación") || q.contains("comparison")
+                || (q.contains("más") && (q.contains("febrero") || q.contains("agosto") || q.contains("february") || q.contains("august")));
+    }
+    private static boolean queryClearlyGetField(String query) {
+        if (query == null) return false;
+        String q = query.toLowerCase();
+        return q.contains("fecha del acta") || q.contains("date of the acta") || (q.contains("fecha") && q.contains("donde") && (q.contains("presidente") || q.contains("secretaria")));
+    }
+    private static boolean queryClearlyFindParagraph(String query) {
+        if (query == null) return false;
+        String q = query.toLowerCase();
+        return q.contains("secciones que contiene") || q.contains("orden del día") || q.contains("qué contiene el orden");
+    }
+
     private String getRefinedType(String query) {
         String initialType = baseClassifier.classifyWithText(query);
         String refinedType = validateWithLLM(query, initialType);
@@ -100,7 +118,29 @@ public class EnhancedQueryClassifier implements QueryClassifier {
         log().info("[CLASSIFIER] Initial type: " + initialType);
         log().info("[CLASSIFIER] Refined type: " + refinedType);
 
+        String overridden = applyClassifierOverrides(query, initialType, refinedType);
+        if (overridden != null) {
+            log().info("[CLASSIFIER] P10 override: keeping {}", overridden);
+            return overridden;
+        }
         return refinedType;
+    }
+
+    /**
+     * P10: Applies rule-based overrides to avoid suboptimal refinement. Returns the type to use, or null if no override.
+     * Package-private for regression tests.
+     */
+    static String applyClassifierOverrides(String query, String initialType, String refinedType) {
+        if (queryClearlyCompares(query) && "COMPARE".equals(initialType) && !"COMPARE".equals(refinedType)) {
+            return "COMPARE";
+        }
+        if (queryClearlyGetField(query) && "GET_FIELD".equals(initialType) && "EXTRACT_ENTITIES".equals(refinedType)) {
+            return "GET_FIELD";
+        }
+        if (queryClearlyFindParagraph(query) && "FIND_PARAGRAPH".equals(initialType) && "SUMMARIZE_TOPIC".equals(refinedType)) {
+            return "FIND_PARAGRAPH";
+        }
+        return null;
     }
 
     /**

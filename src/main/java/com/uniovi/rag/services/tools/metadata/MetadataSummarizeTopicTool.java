@@ -294,9 +294,9 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         List<String> keyTerms = extractKeyTermsFromTopic(topicLower);
         log().debug("Extracted key terms from topic '{}': {}", topic, keyTerms);
         
-        // For compound topics, require that ALL key terms appear (not just one); relaxed thresholds to reduce false "no encontrado"
+        // P8: Lower thresholds to avoid discarding minutes where topic appears (estado de cuentas, ascensor, calefacción, limpieza, iluminación)
         boolean isCompoundTopic = keyTerms.size() > 1;
-        double relevanceThreshold = isCompoundTopic ? 0.55 : 0.45;
+        double relevanceThreshold = isCompoundTopic ? 0.50 : 0.40;
         
         List<Minute> filtered = minutes.stream()
                 .filter(minute -> {

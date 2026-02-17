@@ -54,6 +54,20 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
         }
         
+        // P6: When query asks for "quién presidió" or "quién fue la secretaria", return only that role (no attendee list)
+        if (asksForPresidentOrSecretaryOnly(query)) {
+            String requestedDate = extractDateFromQuery(query, ner);
+            List<Minute> forDate = requestedDate != null ? filterMinutesByDate(query, ner, relevantMinutes) : relevantMinutes;
+            if (!forDate.isEmpty()) {
+                Minute target = forDate.get(0);
+                String roleValue = asksForPresidentOnly(query) ? target.president() : target.secretary();
+                if (roleValue != null && !roleValue.isBlank()) {
+                    log().info("P6: Returning single role (president/secretary) for query: {}", query);
+                    return ToolResult.from(formatResponse(roleValue, query), getClass());
+                }
+            }
+        }
+
         // Step 3.5: Additional filtering by topic + person if query requires it
         // Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
         if (requiresTopicAndPersonFilter(query)) {
@@ -745,6 +759,21 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
      * Checks if query requires filtering by both topic and person (AND logic)
      * Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
      */
+    /** P6: Query asks for who was president/secretary (role only) - we return that field, not full attendee list. */
+    private boolean asksForPresidentOrSecretaryOnly(String query) {
+        if (query == null || query.trim().isEmpty()) return false;
+        String q = query.toLowerCase();
+        boolean asksPresident = q.contains("presidió") || q.contains("presidente") || q.contains("presided") || q.contains("president");
+        boolean asksSecretary = q.contains("secretaria") || q.contains("secretario") || q.contains("secretary");
+        return (asksPresident || asksSecretary) && extractPersonNameFromQuery(query, null) == null;
+    }
+
+    private boolean asksForPresidentOnly(String query) {
+        if (query == null) return true;
+        String q = query.toLowerCase();
+        return q.contains("presidió") || q.contains("presidente") || q.contains("presided") || q.contains("president");
+    }
+
     private boolean requiresTopicAndPersonFilter(String query) {
         return detectTopicAndPersonFilter(query);
     }

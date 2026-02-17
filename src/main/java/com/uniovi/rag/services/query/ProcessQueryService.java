@@ -6,6 +6,7 @@ import com.uniovi.rag.services.analyser.QueryAnalyser;
 import com.uniovi.rag.services.classifier.QueryClassifier;
 import com.uniovi.rag.services.classifier.QueryType;
 import com.uniovi.rag.services.expand.QueryExpander;
+import com.uniovi.rag.services.guard.DateExistenceGuard;
 import com.uniovi.rag.services.tools.Tool;
 import com.uniovi.rag.services.retriever.AbstractContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
@@ -65,6 +66,7 @@ public class ProcessQueryService implements QueryService {
     private final QueryClassifier classifier;
     private final ContextRetriever retriever;
     private final RagToolsConfiguration toolsConfig;
+    private final DateExistenceGuard dateExistenceGuard;
 
     public ProcessQueryService(RagFeatureConfiguration featureConfig,
                                RagToolsConfiguration toolsConfig,
@@ -72,7 +74,8 @@ public class ProcessQueryService implements QueryService {
                                QueryAnalyser analyser,
                                QueryClassifier classifier,
                                ContextRetriever retriever,
-                               ChatClient chatClient) {
+                               ChatClient chatClient,
+                               DateExistenceGuard dateExistenceGuard) {
         this.featureConfig = featureConfig;
         this.chatClient = chatClient;
         this.expander = expander;
@@ -80,6 +83,7 @@ public class ProcessQueryService implements QueryService {
         this.classifier = classifier;
         this.retriever = retriever;
         this.toolsConfig = toolsConfig;
+        this.dateExistenceGuard = dateExistenceGuard;
     }
 
     @Override
@@ -123,12 +127,20 @@ public class ProcessQueryService implements QueryService {
             log().info("NER: {}", nerEntities);
             log().info("Query Type : {}", queryType);
 
+            // P1: Date existence guard - if no acta exists for requested date, return standard response without calling tool
+            if (featureConfig.isMetadataEnabled() && queryType != null) {
+                var guardResult = dateExistenceGuard.checkNoActaForDate(expandedQuery, queryType, nerEntities);
+                if (guardResult.isPresent()) {
+                    log().info("DateExistenceGuard: returning no-acta response for date-dependent query (queryType={})", queryType);
+                    log().info("Response generated with tool {}: {}", guardResult.get().source(), guardResult.get().result());
+                    return QueryResponse.fromTool(guardResult.get().result(), guardResult.get().source(), queryType);
+                }
+            }
+
             ToolResult response = tryToolRoute(expandedQuery, nerEntities, queryType);
 
             if (response == null) {
-                if (isProblematicConfig) {
-                    log().debug("No tool route available, falling back to direct model query");
-                }
+                log().info("Response generated with model directly (fallback; see fallback_reason in log above if tools were enabled)");
                 String answer = askModel(expandedQuery, nerEntities, queryType);
                 log().info("Response generated with model directly: {}", answer);
                 return QueryResponse.fromLLM(answer, queryType);
@@ -224,13 +236,13 @@ public class ProcessQueryService implements QueryService {
         }
         
         if (queryType == null) {
-            log().debug("Query type is null, cannot route to tool");
+            log().info("fallback_reason=query_type_null. Cannot route to tool.");
             return null;
         }
 
         Tool tool = toolsConfig.getTool(queryType);
         if (tool == null) {
-            log().warn("No tool found for query type: {}. This may indicate a configuration issue.", queryType);
+            log().info("fallback_reason=no_tool_for_type, queryType={}. This may indicate a configuration issue.", queryType);
             return null;
         }
         
@@ -315,11 +327,13 @@ public class ProcessQueryService implements QueryService {
             }
         }
         
-        // All retries failed
+        // All retries failed - log structured fallback reason for diagnostics
         if (lastException != null) {
             log().error("Failed to execute tool {} after {} attempts: {}", queryType, MAX_RETRIES + 1, lastException.getMessage());
+            log().info("fallback_reason=exception, queryType={}, exception={}", queryType, lastException.getClass().getSimpleName());
         } else {
             log().error("Tool {} failed to return valid result after {} attempts", queryType, MAX_RETRIES + 1);
+            log().info("fallback_reason=validation_failed, queryType={}", queryType);
         }
         
         return null; // Fall back to direct model query

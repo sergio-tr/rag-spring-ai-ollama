@@ -11,8 +11,8 @@ public class LLMResponseValidator {
     
     private static final Logger log = LoggerFactory.getLogger(LLMResponseValidator.class);
     
-    /** Minimum length (e.g. "No.", "Si." = 3); short valid answers like "4 actas" are accepted. */
-    private static final int MIN_RESPONSE_LENGTH = 3;
+    /** P5: Allow short valid answers: "Sí", "No", "Si" (2 chars); avoid rejecting tool responses like "No se encontró…". */
+    private static final int MIN_RESPONSE_LENGTH = 2;
     private static final int MAX_RESPONSE_LENGTH = 10000;
     
     /**
