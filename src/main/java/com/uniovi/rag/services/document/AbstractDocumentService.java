@@ -209,8 +209,8 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             .replaceAll("\\u2007", " ")  // Figure space
             .replaceAll("\\u202F", " ")  // Narrow NBSP
             .replaceAll("\\u2009", " ")  // Thin space
-            // Normalize multiple spaces to one space
-            .replaceAll("\\s+", " ")
+            // Collapse horizontal whitespace only
+            .replaceAll("[ \t]+", " ")
             // Normalize multiple line breaks to one
             .replaceAll("\\n\\s*\\n+", "\n")
             // Normalize spaces around colons

@@ -1729,8 +1729,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Guardar último item
-        if (currentKey != null && currentValue.length() > 0) {
+        // Guardar último item (incluir aunque no tenga descripción, e.g. "Ruegos y preguntas")
+        if (currentKey != null) {
             agenda.put(currentKey, currentValue.toString().trim());
         }
         
@@ -1774,13 +1774,15 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (content == null || content.trim().isEmpty()) {
             return null;
         }
+        // Ensure we have newlines (content may have been normalized with wrong regex in the past)
+        String normalized = content.contains("\n") ? content : content.replaceAll("(?<=[.!])\\s+", "\n");
         
-        // Pattern 1: "Orden del día:" until "Ruegos y preguntas" or "No habiendo más asuntos"
+        // Pattern 1: "Orden del día:" until newline + optional bullet + "Ruegos..." or "No habiendo más asuntos"
         Pattern pattern = Pattern.compile(
-            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:Ruegos y preguntas|No habiendo más asuntos|Clausura|$))",
+            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos y preguntas|No habiendo más asuntos|Clausura|$))",
             Pattern.DOTALL
         );
-        Matcher matcher = pattern.matcher(content);
+        Matcher matcher = pattern.matcher(normalized);
         if (matcher.find()) {
             String block = matcher.group(1).trim();
             if (!block.isEmpty()) {
@@ -1788,12 +1790,12 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Pattern 2: "Orden del día:" until any next section (more flexible)
+        // Pattern 2: "Orden del día:" until any next section (more flexible; optional bullet before keyword)
         pattern = Pattern.compile(
-            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:Ruegos|Preguntas|Clausura|No habiendo|Asistentes|$))",
+            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|Asistentes|$))",
             Pattern.DOTALL
         );
-        matcher = pattern.matcher(content);
+        matcher = pattern.matcher(normalized);
         if (matcher.find()) {
             String block = matcher.group(1).trim();
             if (!block.isEmpty()) {
@@ -1803,10 +1805,10 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         // Pattern 3: "ORDEN DEL DÍA" (capital letters) until next section
         pattern = Pattern.compile(
-            "(?i)ORDEN DEL DÍA:?\\s*(.*?)(?=\\n\\s*(?:Ruegos|Preguntas|Clausura|No habiendo|$))",
+            "(?i)ORDEN DEL DÍA:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|$))",
             Pattern.DOTALL
         );
-        matcher = pattern.matcher(content);
+        matcher = pattern.matcher(normalized);
         if (matcher.find()) {
             String block = matcher.group(1).trim();
             if (!block.isEmpty()) {
@@ -1815,16 +1817,16 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         // Pattern 4: Search for section that contains numbered or bulleted items after "Asistentes:"
-        String afterAttendees = extractBlock(content, "(?i)Asistentes:", "(?i)(?:Ruegos|Preguntas|Clausura|No habiendo|$)");
+        String afterAttendees = extractBlock(normalized, "(?i)Asistentes:", "(?i)(?:Ruegos|Preguntas|Clausura|No habiendo|$)");
         if (afterAttendees != null && !afterAttendees.trim().isEmpty()) {
-            // Search for items that seem to be agenda (numbered or with bullet points)
-            Pattern agendaPattern = Pattern.compile(
-                "(?i)(?:Orden del día:?\\s*)?((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|No habiendo)[^\\n]+)*)",
+            // Search for "Orden del día:" block within that section
+            Pattern ordenPattern = Pattern.compile(
+                "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|No habiendo)|$)",
                 Pattern.DOTALL
             );
-            Matcher agendaMatcher = agendaPattern.matcher(afterAttendees);
-            if (agendaMatcher.find()) {
-                String block = agendaMatcher.group(1).trim();
+            Matcher ordenMatcher = ordenPattern.matcher(afterAttendees);
+            if (ordenMatcher.find()) {
+                String block = ordenMatcher.group(1).trim();
                 if (!block.isEmpty() && block.length() > 10) {
                     return block;
                 }
@@ -1836,7 +1838,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]+)*)",
             Pattern.DOTALL
         );
-        matcher = pattern.matcher(content);
+        matcher = pattern.matcher(normalized);
         if (matcher.find()) {
             String block = matcher.group(1).trim();
             if (!block.isEmpty() && block.length() > 10) {
