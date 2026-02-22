@@ -30,21 +30,8 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "decisions", "topics", "summary"}, ner);
-        
-        // Step 1.5: Extract keyword from query and validate it exists with precise matching
-        String keyword = extractTopicFromQuery(query, ner);
-        if (keyword != null && !docs.isEmpty()) {
-            log().info("Validating keyword '{}' exists in documents with precise matching", keyword);
-            boolean keywordExists = validateKeywordExistsPrecise(docs, keyword, query);
-            if (!keywordExists) {
-                log().info("Keyword '{}' not found in any documents (precise match) for query: {}", keyword, query);
-                String errorMessage = generateSpecificErrorMessage(query, "keyword", keyword, docs.size(), "The keyword was not found in any documents");
-                return ToolResult.from(formatResponse(errorMessage, query), getClass());
-            }
-            log().info("Keyword '{}' validated as existing in documents", keyword);
-        }
-        
-        // Step 1.6: Filter by year if mentioned in query
+
+        // Step 1.5: Filter by year first (e.g. "seguridad en 2026") so keyword validation runs on the correct subset
         String requestedYear = extractYearFromQuery(query, ner);
         if (requestedYear != null && !docs.isEmpty()) {
             log().info("Filtering documents by year: {}", requestedYear);
@@ -56,6 +43,20 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             }
             docs = filteredDocs;
             log().info("Filtered to {} documents for year {}", docs.size(), requestedYear);
+        }
+
+        // Step 1.6: Extract keyword and validate (skip for voting queries: evidence from decisions is enough)
+        boolean isVotingQuery = isVotingOrDecisionQuery(query);
+        String keyword = extractTopicFromQuery(query, ner);
+        if (!isVotingQuery && keyword != null && !keyword.trim().isEmpty() && !docs.isEmpty()) {
+            log().info("Validating keyword '{}' exists in documents with precise matching", keyword);
+            boolean keywordExists = validateKeywordExistsPrecise(docs, keyword, query);
+            if (!keywordExists) {
+                log().info("Keyword '{}' not found in any documents (precise match) for query: {}", keyword, query);
+                String errorMessage = generateSpecificErrorMessage(query, "keyword", keyword, docs.size(), "The keyword was not found in any documents");
+                return ToolResult.from(formatResponse(errorMessage, query), getClass());
+            }
+            log().info("Keyword '{}' validated as existing in documents", keyword);
         }
         
         if (docs.isEmpty()) {
@@ -90,6 +91,19 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         log().info("Generated answer for query: {} with {} evidence pieces", query, evidence.size());
         
         return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    /**
+     * Returns true if the query is about voting or decisions (votó, votación, acuerdo, aprobación).
+     * For these we skip strict keyword validation and rely on evidence from decisions.
+     */
+    private boolean isVotingOrDecisionQuery(String query) {
+        if (query == null || query.trim().isEmpty()) return false;
+        String q = query.toLowerCase().trim();
+        return q.contains("votó") || q.contains("votacion") || q.contains("votación") || q.contains("votado")
+            || q.contains("se votó") || q.contains("acuerdo") || q.contains("aprobación") || q.contains("aprobado")
+            || q.contains("se acordó") || q.contains("se aprobó") || q.contains("was there a vote")
+            || q.contains("did they vote") || q.contains("any vote");
     }
 
     /**
@@ -201,14 +215,14 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             3. Be precise: if the query asks about a specific term (e.g., "radiación solar"), 
                only answer YES if that EXACT term or very close variations are found.
                Do NOT confuse related terms (e.g., "iluminación" is NOT the same as "radiación solar")
-            4. For "¿Se votó?" / "was there a vote?": if the evidence shows decisions were made (e.g. "se decide", "se acordó", "se aprobó", "se decide contratar"), answer YES when the question is about whether the meeting voted or took decisions on topics.
-            5. For security/safety ("seguridad", "videovigilancia"): answer YES if any evidence mentions these topics or related measures.
+            4. For "¿Se votó algún tema?" / "was there a vote?": if the evidence shows that decisions were made or topics were agreed (e.g. "se acordó", "se aprobó", "se decide contratar", "control de plagas", "presupuesto"), answer YES. Decisions and agreements in the acta count as voting/deciding on topics.
+            5. For security/safety ("seguridad", "videovigilancia"): answer YES if any evidence mentions these topics or related measures (e.g. vigilancia, cámaras).
             6. Be concise but informative. Include specific details from the evidence when relevant.
             7. If evidence is ambiguous or unclear, answer PARTIALLY or NO (not YES).
             
             Examples:
             - Query: "¿Se habló de la radiación solar?" → Answer NO if only "iluminación" is mentioned (not the same)
-            - Query: "¿Se votó algún tema?" → Answer YES only if evidence shows a vote occurred, not just "se acordó votar"
+            - Query: "¿Se votó algún tema?" → Answer YES if evidence shows decisions or agreements (e.g. "se acordó contratar", "se aprueba presupuesto")
             """, query, minuteCount, joined);
         
         try {

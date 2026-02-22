@@ -26,7 +26,24 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
-        
+        if (query == null) {
+            query = "";
+        }
+        try {
+            return executeDecisionExtraction(query, ner);
+        } catch (IllegalArgumentException e) {
+            log().error("IllegalArgumentException in decision extraction (query: '{}'). Stack trace:", 
+                    query.length() > 80 ? query.substring(0, 80) + "..." : query, e);
+            return ToolResult.from(formatResponse(
+                    generateNotFoundMessage(query) + " (Error interno: " + e.getMessage() + ")", query), getClass());
+        } catch (RuntimeException e) {
+            log().error("RuntimeException in decision extraction (query: '{}'). Stack trace:", 
+                    query.length() > 80 ? query.substring(0, 80) + "..." : query, e);
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+    }
+
+    private ToolResult executeDecisionExtraction(String query, JSONObject ner) {
         log().info("Executing decision extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
@@ -36,9 +53,9 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             ner
         );
         
-        // Extract date early for error messages and validation
-        List<String> dateCandidates = extractDateCandidates(query, ner);
-        String date = dateCandidates.isEmpty() ? null : dateCandidates.get(0);
+        // Extract date early for error messages and validation (null-safe)
+        List<String> dateCandidates = extractDateCandidates(query, ner != null ? ner : null);
+        String date = (dateCandidates != null && !dateCandidates.isEmpty()) ? dateCandidates.get(0) : null;
         
         if (docs.isEmpty()) {
             log().info("No documents found for decision extraction query: {}", query);

@@ -405,6 +405,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                         return false; // Exclude documents without attendeesCount
                     }
                     
+                    // less_than: strictly fewer than threshold (e.g. "menos de diez" -> count < 10, so 10 is excluded)
                     boolean matches = switch (operator) {
                         case "less_than" -> count < threshold;
                         case "more_than" -> count > threshold;

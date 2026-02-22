@@ -134,9 +134,10 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         // P9: When user asks for "puntos tratados" or "qué se discutió", insist on including topics/agenda in the summary
         boolean asksForTopics = query != null && (query.toLowerCase().contains("puntos tratados")
                 || query.toLowerCase().contains("qué se discutió") || query.toLowerCase().contains("temas de la reunión")
-                || query.toLowerCase().contains("qué se habló") || query.toLowerCase().contains("temas tratados"));
+                || query.toLowerCase().contains("qué se habló") || query.toLowerCase().contains("temas tratados")
+                || query.toLowerCase().contains("qué se trató") || query.toLowerCase().contains("orden del día"));
         String topicInstruction = asksForTopics
-                ? " The user asked for topics/points discussed: you MUST include the list of topics (Temas) or agenda items in your summary, not only place and attendees."
+                ? " OBLIGATORY: The user asked for topics/points discussed. Your response MUST include the list of topics (Temas) and/or agenda items (Orden del día) from the Meeting information below. Do not summarize only date, place and attendees; list the actual points discussed (e.g. iluminación, limpieza, seguridad, presupuesto)."
                 : "";
         String prompt = String.format("""
             You are summarizing a meeting minute. The user asked: "%s"

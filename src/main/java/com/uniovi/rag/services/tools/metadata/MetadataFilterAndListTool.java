@@ -55,13 +55,29 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
         
-        // Step 3.5: Additional filtering by topic + person if query requires it (AND logic)
-        // Example: "Dime los asistentes de reuniones donde se habló de climatización y que fueran presididas por Natalia Vázquez Gutiérrez"
+        // Step 3.5: Filter by attendee name when query asks "when/where did [person] attend" (e.g. Alejandro Torres Rojas)
+        if (isAttendeeListQuery(query)) {
+            List<Minute> byAttendee = filterMinutesByAttendeeName(query, relevantMinutes, ner);
+            log().info("Filtered {} minutes by attendee name, {} remaining", relevantMinutes.size(), byAttendee.size());
+            relevantMinutes = byAttendee;
+        }
+
+        // Step 3.6: Filter by exact attendees count when query asks "reuniones con exactamente 21 asistentes"
+        Integer exactAttendees = extractExactAttendeesCount(query);
+        if (exactAttendees != null) {
+            List<Minute> byCount = relevantMinutes.stream()
+                    .filter(m -> (m.numberOfAttendees() > 0 ? m.numberOfAttendees() : (m.attendees() != null ? m.attendees().size() : 0)) == exactAttendees)
+                    .collect(Collectors.toList());
+            log().info("Filtered {} minutes by exact attendees count ({}), {} remaining", relevantMinutes.size(), exactAttendees, byCount.size());
+            relevantMinutes = byCount;
+        }
+
+        // Step 3.7: Additional filtering by topic + person if query requires it (AND logic)
         if (requiresTopicAndPersonFilter(query)) {
             List<Minute> topicPersonFiltered = filterMinutesByTopicAndPerson(query, relevantMinutes, ner);
             log().info("Filtered {} minutes by topic + person (AND logic), {} remaining (applied filter even if empty)", 
                       relevantMinutes.size(), topicPersonFiltered.size());
-            relevantMinutes = topicPersonFiltered; // Apply filter even if empty - this indicates no matches
+            relevantMinutes = topicPersonFiltered;
         }
 
         // Step 4: Generate summaries in parallel (metadata-first, LLM fallback)
@@ -330,8 +346,59 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     }
     
     /**
+     * True when the query asks for meetings where a specific person attended (e.g. "¿Cuándo asistió Alejandro Torres Rojas?")
+     */
+    private boolean isAttendeeListQuery(String query) {
+        if (query == null) return false;
+        String q = query.toLowerCase();
+        return (q.contains("asistió") || q.contains("asistieron") || q.contains("attended") || q.contains("participó") || q.contains("participaron"))
+                && (q.contains("reuniones") || q.contains("actas") || q.contains("meetings"));
+    }
+
+    /**
+     * Filters minutes to those where the named person appears in the attendees list (normalized name matching).
+     */
+    private List<Minute> filterMinutesByAttendeeName(String query, List<Minute> minutes, JSONObject ner) {
+        if (minutes.isEmpty() || query == null) return minutes;
+        String personName = extractPersonNameFromQuery(query, ner);
+        if (personName == null || personName.trim().isEmpty()) return minutes;
+        final String normalized = normalizePersonName(personName);
+        List<Minute> out = minutes.stream()
+                .filter(m -> {
+                    if (m.attendees() == null || m.attendees().isEmpty()) return false;
+                    for (String a : m.attendees()) {
+                        if (a == null) continue;
+                        String an = normalizePersonName(a);
+                        if (an.equals(normalized) || an.contains(normalized) || normalized.contains(an)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                })
+                .collect(Collectors.toList());
+        log().info("Filtered to {} minutes where '{}' (normalized: '{}') is in attendees", out.size(), personName, normalized);
+        return out;
+    }
+
+    /**
+     * Extracts exact attendees count from query (e.g. "exactamente 21 asistentes" -> 21). Returns null if not found.
+     */
+    private Integer extractExactAttendeesCount(String query) {
+        if (query == null) return null;
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?:exactamente|con)\\s+(\\d+)\\s+asistentes", java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Matcher m = p.matcher(query);
+        if (m.find()) {
+            try {
+                return Integer.parseInt(m.group(1));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Checks if query requires filtering by both topic and person (AND logic)
-     * Example: "Dime los asistentes de reuniones donde se habló de climatización y que fueran presididas por Natalia Vázquez Gutiérrez"
      */
     private boolean requiresTopicAndPersonFilter(String query) {
         return detectTopicAndPersonFilter(query);
