@@ -448,7 +448,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     /**
      * Generates a message when topic is not found in any minutes.
      */
-    private String generateTopicNotFoundMessage(String query, String topic) {
+    protected String generateTopicNotFoundMessage(String query, String topic) {
         if (query == null || query.trim().isEmpty()) {
             return String.format("No se encontró información sobre el tema '%s' en las actas disponibles.", topic);
         }
