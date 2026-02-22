@@ -943,7 +943,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         return answer.toString();
     }
 
-    /** Builds deterministic conclusion line so LLM does not invert (e.g. "Agosto tiene más que Febrero" when data says otherwise). */
+    /** Builds deterministic conclusion line so LLM does not invert (e.g. "Agosto tiene más que Febrero" when data says otherwise). Handles tie (empate). */
     private String formatMonthConclusion(Map<String, ComparisonValue> comparables, String unitLabel) {
         if (comparables == null || comparables.size() != 2) {
             return "";
@@ -955,8 +955,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         }
         double v1 = n1.doubleValue();
         double v2 = n2.doubleValue();
-        String more = v1 >= v2 ? e1.getKey() : e2.getKey();
-        String less = v1 >= v2 ? e2.getKey() : e1.getKey();
+        if (v1 == v2) {
+            return String.format("\nCONCLUSION: Ambos meses tienen el mismo número de %s.", unitLabel);
+        }
+        String more = v1 > v2 ? e1.getKey() : e2.getKey();
+        String less = v1 > v2 ? e2.getKey() : e1.getKey();
         return String.format("\nCONCLUSION: %s tiene más %s que %s.", more, unitLabel, less);
     }
 

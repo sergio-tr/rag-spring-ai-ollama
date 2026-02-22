@@ -470,7 +470,11 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         String personName = extractPersonNameFromQuery(query, ner);
         
         if (personName == null || personName.isEmpty()) {
-            log().warn("Could not extract person name from query for filtering: '{}'", query);
+            if (queryRequiresPerson(query)) {
+                log().warn("Could not extract person name from query for filtering: '{}'", query);
+            } else {
+                log().debug("Could not extract person name from query for filtering (query may not require person): '{}'", query);
+            }
             return minutes; // Can't filter, return all to avoid false negatives
         }
         

@@ -29,7 +29,15 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         log().info("Executing boolean query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
-        List<Document> docs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "decisions", "topics", "summary"}, ner);
+        List<Document> docs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "decisions", "topics", "summary", "attendees"}, ner);
+
+        // Step 1.4: Handle "person X appears in acta on date Y" (e.g. "Confirma si Jorge Moreno Navarro aparece en el acta del 25 de agosto de 2026")
+        if (!docs.isEmpty() && isPersonInActaOnDateQuery(query)) {
+            ToolResult personResult = handlePersonInActaOnDateQuery(query, docs, ner);
+            if (personResult != null) {
+                return personResult;
+            }
+        }
 
         // Step 1.5: Filter by year first (e.g. "seguridad en 2026") so keyword validation runs on the correct subset
         String requestedYear = extractYearFromQuery(query, ner);
@@ -104,6 +112,44 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             || q.contains("se votó") || q.contains("acuerdo") || q.contains("aprobación") || q.contains("aprobado")
             || q.contains("se acordó") || q.contains("se aprobó") || q.contains("was there a vote")
             || q.contains("did they vote") || q.contains("any vote");
+    }
+
+    /** True when the query asks whether a specific person appears in the acta/minutes for a specific date (e.g. "Confirma si Jorge Moreno Navarro aparece en el acta del 25 de agosto de 2026"). */
+    private boolean isPersonInActaOnDateQuery(String query) {
+        if (query == null || query.trim().isEmpty()) return false;
+        String q = query.toLowerCase().trim();
+        boolean hasPersonInActaPhrase = (q.contains("aparece") || q.contains("figura") || q.contains("confirma"))
+                && (q.contains("acta") || q.contains("reunión") || q.contains("reunion"));
+        if (!hasPersonInActaPhrase) return false;
+        String requestedDate = extractDateFromQuery(query, null);
+        String personName = extractPersonNameFromQuery(query, null);
+        return requestedDate != null && personName != null && !personName.isBlank();
+    }
+
+    /** Handles "person X in acta on date Y": filters docs by date, checks attendees, returns YES/NO. Returns null to fall through to normal flow. */
+    private ToolResult handlePersonInActaOnDateQuery(String query, List<Document> docs, JSONObject ner) {
+        String requestedDate = extractDateFromQuery(query, ner);
+        if (requestedDate == null) return null;
+        List<Document> docsForDate = validateDateMatch(docs, requestedDate);
+        if (docsForDate.isEmpty()) {
+            return ToolResult.from(formatResponse("No hay ninguna acta registrada en esa fecha.", query), getClass());
+        }
+        String personName = extractPersonNameFromQuery(query, ner);
+        if (personName == null || personName.isBlank()) return null;
+        List<Minute> minutes = extractMinutesInParallel(docsForDate);
+        if (minutes.isEmpty()) return null;
+        final String normalizedPerson = normalizePersonName(personName);
+        for (Minute m : minutes) {
+            if (m.attendees() == null) continue;
+            for (String attendee : m.attendees()) {
+                if (attendee == null) continue;
+                String normAttendee = normalizePersonName(attendee);
+                if (normAttendee.equals(normalizedPerson) || normAttendee.contains(normalizedPerson) || normalizedPerson.contains(normAttendee)) {
+                    return ToolResult.from(formatResponse("Sí, " + personName + " figura como asistente en esa reunión.", query), getClass());
+                }
+            }
+        }
+        return ToolResult.from(formatResponse("No, " + personName + " no figura en el acta de esa fecha.", query), getClass());
     }
 
     /**

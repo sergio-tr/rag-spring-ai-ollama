@@ -2304,9 +2304,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         // Fallback: explicit string match for "menos de diez" / "menos de 10" so filter is always applied
-        String q = query.toLowerCase();
-        if (q.contains("menos de diez") || q.contains("menos de 10")) {
-            log().info("Attendees count query fallback: detected 'menos de diez', using less_than 10");
+        String q = query == null ? "" : query.toLowerCase().trim();
+        String qNorm = java.text.Normalizer.normalize(q, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        if (qNorm.contains("menos de diez") || qNorm.contains("menos de 10")
+                || q.contains("menos de diez") || q.contains("menos de 10")
+                || q.contains("menos de diez personas") || q.contains("menos de 10 personas")) {
+            log().info("Attendees count query fallback: detected 'menos de diez' (or variant), using less_than 10");
             return new AttendeesCountQueryInfo("less_than", 10);
         }
         return null;
@@ -2498,6 +2501,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Pattern.compile(
                 "(?i)reuniones?\\s+asistió\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*\\??",
                 Pattern.CASE_INSENSITIVE
+            ),
+            // Pattern 7: "Cuándo y en qué reuniones asistió [Nombre]" - capture name after last "asistió "
+            Pattern.compile(
+                "(?i)asistió\\s+([A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]+){2,4})\\s*\\??",
+                Pattern.CASE_INSENSITIVE
             )
         };
         
@@ -2545,8 +2553,21 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             log().debug("Error extracting person name with LLM: {}", e.getMessage());
         }
         
-        log().warn("Could not extract person name from query: '{}'", query);
+        log().debug("Could not extract person name from query: '{}'", query);
         return null;
+    }
+
+    /**
+     * Returns true when the query clearly requires a person (e.g. "presididas por X", "asistió X", "quién fue el presidente").
+     * Used to log WARN only when person extraction fails and the query actually asks for a person.
+     */
+    protected boolean queryRequiresPerson(String query) {
+        if (query == null || query.isBlank()) return false;
+        String q = query.toLowerCase();
+        return q.contains("presididas por") || q.contains("presidida por") || q.contains("presidió") || q.contains("president")
+                || q.contains("asistió") || q.contains("asistieron") || q.contains("participó") || q.contains("participaron")
+                || q.contains("secretari") || q.contains("quién presidió") || q.contains("quién fue el presidente")
+                || q.contains("quién fue la secretaria") || q.contains("quién fue el secretario");
     }
     
     /**

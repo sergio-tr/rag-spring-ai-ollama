@@ -85,10 +85,18 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
     }
 
     private SummaryResult generateSummary(String query, Minute minute) {
-        String summary = buildSummaryFromMetadata(minute);
-
-        if (summary.isBlank()) {
+        boolean asksForTopicsOrPoints = asksForTopicsOrPoints(query);
+        String summary;
+        if (asksForTopicsOrPoints) {
             summary = generateSummaryWithLLM(query, minute);
+            if (summary.isBlank()) {
+                summary = buildSummaryFromMetadata(minute);
+            }
+        } else {
+            summary = buildSummaryFromMetadata(minute);
+            if (summary.isBlank()) {
+                summary = generateSummaryWithLLM(query, minute);
+            }
         }
 
         if (summary.isBlank()) {
@@ -101,6 +109,17 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             minute.place(),
             summary
         );
+    }
+
+    /** True when the query asks for points discussed, topics, decisions or agreements (so we must include topics/agenda). */
+    private boolean asksForTopicsOrPoints(String query) {
+        if (query == null) return false;
+        String q = query.toLowerCase();
+        return q.contains("puntos tratados") || q.contains("qué se discutió") || q.contains("temas de la reunión")
+                || q.contains("qué se habló") || q.contains("temas tratados") || q.contains("qué se trató")
+                || q.contains("orden del día") || q.contains("qué decisiones") || q.contains("qué acuerdos")
+                || q.contains("qué se acordó") || q.contains("explica los puntos") || q.contains("indica los puntos")
+                || q.contains("qué se habló") || q.contains("resume los puntos") || q.contains("qué se trató en la reunión");
     }
 
     private String buildSummaryFromMetadata(Minute minute) {
@@ -132,10 +151,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         }
         
         // P9: When user asks for "puntos tratados" or "qué se discutió", insist on including topics/agenda in the summary
-        boolean asksForTopics = query != null && (query.toLowerCase().contains("puntos tratados")
-                || query.toLowerCase().contains("qué se discutió") || query.toLowerCase().contains("temas de la reunión")
-                || query.toLowerCase().contains("qué se habló") || query.toLowerCase().contains("temas tratados")
-                || query.toLowerCase().contains("qué se trató") || query.toLowerCase().contains("orden del día"));
+        boolean asksForTopics = asksForTopicsOrPoints(query);
         String topicInstruction = asksForTopics
                 ? " OBLIGATORY: The user asked for topics/points discussed. Your response MUST include the list of topics (Temas) and/or agenda items (Orden del día) from the Meeting information below. Do not summarize only date, place and attendees; list the actual points discussed (e.g. iluminación, limpieza, seguridad, presupuesto)."
                 : "";

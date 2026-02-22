@@ -1118,6 +1118,27 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     private String extractEndTime(String content) {
         return extractTime(content, false);
     }
+
+    /**
+     * Extracts end time from conclusion phrases (e.g. "finalizó a las 20:45", "concluding at 20:45").
+     * Used to prefer the actual closing time when it appears in the body rather than a header range.
+     */
+    private String extractEndTimeFromConclusionPhrases(String content) {
+        if (content == null || content.trim().isEmpty()) return null;
+        // "finalizó a las 20:45", "terminó a las 20:45 h", "concluyó a las 20:45", "concluding at 20:45", "concluded at 20:45"
+        String[] patterns = {
+            "(?i)(?:finalizó|terminó|concluyó|finaliza|termina)\\s+(?:la reunión\\s+)?(?:a las?|a)\\s*(\\d{1,2}:\\s*\\d{2})(?:\\s*[hH])?",
+            "(?i)(?:concluding|concluded|terminated)\\s+(?:at|a las?)\\s*(\\d{1,2}:\\s*\\d{2})(?:\\s*[hH])?",
+            "(?i)reunión\\s+(?:finalizó|terminó|concluyó)\\s+(?:a las?|a)\\s*(\\d{1,2}:\\s*\\d{2})"
+        };
+        for (String regex : patterns) {
+            String t = extractSingle(content, regex);
+            if (t != null && normalizeTime(t) != null) {
+                return normalizeTime(t);
+            }
+        }
+        return null;
+    }
     
     /**
      * Extracts the time with multiple supported formats.
@@ -1202,6 +1223,21 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             time = extractSingle(content, "(?i)\\d{1,2}:\\s*\\d{2}\\s*[-a]\\s*(\\d{1,2}:\\s*\\d{2})");
             if (time != null) {
                 return normalizeTime(time);
+            }
+            // Prefer end time from conclusion phrasing (e.g. "finalizó a las 20:45", "concluding at 20:45") when present
+            String fromConclusion = extractEndTimeFromConclusionPhrases(content);
+            if (fromConclusion != null) {
+                return fromConclusion;
+            }
+            // If multiple "HH:MM - HH:MM" ranges exist, use the last one's end time (header may differ from actual end)
+            Pattern rangePattern = Pattern.compile("(\\d{1,2}:\\s*\\d{2})\\s*[-a]\\s*(\\d{1,2}:\\s*\\d{2})", Pattern.CASE_INSENSITIVE);
+            Matcher rangeMatcher = rangePattern.matcher(content);
+            String lastEnd = null;
+            while (rangeMatcher.find()) {
+                lastEnd = rangeMatcher.group(2);
+            }
+            if (lastEnd != null && normalizeTime(lastEnd) != null) {
+                return normalizeTime(lastEnd);
             }
         }
         
