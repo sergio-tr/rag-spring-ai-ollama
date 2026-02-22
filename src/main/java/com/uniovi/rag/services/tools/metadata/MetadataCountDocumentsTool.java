@@ -78,6 +78,13 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
+        // Step 1.8: Dedupe documents by document_id so we have at most one doc per acta (avoids overcounting e.g. ascensor)
+        int docsBeforeDedupe = docs.size();
+        docs = dedupeDocsByDocumentId(docs);
+        if (docs.size() < docsBeforeDedupe) {
+            log().info("Deduped documents by document_id: {} -> {} unique actas", docsBeforeDedupe, docs.size());
+        }
+
         // Step 2: Extract minutes in parallel (chunks may repeat same document_id; count by unique acta)
         List<Minute> minutes = extractMinutesInParallel(docs);
         minutes = dedupeMinutesByDocumentId(minutes);
@@ -111,6 +118,23 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                   query, analysis.getTotalCount(), totalTime);
         
         return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    /**
+     * Deduplicates documents by document_id so we pass at most one doc per acta to extractMinutesInParallel.
+     */
+    private List<Document> dedupeDocsByDocumentId(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) return docs;
+        Set<String> seen = new LinkedHashSet<>();
+        List<Document> out = new ArrayList<>();
+        for (Document doc : docs) {
+            String id = getDocumentIdFromDoc(doc);
+            if (id == null) id = "";
+            if (seen.add(id)) {
+                out.add(doc);
+            }
+        }
+        return out;
     }
 
     /**

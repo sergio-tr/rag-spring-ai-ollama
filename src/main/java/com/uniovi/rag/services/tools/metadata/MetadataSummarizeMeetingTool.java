@@ -139,9 +139,23 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         String topicInstruction = asksForTopics
                 ? " OBLIGATORY: The user asked for topics/points discussed. Your response MUST include the list of topics (Temas) and/or agenda items (Orden del día) from the Meeting information below. Do not summarize only date, place and attendees; list the actual points discussed (e.g. iluminación, limpieza, seguridad, presupuesto)."
                 : "";
+        String pointsBlock = "";
+        if (asksForTopics && minute != null) {
+            StringBuilder sb = new StringBuilder();
+            if (minute.topics() != null && !minute.topics().isEmpty()) {
+                sb.append("Temas: ").append(String.join(", ", minute.topics()));
+            }
+            if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+                if (sb.length() > 0) sb.append(". ");
+                sb.append("Orden del día: ").append(minute.agenda().values().stream().filter(s -> s != null && !s.isBlank()).collect(Collectors.joining(", ")));
+            }
+            if (sb.length() > 0) {
+                pointsBlock = "\n\nPoints discussed (you MUST include these in your answer): " + sb + "\n";
+            }
+        }
         String prompt = String.format("""
             You are summarizing a meeting minute. The user asked: "%s"
-            
+            %s
             CRITICAL: Your summary MUST directly answer what the user is asking for in the query.
             - Focus on the specific information requested in the query
             - If the query asks about a specific topic/aspect, prioritize that in your summary
@@ -168,6 +182,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             - Use the most important information first
             """,
             query,
+            pointsBlock,
             topicInstruction,
             minute.date() != null ? minute.date() : "unknown",
             minute.place() != null ? minute.place() : "unknown",

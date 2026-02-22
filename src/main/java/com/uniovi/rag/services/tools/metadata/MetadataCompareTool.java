@@ -597,6 +597,12 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         // Also add the full topic as a key term
         keyTerms.add(topic.toLowerCase());
         
+        // Add synonyms for common query topics so acta wording is matched (e.g. "seguridad" -> "vigilancia", "videovigilancia")
+        if (keyTerms.stream().anyMatch(t -> t.contains("seguridad"))) {
+            keyTerms.add("vigilancia");
+            keyTerms.add("videovigilancia");
+        }
+
         // Remove duplicates and sort by length (longer terms first for more specific matching)
         return keyTerms.stream()
                 .distinct()
@@ -869,9 +875,9 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             
             IMPORTANT: 
             - The labels (month names or other terms) and values in the comparison data are authoritative. Do NOT invert or swap them.
-            - State which option has more according to the numbers given (e.g. if data shows "febrero: 20" and "abril: 18", say febrero has more).
+            - State which option has more according to the numbers given (e.g. if data shows "febrero: 0" and "agosto: 2", say agosto has more, not febrero).
             - Use the exact labels from the data (e.g. febrero, abril, agosto) in your answer. Do not assume a fixed pair like "febrero vs agosto" if the data shows different months.
-            - If a CONCLUSION line is present in the data, your answer must agree with it.
+            - If a CONCLUSION line is present in the data, your answer MUST agree with it verbatim. Do not state the opposite (e.g. if CONCLUSION says "agosto tiene más", do not say "febrero tiene más").
             """, query, comparisonData, simpleStats != null ? simpleStats : "");
         
         try {

@@ -394,6 +394,24 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
                 continue;
             }
             
+            String contextLower = context.toString().toLowerCase();
+            // When query is about "seguridad", accept vigilancia/videovigilancia so acta 25 ago 2026 matches
+            if (keyword != null && keyword.toLowerCase().contains("seguridad")) {
+                if (contextLower.contains("seguridad") || contextLower.contains("vigilancia") || contextLower.contains("videovigilancia")) {
+                    log().info("Keyword 'seguridad' matched via synonym (vigilancia/videovigilancia) in document");
+                    return true;
+                }
+            }
+            if (doc.getContent() != null) {
+                String contentLower = doc.getContent().toLowerCase();
+                if (keyword != null && keyword.toLowerCase().contains("seguridad")) {
+                    if (contentLower.contains("seguridad") || contentLower.contains("vigilancia") || contentLower.contains("videovigilancia")) {
+                        log().info("Keyword 'seguridad' matched via synonym in document content");
+                        return true;
+                    }
+                }
+            }
+            
             // Use LLM to check if keyword exists with PRECISE matching
             String prompt = String.format("""
                 Task: Check if the keyword exists in the document metadata with PRECISE matching.

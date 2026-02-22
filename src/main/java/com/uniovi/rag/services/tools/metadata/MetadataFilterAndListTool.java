@@ -127,13 +127,13 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             // Fallback to LLM summary
             summary = buildSummaryExplanation(query, minute);
         }
-
+        
         if (summary.isBlank()) {
             return null;
         }
-
+        
         int score = summary.length();
-
+        
         return new FilterResult(
             minute.id(),
             minute.date(),
@@ -344,7 +344,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         
         return summary.toString();
     }
-    
+
     /**
      * True when the query asks for meetings where a specific person attended (e.g. "¿Cuándo asistió Alejandro Torres Rojas?")
      */
@@ -372,12 +372,24 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
                         if (an.equals(normalized) || an.contains(normalized) || normalized.contains(an)) {
                             return true;
                         }
+                        // Token-based match: same set of name tokens (handles "Alejandro Torres Rojas" vs "Torres Rojas, Alejandro")
+                        if (nameTokensMatch(normalized, an)) {
+                            return true;
+                        }
                     }
                     return false;
                 })
                 .collect(Collectors.toList());
         log().info("Filtered to {} minutes where '{}' (normalized: '{}') is in attendees", out.size(), personName, normalized);
         return out;
+    }
+
+    /** Returns true when both strings contain the same set of tokens (ignoring order), for flexible name matching. */
+    private static boolean nameTokensMatch(String normalized1, String normalized2) {
+        if (normalized1 == null || normalized2 == null) return false;
+        Set<String> t1 = Arrays.stream(normalized1.split("\\s+")).filter(s -> s.length() > 1).collect(Collectors.toSet());
+        Set<String> t2 = Arrays.stream(normalized2.split("\\s+")).filter(s -> s.length() > 1).collect(Collectors.toSet());
+        return t1.size() >= 2 && t2.size() >= 2 && t1.equals(t2);
     }
 
     /**

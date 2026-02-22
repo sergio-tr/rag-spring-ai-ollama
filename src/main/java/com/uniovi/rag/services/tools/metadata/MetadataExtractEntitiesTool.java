@@ -79,6 +79,17 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             }
         }
 
+        // When query asks for sections/structure of the acta (not persons), return from metadata (Fecha, Lugar, Orden del día, etc.)
+        if (asksForSectionsOrStructure(query)) {
+            List<Minute> forDate = filterMinutesByDate(query, ner, relevantMinutes);
+            List<Minute> target = forDate.isEmpty() ? relevantMinutes : forDate;
+            if (!target.isEmpty()) {
+                String sectionsAnswer = buildSectionsAnswerFromMinute(target.get(0));
+                log().info("Returning acta sections/structure for query (no entity extraction)");
+                return ToolResult.from(formatResponse(sectionsAnswer, query), getClass());
+            }
+        }
+
         // Step 3.5: Additional filtering by topic + person if query requires it
         // Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
         if (requiresTopicAndPersonFilter(query)) {
@@ -693,7 +704,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         
         return summary.toString();
     }
-    
+
     /**
      * Gets a natural label for entity type
      */
@@ -832,6 +843,34 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         if (items == null || items.isEmpty()) return "";
         if (items.size() <= 8) return String.join(", ", items);
         return String.join("\n", items);
+    }
+
+    /** Detects if the query asks for sections/structure of the acta (e.g. "secciones que contiene el acta", "partes del acta"). */
+    private static boolean asksForSectionsOrStructure(String query) {
+        if (query == null || query.isBlank()) return false;
+        String q = query.toLowerCase();
+        return q.contains("secciones que contiene") || q.contains("secciones del acta") || q.contains("partes del acta")
+                || q.contains("estructura del acta") || (q.contains("qué secciones") && q.contains("acta")) || (q.contains("qué partes") && q.contains("acta"));
+    }
+
+    /** Builds a natural-language list of acta sections from minute metadata (Fecha, Lugar, Hora, Asistentes, Orden del día). */
+    private String buildSectionsAnswerFromMinute(Minute minute) {
+        List<String> parts = new ArrayList<>();
+        if (minute.date() != null && !minute.date().isBlank()) parts.add("Fecha");
+        if (minute.place() != null && !minute.place().isBlank()) parts.add("Lugar");
+        if (minute.startTime() != null && !minute.startTime().isBlank()) parts.add("Hora de inicio");
+        if (minute.endTime() != null && !minute.endTime().isBlank()) parts.add("Hora de finalización");
+        if (minute.attendees() != null && !minute.attendees().isEmpty()) parts.add("Asistentes");
+        parts.add("Orden del día");
+        if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+            String agendaItems = minute.agenda().values().stream()
+                    .filter(Objects::nonNull).filter(s -> !s.isBlank())
+                    .collect(Collectors.joining(", "));
+            if (!agendaItems.isBlank()) {
+                return "El acta incluye: " + String.join(", ", parts) + ". Orden del día: " + agendaItems + ".";
+            }
+        }
+        return "El acta incluye: " + String.join(", ", parts) + ".";
     }
 
     private boolean requiresTopicAndPersonFilter(String query) {
