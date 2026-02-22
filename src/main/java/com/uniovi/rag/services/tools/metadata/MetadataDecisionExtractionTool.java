@@ -34,8 +34,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         } catch (IllegalArgumentException e) {
             log().error("IllegalArgumentException in decision extraction (query: '{}'). Stack trace:", 
                     query.length() > 80 ? query.substring(0, 80) + "..." : query, e);
-            return ToolResult.from(formatResponse(
-                    generateNotFoundMessage(query) + " (Error interno: " + e.getMessage() + ")", query), getClass());
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         } catch (RuntimeException e) {
             log().error("RuntimeException in decision extraction (query: '{}'). Stack trace:", 
                     query.length() > 80 ? query.substring(0, 80) + "..." : query, e);

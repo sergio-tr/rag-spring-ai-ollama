@@ -354,8 +354,8 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                             foundTerms += keyTerms.size();
                         }
                     } else {
-                        // For simple topics, check if the topic appears
-                        if (topicField.contains(topicNormalized)) {
+                        // For simple topics, check if the topic or any synonym (keyTerm) appears
+                        if (keyTerms.stream().anyMatch(term -> topicField.contains(term))) {
                             foundTerms++;
                         }
                     }
@@ -376,7 +376,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                             foundTerms += keyTerms.size();
                         }
                     } else {
-                        if (decisionField.contains(topicNormalized)) {
+                        if (keyTerms.stream().anyMatch(term -> decisionField.contains(term))) {
                             foundTerms++;
                         }
                     }
@@ -395,7 +395,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                     foundTerms += keyTerms.size();
                 }
             } else {
-                if (summaryField.contains(topicNormalized)) {
+                if (keyTerms.stream().anyMatch(term -> summaryField.contains(term))) {
                     foundTerms++;
                 }
             }
@@ -438,7 +438,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         // Also add the full topic as a key term
         keyTerms.add(topic.toLowerCase());
 
-        // Add synonyms so acta wording is matched (e.g. "calefacción" in query, "calefaccion" in metadata; "videovigilancia" -> "vigilancia")
+        // Add synonyms so acta wording is matched (e.g. "calefacción" in query, "calefaccion" in metadata; "videovigilancia" -> "vigilancia", "cámaras")
         if (keyTerms.stream().anyMatch(t -> t.contains("calefaccion") || t.contains("calefacción"))) {
             keyTerms.add("calefaccion");
             keyTerms.add("calefacción");
@@ -446,6 +446,10 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         if (keyTerms.stream().anyMatch(t -> t.contains("videovigilancia") || t.contains("vigilancia"))) {
             keyTerms.add("videovigilancia");
             keyTerms.add("vigilancia");
+            keyTerms.add("camaras");
+            keyTerms.add("cámaras");
+            keyTerms.add("camaras de seguridad");
+            keyTerms.add("cámaras de seguridad");
         }
 
         // Remove duplicates and sort by length (longer terms first for more specific matching)

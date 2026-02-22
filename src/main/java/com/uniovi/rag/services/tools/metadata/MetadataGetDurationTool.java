@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 /**
  * Enhanced MetadataGetDurationTool for analyzing meeting durations with intelligent analysis.
  * Duration is derived from metadata startTime and endTime (or content parsing fallback).
- * Reference: ACTA 5 (25 feb 2026) = 1h 30min (19:00-20:30) per acta.
+ * Reference: ACTA 5 (25 feb 2026) = 1h 45min (19:00-20:45) when extracted from conclusion phrasing.
  */
 public class MetadataGetDurationTool extends AbstractMetadataTool {
 

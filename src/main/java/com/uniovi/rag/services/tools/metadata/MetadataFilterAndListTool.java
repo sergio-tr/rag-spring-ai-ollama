@@ -72,6 +72,24 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             relevantMinutes = byCount;
         }
 
+        // Step 3.6a: Filter by requested month when query says "reuniones celebradas en agosto" (exclude e.g. febrero)
+        Integer requestedMonth = extractRequestedMonthFromQuery(query);
+        if (requestedMonth != null) {
+            List<Minute> byMonth = filterMinutesByMonth(relevantMinutes, requestedMonth);
+            log().info("Filtered {} minutes by month ({}), {} remaining", relevantMinutes.size(), requestedMonth, byMonth.size());
+            relevantMinutes = byMonth;
+        }
+
+        // Step 3.6b: Filter by minimum attendees when query says "más de 18 asistentes"
+        Integer minAttendees = extractMinAttendeesFromQuery(query);
+        if (minAttendees != null) {
+            List<Minute> byMinCount = relevantMinutes.stream()
+                    .filter(m -> (m.numberOfAttendees() > 0 ? m.numberOfAttendees() : (m.attendees() != null ? m.attendees().size() : 0)) > minAttendees)
+                    .collect(Collectors.toList());
+            log().info("Filtered {} minutes by min attendees (>{}), {} remaining", relevantMinutes.size(), minAttendees, byMinCount.size());
+            relevantMinutes = byMinCount;
+        }
+
         // Step 3.7: Additional filtering by topic + person if query requires it (AND logic)
         if (requiresTopicAndPersonFilter(query)) {
             List<Minute> topicPersonFiltered = filterMinutesByTopicAndPerson(query, relevantMinutes, ner);
@@ -409,6 +427,53 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         return null;
     }
 
+    /** Extracts minimum attendees from query (e.g. "más de 18 asistentes" -> 18). Returns null if not found. */
+    private Integer extractMinAttendeesFromQuery(String query) {
+        if (query == null) return null;
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?:más de|más que)\\s+(\\d+)\\s+asistentes", java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Matcher m = p.matcher(query);
+        if (m.find()) {
+            try {
+                return Integer.parseInt(m.group(1));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static final java.util.Map<String, Integer> MONTH_NAMES = java.util.Map.ofEntries(
+            java.util.Map.entry("enero", 1), java.util.Map.entry("febrero", 2), java.util.Map.entry("marzo", 3),
+            java.util.Map.entry("abril", 4), java.util.Map.entry("mayo", 5), java.util.Map.entry("junio", 6),
+            java.util.Map.entry("julio", 7), java.util.Map.entry("agosto", 8), java.util.Map.entry("septiembre", 9),
+            java.util.Map.entry("octubre", 10), java.util.Map.entry("noviembre", 11), java.util.Map.entry("diciembre", 12)
+    );
+
+    /** Extracts requested month (1-12) when query says "reuniones celebradas en agosto" / "en agosto". Returns null if not a single-month filter. */
+    private Integer extractRequestedMonthFromQuery(String query) {
+        if (query == null) return null;
+        String q = query.toLowerCase();
+        for (java.util.Map.Entry<String, Integer> e : MONTH_NAMES.entrySet()) {
+            String month = e.getKey();
+            if (q.contains("en " + month) || q.contains("celebradas en " + month) || q.contains("del mes de " + month)) {
+                return e.getValue();
+            }
+        }
+        return null;
+    }
+
+    /** Keeps only minutes whose date falls in the given month (1-12). */
+    private List<Minute> filterMinutesByMonth(List<Minute> minutes, int requestedMonth) {
+        if (minutes == null || requestedMonth < 1 || requestedMonth > 12) return minutes;
+        return minutes.stream()
+                .filter(m -> {
+                    if (m.date() == null || m.date().isBlank()) return false;
+                    java.time.LocalDate d = parseDateFlexible(m.date());
+                    return d != null && d.getMonthValue() == requestedMonth;
+                })
+                .collect(Collectors.toList());
+    }
+
     /**
      * Checks if query requires filtering by both topic and person (AND logic)
      */
@@ -442,7 +507,11 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         String personName = extractPersonNameFromQuery(query, ner);
         
         if (personName == null || personName.isEmpty()) {
-            log().warn("Could not extract person name from query for topic+person filtering. Query: '{}'", query);
+            if (queryRequiresPerson(query)) {
+                log().warn("Could not extract person name from query for topic+person filtering. Query: '{}'", query);
+            } else {
+                log().debug("Could not extract person name from query for topic+person filtering (query may not require person). Query: '{}'", query);
+            }
             return minutes; // Can't filter by person - return all to avoid false negatives
         }
         

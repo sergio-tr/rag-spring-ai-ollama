@@ -845,32 +845,38 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         return String.join("\n", items);
     }
 
-    /** Detects if the query asks for sections/structure of the acta (e.g. "secciones que contiene el acta", "partes del acta"). */
+    /** Detects if the query asks for sections/structure of the acta (e.g. "secciones que contiene el acta", "orden del día", "qué contiene el acta"). */
     private static boolean asksForSectionsOrStructure(String query) {
         if (query == null || query.isBlank()) return false;
         String q = query.toLowerCase();
         return q.contains("secciones que contiene") || q.contains("secciones del acta") || q.contains("partes del acta")
-                || q.contains("estructura del acta") || (q.contains("qué secciones") && q.contains("acta")) || (q.contains("qué partes") && q.contains("acta"));
+                || q.contains("estructura del acta") || (q.contains("qué secciones") && q.contains("acta")) || (q.contains("qué partes") && q.contains("acta"))
+                || q.contains("indícame las secciones") || q.contains("indicate the sections") || (q.contains("qué contiene") && q.contains("acta"))
+                || (q.contains("orden del día") && q.contains("acta")) || (q.contains("qué contiene el acta"));
     }
 
-    /** Builds a natural-language list of acta sections from minute metadata (Fecha, Lugar, Hora, Asistentes, Orden del día). */
+    /** Builds a natural-language list of acta sections from minute metadata (Fecha, Lugar, Hora inicio/fin, Asistentes, Orden del día con ítems). */
     private String buildSectionsAnswerFromMinute(Minute minute) {
-        List<String> parts = new ArrayList<>();
-        if (minute.date() != null && !minute.date().isBlank()) parts.add("Fecha");
-        if (minute.place() != null && !minute.place().isBlank()) parts.add("Lugar");
-        if (minute.startTime() != null && !minute.startTime().isBlank()) parts.add("Hora de inicio");
-        if (minute.endTime() != null && !minute.endTime().isBlank()) parts.add("Hora de finalización");
-        if (minute.attendees() != null && !minute.attendees().isEmpty()) parts.add("Asistentes");
-        parts.add("Orden del día");
+        List<String> sections = new ArrayList<>();
+        if (minute.date() != null && !minute.date().isBlank()) sections.add("Fecha");
+        if (minute.place() != null && !minute.place().isBlank()) sections.add("Lugar");
+        if (minute.startTime() != null && !minute.startTime().isBlank()) sections.add("Hora de inicio");
+        if (minute.endTime() != null && !minute.endTime().isBlank()) sections.add("Hora de finalización");
+        if (minute.attendees() != null && !minute.attendees().isEmpty()) sections.add("Asistentes");
+        sections.add("Orden del día");
+        StringBuilder out = new StringBuilder();
+        out.append("El acta contiene las siguientes secciones: ").append(String.join(", ", sections)).append(".");
         if (minute.agenda() != null && !minute.agenda().isEmpty()) {
-            String agendaItems = minute.agenda().values().stream()
+            List<String> items = minute.agenda().values().stream()
                     .filter(Objects::nonNull).filter(s -> !s.isBlank())
-                    .collect(Collectors.joining(", "));
-            if (!agendaItems.isBlank()) {
-                return "El acta incluye: " + String.join(", ", parts) + ". Orden del día: " + agendaItems + ".";
+                    .collect(Collectors.toList());
+            if (!items.isEmpty()) {
+                out.append(" Orden del día (ítems): ");
+                out.append(String.join("; ", items));
+                out.append(".");
             }
         }
-        return "El acta incluye: " + String.join(", ", parts) + ".";
+        return out.toString();
     }
 
     private boolean requiresTopicAndPersonFilter(String query) {
@@ -903,7 +909,11 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         String personName = extractPersonNameFromQuery(query, ner);
         
         if (personName == null || personName.isEmpty()) {
-            log().warn("Could not extract person name from query for topic+person filtering. Query: '{}'", query);
+            if (queryRequiresPerson(query)) {
+                log().warn("Could not extract person name from query for topic+person filtering. Query: '{}'", query);
+            } else {
+                log().debug("Could not extract person name from query for topic+person filtering (query may not require person). Query: '{}'", query);
+            }
             return minutes; // Can't filter by person - return all to avoid false negatives
         }
         
