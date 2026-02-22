@@ -19,6 +19,9 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.Arrays;
 
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+
 import static com.uniovi.rag.utils.InfoExtractor.containsAnyKeyword;
 
 public abstract class AbstractMetadataTool extends AbstractTool {
@@ -341,8 +344,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * This is a fallback when the complete object is not stored in metadata.
      */
     private Minute reconstructMinuteFromMetadata(Map<String, Object> metadata) {
-        // Extract all fields with proper type handling using safe methods
-        String id = safeGetString(metadata, "id");
+        // Use document_id for id when present so counting/deduping is by unique acta, not per chunk
+        String id = safeGetString(metadata, "document_id");
+        if (id == null || id.isBlank()) {
+            id = safeGetString(metadata, "id");
+        }
         String filename = safeGetString(metadata, "filename");
         String date = safeGetString(metadata, "date");
         String place = safeGetString(metadata, "place");
@@ -859,9 +865,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             try {
                 // Try HH:mm:ss format
                 LocalTime start = LocalTime.parse(normalizedStart, 
-                    java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
+                    DateTimeFormatter.ofPattern("HH:mm:ss"));
                 LocalTime end = LocalTime.parse(normalizedEnd, 
-                    java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
+                    DateTimeFormatter.ofPattern("HH:mm:ss"));
                 int startMinutes = start.getHour() * 60 + start.getMinute();
                 int endMinutes = end.getHour() * 60 + end.getMinute();
                 int duration = endMinutes - startMinutes;
@@ -910,13 +916,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // Try HH:mm:ss format
             try {
                 LocalTime time = LocalTime.parse(normalized, 
-                    java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
+                    DateTimeFormatter.ofPattern("HH:mm:ss"));
                 return time.format(TIME_FORMATTER);
             } catch (DateTimeParseException ignored2) {
                 // Try H:mm format (single digit hour)
                 try {
                     LocalTime time = LocalTime.parse(normalized, 
-                        java.time.format.DateTimeFormatter.ofPattern("H:mm"));
+                        DateTimeFormatter.ofPattern("H:mm"));
                     return time.format(TIME_FORMATTER);
                 } catch (DateTimeParseException ignored3) {
                     log().debug("Could not parse time string '{}' with any standard format", timeStr);
@@ -1038,15 +1044,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             case "decisions" -> minute.decisions();
             case "summary" -> minute.summary();
             case "agenda", "orden_del_dia", "order_of_day" -> {
-                // Agenda is a Map<String, String>, convert to readable format
+                // Agenda: return list of points of the day (values), not key:value pairs
                 Map<String, String> agenda = minute.agenda();
                 if (agenda == null || agenda.isEmpty()) {
                     yield null;
                 }
-                // Convert map to list of "key: value" strings for better readability
-                yield agenda.entrySet().stream()
-                        .map(e -> e.getKey() + ": " + e.getValue())
-                        .collect(Collectors.joining("; "));
+                // Return readable list of agenda points (order of the day), e.g. "Lectura del acta anterior, Reparaciones, Presupuesto del ascensor"
+                yield agenda.values().stream()
+                        .filter(v -> v != null && !v.isBlank())
+                        .collect(Collectors.joining(", "));
             }
             case "attendees" -> minute.attendees();
             case "numberofattendees", "attendeescount" -> minute.numberOfAttendees();
@@ -2420,8 +2426,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (name == null || name.trim().isEmpty()) {
             return "";
         }
-        // Normalize: lowercase, trim, and collapse multiple spaces
-        return name.trim().toLowerCase().replaceAll("\\s+", " ");
+        // Normalize: lowercase, trim, collapse multiple spaces, remove accents for matching (e.g. á->a)
+        String n = name.trim().toLowerCase().replaceAll("\\s+", " ");
+        n = java.text.Normalizer.normalize(n, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        return n;
     }
     
     /**
@@ -2454,31 +2462,31 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         // Strategy 2: Try regex patterns for common Spanish/English patterns
-        java.util.regex.Pattern[] patterns = {
+        Pattern[] patterns = {
             // Pattern 1: "presididas por [Nombre Completo]" or "presidida por [Nombre Completo]"
-            java.util.regex.Pattern.compile(
+            Pattern.compile(
                 "(?i)(?:presididas?|presidió|presided)\\s+por\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
-                java.util.regex.Pattern.CASE_INSENSITIVE
+                Pattern.CASE_INSENSITIVE
             ),
             // Pattern 2: "donde [Nombre Completo] actuó" or "where [Name] acted"
-            java.util.regex.Pattern.compile(
+            Pattern.compile(
                 "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted|fue|was)",
-                java.util.regex.Pattern.CASE_INSENSITIVE
+                Pattern.CASE_INSENSITIVE
             ),
             // Pattern 3: "[Nombre Completo] actuó como presidente"
-            java.util.regex.Pattern.compile(
+            Pattern.compile(
                 "(?i)([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted)\\s+como",
-                java.util.regex.Pattern.CASE_INSENSITIVE
+                Pattern.CASE_INSENSITIVE
             ),
             // Pattern 4: "donde [Nombre Completo]" (more general)
-            java.util.regex.Pattern.compile(
+            Pattern.compile(
                 "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
-                java.util.regex.Pattern.CASE_INSENSITIVE
+                Pattern.CASE_INSENSITIVE
             )
         };
         
-        for (java.util.regex.Pattern pattern : patterns) {
-            java.util.regex.Matcher matcher = pattern.matcher(query);
+        for (Pattern pattern : patterns) {
+            Matcher matcher = pattern.matcher(query);
             if (matcher.find()) {
                 String personName = matcher.group(1).trim();
                 if (!personName.isEmpty()) {
@@ -2695,8 +2703,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (query == null || query.trim().isEmpty()) {
             return null;
         }
-        
-        // Try to extract from NER first
+        // Quick regex on query text (e.g. "seguridad en 2026" -> 2026)
+        Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
+        Matcher matcher = yearPattern.matcher(query);
+        if (matcher.find()) {
+            String year = matcher.group(1);
+            log().info("Extracted year from query text: {}", year);
+            return year;
+        }
+        // Try to extract from NER
         if (ner != null && !ner.isEmpty()) {
             try {
                 if (ner.has("filters") && !ner.isNull("filters")) {
@@ -2706,8 +2721,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         for (int i = 0; i < dates.length(); i++) {
                             String dateStr = dates.getString(i);
                             // Try to extract year from date string
-                            java.util.regex.Pattern yearPattern = java.util.regex.Pattern.compile("\\b(20\\d{2})\\b");
-                            java.util.regex.Matcher matcher = yearPattern.matcher(dateStr);
+                            yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
+                            matcher = yearPattern.matcher(dateStr);
                             if (matcher.find()) {
                                 String year = matcher.group(1);
                                 log().info("Extracted year from NER: {}", year);
@@ -3101,6 +3116,16 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
+     * Generates a clear "topic not found" message (e.g. for climatización piscina, renovación tejado).
+     */
+    protected String generateTopicNotFoundMessage(String query, String topic) {
+        if (topic == null || topic.trim().isEmpty()) {
+            return generateNoDataMessage(query);
+        }
+        return "No se ha encontrado ninguna información relativa a \"" + topic + "\" en las actas disponibles.";
+    }
+
+    /**
      * Calculates relevance score using LLM.
      * Uses English for internal processing, but preserves original language in query and content.
      */
@@ -3293,11 +3318,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
 
         // Regex fallback: "d de mes de yyyy" or "dd de mes de yyyy" (Spanish month name, any case)
-        java.util.regex.Pattern spanishPattern = java.util.regex.Pattern.compile(
+        Pattern spanishPattern = Pattern.compile(
             "(\\d{1,2})\\s+de\\s+(\\p{L}+)\\s+de\\s+(\\d{4})",
-            java.util.regex.Pattern.CASE_INSENSITIVE
+            Pattern.CASE_INSENSITIVE
         );
-        java.util.regex.Matcher matcher = spanishPattern.matcher(v);
+        Matcher matcher = spanishPattern.matcher(v);
         if (matcher.matches()) {
             int day = Integer.parseInt(matcher.group(1));
             String monthStr = matcher.group(2).toLowerCase();
@@ -3334,11 +3359,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     private LocalDate parseDateByRegexFallback(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) return null;
         String v = dateStr.trim();
-        java.util.regex.Pattern spanishPattern = java.util.regex.Pattern.compile(
+        Pattern spanishPattern = Pattern.compile(
             "(\\d{1,2})\\s+de\\s+(\\p{L}+)\\s+de\\s+(\\d{4})",
-            java.util.regex.Pattern.CASE_INSENSITIVE
+            Pattern.CASE_INSENSITIVE
         );
-        java.util.regex.Matcher m = spanishPattern.matcher(v);
+        Matcher m = spanishPattern.matcher(v);
         if (m.find()) {
             int day = Integer.parseInt(m.group(1));
             int month = spanishMonthToNumber(m.group(2));
@@ -3350,7 +3375,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 }
             }
         }
-        java.util.regex.Matcher yearOnly = java.util.regex.Pattern.compile("(\\d{4})").matcher(v);
+        Matcher yearOnly = Pattern.compile("(\\d{4})").matcher(v);
         if (yearOnly.find()) {
             int year = Integer.parseInt(yearOnly.group(1));
             if (year >= 1900 && year <= 2100) {
@@ -3367,16 +3392,18 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     protected List<String> extractDateCandidates(String query, JSONObject ner) {
         List<String> out = new ArrayList<>();
 
-        // From NER (highest priority - most accurate)
+        // From NER (highest priority - most accurate); use optJSONArray to avoid IllegalArgumentException if "date" is not an array
         if (ner != null && ner.has("date")) {
             try {
-                org.json.JSONArray arr = ner.getJSONArray("date");
-                for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONArray arr = ner.optJSONArray("date");
+                if (arr != null) {
+                    for (int i = 0; i < arr.length(); i++) {
                     String s = arr.optString(i, "").trim();
                     if (!s.isBlank()) {
                         out.add(s);
                         log().debug("Extracted date from NER: {}", s);
                     }
+                }
                 }
             } catch (Exception e) {
                 log().warn("Error extracting dates from NER: {}", e.getMessage());
@@ -3386,37 +3413,37 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         // From query (regex patterns) - enhanced with more patterns
         if (query != null) {
             // ISO format: yyyy-MM-dd
-            java.util.regex.Matcher m1 = java.util.regex.Pattern.compile("(\\d{4}-\\d{2}-\\d{2})").matcher(query);
+            Matcher m1 = Pattern.compile("(\\d{4}-\\d{2}-\\d{2})").matcher(query);
             while (m1.find()) {
                 out.add(m1.group(1));
                 log().debug("Extracted ISO date from query: {}", m1.group(1));
             }
 
             // Slash format: dd/MM/yyyy or d/M/yyyy
-            java.util.regex.Matcher m2 = java.util.regex.Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})").matcher(query);
+            Matcher m2 = Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})").matcher(query);
             while (m2.find()) {
                 out.add(m2.group(1));
                 log().debug("Extracted slash date from query: {}", m2.group(1));
             }
 
             // Dash format: dd-MM-yyyy or d-M-yyyy
-            java.util.regex.Matcher m3 = java.util.regex.Pattern.compile("(\\d{1,2}-\\d{1,2}-\\d{4})").matcher(query);
+            Matcher m3 = Pattern.compile("(\\d{1,2}-\\d{1,2}-\\d{4})").matcher(query);
             while (m3.find()) {
                 out.add(m3.group(1));
                 log().debug("Extracted dash date from query: {}", m3.group(1));
             }
 
             // Dot format: dd.MM.yyyy or d.M.yyyy
-            java.util.regex.Matcher m4 = java.util.regex.Pattern.compile("(\\d{1,2}\\.\\d{1,2}\\.\\d{4})").matcher(query);
+            Matcher m4 = Pattern.compile("(\\d{1,2}\\.\\d{1,2}\\.\\d{4})").matcher(query);
             while (m4.find()) {
                 out.add(m4.group(1));
                 log().debug("Extracted dot date from query: {}", m4.group(1));
             }
 
             // Spanish format: "d de mes de yyyy" or "dd de mes de yyyy" (case insensitive)
-            java.util.regex.Matcher m5 = java.util.regex.Pattern.compile(
+            Matcher m5 = Pattern.compile(
                 "(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", 
-                java.util.regex.Pattern.CASE_INSENSITIVE
+                Pattern.CASE_INSENSITIVE
             ).matcher(query);
             while (m5.find()) {
                 out.add(m5.group(1));
@@ -3424,9 +3451,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
 
             // Spanish format without "de" between day and month: "d mes yyyy"
-            java.util.regex.Matcher m6 = java.util.regex.Pattern.compile(
+            Matcher m6 = Pattern.compile(
                 "(\\d{1,2}\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\s+\\d{4})",
-                java.util.regex.Pattern.CASE_INSENSITIVE
+                Pattern.CASE_INSENSITIVE
             ).matcher(query);
             while (m6.find()) {
                 out.add(m6.group(1));

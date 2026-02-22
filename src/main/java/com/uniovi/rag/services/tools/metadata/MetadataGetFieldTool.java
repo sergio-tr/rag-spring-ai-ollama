@@ -344,12 +344,23 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         // Direct answer style (no "se encontraron X...")
         List<FieldResult> top = results.stream().limit(5).collect(Collectors.toList());
 
-        // Build field data for prompt
+        // Build field data for prompt (format duration and other fields in natural language when applicable)
         StringBuilder fieldData = new StringBuilder();
         for (FieldResult r : top) {
             String date = r.getDate() != null ? r.getDate() : "unknown date";
-            String value = r.getFieldValue();
-            fieldData.append(String.format("- Date: %s, %s: %s\n", date, detectedField, value));
+            String value = formatFieldValueForDisplay(detectedField, r.getFieldValue());
+            fieldData.append(String.format("- %s: %s\n", date, value));
+        }
+
+        String fieldInstructions = "";
+        if ("agenda".equals(detectedField) || detectedField != null && detectedField.toLowerCase().contains("orden")) {
+            fieldInstructions = " For agenda/orden del día: list only the points of the day (puntos del día), not attendees or other fields.";
+        } else if ("duration".equals(detectedField) || "durationminutes".equals(detectedField)) {
+            fieldInstructions = " For duration: state in natural language (e.g. 'La reunión duró 1 hora y 30 minutos').";
+        } else if ("place".equals(detectedField) || "lugar".equals(detectedField)) {
+            fieldInstructions = " For place: state in one sentence (e.g. 'La reunión se celebró en la Sala de reuniones').";
+        } else if ("date".equals(detectedField) || "president".equals(detectedField) || "secretary".equals(detectedField)) {
+            fieldInstructions = " Do not duplicate the date (state it once).";
         }
 
         String prompt = String.format("""
@@ -369,6 +380,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             6. DO NOT repeat the question or any part of it
             7. DO NOT start with phrases like "Dime que", "The user asked", "La pregunta era", etc.
             8. Start directly with the answer (e.g., "El presidente fue..." or "The president was...")
+            %s
             
             Examples of CORRECT responses:
             - Query: "Dime quién presidió la reunión del 25 de agosto de 2026"
@@ -378,7 +390,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             - Query: "Who was the president on August 25, 2026?"
               Correct: "The president on August 25, 2026 was Manuel Ortega Medina."
               Wrong: "The user asked who was the president. The president was Manuel Ortega Medina."
-            """, query, detectedField, fieldData.toString());
+            """, query, detectedField, fieldData.toString(), fieldInstructions);
 
         try {
             String response = getLLMResponseCached(prompt);
@@ -394,21 +406,49 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         if (top.size() == 1) {
             FieldResult r = top.get(0);
             String date = r.getDate() != null ? r.getDate() : "unknown date";
-            String raw = String.format("In the meeting minutes on %s, %s: %s.", date, detectedField, r.getFieldValue());
+            String value = formatFieldValueForDisplay(detectedField, r.getFieldValue());
+            String raw = String.format("In the meeting minutes on %s, %s: %s.", date, detectedField, value);
             return formatResponse(raw, query);
         } else {
             String joined = top.stream()
-                    .map(r -> String.format("%s: %s", r.getDate() != null ? r.getDate() : "unknown date", r.getFieldValue()))
+                    .map(r -> String.format("%s: %s", r.getDate() != null ? r.getDate() : "unknown date", formatFieldValueForDisplay(detectedField, r.getFieldValue())))
                     .collect(Collectors.joining("; "));
             return formatResponse("Found values: " + joined + ".", query);
         }
     }
-    
+
     /**
-     * Filters minutes by person (president/secretary) when query asks for "fecha del acta donde [persona]"
-     * Example: "Proporciona la fecha del acta donde Juan Pérez Gutiérrez actuó como presidente"
-     * Also handles queries about attendees: "¿Cuándo y en qué reuniones asistió Alejandro Torres Rojas?"
+     * Formats field value for display in natural language (e.g. duration 90 -> "1 hora y 30 minutos").
      */
+    private String formatFieldValueForDisplay(String detectedField, String rawValue) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return rawValue;
+        }
+        String f = detectedField != null ? detectedField.toLowerCase() : "";
+        if (("duration".equals(f) || "durationminutes".equals(f)) && rawValue.matches("\\d+")) {
+            try {
+                int minutes = Integer.parseInt(rawValue.trim());
+                if (minutes < 60) {
+                    return minutes == 1 ? "1 minuto" : minutes + " minutos";
+                }
+                int h = minutes / 60;
+                int m = minutes % 60;
+                if (m == 0) {
+                    return h == 1 ? "1 hora" : h + " horas";
+                }
+                return (h == 1 ? "1 hora" : h + " horas") + " y " + (m == 1 ? "1 minuto" : m + " minutos");
+            } catch (NumberFormatException e) {
+                return rawValue;
+            }
+        }
+        return rawValue;
+    }
+
+    /**
+    * Filters minutes by person (president/secretary) when query asks for "fecha del acta donde [persona]"
+    * Example: "Proporciona la fecha del acta donde Juan Pérez Gutiérrez actuó como presidente"
+    * Also handles queries about attendees: "¿Cuándo y en qué reuniones asistió Alejandro Torres Rojas?"
+    */
     private List<Minute> filterMinutesByPerson(String query, List<Minute> minutes, JSONObject ner) {
         if (minutes.isEmpty() || query == null) {
             return minutes;
@@ -419,7 +459,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         // Check if query asks for date WHERE person was president/secretary OR asks about when person attended
         boolean asksForDateWherePerson = detectDateWherePersonQuery(query);
         boolean asksAboutAttendee = queryLower.contains("asistió") || queryLower.contains("attended") ||
-                                   queryLower.contains("participó") || queryLower.contains("participated");
+                                    queryLower.contains("participó") || queryLower.contains("participated");
         
         if (!asksForDateWherePerson && !asksAboutAttendee) {
             log().debug("Query does not require person filtering: {}", query);
@@ -445,9 +485,9 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         boolean filterByAttendee = asksAboutAttendee && !filterByPresident && !filterBySecretary;
         
         log().info("Filtering {} minutes by person '{}' (normalized: '{}'). " +
-                  "Checking president: {}, secretary: {}, attendee: {}", 
-                  minutes.size(), personName, normalizedPersonName, 
-                  filterByPresident, filterBySecretary, filterByAttendee);
+                    "Checking president: {}, secretary: {}, attendee: {}", 
+                    minutes.size(), personName, normalizedPersonName, 
+                    filterByPresident, filterBySecretary, filterByAttendee);
         
         List<Minute> filtered = minutes.stream()
                 .filter(minute -> {
@@ -457,11 +497,11 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                     if (filterByPresident && minute.president() != null) {
                         String presidentNormalized = normalizePersonName(minute.president());
                         matches = presidentNormalized.equals(normalizedPersonName) ||
-                                 presidentNormalized.contains(normalizedPersonName) ||
-                                 normalizedPersonName.contains(presidentNormalized);
+                                    presidentNormalized.contains(normalizedPersonName) ||
+                                    normalizedPersonName.contains(presidentNormalized);
                         if (matches) {
                             log().debug("Minute {} person match (president): '{}' matches '{}'", 
-                                      minute.id(), minute.president(), personName);
+                                        minute.id(), minute.president(), personName);
                             return true;
                         }
                     }
@@ -470,11 +510,11 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                     if (!matches && filterBySecretary && minute.secretary() != null) {
                         String secretaryNormalized = normalizePersonName(minute.secretary());
                         matches = secretaryNormalized.equals(normalizedPersonName) ||
-                                 secretaryNormalized.contains(normalizedPersonName) ||
-                                 normalizedPersonName.contains(secretaryNormalized);
+                                    secretaryNormalized.contains(normalizedPersonName) ||
+                                    normalizedPersonName.contains(secretaryNormalized);
                         if (matches) {
                             log().debug("Minute {} person match (secretary): '{}' matches '{}'", 
-                                      minute.id(), minute.secretary(), personName);
+                                        minute.id(), minute.secretary(), personName);
                             return true;
                         }
                     }
@@ -485,11 +525,11 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                             if (attendee != null) {
                                 String attendeeNormalized = normalizePersonName(attendee);
                                 matches = attendeeNormalized.equals(normalizedPersonName) ||
-                                         attendeeNormalized.contains(normalizedPersonName) ||
-                                         normalizedPersonName.contains(attendeeNormalized);
+                                            attendeeNormalized.contains(normalizedPersonName) ||
+                                            normalizedPersonName.contains(attendeeNormalized);
                                 if (matches) {
                                     log().debug("Minute {} person match (attendee): '{}' matches '{}'", 
-                                              minute.id(), attendee, personName);
+                                                minute.id(), attendee, personName);
                                     return true;
                                 }
                             }
@@ -498,11 +538,11 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                     
                     if (!matches) {
                         log().debug("Minute {} filtered out: person '{}' not found. " +
-                                  "President: '{}', Secretary: '{}', Attendees count: {}", 
-                                  minute.id(), personName,
-                                  minute.president() != null ? minute.president() : "null",
-                                  minute.secretary() != null ? minute.secretary() : "null",
-                                  minute.attendees() != null ? minute.attendees().size() : 0);
+                                    "President: '{}', Secretary: '{}', Attendees count: {}", 
+                                    minute.id(), personName,
+                                    minute.president() != null ? minute.president() : "null",
+                                    minute.secretary() != null ? minute.secretary() : "null",
+                                    minute.attendees() != null ? minute.attendees().size() : 0);
                     }
                     
                     return matches;
@@ -510,7 +550,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                 .collect(Collectors.toList());
         
         log().info("Filtered {} minutes by person '{}', {} remaining", 
-                  minutes.size(), personName, filtered.size());
+                    minutes.size(), personName, filtered.size());
         
         return filtered;
     }

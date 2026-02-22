@@ -74,9 +74,10 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                               relevantMinutes.size(), topic, topicFiltered.size());
                     relevantMinutes = topicFiltered;
                 } else {
-                    // Conservative fallback: no minutes passed strict threshold, but pass all relevantMinutes to summarizer
-                    // so the LLM can still try to answer from metadata (reduces false "no encontrado")
-                    log().info("Topic '{}' matched 0 minutes with threshold; using all {} relevant minutes for summarization", topic, relevantMinutes.size());
+                    // Specific topic (e.g. climatización piscina, renovación tejado) with 0 matches: return explicit "no encontrado"
+                    log().info("Topic '{}' matched 0 minutes with threshold; returning topic-not-found message", topic);
+                    String notFoundMsg = generateTopicNotFoundMessage(query, topic);
+                    return ToolResult.from(formatResponse(notFoundMsg, query), getClass());
                 }
             }
         }

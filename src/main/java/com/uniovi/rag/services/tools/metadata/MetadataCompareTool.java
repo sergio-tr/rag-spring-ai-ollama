@@ -83,10 +83,23 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateNoDataMessage(fieldToCompare.fieldName, query), query), getClass());
         }
 
-        // Step 5.5: Aggregate mentions by month if this is a mentions_by_month comparison
+        // Step 5.5: Aggregate by month for mentions or meetings count
         if ("mentions_by_month".equals(fieldToCompare.fieldName)) {
             comparables = aggregateMentionsByMonth(comparables);
             log().info("Aggregated mentions by month: {}", comparables);
+        } else if ("meetings_count_by_month".equals(fieldToCompare.fieldName)) {
+            comparables = aggregateMentionsByMonth(comparables); // same aggregation: group by month, sum
+            log().info("Aggregated meetings count by month: {}", comparables);
+        } else if ("numberOfAttendees_by_month".equals(fieldToCompare.fieldName)) {
+            comparables = aggregateMentionsByMonth(comparables); // group by month, sum attendees
+            log().info("Aggregated attendees by month: {}", comparables);
+        }
+
+        // Step 5.6: Filter to only months mentioned in the query (e.g. febrero y abril, not all months)
+        List<String> requestedMonths = extractMonthsFromQuery(query);
+        if (!requestedMonths.isEmpty() && ("mentions_by_month".equals(fieldToCompare.fieldName) || "meetings_count_by_month".equals(fieldToCompare.fieldName) || "numberOfAttendees_by_month".equals(fieldToCompare.fieldName))) {
+            comparables = filterComparablesByMonths(comparables, requestedMonths);
+            log().info("Filtered comparables to requested months {}: {}", requestedMonths, comparables);
         }
 
         // Step 6: Perform statistical analysis
@@ -245,10 +258,23 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         
         String queryLower = query.toLowerCase();
         
+        // More attendees in month A or B (e.g. "más asistentes en agosto o en febrero") — compare by month
+        if ((queryLower.contains("asistentes") || queryLower.contains("attendees") || queryLower.contains("asistencia")) &&
+            (queryLower.contains("febrero") || queryLower.contains("agosto") || queryLower.contains("abril") || queryLower.contains("mes") || queryLower.contains("month"))) {
+            log().info("Detected attendees comparison by month");
+            return new ComparisonField("numberOfAttendees_by_month", ComparisonType.NUMERIC);
+        }
+        // Special case: Number of meetings/actas by month (e.g., "más reuniones registradas, febrero o abril")
+        if ((queryLower.contains("reuniones") || queryLower.contains("actas")) &&
+            (queryLower.contains("febrero") || queryLower.contains("february") || queryLower.contains("abril") || queryLower.contains("april") ||
+             queryLower.contains("agosto") || queryLower.contains("august") || queryLower.contains("mes") || queryLower.contains("month"))) {
+            log().info("Detected meetings count by month comparison");
+            return new ComparisonField("meetings_count_by_month", ComparisonType.COUNT);
+        }
         // Special case: Comparison of mentions by month (e.g., "más menciones a problemas de seguridad en febrero o en agosto")
         if ((queryLower.contains("menciones") || queryLower.contains("mentions") || queryLower.contains("menciona")) &&
             (queryLower.contains("febrero") || queryLower.contains("february") || 
-             queryLower.contains("agosto") || queryLower.contains("august") ||
+             queryLower.contains("agosto") || queryLower.contains("august") || queryLower.contains("abril") || queryLower.contains("april") ||
              queryLower.contains("mes") || queryLower.contains("month"))) {
             // This is a mentions comparison query - we need to count mentions of a topic by month
             log().info("Detected mentions comparison query, will use special comparison logic");
@@ -394,6 +420,14 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         // Special handling for mentions_by_month comparison
         if ("mentions_by_month".equals(field.fieldName)) {
             return extractMentionsByMonthValue(minute, field, ner, query);
+        }
+        // Count of meetings (actas) per month: one minute = one meeting
+        if ("meetings_count_by_month".equals(field.fieldName)) {
+            return extractMeetingsCountByMonthValue(minute);
+        }
+        // Attendees per month (for "más asistentes en febrero o en agosto")
+        if ("numberOfAttendees_by_month".equals(field.fieldName)) {
+            return extractAttendeesByMonthValue(minute);
         }
         
         // Validate that minute belongs to the requested period if years are specified
@@ -571,6 +605,95 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
     
     /**
+     * Extracts month names mentioned in the query (e.g. "febrero" and "abril" from "qué mes tuvo más reuniones, febrero o abril").
+     * Returns only months that appear in the query so we filter comparison data to the requested pair.
+     */
+    private List<String> extractMonthsFromQuery(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        String q = query.toLowerCase().trim();
+        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+        List<String> found = new ArrayList<>();
+        for (String month : monthNames) {
+            if (q.contains(month)) {
+                found.add(month);
+            }
+        }
+        // English month names mapping
+        String[] enNames = {"january", "february", "march", "april", "may", "june",
+                           "july", "august", "september", "october", "november", "december"};
+        for (int i = 0; i < enNames.length; i++) {
+            if (q.contains(enNames[i]) && !found.contains(monthNames[i])) {
+                found.add(monthNames[i]);
+            }
+        }
+        log().info("Extracted months from query: {}", found);
+        return found;
+    }
+
+    /**
+     * Filters comparables map to only include requested months (so comparison is febrero vs abril when asked, not all months).
+     */
+    private Map<String, ComparisonValue> filterComparablesByMonths(Map<String, ComparisonValue> comparables, List<String> requestedMonths) {
+        if (comparables == null || requestedMonths == null || requestedMonths.isEmpty()) {
+            return comparables != null ? comparables : new LinkedHashMap<>();
+        }
+        Map<String, ComparisonValue> out = new LinkedHashMap<>();
+        for (String month : requestedMonths) {
+            if (comparables.containsKey(month)) {
+                out.put(month, comparables.get(month));
+            } else {
+                out.put(month, new ComparisonValue(0, ComparisonType.COUNT));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Attendees count per minute by month; used for "más asistentes en febrero o en agosto".
+     */
+    private Map.Entry<String, ComparisonValue> extractAttendeesByMonthValue(Minute minute) {
+        if (minute.date() == null) {
+            return null;
+        }
+        try {
+            java.time.LocalDate parsedDate = parseDateFlexible(minute.date());
+            if (parsedDate == null) {
+                return null;
+            }
+            String monthName = getMonthName(parsedDate.getMonthValue());
+            int count = minute.numberOfAttendees() > 0 ? minute.numberOfAttendees() :
+                    (minute.attendees() != null ? minute.attendees().size() : 0);
+            return new AbstractMap.SimpleEntry<>(monthName, new ComparisonValue(count, ComparisonType.NUMERIC));
+        } catch (Exception e) {
+            log().debug("Could not extract attendees by month from minute {}: {}", minute.id(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * One meeting (acta) per minute; used for "meetings count by month" comparison.
+     */
+    private Map.Entry<String, ComparisonValue> extractMeetingsCountByMonthValue(Minute minute) {
+        if (minute.date() == null) {
+            return null;
+        }
+        try {
+            java.time.LocalDate parsedDate = parseDateFlexible(minute.date());
+            if (parsedDate == null) {
+                return null;
+            }
+            String monthName = getMonthName(parsedDate.getMonthValue());
+            return new AbstractMap.SimpleEntry<>(monthName, new ComparisonValue(1, ComparisonType.COUNT));
+        } catch (Exception e) {
+            log().debug("Could not extract month for meetings count from minute {}: {}", minute.id(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Gets Spanish month name from month number (1-12)
      */
     private String getMonthName(int month) {
@@ -745,11 +868,10 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             Focus on answering the question naturally and concisely, as if you were a helpful assistant.
             
             IMPORTANT: 
-            - Labels "febrero" / "Febrero" = February; "agosto" / "Agosto" = August. Do NOT invert the conclusion.
-            - If the data shows "Febrero: X" and "Agosto: Y", state which has more according to the numbers (e.g. "Febrero tiene más menciones que Agosto" if X > Y).
-            - The comparison data order and values are authoritative; do not swap or invert them.
-            - If comparing months (febrero vs agosto), clearly state which month has MORE mentions or attendees based on the numbers given.
-            - Be precise: if data shows febrero: 20 and agosto: 18, then February has MORE.
+            - The labels (month names or other terms) and values in the comparison data are authoritative. Do NOT invert or swap them.
+            - State which option has more according to the numbers given (e.g. if data shows "febrero: 20" and "abril: 18", say febrero has more).
+            - Use the exact labels from the data (e.g. febrero, abril, agosto) in your answer. Do not assume a fixed pair like "febrero vs agosto" if the data shows different months.
+            - If a CONCLUSION line is present in the data, your answer must agree with it.
             """, query, comparisonData, simpleStats != null ? simpleStats : "");
         
         try {
@@ -815,6 +937,23 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         return answer.toString();
     }
 
+    /** Builds deterministic conclusion line so LLM does not invert (e.g. "Agosto tiene más que Febrero" when data says otherwise). */
+    private String formatMonthConclusion(Map<String, ComparisonValue> comparables, String unitLabel) {
+        if (comparables == null || comparables.size() != 2) {
+            return "";
+        }
+        Map.Entry<String, ComparisonValue> e1 = comparables.entrySet().iterator().next();
+        Map.Entry<String, ComparisonValue> e2 = comparables.entrySet().stream().skip(1).findFirst().orElse(null);
+        if (e2 == null || !(e1.getValue().value instanceof Number n1) || !(e2.getValue().value instanceof Number n2)) {
+            return "";
+        }
+        double v1 = n1.doubleValue();
+        double v2 = n2.doubleValue();
+        String more = v1 >= v2 ? e1.getKey() : e2.getKey();
+        String less = v1 >= v2 ? e2.getKey() : e1.getKey();
+        return String.format("\nCONCLUSION: %s tiene más %s que %s.", more, unitLabel, less);
+    }
+
     /**
      * Formats comparison data for LLM prompt
      */
@@ -828,22 +967,33 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                         return String.format("- %s: %s menciones", month, value);
                     })
                     .collect(Collectors.joining("\n"));
-            // Append deterministic conclusion so LLM does not invert (e.g. "Agosto tiene más que Febrero" when data says otherwise)
-            if (comparables.size() == 2) {
-                Map.Entry<String, ComparisonValue> e1 = comparables.entrySet().iterator().next();
-                Map.Entry<String, ComparisonValue> e2 = comparables.entrySet().stream().skip(1).findFirst().orElse(null);
-                if (e2 != null && e1.getValue().value instanceof Number n1 && e2.getValue().value instanceof Number n2) {
-                    double v1 = n1.doubleValue();
-                    double v2 = n2.doubleValue();
-                    String more = v1 >= v2 ? e1.getKey() : e2.getKey();
-                    String less = v1 >= v2 ? e2.getKey() : e1.getKey();
-                    lines += String.format("\nCONCLUSION: %s tiene más menciones que %s.", more, less);
-                }
-            }
+            lines += formatMonthConclusion(comparables, "menciones");
             return lines;
         }
-        
-        // For attendees comparison, sort descending (highest first) and format clearly
+        if ("meetings_count_by_month".equals(field.fieldName)) {
+            String lines = comparables.entrySet().stream()
+                    .map(entry -> {
+                        String month = entry.getKey();
+                        Object value = entry.getValue().value;
+                        return String.format("- %s: %s reuniones", month, value);
+                    })
+                    .collect(Collectors.joining("\n"));
+            lines += formatMonthConclusion(comparables, "reuniones");
+            return lines;
+        }
+        if ("numberOfAttendees_by_month".equals(field.fieldName)) {
+            String lines = comparables.entrySet().stream()
+                    .map(entry -> {
+                        String month = entry.getKey();
+                        Object value = entry.getValue().value;
+                        return String.format("- %s: %s asistentes", month, value);
+                    })
+                    .collect(Collectors.joining("\n"));
+            lines += formatMonthConclusion(comparables, "asistentes");
+            return lines;
+        }
+
+        // For attendees comparison (per-minute labels), sort descending (highest first) and format clearly
         if ("numberOfAttendees".equals(field.fieldName)) {
             log().info("Formatting attendees comparison data. Total entries: {}", comparables.size());
             List<Map.Entry<String, ComparisonValue>> sorted = comparables.entrySet().stream()
@@ -872,7 +1022,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                     })
                     .collect(Collectors.joining("\n"));
         }
-        
+
         // Default formatting for other comparison types (sort descending for numeric/count)
         return comparables.entrySet().stream()
                 .sorted(Map.Entry.<String, ComparisonValue>comparingByValue((a, b) -> {

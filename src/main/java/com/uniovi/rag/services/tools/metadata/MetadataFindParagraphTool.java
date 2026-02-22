@@ -66,6 +66,20 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
 
         // Step 4: Find relevant paragraphs in parallel (content-first, metadata fallback)
         List<ParagraphResult> results = findParagraphsInParallel(query, relevantMinutes, minuteIdToDoc);
+
+        // Step 4.5: For "tejado" queries, exclude paragraphs that only mention "portal" (not the same as tejado)
+        if (query != null && query.toLowerCase().contains("tejado")) {
+            List<ParagraphResult> tejadoFiltered = results.stream()
+                    .filter(r -> r.getParagraph() != null && r.getParagraph().toLowerCase().contains("tejado"))
+                    .collect(Collectors.toList());
+            if (tejadoFiltered.isEmpty() && !results.isEmpty()) {
+                log().info("Query asks for 'tejado' but all paragraphs only mentioned 'portal' or other terms; returning not found");
+                String notFoundMsg = generateTopicNotFoundMessage(query, "renovación del tejado");
+                return ToolResult.from(formatResponse(notFoundMsg, query), getClass());
+            }
+            results = tejadoFiltered;
+        }
+
         if (results.isEmpty()) {
             log().info("No paragraphs found for query: {}", query);
             return ToolResult.from(formatResponse(generateNoDataMessage(query), query), getClass());
