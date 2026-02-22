@@ -289,8 +289,8 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         String clusterContent = cluster.getRepresentativeContent().toLowerCase();
         
         // Calculate simple word overlap
-        Set<String> explanationWords = Set.of(explanationContent.split("\\s+"));
-        Set<String> clusterWords = Set.of(clusterContent.split("\\s+"));
+        Set<String> explanationWords = new HashSet<>(Arrays.asList(explanationContent.split("\\s+")));
+        Set<String> clusterWords = new HashSet<>(Arrays.asList(clusterContent.split("\\s+")));
         
         long commonWords = explanationWords.stream()
                 .filter(clusterWords::contains)

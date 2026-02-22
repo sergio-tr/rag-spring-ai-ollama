@@ -399,8 +399,8 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         String decisionContent = decision.getDecisionText().toLowerCase();
         String clusterContent = cluster.getRepresentativeContent().toLowerCase();
         
-        Set<String> decisionWords = Set.of(decisionContent.split("\\s+"));
-        Set<String> clusterWords = Set.of(clusterContent.split("\\s+"));
+        Set<String> decisionWords = new HashSet<>(Arrays.asList(decisionContent.split("\\s+")));
+        Set<String> clusterWords = new HashSet<>(Arrays.asList(clusterContent.split("\\s+")));
         
         long commonWords = decisionWords.stream()
                 .filter(clusterWords::contains)

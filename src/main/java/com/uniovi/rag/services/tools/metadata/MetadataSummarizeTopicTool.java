@@ -295,9 +295,9 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         List<String> keyTerms = extractKeyTermsFromTopic(topicLower);
         log().debug("Extracted key terms from topic '{}': {}", topic, keyTerms);
         
-        // P8: Lower thresholds to avoid discarding minutes where topic appears (estado de cuentas, ascensor, calefacción, limpieza, iluminación)
+        // P8: Lower thresholds to avoid discarding minutes where topic appears (estado de cuentas, ascensor, calefacción, videovigilancia, limpieza, iluminación)
         boolean isCompoundTopic = keyTerms.size() > 1;
-        double relevanceThreshold = isCompoundTopic ? 0.50 : 0.40;
+        double relevanceThreshold = isCompoundTopic ? 0.50 : 0.33;
         
         List<Minute> filtered = minutes.stream()
                 .filter(minute -> {
@@ -437,7 +437,17 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         
         // Also add the full topic as a key term
         keyTerms.add(topic.toLowerCase());
-        
+
+        // Add synonyms so acta wording is matched (e.g. "calefacción" in query, "calefaccion" in metadata; "videovigilancia" -> "vigilancia")
+        if (keyTerms.stream().anyMatch(t -> t.contains("calefaccion") || t.contains("calefacción"))) {
+            keyTerms.add("calefaccion");
+            keyTerms.add("calefacción");
+        }
+        if (keyTerms.stream().anyMatch(t -> t.contains("videovigilancia") || t.contains("vigilancia"))) {
+            keyTerms.add("videovigilancia");
+            keyTerms.add("vigilancia");
+        }
+
         // Remove duplicates and sort by length (longer terms first for more specific matching)
         return keyTerms.stream()
                 .distinct()

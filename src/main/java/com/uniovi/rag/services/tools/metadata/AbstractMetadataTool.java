@@ -2303,6 +2303,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             log().debug("Error detecting attendees count query with LLM: {}", e.getMessage());
         }
         
+        // Fallback: explicit string match for "menos de diez" / "menos de 10" so filter is always applied
+        String q = query.toLowerCase();
+        if (q.contains("menos de diez") || q.contains("menos de 10")) {
+            log().info("Attendees count query fallback: detected 'menos de diez', using less_than 10");
+            return new AttendeesCountQueryInfo("less_than", 10);
+        }
         return null;
     }
     
@@ -2481,6 +2487,16 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // Pattern 4: "donde [Nombre Completo]" (more general)
             Pattern.compile(
                 "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
+                Pattern.CASE_INSENSITIVE
+            ),
+            // Pattern 5: "asistió [Nombre Completo]" (e.g. "¿En qué reuniones asistió Alejandro Torres Rojas?")
+            Pattern.compile(
+                "(?i)(?:asistió|asistió|attendee?d?)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
+                Pattern.CASE_INSENSITIVE
+            ),
+            // Pattern 6: "reuniones asistió [Nombre]" - name at end before ?
+            Pattern.compile(
+                "(?i)reuniones?\\s+asistió\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*\\??",
                 Pattern.CASE_INSENSITIVE
             )
         };
@@ -2850,7 +2866,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         List<Document> filtered = validateDateMatch(docs, requestedDate);
         
         if (filtered.isEmpty() && !docs.isEmpty()) {
-            log().warn("Date validation filtered out all {} documents for requested date: {}", 
+            log().debug("Date validation filtered out all {} documents for requested date: {} (date not in corpus is expected)",
                       docs.size(), requestedDate);
         }
 
@@ -3180,8 +3196,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String itemLower = itemContent.toLowerCase();
         String clusterLower = clusterContent.toLowerCase();
         
-        Set<String> itemWords = Set.of(itemLower.split("\\s+"));
-        Set<String> clusterWords = Set.of(clusterLower.split("\\s+"));
+        Set<String> itemWords = new HashSet<>(Arrays.asList(itemLower.split("\\s+")));
+        Set<String> clusterWords = new HashSet<>(Arrays.asList(clusterLower.split("\\s+")));
         
         long commonWords = itemWords.stream()
                 .filter(clusterWords::contains)
@@ -3765,6 +3781,22 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
+     * Gets document_id from document metadata for deduplication (one doc per acta).
+     * Uses metadata "document_id", then "id", then doc.getId().
+     */
+    protected String getDocumentIdFromDoc(Document doc) {
+        if (doc == null) return null;
+        Map<String, Object> metadata = doc.getMetadata();
+        if (metadata != null) {
+            String id = safeGetString(metadata, "document_id");
+            if (id != null && !id.isBlank()) return id;
+            id = safeGetString(metadata, "id");
+            if (id != null && !id.isBlank()) return id;
+        }
+        return doc.getId();
+    }
+
+    /**
      * Gets document date from metadata.
      * Tries multiple metadata field names and returns normalized date string or null.
      */
@@ -3963,9 +3995,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         return info.toString();
                     })
                     .collect(Collectors.toList());
-            log().warn("Date validation failed: Requested date {} (normalized: {}) not found. " +
-                      "This may indicate: 1) date_iso missing in metadata, 2) date parsing failed, or 3) dates don't match. " +
-                      "Sample document dates: {}", 
+            log().debug("Date validation failed: Requested date {} (normalized: {}) not found. " +
+                      "This may indicate: 1) date_iso missing in metadata, 2) date parsing failed, or 3) dates don't match (e.g. date not in corpus). " +
+                      "Sample document dates: {}",
                       requestedDate, requestedNormalized, sampleDates);
         }
 
@@ -4132,9 +4164,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         // Check if response starts with the full question
         if (responseLower.startsWith(queryLower)) {
             String cleaned = response.substring(query.length()).trim();
-            // Remove common separators that might follow the question
+            // Remove common separators that might follow the question (e.g. ": - ", ": ", " - ")
+            cleaned = cleaned.replaceFirst("^[:\\s\\-]+", "");
             cleaned = cleaned.replaceFirst("^[.\\n\\r\\-\\s]+", "");
-            log().debug("Removed full question repetition from response. Original length: {}, Cleaned length: {}", 
+            log().debug("Removed full question repetition from response. Original length: {}, Cleaned length: {}",
                       response.length(), cleaned.length());
             return cleaned.isEmpty() ? response : cleaned; // Return original if cleaning removes everything
         }
