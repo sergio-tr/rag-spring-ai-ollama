@@ -845,14 +845,16 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         return String.join("\n", items);
     }
 
-    /** Detects if the query asks for sections/structure of the acta (e.g. "secciones que contiene el acta", "orden del día", "qué contiene el acta"). */
+    /** Detects if the query asks for sections/structure of the acta (§4: Fecha, Lugar, Hora, Asistentes, Orden del día). */
     private static boolean asksForSectionsOrStructure(String query) {
         if (query == null || query.isBlank()) return false;
         String q = query.toLowerCase();
         return q.contains("secciones que contiene") || q.contains("secciones del acta") || q.contains("partes del acta")
                 || q.contains("estructura del acta") || (q.contains("qué secciones") && q.contains("acta")) || (q.contains("qué partes") && q.contains("acta"))
                 || q.contains("indícame las secciones") || q.contains("indicate the sections") || (q.contains("qué contiene") && q.contains("acta"))
-                || (q.contains("orden del día") && q.contains("acta")) || (q.contains("qué contiene el acta"));
+                || (q.contains("orden del día") && q.contains("acta")) || q.contains("qué contiene el acta")
+                || q.contains("extrae las secciones") || q.contains("indica las secciones") || q.contains("lista las secciones")
+                || q.contains("secciones que tiene el acta");
     }
 
     /** Builds a natural-language list of acta sections from minute metadata (Fecha, Lugar, Hora inicio/fin, Asistentes, Orden del día con ítems). */

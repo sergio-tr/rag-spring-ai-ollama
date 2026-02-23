@@ -45,7 +45,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
     @Override
     public String expand(String query) {
         if (query == null || query.trim().isEmpty()) {
-            log().warn("Empty query provided to expander, returning original");
+            log().debug("Empty query provided to expander, returning original");
             return query != null ? query : "";
         }
         
@@ -58,14 +58,14 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
                     .content();
             
             if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in expander, returning original query");
+                log().debug("Empty response from LLM in expander, returning original query");
                 return query;
             }
             
             String trimmed = result.trim();
             
             if (!isValidExpansion(query, trimmed)) {
-                log().warn("Expansion failed quality validation, returning original query");
+                log().debug("Expansion failed quality validation, returning original query");
                 return query;
             }
             
@@ -101,7 +101,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         
         // Validation 2: Reasonable length (no more than 3x nor less than 1/3)
         if (trimmed.length() > original.length() * 3 || trimmed.length() < original.length() / 3) {
-            log().warn("Expansion result length is very different from original (original: {}, expanded: {})", 
+            log().debug("Expansion result length is very different from original (original: {}, expanded: {})", 
                       original.length(), trimmed.length());
             return false;
         }
@@ -124,7 +124,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         
         // At least 30% of words must be present
         if (originalWords.length > 0 && matchingWords < originalWords.length * 0.3) {
-            log().warn("Expansion has too few matching words with original ({} out of {})", 
+            log().debug("Expansion has too few matching words with original ({} out of {})", 
                       matchingWords, originalWords.length);
             return false;
         }

@@ -267,13 +267,19 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             return "date";
         }
 
-        // Priority 2: Agenda/orden del día (check before topics)
-        if (containsAny(q, "orden del día", "qué contiene el orden", "contenido del orden", "agenda", "puntos del día")) {
+        // Priority 2: Agenda/orden del día (check before date so "orden del día del 25 ago" → agenda not date)
+        if (containsAny(q, "orden del día", "qué contiene el orden", "contenido del orden", "agenda", "puntos del día", "puntos del orden")) {
             log().debug("Classified as 'agenda'");
             return "agenda";
         }
 
-        // Priority 3: Specific field requests
+        // Priority 3: Acuerdos/decisions (before place so "acuerdos 25 ago 2025" → decisions not place)
+        if (containsAny(q, "decisión", "decisiones", "acuerdo", "acuerdos", "decision", "agreements", "qué acuerdos", "acuerdos alcanzados")) {
+            log().debug("Classified as 'decisions'");
+            return "decisions";
+        }
+
+        // Priority 4: Other specific field requests
         if (containsAny(q, "duración", "duration", "cuánto dur")) return "durationMinutes";
         if (containsAny(q, "año", "year")) return "year";
         if (containsAny(q, "mes", "month")) return "month";
@@ -288,7 +294,6 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         if (containsAny(q, "asistente", "attendee", "participante", "personas")) return "attendees";
         if (containsAny(q, "número de asistentes", "cuántos asistieron", "attendees count")) return "attendeesCount";
         if (containsAny(q, "tema", "topics")) return "topics";
-        if (containsAny(q, "decisión", "acuerdo", "decision", "agreements")) return "decisions";
         if (containsAny(q, "resumen", "summary")) return "summary";
 
         // Priority 4: Date (general, after checking context)

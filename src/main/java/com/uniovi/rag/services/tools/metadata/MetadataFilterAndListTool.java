@@ -90,6 +90,14 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             relevantMinutes = byMinCount;
         }
 
+        // Step 3.6c: Filter by topic when query mentions a topic (e.g. "agosto + videovigilancia + >18" → only ACTA 6 §4)
+        String topicForFilter = extractTopicFromQuery(query, ner);
+        if (topicForFilter != null && !topicForFilter.isBlank() && !requiresTopicAndPersonFilter(query)) {
+            List<Minute> byTopic = filterMinutesByTopicOnly(relevantMinutes, topicForFilter);
+            log().info("Filtered {} minutes by topic '{}', {} remaining", relevantMinutes.size(), topicForFilter, byTopic.size());
+            relevantMinutes = byTopic;
+        }
+
         // Step 3.7: Additional filtering by topic + person if query requires it (AND logic)
         if (requiresTopicAndPersonFilter(query)) {
             List<Minute> topicPersonFiltered = filterMinutesByTopicAndPerson(query, relevantMinutes, ner);
@@ -379,6 +387,17 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     private List<Minute> filterMinutesByAttendeeName(String query, List<Minute> minutes, JSONObject ner) {
         if (minutes.isEmpty() || query == null) return minutes;
         String personName = extractPersonNameFromQuery(query, ner);
+        // Fallback: "¿Cuándo (y en qué reuniones) asistió Alejandro Torres Rojas?" (§4 Alejandro → ACTA 1, 3, 6)
+        if ((personName == null || personName.trim().isEmpty()) && query != null) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "(?i)(?:asistió|asistieron|participó|participaron)\\s+([A-Za-zÁÉÍÓÚÑáéíóúñ]+(?:\\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]+)+)\\s*\\??",
+                java.util.regex.Pattern.CASE_INSENSITIVE
+            ).matcher(query);
+            if (m.find()) {
+                personName = m.group(1).trim();
+                log().debug("Extracted attendee name via fallback: {}", personName);
+            }
+        }
         if (personName == null || personName.trim().isEmpty()) return minutes;
         final String normalized = normalizePersonName(personName);
         List<Minute> out = minutes.stream()
@@ -599,6 +618,34 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
                   filtered.size(), minutes.size(), topic, personName);
         
         return filtered;
+    }
+
+    /**
+     * Filters minutes to those that mention the given topic (in topics, decisions, summary, or agenda).
+     * Uses synonyms for common topics (e.g. videovigilancia → vigilancia, cámaras). §4 agosto+videovigilancia+>18 → ACTA 6 only.
+     */
+    private List<Minute> filterMinutesByTopicOnly(List<Minute> minutes, String topic) {
+        if (minutes.isEmpty() || topic == null || topic.isBlank()) return minutes;
+        String topicNorm = normalizePersonName(topic);
+        List<String> terms = new ArrayList<>();
+        terms.add(topicNorm);
+        if (topicNorm.contains("videovigilancia") || topicNorm.contains("vigilancia")) {
+            terms.add("videovigilancia"); terms.add("vigilancia"); terms.add("camaras"); terms.add("cámaras");
+        }
+        if (topicNorm.contains("calefaccion") || topicNorm.contains("calefacción")) {
+            terms.add("calefaccion"); terms.add("calefacción");
+        }
+        List<Minute> out = minutes.stream()
+                .filter(m -> {
+                    String ts = (m.topics() != null ? String.join(" ", m.topics()) : "") + " "
+                            + (m.decisions() != null ? String.join(" ", m.decisions()) : "") + " "
+                            + (m.summary() != null ? m.summary() : "") + " "
+                            + (m.agenda() != null ? m.agenda().values().stream().filter(Objects::nonNull).reduce("", (a, b) -> a + " " + b) : "");
+                    String combined = normalizePersonName(ts);
+                    return terms.stream().anyMatch(combined::contains);
+                })
+                .collect(Collectors.toList());
+        return out;
     }
 
 }

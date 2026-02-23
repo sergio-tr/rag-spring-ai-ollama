@@ -77,7 +77,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
 
         // Step 4: Filter by date first (if query includes date) - early filtering reduces LLM calls
         List<Minute> dateFilteredMinutes = filterMinutesByDate(query, ner, relevantMinutes);
-        if (dateFilteredMinutes.isEmpty() && !dateCandidates.isEmpty()) {
+        if (dateFilteredMinutes.isEmpty() && dateCandidates != null && !dateCandidates.isEmpty()) {
             // User asked about a specific date but no minutes matched
             log().info("No minutes found for the specified date in query: {}", query);
             return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, relevantMinutes.size(), "date_not_found"), query), getClass());
@@ -133,8 +133,8 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                     .collect(Collectors.toList());
             
             if (dateValidatedMinutes.isEmpty()) {
-                log().warn("No minutes with matching date found after validation. Query date: '{}' (parsed: {}). " +
-                          "Validated {} minutes before date filtering. This may indicate a date parsing issue.", 
+                log().debug("No minutes with matching date found after validation. Query date: '{}' (parsed: {}). " +
+                          "Validated {} minutes before date filtering. Date not in corpus is expected for some queries.", 
                           date, parseDateFlexible(date), validatedMinutes.size());
                 return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "date_mismatch"), query), getClass());
             }
@@ -150,6 +150,18 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "no_decisions_in_metadata"), query), getClass());
         }
 
+        // Step 6.5: When query asks about a specific topic (e.g. "fuga de gas"), return "no mention" if no decision mentions it (§4)
+        String topic = extractTopicFromQuery(query, ner);
+        if (topic != null && !topic.isBlank() && isTopicSpecificQuery(query)) {
+            String topicNorm = topic.toLowerCase();
+            boolean anyMentions = decisions.stream()
+                    .anyMatch(d -> d.getDecisionText() != null && d.getDecisionText().toLowerCase().contains(topicNorm));
+            if (!anyMentions) {
+                String noMentionMsg = generateTopicNotMentionedMessage(query, topic);
+                return ToolResult.from(formatResponse(noMentionMsg, query), getClass());
+            }
+        }
+
         // Step 7: Analyze and rank decisions
         List<Decision> rankedDecisions = analyzeAndRankDecisions(decisions);
 
@@ -162,6 +174,22 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                    query, decisions.size(), clusters.size());
         
         return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    /** True when the query asks what was said/commented about a specific topic (e.g. "¿Qué se comentó respecto a la fuga de gas?"). */
+    private boolean isTopicSpecificQuery(String query) {
+        if (query == null || query.isBlank()) return false;
+        String q = query.toLowerCase();
+        return q.contains("qué se comentó") || q.contains("qué se dijo") || q.contains("what was said")
+                || q.contains("respecto a") || q.contains("sobre") && (q.contains("coment") || q.contains("mencion"));
+    }
+
+    /** Message when the requested topic is not mentioned in any decision (§4 e.g. fuga de gas). */
+    private String generateTopicNotMentionedMessage(String query, String topic) {
+        if (query != null && query.toLowerCase().matches("(?s).*[áéíóúñ].*")) {
+            return String.format("No se encuentra ninguna mención a \"%s\" en las actas disponibles.", topic != null ? topic : "ese tema");
+        }
+        return String.format("No mention of \"%s\" was found in the available meeting minutes.", topic != null ? topic : "that topic");
     }
 
     /**

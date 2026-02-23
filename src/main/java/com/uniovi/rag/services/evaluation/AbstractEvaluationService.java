@@ -38,6 +38,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         4. **Context understanding**: Understand what the question is actually asking for. For example:
            - If asked "Which acta had the longest duration?", the answer should identify the acta (date/identifier), not necessarily include the exact duration.
            - If asked "What was the duration?", the answer should include the duration value.
+        5. **Yes/No questions**: If the question admits a Yes/No answer and the generated answer contradicts the expected one (e.g. expected "No" but generated "Sí" or vice versa), the Correctness score MUST be 1 or 2, never 4 or 5.
         
         **IMPORTANT**: Do not invent or use any external knowledge. 
         Evaluate only what can be inferred from the three provided inputs: the question, the expected correct answer (as a guide), and the system-generated answer.
@@ -61,10 +62,11 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         4. **Independence**: Can the answer be understood on its own, without relying on additional context?
         
         **Scoring Guidelines**:
+        - If the question has a clear Yes/No answer and the generated answer contradicts the expected (Yes vs No or No vs Yes), Correctness MUST be 1 or 2.
         - Score 5 if the answer correctly responds to the question, even if it's shorter or worded differently than expected.
         - Score 4-5 if the answer contains the essential information requested, even if some non-essential details are missing.
         - Score 3-4 if the answer is partially correct but missing some important information.
-        - Score 1-2 only if the answer is incorrect, irrelevant, or doesn't address the question.
+        - Score 1-2 only if the answer is incorrect, irrelevant, or doesn't address the question (including Yes/No inversion).
         
         Respond in this format:
         

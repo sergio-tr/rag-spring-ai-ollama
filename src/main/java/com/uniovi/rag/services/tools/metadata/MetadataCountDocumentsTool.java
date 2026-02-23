@@ -62,7 +62,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         }
         
         // Step 1.7: Filter by attendeesCount if query asks about number of attendees
-        // Example: "En cuántas actas participaron menos de diez personas"
+        // Example: "En cuántas actas participaron menos de diez personas" (§4: ninguna acta tiene <10 → 0)
         AttendeesCountQueryInfo attendeesQueryInfo = detectAttendeesCountQuery(query);
         if (attendeesQueryInfo != null) {
             log().info("Query asks about number of attendees (operator={}, threshold={}), filtering documents", 
@@ -71,6 +71,11 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             log().info("Filtered {} documents by attendees count criteria, {} remaining (applied filter even if empty)", 
                       docs.size(), filteredByAttendees.size());
             docs = filteredByAttendees; // Apply filter even if empty - this indicates no matches
+            // When filter yields 0 docs, return explicit "0 actas" (not generic "no documents found")
+            if (docs.isEmpty()) {
+                String zeroAnswer = generateCountZeroMessage(query, attendeesQueryInfo);
+                return ToolResult.from(formatResponse(zeroAnswer, query), getClass());
+            }
         }
         
         if (docs.isEmpty()) {
@@ -406,6 +411,25 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         return data.toString();
     }
     
+    /**
+     * When count by attendees filter yields 0 documents (e.g. "menos de diez" and no acta has &lt;10).
+     */
+    private String generateCountZeroMessage(String query, AttendeesCountQueryInfo queryInfo) {
+        if (query == null || queryInfo == null) return "0 actas.";
+        String lang = query.matches("(?i).*\\p{IsAlphabetic}.*[áéíóúñ].*") ? "es" : "en";
+        if ("less_than".equals(queryInfo.operator)) {
+            return lang.equals("es")
+                ? String.format("Ninguna acta cumple el criterio (menos de %d personas).", queryInfo.threshold)
+                : String.format("No meeting minutes have fewer than %d attendees.", queryInfo.threshold);
+        }
+        if ("more_than".equals(queryInfo.operator)) {
+            return lang.equals("es")
+                ? String.format("Ninguna acta cumple el criterio (más de %d personas).", queryInfo.threshold)
+                : String.format("No meeting minutes have more than %d attendees.", queryInfo.threshold);
+        }
+        return lang.equals("es") ? "Ninguna acta cumple el criterio." : "No meeting minutes match the criteria.";
+    }
+
     /**
      * Filters documents by attendeesCount based on query criteria (P12: strict &lt;10 for "menos de diez").
      * Uses structured information from LLM detection instead of hardcoded string checks.
