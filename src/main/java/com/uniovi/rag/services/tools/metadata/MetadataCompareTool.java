@@ -597,12 +597,15 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         // Also add the full topic as a key term
         keyTerms.add(topic.toLowerCase());
         
-        // Add synonyms for common query topics so acta wording is matched (§4: agosto ACTA 3, 6 = seguridad/vigilancia)
+        // Add synonyms for common query topics so acta wording is matched (§4: agosto ACTA 3, 6 = seguridad/vigilancia/cámaras)
         if (keyTerms.stream().anyMatch(t -> t.contains("seguridad"))) {
+            keyTerms.add("seguridad");
             keyTerms.add("vigilancia");
             keyTerms.add("videovigilancia");
             keyTerms.add("cámaras");
             keyTerms.add("camaras");
+            keyTerms.add("camara");
+            keyTerms.add("cámara");
         }
 
         // Remove duplicates and sort by length (longer terms first for more specific matching)
@@ -970,15 +973,19 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      */
     private String formatComparisonData(Map<String, ComparisonValue> comparables, ComparisonField field) {
         if ("mentions_by_month".equals(field.fieldName)) {
-            // Preserve order: list each month with its count, then add explicit conclusion
-            String lines = comparables.entrySet().stream()
-                    .map(entry -> {
-                        String month = entry.getKey();
-                        Object value = entry.getValue().value;
-                        return String.format("- %s: %s menciones", month, value);
-                    })
+            // Preserve order: list each month with its count, add context phrase and conclusion
+            List<Map.Entry<String, ComparisonValue>> entries = new ArrayList<>(comparables.entrySet());
+            String contextPhrase = "";
+            if (entries.size() >= 2) {
+                Map.Entry<String, ComparisonValue> e1 = entries.get(0);
+                Map.Entry<String, ComparisonValue> e2 = entries.get(1);
+                contextPhrase = String.format("En %s, %s menciones; en %s, %s. ",
+                    e1.getKey(), e1.getValue().value, e2.getKey(), e2.getValue().value);
+            }
+            String lines = entries.stream()
+                    .map(entry -> String.format("- %s: %s menciones", entry.getKey(), entry.getValue().value))
                     .collect(Collectors.joining("\n"));
-            lines += formatMonthConclusion(comparables, "menciones");
+            lines = contextPhrase + "\n" + lines + formatMonthConclusion(comparables, "menciones");
             return lines;
         }
         if ("meetings_count_by_month".equals(field.fieldName)) {

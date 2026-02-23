@@ -64,11 +64,15 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         }
         
         // Step 3.5: Additional filtering by specific topic with relevance threshold
-        // If threshold leaves 0 minutes, use conservative fallback: keep relevantMinutes so LLM can still summarize from metadata
+        // If threshold leaves 0 minutes, for known domain topics (calefacción, videovigilancia) retry with relaxed threshold
         String topic = extractTopicFromQuery(query, ner);
         if (topic != null && !topic.isEmpty()) {
             if (detectSpecificTopicQuery(query)) {
                 List<Minute> topicFiltered = filterMinutesByTopicWithThreshold(relevantMinutes, topic);
+                if (topicFiltered.isEmpty() && isRelaxedTopicForFallback(topic)) {
+                    log().info("Topic '{}' had 0 matches with default threshold; retrying with relaxed threshold 0.25", topic);
+                    topicFiltered = filterMinutesByTopicWithThreshold(relevantMinutes, topic, 0.25);
+                }
                 if (!topicFiltered.isEmpty()) {
                     log().info("Filtered {} minutes by topic '{}' with relevance threshold, {} remaining",
                               relevantMinutes.size(), topic, topicFiltered.size());
@@ -283,21 +287,25 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
      * @return Filtered list of minutes that mention the topic
      */
     private List<Minute> filterMinutesByTopicWithThreshold(List<Minute> minutes, String topic) {
+        boolean isCompoundTopic = topic != null && extractKeyTermsFromTopic(normalizePersonName(topic)).size() > 1;
+        double threshold = isCompoundTopic ? 0.50 : 0.33;
+        return filterMinutesByTopicWithThreshold(minutes, topic, threshold);
+    }
+    
+    private List<Minute> filterMinutesByTopicWithThreshold(List<Minute> minutes, String topic, double relevanceThreshold) {
         if (minutes.isEmpty() || topic == null || topic.isEmpty()) {
             return minutes;
         }
         
         String topicLower = normalizePersonName(topic); // Reuse normalizePersonName for topic normalization
-        log().info("Filtering {} minutes by topic '{}' (normalized: '{}') with STRICT relevance threshold", 
-                  minutes.size(), topic, topicLower);
+        log().info("Filtering {} minutes by topic '{}' (normalized: '{}') with relevance threshold {}", 
+                  minutes.size(), topic, topicLower, String.format("%.2f", relevanceThreshold));
         
         // Extract key terms from compound topics (e.g., "climatización de la piscina" -> ["climatización", "piscina"])
         List<String> keyTerms = extractKeyTermsFromTopic(topicLower);
         log().debug("Extracted key terms from topic '{}': {}", topic, keyTerms);
         
-        // P8: Lower thresholds to avoid discarding minutes where topic appears (estado de cuentas, ascensor, calefacción, videovigilancia, limpieza, iluminación)
         boolean isCompoundTopic = keyTerms.size() > 1;
-        double relevanceThreshold = isCompoundTopic ? 0.50 : 0.33;
         
         List<Minute> filtered = minutes.stream()
                 .filter(minute -> {
@@ -490,6 +498,16 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                 .distinct()
                 .sorted((a, b) -> Integer.compare(b.length(), a.length()))
                 .collect(Collectors.toList());
+    }
+    
+    /**
+     * Topics that may appear in actas with varied wording; allow relaxed threshold fallback when strict filter yields 0.
+     */
+    private boolean isRelaxedTopicForFallback(String topic) {
+        if (topic == null || topic.isEmpty()) return false;
+        String t = topic.toLowerCase().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n");
+        return t.contains("calefaccion") || t.contains("calefacción")
+            || t.contains("videovigilancia") || t.contains("vigilancia") || t.contains("camara") || t.contains("camaras");
     }
     
     /**
