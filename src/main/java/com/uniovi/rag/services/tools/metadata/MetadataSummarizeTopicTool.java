@@ -401,6 +401,27 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             }
         }
         
+        // Check in agenda (order of day) - topic may appear only there (e.g. calefacción, videovigilancia)
+        if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+            String agendaText = minute.agenda().values().stream()
+                    .filter(s -> s != null && !s.isBlank())
+                    .map(this::normalizePersonName)
+                    .collect(Collectors.joining(" "));
+            if (!agendaText.isEmpty()) {
+                totalChecks++;
+                if (isCompoundTopic) {
+                    boolean allTermsFound = keyTerms.stream().allMatch(term -> agendaText.contains(term));
+                    if (allTermsFound) {
+                        foundTerms += keyTerms.size();
+                    }
+                } else {
+                    if (keyTerms.stream().anyMatch(term -> agendaText.contains(term))) {
+                        foundTerms++;
+                    }
+                }
+            }
+        }
+        
         // Calculate relevance score
         if (totalChecks == 0) {
             return 0.0;
@@ -438,19 +459,31 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         // Also add the full topic as a key term
         keyTerms.add(topic.toLowerCase());
 
-        // Add synonyms so acta wording is matched (e.g. "calefacción" in query, "calefaccion" in metadata; "videovigilancia" -> "vigilancia", "cámaras")
+        // Add synonyms so acta wording is matched (calefacción ACTA 5; videovigilancia ACTA 2, 5, 6 - §4)
         if (keyTerms.stream().anyMatch(t -> t.contains("calefaccion") || t.contains("calefacción"))) {
             keyTerms.add("calefaccion");
             keyTerms.add("calefacción");
         }
-        if (keyTerms.stream().anyMatch(t -> t.contains("videovigilancia") || t.contains("vigilancia"))) {
+        if (keyTerms.stream().anyMatch(t -> t.contains("videovigilancia") || t.contains("vigilancia") || t.contains("camara"))) {
             keyTerms.add("videovigilancia");
             keyTerms.add("vigilancia");
             keyTerms.add("camaras");
             keyTerms.add("cámaras");
+            keyTerms.add("camara");
+            keyTerms.add("cámara");
             keyTerms.add("camaras de seguridad");
             keyTerms.add("cámaras de seguridad");
         }
+
+        // Add normalized forms (no accents) so metadata normalized with normalizePersonName matches
+        List<String> withNormalized = new ArrayList<>(keyTerms);
+        for (String k : keyTerms) {
+            String norm = normalizePersonName(k);
+            if (!norm.isEmpty() && !withNormalized.contains(norm)) {
+                withNormalized.add(norm);
+            }
+        }
+        keyTerms = withNormalized;
 
         // Remove duplicates and sort by length (longer terms first for more specific matching)
         return keyTerms.stream()

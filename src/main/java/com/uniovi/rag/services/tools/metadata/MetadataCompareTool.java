@@ -597,10 +597,12 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         // Also add the full topic as a key term
         keyTerms.add(topic.toLowerCase());
         
-        // Add synonyms for common query topics so acta wording is matched (e.g. "seguridad" -> "vigilancia", "videovigilancia")
+        // Add synonyms for common query topics so acta wording is matched (§4: agosto ACTA 3, 6 = seguridad/vigilancia)
         if (keyTerms.stream().anyMatch(t -> t.contains("seguridad"))) {
             keyTerms.add("vigilancia");
             keyTerms.add("videovigilancia");
+            keyTerms.add("cámaras");
+            keyTerms.add("camaras");
         }
 
         // Remove duplicates and sort by length (longer terms first for more specific matching)
