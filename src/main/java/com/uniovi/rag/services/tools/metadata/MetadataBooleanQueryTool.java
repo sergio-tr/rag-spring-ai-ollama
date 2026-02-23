@@ -42,7 +42,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         // Step 1.5: Filter by year first (e.g. "seguridad en 2026") so keyword validation runs on the correct subset
         String requestedYear = extractYearFromQuery(query, ner);
         if (requestedYear != null && !docs.isEmpty()) {
-            log().info("Filtering documents by year: {}", requestedYear);
+            log().info("Filtering documents by year: {} (includes 2026 when present in docs)", requestedYear);
             List<Document> filteredDocs = filterDocumentsByYear(docs, requestedYear);
             if (filteredDocs.isEmpty()) {
                 log().info("No documents found for year {} in query: {}", requestedYear, query);
@@ -453,17 +453,19 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             }
             
             String contextLower = context.toString().toLowerCase();
-            // When query is about "seguridad", accept vigilancia/videovigilancia so acta 25 ago 2026 matches
+            // When query is about "seguridad", accept vigilancia/videovigilancia/cámaras so acta 25 ago 2026 matches
             if (keyword != null && keyword.toLowerCase().contains("seguridad")) {
-                if (contextLower.contains("seguridad") || contextLower.contains("vigilancia") || contextLower.contains("videovigilancia")) {
-                    log().info("Keyword 'seguridad' matched via synonym (vigilancia/videovigilancia) in document");
+                if (contextLower.contains("seguridad") || contextLower.contains("vigilancia") || contextLower.contains("videovigilancia")
+                    || contextLower.contains("camara") || contextLower.contains("cámaras") || contextLower.contains("camaras")) {
+                    log().info("Keyword 'seguridad' matched via synonym (vigilancia/videovigilancia/cámaras) in document");
                     return true;
                 }
             }
             if (doc.getContent() != null) {
                 String contentLower = doc.getContent().toLowerCase();
                 if (keyword != null && keyword.toLowerCase().contains("seguridad")) {
-                    if (contentLower.contains("seguridad") || contentLower.contains("vigilancia") || contentLower.contains("videovigilancia")) {
+                    if (contentLower.contains("seguridad") || contentLower.contains("vigilancia") || contentLower.contains("videovigilancia")
+                        || contentLower.contains("camara") || contentLower.contains("cámaras") || contentLower.contains("camaras")) {
                         log().info("Keyword 'seguridad' matched via synonym in document content");
                         return true;
                     }

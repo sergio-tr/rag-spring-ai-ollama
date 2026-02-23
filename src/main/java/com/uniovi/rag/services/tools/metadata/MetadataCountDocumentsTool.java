@@ -102,7 +102,12 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for count query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+            String zeroMsg = (topic != null)
+                ? (query != null && query.matches("(?i).*\\p{IsAlphabetic}.*[áéíóúñ].*")
+                    ? "No se encontraron actas que cumplan con ese criterio."
+                    : "No meeting minutes match the specified criteria.")
+                : generateNotFoundMessage(query);
+            return ToolResult.from(formatResponse(zeroMsg, query), getClass());
         }
 
         // Step 3.5: Check if query asks for month comparison
@@ -264,6 +269,14 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         
         String simpleData = formatSimpleData(analysis);
         
+        String extraInstructions = "";
+        String qLower = query.toLowerCase();
+        if (qLower.contains("contexto") || qLower.contains("en qué contexto")) {
+            extraInstructions = " If the question asks for context (e.g. 'en qué contexto fue tratada'), include the date(s) from the information and a brief context (e.g. improvements, budget request, specific purpose).";
+        }
+        if (qLower.contains("cuántas actas") || qLower.contains("cuántas reuniones") || qLower.contains("qué actas") || qLower.contains("cuáles")) {
+            extraInstructions += " If the question asks which actas or which dates, list the dates from the 'Fechas' field in the information (e.g. '24 de febrero de 2025 y 25 de agosto de 2026').";
+        }
         String prompt = String.format("""
             You need to answer a question about meeting minutes. The question asked was about counting meeting minutes that meet certain criteria.
             
@@ -279,6 +292,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             3. Answer directly with the count and relevant information.
             4. Example if the query is in English: "Found 5 meeting minutes" (NOT "The question was... Found 5 meeting minutes")
             5. Example if the query is in Spanish: "Se encontraron 5 actas" (NOT "La pregunta era... Se encontraron 5 actas")
+            6.%s
             
             Provide only the information requested.
             DO NOT mention any technical details like "análisis temporal", "análisis de distribución", "temporal analysis", "distribution analysis", or internal processing.
@@ -286,7 +300,8 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             Focus on answering naturally and concisely, as if you were a helpful assistant.
             """, 
             analysis.getTotalCount(),
-            simpleData != null ? simpleData : "No additional information available."
+            simpleData != null ? simpleData : "No additional information available.",
+            extraInstructions
         );
         
         try {
