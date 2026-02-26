@@ -150,16 +150,16 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "no_decisions_in_metadata"), query), getClass());
         }
 
-        // Step 6.5: When query asks about a specific topic (e.g. "fuga de gas"), return "no mention" if no decision mentions it (§4)
+        // Step 6.5: When query asks about a specific topic (e.g. "fuga de gas", "iluminación", "limpieza"), return "no mention" if no decision mentions it (§4). Use synonyms (items 14, 40).
         String topic = extractTopicFromQuery(query, ner);
         if (topic != null && !topic.isBlank() && isTopicSpecificQuery(query)) {
-            String topicNorm = topic.toLowerCase();
-            boolean anyMentions = decisions.stream()
-                    .anyMatch(d -> d.getDecisionText() != null && d.getDecisionText().toLowerCase().contains(topicNorm));
+            boolean anyMentions = decisions.stream().anyMatch(d -> decisionMentionsTopic(d, topic));
             if (!anyMentions) {
                 String noMentionMsg = generateTopicNotMentionedMessage(query, topic);
                 return ToolResult.from(formatResponse(noMentionMsg, query), getClass());
             }
+            // Filter to only decisions that mention the topic (or synonyms) so the answer focuses on it (item 14)
+            decisions = decisions.stream().filter(d -> decisionMentionsTopic(d, topic)).collect(Collectors.toList());
         }
 
         // Step 7: Analyze and rank decisions
@@ -449,6 +449,12 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         
         String decisionSummary = formatDecisionSummary(decisions, clusters);
         
+        boolean asksOccasionsForTopic = query != null && (query.toLowerCase().contains("ocasiones") && query.toLowerCase().contains("mencion")
+                || query.toLowerCase().contains("occasions") && query.toLowerCase().contains("mention"));
+        String topicInstruction = asksOccasionsForTopic
+                ? " When the user asks about occasions when a topic was mentioned, explicitly link each decision or meeting to that topic (e.g. 'in relation to [topic]: ...' or 'La iluminación se mencionó en...')."
+                : "";
+
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
@@ -461,9 +467,10 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             Provide only the information requested by the user.
             DO NOT mention any technical details like "clusters", "análisis", "analysis", "grouped into", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
-            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
-            """, query, decisions.size(), 
-            decisionSummary != null ? decisionSummary : "No decisions found.");
+            Focus on answering the question naturally and concisely, as if you were a helpful assistant.%s
+            """, query, decisions.size(),
+            decisionSummary != null ? decisionSummary : "No decisions found.",
+            topicInstruction);
         
         try {
             String response = getLLMResponseCached(prompt);
@@ -540,6 +547,34 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         }
         
         return summary.toString();
+    }
+
+    /** Terms (topic + synonyms) for matching decisions to a topic (items 14, 40). */
+    private List<String> getTopicTermsForMatching(String topic) {
+        if (topic == null || topic.isBlank()) return Collections.emptyList();
+        String t = topic.toLowerCase().trim();
+        List<String> terms = new ArrayList<>();
+        terms.add(t);
+        // Iluminación (item 14)
+        if (t.contains("iluminacion") || t.contains("iluminación")) {
+            terms.add("iluminacion"); terms.add("iluminación"); terms.add("alumbrado"); terms.add("luz");
+        }
+        // Limpieza / zonas comunes (item 40)
+        if (t.contains("limpieza") || t.contains("zonas comunes")) {
+            terms.add("limpieza"); terms.add("zonas comunes"); terms.add("servicio de limpieza");
+            terms.add("cleaning"); terms.add("common areas"); terms.add("cleanliness");
+        }
+        return terms;
+    }
+
+    /** True if the decision text mentions the topic or any of its synonyms (items 14, 40). */
+    private boolean decisionMentionsTopic(Decision d, String topic) {
+        if (d == null || d.getDecisionText() == null || topic == null || topic.isBlank()) return false;
+        String text = d.getDecisionText().toLowerCase();
+        for (String term : getTopicTermsForMatching(topic)) {
+            if (term != null && !term.isEmpty() && text.contains(term)) return true;
+        }
+        return false;
     }
 
 }

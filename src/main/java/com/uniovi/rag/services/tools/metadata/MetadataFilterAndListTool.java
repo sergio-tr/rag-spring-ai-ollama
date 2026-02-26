@@ -119,6 +119,15 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             }
         }
 
+        // When topic+person filter (and fallback) yielded 0 results, return explicit message with criteria (item 33)
+        if (relevantMinutes.isEmpty() && requiresTopicAndPersonFilter(query) && !isAttendeeListQuery(query)) {
+            String topic = extractTopicFromQuery(query, ner);
+            String person = extractPersonNameFromQuery(query, ner);
+            String msg = generateNoDataMessageForTopicAndPresident(query, topic, person);
+            log().info("Topic+person and fallback yielded 0; returning explicit no-data message for topic '{}' and person '{}'", topic, person);
+            return ToolResult.from(formatResponse(msg, query), getClass());
+        }
+
         // Step 4: Generate summaries in parallel (metadata-first, LLM fallback)
         List<FilterResult> results = generateSummariesInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
@@ -676,6 +685,21 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
                 })
                 .collect(Collectors.toList());
         return out;
+    }
+
+    /**
+     * Generates an explicit no-data message when topic+person filter yields 0 results (item 33).
+     * Message includes the search criteria (topic and person) so the user knows why nothing was found.
+     */
+    private String generateNoDataMessageForTopicAndPresident(String query, String topic, String person) {
+        String t = topic != null && !topic.isBlank() ? topic : "el tema indicado";
+        String p = person != null && !person.isBlank() ? person : "la persona indicada";
+        boolean likelySpanish = query != null && (query.contains("reunión") || query.contains("reuniones")
+                || query.contains("presidida") || query.contains("presididas") || query.contains("hablara") || query.contains("asistentes"));
+        if (likelySpanish) {
+            return String.format("No se ha encontrado ninguna reunión en la que se hablara de %s y que además fuera presidida por %s.", t, p);
+        }
+        return String.format("No meeting was found that discussed %s and was chaired by %s.", t, p);
     }
 
 }

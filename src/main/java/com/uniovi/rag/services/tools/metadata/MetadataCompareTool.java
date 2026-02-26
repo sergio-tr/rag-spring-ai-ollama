@@ -402,13 +402,22 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 .map(minute -> CompletableFuture.supplyAsync(() -> extractComparisonValue(minute, field, ner, query)))
                 .collect(Collectors.toList());
 
+        boolean mergeBySum = "mentions_by_month".equals(field.fieldName)
+                || "meetings_count_by_month".equals(field.fieldName)
+                || "numberOfAttendees_by_month".equals(field.fieldName);
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toMap(
                     Map.Entry::getKey,
                     Map.Entry::getValue,
-                    (existing, replacement) -> existing, // Keep first occurrence
+                    (existing, replacement) -> {
+                        if (mergeBySum && existing.value instanceof Number && replacement.value instanceof Number) {
+                            int sum = ((Number) existing.value).intValue() + ((Number) replacement.value).intValue();
+                            return new ComparisonValue(sum, existing.type != null ? existing.type : ComparisonType.COUNT);
+                        }
+                        return existing; // Keep first occurrence for other fields
+                    },
                     LinkedHashMap::new
                 ));
     }

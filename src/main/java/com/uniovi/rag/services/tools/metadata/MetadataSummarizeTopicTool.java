@@ -305,7 +305,10 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         List<String> keyTerms = extractKeyTermsFromTopic(topicLower);
         log().debug("Extracted key terms from topic '{}': {}", topic, keyTerms);
         
-        boolean isCompoundTopic = keyTerms.size() > 1;
+        // For videovigilancia/vigilancia, keyTerms are synonyms (any match counts), not compound parts (item 39)
+        boolean isCompoundTopic = keyTerms.size() > 1
+                && !topicLower.contains("videovigilancia")
+                && !topicLower.contains("vigilancia");
         
         List<Minute> filtered = minutes.stream()
                 .filter(minute -> {
@@ -472,6 +475,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             keyTerms.add("calefaccion");
             keyTerms.add("calefacción");
         }
+        // Videovigilancia: include synonyms so actas with "cámaras", "vigilancia", "security cameras" match (item 39)
         if (keyTerms.stream().anyMatch(t -> t.contains("videovigilancia") || t.contains("vigilancia") || t.contains("camara"))) {
             keyTerms.add("videovigilancia");
             keyTerms.add("vigilancia");
@@ -481,6 +485,9 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             keyTerms.add("cámara");
             keyTerms.add("camaras de seguridad");
             keyTerms.add("cámaras de seguridad");
+            keyTerms.add("security cameras");
+            keyTerms.add("video surveillance");
+            keyTerms.add("surveillance");
         }
 
         // Add normalized forms (no accents) so metadata normalized with normalizePersonName matches
