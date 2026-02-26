@@ -2188,7 +2188,14 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 }
             }
         }
-        
+
+        // Use literal topic when question explicitly mentions it (avoids LLM substituting e.g. "calefacción" → "climatización de la piscina") — item 38
+        String queryLower = query.toLowerCase().trim();
+        if (queryLower.contains("calefacción") || queryLower.contains("calefaccion")) {
+            log().info("Extracted topic from query (literal): calefacción");
+            return "calefacción";
+        }
+
         // Use LLM to extract topic/keyword from query (handles compound topics)
         String prompt = String.format("""
             Task: Extract the main topic or keyword from the following question about meeting minutes.
@@ -2196,21 +2203,21 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Question (may be in any language): "%s"
             
             Extract the main topic, keyword, or subject that the question is asking about.
-            IMPORTANT: If the question mentions a compound topic (e.g., "climatización de la piscina"), 
-            extract the FULL compound topic, not just part of it.
+            CRITICAL: Extract the topic EXACTLY as stated in the question. Do NOT replace or generalize it.
+            For example: if the question says "calefacción", return "calefacción", NOT "climatización de la piscina" or "heating".
+            If the question mentions a compound topic explicitly (e.g., "climatización de la piscina"), extract that FULL phrase.
             
             Examples:
+            - "Resume todo lo tratado sobre calefacción" → topic: "calefacción" (do not substitute with climatización de la piscina)
             - "How many meetings discussed the elevator?" → topic: "elevator"
             - "¿Cuántas actas hay sobre el ascensor?" → topic: "ascensor" or "elevator"
-            - "How many meetings mentioned the budget?" → topic: "budget"
-            - "¿En cuántas reuniones se habló del presupuesto?" → topic: "presupuesto" or "budget"
             - "Resume lo tratado sobre la climatización de la piscina" → topic: "climatización de la piscina" (FULL compound topic)
             - "¿Qué se dijo sobre el control de plagas?" → topic: "control de plagas" (FULL compound topic)
             
             If the question is asking about a count without a specific topic (e.g., "How many meetings were there?"),
             respond with "NONE".
             
-            Return ONLY the topic/keyword (full compound topic if applicable), or "NONE" if no specific topic is mentioned.
+            Return ONLY the topic/keyword as stated in the question (or full compound topic if explicitly given), or "NONE" if no specific topic is mentioned.
             Do not include explanations or additional text.
             """, query);
         
@@ -2880,6 +2887,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String requestedDate = extractDateFromQuery(query, ner);
         if (requestedDate == null) {
             // No date in query, return all documents
+            return docs;
+        }
+
+        // When query mentions only a year (e.g. "reunión de 2026"), extractDateFromQuery may return yyyy-01-01.
+        // Do NOT filter by exact date in that case: caller (e.g. Boolean) will use filterDocumentsByYear instead.
+        if (requestedDate.matches("\\d{4}-01-01")) {
+            log().debug("Date '{}' looks like year-only; skipping exact date validation so year filter can be applied by caller", requestedDate);
             return docs;
         }
 

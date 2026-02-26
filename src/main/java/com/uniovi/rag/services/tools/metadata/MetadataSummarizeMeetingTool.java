@@ -152,14 +152,23 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         
         // P9: When user asks for "puntos tratados" or "qué se discutió", insist on including topics/agenda in the summary
         boolean asksForTopics = asksForTopicsOrPoints(query);
+        boolean asksForGeneralSummary = query != null && (query.toLowerCase().contains("resumen general")
+                || query.toLowerCase().contains("general summary") || query.toLowerCase().contains("overview of the meeting"));
+        // Item 43: "resumen general" must include topics and decisions, not only date/place/attendees
         String topicInstruction = asksForTopics
                 ? " OBLIGATORY: The user asked for topics/points discussed. Your response MUST include the list of topics (Temas) and/or agenda items (Orden del día) from the Meeting information below. Do not summarize only date, place and attendees; list the actual points discussed (e.g. iluminación, limpieza, seguridad, presupuesto)."
-                : "";
+                : (asksForGeneralSummary
+                ? " OBLIGATORY: The user asked for a general summary. Your response MUST include the main topics discussed (Topics) and the main decisions or agreements (Decisions), not only date, place and attendees. Include content such as budget, pests, heating, corrective actions, etc. when present in the Meeting information."
+                : "");
         String pointsBlock = "";
-        if (asksForTopics && minute != null) {
+        if ((asksForTopics || asksForGeneralSummary) && minute != null) {
             StringBuilder sb = new StringBuilder();
             if (minute.topics() != null && !minute.topics().isEmpty()) {
                 sb.append("Temas: ").append(String.join(", ", minute.topics()));
+            }
+            if (minute.decisions() != null && !minute.decisions().isEmpty() && asksForGeneralSummary) {
+                if (sb.length() > 0) sb.append(". ");
+                sb.append("Decisiones: ").append(String.join("; ", minute.decisions()));
             }
             if (minute.agenda() != null && !minute.agenda().isEmpty()) {
                 if (sb.length() > 0) sb.append(". ");
