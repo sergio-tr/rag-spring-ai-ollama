@@ -163,15 +163,22 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
     /**
      * Fallback LLM topic summary when metadata is insufficient.
+     * Item 39: Instruct LLM to focus ONLY on the queried topic (e.g. calefacción), not other meeting topics.
      */
     private String generateTopicSummaryWithLLM(String query, Minute minute) {
         if (query == null || query.trim().isEmpty() || minute == null) {
             return "";
         }
 
+        String topic = extractTopicFromQuery(query, null);
+        String topicFocus = (topic != null && !topic.isBlank())
+                ? String.format(" Your answer must focus ONLY on what was said about \"%s\". Do not include other meeting topics (e.g. regulations, pests, signage, approval of minutes). If the meeting discussed this topic, summarize only that part (e.g. improvements, budget requests). Keep the answer brief (1-3 sentences). Example for topic 'calefacción': 'La calefacción se trató en la reunión del 25 de febrero de 2026. Se discutieron posibles mejoras y se acordó solicitar presupuestos.'"
+                        , topic)
+                : " Summarize only what is related to the topic(s) in the query. Do not include other meeting topics. Keep the answer brief (1-3 sentences).";
+
         String prompt = String.format("""
             Summarize what is related to the topic(s) in the query in 3-4 sentences.
-            Write in the same language as the query.
+            Write in the same language as the query.%s
             Query: %s
             Date: %s
             Place: %s
@@ -180,6 +187,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             Previous summary: %s
             Agenda: %s
             """,
+            topicFocus,
             query,
             minute.date() != null ? minute.date() : "unknown",
             minute.place() != null ? minute.place() : "unknown",
@@ -510,6 +518,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         if (topic == null || topic.isEmpty()) {
             return Collections.emptyList();
         }
+        topic = topic.replaceFirst("^el\\s+", "").replaceFirst("^la\\s+", "").trim();
         
         List<String> keyTerms = new ArrayList<>();
         
