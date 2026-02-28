@@ -154,14 +154,25 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
         boolean asksForTopics = asksForTopicsOrPoints(query);
         boolean asksForGeneralSummary = query != null && (query.toLowerCase().contains("resumen general")
                 || query.toLowerCase().contains("general summary") || query.toLowerCase().contains("overview of the meeting"));
+        // Item 54: When user asks for "acuerdos" or "decisiones", prioritize the list of decisions in the answer
+        boolean asksForAgreementsOrDecisions = query != null && (query.toLowerCase().contains("acuerdos")
+                || query.toLowerCase().contains("decisiones") || query.toLowerCase().contains("qué se decidió")
+                || query.toLowerCase().contains("what agreements") || query.toLowerCase().contains("what decisions"));
         // Item 43: "resumen general" must include topics and decisions, not only date/place/attendees
         String topicInstruction = asksForTopics
                 ? " OBLIGATORY: The user asked for topics/points discussed. Your response MUST include the list of topics (Temas) and/or agenda items (Orden del día) from the Meeting information below. Do not summarize only date, place and attendees; list the actual points discussed (e.g. iluminación, limpieza, seguridad, presupuesto)."
                 : (asksForGeneralSummary
                 ? " OBLIGATORY: The user asked for a general summary. Your response MUST include the main topics discussed (Topics) and the main decisions or agreements (Decisions), not only date, place and attendees. Include content such as budget, pests, heating, corrective actions, etc. when present in the Meeting information."
                 : "");
+        if (asksForAgreementsOrDecisions) {
+            topicInstruction += " OBLIGATORY: The user asked specifically for agreements/decisions. Your answer MUST list or summarize the agreements/decisions from the list below (e.g. security, lighting of common areas), not only the first topic. Base your answer mainly on the List of decisions/agreements.";
+        }
         String pointsBlock = "";
-        if ((asksForTopics || asksForGeneralSummary) && minute != null) {
+        if (asksForAgreementsOrDecisions && minute != null && minute.decisions() != null && !minute.decisions().isEmpty()) {
+            pointsBlock = "\n\nList of decisions/agreements from the meeting (you MUST base your answer mainly on these):\n"
+                    + String.join("\n", minute.decisions()) + "\n";
+        }
+        if ((asksForTopics || asksForGeneralSummary) && minute != null && pointsBlock.isEmpty()) {
             StringBuilder sb = new StringBuilder();
             if (minute.topics() != null && !minute.topics().isEmpty()) {
                 sb.append("Temas: ").append(String.join(", ", minute.topics()));
@@ -177,6 +188,9 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             if (sb.length() > 0) {
                 pointsBlock = "\n\nPoints discussed (you MUST include these in your answer): " + sb + "\n";
             }
+        }
+        if (minute == null) {
+            return "";
         }
         String prompt = String.format("""
             You are summarizing a meeting minute. The user asked: "%s"
@@ -197,8 +211,9 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             Agenda: %s
             Previous summary: %s
             
-            Write a CONCISE summary (2-3 sentences maximum, ideally 2 sentences) that directly addresses the user's query.
+            Write a CONCISE summary (2-4 sentences) that directly addresses the user's query. Write concisely so the answer is complete without truncation.
             - Focus ONLY on what the user is asking for
+            - If the query asks for agreements/decisions, list them (e.g. security, lighting of common areas) and do not truncate the list
             - If the query asks about a specific topic/aspect, prioritize that
             - Remove any redundant or unnecessary information
             - Be brief and to the point - every word counts
@@ -247,7 +262,9 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             return generateNotFoundMessage(query);
         }
 
-        // Build summary content (limit to 3 meetings max, 200 chars per summary for conciseness)
+        // Build summary content (limit to 3 meetings max). Use higher char limit when query asks for agreements/decisions to avoid truncation (item 54)
+        boolean asksForAgreements = query != null && (query.toLowerCase().contains("acuerdos") || query.toLowerCase().contains("decisiones"));
+        int maxCharsPerSummary = asksForAgreements ? 500 : 200;
         StringBuilder summaryContent = new StringBuilder();
         results.stream().limit(3).forEach(r -> {
             if (r.getDate() != null) {
@@ -258,8 +275,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
                 summaryContent.append("\n");
             }
             String content = r.getSummary() != null ? r.getSummary() : "";
-            // Limit content to 200 characters per summary for better conciseness
-            summaryContent.append(content.length() > 200 ? content.substring(0, 200) + "..." : content);
+            summaryContent.append(content.length() > maxCharsPerSummary ? content.substring(0, maxCharsPerSummary) + "..." : content);
             summaryContent.append("\n\n");
         });
 

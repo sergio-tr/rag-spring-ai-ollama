@@ -258,16 +258,19 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             CRITICAL INSTRUCTIONS:
             1. Write a clear and direct answer in the same language as the query
             2. Answer YES, NO, or PARTIALLY based on the evidence provided
-            3. Be precise: if the query asks about a specific term (e.g., "radiación solar"), 
-               only answer YES if that EXACT term or very close variations are found.
-               Do NOT confuse related terms (e.g., "iluminación" is NOT the same as "radiación solar")
+            3. Be precise: if the query asks about a specific term (e.g., "radiación solar", "limpieza"), 
+               only answer YES if that EXACT term or very close variations are found in the evidence.
+               Do NOT confuse related terms (e.g., "iluminación" is NOT the same as "radiación solar").
+               The evidence you cite in the Explanation MUST contain the exact keyword or topic asked. Do not cite evidence that does not contain the keyword.
             4. For "¿Se votó algún tema?" / "was there a vote?": if the evidence shows that decisions were made or topics were agreed (e.g. "se acordó", "se aprobó", "se decide contratar", "control de plagas", "presupuesto"), answer YES. Decisions and agreements in the acta count as voting/deciding on topics.
             5. For security/safety ("seguridad", "videovigilancia"): answer YES if any evidence mentions these topics or related measures (e.g. vigilancia, cámaras).
             6. Be concise but informative. Include specific details from the evidence when relevant.
             7. If evidence is ambiguous or unclear, answer PARTIALLY or NO (not YES).
+            8. For year-specific queries (e.g. "limpieza en 2026"): only answer YES if the evidence explicitly contains the keyword (e.g. "limpieza") and refers to that year. Do not cite unrelated evidence (e.g. "terrace usage") as proof.
             
             Examples:
             - Query: "¿Se habló de la radiación solar?" → Answer NO if only "iluminación" is mentioned (not the same)
+            - Query: "Verifica si se mencionó la limpieza en 2026" → Answer NO if evidence does not contain "limpieza" or cites unrelated topics
             - Query: "¿Se votó algún tema?" → Answer YES if evidence shows decisions or agreements (e.g. "se acordó contratar", "se aprueba presupuesto")
             """, query, minuteCount, joined);
         
@@ -406,12 +409,60 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
      * @param query Original query for context
      * @return true if keyword exists with precise match, false otherwise
      */
+    /** Builds a single string from document metadata (topics, summary, decisions) and content for keyword search. */
+    private String buildDocumentContextString(Document doc) {
+        if (doc == null) return "";
+        StringBuilder sb = new StringBuilder();
+        Map<String, Object> metadata = doc.getMetadata();
+        if (metadata != null) {
+            if (metadata.containsKey("topics")) {
+                Object topicsObj = metadata.get("topics");
+                if (topicsObj instanceof List) {
+                    sb.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
+                } else if (topicsObj instanceof String) {
+                    sb.append("Topics: ").append(topicsObj).append("\n");
+                }
+            }
+            if (metadata.containsKey("summary") && metadata.get("summary") != null) {
+                sb.append("Summary: ").append(metadata.get("summary").toString()).append("\n");
+            }
+            if (metadata.containsKey("decisions")) {
+                Object decisionsObj = metadata.get("decisions");
+                if (decisionsObj instanceof List) {
+                    sb.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
+                } else if (decisionsObj instanceof String) {
+                    sb.append("Decisions: ").append(decisionsObj).append("\n");
+                }
+            }
+        }
+        if (doc.getContent() != null && !doc.getContent().isBlank()) {
+            sb.append(doc.getContent());
+        }
+        return sb.toString();
+    }
+
     private boolean validateKeywordExistsPrecise(List<Document> docs, String keyword, String query) {
         if (docs == null || docs.isEmpty() || keyword == null || keyword.trim().isEmpty()) {
             return false;
         }
         
         log().info("Validating keyword '{}' exists with PRECISE matching in {} documents", keyword, docs.size());
+        
+        // Radiación solar: require literal string match only; do NOT accept "iluminación" or "illumination" (item 37)
+        String kwLower = keyword != null ? keyword.toLowerCase().trim() : "";
+        if (kwLower.contains("radiación solar") || kwLower.contains("radiacion solar")) {
+            for (Document doc : docs) {
+                if (doc == null) continue;
+                String text = buildDocumentContextString(doc);
+                String textNorm = text.toLowerCase().replace("á", "a").replace("í", "i").replace("ó", "o");
+                if (textNorm.contains("radiacion solar") || text.toLowerCase().contains("radiación solar")) {
+                    log().info("Keyword 'radiación solar' found with literal match in document {}", doc.getId());
+                    return true;
+                }
+            }
+            log().info("Keyword 'radiación solar' not found (literal match required; iluminación/illumination do not count)");
+            return false;
+        }
         
         // Check a sample of documents (first 5) to avoid too many LLM calls
         int sampleSize = Math.min(5, docs.size());
