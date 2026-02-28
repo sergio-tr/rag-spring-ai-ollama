@@ -2196,6 +2196,30 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return "calefacción";
         }
 
+        // Heuristic fallback: extract topic from "sobre X" or "mencionó X" to avoid LLM returning full question (items 8, 15)
+        String q = query.trim();
+        if (q.length() > 50) {
+            String qLower = q.toLowerCase();
+            if (qLower.contains("sobre ")) {
+                int idx = qLower.indexOf("sobre ");
+                String after = q.substring(idx + 6).trim().replaceFirst("\\.$", "").trim();
+                if (!after.isEmpty() && after.length() < 100) {
+                    log().info("Extracted topic from query (after 'sobre'): {}", after);
+                    return after;
+                }
+            }
+            if (qLower.contains("mencionó ") || qLower.contains("menciono ")) {
+                int idxMen = qLower.indexOf("mencionó ");
+                if (idxMen < 0) idxMen = qLower.indexOf("menciono ");
+                String after = q.substring(idxMen + 9).trim().replaceFirst("\\.$", "").trim();
+                if (!after.isEmpty() && after.length() < 60) {
+                    String topic = after.replaceFirst("^la ", "").trim();
+                    log().info("Extracted topic from query (after 'mencionó'): {}", topic);
+                    return topic;
+                }
+            }
+        }
+
         // Use LLM to extract topic/keyword from query (handles compound topics)
         String prompt = String.format("""
             Task: Extract the main topic or keyword from the following question about meeting minutes.
@@ -2203,11 +2227,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Question (may be in any language): "%s"
             
             Extract the main topic, keyword, or subject that the question is asking about.
+            Return ONLY a short nominal phrase (one to five words, or a short compound like "estado de cuentas y presupuesto anual"). Do NOT return the full question or a long sentence.
             CRITICAL: Extract the topic EXACTLY as stated in the question. Do NOT replace or generalize it.
             For example: if the question says "calefacción", return "calefacción", NOT "climatización de la piscina" or "heating".
             If the question mentions a compound topic explicitly (e.g., "climatización de la piscina"), extract that FULL phrase.
             
             Examples:
+            - "Muestra lo dicho sobre el estado de cuentas y presupuesto anual." → topic: "estado de cuentas y presupuesto anual" (NOT the full question)
             - "Resume todo lo tratado sobre calefacción" → topic: "calefacción" (do not substitute with climatización de la piscina)
             - "How many meetings discussed the elevator?" → topic: "elevator"
             - "¿Cuántas actas hay sobre el ascensor?" → topic: "ascensor" or "elevator"
@@ -2231,6 +2257,29 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             
             if (response != null && !response.trim().isEmpty() && !response.trim().equalsIgnoreCase("NONE")) {
                 String topic = response.trim();
+                // Post-process: if LLM returned the full question, try heuristic extraction (items 8, 15)
+                if (topic.length() > 50 || topic.split("\\s+").length > 8) {
+                    String qTrim = query.trim();
+                    String qLower = qTrim.toLowerCase();
+                    if (qLower.contains("sobre ")) {
+                        int idx = qLower.indexOf("sobre ");
+                        String after = qTrim.substring(idx + 6).trim().replaceFirst("\\.$", "").trim();
+                        if (!after.isEmpty() && after.length() < topic.length()) {
+                            log().info("Extracted topic from query (post-process after 'sobre'): {}", after);
+                            return after;
+                        }
+                    }
+                    if (qLower.contains("mencionó ") || qLower.contains("menciono ")) {
+                        int idxMen = qLower.indexOf("mencionó ");
+                        if (idxMen < 0) idxMen = qLower.indexOf("menciono ");
+                        String after = qTrim.substring(idxMen + 9).trim().replaceFirst("\\.$", "").trim();
+                        if (!after.isEmpty() && after.length() < 60) {
+                            String shortTopic = after.replaceFirst("^la ", "").trim();
+                            log().info("Extracted topic from query (post-process after 'mencionó'): {}", shortTopic);
+                            return shortTopic;
+                        }
+                    }
+                }
                 log().info("Extracted topic from query using LLM: {}", topic);
                 return topic;
             }

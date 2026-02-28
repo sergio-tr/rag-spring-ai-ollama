@@ -36,6 +36,28 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             ner
         );
         
+        // Step 1.4: When query compares two specific dates (e.g. "qué reunión fue más larga: 25 feb 2025 o 25 ago 2025"),
+        // use OR of dates so both actas are included (item 53)
+        List<String> dateCandidates = extractDateCandidates(query, ner);
+        if (dateCandidates != null && dateCandidates.size() >= 2 && isCompareTwoDatesQuery(query)) {
+            log().info("Query compares two specific dates; re-retrieving and filtering by any of {} dates", dateCandidates.size());
+            List<Document> allDocs = retrieveDocumentsWithMetadataFilter(query, new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"});
+            if (allDocs.isEmpty()) {
+                allDocs = retrieveDocuments(query);
+            }
+            if (!allDocs.isEmpty()) {
+                List<String> requestedYears = extractYearsFromQuery(query, ner);
+                if (!requestedYears.isEmpty()) {
+                    allDocs = filterDocumentsByYears(allDocs, requestedYears);
+                }
+                List<Document> docsByAnyDate = filterDocumentsByAnyOfDates(allDocs, dateCandidates);
+                if (!docsByAnyDate.isEmpty()) {
+                    docs = docsByAnyDate;
+                    log().info("Filtered to {} documents matching any of the {} dates", docs.size(), dateCandidates.size());
+                }
+            }
+        }
+        
         // Step 1.5: Extract and validate years from query to avoid confusion (2025 vs 2026)
         List<String> requestedYears = extractYearsFromQuery(query, ner);
         if (!requestedYears.isEmpty() && !docs.isEmpty()) {
@@ -245,6 +267,54 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         }
         
         return filtered;
+    }
+
+    /**
+     * Filters documents to those whose date matches any of the given date candidates (OR).
+     * Used when the query compares two specific dates (e.g. "qué reunión fue más larga: 25 feb 2025 o 25 ago 2025") — item 53.
+     */
+    private List<Document> filterDocumentsByAnyOfDates(List<Document> docs, List<String> dateCandidates) {
+        if (docs == null || docs.isEmpty() || dateCandidates == null || dateCandidates.isEmpty()) {
+            return docs != null ? docs : new ArrayList<>();
+        }
+        Set<String> normalizedCandidates = new java.util.HashSet<>();
+        for (String candidate : dateCandidates) {
+            java.time.LocalDate parsed = parseDateFlexible(candidate);
+            if (parsed != null) {
+                normalizedCandidates.add(parsed.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE));
+            }
+        }
+        if (normalizedCandidates.isEmpty()) {
+            log().warn("Could not parse any date from candidates {}, returning all docs", dateCandidates);
+            return docs;
+        }
+        List<Document> filtered = docs.stream()
+                .filter(doc -> {
+                    String docDate = getDocumentDate(doc);
+                    if (docDate == null) return false;
+                    java.time.LocalDate docLocal = parseDateFlexible(docDate);
+                    if (docLocal == null) {
+                        try {
+                            docLocal = java.time.LocalDate.parse(docDate, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+                        } catch (Exception ignored) {
+                            return false;
+                        }
+                    }
+                    return normalizedCandidates.contains(docLocal.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE));
+                })
+                .collect(Collectors.toList());
+        log().info("Filtered {} documents by any-of-dates {}: {} match", docs.size(), dateCandidates, filtered.size());
+        return filtered;
+    }
+
+    /**
+     * Returns true if the query asks to compare two specific dates (e.g. duration: "qué reunión fue más larga: X o Y").
+     */
+    private boolean isCompareTwoDatesQuery(String query) {
+        if (query == null || query.trim().isEmpty()) return false;
+        String q = query.toLowerCase();
+        return (q.contains("más larga") || q.contains("más larga") || q.contains("más corta") || q.contains("which was longer") || q.contains("which meeting was longer"))
+                && (q.contains(" o ") || q.contains(" or "));
     }
 
     /**
@@ -872,6 +942,17 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         String comparisonData = formatComparisonData(comparables, field);
         String simpleStats = formatSimpleStats(analysis, field);
         
+        boolean singleDataPoint = comparables != null && comparables.size() == 1;
+        boolean isDurationField = "duration".equals(field != null ? field.fieldName : null);
+        boolean queryComparesTwoDates = query != null && (query.toLowerCase().contains("más larga") || query.toLowerCase().contains("más corta") || query.toLowerCase().contains("which was longer"));
+        String extraInstructions = "";
+        if (singleDataPoint && isDurationField && queryComparesTwoDates) {
+            extraInstructions = "\n- Only one meeting date has data. Do NOT claim which meeting was longer; state the duration available and that data was found for only one of the dates.";
+        }
+        if (isDurationField) {
+            extraInstructions += "\n- When answering which meeting was longer, INCLUDE the duration value in the answer (e.g. 'La del 25 de febrero de 2025 fue más larga, con una duración de 1 hora y 45 minutos').";
+        }
+        
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
@@ -891,8 +972,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             - The labels (month names or other terms) and values in the comparison data are authoritative. Do NOT invert or swap them.
             - State which option has more according to the numbers given (e.g. if data shows "febrero: 0" and "agosto: 2", say agosto has more, not febrero).
             - Use the exact labels from the data (e.g. febrero, abril, agosto) in your answer. Do not assume a fixed pair like "febrero vs agosto" if the data shows different months.
-            - If a CONCLUSION line is present in the data, your answer MUST agree with it verbatim. Do not state the opposite (e.g. if CONCLUSION says "agosto tiene más", do not say "febrero tiene más").
-            """, query, comparisonData, simpleStats != null ? simpleStats : "");
+            - If a CONCLUSION line is present in the data, your answer MUST agree with it verbatim. Do not state the opposite (e.g. if CONCLUSION says "agosto tiene más", do not say "febrero tiene más").%s
+            """, query, comparisonData, simpleStats != null ? simpleStats : "", extraInstructions);
         
         try {
             String response = getLLMResponseCached(prompt);

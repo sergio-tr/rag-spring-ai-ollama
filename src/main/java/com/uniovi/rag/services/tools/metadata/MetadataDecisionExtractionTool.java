@@ -168,20 +168,21 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         // Step 8: Cluster similar decisions
         List<DecisionCluster> clusters = clusterDecisions(rankedDecisions);
 
-        // Step 9: Generate enhanced final answer
-        String answer = generateEnhancedDecisionAnswer(query, rankedDecisions, clusters);
+        // Step 9: Generate enhanced final answer (pass topic so LLM can link decisions to it — item 15)
+        String answer = generateEnhancedDecisionAnswer(query, topic, rankedDecisions, clusters);
         log().info("Generated decision extraction answer for query: {} with {} decisions in {} clusters", 
                    query, decisions.size(), clusters.size());
         
         return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
-    /** True when the query asks what was said/commented about a specific topic (e.g. "¿Qué se comentó respecto a la fuga de gas?"). */
+    /** True when the query asks what was said/commented about a specific topic (e.g. "¿Qué se comentó respecto a la fuga de gas?", "Explica las ocasiones en las que se mencionó la iluminación"). */
     private boolean isTopicSpecificQuery(String query) {
         if (query == null || query.isBlank()) return false;
         String q = query.toLowerCase();
         return q.contains("qué se comentó") || q.contains("qué se dijo") || q.contains("what was said")
-                || q.contains("respecto a") || q.contains("sobre") && (q.contains("coment") || q.contains("mencion"));
+                || q.contains("respecto a") || (q.contains("sobre") && (q.contains("coment") || q.contains("mencion")))
+                || (q.contains("ocasiones") && (q.contains("mencion") || q.contains("mencionó") || q.contains("menciono")));
     }
 
     /** Message when the requested topic is not mentioned in any decision (§4 e.g. fuga de gas). */
@@ -441,8 +442,9 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     /**
      * Generates enhanced decision answer with clustering and analysis.
      * Uses English for internal processing, but response matches query language.
+     * @param topic Extracted topic from query (e.g. "iluminación"); used to instruct LLM to link decisions to topic (item 15).
      */
-    private String generateEnhancedDecisionAnswer(String query, List<Decision> decisions, List<DecisionCluster> clusters) {
+    private String generateEnhancedDecisionAnswer(String query, String topic, List<Decision> decisions, List<DecisionCluster> clusters) {
         if (query == null || query.trim().isEmpty() || decisions == null || decisions.isEmpty()) {
             return generateNoDataMessage(query);
         }
@@ -454,6 +456,9 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         String topicInstruction = asksOccasionsForTopic
                 ? " When the user asks about occasions when a topic was mentioned, explicitly link each decision or meeting to that topic (e.g. 'in relation to [topic]: ...' or 'La iluminación se mencionó en...')."
                 : "";
+        if (topic != null && !topic.isBlank()) {
+            topicInstruction += String.format(" The user asked about the topic \"%s\". In your answer, link each decision to this topic (e.g. 'En relación con la iluminación: …', 'mejoras junto a seguridad', 'reforzar su uso en zonas comunes').", topic);
+        }
 
         String prompt = String.format("""
             Given the following user query (in any language):
@@ -555,9 +560,10 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         String t = topic.toLowerCase().trim();
         List<String> terms = new ArrayList<>();
         terms.add(t);
-        // Iluminación (item 14)
+        // Iluminación (item 14, 15): include zones/security context so "mejoras junto a seguridad", "zonas comunes" match
         if (t.contains("iluminacion") || t.contains("iluminación")) {
             terms.add("iluminacion"); terms.add("iluminación"); terms.add("alumbrado"); terms.add("luz");
+            terms.add("zonas comunes"); terms.add("iluminación de zonas"); terms.add("mejoras junto a seguridad");
         }
         // Limpieza / zonas comunes (item 40)
         if (t.contains("limpieza") || t.contains("zonas comunes")) {
