@@ -368,6 +368,28 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                 log().info("Topic 'videovigilancia' matched {} minutes via synonym fallback in summary/topics/decisions", filtered.size());
             }
         }
+        // Fallback for estado de cuentas / presupuesto (item 8): if 0 minutes passed, include any minute with estado de cuentas/presupuesto/cuentas in topics/summary/agenda
+        String topicNormForFallback = topicLower != null ? topicLower : (topic != null ? normalizePersonName(topic) : "");
+        if (filtered.isEmpty() && (topicNormForFallback.contains("estado de cuentas") || topicNormForFallback.contains("presupuesto") || topicNormForFallback.contains("presupuesto anual"))) {
+            List<String> cuentaTerms = List.of("estado de cuentas", "presupuesto", "presupuesto anual", "cuentas");
+            filtered = minutes.stream()
+                    .filter(minute -> {
+                        String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
+                        boolean inSummary = cuentaTerms.stream().anyMatch(sum::contains);
+                        boolean inTopics = minute.topics() != null && minute.topics().stream()
+                                .anyMatch(t -> t != null && cuentaTerms.stream().anyMatch(term -> normalizePersonName(t).contains(term)));
+                        String agendaText = minute.agenda() != null ? minute.agenda().values().stream()
+                                .filter(s -> s != null && !s.isBlank())
+                                .map(this::normalizePersonName)
+                                .collect(Collectors.joining(" ")) : "";
+                        boolean inAgenda = cuentaTerms.stream().anyMatch(agendaText::contains);
+                        return inSummary || inTopics || inAgenda;
+                    })
+                    .collect(Collectors.toList());
+            if (!filtered.isEmpty()) {
+                log().info("Topic 'estado de cuentas/presupuesto' matched {} minutes via literal fallback in summary/topics/agenda", filtered.size());
+            }
+        }
         
         log().info("Filtered {} minutes by topic '{}' with STRICT threshold, {} remaining (threshold: {})", 
                   minutes.size(), topic, filtered.size(), String.format("%.2f", relevanceThreshold));
@@ -589,7 +611,8 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         if (topic == null || topic.isEmpty()) return false;
         String t = topic.toLowerCase().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n");
         return t.contains("calefaccion") || t.contains("calefacción")
-            || t.contains("videovigilancia") || t.contains("vigilancia") || t.contains("camara") || t.contains("camaras");
+            || t.contains("videovigilancia") || t.contains("vigilancia") || t.contains("camara") || t.contains("camaras")
+            || t.contains("estado de cuentas") || t.contains("presupuesto") || t.contains("presupuesto anual");
     }
     
     /**

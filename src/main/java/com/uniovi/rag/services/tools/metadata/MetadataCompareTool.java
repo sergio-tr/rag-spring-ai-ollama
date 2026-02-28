@@ -570,8 +570,16 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             String monthName = getMonthName(month);
             
             // Count mentions of the topic in this minute; use binary per-minute value (1 if any mention, 0 otherwise)
+            // For "seguridad" topic: require at least two security-related terms to avoid false positives (item 9)
+            String topicLower = topic != null ? topic.toLowerCase().trim() : "";
+            boolean isSecurityTopic = topicLower.contains("seguridad");
             int mentionCount = countTopicMentions(minute, topic);
-            int valueForMonth = mentionCount > 0 ? 1 : 0;
+            int valueForMonth;
+            if (isSecurityTopic) {
+                valueForMonth = minuteMentionsSecurityTopic(minute) ? 1 : 0;
+            } else {
+                valueForMonth = mentionCount > 0 ? 1 : 0;
+            }
             
             log().info("Minute {} (date: {}, month: {}) has {} mention(s) of topic '{}' (valueForMonth={})", 
                       minute.id(), minute.date(), monthName, mentionCount, topic, valueForMonth);
@@ -651,6 +659,32 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         
         log().debug("Total mentions of topic '{}' in minute {}: {}", topic, minute.id(), count);
         return count;
+    }
+    
+    /**
+     * Returns true if the minute mentions the security topic with sufficient context (at least two of:
+     * seguridad, vigilancia, videovigilancia, cámaras/camaras). Used for "problemas de seguridad" comparisons
+     * to avoid counting acts that only mention "seguridad" in passing (item 9).
+     */
+    private boolean minuteMentionsSecurityTopic(Minute minute) {
+        if (minute == null) return false;
+        List<String> securityTerms = List.of("seguridad", "vigilancia", "videovigilancia", "camaras", "camara");
+        StringBuilder text = new StringBuilder();
+        if (minute.topics() != null) {
+            minute.topics().stream().filter(t -> t != null).forEach(t -> text.append(t.toLowerCase()).append(" "));
+        }
+        if (minute.decisions() != null) {
+            minute.decisions().stream().filter(d -> d != null).forEach(d -> text.append(d.toLowerCase()).append(" "));
+        }
+        if (minute.summary() != null) {
+            text.append(minute.summary().toLowerCase());
+        }
+        String normalized = text.toString()
+                .replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u");
+        long matchCount = securityTerms.stream()
+                .filter(term -> normalized.contains(term))
+                .count();
+        return matchCount >= 2;
     }
     
     /**
