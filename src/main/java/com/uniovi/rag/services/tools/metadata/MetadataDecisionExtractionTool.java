@@ -454,7 +454,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         boolean asksOccasionsForTopic = query != null && (query.toLowerCase().contains("ocasiones") && query.toLowerCase().contains("mencion")
                 || query.toLowerCase().contains("occasions") && query.toLowerCase().contains("mention"));
         String topicInstruction = asksOccasionsForTopic
-                ? " When the user asks about occasions when a topic was mentioned, explicitly link each decision or meeting to that topic (e.g. 'in relation to [topic]: ...' or 'La iluminación se mencionó en...')."
+                ? " When the user asks about occasions when a topic was mentioned, list each meeting/act where it was mentioned and explicitly link each decision to that topic (e.g. 'En relación con la iluminación: en la reunión X se…; en la reunión Y se…'). Do NOT say that the topic was not mentioned if you are listing decisions that do mention it."
                 : "";
         if (topic != null && !topic.isBlank()) {
             topicInstruction += String.format(" The user asked about the topic \"%s\". In your answer, link each decision to this topic (e.g. 'En relación con la iluminación: …', 'mejoras junto a seguridad', 'reforzar su uso en zonas comunes').", topic);
@@ -560,10 +560,11 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         String t = topic.toLowerCase().trim();
         List<String> terms = new ArrayList<>();
         terms.add(t);
-        // Iluminación (item 14, 15): include zones/security context so "mejoras junto a seguridad", "zonas comunes" match
+        // Iluminación (item 14, 15): include zones/security context so "mejoras junto a seguridad", "zonas comunes", "reforzar" match
         if (t.contains("iluminacion") || t.contains("iluminación")) {
             terms.add("iluminacion"); terms.add("iluminación"); terms.add("alumbrado"); terms.add("luz");
-            terms.add("zonas comunes"); terms.add("iluminación de zonas"); terms.add("mejoras junto a seguridad");
+            terms.add("zonas comunes"); terms.add("iluminación de zonas"); terms.add("iluminacion de zonas");
+            terms.add("mejoras junto a seguridad"); terms.add("reforzar");
         }
         // Limpieza / zonas comunes (item 40)
         if (t.contains("limpieza") || t.contains("zonas comunes")) {

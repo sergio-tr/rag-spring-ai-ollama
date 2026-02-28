@@ -160,7 +160,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
                 || query.toLowerCase().contains("what agreements") || query.toLowerCase().contains("what decisions"));
         // Item 43: "resumen general" must include topics and decisions, not only date/place/attendees
         String topicInstruction = asksForTopics
-                ? " OBLIGATORY: The user asked for topics/points discussed. Your response MUST include the list of topics (Temas) and/or agenda items (Orden del día) from the Meeting information below. Do not summarize only date, place and attendees; list the actual points discussed (e.g. iluminación, limpieza, seguridad, presupuesto)."
+                ? " OBLIGATORY: The user asked for topics/points discussed. Your response MUST include the list of topics (Temas) and/or agenda items (Orden del día) from the Meeting information below. Do not summarize only date, place and attendees; list the actual points discussed (e.g. iluminación, limpieza, seguridad, presupuesto). If the query asks for topics or points discussed, your answer MUST list the main topics from the Meeting information above (e.g. lighting, cleaning of common areas, security, budget). Do not focus only on one secondary topic (e.g. water supply) and omit the rest."
                 : (asksForGeneralSummary
                 ? " OBLIGATORY: The user asked for a general summary. Your response MUST include the main topics discussed (Topics) and the main decisions or agreements (Decisions), not only date, place and attendees. Include content such as budget, pests, heating, corrective actions, etc. when present in the Meeting information."
                 : "");
@@ -177,7 +177,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
             if (minute.topics() != null && !minute.topics().isEmpty()) {
                 sb.append("Temas: ").append(String.join(", ", minute.topics()));
             }
-            if (minute.decisions() != null && !minute.decisions().isEmpty() && asksForGeneralSummary) {
+            if (minute.decisions() != null && !minute.decisions().isEmpty() && (asksForGeneralSummary || asksForTopics)) {
                 if (sb.length() > 0) sb.append(". ");
                 sb.append("Decisiones: ").append(String.join("; ", minute.decisions()));
             }
@@ -186,7 +186,7 @@ public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
                 sb.append("Orden del día: ").append(minute.agenda().values().stream().filter(s -> s != null && !s.isBlank()).collect(Collectors.joining(", ")));
             }
             if (sb.length() > 0) {
-                pointsBlock = "\n\nPoints discussed (you MUST include these in your answer): " + sb + "\n";
+                pointsBlock = "\n\nPoints/topics discussed in this meeting (you MUST include these in your answer): " + sb + "\n";
             }
         }
         if (minute == null) {

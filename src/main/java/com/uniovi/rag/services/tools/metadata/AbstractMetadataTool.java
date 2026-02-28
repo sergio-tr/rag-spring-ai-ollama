@@ -2203,6 +2203,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             if (qLower.contains("sobre ")) {
                 int idx = qLower.indexOf("sobre ");
                 String after = q.substring(idx + 6).trim().replaceFirst("\\.$", "").trim();
+                after = after.replaceFirst("^el\\s+", "").replaceFirst("^la\\s+", "").trim();
                 if (!after.isEmpty() && after.length() < 100) {
                     log().info("Extracted topic from query (after 'sobre'): {}", after);
                     return after;

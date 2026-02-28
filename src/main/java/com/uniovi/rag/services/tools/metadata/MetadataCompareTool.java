@@ -569,16 +569,17 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             int month = parsedDate.getMonthValue();
             String monthName = getMonthName(month);
             
-            // Count mentions of the topic in this minute
+            // Count mentions of the topic in this minute; use binary per-minute value (1 if any mention, 0 otherwise)
             int mentionCount = countTopicMentions(minute, topic);
+            int valueForMonth = mentionCount > 0 ? 1 : 0;
             
-            log().info("Minute {} (date: {}, month: {}) has {} mention(s) of topic '{}'", 
-                      minute.id(), minute.date(), monthName, mentionCount, topic);
+            log().info("Minute {} (date: {}, month: {}) has {} mention(s) of topic '{}' (valueForMonth={})", 
+                      minute.id(), minute.date(), monthName, mentionCount, topic, valueForMonth);
             
             // Use month as label (e.g., "febrero", "agosto")
             String label = monthName;
             
-            return new AbstractMap.SimpleEntry<>(label, new ComparisonValue(mentionCount, ComparisonType.COUNT));
+            return new AbstractMap.SimpleEntry<>(label, new ComparisonValue(valueForMonth, ComparisonType.COUNT));
         } catch (Exception e) {
             log().error("Error extracting mentions by month value for minute {}: {}", minute.id(), e.getMessage(), e);
             return null;
