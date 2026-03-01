@@ -1,10 +1,12 @@
 package com.uniovi.rag.services.tools.metadata;
 
-import com.uniovi.rag.model.*;
+import com.uniovi.rag.model.Cluster;
+import com.uniovi.rag.model.ParagraphResult;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
-import com.uniovi.rag.utils.InfoExtractor;
+import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -18,8 +20,8 @@ import java.util.stream.Collectors;
  */
 public class MetadataFindParagraphTool extends AbstractMetadataTool {
 
-    public MetadataFindParagraphTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public MetadataFindParagraphTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -89,7 +91,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         List<ParagraphResult> rankedResults = analyzeAndRankParagraphs(results);
 
         // Step 6: Cluster similar paragraphs
-        List<InfoExtractor.Cluster<ParagraphResult>> clusters = clusterParagraphs(rankedResults);
+        List<Cluster<ParagraphResult>> clusters = clusterParagraphs(rankedResults);
 
         // Step 7: Generate enhanced final answer
         String answer = generateEnhancedParagraphAnswer(query, rankedResults, clusters);
@@ -279,12 +281,15 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     /**
      * Clusters similar paragraphs to avoid redundancy
      */
-    private List<InfoExtractor.Cluster<ParagraphResult>> clusterParagraphs(List<ParagraphResult> results) {
-        return InfoExtractor.clusterItems(
+    private List<Cluster<ParagraphResult>> clusterParagraphs(List<ParagraphResult> results) {
+        if (extractor == null) {
+            return results.stream().map(Cluster::new).toList();
+        }
+        return extractor.clusterItems(
             results,
             result -> result.getParagraph(),
             result -> result.getDate() != null ? result.getDate() : "unknown",
-            0.4 // Similarity threshold for paragraphs
+            0.4
         );
     }
 
@@ -293,7 +298,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
      * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedParagraphAnswer(String query, List<ParagraphResult> results, 
-                                                  List<InfoExtractor.Cluster<ParagraphResult>> clusters) {
+                                                  List<Cluster<ParagraphResult>> clusters) {
         if (query == null || query.trim().isEmpty() || results == null || results.isEmpty()) {
             return generateNotFoundMessage(query);
         }
@@ -377,12 +382,12 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     /**
      * Formats paragraph summary for LLM prompt (without technical details)
      */
-    private String formatParagraphSummary(List<ParagraphResult> results, List<InfoExtractor.Cluster<ParagraphResult>> clusters) {
+    private String formatParagraphSummary(List<ParagraphResult> results, List<Cluster<ParagraphResult>> clusters) {
         StringBuilder summary = new StringBuilder();
         
         // Format paragraphs naturally without mentioning clusters
         for (int i = 0; i < clusters.size(); i++) {
-            InfoExtractor.Cluster<ParagraphResult> cluster = clusters.get(i);
+            Cluster<ParagraphResult> cluster = clusters.get(i);
             ParagraphResult representative = cluster.getRepresentativeItem();
             
             if (representative.getDate() != null) {

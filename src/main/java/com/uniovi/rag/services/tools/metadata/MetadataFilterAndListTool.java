@@ -4,7 +4,8 @@ import com.uniovi.rag.model.*;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
-import com.uniovi.rag.utils.InfoExtractor;
+import com.uniovi.rag.model.Cluster;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -18,8 +19,8 @@ import java.util.stream.Collectors;
  */
 public class MetadataFilterAndListTool extends AbstractMetadataTool {
 
-    public MetadataFilterAndListTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public MetadataFilterAndListTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -139,7 +140,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         List<FilterResult> rankedResults = analyzeAndRankResults(results);
 
         // Step 6: Cluster similar results
-        List<InfoExtractor.Cluster<FilterResult>> clusters = clusterResults(rankedResults);
+        List<Cluster<FilterResult>> clusters = clusterResults(rankedResults);
 
         // Step 7: Generate enhanced final answer
         String answer = generateEnhancedFilterAnswer(query, rankedResults, clusters);
@@ -273,12 +274,15 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     /**
      * Clusters similar results to avoid redundancy
      */
-    private List<InfoExtractor.Cluster<FilterResult>> clusterResults(List<FilterResult> results) {
-        return InfoExtractor.clusterItems(
+    private List<Cluster<FilterResult>> clusterResults(List<FilterResult> results) {
+        if (extractor == null) {
+            return results.stream().map(Cluster::new).toList();
+        }
+        return extractor.clusterItems(
             results,
             result -> result.getSummary(),
             result -> result.getDate() != null ? result.getDate() : "unknown",
-            0.3 // Similarity threshold
+            0.3
         );
     }
 
@@ -287,7 +291,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
      * Uses English for internal processing, but response matches query language.
      */
     private String generateEnhancedFilterAnswer(String query, List<FilterResult> results, 
-                                               List<InfoExtractor.Cluster<FilterResult>> clusters) {
+                                               List<Cluster<FilterResult>> clusters) {
         if (query == null || query.trim().isEmpty() || results == null || results.isEmpty()) {
             return generateNotFoundMessage(query);
         }
@@ -371,12 +375,12 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     /**
      * Formats result summary for LLM prompt (without technical details)
      */
-    private String formatResultSummary(List<FilterResult> results, List<InfoExtractor.Cluster<FilterResult>> clusters) {
+    private String formatResultSummary(List<FilterResult> results, List<Cluster<FilterResult>> clusters) {
         StringBuilder summary = new StringBuilder();
         
         // Format results naturally without mentioning clusters
         for (int i = 0; i < clusters.size(); i++) {
-            InfoExtractor.Cluster<FilterResult> cluster = clusters.get(i);
+            Cluster<FilterResult> cluster = clusters.get(i);
             FilterResult representative = cluster.getRepresentativeItem();
             
             if (representative.getDate() != null) {

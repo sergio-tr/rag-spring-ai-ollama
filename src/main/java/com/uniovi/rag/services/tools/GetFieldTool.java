@@ -1,13 +1,12 @@
 package com.uniovi.rag.services.tools;
 
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
 import java.util.List;
-
-import static com.uniovi.rag.utils.InfoExtractor.*;
 
 /**
  * Enhanced GetFieldTool for extracting specific fields from meeting minutes with intelligent NER analysis.
@@ -20,8 +19,9 @@ import static com.uniovi.rag.utils.InfoExtractor.*;
  */
 public class GetFieldTool extends AbstractTool {
 
-    public GetFieldTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+
+    public GetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -173,15 +173,15 @@ public class GetFieldTool extends AbstractTool {
         // When user asks for "date of the acta where X was president", extract date only (not president name)
         String detectedField = asksForDateOfActaWherePerson(query) ? "date" : classifyLiteralIntentWithLLM(query);
         return switch (detectedField) {
-            case "date", "fecha" -> extractDate(content);
-            case "startTime", "hora_inicio" -> extractTime(content, "start");
-            case "endTime", "hora_fin" -> extractTime(content, "end");
-            case "place", "lugar" -> extractLiteralField("place", content);
-            case "president", "presidente" -> extractLiteralField("president", content);
-            case "secretary", "secretario" -> extractLiteralField("secretary", content);
-            case "attendees_list", "asistentes_lista" -> String.join(", ", extractAttendees(content));
-            case "attendees_number", "asistentes_numero" -> String.valueOf(extractAttendeeCount(content));
-            case "agenda", "orden_dia" -> extractAgenda(content);
+            case "date", "fecha" -> extractor.extractDate(content);
+            case "startTime", "hora_inicio" -> extractor.extractTime(content, "start");
+            case "endTime", "hora_fin" -> extractor.extractTime(content, "end");
+            case "place", "lugar" -> extractor.extractLiteralField("place", content);
+            case "president", "presidente" -> extractor.extractLiteralField("president", content);
+            case "secretary", "secretario" -> extractor.extractLiteralField("secretary", content);
+            case "attendees_list", "asistentes_lista" -> String.join(", ", extractor.extractAttendees(content));
+            case "attendees_number", "asistentes_numero" -> String.valueOf(extractor.extractAttendeeCount(content));
+            case "agenda", "orden_dia" -> extractor.extractAgenda(content);
             default -> null;
         };
     }

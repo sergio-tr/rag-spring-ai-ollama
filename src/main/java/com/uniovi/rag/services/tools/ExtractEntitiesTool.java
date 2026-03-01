@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.*;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 
 /**
  * Enhanced ExtractEntitiesTool for extracting entities from meeting minutes.
@@ -23,8 +23,8 @@ import static com.uniovi.rag.utils.InfoExtractor.*;
  */
 public class ExtractEntitiesTool extends AbstractTool {
 
-    public ExtractEntitiesTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public ExtractEntitiesTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -51,7 +51,7 @@ public class ExtractEntitiesTool extends AbstractTool {
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     matchedCount++;
                     String content = doc.getContent();
-                    String date = extractDate(content);
+                    String date = extractor.extractDate(content);
                     String entities = extractRequestedEntities(content, query, ner);
                     if (!entities.isBlank()) {
                         entitiesFoundCount++;
@@ -69,7 +69,7 @@ public class ExtractEntitiesTool extends AbstractTool {
             int entitiesFoundCount = 0;
             for (Document doc : docs) {
                 String content = doc.getContent();
-                String date = extractDate(content);
+                String date = extractor.extractDate(content);
                 String entities = extractRequestedEntities(content, query, null);
                 if (!entities.isBlank()) {
                     entitiesFoundCount++;
@@ -107,9 +107,9 @@ public class ExtractEntitiesTool extends AbstractTool {
         String answerType = nerHandler.determineAnswerType(query, ner);
         List<String> sections = nerHandler.extractSections(ner);
         
-        String attendees = String.join(", ", extractAttendees(content));
-        String agenda = extractAgenda(content);
-        String fragment = extractRelevantFragment(content, query);
+        String attendees = String.join(", ", extractor.extractAttendees(content));
+        String agenda = extractor.extractAgenda(content);
+        String fragment = extractor.extractRelevantFragment(content, query) ;
         
         String prompt = String.format("""
             Given the following user query (in any language):

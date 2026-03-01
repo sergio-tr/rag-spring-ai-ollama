@@ -8,6 +8,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.cache.annotation.Cacheable;
 import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -22,15 +23,13 @@ import java.util.Arrays;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
-import static com.uniovi.rag.utils.InfoExtractor.containsAnyKeyword;
-
 public abstract class AbstractMetadataTool extends AbstractTool {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final ObjectMapper objectMapper = new ObjectMapper();
     protected final EnhancedNERHandler nerHandler;
 
-    public AbstractMetadataTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public AbstractMetadataTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
         this.nerHandler = new EnhancedNERHandler(chatClient);
     }
 
@@ -86,10 +85,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     protected boolean containsInMetadata(Document doc, String[] terms) {
         for (Object val : doc.getMetadata().values()) {
-            if (val instanceof String str && containsAnyKeyword(str, terms)) return true;
+            if (val instanceof String str && extractor.containsAnyKeyword(str, terms)) return true;
             if (val instanceof List<?> list) {
                 for (Object item : list) {
-                    if (item instanceof String s && containsAnyKeyword(s, terms)) return true;
+                    if (item instanceof String s && extractor.containsAnyKeyword(s, terms)) return true;
                 }
             }
         }

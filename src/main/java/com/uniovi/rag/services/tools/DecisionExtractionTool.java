@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractDate;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 
 /**
  * Enhanced DecisionExtractionTool for extracting decisions from meeting minutes with intelligent NER analysis.
@@ -23,8 +23,9 @@ import static com.uniovi.rag.utils.InfoExtractor.extractDate;
  */
 public class DecisionExtractionTool extends AbstractTool {
 
-    public DecisionExtractionTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+
+    public DecisionExtractionTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -52,7 +53,7 @@ public class DecisionExtractionTool extends AbstractTool {
                 
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String content = doc.getContent();
-                    String date = extractDate(content);
+                    String date = extractor.extractDate(content);
                     List<String> fragments = extractDecisions(content, query);
                     for (String fragment : fragments) {
                         if (fragment != null && !fragment.trim().isEmpty()) {
@@ -71,7 +72,7 @@ public class DecisionExtractionTool extends AbstractTool {
                 }
                 
                 String content = doc.getContent();
-                String date = extractDate(content);
+                String date = extractor.extractDate(content);
                 List<String> fragments = extractDecisions(content, query);
                 for (String fragment : fragments) {
                     if (fragment != null && !fragment.trim().isEmpty() && isDecisionRelevantToQuery(fragment, query)) {
@@ -90,7 +91,7 @@ public class DecisionExtractionTool extends AbstractTool {
                     }
                     
                     String content = doc.getContent();
-                    String date = extractDate(content);
+                    String date = extractor.extractDate(content);
                     List<String> fragments = extractDecisions(content, query);
                     for (String fragment : fragments) {
                         if (fragment != null && !fragment.trim().isEmpty() && isDecisionRelevantToQuery(fragment, query)) {

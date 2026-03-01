@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.tools.metadata;
 
 import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
@@ -17,8 +18,8 @@ import java.util.stream.Collectors;
  */
 public class MetadataBooleanQueryTool extends AbstractMetadataTool {
 
-    public MetadataBooleanQueryTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public MetadataBooleanQueryTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override

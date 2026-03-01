@@ -12,7 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 
 /**
  * Enhanced CountAndExplainTool for counting and explaining meeting minutes with intelligent NER analysis.
@@ -25,8 +25,8 @@ import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
  */
 public class CountAndExplainTool extends AbstractTool {
 
-    public CountAndExplainTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public CountAndExplainTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -60,7 +60,7 @@ public class CountAndExplainTool extends AbstractTool {
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String content = doc.getContent();
                     String id = extractMinuteIdentifier(doc);
-                    String fragment = extractRelevantFragment(content, query);
+                    String fragment = extractor.extractRelevantFragment(content, query);
                     if (matchesQueryWithLLM(query, id, fragment)) {
                         explanations.add(formatExplanationLine(id, fragment));
                         matchedIds.add(id);
@@ -71,7 +71,7 @@ public class CountAndExplainTool extends AbstractTool {
             // Fallback to query-based relevance
             for (Document doc : docs) {
                 String content = doc.getContent();
-                String fragment = extractRelevantFragment(content, query);
+                String fragment = extractor.extractRelevantFragment(content, query);
                 String id = extractMinuteIdentifier(doc);
                 if (matchesQueryWithLLM(query, id, fragment)) {
                     explanations.add(formatExplanationLine(id, fragment));

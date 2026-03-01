@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.tools.metadata;
 
 import com.uniovi.rag.model.*;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
@@ -17,10 +18,10 @@ import java.util.stream.Collectors;
 /**
  * Summarize meeting tool that uses metadata to summarize the meeting.
  */
-public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
+    public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
 
-    public MetadataSummarizeMeetingTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public MetadataSummarizeMeetingTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override

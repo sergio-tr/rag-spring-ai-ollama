@@ -8,7 +8,7 @@ import org.springframework.ai.document.Document;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractDate;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 
 /**
  * Enhanced FindParagraphTool for finding relevant paragraphs in meeting minutes with intelligent NER analysis.
@@ -21,8 +21,8 @@ import static com.uniovi.rag.utils.InfoExtractor.extractDate;
  */
 public class FindParagraphTool extends AbstractTool {
 
-    public FindParagraphTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public FindParagraphTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -109,7 +109,7 @@ public class FindParagraphTool extends AbstractTool {
         List<String> relevant = new ArrayList<>();
         String content = doc.getContent();
         String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
-        String date = extractDate(content);
+        String date = extractor.extractDate(content);
         
         for (String paragraph : paragraphs) {
             if (paragraph != null && !paragraph.trim().isEmpty() && isParagraphRelevantByLLM(query, paragraph)) {
@@ -131,7 +131,7 @@ public class FindParagraphTool extends AbstractTool {
         List<String> relevant = new ArrayList<>();
         String content = doc.getContent();
         String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
-        String date = extractDate(content);
+        String date = extractor.extractDate(content);
         
         for (String paragraph : paragraphs) {
             if (paragraph != null && !paragraph.trim().isEmpty() && isParagraphRelevantByLLM(query, paragraph)) {
