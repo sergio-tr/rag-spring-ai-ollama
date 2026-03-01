@@ -80,7 +80,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
 
         // As a last resort, try semantic matching on the content
-        return semanticallyMatches(doc.getContent(), new String[]{query});
+        return semanticallyMatches(doc.getText(), new String[]{query});
     }
 
     protected boolean containsInMetadata(Document doc, String[] terms) {
@@ -2085,7 +2085,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
             
             // Add content (truncated for efficiency)
-            String content = doc.getContent();
+            String content = doc.getText();
             if (content != null && !content.trim().isEmpty()) {
                 String truncatedContent = content.length() > 1000 ? content.substring(0, 1000) + "..." : content;
                 context.append("Content: ").append(truncatedContent);
@@ -2755,7 +2755,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 }
             }
             
-            String content = doc.getContent();
+            String content = doc.getText();
             if (content != null && !content.trim().isEmpty()) {
                 String truncatedContent = content.length() > 500 ? content.substring(0, 500) + "..." : content;
                 context.append("Content: ").append(truncatedContent);

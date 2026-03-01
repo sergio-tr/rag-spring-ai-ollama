@@ -3,7 +3,7 @@ package com.uniovi.rag.services.document;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.model.Minute;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -79,6 +79,54 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate,int chunkMaxChars) {
         super(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
+    }
+
+    /**
+     * Creates a list of vector-store documents from a Minute (for repository add without duplicate).
+     * Builds content from summary, agenda, decisions and topics, then chunks and applies metadata.
+     */
+    public List<org.springframework.ai.document.Document> createDocumentsFromMinute(Minute minute) {
+        if (minute == null || minute.id() == null || minute.id().isBlank()) {
+            throw new IllegalArgumentException("Minute and minute.id() must be non-null and non-blank");
+        }
+        String content = buildContentFromMinute(minute);
+        Map<String, Object> metadata = extractMetadata(minute);
+        validateMetadata(metadata, minute.filename() != null ? minute.filename() : "minute-" + minute.id());
+        List<String> chunks = splitContentIntoChunks(content, chunkMaxChars);
+        String metadataPrefix = buildChunkMetadataPrefix(metadata);
+        List<org.springframework.ai.document.Document> documents = new ArrayList<>();
+        for (int i = 0; i < chunks.size(); i++) {
+            Map<String, Object> chunkMetadata = new HashMap<>(metadata);
+            chunkMetadata.put("chunk_index", i);
+            chunkMetadata.put("total_chunks", chunks.size());
+            String chunkText = chunks.get(i);
+            String contentForEmbedding = metadataPrefix.isEmpty() ? chunkText : (metadataPrefix + chunkText);
+            documents.add(new org.springframework.ai.document.Document(contentForEmbedding, chunkMetadata));
+        }
+        return documents;
+    }
+
+    private String buildContentFromMinute(Minute minute) {
+        StringBuilder sb = new StringBuilder();
+        if (minute.summary() != null && !minute.summary().isBlank()) {
+            sb.append(minute.summary()).append("\n\n");
+        }
+        if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+            minute.agenda().forEach((k, v) -> sb.append("• ").append(k).append(": ").append(v != null ? v : "").append("\n"));
+            sb.append("\n");
+        }
+        if (minute.decisions() != null && !minute.decisions().isEmpty()) {
+            minute.decisions().forEach(d -> sb.append("• ").append(d).append("\n"));
+            sb.append("\n");
+        }
+        if (minute.topics() != null && !minute.topics().isEmpty()) {
+            sb.append(String.join(", ", minute.topics())).append("\n");
+        }
+        if (minute.mentionedEntities() != null && !minute.mentionedEntities().isEmpty()) {
+            sb.append("Entidades: ").append(String.join(", ", minute.mentionedEntities())).append("\n");
+        }
+        String content = sb.toString().trim();
+        return content.isEmpty() ? "Acta " + minute.id() : content;
     }
 
     @Override

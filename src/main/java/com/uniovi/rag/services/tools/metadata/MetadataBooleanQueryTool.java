@@ -436,8 +436,8 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
                 }
             }
         }
-        if (doc.getContent() != null && !doc.getContent().isBlank()) {
-            sb.append(doc.getContent());
+        if (doc.getText() != null && !doc.getText().isBlank()) {
+            sb.append(doc.getText());
         }
         return sb.toString();
     }
@@ -513,8 +513,8 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
                     return true;
                 }
             }
-            if (doc.getContent() != null) {
-                String contentLower = doc.getContent().toLowerCase();
+            if (doc.getText() != null) {
+                String contentLower = doc.getText().toLowerCase();
                 if (keyword != null && keyword.toLowerCase().contains("seguridad")) {
                     if (contentLower.contains("seguridad") || contentLower.contains("vigilancia") || contentLower.contains("videovigilancia")
                         || contentLower.contains("camara") || contentLower.contains("cámaras") || contentLower.contains("camaras")) {

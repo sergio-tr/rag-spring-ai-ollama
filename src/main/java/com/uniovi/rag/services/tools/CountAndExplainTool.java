@@ -58,7 +58,7 @@ public class CountAndExplainTool extends AbstractTool {
             
             for (Document doc : filteredDocs) {
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    String content = doc.getContent();
+                    String content = doc.getText();
                     String id = extractMinuteIdentifier(doc);
                     String fragment = extractor.extractRelevantFragment(content, query);
                     if (matchesQueryWithLLM(query, id, fragment)) {
@@ -70,7 +70,7 @@ public class CountAndExplainTool extends AbstractTool {
         } else {
             // Fallback to query-based relevance
             for (Document doc : docs) {
-                String content = doc.getContent();
+                String content = doc.getText();
                 String fragment = extractor.extractRelevantFragment(content, query);
                 String id = extractMinuteIdentifier(doc);
                 if (matchesQueryWithLLM(query, id, fragment)) {
@@ -141,7 +141,7 @@ public class CountAndExplainTool extends AbstractTool {
             return filename.toString();
         }
 
-        String content = doc.getContent();
+        String content = doc.getText();
         String date = extractDateFromContent(content);
         if (date != null && !date.isBlank()) {
             return "Acta del " + date;

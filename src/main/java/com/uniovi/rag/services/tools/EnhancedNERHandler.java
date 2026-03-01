@@ -76,11 +76,11 @@ public class EnhancedNERHandler implements Loggable {
     public boolean matchesDocumentWithNER(Document doc, JSONObject ner) {
         if (ner == null || ner.isEmpty()) return true;
         
-        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+        if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
             return false;
         }
         
-        String content = doc.getContent();
+        String content = doc.getText();
         String prompt = generateDocumentMatchingPrompt(content, ner);
         
         try {
@@ -382,11 +382,11 @@ public class EnhancedNERHandler implements Loggable {
      * Uses English for internal processing, but preserves original language in content.
      */
     private boolean matchesTemporalContext(Document doc, String temporalContext) {
-        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+        if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
             return false;
         }
         
-        String content = doc.getContent();
+        String content = doc.getText();
         String prompt = String.format("""
             You are a temporal context matching system. Analyze if a document matches a temporal context.
             

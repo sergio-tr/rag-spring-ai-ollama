@@ -44,14 +44,14 @@ public class GetFieldTool extends AbstractTool {
             
             int matchedCount = 0;
             for (Document doc : filteredDocs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     log().debug("Skipping document {}: null or empty content", doc != null ? doc.getId() : "null");
                     continue;
                 }
                 
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     matchedCount++;
-                    String value = extractLiteralFieldByIntent(query, ner, doc.getContent());
+                    String value = extractLiteralFieldByIntent(query, ner, doc.getText());
                     if (value != null && !value.isBlank()) {
                         long totalTime = System.currentTimeMillis() - startTime;
                         log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
@@ -70,12 +70,12 @@ public class GetFieldTool extends AbstractTool {
         if (!docs.isEmpty()) {
             // Fallback to LLM-based relevance
             for (Document doc : docs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
-                if (isRelevantByLLM(doc.getContent(), query)) {
-                    String value = extractLiteralFieldByIntent(query, null, doc.getContent());
+                if (isRelevantByLLM(doc.getText(), query)) {
+                    String value = extractLiteralFieldByIntent(query, null, doc.getText());
                     if (value != null && !value.isBlank()) {
                         long totalTime = System.currentTimeMillis() - startTime;
                         log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
@@ -91,12 +91,12 @@ public class GetFieldTool extends AbstractTool {
         docs = retrieveAllDocuments(query, ner);
         if (!docs.isEmpty()) {
             for (Document doc : docs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
-                if (isRelevantByLLM(doc.getContent(), query)) {
-                    String value = extractLiteralFieldByIntent(query, null, doc.getContent());
+                if (isRelevantByLLM(doc.getText(), query)) {
+                    String value = extractLiteralFieldByIntent(query, null, doc.getText());
                     if (value != null && !value.isBlank()) {
                         long totalTime = System.currentTimeMillis() - startTime;
                         log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 

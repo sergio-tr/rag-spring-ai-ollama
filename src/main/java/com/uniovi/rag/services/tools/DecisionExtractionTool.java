@@ -47,12 +47,12 @@ public class DecisionExtractionTool extends AbstractTool {
             List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
             
             for (Document doc : filteredDocs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    String content = doc.getContent();
+                    String content = doc.getText();
                     String date = extractor.extractDate(content);
                     List<String> fragments = extractDecisions(content, query);
                     for (String fragment : fragments) {
@@ -67,11 +67,11 @@ public class DecisionExtractionTool extends AbstractTool {
         if (decisions.isEmpty() && !docs.isEmpty()) {
             // Fallback to query-based relevance
             for (Document doc : docs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
-                String content = doc.getContent();
+                String content = doc.getText();
                 String date = extractor.extractDate(content);
                 List<String> fragments = extractDecisions(content, query);
                 for (String fragment : fragments) {
@@ -86,11 +86,11 @@ public class DecisionExtractionTool extends AbstractTool {
             docs = retrieveAllDocuments(query, ner);
             if (!docs.isEmpty()) {
                 for (Document doc : docs) {
-                    if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                         continue;
                     }
                     
-                    String content = doc.getContent();
+                    String content = doc.getText();
                     String date = extractor.extractDate(content);
                     List<String> fragments = extractDecisions(content, query);
                     for (String fragment : fragments) {
