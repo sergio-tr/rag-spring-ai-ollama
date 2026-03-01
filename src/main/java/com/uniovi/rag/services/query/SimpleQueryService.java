@@ -2,6 +2,7 @@ package com.uniovi.rag.services.query;
 
 import com.uniovi.rag.services.analyser.QueryAnalyser;
 import com.uniovi.rag.services.expand.QueryExpander;
+import com.uniovi.rag.services.retriever.AbstractContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import org.json.JSONObject;
 import org.springframework.ai.ollama.OllamaChatModel;
@@ -13,16 +14,14 @@ import java.util.Scanner;
 import java.util.List;
 import org.springframework.ai.document.Document;
 import java.net.URI;
+import com.uniovi.rag.model.QueryResponse;
 
 @Service
 public class SimpleQueryService implements QueryService {
 
-    protected static final String PROMPT_TEMPLATE = """
-        The following information has already been extracted as a direct answer to the question \"%s\".
-        Your only task is to present it as a clear and concise response in Spanish.
-        You must not question, verify, or reject the information. Do not add any additional context, justifications, or comments.
-        Extracted data:
-        %s""";
+    private static final String QUESTION_PLACEHOLDER = "__QUESTION__";
+    private static final String CONTEXT_PLACEHOLDER = "__CONTEXT__";
+    protected static final String PROMPT_TEMPLATE = "You are a helpful assistant that answers questions based on retrieved documents from a meeting minutes database. Base your answer ONLY on the information provided in the context below. RULES: If the context is empty or does not contain enough information, clearly state that you cannot find the information. DO NOT invent, guess, or make up information. NEVER invent names, dates, places, actas, or any other information not explicitly in the context. Answer in the SAME LANGUAGE as the user's question. Be concise. Do not repeat the question. Question: " + QUESTION_PLACEHOLDER + " Context: " + CONTEXT_PLACEHOLDER + " Provide your direct answer now:";
 
     protected final OllamaChatModel chatModel;
     protected final QueryExpander expander;
@@ -65,7 +64,7 @@ public class SimpleQueryService implements QueryService {
 
             // Parsear la respuesta JSON
             JSONObject jsonResponse = new JSONObject(response);
-            System.out.println(jsonResponse);
+            log().info(jsonResponse.toString());
             String generatedText = jsonResponse.getString("response"); // Obtener el texto generado bajo la clave "response"
 
             return generatedText; // Retornar la respuesta del modelo
@@ -110,7 +109,7 @@ public class SimpleQueryService implements QueryService {
         }
     }
 
-    public String generateResponse(String question) {
+    public QueryResponse generateResponse(String question) {
         if (question == null || question.trim().isEmpty()) {
             throw new IllegalArgumentException("La pregunta no puede ser nula, vacia o solo espacios en blanco.");
         }
@@ -119,21 +118,29 @@ public class SimpleQueryService implements QueryService {
 
         JSONObject nerEntities = analyser.analyse(question);
 
-        List<Document> docs = retriever.retrieve(expandedQuery);
+        List<Document> docs;
+        if (retriever instanceof AbstractContextRetriever && nerEntities != null && !nerEntities.isEmpty()) {
+            docs = ((AbstractContextRetriever) retriever).retrieveWithMetadataFilters(expandedQuery, nerEntities);
+        } else {
+            docs = retriever.retrieve(expandedQuery);
+        }
         String context = retriever.createContext(docs, expandedQuery, nerEntities);
 
-        String template = String.format(
-                PROMPT_TEMPLATE,
-                question, context
-        );
+        if (context == null || context.trim().isEmpty()) {
+            return QueryResponse.fromLLM("No se encontró información relevante en los documentos disponibles para responder a esta pregunta.");
+        }
 
-        System.out.println("\n\n-----------------------------------------------------------------------------");
-        System.out.println("-----------------------------------------------------------------------------");
-        System.out.println("QUERY: Pregunta final: " + template);
-        System.out.println("\n\n-----------------------------------------------------------------------------");
-        System.out.println("-----------------------------------------------------------------------------");
+        String template = PROMPT_TEMPLATE
+                .replace(QUESTION_PLACEHOLDER, question)
+                .replace(CONTEXT_PLACEHOLDER, context);
 
-        return askQueryToLlama(template);
+        log().info("\n\n-----------------------------------------------------------------------------");
+        log().info("-----------------------------------------------------------------------------");
+        log().info("QUERY: Pregunta final: " + template);
+        log().info("\n\n-----------------------------------------------------------------------------");
+        log().info("-----------------------------------------------------------------------------");
+
+        return QueryResponse.fromLLM(askQueryToLlama(template));
     }
 
 }

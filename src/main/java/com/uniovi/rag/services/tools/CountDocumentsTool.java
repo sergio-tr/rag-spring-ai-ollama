@@ -5,11 +5,13 @@ import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractDate;
+import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
 
 /**
  * Enhanced CountDocumentsTool for counting meeting minutes based on specific criteria.
@@ -31,145 +33,212 @@ public class CountDocumentsTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
+        
+        log().info("Executing count documents query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
                 
         List<Document> docs = retrieveDocuments(query);
-        List<String> dates = new ArrayList<>();
-        long count = 0;
+        log().debug("Retrieved {} documents for count documents query", docs.size());
+        if (docs == null || docs.isEmpty()) {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No documents found for count query: '{}' (execution time: {} ms)", query, totalTime);
+            String response = generateFinalAnswerWithLLM(query, List.of());
+            String formattedResponse = formatResponse(response, query);
+            return ToolResult.from(formattedResponse, getClass());
+        }
 
-        // Try with NER filtering if available
-        if (ner != null && !docs.isEmpty()) {
-            // Use enhanced NER filtering with semantic analysis
-            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
-            
-            count = filteredDocs.stream()
-                    .filter(doc -> {                        
-                        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
-                            return false;
-                        }
-                        return nerHandler.matchesDocumentWithNER(doc, ner);
-                    })
-                    .peek(doc -> {
-                        String date = extractDate(doc.getContent());
-                        if (date != null && !date.trim().isEmpty()) {
-                            dates.add(date);
-                        }
-                    })
-                    .count();
-        }
-                
-        if (count == 0 && !docs.isEmpty()) {
-            // Try without NER filtering
-            count = docs.stream()
-                    .filter(doc -> {                        
-                        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
-                            return false;
-                        }
-                        return isRelevantToQuery(doc, query);
-                    })
-                    .peek(doc -> {
-                        String date = extractDate(doc.getContent());
-                        if (date != null && !date.trim().isEmpty()) {
-                            dates.add(date);
-                        }
-                    })
-                    .count();
-        }
-                
-        if (count == 0) {
-            docs = retrieveAllDocuments(query);
-            if (!docs.isEmpty()) {
-                count = docs.stream()
-                        .filter(doc -> {                            
-                            if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
-                                return false;
-                            }
-                            return isRelevantToQuery(doc, query);
-                        })
-                        .peek(doc -> {
-                            String date = extractDate(doc.getContent());
-                            if (date != null && !date.trim().isEmpty()) {
-                                dates.add(date);
-                            }
-                        })
-                        .count();
+        // 1) Pre-filter with NER temporal context if available (cheap)
+        List<Document> candidateDocs = (ner != null)
+                ? nerHandler.filterDocumentsByTemporalContext(docs, ner)
+                : docs;
+
+        List<String> matchedIds = new java.util.ArrayList<>();
+
+        for (Document doc : candidateDocs) {
+            if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) continue;
+            if (ner != null && !nerHandler.matchesDocumentWithNER(doc, ner)) continue;
+
+            String id = extractMinuteIdentifier(doc);
+            String fragment = extractRelevantFragment(doc.getContent(), query);
+            if (matchesQueryWithLLM(query, id, fragment)) {
+                matchedIds.add(id);
             }
         }
 
-        String response = generateResponseWithLLM(query, count, dates);
-        return ToolResult.from(response, getClass());
+        log().debug("Matched {} documents for count query", matchedIds.size());
+        String response = generateFinalAnswerWithLLM(query, matchedIds);
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated count documents answer for query: '{}' (execution time: {} ms, matched: {})", 
+                  query, totalTime, matchedIds.size());
+        // Apply formatResponse to clean the response
+        String formattedResponse = formatResponse(response, query);
+        return ToolResult.from(formattedResponse, getClass());
     }
 
     /**
-     * Checks if document is relevant to query using intelligent analysis.
-     * Uses English for internal processing, but preserves original language in query and content.
+     * Generic per-document matcher.
+     * No hardcoded schemas: the LLM decides if this minute satisfies the user's conditions.
      */
-    private boolean isRelevantToQuery(Document doc, String query) {        
-        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+    private boolean matchesQueryWithLLM(String query, String minuteId, String fragment) {
+        if (query == null || query.trim().isEmpty()) return false;
+        if (fragment == null || fragment.trim().isEmpty()) return false;
+
+        String safeId = minuteId == null ? "" : minuteId.trim();
+        String safeFragment = fragment.length() > 1200 ? fragment.substring(0, 1200) : fragment;
+
+        String prompt = String.format("""
+            User question (respond in the same language as the question):
+            "%s"
+
+            Meeting minute identifier:
+            "%s"
+
+            Evidence fragment from that meeting minute:
+            "%s"
+
+            Task:
+            Determine whether THIS meeting minute satisfies the user's requested conditions.
+            Answer ONLY with: YES or NO
+            """, query, safeId, safeFragment);
+
+        try {
+            String raw = chatClient.prompt().user(prompt).call().content();
+            if (raw == null) return false;
+            return interpretBooleanResponse(raw, "matchesQueryWithLLM");
+        } catch (Exception e) {
+            log().warn("LLM match check failed, defaulting to NO: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private String generateFinalAnswerWithLLM(String query, List<String> matchedIds) {
+        List<String> uniqueIds = matchedIds == null
+                ? List.of()
+                : matchedIds.stream().filter(Objects::nonNull).distinct().limit(30).collect(Collectors.toList());
+
+        String idsBlock = uniqueIds.isEmpty()
+                ? "(none)"
+                : uniqueIds.stream().map(s -> "- " + s).collect(Collectors.joining("\n"));
+
+        String prompt = String.format("""
+            You are answering a user question about meeting minutes.
+            Respond in the SAME language as the user's question.
+            
+            CRITICAL RULES:
+            1. DO NOT repeat the user's question or any part of it at the beginning
+            2. DO NOT start with phrases like "The user asked...", "La pregunta era...", etc.
+            3. Start directly with the answer content
+            4. Be concise and direct - maximum 2-3 sentences
+            5. If there are no matching minutes, answer clearly that no meeting minutes match the conditions
+            6. Otherwise, answer with the count
+            7. If the user is asking "which minutes", include the list
+
+            User question:
+            "%s"
+
+            Matching meeting minutes (identifiers):
+            %s
+            """, query, idsBlock);
+
+        try {
+            String raw = chatClient.prompt().user(prompt).call().content();
+            return raw == null ? "" : raw.trim();
+        } catch (Exception e) {
+            log().warn("Failed to generate final answer with LLM: {}", e.getMessage());
+            return generateFallbackAnswer(query, uniqueIds);
+        }
+    }
+
+    private String extractMinuteIdentifier(Document doc) {
+        if (doc == null) return null;
+        Object filename = doc.getMetadata() != null ? doc.getMetadata().get("filename") : null;
+        if (filename != null && !filename.toString().isBlank()) {
+            return filename.toString();
+        }
+
+        String date = extractDateFromContent(doc.getContent());
+        if (date != null && !date.isBlank()) {
+            return "Acta del " + date;
+        }
+
+        return doc.getId();
+    }
+
+    private String extractDateFromContent(String content) {
+        if (content == null) return null;
+        Matcher m = Pattern.compile("(?i)\\bFecha\\s*:\\s*(.+)$", Pattern.MULTILINE).matcher(content);
+        if (m.find()) {
+            String v = m.group(1).trim();
+            // stop at line breaks or labels
+            v = v.replaceAll("\\s{2,}", " ").trim();
+            return v.length() > 60 ? v.substring(0, 60).trim() : v;
+        }
+        // fallback Spanish canonical used in PDFs
+        Matcher m2 = Pattern.compile("(?i)(\\d{1,2}\\s+de\\s+[a-záéíóú]+\\s+de\\s+\\d{4})").matcher(content);
+        if (m2.find()) return m2.group(1).trim();
+        return null;
+    }
+
+    /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
             return false;
         }
         
-        String answerType = nerHandler.determineAnswerType(query, null);
-        String content = doc.getContent().substring(0, Math.min(1000, doc.getContent().length()));
-        
         String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
+            Context: %s
             
-            Query type: %s
+            The LLM generated this response: "%s"
             
-            This is the content of a meeting minute (may be in any language):
-            "%s"
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
             
-            Does this meeting minute clearly or partially answer the query?
-            Consider semantic meaning, not just exact matches.
+            Consider semantic meaning, not just exact words.
             
             Respond with ONLY one word: YES or NO.
-            Do not include any explanation or additional text.
-            """, 
-            query, 
-            answerType,
-            content);
+            """, context, response);
         
         try {
-            String result = chatClient
+            String interpretation = chatClient
                     .prompt()
                     .user(prompt)
                     .call()
-                    .content();
-                        
-            if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in isRelevantToQuery, defaulting to false");
-                return false;
-            }
+                    .content()
+                    .strip()
+                    .toUpperCase();
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            return interpretation.contains("YES");
         } catch (Exception e) {
-            log().error("Error in isRelevantToQuery, defaulting to false", e);
-            return false; // Default to false on error to avoid false positives
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
         }
     }
 
     /**
-     * Generates response using LLM.
-     * Uses English for internal processing, but response matches query language.
+     * Generates a fallback answer when LLM fails.
+     * Uses LLM to generate message in correct language.
      */
-    private String generateResponseWithLLM(String query, long count, List<String> dates) {
-        String datesStr = dates.stream()
-                .filter(date -> date != null && !date.isBlank())
-                .distinct()
-                .collect(Collectors.joining(", "));
+    private String generateFallbackAnswer(String query, List<String> uniqueIds) {
+        String idsText = uniqueIds.isEmpty() 
+            ? "(none)" 
+            : uniqueIds.stream().map(s -> "- " + s).collect(Collectors.joining("\n"));
         
         String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
+            The user asked (in any language): "%s"
             
-            %d relevant documents were found.
-            The dates of the relevant documents are: %s
+            Matching meeting minutes (identifiers):
+            %s
             
-            Write a clear, concise response in the same language as the query, 
-            using the number and dates.
-            """, query, count, datesStr.isBlank() ? "[no dates]" : datesStr);
+            Respond with a short message in the EXACT SAME LANGUAGE as the question.
+            If there are no matching minutes, state that clearly.
+            Otherwise, provide the count.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", idsText);
         
         try {
             String response = chatClient
@@ -177,40 +246,18 @@ public class CountDocumentsTool extends AbstractTool {
                     .user(prompt)
                     .call()
                     .content();
-                        
-            if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
-                return generateFallbackResponse(query, count, datesStr);
-            }
             
-            return response.strip();
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
         } catch (Exception e) {
-            log().error("Error generating response with LLM, using fallback", e);
-            return generateFallbackResponse(query, count, datesStr);
+            log().warn("Error generating fallback answer with LLM", e);
         }
-    }
-    
-    /**
-     * Generates a fallback response when LLM fails.
-     * Detects language from query and responds accordingly.
-     */
-    private String generateFallbackResponse(String query, long count, String datesStr) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*") || 
-                           queryLower.contains("cuántos") || queryLower.contains("cuántas");
         
-        if (isSpanish) {
-            if (count == 0) {
-                return "No se encontraron documentos relevantes para esta consulta.";
-            } else {
-                return String.format("Se encontraron %d documento(s) relevante(s).", count);
-            }
-        } else {
-            if (count == 0) {
-                return "No relevant documents were found for this query.";
-            } else {
-                return String.format("Found %d relevant document(s).", count);
-            }
+        // Ultimate fallback
+        if (uniqueIds.isEmpty()) {
+            return "No meeting minutes were found that match the specified conditions.";
         }
+        return String.format("Found %d meeting minutes that match the conditions.", uniqueIds.size());
     }
 }

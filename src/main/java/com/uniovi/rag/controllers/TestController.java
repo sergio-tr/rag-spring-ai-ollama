@@ -6,6 +6,7 @@ import com.uniovi.rag.services.query.QueryService;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.uniovi.rag.model.QueryResponse;
 
 @RestController
 @RequestMapping("/api/test")
@@ -33,6 +34,7 @@ public class TestController {
 
     @RequestMapping("/agentic")
     public String agentic(@RequestParam String question) {
-        return queryService.generateResponse(question);
+        QueryResponse response = queryService.generateResponse(question);
+        return response.getAnswer();
     }
 }

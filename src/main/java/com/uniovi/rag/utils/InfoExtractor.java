@@ -245,8 +245,8 @@ public class InfoExtractor {
         String itemContent = contentExtractor.apply(item).toLowerCase();
         String clusterContent = contentExtractor.apply(cluster.getRepresentativeItem()).toLowerCase();
         
-        Set<String> itemWords = Set.of(itemContent.split("\\s+"));
-        Set<String> clusterWords = Set.of(clusterContent.split("\\s+"));
+        Set<String> itemWords = new HashSet<>(Arrays.asList(itemContent.split("\\s+")));
+        Set<String> clusterWords = new HashSet<>(Arrays.asList(clusterContent.split("\\s+")));
         
         long commonWords = itemWords.stream()
                 .filter(clusterWords::contains)
@@ -325,8 +325,8 @@ public class InfoExtractor {
         String lower1 = text1.toLowerCase();
         String lower2 = text2.toLowerCase();
         
-        Set<String> words1 = Set.of(lower1.split("\\s+"));
-        Set<String> words2 = Set.of(lower2.split("\\s+"));
+        Set<String> words1 = new HashSet<>(Arrays.asList(lower1.split("\\s+")));
+        Set<String> words2 = new HashSet<>(Arrays.asList(lower2.split("\\s+")));
         
         long commonWords = words1.stream()
                 .filter(words2::contains)

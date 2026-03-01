@@ -32,9 +32,12 @@ public class FilterAndListTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing filter and list query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing filter and list query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for filter and list query", docs.size());
         List<String> results = new ArrayList<>();
 
         // Filter documents based on NER if available
@@ -64,11 +67,20 @@ public class FilterAndListTool extends AbstractTool {
 
         String answer;
         if (!results.isEmpty()) {
-            answer = generateFinalAnswer(query, results);
+            log().debug("Found {} results for filter and list query, limiting to 3 for conciseness", results.size());
+            // Limit results to 3 maximum for conciseness
+            List<String> limitedResults = results.stream().limit(3).collect(java.util.stream.Collectors.toList());
+            answer = generateFinalAnswer(query, limitedResults);
         } else {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No results found for filter and list query: '{}' (execution time: {} ms)", query, totalTime);
             answer = generateNotFoundResponse(query);
         }
-        return ToolResult.from(answer, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated filter and list answer for query: '{}' (execution time: {} ms)", query, totalTime);
+        // Apply formatResponse to clean the response
+        String formattedAnswer = formatResponse(answer, query);
+        return ToolResult.from(formattedAnswer, getClass());
     }
 
     /**
@@ -106,10 +118,8 @@ public class FilterAndListTool extends AbstractTool {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            // Check for positive responses in multiple languages
-            return normalized.startsWith("yes") || normalized.startsWith("sí") || normalized.startsWith("si") || 
-                   normalized.startsWith("oui") || normalized.startsWith("ja") || normalized.startsWith("da");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "isRelevantByLLM");
         } catch (Exception e) {
             log().error("Error in isRelevantByLLM, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
@@ -135,6 +145,13 @@ public class FilterAndListTool extends AbstractTool {
             
             Text (may be in any language):
             %s
+            
+            CRITICAL RULES:
+            1. Write in the EXACT SAME LANGUAGE as the user's question
+            2. Be CONCISE - maximum 2 sentences
+            3. Focus ONLY on what answers the query
+            4. Do NOT include redundant information
+            5. Remove any technical details
             
             Write the summary in the same language as the query.
             """, query, fragment);
@@ -187,7 +204,11 @@ public class FilterAndListTool extends AbstractTool {
             Provide only the information requested by the user.
             DO NOT mention any technical details like "matched the filters", "análisis", "analysis", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            DO NOT repeat the question or any part of it at the beginning.
+            DO NOT start with phrases like "Dime qué...", "The user asked...", etc.
+            Start directly with the answer content.
             Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            Be concise and direct.
             """, query, joined);
         
         try {
@@ -198,11 +219,12 @@ public class FilterAndListTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateFinalAnswer, using fallback");
+                log().warn("Empty response from LLM in generateFinalAnswer for query: '{}', using fallback", query);
                 return generateFallbackAnswer(query, results);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating final answer, using fallback", e);
             return generateFallbackAnswer(query, results);
@@ -210,20 +232,80 @@ public class FilterAndListTool extends AbstractTool {
     }
     
     /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
+    }
+
+    /**
      * Generates a fallback answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackAnswer(String query, List<String> results) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String resultsText = results.stream()
+                .limit(5)
+                .collect(Collectors.joining("\n\n"));
         
-        if (isSpanish) {
-            return "Reuniones encontradas que coinciden con los filtros:\n\n" + 
-                   results.stream().limit(5).collect(Collectors.joining("\n\n"));
-        } else {
-            return "Meetings found matching the filters:\n\n" + 
-                   results.stream().limit(5).collect(Collectors.joining("\n\n"));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found the following meetings matching the filters:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found meetings.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", resultsText);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "Meetings found matching the filters:\n\n" + resultsText;
     }
     
     /**
@@ -263,16 +345,35 @@ public class FilterAndListTool extends AbstractTool {
     
     /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query != null ? query.toLowerCase() : "";
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No meeting minutes were found that match all the conditions specified in the query.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no matching minutes were found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "No se encontraron actas de reunión que coincidan con todas las condiciones especificadas en la consulta.";
-        } else {
-            return "No meeting minutes were found that match all the conditions specified in the query.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No meeting minutes were found that match all the conditions specified in the query.";
     }
 }

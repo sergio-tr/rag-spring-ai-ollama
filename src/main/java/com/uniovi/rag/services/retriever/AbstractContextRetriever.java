@@ -1,25 +1,32 @@
 package com.uniovi.rag.services.retriever;
 
-import org.json.JSONArray;
+import com.uniovi.rag.model.Loggable;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.PgVectorStore;
 import org.springframework.ai.vectorstore.SearchRequest;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public abstract class AbstractContextRetriever implements ContextRetriever {
+public abstract class AbstractContextRetriever implements ContextRetriever, Loggable {
 
     protected final PgVectorStore vectorStore;
     protected final ChatClient chatClient;
     protected int topK;
     protected double similarityThreshold;
 
-    private final int defaultTopK;
-    private final double defaultSimilarityThreshold;
+    protected final int defaultTopK;
+    protected final double defaultSimilarityThreshold;
+    protected static final int DEFAULT_MAX_PROMPT_CHARS = 6000;
 
     public AbstractContextRetriever(PgVectorStore vectorStore, ChatClient chatClient, int topK, double similarityThreshold) {
         this.vectorStore = vectorStore;
@@ -36,104 +43,9 @@ public abstract class AbstractContextRetriever implements ContextRetriever {
                 query(query).
                 withTopK(topK).
                 withSimilarityThreshold(similarityThreshold);
-        return vectorStore.similaritySearch(req);
-    }
-    
-    /**
-     * Retrieves documents with metadata filters when NER entities are available.
-     * This optimizes retrieval by filtering at the database level before vector search.
-     * 
-     * @param query The search query
-     * @param nerEntities NER entities extracted from the query (can be null)
-     * @return List of documents matching the query and metadata filters
-     */
-    public List<Document> retrieveWithMetadataFilters(String query, JSONObject nerEntities) {
-        if (nerEntities == null || nerEntities.isEmpty()) {
-            // No NER entities, use standard retrieval
-            return retrieve(query);
-        }
-        
-        // Build metadata filters from NER entities
-        // Note: Spring AI PgVectorStore may support withFilterExpression, but we'll filter post-retrieval
-        // if the API doesn't support it directly
-        SearchRequest req = SearchRequest.
-                query(query).
-                withTopK(topK * 2). // Retrieve more documents to account for post-filtering
-                withSimilarityThreshold(similarityThreshold);
-        
-        List<Document> retrievedDocs = vectorStore.similaritySearch(req);
-        
-        // Post-filter by metadata if NER entities are present
-        return filterDocumentsByMetadata(retrievedDocs, nerEntities);
-    }
-    
-    /**
-     * Filters documents by metadata matching NER entities.
-     * This is a post-retrieval filter when database-level filtering isn't available.
-     */
-    private List<Document> filterDocumentsByMetadata(List<Document> documents, JSONObject ner) {
-        if (ner == null || ner.isEmpty()) {
-            return documents;
-        }
-        
-        return documents.stream()
-                .filter(doc -> matchesDocumentMetadata(doc, ner))
-                .collect(java.util.stream.Collectors.toList());
-    }
-    
-    /**
-     * Checks if a document's metadata matches NER entities.
-     */
-    private boolean matchesDocumentMetadata(Document doc, JSONObject ner) {
-        if (doc == null || ner == null || ner.isEmpty()) {
-            return true;
-        }
-        
-        Map<String, Object> metadata = doc.getMetadata();
-        if (metadata == null || metadata.isEmpty()) {
-            return true; // No metadata to filter on
-        }
-        
-        // Check date matching
-        if (ner.has("date") && !ner.getJSONArray("date").isEmpty()) {
-            String docDate = (String) metadata.get("date");
-            if (docDate != null && !docDate.trim().isEmpty()) {
-                JSONArray nerDates = ner.getJSONArray("date");
-                boolean dateMatches = false;
-                for (int i = 0; i < nerDates.length(); i++) {
-                    String nerDate = nerDates.getString(i);
-                    if (docDate.contains(nerDate) || nerDate.contains(docDate)) {
-                        dateMatches = true;
-                        break;
-                    }
-                }
-                if (!dateMatches) {
-                    return false;
-                }
-            }
-        }
-        
-        // Check person matching
-        if (ner.has("person") && !ner.getJSONArray("person").isEmpty()) {
-            String docPresident = (String) metadata.get("president");
-            String docSecretary = (String) metadata.get("secretary");
-            JSONArray nerPersons = ner.getJSONArray("person");
-            
-            boolean personMatches = false;
-            for (int i = 0; i < nerPersons.length(); i++) {
-                String nerPerson = nerPersons.getString(i).toLowerCase();
-                if ((docPresident != null && docPresident.toLowerCase().contains(nerPerson)) ||
-                    (docSecretary != null && docSecretary.toLowerCase().contains(nerPerson))) {
-                    personMatches = true;
-                    break;
-                }
-            }
-            if (!personMatches) {
-                return false;
-            }
-        }
-        
-        return true; // Passed all filters
+        List<Document> docs = vectorStore.similaritySearch(req);
+        // Group and combine chunks by document_id to ensure complete content
+        return groupAndCombineChunks(docs);
     }
 
     @Override
@@ -168,7 +80,532 @@ public abstract class AbstractContextRetriever implements ContextRetriever {
         this.topK = defaultTopK;
         this.similarityThreshold = defaultSimilarityThreshold;
     }
+    
+    /**
+     * Gets the current topK value.
+     */
+    public int getTopK() {
+        return topK;
+    }
+    
+    /**
+     * Gets the current similarity threshold value.
+     */
+    public double getSimilarityThreshold() {
+        return similarityThreshold;
+    }
+
+    /**
+     * Builds content with optional metadata prefix (Acta: date. Presidente: X. Temas: Y. Contenido: )
+     * when the document has date_iso/date, president or topics in metadata. Otherwise returns content unchanged.
+     */
+    protected String buildContentWithOptionalMetadataPrefix(Document doc, String content) {
+        if (doc == null) {
+            return content != null ? content : "";
+        }
+        Map<String, Object> meta = doc.getMetadata();
+        if (meta == null || meta.isEmpty()) {
+            return content != null ? content : "";
+        }
+        String date = meta.containsKey("date_iso") ? String.valueOf(meta.get("date_iso")) : (meta.containsKey("date") ? String.valueOf(meta.get("date")) : null);
+        String president = meta.containsKey("president") ? String.valueOf(meta.get("president")) : null;
+        Object topicsObj = meta.get("topics");
+        String topicsStr = null;
+        if (topicsObj instanceof List<?> list) {
+            topicsStr = list.stream().map(String::valueOf).collect(Collectors.joining(", "));
+        } else if (topicsObj != null) {
+            topicsStr = topicsObj.toString();
+        }
+        if (date == null && president == null && (topicsStr == null || topicsStr.isBlank())) {
+            return content != null ? content : "";
+        }
+        StringBuilder prefix = new StringBuilder("Acta: ");
+        if (date != null) prefix.append(date).append(". ");
+        if (president != null) prefix.append("Presidente: ").append(president).append(". ");
+        if (topicsStr != null && !topicsStr.isBlank()) prefix.append("Temas: ").append(topicsStr).append(". ");
+        prefix.append("Contenido: ");
+        return prefix + (content != null ? content : "");
+    }
 
     public abstract String filterDocumentContent(Document doc, String query, JSONObject entities);
+    /**
+     * Retrieves documents and then filters by NER metadata (e.g. date).
+     * When ner=true, ProcessQueryService uses this so retrieval respects date from NER.
+     */
+    @Override
+    public List<Document> retrieveWithMetadataFilters(String query, JSONObject nerEntities) {
+        List<Document> docs = retrieve(query);
+        if (nerEntities == null || !nerEntities.has("date")) {
+            return docs;
+        }
+        try {
+            org.json.JSONArray arr = nerEntities.getJSONArray("date");
+            List<LocalDate> requestedDates = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                LocalDate d = parseDateToLocalDate(arr.optString(i, "").trim());
+                if (d != null) requestedDates.add(d);
+            }
+            if (requestedDates.isEmpty()) return docs;
+            return docs.stream()
+                    .filter(doc -> {
+                        String docDate = getDocumentDateFromMetadata(doc);
+                        if (docDate == null) return true;
+                        LocalDate docLocal = parseDateToLocalDate(docDate);
+                        return docLocal != null && requestedDates.contains(docLocal);
+                    })
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log().warn("Error applying NER metadata filters, returning unfiltered docs: {}", e.getMessage());
+            return docs;
+        }
+    }
+
+    private String getDocumentDateFromMetadata(Document doc) {
+        if (doc == null || doc.getMetadata() == null) return null;
+        Map<String, Object> m = doc.getMetadata();
+        Object dateIso = m.get("date_iso");
+        if (dateIso != null && !dateIso.toString().trim().isEmpty()) return dateIso.toString().trim();
+        Object date = m.get("date");
+        return date != null ? date.toString().trim() : null;
+    }
+    
+    /**
+     * Trunca el contenido antes de enviarlo a un prompt LLM para evitar desbordar
+     * el contexto. Conserva cabecera y pie para mantener señal relevante.
+     */
+    protected String truncateForPrompt(String content, int maxChars) {
+        if (content == null) {
+            return "";
+        }
+        String trimmed = content.trim();
+        if (trimmed.length() <= maxChars) {
+            return trimmed;
+        }
+
+        int head = (int) (maxChars * 0.65); // mantener más cabecera
+        int tail = maxChars - head;
+        String truncated = trimmed.substring(0, head) + "\n...\n" + trimmed.substring(trimmed.length() - tail);
+        log().info("Prompt content truncated from {} to {} characters", trimmed.length(), truncated.length());
+        return truncated;
+    }
+    
+    /**
+     * Extracts year from a date string.
+     */
+    protected String extractYearFromDate(String date) {
+        if (date == null) {
+            return null;
+        }
+        
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\b(\\d{4})\\b");
+        java.util.regex.Matcher matcher = pattern.matcher(date);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+    
+    /**
+     * Normalizes and matches dates for better comparison using LocalDate parsing.
+     * Handles different date formats (e.g., "25 de agosto de 2026" vs "25/08/2026" vs "2026-08-25").
+     * Prioritizes ISO format parsing for better accuracy.
+     */
+    protected boolean normalizedDateMatches(String date1, String date2) {
+        if (date1 == null || date2 == null) {
+            return false;
+        }
+        
+        // Try ISO format first (most reliable)
+        LocalDate parsed1 = null;
+        LocalDate parsed2 = null;
+        
+        try {
+            parsed1 = LocalDate.parse(date1.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+            // Not ISO format, try flexible parsing
+            parsed1 = parseDateToLocalDate(date1);
+        }
+        
+        try {
+            parsed2 = LocalDate.parse(date2.trim(), DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+            // Not ISO format, try flexible parsing
+            parsed2 = parseDateToLocalDate(date2);
+        }
+        
+        if (parsed1 != null && parsed2 != null) {
+            // Both dates parsed successfully, compare directly
+            boolean matches = parsed1.equals(parsed2);
+            if (!matches) {
+                log().debug("Date comparison: {} ({}) vs {} ({}) - no match", 
+                          date1, parsed1.format(DateTimeFormatter.ISO_LOCAL_DATE),
+                          date2, parsed2.format(DateTimeFormatter.ISO_LOCAL_DATE));
+            }
+            return matches;
+        }
+        
+        // Fallback to string-based matching if parsing fails
+        String normalized1 = normalizeDate(date1);
+        String normalized2 = normalizeDate(date2);
+        
+        // More strict matching: require significant overlap (not just substring)
+        if (normalized1.equals(normalized2)) {
+            return true;
+        }
+        
+        // Extract key components (day, month, year) for comparison
+        String[] components1 = extractDateComponents(date1);
+        String[] components2 = extractDateComponents(date2);
+        
+        if (components1 != null && components2 != null) {
+            // Compare year, month, and day
+            return components1[0].equals(components2[0]) && // year
+                   components1[1].equals(components2[1]) && // month
+                   components1[2].equals(components2[2]);   // day
+        }
+        
+        // Last resort: flexible matching (but less reliable)
+        return normalized1.contains(normalized2) || normalized2.contains(normalized1);
+    }
+    
+    /**
+     * Parses a date string to LocalDate using multiple formatters.
+     * Enhanced to match parseDateFlexible for consistency across the system.
+     * Always tries ISO format first for better performance.
+     */
+    protected LocalDate parseDateToLocalDate(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Normalize to lowercase to handle case variations (e.g., "Agosto" vs "agosto")
+        String v = dateStr.trim().toLowerCase();
+        
+        // Try ISO format first (most common after normalization)
+        try {
+            return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+        }
+        
+        // Try Spanish formats with quotes
+        List<DateTimeFormatter> formatters = Arrays.asList(
+            DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            // Spanish formats without quotes
+            DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
+            // Abbreviated month names
+            DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
+            // Without "de" between day and month
+            DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
+            // Numeric formats
+            DateTimeFormatter.ofPattern("d/M/yyyy"),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+            DateTimeFormatter.ofPattern("d-M-yyyy"),
+            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+            DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+            DateTimeFormatter.ofPattern("yyyy.MM.dd"),
+            // With day of the week
+            DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+            DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH)
+        );
+        
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                return LocalDate.parse(v, formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try next formatter
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Extracts date components (year, month, day) from a date string.
+     * Returns array [year, month, day] or null if extraction fails.
+     */
+    protected String[] extractDateComponents(String dateStr) {
+        if (dateStr == null) {
+            return null;
+        }
+        
+        // Try parsing first
+        LocalDate parsed = parseDateToLocalDate(dateStr);
+        if (parsed != null) {
+            return new String[]{
+                String.valueOf(parsed.getYear()),
+                String.valueOf(parsed.getMonthValue()),
+                String.valueOf(parsed.getDayOfMonth())
+            };
+        }
+        
+        // Fallback: extract using regex
+        String lower = dateStr.toLowerCase();
+        
+        // Extract year (4 digits)
+        java.util.regex.Pattern yearPattern = java.util.regex.Pattern.compile("\\b(\\d{4})\\b");
+        java.util.regex.Matcher yearMatcher = yearPattern.matcher(dateStr);
+        String year = yearMatcher.find() ? yearMatcher.group(1) : null;
+        
+        // Extract month (name or number)
+        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
+                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
+        String month = null;
+        for (int i = 0; i < monthNames.length; i++) {
+            if (lower.contains(monthNames[i])) {
+                month = String.valueOf(i + 1);
+                break;
+            }
+        }
+        
+        // Extract day (1-2 digits)
+        java.util.regex.Pattern dayPattern = java.util.regex.Pattern.compile("\\b(\\d{1,2})\\b");
+        java.util.regex.Matcher dayMatcher = dayPattern.matcher(dateStr);
+        String day = null;
+        while (dayMatcher.find()) {
+            String candidate = dayMatcher.group(1);
+            int dayNum = Integer.parseInt(candidate);
+            if (dayNum >= 1 && dayNum <= 31) {
+                day = candidate;
+                break;
+            }
+        }
+        
+        if (year != null && month != null && day != null) {
+            return new String[]{year, month, day};
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Normalizes a date string for comparison.
+     * Removes extra spaces, converts to lowercase, and handles common date formats.
+     */
+    protected String normalizeDate(String date) {
+        if (date == null) {
+            return "";
+        }
+        
+        return date.toLowerCase()
+                .trim()
+                .replaceAll("\\s+", " ")  // Multiple spaces to one
+                .replaceAll("de\\s+", " ")  // "de" to space (for Spanish dates)
+                .replaceAll("/", "-")  // Slash to dash
+                .replaceAll("\\.", "-");  // Dot to dash
+    }
+    
+    /**
+     * Normalizes and matches names for better comparison.
+     * Handles variations in name formats (e.g., "Juan Pérez" vs "Juan Pérez Gutiérrez").
+     */
+    protected boolean normalizedNameMatches(String name1, String name2) {
+        if (name1 == null || name2 == null) {
+            return false;
+        }
+        
+        // Normalize names: lowercase, no accents, no extra spaces
+        String normalized1 = normalizeName(name1);
+        String normalized2 = normalizeName(name2);
+        
+        // Smarter partial matching (contains or is contained)
+        return normalized1.contains(normalized2) || 
+               normalized2.contains(normalized1) ||
+               normalized1.equals(normalized2);
+    }
+    
+    /**
+     * Normalizes a name string for comparison.
+     * Removes accents, converts to lowercase, and removes extra spaces.
+     */
+    protected String normalizeName(String name) {
+        if (name == null) {
+            return "";
+        }
+        
+        return name.toLowerCase()
+                .replaceAll("[áàäâ]", "a")
+                .replaceAll("[éèëê]", "e")
+                .replaceAll("[íìïî]", "i")
+                .replaceAll("[óòöô]", "o")
+                .replaceAll("[úùüû]", "u")
+                .replaceAll("ñ", "n")
+                .trim()
+                .replaceAll("\\s+", " ");  // Multiple spaces to one
+    }
+    
+    /**
+     * Groups and combines chunks by document_id, merging content from all chunks.
+     * This ensures that when a document is split into multiple chunks, all content is preserved.
+     * The resulting Document contains the combined content and metadata from the chunk with most complete metadata.
+     * 
+     * This is the central place where chunk grouping happens - all retrievers use this method.
+     */
+    protected List<Document> groupAndCombineChunks(List<Document> docs) {
+        if (docs == null || docs.isEmpty()) {
+            return docs;
+        }
+        
+        // Group documents by document_id
+        java.util.Map<String, java.util.List<Document>> documentsById = docs.stream()
+                .collect(java.util.stream.Collectors.groupingBy(this::getDocumentId));
+        
+        // Combine chunks for each document
+        java.util.List<Document> combinedDocuments = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, java.util.List<Document>> entry : documentsById.entrySet()) {
+            String documentId = entry.getKey();
+            java.util.List<Document> chunks = entry.getValue();
+            
+            if (chunks.size() == 1) {
+                // Single chunk, use as-is
+                combinedDocuments.add(chunks.get(0));
+            } else {
+                // Multiple chunks, combine content
+                Document combined = combineChunks(chunks);
+                if (combined != null) {
+                    combinedDocuments.add(combined);
+                    log().info("Combined {} chunks for document_id: {} (total content length: {})", 
+                              chunks.size(), documentId, 
+                              combined.getContent() != null ? combined.getContent().length() : 0);
+                }
+            }
+        }
+        
+        log().info("Grouped and combined {} documents from {} chunks", 
+                  combinedDocuments.size(), docs.size());
+        return combinedDocuments;
+    }
+    
+    /**
+     * Combines multiple chunks of the same document into a single Document.
+     * Merges content in order (by chunk_index) and uses metadata from the chunk with most complete metadata.
+     */
+    protected Document combineChunks(java.util.List<Document> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return null;
+        }
+        
+        if (chunks.size() == 1) {
+            return chunks.get(0);
+        }
+        
+        // Sort chunks by chunk_index if available
+        java.util.List<Document> sortedChunks = new java.util.ArrayList<>(chunks);
+        sortedChunks.sort((d1, d2) -> {
+            Integer idx1 = getChunkIndex(d1);
+            Integer idx2 = getChunkIndex(d2);
+            if (idx1 == null && idx2 == null) return 0;
+            if (idx1 == null) return 1;
+            if (idx2 == null) return -1;
+            return idx1.compareTo(idx2);
+        });
+        
+        // Combine content from all chunks
+        StringBuilder combinedContent = new StringBuilder();
+        for (Document chunk : sortedChunks) {
+            String content = chunk.getContent();
+            if (content != null && !content.trim().isEmpty()) {
+                if (combinedContent.length() > 0) {
+                    combinedContent.append("\n\n");
+                }
+                combinedContent.append(content.trim());
+            }
+        }
+        
+        // Select chunk with most complete metadata
+        Document bestMetadataChunk = sortedChunks.stream()
+                .max((d1, d2) -> Integer.compare(
+                    countMetadataFields(d1), 
+                    countMetadataFields(d2)
+                ))
+                .orElse(sortedChunks.get(0));
+        
+        // Create new Document with combined content and best metadata
+        java.util.Map<String, Object> combinedMetadata = new java.util.HashMap<>(bestMetadataChunk.getMetadata());
+        // Remove chunk-specific metadata
+        combinedMetadata.remove("chunk_index");
+        combinedMetadata.remove("total_chunks");
+        
+        return new Document(combinedContent.toString(), combinedMetadata);
+    }
+    
+    /**
+     * Gets the chunk index from document metadata.
+     */
+    private Integer getChunkIndex(Document doc) {
+        if (doc == null || doc.getMetadata() == null) {
+            return null;
+        }
+        Object chunkIndex = doc.getMetadata().get("chunk_index");
+        if (chunkIndex instanceof Number) {
+            return ((Number) chunkIndex).intValue();
+        }
+        return null;
+    }
+    
+    /**
+     * Extracts the document_id from a document's metadata.
+     * Falls back to the document's id if document_id is not present.
+     */
+    private String getDocumentId(Document doc) {
+        if (doc == null) {
+            return null;
+        }
+        
+        java.util.Map<String, Object> metadata = doc.getMetadata();
+        if (metadata == null) {
+            return doc.getId();
+        }
+        
+        // Try to get document_id first (new documents)
+        Object docId = metadata.get("document_id");
+        if (docId != null) {
+            return docId.toString();
+        }
+        
+        // Fallback: try to get id from metadata (should be the same as document_id)
+        Object id = metadata.get("id");
+        if (id != null) {
+            return id.toString();
+        }
+
+        return doc.getId();
+    }
+    
+    /**
+     * Counts non-null, non-empty metadata fields in a document.
+     * Used to select the chunk with most complete metadata when combining.
+     */
+    private int countMetadataFields(Document doc) {
+        if (doc == null) {
+            return 0;
+        }
+        
+        java.util.Map<String, Object> metadata = doc.getMetadata();
+        if (metadata == null) {
+            return 0;
+        }
+        
+        int count = 0;
+        for (Object value : metadata.values()) {
+            if (value != null) {
+                if (value instanceof String && !((String) value).trim().isEmpty()) {
+                    count++;
+                } else if (value instanceof java.util.List && !((java.util.List<?>) value).isEmpty()) {
+                    count++;
+                } else if (value instanceof java.util.Map && !((java.util.Map<?, ?>) value).isEmpty()) {
+                    count++;
+                } else if (!(value instanceof String) && !(value instanceof java.util.List) && !(value instanceof java.util.Map)) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
 
 }

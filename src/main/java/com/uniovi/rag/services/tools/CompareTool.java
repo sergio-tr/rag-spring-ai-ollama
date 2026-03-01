@@ -30,10 +30,20 @@ public class CompareTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
+        
+        log().info("Executing compare query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
+        
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for compare query", docs.size());
         
         if (docs.isEmpty()) {
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No documents found for compare query: '{}' (execution time: {} ms)", query, totalTime);
+            String notFound = generateNotFoundMessage(query);
+            String formattedNotFound = formatResponse(notFound, query);
+            return ToolResult.from(formattedNotFound, getClass());
         }
 
         Map<String, MinuteInfo> summary = new LinkedHashMap<>();
@@ -59,14 +69,24 @@ public class CompareTool extends AbstractTool {
         }
 
         if (summary.isEmpty()) {
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No summary data for compare query: '{}' (execution time: {} ms)", query, totalTime);
+            String notFound = generateNotFoundMessage(query);
+            String formattedNotFound = formatResponse(notFound, query);
+            return ToolResult.from(formattedNotFound, getClass());
         }
 
+        log().debug("Built summary with {} entries for compare query", summary.size());
         String comparisonType = nerHandler.determineComparisonType(query, ner);
         String comparison = compareValues(summary, comparisonType, query);
         String response = generateResponseWithLLM(query, comparison);
         
-        return ToolResult.from(response, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated compare answer for query: '{}' (execution time: {} ms, comparison type: {})", 
+                  query, totalTime, comparisonType);
+        // Apply formatResponse to clean the response
+        String formattedResponse = formatResponse(response, query);
+        return ToolResult.from(formattedResponse, getClass());
     }
 
     /**
@@ -131,8 +151,8 @@ public class CompareTool extends AbstractTool {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "shouldGroupByTemporalPeriod");
         } catch (Exception e) {
             log().error("Error in shouldGroupByTemporalPeriod, defaulting to false", e);
             return false;
@@ -223,7 +243,11 @@ public class CompareTool extends AbstractTool {
             Provide only the information requested by the user.
             DO NOT mention any technical details like "comparison obtained", "análisis", "analysis", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
+            DO NOT repeat the question or any part of it at the beginning.
+            DO NOT start with phrases like "Dime qué...", "The user asked...", etc.
+            Start directly with the answer content.
             Focus on answering the question naturally and concisely, as if you were a helpful assistant.
+            Be concise and direct - maximum 3-4 sentences.
             """, query, comparison);
         
         try {
@@ -234,11 +258,12 @@ public class CompareTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
+                log().warn("Empty response from LLM in generateResponseWithLLM for query: '{}', using fallback", query);
                 return generateFallbackResponse(query, comparison);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating response with LLM, using fallback", e);
             return generateFallbackResponse(query, comparison);
@@ -246,18 +271,76 @@ public class CompareTool extends AbstractTool {
     }
     
     /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
+    }
+
+    /**
      * Generates a fallback response when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackResponse(String query, String comparison) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Comparison obtained:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            presenting the comparison results.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", comparison != null ? comparison : "");
         
-        if (isSpanish) {
-            return "Comparación obtenida:\n" + comparison;
-        } else {
-            return "Comparison obtained:\n" + comparison;
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback response with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "Comparison obtained:\n" + (comparison != null ? comparison : "");
     }
 
     /**
@@ -297,17 +380,36 @@ public class CompareTool extends AbstractTool {
     
     /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query != null ? query.toLowerCase() : "";
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No relevant meeting minutes were found for the requested comparison.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no relevant meeting minutes were found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "No se encontraron actas de reunión relevantes para realizar la comparación solicitada.";
-        } else {
-            return "No relevant meeting minutes were found for the requested comparison.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No relevant meeting minutes were found for the requested comparison.";
     }
 
     /**

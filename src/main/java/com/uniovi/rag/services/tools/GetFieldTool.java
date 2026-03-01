@@ -29,27 +29,42 @@ public class GetFieldTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing get field query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing get field query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for get field query", docs.size());
 
         // Try with NER filtering if available
         if (ner != null && !docs.isEmpty()) {
             // Use EnhancedNERHandler for intelligent filtering
             List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+            log().debug("Filtered {} documents by temporal context, {} remaining", docs.size(), filteredDocs.size());
             
+            int matchedCount = 0;
             for (Document doc : filteredDocs) {
                 if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    log().debug("Skipping document {}: null or empty content", doc != null ? doc.getId() : "null");
                     continue;
                 }
                 
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
+                    matchedCount++;
                     String value = extractLiteralFieldByIntent(query, ner, doc.getContent());
                     if (value != null && !value.isBlank()) {
-                        return ToolResult.from(value, getClass());
+                        long totalTime = System.currentTimeMillis() - startTime;
+                        log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
+                                 query, doc.getId(), totalTime);
+                        // Apply formatResponse to clean the extracted value
+                        String formattedValue = formatResponse(value, query);
+                        return ToolResult.from(formattedValue, getClass());
+                    } else {
+                        log().debug("Document {} matched NER but no field value extracted", doc.getId());
                     }
                 }
             }
+            log().debug("NER filtering: {} documents matched NER conditions out of {} filtered", matchedCount, filteredDocs.size());
         }
         
         if (!docs.isEmpty()) {
@@ -62,7 +77,12 @@ public class GetFieldTool extends AbstractTool {
                 if (isRelevantByLLM(doc.getContent(), query)) {
                     String value = extractLiteralFieldByIntent(query, null, doc.getContent());
                     if (value != null && !value.isBlank()) {
-                        return ToolResult.from(value, getClass());
+                        long totalTime = System.currentTimeMillis() - startTime;
+                        log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
+                                 query, doc.getId(), totalTime);
+                        // Apply formatResponse to clean the extracted value
+                        String formattedValue = formatResponse(value, query);
+                        return ToolResult.from(formattedValue, getClass());
                     }
                 }
             }
@@ -78,14 +98,24 @@ public class GetFieldTool extends AbstractTool {
                 if (isRelevantByLLM(doc.getContent(), query)) {
                     String value = extractLiteralFieldByIntent(query, null, doc.getContent());
                     if (value != null && !value.isBlank()) {
-                        return ToolResult.from(value, getClass());
+                        long totalTime = System.currentTimeMillis() - startTime;
+                        log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
+                                 query, doc.getId(), totalTime);
+                        // Apply formatResponse to clean the extracted value
+                        String formattedValue = formatResponse(value, query);
+                        return ToolResult.from(formattedValue, getClass());
                     }
                 }
             }
         }
         
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("No field value found for query: '{}' (execution time: {} ms, documents checked: {})", 
+                  query, totalTime, docs.size());
         String notFound = generateNotFoundMessage(query);
-        return ToolResult.from(notFound, getClass());
+        // Apply formatResponse to clean the not found message
+        String formattedNotFound = formatResponse(notFound, query);
+        return ToolResult.from(formattedNotFound, getClass());
     }
 
     /**
@@ -123,18 +153,25 @@ public class GetFieldTool extends AbstractTool {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            // Check for positive responses in multiple languages
-            return normalized.startsWith("yes") || normalized.startsWith("sí") || normalized.startsWith("si") || 
-                   normalized.startsWith("oui") || normalized.startsWith("ja") || normalized.startsWith("da");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "isRelevantByLLM");
         } catch (Exception e) {
             log().error("Error in isRelevantByLLM, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
         }
     }
 
+    /** Intent→field mapping: "fecha del acta donde X fue presidente" must return date, not president. */
+    private static boolean asksForDateOfActaWherePerson(String query) {
+        if (query == null) return false;
+        String q = query.toLowerCase();
+        return (q.contains("fecha del acta") || q.contains("date of the acta") || (q.contains("fecha") && q.contains("donde")))
+                && (q.contains("presidente") || q.contains("president") || q.contains("secretaria") || q.contains("secretary"));
+    }
+
     private String extractLiteralFieldByIntent(String query, JSONObject ner, String content) {
-        String detectedField = classifyLiteralIntentWithLLM(query);
+        // When user asks for "date of the acta where X was president", extract date only (not president name)
+        String detectedField = asksForDateOfActaWherePerson(query) ? "date" : classifyLiteralIntentWithLLM(query);
         return switch (detectedField) {
             case "date", "fecha" -> extractDate(content);
             case "startTime", "hora_inicio" -> extractTime(content, "start");
@@ -212,6 +249,8 @@ public class GetFieldTool extends AbstractTool {
             
             Write a short message indicating that no information was found related to the query, 
             in the same language as the query.
+            Be concise and direct.
+            Do NOT repeat the question or any part of it.
             """, query);
         
         try {
@@ -233,17 +272,74 @@ public class GetFieldTool extends AbstractTool {
     }
     
     /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
+    }
+
+    /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No information related to this query was found in the available documents.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no information was found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "No se encontró información relacionada con esta consulta en los documentos disponibles.";
-        } else {
-            return "No information related to this query was found in the available documents.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No information related to this query was found in the available documents.";
     }
 }

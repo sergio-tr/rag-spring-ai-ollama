@@ -1,6 +1,6 @@
 package com.uniovi.rag.services.tools.metadata;
 
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.model.*;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
@@ -14,14 +14,6 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataExtractEntitiesTool for extracting and analyzing entities from meeting minutes with intelligent processing.
- * 
- * Features:
- * - Intelligent entity extraction with context analysis
- * - Parallel processing for better performance
- * - Cached evaluations for efficiency
- * - Entity clustering and pattern analysis
- * - Quality ranking and synthesis of entities
- * - Advanced NER-based filtering
  */
 public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
 
@@ -34,67 +26,139 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing entity extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing entity extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve and filter documents efficiently
-        List<Document> docs = retrieveDocumentsWithMetadataFilter(
+        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        List<Document> docs = retrieveDocumentsWithFallback(
             query, 
-            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"}
+            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"},
+            ner
         );
+        
         if (docs.isEmpty()) {
-            log().debug("No documents found for entity extraction query: {}", query);
-            return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
+            log().info("No documents found for entity extraction query: {}", query);
+            return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for entity extraction query: {}", query);
-            return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
+            log().info("No valid minutes found for entity extraction query: {}", query);
+            return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for entity extraction query: {}", query);
-            return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
+            log().info("No relevant minutes found for entity extraction query: {}", query);
+            return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
+        }
+        
+        // When query asks for "quién presidió" or "quién fue la secretaria", return only that role (no attendee list)
+        if (asksForPresidentOrSecretaryOnly(query)) {
+            String requestedDate = extractDateFromQuery(query, ner);
+            List<Minute> forDate = requestedDate != null ? filterMinutesByDate(query, ner, relevantMinutes) : relevantMinutes;
+            if (!forDate.isEmpty()) {
+                Minute target = forDate.get(0);
+                String roleValue = asksForPresidentOnly(query) ? target.president() : target.secretary();
+                if (roleValue != null && !roleValue.isBlank()) {
+                    log().info("Returning single role (president/secretary) for query: {}", query);
+                    return ToolResult.from(formatResponse(roleValue, query), getClass());
+                }
+            }
         }
 
-        // Step 4: Extract entities in parallel
-        List<Entity> entities = extractEntitiesInParallel(query, relevantMinutes);
+        // When query asks for "list all X" (dates, places, presidents, secretaries, topics, decisions, attendees), return from metadata (no LLM)
+        ListableEntity listType = getRequestedListableEntity(query);
+        if (listType != null) {
+            List<String> items = buildListFromMinutes(listType, relevantMinutes);
+            if (!items.isEmpty()) {
+                String answer = formatListAnswer(items, listType);
+                log().info("Returning list of {} {} for query (no entity extraction)", items.size(), listType);
+                return ToolResult.from(formatResponse(answer, query), getClass());
+            }
+        }
+
+        // When query asks for sections/structure of the acta (not persons), return from metadata (Fecha, Lugar, Orden del día, etc.)
+        if (asksForSectionsOrStructure(query)) {
+            List<Minute> forDate = filterMinutesByDate(query, ner, relevantMinutes);
+            List<Minute> target = forDate.isEmpty() ? relevantMinutes : forDate;
+            if (!target.isEmpty()) {
+                String sectionsAnswer = buildSectionsAnswerFromMinute(target.get(0));
+                log().info("Returning acta sections/structure for query (no entity extraction)");
+                return ToolResult.from(formatResponse(sectionsAnswer, query), getClass());
+            }
+        }
+
+        // Step 3.5: Additional filtering by topic + person if query requires it
+        // Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
+        if (requiresTopicAndPersonFilter(query)) {
+            List<Minute> topicPersonFiltered = filterMinutesByTopicAndPerson(query, relevantMinutes, ner);
+            log().info("Filtered {} minutes by topic + person, {} remaining (applied filter even if empty)", 
+                      relevantMinutes.size(), topicPersonFiltered.size());
+            relevantMinutes = topicPersonFiltered; // Apply filter even if empty - this indicates no matches
+        }
+
+        // Step 4: Extract entities in parallel (prioritize metadata)
+        List<Entity> entities = extractEntitiesInParallel(query, relevantMinutes, docs);
         if (entities.isEmpty()) {
-            log().debug("No relevant entities found for query: {}", query);
-            return ToolResult.from(generateEntityNotFoundMessage(query), getClass());
+            log().info("No relevant entities found for query: {}", query);
+            return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
         }
 
-        // Step 5: Analyze and rank entities
-        List<Entity> rankedEntities = analyzeAndRankEntities(query, entities);
+        // Step 5: Deduplicate and order entities (metadata-first heuristic)
+        List<Entity> rankedEntities = deduplicateAndRankEntities(entities);
 
         // Step 6: Cluster similar entities
         List<EntityCluster> clusters = clusterEntities(rankedEntities);
 
         // Step 7: Generate enhanced final answer
         String answer = generateEnhancedEntityAnswer(query, rankedEntities, clusters);
-        log().debug("Generated entity extraction answer for query: {} with {} entities in {} clusters", 
+        log().info("Generated entity extraction answer for query: {} with {} entities in {} clusters", 
                    query, entities.size(), clusters.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
 
     /**
-     * Extracts entities in parallel
+     * Extracts entities in parallel, prioritizing metadata from documents
      */
-    private List<Entity> extractEntitiesInParallel(String query, List<Minute> minutes) {
+    private List<Entity> extractEntitiesInParallel(String query, List<Minute> minutes, List<Document> docs) {
+        List<Entity> entities = new ArrayList<>();
+        
+        // First: Extract attendees from document metadata (highest priority)
+        if (query != null && (query.toLowerCase().contains("asistente") || query.toLowerCase().contains("attendee") || 
+            query.toLowerCase().contains("quién") || query.toLowerCase().contains("who"))) {
+            for (Document doc : docs) {
+                List<String> attendees = extractAttendeesFromMetadata(doc);
+                for (String attendee : attendees) {
+                    if (attendee != null && !attendee.isBlank() && !isGenericEntity(attendee)) {
+                        entities.add(new Entity(
+                            attendee,
+                            EntityType.PERSON,
+                            EntityRole.ATTENDEE
+                        ));
+                    }
+                }
+            }
+        }
+        
+        // Second: Extract entities from minutes in parallel
         List<CompletableFuture<List<Entity>>> futures = minutes.stream()
                 .map(minute -> CompletableFuture.supplyAsync(() -> extractEntitiesFromMinute(query, minute)))
                 .collect(Collectors.toList());
 
-        return futures.stream()
+        List<Entity> minuteEntities = futures.stream()
                 .map(CompletableFuture::join)
                 .flatMap(List::stream)
                 .filter(Objects::nonNull)
+                .filter(e -> !isGenericEntity(e.getName())) // Filter out generic entities
                 .collect(Collectors.toList());
+        
+        entities.addAll(minuteEntities);
+
+        return entities;
     }
 
     /**
@@ -106,7 +170,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         // Extract structured entities from metadata
         entities.addAll(extractStructuredEntities(minute));
         
-        // Extract entities from text content using LLM
+        // Extract entities from text content using LLM (fallback)
         entities.addAll(extractTextEntities(query, minute));
         
         return entities;
@@ -123,11 +187,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             entities.add(new Entity(
                 minute.president(),
                 EntityType.PERSON,
-                EntityRole.PRESIDENT,
-                minute.date(),
-                minute.place(),
-                1.0,
-                System.currentTimeMillis()
+                EntityRole.PRESIDENT
             ));
         }
         
@@ -136,26 +196,18 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             entities.add(new Entity(
                 minute.secretary(),
                 EntityType.PERSON,
-                EntityRole.SECRETARY,
-                minute.date(),
-                minute.place(),
-                1.0,
-                System.currentTimeMillis()
+                EntityRole.SECRETARY
             ));
         }
         
-        // Extract attendees
+        // Extract attendees (filter out generic entities)
         if (minute.attendees() != null) {
             for (String attendee : minute.attendees()) {
-                if (attendee != null && !attendee.isBlank()) {
+                if (attendee != null && !attendee.isBlank() && !isGenericEntity(attendee)) {
                     entities.add(new Entity(
                         attendee,
                         EntityType.PERSON,
-                        EntityRole.ATTENDEE,
-                        minute.date(),
-                        minute.place(),
-                        0.8,
-                        System.currentTimeMillis()
+                        EntityRole.ATTENDEE
                     ));
                 }
             }
@@ -166,15 +218,50 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             entities.add(new Entity(
                 minute.place(),
                 EntityType.LOCATION,
-                EntityRole.MEETING_PLACE,
-                minute.date(),
-                null,
-                0.9,
-                System.currentTimeMillis()
+                EntityRole.MEETING_PLACE
             ));
         }
         
+        // Extract mentionedEntities directly from metadata (filter out generic entities)
+        if (minute.mentionedEntities() != null && !minute.mentionedEntities().isEmpty()) {
+            for (String entity : minute.mentionedEntities()) {
+                if (entity != null && !entity.isBlank() && !isGenericEntity(entity)) {
+                    // Try to infer type: if it's a person name (capitalized words), treat as PERSON
+                    EntityType entityType = inferEntityType(entity);
+                    entities.add(new Entity(
+                        entity,
+                        entityType,
+                        EntityRole.UNKNOWN
+                    ));
+                }
+            }
+        }
+        
         return entities;
+    }
+
+    /**
+     * Infers entity type from entity name using simple heuristics
+     */
+    private EntityType inferEntityType(String entityName) {
+        if (entityName == null || entityName.isBlank()) {
+            return EntityType.OTHER;
+        }
+        
+        // If it looks like a person name (starts with capital, has spaces, or common name patterns)
+        if (entityName.matches("^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+")) {
+            return EntityType.PERSON;
+        }
+        
+        // If it contains organization keywords
+        String lower = entityName.toLowerCase();
+        if (lower.contains("sociedad") || lower.contains("asociación") || lower.contains("comunidad") ||
+            lower.contains("empresa") || lower.contains("corporación") || lower.contains("s.a.") ||
+            lower.contains("s.l.") || lower.contains("s.c.")) {
+            return EntityType.ORGANIZATION;
+        }
+        
+        return EntityType.OTHER;
     }
 
     /**
@@ -231,7 +318,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             String result = getLLMResponseCached(prompt);
             
             if (result == null || result.trim().isEmpty()) {
-                log().debug("Empty response from LLM in extractEntitiesFromText, returning empty list");
+                log().info("Empty response from LLM in extractEntitiesFromText, returning empty list");
                 return Collections.emptyList();
             }
             
@@ -243,13 +330,64 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
 
     /**
-     * Parses entities from LLM response
+     * Parses entities from LLM response using JSON parser
      */
     private List<Entity> parseEntitiesFromLLMResponse(String response, EntityType contextType, Minute minute) {
         List<Entity> entities = new ArrayList<>();
         
         try {
-            // Simple parsing - in a real implementation, you'd use a proper JSON parser
+            // Try to extract JSON array from response
+            String jsonStr = response.trim();
+            
+            // Find JSON array in response (may be wrapped in markdown code blocks or text)
+            int arrayStart = jsonStr.indexOf('[');
+            int arrayEnd = jsonStr.lastIndexOf(']');
+            
+            if (arrayStart == -1 || arrayEnd == -1 || arrayEnd <= arrayStart) {
+                // Fallback to line-by-line parsing if no JSON array found
+                return parseEntitiesFromLines(response);
+            }
+            
+            jsonStr = jsonStr.substring(arrayStart, arrayEnd + 1);
+            
+            // Parse JSON array
+            org.json.JSONArray jsonArray = new org.json.JSONArray(jsonStr);
+            
+            for (int i = 0; i < jsonArray.length(); i++) {
+                org.json.JSONObject obj = jsonArray.getJSONObject(i);
+                String name = obj.optString("name", "").trim();
+                String type = obj.optString("type", "OTHER").trim();
+                String role = obj.optString("role", "").trim();
+                
+                if (!name.isEmpty()) {
+                    EntityType entityType = parseEntityType(type);
+                    EntityRole entityRole = parseEntityRole(role);
+                    
+                    entities.add(new Entity(
+                        name,
+                        entityType,
+                        entityRole
+                    ));
+                }
+            }
+        } catch (org.json.JSONException e) {
+            log().info("Error parsing JSON from LLM response, trying line-by-line parsing: {}", e.getMessage());
+            // Fallback to line-by-line parsing
+            return parseEntitiesFromLines(response);
+        } catch (Exception e) {
+            log().info("Error parsing entities from LLM response: {}", e.getMessage());
+        }
+        
+        return entities;
+    }
+
+    /**
+     * Fallback parsing method for non-JSON responses
+     */
+    private List<Entity> parseEntitiesFromLines(String response) {
+        List<Entity> entities = new ArrayList<>();
+        
+        try {
             String[] lines = response.split("\n");
             for (String line : lines) {
                 if (line.contains("name") && line.contains("type")) {
@@ -265,17 +403,13 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                         entities.add(new Entity(
                             name,
                             entityType,
-                            entityRole,
-                            minute.date(),
-                            minute.place(),
-                            0.7,
-                            System.currentTimeMillis()
+                            entityRole
                         ));
                     }
                 }
             }
         } catch (Exception e) {
-            log().debug("Error parsing entities from LLM response: {}", e.getMessage());
+            log().info("Error in fallback line parsing: {}", e.getMessage());
         }
         
         return entities;
@@ -333,81 +467,44 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     /**
      * Analyzes and ranks entities by relevance and quality
      */
-    private List<Entity> analyzeAndRankEntities(String query, List<Entity> entities) {
-        // Calculate relevance scores
-        List<Entity> scoredEntities = entities.stream()
-                .map(entity -> calculateEntityRelevanceScore(query, entity))
-                .collect(Collectors.toList());
-        
-        // Sort by relevance score (descending)
-        return scoredEntities.stream()
-                .sorted((a, b) -> Double.compare(b.relevanceScore, a.relevanceScore))
+    private List<Entity> deduplicateAndRankEntities(List<Entity> entities) {
+        // Deduplicate by name+type+role
+        Map<String, Entity> dedup = new LinkedHashMap<>();
+        for (Entity e : entities) {
+            if (e == null || e.getName() == null || e.getName().isBlank()) continue;
+            String key = (e.getName().trim().toLowerCase()) + "|" + e.getType() + "|" + e.getRole();
+            dedup.putIfAbsent(key, e);
+        }
+
+        // Order: structured types first (PERSON, ROLE, LOCATION), then ORGANIZATION, then others; within type by name length desc
+        return dedup.values().stream()
+                .sorted((a, b) -> {
+                    int typeOrder = Integer.compare(typePriority(b.getType()), typePriority(a.getType()));
+                    if (typeOrder != 0) return typeOrder;
+                    int roleOrder = Integer.compare(rolePriority(b.getRole()), rolePriority(a.getRole()));
+                    if (roleOrder != 0) return roleOrder;
+                    return Integer.compare(
+                            b.getName() != null ? b.getName().length() : 0,
+                            a.getName() != null ? a.getName().length() : 0);
+                })
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Calculates relevance score for an entity.
-     * Uses English for internal processing, but preserves original language in query.
-     */
-    private Entity calculateEntityRelevanceScore(String query, Entity entity) {
-        if (query == null || query.trim().isEmpty() || entity == null) {
-            return entity; // Return original entity if validation fails
-        }
-        
-        String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
-            
-            Entity: %s
-            Type: %s
-            Role: %s
-            Context: %s
-            
-            Rate the relevance of this entity to the query on a scale of 0.0 to 1.0.
-            Consider: direct relevance, importance, and usefulness.
-            
-            Respond with ONLY a number between 0.0 and 1.0.
-            Do not include any explanation or additional text.
-            """, 
-            query,
-            entity.name,
-            entity.type,
-            entity.role,
-            entity.getContext()
-        );
-        
-        try {
-            String result = getLLMResponseCached(prompt);
-            
-            if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in calculateEntityRelevanceScore, keeping original score");
-                return entity;
-            }
-            
-            String cleaned = result.strip();
-            // Extract first number from response
-            String numberStr = cleaned.replaceAll("[^0-9.]", "").split("\\s+")[0];
-            if (numberStr.isEmpty()) {
-                return entity;
-            }
-            
-            double score = Double.parseDouble(numberStr);
-            return new Entity(
-                entity.name,
-                entity.type,
-                entity.role,
-                entity.date,
-                entity.place,
-                score,
-                entity.timestamp
-            );
-        } catch (NumberFormatException e) {
-            log().warn("Error parsing relevance score in calculateEntityRelevanceScore, keeping original score", e);
-            return entity; // Keep original score if parsing fails
-        } catch (Exception e) {
-            log().error("Error calculating entity relevance score, keeping original score", e);
-            return entity;
-        }
+    private int typePriority(EntityType type) {
+        return switch (type) {
+            case PERSON, ROLE, LOCATION -> 3;
+            case ORGANIZATION -> 2;
+            case TOPIC, DECISION -> 1;
+            default -> 0;
+        };
+    }
+
+    private int rolePriority(EntityRole role) {
+        return switch (role) {
+            case PRESIDENT, SECRETARY -> 3;
+            case ATTENDEE, MEETING_PLACE -> 2;
+            default -> 0;
+        };
     }
 
     /**
@@ -442,13 +539,13 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
      */
     private boolean isSimilarToCluster(Entity entity, EntityCluster cluster) {
         // Check if entity types match
-        if (!entity.type.equals(cluster.getRepresentativeEntity().type)) {
+        if (!entity.getType().equals(cluster.getRepresentativeEntity().getType())) {
             return false;
         }
         
         // Check name similarity
-        String entityName = entity.name.toLowerCase();
-        String clusterName = cluster.getRepresentativeEntity().name.toLowerCase();
+        String entityName = entity.getName().toLowerCase();
+        String clusterName = cluster.getRepresentativeEntity().getName().toLowerCase();
         
         // Simple similarity check
         if (entityName.equals(clusterName)) {
@@ -501,28 +598,85 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
     
     /**
+     * Checks if an entity is generic (should be filtered out).
+     * Uses LLM to determine if entity is generic.
+     */
+    private boolean isGenericEntity(String entityName) {
+        if (entityName == null || entityName.isBlank()) {
+            return true;
+        }
+        
+        // Common generic terms to filter out
+        String lower = entityName.toLowerCase().trim();
+        if (lower.equals("vecinos") || lower.equals("residentes") || lower.equals("propietarios") ||
+            lower.equals("neighbors") || lower.equals("residents") || lower.equals("owners") ||
+            lower.equals("asistentes") || lower.equals("attendees") || lower.equals("participantes") ||
+            lower.equals("participants") || lower.equals("miembros") || lower.equals("members")) {
+            return true;
+        }
+        
+        // Use LLM to check if it's a proper name vs generic term
+        String prompt = String.format("""
+            Task: Determine if the following entity name is a proper name (specific person/organization) or a generic term.
+            
+            Entity name: "%s"
+            
+            Examples of generic terms: "vecinos", "residentes", "propietarios", "asistentes", "miembros"
+            Examples of proper names: "Juan Pérez", "María González", "Comunidad de Vecinos", "Empresa XYZ"
+            
+            Respond with ONLY one word: PROPER if it's a proper name, GENERIC if it's a generic term.
+            """, entityName);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return response.contains("GENERIC");
+        } catch (Exception e) {
+            log().debug("Error checking if entity is generic, defaulting to false (keep entity): {}", e.getMessage());
+            return false; // Default to keeping entity to avoid false negatives
+        }
+    }
+
+    /**
      * Generates a fallback entity answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackEntityAnswer(String query, List<Entity> entities) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String entitiesText = entities.stream()
+                .limit(5)
+                .map(e -> String.format("- %s (%s)", e.getName(), e.getType()))
+                .collect(Collectors.joining("\n"));
         
-        if (isSpanish) {
-            return String.format("Se encontraron %d entidades relevantes:\n%s",
-                              entities.size(),
-                              entities.stream()
-                                      .limit(5)
-                                      .map(e -> String.format("- %s (%s)", e.name, e.type))
-                                      .collect(Collectors.joining("\n")));
-        } else {
-            return String.format("Found %d relevant entities:\n%s",
-                              entities.size(),
-                              entities.stream()
-                                      .limit(5)
-                                      .map(e -> String.format("- %s (%s)", e.name, e.type))
-                                      .collect(Collectors.joining("\n")));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found %d relevant entities:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found entities.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query, entities.size(), entitiesText);
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback entity answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return String.format("Found %d relevant entities:\n%s",
+                          entities.size(), entitiesText);
     }
 
     /**
@@ -536,8 +690,8 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         
         for (EntityCluster cluster : clusters) {
             Entity representative = cluster.getRepresentativeEntity();
-            String type = representative.type.toString();
-            String name = representative.name;
+            String type = representative.getType().toString();
+            String name = representative.getName();
             
             entitiesByType.computeIfAbsent(type, k -> new ArrayList<>()).add(name);
         }
@@ -550,7 +704,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         
         return summary.toString();
     }
-    
+
     /**
      * Gets a natural label for entity type
      */
@@ -596,102 +750,259 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     
     /**
      * Generates a fallback "entity not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackEntityNotFoundMessage(String query) {
-        String queryLower = query != null ? query.toLowerCase() : "";
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No relevant entities were found for this query in the available documents.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no relevant entities were found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "No se encontraron entidades relevantes para esta consulta en los documentos disponibles.";
-        } else {
-            return "No relevant entities were found for this query in the available documents.";
-        }
-    }
-
-    /**
-     * Represents an entity with enhanced metadata
-     */
-    private static class Entity {
-        final String name;
-        final EntityType type;
-        final EntityRole role;
-        final String date;
-        final String place;
-        final double relevanceScore;
-        final long timestamp;
-
-        Entity(String name, EntityType type, EntityRole role, String date, String place, double relevanceScore, long timestamp) {
-            this.name = name;
-            this.type = type;
-            this.role = role;
-            this.date = date;
-            this.place = place;
-            this.relevanceScore = relevanceScore;
-            this.timestamp = timestamp;
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback entity not found message with LLM", e);
         }
         
-        /**
-         * Gets the context information for the entity
-         */
-        String getContext() {
-            return String.format("%s (%s - %s)", name, date != null ? date : "unknown", place != null ? place : "unknown");
+        // Ultimate fallback
+        return "No relevant entities were found for this query in the available documents.";
+    }
+    
+    /**
+     * Checks if query requires filtering by both topic and person (AND logic)
+     * Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
+     */
+    private boolean asksForPresidentOrSecretaryOnly(String query) {
+        if (query == null || query.trim().isEmpty()) return false;
+        String q = query.toLowerCase();
+        boolean asksPresident = q.contains("presidió") || q.contains("presidente") || q.contains("presided") || q.contains("president");
+        boolean asksSecretary = q.contains("secretaria") || q.contains("secretario") || q.contains("secretary");
+        return (asksPresident || asksSecretary) && extractPersonNameFromQuery(query, null) == null;
+    }
+
+    private boolean asksForPresidentOnly(String query) {
+        if (query == null) return true;
+        String q = query.toLowerCase();
+        return q.contains("presidió") || q.contains("presidente") || q.contains("presided") || q.contains("president");
+    }
+
+    /** Entity types that can be listed directly from metadata without LLM extraction. */
+    private enum ListableEntity {
+        DATES, PLACES, PRESIDENTS, SECRETARIES, TOPICS, DECISIONS, ATTENDEES
+    }
+
+    /** Detects if the query asks for a list of a specific entity type (dates, places, presidents, etc.). */
+    private static ListableEntity getRequestedListableEntity(String query) {
+        if (query == null || query.isBlank()) return null;
+        String q = query.toLowerCase();
+        boolean asksForList = q.contains("todas las") || q.contains("todas los") || q.contains("todos los") || q.contains("todos las")
+                || q.contains("diferentes") || q.contains("list all") || q.contains("listar") || q.contains("qué ") || q.contains("que ")
+                || q.contains("dime las") || q.contains("dime los") || q.contains("dime todas") || q.contains("las fechas de")
+                || q.contains("que tienes actas") || q.contains("cuáles son") || q.contains("cuales son")
+                || q.contains("what are the") || q.contains("which ") || q.contains("name all");
+        if (!asksForList) return null;
+        if (q.contains("fecha") || q.contains("date")) return ListableEntity.DATES;
+        if (q.contains("lugar") || q.contains("lugares") || q.contains("place") || q.contains("sitio") || q.contains("ubicación") || q.contains("location")) return ListableEntity.PLACES;
+        if (q.contains("presidente") || q.contains("presidentes") || q.contains("president") || q.contains("quién presidió")) return ListableEntity.PRESIDENTS;
+        if (q.contains("secretaria") || q.contains("secretarias") || q.contains("secretary") || q.contains("secretaries")) return ListableEntity.SECRETARIES;
+        if (q.contains("tema") || q.contains("temas") || q.contains("topic") || q.contains("topics") || q.contains("asunto")) return ListableEntity.TOPICS;
+        if (q.contains("decisión") || q.contains("decisiones") || q.contains("acuerdo") || q.contains("acuerdos") || q.contains("decision")) return ListableEntity.DECISIONS;
+        if (q.contains("asistente") || q.contains("asistentes") || q.contains("attendee") || q.contains("participante") || q.contains("personas que")) return ListableEntity.ATTENDEES;
+        if (q.contains("fecha") || q.contains("date")) return ListableEntity.DATES; // fallback for "todas las fechas"
+        return null;
+    }
+
+    /** Builds a deduplicated, sorted list of values from minutes for the given entity type. */
+    private List<String> buildListFromMinutes(ListableEntity type, List<Minute> minutes) {
+        if (minutes == null || minutes.isEmpty()) return Collections.emptyList();
+        return switch (type) {
+            case DATES -> minutes.stream().map(Minute::date).filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case PLACES -> minutes.stream().map(Minute::place).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case PRESIDENTS -> minutes.stream().map(Minute::president).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case SECRETARIES -> minutes.stream().map(Minute::secretary).filter(Objects::nonNull).filter(s -> !s.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case TOPICS -> minutes.stream().filter(m -> m.topics() != null).flatMap(m -> m.topics().stream())
+                    .filter(Objects::nonNull).filter(t -> !t.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case DECISIONS -> minutes.stream().filter(m -> m.decisions() != null).flatMap(m -> m.decisions().stream())
+                    .filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case ATTENDEES -> minutes.stream().filter(m -> m.attendees() != null).flatMap(m -> m.attendees().stream())
+                    .filter(Objects::nonNull).filter(a -> !a.isBlank()).filter(a -> !isGenericEntity(a)).distinct().sorted().collect(Collectors.toList());
+        };
+    }
+
+    /** Formats a list of items for the response (comma-separated or newlines for long lists). */
+    private static String formatListAnswer(List<String> items, ListableEntity type) {
+        if (items == null || items.isEmpty()) return "";
+        if (items.size() <= 8) return String.join(", ", items);
+        return String.join("\n", items);
+    }
+
+    /** Detects if the query asks for sections/structure of the acta (§4: Fecha, Lugar, Hora, Asistentes, Orden del día). */
+    private static boolean asksForSectionsOrStructure(String query) {
+        if (query == null || query.isBlank()) return false;
+        String q = query.toLowerCase();
+        return q.contains("secciones que contiene") || q.contains("secciones del acta") || q.contains("partes del acta")
+                || q.contains("estructura del acta") || (q.contains("qué secciones") && q.contains("acta")) || (q.contains("qué partes") && q.contains("acta"))
+                || q.contains("indícame las secciones") || q.contains("indicate the sections") || (q.contains("qué contiene") && q.contains("acta"))
+                || (q.contains("orden del día") && q.contains("acta")) || q.contains("qué contiene el acta")
+                || q.contains("extrae las secciones") || q.contains("indica las secciones") || q.contains("lista las secciones")
+                || q.contains("secciones que tiene el acta");
+    }
+
+    /** Builds a natural-language list of acta sections from minute metadata (Fecha, Lugar, Hora inicio/fin, Asistentes, Orden del día con ítems). */
+    private String buildSectionsAnswerFromMinute(Minute minute) {
+        List<String> sections = new ArrayList<>();
+        if (minute.date() != null && !minute.date().isBlank()) sections.add("Fecha");
+        if (minute.place() != null && !minute.place().isBlank()) sections.add("Lugar");
+        if (minute.startTime() != null && !minute.startTime().isBlank()) sections.add("Hora de inicio");
+        if (minute.endTime() != null && !minute.endTime().isBlank()) sections.add("Hora de finalización");
+        if (minute.attendees() != null && !minute.attendees().isEmpty()) sections.add("Asistentes");
+        sections.add("Orden del día");
+        StringBuilder out = new StringBuilder();
+        out.append("El acta contiene las siguientes secciones: ").append(String.join(", ", sections)).append(".");
+        if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+            List<String> items = minute.agenda().values().stream()
+                    .filter(Objects::nonNull).filter(s -> !s.isBlank())
+                    .collect(Collectors.toList());
+            if (!items.isEmpty()) {
+                out.append(" Orden del día (ítems): ");
+                out.append(String.join("; ", items));
+                out.append(".");
+            }
+        }
+        return out.toString();
+    }
+
+    private boolean requiresTopicAndPersonFilter(String query) {
+        return detectTopicAndPersonFilter(query);
+    }
+    
+    /**
+     * Filters minutes by topic AND person (both conditions must be met)
+     * Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
+     */
+    private List<Minute> filterMinutesByTopicAndPerson(String query, List<Minute> minutes, JSONObject ner) {
+        if (minutes.isEmpty() || query == null) {
+            return minutes;
         }
         
-        @Override
-        public String toString() {
-            return String.format("Entity[%s, type=%s, role=%s, score=%.2f]", name, type, role, relevanceScore);
+        if (!requiresTopicAndPersonFilter(query)) {
+            return minutes; // No filtering needed
         }
+        
+        String queryLower = query.toLowerCase();
+        
+        // Extract topic from query
+        String topic = extractTopicFromQuery(query, ner);
+        if (topic == null || topic.isEmpty()) {
+            log().debug("Could not extract topic from query for filtering: {}", query);
+            return minutes; // Can't filter by topic
+        }
+        
+        // Extract person from query or NER using improved extraction
+        String personName = extractPersonNameFromQuery(query, ner);
+        
+        if (personName == null || personName.isEmpty()) {
+            if (queryRequiresPerson(query)) {
+                log().warn("Could not extract person name from query for topic+person filtering. Query: '{}'", query);
+            } else {
+                log().debug("Could not extract person name from query for topic+person filtering (query may not require person). Query: '{}'", query);
+            }
+            return minutes; // Can't filter by person - return all to avoid false negatives
+        }
+        
+        // Normalize names for comparison
+        final String normalizedTopic = normalizePersonName(topic); // Reuse normalizePersonName for topic too
+        final String normalizedPersonName = normalizePersonName(personName);
+        
+        // Determine which role to check (president, secretary, or both)
+        final boolean filterByPresident = queryLower.contains("presididas") || queryLower.contains("presidida") ||
+                                         queryLower.contains("presidió") || queryLower.contains("president") ||
+                                         queryLower.contains("presid");
+        final boolean filterBySecretary = queryLower.contains("secretario") || queryLower.contains("secretary") ||
+                                         queryLower.contains("secretaria");
+        
+        log().info("Filtering {} minutes by topic '{}' (normalized: '{}') AND person '{}' (normalized: '{}'). " +
+                  "Checking president: {}, secretary: {}", 
+                  minutes.size(), topic, normalizedTopic, personName, normalizedPersonName, 
+                  filterByPresident, filterBySecretary);
+        
+        List<Minute> filtered = minutes.stream()
+                .filter(minute -> {
+                    // Check topic condition (in topics, decisions, or summary)
+                    boolean topicMatches = false;
+                    String topicLower = normalizedTopic;
+                    
+                    if (minute.topics() != null) {
+                        topicMatches = minute.topics().stream()
+                                .anyMatch(t -> t != null && normalizePersonName(t).contains(topicLower));
+                    }
+                    if (!topicMatches && minute.decisions() != null) {
+                        topicMatches = minute.decisions().stream()
+                                .anyMatch(d -> d != null && normalizePersonName(d).contains(topicLower));
+                    }
+                    if (!topicMatches && minute.summary() != null) {
+                        topicMatches = normalizePersonName(minute.summary()).contains(topicLower);
+                    }
+                    
+                    if (!topicMatches) {
+                        log().debug("Minute {} filtered out: topic '{}' not found in topics/decisions/summary", 
+                                  minute.id(), topic);
+                        return false; // Topic doesn't match
+                    }
+                    
+                    // Check person condition (president or secretary) - BOTH topic AND person must match (AND logic)
+                    boolean personMatches = false;
+                    if (filterByPresident && minute.president() != null) {
+                        String presidentNormalized = normalizePersonName(minute.president());
+                        // More robust matching: check if normalized names contain each other or are equal
+                        personMatches = presidentNormalized.equals(normalizedPersonName) ||
+                                       presidentNormalized.contains(normalizedPersonName) ||
+                                       normalizedPersonName.contains(presidentNormalized);
+                        if (personMatches) {
+                            log().debug("Minute {} person match (president): '{}' matches '{}'", 
+                                      minute.id(), minute.president(), personName);
+                        }
+                    }
+                    if (!personMatches && filterBySecretary && minute.secretary() != null) {
+                        String secretaryNormalized = normalizePersonName(minute.secretary());
+                        personMatches = secretaryNormalized.equals(normalizedPersonName) ||
+                                       secretaryNormalized.contains(normalizedPersonName) ||
+                                       normalizedPersonName.contains(secretaryNormalized);
+                        if (personMatches) {
+                            log().debug("Minute {} person match (secretary): '{}' matches '{}'", 
+                                      minute.id(), minute.secretary(), personName);
+                        }
+                    }
+                    
+                    if (!personMatches) {
+                        log().debug("Minute {} filtered out: person '{}' not found as president/secretary. " +
+                                  "President: '{}', Secretary: '{}'", 
+                                  minute.id(), personName, 
+                                  minute.president() != null ? minute.president() : "null",
+                                  minute.secretary() != null ? minute.secretary() : "null");
+                        return false; // Person doesn't match
+                    }
+                    
+                    // Both topic AND person match
+                    log().debug("Minute {} passed both filters: topic '{}' AND person '{}'", 
+                              minute.id(), topic, personName);
+                    return true;
+                })
+                .collect(Collectors.toList());
+        
+        log().info("Topic+person filtering result: {} minutes passed (out of {}). Topic: '{}', Person: '{}'", 
+                  filtered.size(), minutes.size(), topic, personName);
+        
+        return filtered;
     }
 
-    /**
-     * Represents a cluster of similar entities
-     */
-    private static class EntityCluster {
-        private final List<Entity> entities = new ArrayList<>();
-
-        EntityCluster(Entity initialEntity) {
-            entities.add(initialEntity);
-        }
-
-        void addEntity(Entity entity) {
-            entities.add(entity);
-        }
-
-        int getSize() {
-            return entities.size();
-        }
-
-        Entity getRepresentativeEntity() {
-            // Return the entity with highest relevance score
-            return entities.stream()
-                    .max((a, b) -> Double.compare(a.relevanceScore, b.relevanceScore))
-                    .orElse(entities.get(0));
-        }
-
-        EntityType getEntityType() {
-            return getRepresentativeEntity().type;
-        }
-
-        double getAverageRelevance() {
-            return entities.stream()
-                    .mapToDouble(e -> e.relevanceScore)
-                    .average()
-                    .orElse(0.0);
-        }
-    }
-
-    /**
-     * Enum for entity types
-     */
-    private enum EntityType {
-        PERSON, ORGANIZATION, ROLE, DATE, AMOUNT, LOCATION, TOPIC, DECISION, SUMMARY, OTHER
-    }
-
-    /**
-     * Enum for entity roles
-     */
-    private enum EntityRole {
-        PRESIDENT, SECRETARY, ATTENDEE, MEETING_PLACE, UNKNOWN
-    }
 }

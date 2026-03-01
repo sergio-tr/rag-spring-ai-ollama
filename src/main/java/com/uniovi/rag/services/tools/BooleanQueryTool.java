@@ -33,7 +33,12 @@ public class BooleanQueryTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
+        log().info("Executing boolean query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
+        
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for boolean query", docs.size());
         List<String> evidence = new ArrayList<>();
         boolean found = false;
 
@@ -94,11 +99,19 @@ public class BooleanQueryTool extends AbstractTool {
 
         String response;
         if (found) {
+            log().debug("Found evidence for boolean query, generating response with {} evidence items", evidence.size());
             response = generateResponseWithLLM(query, evidence);
         } else {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No evidence found for boolean query: '{}' (execution time: {} ms)", query, totalTime);
             response = generateNotFoundResponse(query);
         }
-        return ToolResult.from(response, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated boolean query answer for query: '{}' (execution time: {} ms, found: {})", 
+                  query, totalTime, found);
+        // Apply formatResponse to clean the response
+        String formattedResponse = formatResponse(response, query);
+        return ToolResult.from(formattedResponse, getClass());
     }
 
     /**
@@ -141,8 +154,8 @@ public class BooleanQueryTool extends AbstractTool {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "fragmentConfirmsClaim");
         } catch (Exception e) {
             log().error("Error in fragmentConfirmsClaim, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
@@ -184,6 +197,10 @@ public class BooleanQueryTool extends AbstractTool {
             
             Write a clear, concise response in the same language as the query, 
             using the evidence found. Be direct and factual.
+            DO NOT repeat the question or any part of it at the beginning.
+            DO NOT start with phrases like "Dime qué...", "The user asked...", etc.
+            Start directly with the answer (YES/NO or Sí/No) followed by brief evidence.
+            Be concise - maximum 2-3 sentences.
             """, query, joinedEvidence);
         
         try {
@@ -194,11 +211,12 @@ public class BooleanQueryTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateResponseWithLLM, using fallback");
+                log().warn("Empty response from LLM in generateResponseWithLLM for query: '{}', using fallback", query);
                 return generateNotFoundResponse(query);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating response with LLM, using fallback", e);
             return generateNotFoundResponse(query);
@@ -216,6 +234,8 @@ public class BooleanQueryTool extends AbstractTool {
             
             Write a short message indicating that no evidence was found for this claim, 
             in the same language as the query.
+            Be concise and direct.
+            DO NOT repeat the question or any part of it.
             """, query);
         
         try {
@@ -230,7 +250,8 @@ public class BooleanQueryTool extends AbstractTool {
                 return generateFallbackNotFoundMessage(query);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating not found response, using fallback", e);
             return generateFallbackNotFoundMessage(query);
@@ -238,20 +259,74 @@ public class BooleanQueryTool extends AbstractTool {
     }
     
     /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
+    }
+
+    /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*") || 
-                           queryLower.contains("quién") || queryLower.contains("qué") || 
-                           queryLower.contains("cuándo") || queryLower.contains("dónde") ||
-                           queryLower.contains("cuántos") || queryLower.contains("cómo");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No evidence was found in the available documents to confirm this claim.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no evidence was found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "No se encontró evidencia en los documentos disponibles para confirmar esta afirmación.";
-        } else {
-            return "No evidence was found in the available documents to confirm this claim.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No evidence was found in the available documents to confirm this claim.";
     }
 }
