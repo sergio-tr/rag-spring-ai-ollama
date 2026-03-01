@@ -80,7 +80,7 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
     }
 
     protected void sendFileToEndpoint(File file) throws IOException {
-        String endpoint = "http://localhost:9000/api/v3/documents";
+        String endpoint = "http://localhost:9000/api/v4/documents";
         String boundary = "===" + System.currentTimeMillis() + "===";
 
         HttpURLConnection connection = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
