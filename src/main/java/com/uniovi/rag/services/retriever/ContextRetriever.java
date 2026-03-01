@@ -11,12 +11,14 @@ public interface ContextRetriever {
 
     List<Document> retrieve(String query);
 
+    int getTopK();
     void setTopK(int topK);
 
+    double getSimilarityThreshold();
     void setSimilarityThreshold(double similarityThreshold);
-
     void restoreDefaultSettings();
 
-    String createContext(List<Document> documents, String query, JSONObject entities);
+    List<Document> retrieveWithMetadataFilters(String query, JSONObject nerEntities);
 
+    String createContext(List<Document> documents, String query, JSONObject entities);
 }

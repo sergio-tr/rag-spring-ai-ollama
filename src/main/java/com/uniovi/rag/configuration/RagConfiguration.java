@@ -2,7 +2,6 @@ package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.services.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.services.analyser.QueryAnalyser;
-import com.uniovi.rag.services.classifier.EnhancedQueryClassifier;
 import com.uniovi.rag.services.classifier.PythonQueryClassifier;
 import com.uniovi.rag.services.classifier.QueryClassifier;
 import com.uniovi.rag.services.classifier.QueryType;
@@ -11,15 +10,17 @@ import com.uniovi.rag.services.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.services.document.SimpleDocumentService;
 import com.uniovi.rag.services.evaluation.DatasetMinuteEvaluationService;
 import com.uniovi.rag.services.evaluation.EvaluationService;
+import com.uniovi.rag.services.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.services.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.services.expand.QueryExpander;
+import com.uniovi.rag.services.guard.DateExistenceGuard;
+import com.uniovi.rag.services.guard.QueryDateExtractor;
 import com.uniovi.rag.services.query.ProcessQueryService;
 import com.uniovi.rag.services.query.QueryService;
 import com.uniovi.rag.services.retriever.BasicContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.*;
 import com.uniovi.rag.services.tools.metadata.*;
-import com.uniovi.rag.model.Minute;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
@@ -40,12 +41,6 @@ import java.util.Map;
 @Configuration
 public class RagConfiguration {
 
-    @Value("${spring.ai.ollama.top-k}")
-    private int topK;
-
-    @Value("${spring.ai.ollama.similarity-threshold}")
-    private double similarityThreshold;
-
     @Bean
     public RagToolsConfiguration toolsConfig(Map<QueryType, Tool> tools) {
         return new RagToolsConfiguration(tools);
@@ -59,6 +54,19 @@ public class RagConfiguration {
     @Bean
     public PgVectorStore pgVectorStore(JdbcTemplate jdbcTemplate, EmbeddingModel embeddingModel) {
         return new PgVectorStore(jdbcTemplate, embeddingModel);
+    }
+
+    @Bean
+    public int maxChunkSize(@Value("${rag.chunk.max-chars:400}") int chunkMaxChars) {
+        if (chunkMaxChars > 0) {
+            return chunkMaxChars;
+        }
+        return 400;
+    }
+
+    @Bean
+    public boolean cleanBeforeLoad(@Value("${evaluation.clean-before-load:true}") boolean cleanBeforeLoad) {
+        return cleanBeforeLoad;
     }
 
     @Bean
@@ -97,19 +105,46 @@ public class RagConfiguration {
     }
 
     @Bean
-    public DocumentService documentService(RagFeatureConfiguration featureConfig, PgVectorStore vectorStore, ChatClient chatClient) {
-
+    public DocumentService documentService(
+        RagFeatureConfiguration featureConfig, 
+        PgVectorStore vectorStore, 
+        ChatClient chatClient, 
+        JdbcTemplate jdbcTemplate,
+        MetadataMinuteDocumentService metadataMinuteDocumentService,
+        SimpleDocumentService<?> simpleDocumentService
+    ) {
         if (featureConfig.isMetadataEnabled()) {
-            return new MetadataMinuteDocumentService(vectorStore, chatClient);
+            return metadataMinuteDocumentService;
         }
-        
-        return new SimpleDocumentService<Minute>(vectorStore, chatClient);
+        return simpleDocumentService;
     }
 
     @Bean
-    public EvaluationService evaluationService(RagFeatureConfiguration featureConfig, ChatClient chatClient,
-                                               DocumentService documentService, QueryService queryService) {
-        return new DatasetMinuteEvaluationService(featureConfig, chatClient, documentService, queryService);
+    public EvaluationServiceFactory evaluationServiceFactory(
+        ChatClient chatClient, 
+        PgVectorStore vectorStore,
+        JdbcTemplate jdbcTemplate,
+        @Value("${spring.ai.ollama.top-k}") int topK,
+        @Value("${spring.ai.ollama.similarity-threshold}") double similarityThreshold,
+        @Value("${rag.classifier.python.executable:}") String pythonClassifierExecutable,
+        @Value("${rag.classifier.python.script:}") String pythonClassifierScript,
+        @Value("${rag.chunk.max-chars:400}") int chunkMaxChars
+    ) {
+        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
+                pythonClassifierExecutable, pythonClassifierScript, chunkMaxChars);
+    }
+
+    @Bean
+    public EvaluationService evaluationService(RagFeatureConfiguration featureConfig, 
+        ChatClient chatClient,
+        DocumentService documentService, 
+        QueryService queryService,
+        EvaluationServiceFactory evaluationServiceFactory,
+        @Value("${evaluation.clean-before-load:true}") boolean cleanBeforeLoad
+    ) {
+        DatasetMinuteEvaluationService service = new DatasetMinuteEvaluationService(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
+        service.setEvaluationServiceFactory(evaluationServiceFactory);
+        return service;
     }
 
     @Bean
@@ -118,8 +153,12 @@ public class RagConfiguration {
     }
 
     @Bean
-    public QueryClassifier queryClassifier(ChatClient chatClient) {
-        return new EnhancedQueryClassifier(new PythonQueryClassifier(), chatClient);
+    public QueryClassifier queryClassifier(
+        ChatClient chatClient, 
+        @Value("${rag.classifier.python.executable:}") String pythonClassifierExecutable, 
+        @Value("${rag.classifier.python.script:}") String pythonClassifierScript
+    ) {
+        return new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript);
     }
 
     @Bean
@@ -128,7 +167,13 @@ public class RagConfiguration {
     }
 
     @Bean
-    public ContextRetriever retriever(PgVectorStore vectorStore, ChatClient chatClient, RagFeatureConfiguration featureConfig) {
+    public ContextRetriever retriever(
+        PgVectorStore vectorStore, 
+        ChatClient chatClient, 
+        RagFeatureConfiguration featureConfig, 
+        @Value("${spring.ai.ollama.top-k}") int topK, 
+        @Value("${spring.ai.ollama.similarity-threshold}") double similarityThreshold
+    ) {
         //if (featureConfig.isCacheDocumentsEnabled()) {
         //    return new CachedContextRetriever(vectorStore, chatClient, featureConfig, topK, similarityThreshold);
         //}
@@ -183,19 +228,15 @@ public class RagConfiguration {
         return tools;
     }
 
-    /*@Bean
-    public AgenticToolsManager agenticToolsManager(
-            ChatClient chatClient,
-            ContextRetriever retriever
-    ) {
-        AgenticToolsManager manager = new AgenticToolsManager();
-        
-        // Registrar las AgenticTools
-        manager.registerTool(new AgenticCountDocumentsTool(chatClient, retriever));
-        // Aquí puedes agregar más AgenticTools según las necesites
-        
-        return manager;
-    }*/
+    @Bean
+    public QueryDateExtractor queryDateExtractor() {
+        return new QueryDateExtractor();
+    }
+
+    @Bean
+    public DateExistenceGuard dateExistenceGuard(ContextRetriever retriever, QueryDateExtractor queryDateExtractor) {
+        return new DateExistenceGuard(retriever, queryDateExtractor);
+    }
 
     @Bean
     public QueryService queryService(
@@ -205,7 +246,8 @@ public class RagConfiguration {
             QueryAnalyser analyser,
             QueryClassifier classifier,
             ContextRetriever retriever,
-            ChatClient chatClient
+            ChatClient chatClient,
+            DateExistenceGuard dateExistenceGuard
     ) {
         return new ProcessQueryService(
                 featureConfig,
@@ -214,9 +256,9 @@ public class RagConfiguration {
                 analyser,
                 classifier,
                 retriever,
-                chatClient
+                chatClient,
+                dateExistenceGuard
         );
     }
-
 
 }

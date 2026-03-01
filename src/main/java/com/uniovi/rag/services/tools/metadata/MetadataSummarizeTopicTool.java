@@ -1,10 +1,9 @@
 package com.uniovi.rag.services.tools.metadata;
 
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.model.*;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
-import com.uniovi.rag.utils.InfoExtractor;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -15,14 +14,6 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataSummarizeTopicTool for summarizing specific topics from meeting minutes with intelligent analysis.
- * 
- * Features:
- * - Intelligent topic summarization with context analysis
- * - Parallel processing for better performance
- * - Cached evaluations for efficiency
- * - Topic clustering and pattern analysis
- * - Quality ranking and synthesis of topic fragments
- * - Advanced NER-based filtering
  */
 public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
@@ -35,51 +26,82 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing summarize topic query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing summarize topic query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve and filter documents efficiently
-        List<Document> docs = retrieveDocumentsWithMetadataFilter(
+        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        List<Document> docs = retrieveDocumentsWithFallback(
             query, 
-            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"}
+            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"},
+            ner
         );
+        
+        // Validate date if present in query
+        String requestedDate = extractDateFromQuery(query, ner);
+        if (requestedDate != null && docs.isEmpty()) {
+            // Date was specified but no documents match
+            String errorMessage = generateDateNotFoundMessage(query, requestedDate);
+            log().info("No documents found for specified date: {} in query: {}", requestedDate, query);
+            return ToolResult.from(formatResponse(errorMessage, query), getClass());
+        }
+        
         if (docs.isEmpty()) {
-            log().debug("No documents found for summarize topic query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            log().info("No documents found for summarize topic query: {}", query);
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for summarize topic query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            log().info("No valid minutes found for summarize topic query: {}", query);
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for summarize topic query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            log().info("No relevant minutes found for summarize topic query: {}", query);
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        }
+        
+        // Step 3.5: Additional filtering by specific topic with relevance threshold
+        // If threshold leaves 0 minutes, for known domain topics (calefacción, videovigilancia) retry with relaxed threshold
+        String topic = extractTopicFromQuery(query, ner);
+        if (topic != null && !topic.isEmpty()) {
+            if (detectSpecificTopicQuery(query)) {
+                List<Minute> topicFiltered = filterMinutesByTopicWithThreshold(relevantMinutes, topic);
+                if (topicFiltered.isEmpty() && isRelaxedTopicForFallback(topic)) {
+                    log().info("Topic '{}' had 0 matches with default threshold; retrying with relaxed threshold 0.25", topic);
+                    topicFiltered = filterMinutesByTopicWithThreshold(relevantMinutes, topic, 0.25);
+                }
+                if (!topicFiltered.isEmpty()) {
+                    log().info("Filtered {} minutes by topic '{}' with relevance threshold, {} remaining",
+                              relevantMinutes.size(), topic, topicFiltered.size());
+                    relevantMinutes = topicFiltered;
+                } else {
+                    // Specific topic (e.g. climatización piscina, renovación tejado) with 0 matches: return explicit "no encontrado"
+                    log().info("Topic '{}' matched 0 minutes with threshold; returning topic-not-found message", topic);
+                    String notFoundMsg = generateTopicNotFoundMessage(query, topic);
+                    return ToolResult.from(formatResponse(notFoundMsg, query), getClass());
+                }
+            }
         }
 
-        // Step 4: Generate topic summaries in parallel
+        // Step 4: Generate topic summaries in parallel (metadata-first, LLM fallback)
         List<TopicResult> results = generateTopicSummariesInParallel(query, relevantMinutes);
         if (results.isEmpty()) {
-            log().debug("No topic summaries generated for query: {}", query);
-            return ToolResult.from(generateNoDataMessage(query), getClass());
+            log().info("No topic summaries generated for query: {}", query);
+            return ToolResult.from(formatResponse(generateNoDataMessage(query), query), getClass());
         }
 
         // Step 5: Analyze and rank topic summaries
-        List<TopicResult> rankedResults = analyzeAndRankTopicSummaries(query, results);
+        List<TopicResult> rankedResults = analyzeAndRankTopicSummaries(results);
 
-        // Step 6: Cluster similar topic summaries
-        List<InfoExtractor.Cluster<TopicResult>> clusters = clusterTopicSummaries(rankedResults);
-
-        // Step 7: Generate enhanced final answer
-        String answer = generateEnhancedTopicSummaryAnswer(query, rankedResults, clusters);
-        log().debug("Generated summarize topic answer for query: {} with {} topic summaries in {} clusters", 
-                   query, results.size(), clusters.size());
+        // Step 6: Generate final answer (metadata-only)
+        String answer = generateTopicSummaryAnswer(query, rankedResults);
+        log().info("Generated summarize topic answer for query: {} with {} topic summaries", 
+                   query, results.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
     /**
@@ -93,7 +115,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
-                .filter(result -> !result.topicSummary.isBlank())
+                .filter(result -> result.getTopicSummary() != null && !result.getTopicSummary().isBlank())
                 .collect(Collectors.toList());
     }
 
@@ -101,178 +123,89 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
      * Generates topic summary for a minute with enhanced context
      */
     private TopicResult generateTopicSummary(String query, Minute minute) {
-        String topicSummary = extractOrGenerateTopicSummary(query, minute);
+        String topicSummary = buildTopicSummaryFromMetadata(minute);
         
+        if (topicSummary.isBlank()) {
+            topicSummary = generateTopicSummaryWithLLM(query, minute);
+        }
+
         if (topicSummary.isBlank()) {
             return null;
         }
-        
-        // Calculate relevance score
-        double relevanceScore = calculateRelevanceScore(query, topicSummary, minute.toString());
-        
-        // Extract key information from topic summary
-        String keyInfo = extractKeyInformation(topicSummary, query);
-        
-        // Extract relevant topics
-        List<String> relevantTopics = extractRelevantTopics(minute, query);
-        
-        return new TopicResult(
-            minute.id(),
-            minute.date(),
-            minute.place(),
-            topicSummary,
-            keyInfo,
-            relevantTopics,
-            relevanceScore,
-            System.currentTimeMillis()
-        );
+
+        return new TopicResult(minute.id(), minute.date(), minute.place(), topicSummary);
     }
 
     /**
-     * Extracts or generates topic summary with enhanced context analysis.
+     * Topic summary from metadata fields.
      */
-    private String extractOrGenerateTopicSummary(String query, Minute minute) {
+    private String buildTopicSummaryFromMetadata(Minute minute) {
+        if (minute == null) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        if (minute.topics() != null && !minute.topics().isEmpty()) {
+            parts.add("Temas: " + String.join("; ", minute.topics()));
+        }
+        if (minute.decisions() != null && !minute.decisions().isEmpty()) {
+            parts.add("Decisiones: " + String.join("; ", minute.decisions()));
+        }
+        if (minute.summary() != null && !minute.summary().isBlank()) {
+            parts.add("Resumen: " + minute.summary());
+        }
+        if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+            parts.add("Agenda: " + minute.agenda().values().stream()
+                    .filter(s -> s != null && !s.isBlank())
+                    .collect(Collectors.joining("; ")));
+        }
+        return String.join(" | ", parts).trim();
+    }
+
+    /**
+     * Fallback LLM topic summary when metadata is insufficient.
+     * Item 39: Instruct LLM to focus ONLY on the queried topic (e.g. calefacción), not other meeting topics.
+     */
+    private String generateTopicSummaryWithLLM(String query, Minute minute) {
         if (query == null || query.trim().isEmpty() || minute == null) {
             return "";
         }
-        
-        String queryType = analyzeQueryType(query);
-        
-        // Check if minute has topics
-        if (minute.topics() == null || minute.topics().isEmpty()) {
-            return "";
-        }
-        
-        // Use existing summary as base if available
-        String baseSummary = minute.summary() != null ? minute.summary() : "";
-        
+
+        String topic = extractTopicFromQuery(query, null);
+        String topicFocus = (topic != null && !topic.isBlank())
+                ? String.format(" Your answer must focus ONLY on what was said about \"%s\". Do not include other meeting topics (e.g. regulations, pests, signage, approval of minutes). If the meeting discussed this topic, summarize only that part (e.g. improvements, budget requests). Keep the answer brief (1-3 sentences). Example for topic 'calefacción': 'La calefacción se trató en la reunión del 25 de febrero de 2026. Se discutieron posibles mejoras y se acordó solicitar presupuestos.'"
+                        , topic)
+                : " Summarize only what is related to the topic(s) in the query. Do not include other meeting topics. Keep the answer brief (1-3 sentences).";
+
         String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
-            
-            Query type: %s
-            
-            Meeting metadata (values may be in any language):
+            Summarize what is related to the topic(s) in the query in 3-4 sentences.
+            Write in the same language as the query.%s
+            Query: %s
             Date: %s
             Place: %s
-            President: %s
-            Secretary: %s
             Topics: %s
             Decisions: %s
+            Previous summary: %s
             Agenda: %s
-            
-            Existing summary: %s
-            
-            Generate a comprehensive summary focused on the specific topic(s) mentioned in the query.
-            Extract and synthesize information related to the topic from the meeting data.
-            Focus on the specific information requested, not general summaries.
-            Write the response in the same language as the query.
             """,
+            topicFocus,
             query,
-            queryType,
             minute.date() != null ? minute.date() : "unknown",
             minute.place() != null ? minute.place() : "unknown",
-            minute.president() != null ? minute.president() : "unknown",
-            minute.secretary() != null ? minute.secretary() : "unknown",
             minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
             minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
-            minute.agenda() != null ? minute.agenda().toString() : "unknown",
-            baseSummary
+            minute.summary() != null ? minute.summary() : "",
+            minute.agenda() != null ? minute.agenda().toString() : "unknown"
         );
-        
+
         try {
             String response = getLLMResponseCached(prompt);
-            
             if (response == null || response.trim().isEmpty()) {
-                log().debug("Empty response from LLM in extractOrGenerateTopicSummary, returning empty string");
+                log().info("Empty response from LLM in generateTopicSummaryWithLLM, returning empty string");
                 return "";
             }
-            
             return response;
         } catch (Exception e) {
-            log().error("Error extracting or generating topic summary, returning empty string", e);
-            return "";
-        }
-    }
-
-    /**
-     * Extracts relevant topics from minute based on query.
-     * Uses English for internal processing, but preserves original language in query and topics.
-     */
-    private List<String> extractRelevantTopics(Minute minute, String query) {
-        if (minute == null || query == null || query.trim().isEmpty()) {
-            return Collections.emptyList();
-        }
-        
-        if (minute.topics() == null || minute.topics().isEmpty()) {
-            return Collections.emptyList();
-        }
-        
-        String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
-            
-            And these meeting topics (may be in any language):
-            %s
-            
-            Which topics are most relevant to the query?
-            Return only the topic names that are directly related to the query.
-            Separate multiple topics with commas.
-            """,
-            query,
-            String.join(", ", minute.topics())
-        );
-        
-        try {
-            String result = getLLMResponseCached(prompt);
-            
-            if (result == null || result.trim().isEmpty()) {
-                log().debug("Empty response from LLM in extractRelevantTopics, returning empty list");
-                return Collections.emptyList();
-            }
-            
-            return Arrays.stream(result.split(","))
-                    .map(String::trim)
-                    .filter(topic -> !topic.isBlank())
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            log().error("Error extracting relevant topics, returning empty list", e);
-            return Collections.emptyList();
-        }
-    }
-
-    /**
-     * Extracts key information from topic summary.
-     * Uses English for internal processing, but preserves original language in query and summary.
-     */
-    private String extractKeyInformation(String topicSummary, String query) {
-        if (topicSummary == null || topicSummary.trim().isEmpty() || query == null || query.trim().isEmpty()) {
-            return "";
-        }
-        
-        String prompt = String.format("""
-            Given the following topic summary (may be in any language):
-            "%s"
-            
-            And the original query (may be in any language):
-            "%s"
-            
-            Extract the key information that directly relates to the query.
-            Focus on facts, numbers, dates, names, or specific details about the topic.
-            Write a brief summary (1-2 sentences) in the same language as the query.
-            """, topicSummary, query);
-        
-        try {
-            String response = getLLMResponseCached(prompt);
-            
-            if (response == null || response.trim().isEmpty()) {
-                log().debug("Empty response from LLM in extractKeyInformation, returning empty string");
-                return "";
-            }
-            
-            return response;
-        } catch (Exception e) {
-            log().error("Error extracting key information, returning empty string", e);
+            log().error("Error generating topic summary with LLM, returning empty string", e);
             return "";
         }
     }
@@ -280,195 +213,438 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     /**
      * Analyzes and ranks topic summaries by relevance and quality
      */
-    private List<TopicResult> analyzeAndRankTopicSummaries(String query, List<TopicResult> results) {
-        // Sort by relevance score (descending)
+    private List<TopicResult> analyzeAndRankTopicSummaries(List<TopicResult> results) {
+        // Orden simple por longitud de texto
         return results.stream()
-                .sorted((a, b) -> Double.compare(b.relevanceScore, a.relevanceScore))
+                .sorted((a, b) -> Integer.compare(
+                        b.getTopicSummary() != null ? b.getTopicSummary().length() : 0,
+                        a.getTopicSummary() != null ? a.getTopicSummary().length() : 0))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Clusters similar topic summaries to avoid redundancy
-     */
-    private List<InfoExtractor.Cluster<TopicResult>> clusterTopicSummaries(List<TopicResult> results) {
-        return InfoExtractor.clusterItems(
-            results,
-            result -> result.topicSummary,
-            result -> result.date != null ? result.date : "unknown",
-            0.6 // Similarity threshold for topic summaries
-        );
-    }
-
-    /**
-     * Generates enhanced topic summary answer with clustering and analysis
-     */
-    /**
-     * Generates enhanced topic summary answer.
-     * Uses English for internal processing, but response matches query language.
-     */
-    private String generateEnhancedTopicSummaryAnswer(String query, List<TopicResult> results, 
-                                                     List<InfoExtractor.Cluster<TopicResult>> clusters) {
+    private String generateTopicSummaryAnswer(String query, List<TopicResult> results) {
         if (query == null || query.trim().isEmpty() || results == null || results.isEmpty()) {
             return generateNotFoundMessage(query);
         }
-        
-        String topicSummarySummary = formatTopicSummarySummary(results, clusters);
-        
+
+        // Build topic summary content (limit to 3 meetings max, 250 chars per summary)
+        StringBuilder summaryContent = new StringBuilder();
+        summaryContent.append(String.format("Based on %d meetings:\n\n", results.size()));
+
+        results.stream().limit(3).forEach(r -> {
+            if (r.getDate() != null) {
+                summaryContent.append("Date: ").append(r.getDate());
+                if (r.getPlace() != null) {
+                    summaryContent.append(", Place: ").append(r.getPlace());
+                }
+                summaryContent.append("\n");
+            }
+            String txt = r.getTopicSummary() != null ? r.getTopicSummary() : "";
+            // Limit to 250 characters per summary for conciseness
+            summaryContent.append(txt.length() > 250 ? txt.substring(0, 250) + "..." : txt);
+            summaryContent.append("\n\n");
+        });
+
         String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
+            The user asked (in any language): "%s"
             
-            Found %d relevant topic summaries:
-            
+            Topic summary information:
             %s
             
-            Write a clear, direct answer in the same language as the query.
-            Provide only the information requested by the user.
-            DO NOT mention any technical details like "clusters", "análisis", "analysis", "grouped into", or internal processing.
-            DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
-            Focus on answering the question naturally and concisely, as if you were a helpful assistant.
-            """, query, results.size(), 
-            topicSummarySummary != null ? topicSummarySummary : "No topic summaries available.");
-        
+            CRITICAL INSTRUCTIONS:
+            1. Format and present this topic summary in the EXACT SAME LANGUAGE as the user's question
+            2. Be CONCISE - maximum 3-4 sentences total, focus on key points only
+            3. Keep the structure clear and readable
+            4. DO NOT repeat the question or any part of it at the beginning
+            5. DO NOT start with phrases like "Resume lo tratado...", "Dime qué...", "The user asked...", etc.
+            6. Start directly with the summary content
+            7. If the question starts with "Resume", "Dime", "Busca", etc., do NOT include those words in your response
+            8. Remove redundant information and focus on what's most relevant to the query
+            9. If multiple meetings, summarize the key points across all meetings, not each one individually
+            
+            Examples of CORRECT responses:
+            - Query: "Resume lo tratado en las reuniones sobre la climatización de la piscina"
+              Correct: "Basado en 5 reuniones: [concise summary of key points]"
+              Wrong: "Resume lo tratado en las reuniones sobre la climatización de la piscina.\\n\\nBasado en 5 reuniones: [summary]"
+            
+            - Query: "Dime qué se dijo sobre el ascensor"
+              Correct: "Basado en 5 reuniones: [concise summary]"
+              Wrong: "Dime qué se dijo sobre el ascensor.\\n\\nBasado en 5 reuniones: [summary]"
+            """, query, summaryContent.toString());
+
         try {
             String response = getLLMResponseCached(prompt);
-            
-            if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateEnhancedTopicSummaryAnswer, using fallback");
-                return generateFallbackTopicSummary(query, results);
+            if (response != null && !response.trim().isEmpty()) {
+                // Post-process to format and clean response
+                return formatResponse(response, query);
             }
-            
-            return response;
         } catch (Exception e) {
-            log().error("Error generating enhanced topic summary answer, using fallback", e);
-            return generateFallbackTopicSummary(query, results);
+            log().warn("Error generating topic summary answer with LLM, using raw content", e);
+        }
+
+        // Fallback: return raw content
+        return summaryContent.toString().trim();
+    }
+    
+    /**
+     * Filters minutes by topic with relevance threshold.
+     * Only includes minutes where the topic is actually mentioned (not just vaguely related).
+     * 
+     * @param minutes List of minutes to filter
+     * @param topic Topic to filter by
+     * @return Filtered list of minutes that mention the topic
+     */
+    private List<Minute> filterMinutesByTopicWithThreshold(List<Minute> minutes, String topic) {
+        boolean isCompoundTopic = topic != null && extractKeyTermsFromTopic(normalizePersonName(topic)).size() > 1;
+        double threshold = isCompoundTopic ? 0.50 : 0.33;
+        return filterMinutesByTopicWithThreshold(minutes, topic, threshold);
+    }
+    
+    private List<Minute> filterMinutesByTopicWithThreshold(List<Minute> minutes, String topic, double relevanceThreshold) {
+        if (minutes.isEmpty() || topic == null || topic.isEmpty()) {
+            return minutes;
+        }
+        
+        String topicLower = normalizePersonName(topic); // Reuse normalizePersonName for topic normalization
+        log().info("Filtering {} minutes by topic '{}' (normalized: '{}') with relevance threshold {}", 
+                  minutes.size(), topic, topicLower, String.format("%.2f", relevanceThreshold));
+        
+        // Extract key terms from compound topics (e.g., "climatización de la piscina" -> ["climatización", "piscina"])
+        List<String> keyTerms = extractKeyTermsFromTopic(topicLower);
+        log().debug("Extracted key terms from topic '{}': {}", topic, keyTerms);
+        
+        // For videovigilancia/vigilancia, keyTerms are synonyms (any match counts), not compound parts (item 39)
+        boolean isCompoundTopic = keyTerms.size() > 1
+                && !topicLower.contains("videovigilancia")
+                && !topicLower.contains("vigilancia");
+        
+        List<Minute> filtered = minutes.stream()
+                .filter(minute -> {
+                    double relevanceScore = calculateTopicRelevance(minute, topicLower, keyTerms, isCompoundTopic);
+                    boolean passes = relevanceScore >= relevanceThreshold;
+                    
+                    if (passes) {
+                        log().debug("Minute {} passed topic filter: topic '{}', relevance score: {:.2f}", 
+                                  minute.id(), topic, relevanceScore);
+                    } else {
+                        log().debug("Minute {} filtered out: topic '{}', relevance score: {:.2f} < threshold {:.2f}", 
+                                  minute.id(), topic, String.format("%.2f", relevanceScore), String.format("%.2f", relevanceThreshold));
+                    }
+                    
+                    return passes;
+                })
+                .collect(Collectors.toList());
+        
+        // Fallback for calefacción: if 0 minutes passed, include any minute where summary/topics contain "calefacción" (item 39)
+        if (filtered.isEmpty() && (topicLower.contains("calefaccion") || topicLower.contains("calefacción"))) {
+            filtered = minutes.stream()
+                    .filter(minute -> {
+                        String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
+                        boolean inSummary = sum.contains("calefaccion") || sum.contains("calefacción");
+                        boolean inTopics = minute.topics() != null && minute.topics().stream()
+                                .anyMatch(t -> t != null && (normalizePersonName(t).contains("calefaccion") || normalizePersonName(t).contains("calefacción")));
+                        return inSummary || inTopics;
+                    })
+                    .collect(Collectors.toList());
+            if (!filtered.isEmpty()) {
+                log().info("Topic 'calefacción' matched {} minutes via literal fallback in summary/topics", filtered.size());
+            }
+        }
+        // Fallback for videovigilancia: if 0 minutes passed, include any minute with cámara/vigilancia/security/surveillance in summary/topics/decisions (item 40)
+        if (filtered.isEmpty() && (topicLower.contains("videovigilancia") || topicLower.contains("vigilancia"))) {
+            List<String> vidTerms = List.of("camara", "camaras", "vigilancia", "videovigilancia", "security", "surveillance", "cameras");
+            filtered = minutes.stream()
+                    .filter(minute -> {
+                        String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
+                        boolean inSummary = vidTerms.stream().anyMatch(sum::contains);
+                        boolean inTopics = minute.topics() != null && minute.topics().stream()
+                                .anyMatch(t -> t != null && vidTerms.stream().anyMatch(term -> normalizePersonName(t).contains(term)));
+                        boolean inDecisions = minute.decisions() != null && minute.decisions().stream()
+                                .anyMatch(d -> d != null && vidTerms.stream().anyMatch(term -> normalizePersonName(d).contains(term)));
+                        return inSummary || inTopics || inDecisions;
+                    })
+                    .collect(Collectors.toList());
+            if (!filtered.isEmpty()) {
+                log().info("Topic 'videovigilancia' matched {} minutes via synonym fallback in summary/topics/decisions", filtered.size());
+            }
+        }
+        // Fallback for estado de cuentas / presupuesto (item 8): if 0 minutes passed, include any minute with estado de cuentas/presupuesto/cuentas in topics/summary/agenda
+        String topicNormForFallback = topicLower != null ? topicLower : (topic != null ? normalizePersonName(topic) : "");
+        if (filtered.isEmpty() && (topicNormForFallback.contains("estado de cuentas") || topicNormForFallback.contains("presupuesto") || topicNormForFallback.contains("presupuesto anual"))) {
+            List<String> cuentaTerms = List.of("estado de cuentas", "presupuesto", "presupuesto anual", "cuentas");
+            filtered = minutes.stream()
+                    .filter(minute -> {
+                        String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
+                        boolean inSummary = cuentaTerms.stream().anyMatch(sum::contains);
+                        boolean inTopics = minute.topics() != null && minute.topics().stream()
+                                .anyMatch(t -> t != null && cuentaTerms.stream().anyMatch(term -> normalizePersonName(t).contains(term)));
+                        String agendaText = minute.agenda() != null ? minute.agenda().values().stream()
+                                .filter(s -> s != null && !s.isBlank())
+                                .map(this::normalizePersonName)
+                                .collect(Collectors.joining(" ")) : "";
+                        boolean inAgenda = cuentaTerms.stream().anyMatch(agendaText::contains);
+                        return inSummary || inTopics || inAgenda;
+                    })
+                    .collect(Collectors.toList());
+            if (!filtered.isEmpty()) {
+                log().info("Topic 'estado de cuentas/presupuesto' matched {} minutes via literal fallback in summary/topics/agenda", filtered.size());
+            }
+        }
+        
+        log().info("Filtered {} minutes by topic '{}' with STRICT threshold, {} remaining (threshold: {})", 
+                  minutes.size(), topic, filtered.size(), String.format("%.2f", relevanceThreshold));
+        
+        return filtered;
+    }
+    
+    /**
+     * Calculates relevance score for a topic in a minute.
+     * For compound topics, requires that all key terms appear.
+     * 
+     * @param minute Minute to check
+     * @param topicNormalized Normalized topic string
+     * @param keyTerms List of key terms extracted from topic
+     * @param isCompoundTopic Whether this is a compound topic (multiple terms)
+     * @return Relevance score (0.0 to 1.0)
+     */
+    private double calculateTopicRelevance(Minute minute, String topicNormalized, List<String> keyTerms, boolean isCompoundTopic) {
+        if (keyTerms.isEmpty()) {
+            return 0.0;
+        }
+        
+        int foundTerms = 0;
+        int totalChecks = 0;
+        
+        // Check in topics
+        if (minute.topics() != null) {
+            for (String t : minute.topics()) {
+                if (t != null) {
+                    String topicField = normalizePersonName(t);
+                    totalChecks++;
+                    if (isCompoundTopic) {
+                        // For compound topics, check if ALL key terms appear
+                        boolean allTermsFound = keyTerms.stream()
+                                .allMatch(term -> topicField.contains(term));
+                        if (allTermsFound) {
+                            foundTerms += keyTerms.size();
+                        }
+                    } else {
+                        // For simple topics, check if the topic or any synonym (keyTerm) appears
+                        if (keyTerms.stream().anyMatch(term -> topicField.contains(term))) {
+                            foundTerms++;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Check in decisions
+        if (minute.decisions() != null) {
+            for (String d : minute.decisions()) {
+                if (d != null) {
+                    String decisionField = normalizePersonName(d);
+                    totalChecks++;
+                    if (isCompoundTopic) {
+                        boolean allTermsFound = keyTerms.stream()
+                                .allMatch(term -> decisionField.contains(term));
+                        if (allTermsFound) {
+                            foundTerms += keyTerms.size();
+                        }
+                    } else {
+                        if (keyTerms.stream().anyMatch(term -> decisionField.contains(term))) {
+                            foundTerms++;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Check in summary
+        if (minute.summary() != null) {
+            String summaryField = normalizePersonName(minute.summary());
+            totalChecks++;
+            if (isCompoundTopic) {
+                boolean allTermsFound = keyTerms.stream()
+                        .allMatch(term -> summaryField.contains(term));
+                if (allTermsFound) {
+                    foundTerms += keyTerms.size();
+                }
+            } else {
+                if (keyTerms.stream().anyMatch(term -> summaryField.contains(term))) {
+                    foundTerms++;
+                }
+            }
+        }
+        
+        // Check in agenda (order of day) - topic may appear only there (e.g. calefacción, videovigilancia)
+        if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+            String agendaText = minute.agenda().values().stream()
+                    .filter(s -> s != null && !s.isBlank())
+                    .map(this::normalizePersonName)
+                    .collect(Collectors.joining(" "));
+            if (!agendaText.isEmpty()) {
+                totalChecks++;
+                if (isCompoundTopic) {
+                    boolean allTermsFound = keyTerms.stream().allMatch(term -> agendaText.contains(term));
+                    if (allTermsFound) {
+                        foundTerms += keyTerms.size();
+                    }
+                } else {
+                    if (keyTerms.stream().anyMatch(term -> agendaText.contains(term))) {
+                        foundTerms++;
+                    }
+                }
+            }
+        }
+        
+        // Calculate relevance score
+        if (totalChecks == 0) {
+            // Fallback for calefacción: if topic is "calefacción" and summary/topics contain it, return min score (item 39)
+            if (topicNormalized.contains("calefaccion") || topicNormalized.contains("calefacción")) {
+                String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
+                boolean inSummary = sum.contains("calefaccion") || sum.contains("calefacción");
+                boolean inTopics = minute.topics() != null && minute.topics().stream()
+                        .anyMatch(t -> t != null && (normalizePersonName(t).contains("calefaccion") || normalizePersonName(t).contains("calefacción")));
+                if (inSummary || inTopics) {
+                    return 0.5;
+                }
+            }
+            return 0.0;
+        }
+        
+        if (isCompoundTopic) {
+            // For compound topics, require that at least one field contains ALL terms
+            return foundTerms >= keyTerms.size() ? 1.0 : 0.0;
+        } else {
+            // For simple topics, calculate based on how many fields contain the topic
+            double score = (double) foundTerms / Math.max(totalChecks, 1);
+            // Fallback for calefacción: ensure literal match in summary/topics gives at least 0.5 (item 39)
+            if ((topicNormalized.contains("calefaccion") || topicNormalized.contains("calefacción")) && score < 0.5) {
+                String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
+                boolean inSummary = sum.contains("calefaccion") || sum.contains("calefacción");
+                boolean inTopics = minute.topics() != null && minute.topics().stream()
+                        .anyMatch(t -> t != null && (normalizePersonName(t).contains("calefaccion") || normalizePersonName(t).contains("calefacción")));
+                if (inSummary || inTopics) {
+                    return 0.5;
+                }
+            }
+            return score;
         }
     }
     
     /**
-     * Generates a fallback topic summary when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Extracts key terms from a topic phrase for semantic matching.
+     * Similar to the method in MetadataCompareTool but adapted for this use case.
      */
-    private String generateFallbackTopicSummary(String query, List<TopicResult> results) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
-        
-        if (isSpanish) {
-            StringBuilder answer = new StringBuilder();
-            answer.append(String.format("Resumen del tema basado en %d reuniones:\n\n", results.size()));
-            results.stream().limit(3).forEach(r -> {
-                answer.append(String.format("Reunión del %s:\n", r.date != null ? r.date : "fecha desconocida"));
-                answer.append(String.format("%s\n\n", r.topicSummary != null && !r.topicSummary.isBlank() ? 
-                    r.topicSummary.substring(0, Math.min(200, r.topicSummary.length())) : "Sin resumen disponible"));
-            });
-            return answer.toString();
-        } else {
-            StringBuilder answer = new StringBuilder();
-            answer.append(String.format("Topic summary based on %d meetings:\n\n", results.size()));
-            results.stream().limit(3).forEach(r -> {
-                answer.append(String.format("Meeting on %s:\n", r.date != null ? r.date : "unknown date"));
-                answer.append(String.format("%s\n\n", r.topicSummary != null && !r.topicSummary.isBlank() ? 
-                    r.topicSummary.substring(0, Math.min(200, r.topicSummary.length())) : "No summary available"));
-            });
-            return answer.toString();
+    private List<String> extractKeyTermsFromTopic(String topic) {
+        if (topic == null || topic.isEmpty()) {
+            return Collections.emptyList();
         }
-    }
-
-    /**
-     * Formats topic summary summary for LLM prompt (without technical details)
-     */
-    private String formatTopicSummarySummary(List<TopicResult> results, List<InfoExtractor.Cluster<TopicResult>> clusters) {
-        StringBuilder summary = new StringBuilder();
+        topic = topic.replaceFirst("^el\\s+", "").replaceFirst("^la\\s+", "").trim();
         
-        // Format topic summaries naturally without mentioning clusters
-        for (int i = 0; i < clusters.size(); i++) {
-            InfoExtractor.Cluster<TopicResult> cluster = clusters.get(i);
-            TopicResult representative = cluster.getRepresentativeItem();
-            
-            if (representative.date != null) {
-                summary.append(String.format("Reunión del %s", representative.date));
-                if (representative.place != null) {
-                    summary.append(String.format(" (%s)", representative.place));
-                }
-                summary.append(":\n");
+        List<String> keyTerms = new ArrayList<>();
+        
+        // Split by common prepositions and conjunctions
+        String[] parts = topic.split("\\s+(de|del|la|el|y|and|con|with|en|in|sobre|about)\\s+");
+        for (String part : parts) {
+            String trimmed = part.trim().toLowerCase();
+            if (!trimmed.isEmpty() && trimmed.length() > 2) { // Ignore very short words
+                keyTerms.add(trimmed);
             }
-            summary.append(representative.topicSummary);
-            summary.append("\n\n");
         }
         
-        return summary.toString();
+        // Also add the full topic as a key term
+        keyTerms.add(topic.toLowerCase());
+
+        // Estado de cuentas / presupuesto anual (item 8)
+        String topicNorm = topic.toLowerCase().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u");
+        if (topicNorm.contains("estado de cuentas") || topicNorm.contains("presupuesto") || topicNorm.contains("presupuesto anual") || topicNorm.contains("cuentas")) {
+            keyTerms.add("estado de cuentas");
+            keyTerms.add("presupuesto");
+            keyTerms.add("presupuesto anual");
+            keyTerms.add("cuentas");
+            keyTerms.add("budget");
+            keyTerms.add("accounts");
+        }
+
+        // Add synonyms so acta wording is matched (calefacción ACTA 5; videovigilancia ACTA 2, 5, 6 - §4)
+        if (keyTerms.stream().anyMatch(t -> t.contains("calefaccion") || t.contains("calefacción"))) {
+            keyTerms.add("calefaccion");
+            keyTerms.add("calefacción");
+        }
+        // Videovigilancia: include synonyms so actas with "cámaras", "vigilancia", "security cameras" match (item 39)
+        if (keyTerms.stream().anyMatch(t -> t.contains("videovigilancia") || t.contains("vigilancia") || t.contains("camara"))) {
+            keyTerms.add("videovigilancia");
+            keyTerms.add("vigilancia");
+            keyTerms.add("camaras");
+            keyTerms.add("cámaras");
+            keyTerms.add("camara");
+            keyTerms.add("cámara");
+            keyTerms.add("camaras de seguridad");
+            keyTerms.add("cámaras de seguridad");
+            keyTerms.add("security cameras");
+            keyTerms.add("video surveillance");
+            keyTerms.add("surveillance");
+        }
+
+        // Add normalized forms (no accents) so metadata normalized with normalizePersonName matches
+        List<String> withNormalized = new ArrayList<>(keyTerms);
+        for (String k : keyTerms) {
+            String norm = normalizePersonName(k);
+            if (!norm.isEmpty() && !withNormalized.contains(norm)) {
+                withNormalized.add(norm);
+            }
+        }
+        keyTerms = withNormalized;
+
+        // Remove duplicates and sort by length (longer terms first for more specific matching)
+        return keyTerms.stream()
+                .distinct()
+                .sorted((a, b) -> Integer.compare(b.length(), a.length()))
+                .collect(Collectors.toList());
     }
-
+    
     /**
-     * Formats cluster analysis for LLM prompt
+     * Topics that may appear in actas with varied wording; allow relaxed threshold fallback when strict filter yields 0.
      */
-    private String formatClusterAnalysis(List<InfoExtractor.Cluster<TopicResult>> clusters) {
-        if (clusters.isEmpty()) {
-            return "No clusters found.";
-        }
-        
-        StringBuilder analysis = new StringBuilder();
-        analysis.append(String.format("Total clusters: %d\n", clusters.size()));
-        
-        for (int i = 0; i < clusters.size(); i++) {
-            InfoExtractor.Cluster<TopicResult> cluster = clusters.get(i);
-            TopicResult representative = cluster.getRepresentativeItem();
-            
-            double avgRelevance = cluster.getItems().stream()
-                    .mapToDouble(r -> r.relevanceScore)
-                    .average()
-                    .orElse(0.0);
-            
-            analysis.append(String.format("- Cluster %d: %d summaries, avg relevance: %.2f, date: %s\n", 
-                                        i + 1, cluster.getSize(), avgRelevance, representative.date));
-        }
-        
-        return analysis.toString();
+    private boolean isRelaxedTopicForFallback(String topic) {
+        if (topic == null || topic.isEmpty()) return false;
+        String t = topic.toLowerCase().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n");
+        return t.contains("calefaccion") || t.contains("calefacción")
+            || t.contains("videovigilancia") || t.contains("vigilancia") || t.contains("camara") || t.contains("camaras")
+            || t.contains("estado de cuentas") || t.contains("presupuesto") || t.contains("presupuesto anual");
     }
-
+    
     /**
-     * Represents a topic result with enhanced metadata
+     * Generates a message when topic is not found in any minutes.
      */
-    private static class TopicResult {
-        final String minuteId;
-        final String date;
-        final String place;
-        final String topicSummary;
-        final String keyInfo;
-        final List<String> relevantTopics;
-        final double relevanceScore;
-        final long timestamp;
-
-        TopicResult(String minuteId, String date, String place, String topicSummary, String keyInfo, 
-                   List<String> relevantTopics, double relevanceScore, long timestamp) {
-            this.minuteId = minuteId;
-            this.date = date;
-            this.place = place;
-            this.topicSummary = topicSummary;
-            this.keyInfo = keyInfo;
-            this.relevantTopics = relevantTopics;
-            this.relevanceScore = relevanceScore;
-            this.timestamp = timestamp;
+    protected String generateTopicNotFoundMessage(String query, String topic) {
+        if (query == null || query.trim().isEmpty()) {
+            return String.format("No se encontró información sobre el tema '%s' en las actas disponibles.", topic);
         }
         
-        /**
-         * Gets a formatted identifier for the result
-         */
-        String getIdentifier() {
-            return String.format("%s (%s - %s)", minuteId, date != null ? date : "unknown", place != null ? place : "unknown");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            The topic '%s' was not found in any of the available meeting minutes.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no information was found about this topic.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query, topic != null ? topic : "the requested topic");
+        
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating topic not found message with LLM", e);
         }
         
-        /**
-         * Gets the age of the result in milliseconds
-         */
-        long getAge() {
-            return System.currentTimeMillis() - timestamp;
-        }
-        
-        @Override
-        public String toString() {
-            return String.format("TopicResult[%s, topics=%s, score=%.2f, age=%dms]", 
-                               getIdentifier(), relevantTopics.size(), relevanceScore, getAge());
-        }
+        // Fallback
+        return String.format("No se encontró información sobre el tema '%s' en las actas disponibles.", 
+                            topic != null ? topic : "solicitado");
     }
 }

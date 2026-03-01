@@ -4,13 +4,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.model.Minute;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+
+import org.springframework.cache.annotation.Cacheable;
 
 @Service
 public class MetadataMinuteDocumentService extends AbstractMetadataDocumentService<Minute> {
@@ -70,8 +77,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         """;
 
 
-    public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient) {
-        super(vectorStore, chatClient);
+    public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate,int chunkMaxChars) {
+        super(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
     }
 
     @Override
@@ -84,7 +91,6 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (content.trim().length() < 20) {
             log().warn("Content very short for file: {} (length: {}). Processing anyway but extraction may be incomplete.", 
                       filename, content.length());
-            // No lanzar excepción - continuar con advertencia ya que algunos documentos pueden ser muy cortos
         }
         
         String date = extractDate(content);
@@ -92,11 +98,18 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         String startTime = extractStartTime(content);
         String endTime = extractEndTime(content);
         String president = extractSingle(content, "(?i)•\\s*(.+?)\\s*\\(Presidente\\)");
-        String secretary = extractSingle(content, "(?i)•\\s*(.+?)\\s*\\(Secretari[ao]\\)");
+        // Extract secretary name only, stopping at the next bullet or newline
+        String secretary = extractSingle(content, "(?i)•\\s*([^•\\n]+?)\\s*\\(Secretari[ao]\\)");
         List<String> attendees = extractAttendees(content);
         Map<String, String> agenda = extractAgendaMap(content);
+        
+        // Log agenda extraction result
+        if (agenda == null || agenda.isEmpty()) {
+            log().warn("Agenda is empty for document: {}. Will try fallback from topics.", filename);
+        } else {
+            log().info("Extracted agenda with {} items for document: {}", agenda.size(), filename);
+        }
 
-        // All 4 LLM calls can run in parallel, reducing total extraction time by ~75%
         CompletableFuture<List<String>> decisionsFuture = 
             CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_DECISIONS))
                 .exceptionally(e -> {
@@ -127,14 +140,39 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         List<String> mentionedEntities = entitiesFuture.join();
         List<String> topics = topicsFuture.join();
         String summary = summaryFuture.join();
+
+        // Enrich topics with agenda keys (keeps original topics + agenda keys deduplicated)
+        if (agenda != null && !agenda.isEmpty()) {
+            List<String> agendaKeys = agenda.keySet().stream()
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+            Set<String> merged = new LinkedHashSet<>();
+            merged.addAll(topics != null ? topics : List.of());
+            merged.addAll(agendaKeys);
+            topics = new ArrayList<>(merged);
+        } else if ((agenda == null || agenda.isEmpty()) && topics != null && !topics.isEmpty()) {
+            // Fallback: If agenda is empty but topics exist, create agenda from topics
+            log().info("Agenda is empty for document: {}. Creating agenda from {} topics as fallback.", 
+                      filename, topics != null ? topics.size() : 0);
+            agenda = createAgendaFromTopics(topics);
+            if (agenda != null) {
+                log().info("Created agenda with {} items from topics for document: {}", agenda.size(), filename);
+            }
+        }
         
-        if (date == null && place == null && attendees.isEmpty() && decisions.isEmpty() && topics.isEmpty()) {
+        if (date == null && place == null && attendees.isEmpty() && decisions.isEmpty() && (topics == null || topics.isEmpty())) {
             log().warn("Failed to extract critical fields from document: {} (date: {}, place: {}, attendees: {}, decisions: {}, topics: {})", 
-                      filename, date != null, place != null, attendees.size(), decisions.size(), topics.size());
-            // Continuar pero con advertencia - algunos documentos pueden tener formato no estándar
+                      filename, date != null, place != null, attendees.size(), decisions.size(), topics != null ? topics.size() : 0);
         }
 
-        return new Minute(
+        // Log the extracted fields
+        log().info("Extracted fields for file: {} - Date: {}, Place: {}, Start Time: {}, End Time: {}, President: {}, Secretary: {}, Attendees: {}, Decisions: {}, Mentioned Entities: {}, Topics: {}, Summary: {}",
+                      filename, date, place, startTime, endTime, president, secretary, attendees.size(), decisions.size(), 
+                      mentionedEntities != null ? mentionedEntities.size() : 0, topics != null ? topics.size() : 0, summary);
+
+        return sanitizeMinute(new Minute(
                 UUID.randomUUID().toString(),
                 filename,
                 date,
@@ -150,7 +188,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 mentionedEntities,
                 topics,
                 summary
-        );
+        ));
     }
 
 
@@ -158,10 +196,10 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
      * Extracts information using LLM with error handling and fallback to regex.
      * Returns empty list if both LLM and regex extraction fail.
      * 
-     * MEJORA 4: Cached extraction to avoid re-extracting same content.
+     * Cached extraction to avoid re-extracting same content.
      * Cache key is based on content hash and prompt hash.
      */
-    @org.springframework.cache.annotation.Cacheable(
+    @Cacheable(
         value = "metadataExtraction", 
         key = "#content.hashCode() + '_' + #prompt.hashCode()"
     )
@@ -176,11 +214,14 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return new ArrayList<>();
         }
         
+        // Truncate content to prevent context length errors (max 8000 chars to leave room for prompt)
+        String truncatedContent = truncateForPrompt(content, 8000);
+        
         try {
             String rawResponse = chatClient
                     .prompt()
                     .system(SYSTEM_PROMPT_LINE_DATA)
-                    .user(prompt + "\nTexto del acta:\n" + content)
+                    .user(prompt + "\nTexto del acta:\n" + truncatedContent)
                     .call()
                     .content();
 
@@ -200,17 +241,40 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 }
             }
             
-            log().debug("Extracted {} items using LLM prompt", extracted.size());
+            log().info("Extracted {} items using LLM prompt", extracted.size());
             return extracted;
         } catch (Exception e) {
-            log().error("Error extracting information with LLM prompt, trying regex fallback", e);
+            // Check if error is related to context length
+            String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+            if (errorMsg.contains("context length") || errorMsg.contains("input length exceeds") || 
+                errorMsg.contains("token") && errorMsg.contains("limit")) {
+                log().error("Context length error in extractWithPrompt, trying with more aggressive truncation", e);
+                // Try with even more aggressive truncation
+                String moreTruncated = truncateForPrompt(content, 4000);
+                try {
+                    String rawResponse = chatClient
+                            .prompt()
+                            .system(SYSTEM_PROMPT_LINE_DATA)
+                            .user(prompt + "\nTexto del acta:\n" + moreTruncated)
+                            .call()
+                            .content();
+                    if (rawResponse != null && !rawResponse.trim().isEmpty()) {
+                        List<String> extracted = cleanLLMResponse(rawResponse);
+                        log().info("Extracted {} items using LLM prompt with aggressive truncation", extracted.size());
+                        return extracted;
+                    }
+                } catch (Exception e2) {
+                    log().error("Error even with aggressive truncation, trying regex fallback", e2);
+                }
+            } else {
+                log().error("Error extracting information with LLM prompt, trying regex fallback", e);
+            }
             return extractWithRegexFallback(content, prompt);
         }
     }
     
     /**
-     * Limpia la respuesta del LLM removiendo headers, explicaciones y formato incorrecto.
-     * MEJORA: Mejora la calidad de extracción al limpiar respuestas del LLM.
+     * Cleans the LLM response by removing headers, explanations, and incorrect formatting.
      */
     private List<String> cleanLLMResponse(String rawResponse) {
         if (rawResponse == null || rawResponse.trim().isEmpty()) {
@@ -220,13 +284,13 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         return Arrays.stream(rawResponse.split("\n"))
                 .map(String::trim)
                 .filter(line -> !line.isEmpty())
-                // Remover líneas que parezcan headers o explicaciones
+                // Remove lines that might be headers or explanations
                 .filter(line -> !line.matches("(?i)^(?:aquí|here|below|estos|these|lista|list|a continuación|following).*"))
-                // Remover separadores (líneas con solo guiones, iguales, asteriscos)
+                // Remove separators (lines with only dashes, equals, asterisks)
                 .filter(line -> !line.matches("^[-=*_]{3,}"))
-                // Filtrar líneas muy cortas (probablemente no son contenido útil)
+                // Filter very short lines (probably not useful content)
                 .filter(line -> line.length() > 3)
-                // Remover numeración al inicio (1., 2., etc.) si existe
+                // Remove numbering at the beginning (1., 2., etc.) if it exists
                 .map(line -> line.replaceAll("^\\d+[.)]\\s*", "").trim())
                 .filter(line -> !line.isEmpty())
                 .toList();
@@ -251,7 +315,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (!extracted.isEmpty()) {
             log().info("Regex fallback extracted {} items", extracted.size());
         } else {
-            log().warn("Regex fallback also failed to extract items");
+            log().info("Regex fallback also failed to extract items");
         }
         
         return extracted;
@@ -344,10 +408,9 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
      * Extracts summary using LLM with error handling and fallback.
      * Returns a default summary if extraction fails.
      * 
-     * MEJORA 4: Cached extraction to avoid re-extracting same content.
      * Cache key is based on content hash.
      */
-    @org.springframework.cache.annotation.Cacheable(
+    @Cacheable(
         value = "summaryExtraction", 
         key = "#content.hashCode() + '_' + #prompt.hashCode()"
     )
@@ -362,11 +425,14 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return generateFallbackSummary(content);
         }
         
+        // Truncate content to prevent context length errors (max 8000 chars to leave room for prompt)
+        String truncatedContent = truncateForPrompt(content, 8000);
+        
         try {
             String summary = chatClient
                     .prompt()
                     .system(SYSTEM_PROMPT_SUMMARY)
-                    .user(prompt + "\nTexto del acta:\n" + content)
+                    .user(prompt + "\nTexto del acta:\n" + truncatedContent)
                     .call()
                     .content();
             
@@ -376,10 +442,34 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
             
             String trimmed = summary.trim();
-            log().debug("Extracted summary with {} characters", trimmed.length());
+            log().info("Extracted summary with {} characters", trimmed.length());
             return trimmed;
         } catch (Exception e) {
-            log().error("Error extracting summary with LLM, using fallback", e);
+            // Check if error is related to context length
+            String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+            if (errorMsg.contains("context length") || errorMsg.contains("input length exceeds") || 
+                errorMsg.contains("token") && errorMsg.contains("limit")) {
+                log().error("Context length error in extractSummaryWithPrompt, trying with more aggressive truncation", e);
+                // Try with even more aggressive truncation
+                String moreTruncated = truncateForPrompt(content, 4000);
+                try {
+                    String summary = chatClient
+                            .prompt()
+                            .system(SYSTEM_PROMPT_SUMMARY)
+                            .user(prompt + "\nTexto del acta:\n" + moreTruncated)
+                            .call()
+                            .content();
+                    if (summary != null && !summary.trim().isEmpty()) {
+                        String trimmed = summary.trim();
+                        log().info("Extracted summary with {} characters using aggressive truncation", trimmed.length());
+                        return trimmed;
+                    }
+                } catch (Exception e2) {
+                    log().error("Error even with aggressive truncation, using fallback", e2);
+                }
+            } else {
+                log().error("Error extracting summary with LLM, using fallback", e);
+            }
             return generateFallbackSummary(content);
         }
     }
@@ -420,99 +510,495 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // This allows grouping chunks by document and avoiding duplicate processing
         metadata.put("document_id", minute.id());
         
-        // Store individual fields for direct access
-        metadata.put("id", minute.id());
-        metadata.put("filename", minute.filename());
-        metadata.put("date", minute.date());
-        metadata.put("place", minute.place());
-        metadata.put("startTime", minute.startTime());
-        metadata.put("endTime", minute.endTime());
-        metadata.put("president", minute.president());
-        metadata.put("secretary", minute.secretary());
-        metadata.put("attendees", minute.attendees());
+        // Store individual fields for direct access with type validation and normalization
+        metadata.put("id", normalizeString(minute.id()));
+        metadata.put("filename", normalizeString(minute.filename()));
+        metadata.put("date", normalizeString(minute.date()));
+        metadata.put("place", normalizeString(minute.place()));
+        metadata.put("startTime", normalizeString(minute.startTime()));
+        metadata.put("endTime", normalizeString(minute.endTime()));
+        metadata.put("president", normalizeString(minute.president()));
+        metadata.put("secretary", normalizeString(minute.secretary()));
+        metadata.put("attendees", normalizeStringList(minute.attendees()));
         metadata.put("numberOfAttendees", minute.numberOfAttendees());
-        metadata.put("topics", minute.topics());
-        metadata.put("decisions", minute.decisions());
-        metadata.put("mentionedEntities", minute.mentionedEntities());
-        metadata.put("summary", minute.summary());
-        metadata.put("agenda", minute.agenda()); // Store agenda map for consistency with NER
+        metadata.put("topics", normalizeStringList(minute.topics()));
+        metadata.put("decisions", normalizeStringList(minute.decisions()));
+        metadata.put("mentionedEntities", normalizeStringList(minute.mentionedEntities()));
+        metadata.put("summary", normalizeString(minute.summary()));
+        Map<String, String> normalizedAgenda = normalizeStringMap(minute.agenda());
+        metadata.put("agenda", normalizedAgenda); // Store agenda map for consistency with NER
+        // agenda_raw: optional flattened agenda for quick text access
+        if (!normalizedAgenda.isEmpty()) {
+            String agendaRaw = normalizedAgenda.entrySet().stream()
+                    .map(e -> e.getKey() + ": " + e.getValue())
+                    .collect(Collectors.joining("\n"));
+            metadata.put("agenda_raw", agendaRaw);
+        }
+
+        // Derived and reinforced fields
+        addDerivedFields(metadata);
+        
+        // Validate that date_iso was generated successfully
+        if (metadata.containsKey("date") && !metadata.containsKey("date_iso")) {
+            String dateValue = metadata.get("date") != null ? metadata.get("date").toString() : "null";
+            log().warn("date_iso was not generated for document with date: {}. This may cause date filtering issues.", dateValue);
+        } else if (metadata.containsKey("date_iso")) {
+            log().debug("date_iso successfully generated: {}", metadata.get("date_iso"));
+        }
+        
+        warnIfMissingOptionalContent(metadata);
+        validateSignalPresence(metadata, minute.filename());
         
         try {
             String minuteJson = objectMapper.writeValueAsString(minute);
             metadata.put("minute", minuteJson);
-            log().debug("Minute object stored in metadata as JSON for document: {}", minute.id());
+            log().info("Minute object stored in metadata as JSON for document: {}", minute.id());
         } catch (Exception e) {
-            log().warn("Failed to serialize Minute object to JSON for document: {}", minute.id(), e);
-            // Continue without the complete object - tools can reconstruct from individual fields
+            log().warn("Failed to serialize Minute object to JSON for document: {}. Error: {}", 
+                      minute.id(), e.getMessage());
         }
         
         log().info("Metadata extracted for document: {} with {} fields (document_id: {})", 
                   minute.id(), metadata.size(), minute.id());
         return metadata;
     }
+    
+    /**
+     * Normalizes a string value for storage in metadata.
+     */
+    private String normalizeString(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+    
+    /**
+     * Normalizes a list of strings for storage in metadata.
+     */
+    private List<String> normalizeStringList(List<String> value) {
+        if (value == null) {
+            return new ArrayList<>();
+        }
+        return value.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+    }
+    
+    /**
+     * Normalizes a map of strings for storage in metadata.
+     */
+    private Map<String, String> normalizeStringMap(Map<String, String> value) {
+        if (value == null) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, String> normalized = new LinkedHashMap<>();
+        value.forEach((k, v) -> {
+            if (k != null && !k.trim().isEmpty() && v != null && !v.trim().isEmpty()) {
+                normalized.put(k.trim(), v.trim());
+            }
+        });
+        return normalized;
+    }
 
     /**
-     * MEJORA: Extracción de fecha con múltiples formatos soportados.
-     * Acepta: "día de mes de año", "día/mes/año", "día-mes-año", "año-mes-día"
+     * Cleans and normalizes the Minute object before storing metadata.
+     */
+    private Minute sanitizeMinute(Minute minute) {
+        if (minute == null) {
+            return null;
+        }
+
+        String date = trimOrNull(minute.date());
+        String place = trimOrNull(minute.place());
+        String startTime = trimOrNull(minute.startTime());
+        String endTime = trimOrNull(minute.endTime());
+        String president = trimOrNull(minute.president());
+        String secretary = trimOrNull(minute.secretary());
+        String summary = trimOrNull(minute.summary());
+        String filename = trimOrNull(minute.filename());
+
+        List<String> attendees = cleanStringList(minute.attendees());
+        List<String> decisions = cleanStringList(minute.decisions());
+        List<String> mentionedEntities = cleanStringList(minute.mentionedEntities());
+        List<String> topics = cleanStringList(minute.topics());
+        Map<String, String> agenda = cleanStringMap(minute.agenda());
+
+        int attendeesCount = minute.numberOfAttendees() > 0 ? minute.numberOfAttendees() : attendees.size();
+
+        return new Minute(
+                minute.id(),
+                filename,
+                date,
+                place,
+                startTime,
+                endTime,
+                president,
+                secretary,
+                attendees,
+                attendeesCount,
+                agenda,
+                decisions,
+                mentionedEntities,
+                topics,
+                summary
+        );
+    }
+
+    /**
+     * Adds derived fields to metadata (date_iso, year, month, durationMinutes, attendeesCount)
+     * and normalizes counts.
+     */
+    private void addDerivedFields(Map<String, Object> metadata) {
+        // date_iso, year, month - always set when date exists (fallback to year-only if full parse fails)
+        Object dateObj = metadata.get("date");
+        if (dateObj instanceof String) {
+            String dateStr = (String) dateObj;
+            LocalDate parsed = parseDateToLocalDate(dateStr);
+            if (parsed == null) {
+                parsed = parseDateYearFallback(dateStr);
+                if (parsed != null) {
+                    log().warn("Could not fully parse date '{}'; set date_iso from year only: {}. Consider normalizing date format.", dateStr, parsed.format(DateTimeFormatter.ISO_LOCAL_DATE));
+                } else {
+                    log().warn("Could not parse date '{}' to generate date_iso field. Date will not be searchable by ISO format.", dateStr);
+                }
+            }
+            if (parsed != null) {
+                metadata.put("date_iso", parsed.format(DateTimeFormatter.ISO_LOCAL_DATE));
+                metadata.put("year", parsed.getYear());
+                metadata.put("month", parsed.getMonthValue());
+            }
+        }
+
+        // attendeesCount
+        int attendeesCount = 0;
+        Object numberOfAttendees = metadata.get("numberOfAttendees");
+        if (numberOfAttendees instanceof Number) {
+            attendeesCount = ((Number) numberOfAttendees).intValue();
+        }
+        Object attendeesObj = metadata.get("attendees");
+        if (attendeesObj instanceof List<?> list && !list.isEmpty()) {
+            attendeesCount = Math.max(attendeesCount, list.size());
+        }
+        metadata.put("attendeesCount", attendeesCount);
+
+        // durationMinutes
+        String start = metadata.get("startTime") instanceof String ? (String) metadata.get("startTime") : null;
+        String end = metadata.get("endTime") instanceof String ? (String) metadata.get("endTime") : null;
+        Integer duration = calculateDurationMinutes(start, end);
+        if (duration != null) {
+            metadata.put("durationMinutes", duration);
+        }
+    }
+
+    private void warnIfMissingOptionalContent(Map<String, Object> metadata) {
+        List<?> agenda = metadata.get("agenda") instanceof Map ? new ArrayList<>(((Map<?, ?>) metadata.get("agenda")).keySet()) : List.of();
+        List<?> decisions = metadata.get("decisions") instanceof List ? (List<?>) metadata.get("decisions") : List.of();
+        List<?> topics = metadata.get("topics") instanceof List ? (List<?>) metadata.get("topics") : List.of();
+
+        if (agenda.isEmpty()) {
+            log().warn("Agenda is empty for document: {}", metadata.get("filename"));
+        }
+        if (decisions.isEmpty()) {
+            log().warn("Decisions are empty for document: {}", metadata.get("filename"));
+        }
+        if (topics.isEmpty()) {
+            log().warn("Topics are empty for document: {}", metadata.get("filename"));
+        }
+    }
+
+    /**
+     * Validates that the document has at least one key signal to avoid empty shells.
+     */
+    private void validateSignalPresence(Map<String, Object> metadata, String filename) {
+        boolean hasDate = isNotBlank(metadata.get("date"));
+        boolean hasPlace = isNotBlank(metadata.get("place"));
+        boolean hasSummary = isNotBlank(metadata.get("summary"));
+        boolean hasTopics = metadata.get("topics") instanceof List<?> l && !l.isEmpty();
+        boolean hasDecisions = metadata.get("decisions") instanceof List<?> l2 && !l2.isEmpty();
+
+        if (!hasDate && !hasPlace && !hasSummary && !hasTopics && !hasDecisions) {
+            throw new IllegalArgumentException("Document " + filename + " has no meaningful signal (date/place/summary/topics/decisions)");
+        }
+    }
+
+    private boolean isNotBlank(Object value) {
+        if (value == null) return false;
+        if (value instanceof String s) return !s.trim().isEmpty();
+        return true;
+    }
+
+    private Integer calculateDurationMinutes(String start, String end) {
+        if (start == null || end == null || start.trim().isEmpty() || end.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Normalize time strings (remove extra spaces, ensure HH:mm format)
+        String startNormalized = normalizeTimeFormat(start.trim());
+        String endNormalized = normalizeTimeFormat(end.trim());
+        
+        if (startNormalized == null || endNormalized == null) {
+            log().warn("Could not normalize time format: start='{}', end='{}'", start, end);
+            return null;
+        }
+        
+        try {
+            // Try HH:mm format first
+            LocalTime s = LocalTime.parse(startNormalized, DateTimeFormatter.ofPattern("HH:mm"));
+            LocalTime e = LocalTime.parse(endNormalized, DateTimeFormatter.ofPattern("HH:mm"));
+            
+            // Validate: end time should be after start time
+            if (e.isBefore(s) || e.equals(s)) {
+                log().warn("Invalid duration: endTime ({}) is not after startTime ({})", endNormalized, startNormalized);
+                // Check if end time is on next day (e.g., meeting ends at 01:00 next day)
+                if (e.isBefore(s)) {
+                    // Assume next day: add 24 hours
+                    int diff = (24 * 60) - (s.getHour() * 60 + s.getMinute()) + (e.getHour() * 60 + e.getMinute());
+                    log().debug("Calculated duration assuming next day: {} minutes", diff);
+                    return diff > 0 && diff <= 24 * 60 ? diff : null;
+                }
+                return null;
+            }
+            
+            int diff = (e.getHour() * 60 + e.getMinute()) - (s.getHour() * 60 + s.getMinute());
+            
+            // Validate: duration should be reasonable (between 1 minute and 24 hours)
+            if (diff < 1) {
+                log().warn("Invalid duration: {} minutes (too short)", diff);
+                return null;
+            }
+            if (diff > 24 * 60) {
+                log().warn("Invalid duration: {} minutes (too long, >24h)", diff);
+                return null;
+            }
+            
+            return diff;
+        } catch (DateTimeParseException ex) {
+            // Try alternative formats
+            try {
+                // Try HH:mm:ss format
+                LocalTime s = LocalTime.parse(startNormalized, DateTimeFormatter.ofPattern("HH:mm:ss"));
+                LocalTime e = LocalTime.parse(endNormalized, DateTimeFormatter.ofPattern("HH:mm:ss"));
+                int diff = (e.getHour() * 60 + e.getMinute()) - (s.getHour() * 60 + s.getMinute());
+                return diff > 0 && diff <= 24 * 60 ? diff : null;
+            } catch (DateTimeParseException ex2) {
+                log().warn("Could not parse times: start='{}', end='{}'. Error: {}", 
+                          startNormalized, endNormalized, ex.getMessage());
+                return null;
+            }
+        }
+    }
+    
+    /**
+     * Normalizes time format to HH:mm.
+     * Handles various input formats and converts them to HH:mm.
+     */
+    private String normalizeTimeFormat(String timeStr) {
+        if (timeStr == null || timeStr.trim().isEmpty()) {
+            return null;
+        }
+        
+        String normalized = timeStr.trim();
+        
+        // Remove common prefixes/suffixes
+        normalized = normalized.replaceAll("(?i)^(hora|time|h):\\s*", "");
+        normalized = normalized.replaceAll("\\s*$", "");
+        
+        // Try to parse and reformat to HH:mm
+        try {
+            // Try HH:mm format first
+            LocalTime time = LocalTime.parse(normalized, DateTimeFormatter.ofPattern("HH:mm"));
+            return time.format(DateTimeFormatter.ofPattern("HH:mm"));
+        } catch (DateTimeParseException ignored) {
+            // Try HH:mm:ss format
+            try {
+                LocalTime time = LocalTime.parse(normalized, DateTimeFormatter.ofPattern("HH:mm:ss"));
+                return time.format(DateTimeFormatter.ofPattern("HH:mm"));
+            } catch (DateTimeParseException ignored2) {
+                // Try H:mm format (single digit hour)
+                try {
+                    LocalTime time = LocalTime.parse(normalized, DateTimeFormatter.ofPattern("H:mm"));
+                    return time.format(DateTimeFormatter.ofPattern("HH:mm"));
+                } catch (DateTimeParseException ignored3) {
+                    log().debug("Could not normalize time format: {}", timeStr);
+                    return null;
+                }
+            }
+        }
+    }
+
+    /**
+     * Parses a date string to LocalDate using multiple formatters.
+     * Enhanced to match the formatters used in AbstractMetadataTool.parseDateFlexible for consistency.
+     */
+    private LocalDate parseDateToLocalDate(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            return null;
+        }
+
+        // Normalize to lowercase to handle case variations (e.g., "Agosto" vs "agosto")
+        String v = dateStr.trim().toLowerCase();
+
+        // Try ISO format first (most common after normalization)
+        try {
+            return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+        }
+
+        // Try Spanish formats with quotes
+        List<DateTimeFormatter> formatters = Arrays.asList(
+                DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+                // Spanish formats without quotes
+                DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
+                // Abbreviated month names
+                DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
+                // Without "de" between day and month
+                DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
+                DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
+                // Numeric formats
+                DateTimeFormatter.ofPattern("d/M/yyyy"),
+                DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+                DateTimeFormatter.ofPattern("d-M-yyyy"),
+                DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+                DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+                DateTimeFormatter.ofPattern("yyyy.MM.dd")
+        );
+
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                return LocalDate.parse(v, formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try next formatter
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Fallback: extract at least year from date string so date_iso can be set (yyyy-01-01).
+     * Supports "d de mes de yyyy" via regex and plain "yyyy".
+     */
+    private LocalDate parseDateYearFallback(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) return null;
+        String v = dateStr.trim();
+        java.util.regex.Pattern spanishPattern = java.util.regex.Pattern.compile(
+            "(\\d{1,2})\\s+de\\s+(\\p{L}+)\\s+de\\s+(\\d{4})",
+            java.util.regex.Pattern.CASE_INSENSITIVE
+        );
+        java.util.regex.Matcher m = spanishPattern.matcher(v);
+        if (m.find()) {
+            int day = Integer.parseInt(m.group(1));
+            int month = SPANISH_MONTH_MAP.getOrDefault(m.group(2).toLowerCase(), -1);
+            int year = Integer.parseInt(m.group(3));
+            if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                try {
+                    return LocalDate.of(year, month, Math.min(day, LocalDate.of(year, month, 1).lengthOfMonth()));
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        java.util.regex.Matcher yearMatcher = java.util.regex.Pattern.compile("(\\d{4})").matcher(v);
+        if (yearMatcher.find()) {
+            int year = Integer.parseInt(yearMatcher.group(1));
+            if (year >= 1900 && year <= 2100) {
+                return LocalDate.of(year, 1, 1);
+            }
+        }
+        return null;
+    }
+
+    private static final Map<String, Integer> SPANISH_MONTH_MAP = Map.ofEntries(
+        Map.entry("enero", 1), Map.entry("febrero", 2), Map.entry("marzo", 3), Map.entry("abril", 4),
+        Map.entry("mayo", 5), Map.entry("junio", 6), Map.entry("julio", 7), Map.entry("agosto", 8),
+        Map.entry("septiembre", 9), Map.entry("setiembre", 9), Map.entry("octubre", 10),
+        Map.entry("noviembre", 11), Map.entry("diciembre", 12)
+    );
+
+    /**
+     * Multiple date format extraction
      */
     private String extractDate(String content) {
         if (content == null || content.trim().isEmpty()) {
             return null;
         }
         
-        // Patrón 1: "25 de agosto de 2026" (formato actual, con mayúsculas/minúsculas flexibles)
+        // Pattern 1: "25 de agosto de 2026" (current format, with flexible uppercase/lowercase)
         String date = extractSingle(content, "(?i)Fecha:\\s*(\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4})");
         if (date != null) {
             return normalizeDate(date);
         }
         
-        // Patrón 2: "25/08/2026" o "25-08-2026"
+        // Pattern 2: "25/08/2026" or "25-08-2026"
         date = extractSingle(content, "(?i)Fecha:\\s*(\\d{1,2}[/-]\\d{1,2}[/-]\\d{4})");
         if (date != null) {
             return normalizeDate(date);
         }
         
-        // Patrón 3: "2026-08-25" (formato ISO)
+        // Pattern 3: "2026-08-25" (ISO format)
         date = extractSingle(content, "(?i)Fecha:\\s*(\\d{4}[/-]\\d{1,2}[/-]\\d{1,2})");
         if (date != null) {
             return normalizeDate(date);
         }
         
-        // Patrón 4: Sin etiqueta "Fecha:", buscar en encabezado
+        // Pattern 4: Without "Fecha:" label, search in header
         date = extractSingle(content, "(?i)^(?:ACTA|ACTA DE REUNIÓN|REUNIÓN).*?(\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4})");
         if (date != null) {
             return normalizeDate(date);
         }
         
-        // Patrón 5: Fecha con día de la semana (ej: "Lunes, 25 de agosto de 2026")
+        // Pattern 5: Date with day of the week (e.g. "Lunes, 25 de agosto de 2026")
         date = extractSingle(content, "(?i)Fecha:\\s*(?:lunes|martes|miércoles|jueves|viernes|sábado|domingo),?\\s*(\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4})");
         if (date != null) {
             return normalizeDate(date);
         }
         
-        // Patrón 6: Meses abreviados (ej: "25 ago 2026")
+        // Pattern 6: Abbreviated months (e.g. "25 ago 2026")
         date = extractSingle(content, "(?i)Fecha:\\s*(\\d{1,2}\\s+(?:ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\\s+\\d{4})");
         if (date != null) {
             return normalizeDate(date);
         }
+
+        // Pattern 7: Date with day of the week and short numeric format (e.g. "lunes, 25/02/2025" or "25/02/25")
+        date = extractSingle(content, "(?i)Fecha:\\s*(?:lunes|martes|miércoles|jueves|viernes|sábado|domingo),?\\s*(\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4})");
+        if (date != null) {
+            return normalizeDate(date);
+        }
+
+        // Pattern 8: Date with abbreviation without label (e.g. "25 feb 2025" in header)
+        date = extractSingle(content, "(?i)^(?:ACTA|ACTA DE REUNIÓN|REUNIÓN).*?(\\d{1,2}\\s+(?:ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)\\s+\\d{2,4})");
+        if (date != null) {
+            return normalizeDate(date);
+        }
         
-        log().warn("No se pudo extraer la fecha del documento");
+        log().warn("Could not extract date from document");
         return null;
     }
     
     /**
-     * Normaliza la fecha a formato estándar "DD de MES de YYYY".
+     * Normalizes the date to standard format "DD de mes de YYYY" (lowercase month).
+     * This ensures consistency and allows proper parsing regardless of original capitalization.
      */
     private String normalizeDate(String date) {
         if (date == null) return null;
         
         try {
-            // Si ya está en formato "día de mes de año", solo normalizar mayúsculas
+            // If already in format "day of month of year", normalize to lowercase
             if (date.matches("(?i)\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4}")) {
-                return capitalizeDate(date);
+                return normalizeToLowercaseDate(date);
             }
             
-            // Si está en formato numérico, convertir
+            // If in numeric format, convert
             if (date.matches("\\d{1,2}[/-]\\d{1,2}[/-]\\d{4}")) {
                 return convertNumericDate(date);
             }
@@ -521,25 +1007,20 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 return convertISODate(date);
             }
             
-            return date; // Devolver original si no se puede normalizar
+            // Return lowercase version if possible to ensure consistency
+            return date.toLowerCase();
         } catch (Exception e) {
-            log().warn("Error normalizando fecha: {}", date, e);
-            return date;
+            log().warn("Error normalizing date: {}", date, e);
+            return date != null ? date.toLowerCase() : null;
         }
     }
     
-    private String capitalizeDate(String date) {
-        String[] months = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
-                         "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
-        
-        String lower = date.toLowerCase();
-        for (String month : months) {
-            if (lower.contains(month)) {
-                String capitalized = month.substring(0, 1).toUpperCase() + month.substring(1);
-                return date.replaceAll("(?i)" + month, capitalized);
-            }
-        }
-        return date;
+    /**
+     * Normalizes date to lowercase format to ensure consistent parsing.
+     */
+    private String normalizeToLowercaseDate(String date) {
+        // Return lowercase version to ensure consistent parsing
+        return date.toLowerCase();
     }
     
     private String convertNumericDate(String date) {
@@ -558,7 +1039,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 }
             }
         } catch (Exception e) {
-            log().warn("Error convirtiendo fecha numérica: {}", date, e);
+            log().warn("Error converting numeric date: {}", date, e);
         }
         return date;
     }
@@ -579,21 +1060,22 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 }
             }
         } catch (Exception e) {
-            log().warn("Error convirtiendo fecha ISO: {}", date, e);
+            log().warn("Error converting ISO date: {}", date, e);
         }
         return date;
     }
     
     /**
-     * MEJORA: Extracción mejorada de lugar con validación de longitud.
+     * Improved place extraction with length validation.
      */
     private String extractPlace(String content) {
         if (content == null || content.trim().isEmpty()) {
             return null;
         }
         
-        // Patrón 1: "Lugar: [lugar]" en una sola línea (limitado a 200 caracteres)
-        String place = extractSingle(content, "(?i)Lugar:\\s*([^\\n]{1,200})");
+        // Pattern 1: "Lugar: [lugar]" stopping before "Hora" or time patterns
+        // Stop at: Hora, Hora de inicio, Hora de finalización, or time pattern (HH:MM)
+        String place = extractSingle(content, "(?i)Lugar:\\s*([^\\n]{0,150}?)(?=\\s*(?:Hora|\\d{1,2}:\\s*\\d{2}|Asistentes:|Orden del día))");
         if (place != null && !place.trim().isEmpty()) {
             place = place.trim().replaceAll("\\.$", "").trim();
             if (place.length() > 5 && place.length() < 200) {
@@ -601,83 +1083,105 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Patrón 2: Buscar en contexto de encabezado
+        // Pattern 2: Search in header context, stopping before hours
         String header = extractBlock(content, "(?i)^(?:ACTA|REUNIÓN)", "(?i)Asistentes:");
         if (header != null) {
-            place = extractSingle(header, "(?i)Lugar[^:]*:\\s*([^\\n]{1,200})");
+            place = extractSingle(header, "(?i)Lugar[^:]*:\\s*([^\\n]{0,150}?)(?=\\s*(?:Hora|\\d{1,2}:\\s*\\d{2}|Asistentes:|Orden del día))");
             if (place != null && place.length() > 5 && place.length() < 200) {
                 return place.trim().replaceAll("\\.$", "").trim();
             }
         }
         
-        // Patrón 3: Variantes de etiquetas de lugar
+        // Pattern 3: Place label variants, stopping before hours
         String[] placeLabels = {"Lugar de celebración", "Sitio", "Ubicación", "Localización", "Lugar"};
         for (String label : placeLabels) {
-            place = extractSingle(content, String.format("(?i)%s[^:]*:\\s*([^\\n]{1,200})", label));
+            place = extractSingle(content, String.format("(?i)%s[^:]*:\\s*([^\\n]{0,150}?)(?=\\s*(?:Hora|\\d{1,2}:\\s*\\d{2}|Asistentes:|Orden del día))", label));
             if (place != null && place.length() > 5 && place.length() < 200) {
                 return place.trim().replaceAll("\\.$", "").trim();
             }
         }
         
-        log().warn("No se pudo extraer el lugar del documento");
+        log().warn("Could not extract place from document");
         return null;
     }
     
     /**
-     * MEJORA: Extracción de hora de inicio con múltiples formatos.
+     * Improved start time extraction with multiple formats.
      */
     private String extractStartTime(String content) {
         return extractTime(content, true);
     }
     
     /**
-     * MEJORA: Extracción de hora de finalización con múltiples formatos.
+     * Improved end time extraction with multiple formats.
      */
     private String extractEndTime(String content) {
         return extractTime(content, false);
     }
+
+    /**
+     * Extracts end time from conclusion phrases (e.g. "finalizó a las 20:45", "concluding at 20:45").
+     * Used to prefer the actual closing time when it appears in the body rather than a header range.
+     */
+    private String extractEndTimeFromConclusionPhrases(String content) {
+        if (content == null || content.trim().isEmpty()) return null;
+        // "finalizó a las 20:45", "terminó a las 20:45 h", "concluyó a las 20:45", "concluding at 20:45", "concluded at 20:45"
+        String[] patterns = {
+            "(?i)(?:finalizó|terminó|concluyó|finaliza|termina)\\s+(?:la reunión\\s+)?(?:a las?|a)\\s*(\\d{1,2}:\\s*\\d{2})(?:\\s*[hH])?",
+            "(?i)(?:concluding|concluded|terminated)\\s+(?:at|a las?)\\s*(\\d{1,2}:\\s*\\d{2})(?:\\s*[hH])?",
+            "(?i)reunión\\s+(?:finalizó|terminó|concluyó)\\s+(?:a las?|a)\\s*(\\d{1,2}:\\s*\\d{2})"
+        };
+        for (String regex : patterns) {
+            String t = extractSingle(content, regex);
+            if (t != null && normalizeTime(t) != null) {
+                return normalizeTime(t);
+            }
+        }
+        return null;
+    }
     
     /**
-     * Extrae la hora con múltiples formatos soportados.
-     * @param content Contenido del documento
-     * @param isStartTime true para hora de inicio, false para hora de fin
+     * Extracts the time with multiple supported formats.
+     * @param content Content of the document
+     * @param isStartTime true for start time, false for end time
      */
     private String extractTime(String content, boolean isStartTime) {
         if (content == null || content.trim().isEmpty()) {
             return null;
         }
         
-        // Definir etiquetas posibles según el tipo de hora
+        // Define possible labels according to the type of time
         String[] startLabels = {"inicio", "comienzo", "comienza"};
         String[] endLabels = {"fin", "finalización", "finaliza", "termina", "clausura"};
         String[] labels = isStartTime ? startLabels : endLabels;
         
-        // Patrones de hora posibles
+        // Possible time patterns (including space after colon: "19: 00" and optional space before h: "19:00 h" or "19:00h")
         String[] timePatterns = {
-            "(\\d{1,2}:\\d{2})",           // 19:00
-            "(\\d{1,2}:\\d{2})\\s*h",      // 19:00 h
-            "(\\d{1,2}\\.\\d{2})",         // 19.00
-            "(\\d{1,2}:\\d{2})\\s*[hH]",  // 19:00 H
+            "(\\d{1,2}:\\s*\\d{2})",                    // 19:00 or 19: 00 (with space)
+            "(\\d{1,2}:\\s*\\d{2})\\s*[hH]",            // 19:00 h, 19:00h, 19: 00 h, 19: 00h (space optional before h)
+            "(\\d{1,2}\\.\\d{2})",                      // 19.00
+            "(\\d{1,2})\\s*[hH]",                       // 19 h or 19h
+            "(\\d{1,2})\\s*[hH]\\s*(\\d{2})?"           // 19 h 30 or 19h30 (partial)
         };
         
-        // Intentar cada combinación de etiqueta y patrón
+        // Try each combination of label and pattern
         for (String label : labels) {
             for (String timePattern : timePatterns) {
-                // Patrón 1: "Hora de inicio: 19:00"
+                // Pattern 1: "Hora de inicio: 19:00"
                 String regex = String.format("(?i)Hora de %s:\\s*%s", label, timePattern);
                 String time = extractSingle(content, regex);
                 if (time != null) {
                     return normalizeTime(time.replace(".", ":"));
                 }
                 
-                // Patrón 2: "Hora inicio: 19:00" (sin "de")
+                // Pattern 2: "Hora inicio: 19:00" (without "de")
                 regex = String.format("(?i)Hora %s:\\s*%s", label, timePattern);
                 time = extractSingle(content, regex);
                 if (time != null) {
                     return normalizeTime(time.replace(".", ":"));
                 }
                 
-                // Patrón 3: "Inicio: 19:00" (solo etiqueta)
+                // Pattern 3: "Inicio: 19:00" (only label)
                 String labelCapitalized = label.substring(0, 1).toUpperCase() + label.substring(1);
                 regex = String.format("(?i)%s:\\s*%s", labelCapitalized, timePattern);
                 time = extractSingle(content, regex);
@@ -687,7 +1191,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Patrón adicional: Buscar en contexto de encabezado (similar a place)
+        // Additional pattern: Search in header context (similar to place)
         String header = extractBlock(content, "(?i)^(?:ACTA|REUNIÓN)", "(?i)Asistentes:");
         if (header != null) {
             for (String label : labels) {
@@ -701,31 +1205,45 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Patrón final: Buscar cualquier hora en formato HH:MM cerca de palabras clave
+        // Final pattern: Search any time in HH:MM format (with optional space) near keywords
         String keyword = isStartTime ? "inicio|comienzo|comienza" : "fin|final|termina|clausura";
         String time = extractSingle(content, 
-            String.format("(?i)(?:%s)[^:]*:\\s*(\\d{1,2}:\\d{2})", keyword));
+            String.format("(?i)(?:%s)[^:]*:\\s*(\\d{1,2}:\\s*\\d{2})", keyword));
         if (time != null) {
             return normalizeTime(time);
         }
         
-        // Patrón adicional: Buscar formato "19:00 - 20:30" o "19:00 a 20:30" y extraer la hora correspondiente
+        // Additional pattern: Search format "19:00 - 20:30" or "19:00 a 20:30" (with optional space)
         if (isStartTime) {
-            time = extractSingle(content, "(?i)(\\d{1,2}:\\d{2})\\s*[-a]\\s*\\d{1,2}:\\d{2}");
+            time = extractSingle(content, "(?i)(\\d{1,2}:\\s*\\d{2})\\s*[-a]\\s*\\d{1,2}:\\s*\\d{2}");
             if (time != null) {
                 return normalizeTime(time);
             }
         } else {
-            time = extractSingle(content, "(?i)\\d{1,2}:\\d{2}\\s*[-a]\\s*(\\d{1,2}:\\d{2})");
+            time = extractSingle(content, "(?i)\\d{1,2}:\\s*\\d{2}\\s*[-a]\\s*(\\d{1,2}:\\s*\\d{2})");
             if (time != null) {
                 return normalizeTime(time);
             }
+            // Prefer end time from conclusion phrasing (e.g. "finalizó a las 20:45", "concluding at 20:45") when present
+            String fromConclusion = extractEndTimeFromConclusionPhrases(content);
+            if (fromConclusion != null) {
+                return fromConclusion;
+            }
+            // If multiple "HH:MM - HH:MM" ranges exist, use the last one's end time (header may differ from actual end)
+            Pattern rangePattern = Pattern.compile("(\\d{1,2}:\\s*\\d{2})\\s*[-a]\\s*(\\d{1,2}:\\s*\\d{2})", Pattern.CASE_INSENSITIVE);
+            Matcher rangeMatcher = rangePattern.matcher(content);
+            String lastEnd = null;
+            while (rangeMatcher.find()) {
+                lastEnd = rangeMatcher.group(2);
+            }
+            if (lastEnd != null && normalizeTime(lastEnd) != null) {
+                return normalizeTime(lastEnd);
+            }
         }
         
-        // Patrón adicional muy flexible: Buscar cualquier hora en formato HH:MM en las primeras líneas
-        // (donde típicamente está la información de fecha/hora)
+        // Additional very flexible pattern: Search any time in HH:MM format (with optional space) in the first lines
         String firstLines = content.length() > 500 ? content.substring(0, 500) : content;
-        Pattern timePattern = Pattern.compile("(\\d{1,2}:\\d{2})");
+        Pattern timePattern = Pattern.compile("(\\d{1,2}:\\s*\\d{2})");
         Matcher matcher = timePattern.matcher(firstLines);
         List<String> foundTimes = new ArrayList<>();
         while (matcher.find() && foundTimes.size() < 3) {
@@ -735,43 +1253,61 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Si encontramos horas, usar la primera para inicio y la última para fin
+        // If we find times, use the first for start and the last for end
         if (!foundTimes.isEmpty()) {
             if (isStartTime && foundTimes.size() >= 1) {
                 return normalizeTime(foundTimes.get(0));
             } else if (!isStartTime && foundTimes.size() >= 2) {
                 return normalizeTime(foundTimes.get(foundTimes.size() - 1));
             } else if (!isStartTime && foundTimes.size() == 1) {
-                // Si solo hay una hora y es fin, puede que sea la hora de fin
+                // If there is only one time and it is end, it may be the end time
                 return normalizeTime(foundTimes.get(0));
             }
         }
         
-        // Si no se encuentra, no es crítico - las horas son opcionales
-        // Cambiado a debug para no generar ruido en logs
-        log().debug("No se pudo extraer la hora de {} del documento (esto es opcional y no afecta el funcionamiento)", 
+        // If not found, it is not critical - times are optional
+        // Changed to debug to avoid noise in logs
+        log().info("Could not extract the time of {} from the document (this is optional and does not affect functionality)", 
                    isStartTime ? "inicio" : "fin");
         return null;
     }
     
     /**
-     * Normaliza la hora al formato HH:MM estándar.
-     * Maneja múltiples formatos y casos edge.
+     * Normalizes the time to standard HH:MM format.
+     * Handles multiple formats and edge cases.
      */
     private String normalizeTime(String time) {
         if (time == null || time.trim().isEmpty()) {
             return null;
         }
         
-        // Limpiar y normalizar
+        // Clean and normalize
         time = time.trim()
-                .replaceAll("\\s*h\\s*$", "")  // Remover "h" al final
+                .replaceAll("\\s*h\\s*$", "")  // Remove "h" at the end
                 .replaceAll("\\s*H\\s*$", "")  // Remover "H" al final
-                .replaceAll("\\.", ":")        // Convertir 19.00 a 19:00
+                .replaceAll("\\.", ":")        // Convert 19.00 to 19:00
+                .replaceAll(":\\s+", ":")      // Remove space after colon: "19: 00" -> "19:00"
                 .trim();
+
+        // Format "19 h 30" -> "19:30"
+        if (time.matches("^\\d{1,2}\\s*[hH]\\s*\\d{2}$")) {
+            time = time.replaceAll("\\s*[hH]\\s*", ":").replaceAll("\\s+", "");
+        }
+
+        // Format "19 h" -> "19:00"
+        if (time.matches("^\\d{1,2}$")) {
+            try {
+                int hour = Integer.parseInt(time);
+                if (hour >= 0 && hour <= 23) {
+                    return String.format("%02d:00", hour);
+                }
+            } catch (NumberFormatException ignored) {
+                // Fall back to next checks
+            }
+        }
         
-        // Intentar extraer hora del formato HH:MM o H:MM
-        if (time.matches("\\d{1,2}:\\d{2}")) {
+        // Try to extract time from HH:MM or H:MM format (with optional space after colon)
+        if (time.matches("\\d{1,2}:\\s*\\d{2}")) {
             try {
                 String[] parts = time.split(":");
                 if (parts.length != 2) {
@@ -781,23 +1317,23 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 int hour = Integer.parseInt(parts[0]);
                 int minute = Integer.parseInt(parts[1]);
                 
-                // Validar rango
+                // Validate range
                 if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
                     return String.format("%02d:%02d", hour, minute);
                 } else {
-                    log().debug("Hora fuera de rango válido: {}:{}", hour, minute);
+                    log().info("Time out of valid range: {}:{}", hour, minute);
                     return null;
                 }
             } catch (NumberFormatException e) {
-                log().debug("Error parseando hora '{}': {}", time, e.getMessage());
+                log().info("Error parsing time '{}': {}", time, e.getMessage());
                 return null;
             }
         }
         
-        // Si no coincide con el patrón esperado, intentar extraer números
+        // If it does not match the expected pattern, try to extract numbers
         String numbersOnly = time.replaceAll("[^0-9]", "");
         if (numbersOnly.length() >= 3 && numbersOnly.length() <= 4) {
-            // Formato HHMM o HMM
+            // Format HHMM or HMM
             try {
                 int hour, minute;
                 if (numbersOnly.length() == 4) {
@@ -812,16 +1348,16 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                     return String.format("%02d:%02d", hour, minute);
                 }
             } catch (NumberFormatException e) {
-                // Ignorar
+                // Ignore
             }
         }
         
-        log().debug("No se pudo normalizar la hora: '{}'", time);
+        log().info("Could not normalize time: '{}'", time);
         return null;
     }
     
     /**
-     * MEJORA: Extracción robusta de asistentes con múltiples métodos de fallback.
+     * Improved attendees extraction with multiple fallback methods.
      */
     private List<String> extractAttendees(String content) {
         if (content == null || content.trim().isEmpty()) {
@@ -830,21 +1366,38 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         List<String> attendees = new ArrayList<>();
         
-        // Método 1: Entre "Asistentes:" y "Orden del día:" (actual)
+        // Method 1: Between "Asistentes:" and "Orden del día:" (actual)
         String block = extractBlock(content, "(?i)Asistentes:", "(?i)Orden del día:");
         if (block != null && !block.trim().isEmpty()) {
-            attendees.addAll(extractBullets(block));
-        }
-        
-        // Método 2: Si no se encontró, buscar hasta encontrar otra sección
-        if (attendees.isEmpty()) {
-            block = extractBlock(content, "(?i)Asistentes:", "(?i)(?:Orden del día|Ruegos|Clausura|No habiendo)");
-            if (block != null && !block.trim().isEmpty()) {
-                attendees.addAll(extractBullets(block));
+            // Remove everything before the first list delimiter (bullet, dash, asterisk, or number)
+            String cleanedBlock = removeTextBeforeFirstDelimiter(block);
+            if (!cleanedBlock.trim().isEmpty()) {
+                attendees.addAll(extractBullets(cleanedBlock));
+            }
+            
+            // If no bullets found, try comma-separated list after ":"
+            if (attendees.isEmpty()) {
+                attendees.addAll(extractCommaSeparatedNames(block));
             }
         }
         
-        // Método 3: Buscar líneas que empiecen con viñeta después de "Asistentes:"
+        // Method 2: If not found, search until finding another section
+        if (attendees.isEmpty()) {
+            block = extractBlock(content, "(?i)Asistentes:", "(?i)(?:Orden del día|Ruegos|Clausura|No habiendo)");
+            if (block != null && !block.trim().isEmpty()) {
+                String cleanedBlock = removeTextBeforeFirstDelimiter(block);
+                if (!cleanedBlock.trim().isEmpty()) {
+                    attendees.addAll(extractBullets(cleanedBlock));
+                }
+                
+                // If still empty, try comma-separated list
+                if (attendees.isEmpty()) {
+                    attendees.addAll(extractCommaSeparatedNames(block));
+                }
+            }
+        }
+        
+        // Method 3: Search lines that begin with bullet after "Asistentes:" (even if there's text before)
         if (attendees.isEmpty()) {
             Pattern pattern = Pattern.compile(
                 "(?i)Asistentes:.*?\\n((?:•|[-*]|\\d+\\.)\\s*[^\\n]+(?:\\n(?!•|[-*]|\\d+\\.|Orden|Ruegos|Clausura)[^\\n]+)*)", 
@@ -857,34 +1410,119 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Limpiar y normalizar nombres
+        // Clean and normalize names
         attendees = attendees.stream()
             .map(name -> name.trim())
             .filter(name -> !name.isEmpty())
             .filter(name -> name.length() > 2)
-            // Quitar roles entre paréntesis (se extraen por separado)
+            // Remove roles between parentheses (extracted separately)
             .map(name -> name.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim())
             .filter(name -> !name.isEmpty())
+            // Filter out descriptive text that might have been captured
+            .filter(name -> !name.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*"))
             .distinct()
             .collect(Collectors.toList());
         
-        log().debug("Extracted {} attendees", attendees.size());
+        // Remove first element if it looks like descriptive text (simple solution)
+        if (!attendees.isEmpty()) {
+            String first = attendees.get(0).toLowerCase();
+            if (first.contains("cuenta") || first.contains("asistencia") || first.contains("propietarios") ||
+                first.contains("lista") || first.contains("firmada") || first.contains("reunión") ||
+                first.contains("quórum") || first.contains("suficiente") || first.contains("validez") ||
+                first.contains("acuerdos") || first.contains("tomados") || first.contains("declara") ||
+                first.length() > 100) { // Also remove if too long (likely descriptive text)
+                attendees.remove(0);
+            }
+        }
+        
+        log().info("Extracted {} attendees: {}", attendees.size(), attendees);
         return attendees;
     }
     
-    private String extractSingle(String text, String regex) {
-        Matcher matcher = Pattern.compile(regex).matcher(text);
-        return matcher.find() ? matcher.group(1).trim() : null;
+    /**
+     * Removes all text before the first list delimiter (bullet, dash, asterisk, or number).
+     * This discards introductory/descriptive text before the actual list.
+     * Supports multiple unordered list symbols: •, -, *, etc.
+     */
+    private String removeTextBeforeFirstDelimiter(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return text;
+        }
+        
+        // List of unordered list delimiters to search for
+        String[] delimiters = {"•", "-", "*"};
+        
+        int firstIndex = Integer.MAX_VALUE;
+        String foundDelimiter = null;
+        
+        // Find the first occurrence of any delimiter
+        for (String delimiter : delimiters) {
+            int index = text.indexOf(delimiter);
+            if (index >= 0 && index < firstIndex) {
+                firstIndex = index;
+                foundDelimiter = delimiter;
+            }
+        }
+        
+        // If found, return text from that delimiter onwards
+        if (firstIndex < Integer.MAX_VALUE && foundDelimiter != null) {
+            return text.substring(firstIndex);
+        }
+        
+        // If no delimiter found, try pattern-based search for delimiters at start of line
+        Pattern[] patterns = {
+            Pattern.compile("(?:^|\\n)\\s*•\\s+[A-ZÁÉÍÓÚÑ]", Pattern.MULTILINE),  // Bullet
+            Pattern.compile("(?:^|\\n)\\s*-\\s+[A-ZÁÉÍÓÚÑ]", Pattern.MULTILINE),   // Dash
+            Pattern.compile("(?:^|\\n)\\s*\\*\\s+[A-ZÁÉÍÓÚÑ]", Pattern.MULTILINE), // Asterisk
+            Pattern.compile("(?:^|\\n)\\s*\\d+\\.\\s+[A-ZÁÉÍÓÚÑ]", Pattern.MULTILINE) // Numbered
+        };
+        
+        for (Pattern pattern : patterns) {
+            Matcher matcher = pattern.matcher(text);
+            if (matcher.find()) {
+                return text.substring(matcher.start());
+            }
+        }
+        
+        // If no delimiter found, return original (might be comma-separated)
+        return text;
     }
-
-    private String extractBlock(String text, String startRegex, String endRegex) {
-        Pattern pattern = Pattern.compile(startRegex + "(.*?)" + endRegex, Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+    
+    /**
+     * Extracts names from a comma-separated list after ":".
+     * Example: "Asistentes: Juan Pérez, Marta González, Luis Ramírez"
+     */
+    private List<String> extractCommaSeparatedNames(String text) {
+        List<String> names = new ArrayList<>();
+        if (text == null || text.trim().isEmpty()) {
+            return names;
+        }
+        
+        // Look for pattern: ":" followed by names separated by commas
+        Pattern pattern = Pattern.compile(":\\s*([^\\n]+?)(?=\\n|$)", Pattern.MULTILINE);
         Matcher matcher = pattern.matcher(text);
-        return matcher.find() ? matcher.group(1).trim() : "";
+        
+        if (matcher.find()) {
+            String namesText = matcher.group(1).trim();
+            // Split by comma
+            String[] nameParts = namesText.split(",");
+            for (String name : nameParts) {
+                name = name.trim();
+                // Filter out descriptive text
+                if (!name.isEmpty() && name.length() > 2 && 
+                    !name.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*")) {
+                    names.add(name);
+                }
+            }
+        }
+        
+        return names;
     }
 
     /**
-     * MEJORA: Extracción de bullets con múltiples formatos soportados.
+     * Extraction of bullets with multiple supported formats.
+     * Handles both multi-line (one bullet per line) and single-line (multiple bullets separated by any list symbol) formats.
+     * Supports: • (bullet), - (dash), * (asterisk), and numbered lists (1., 2., etc.)
      */
     private List<String> extractBullets(String text) {
         List<String> items = new ArrayList<>();
@@ -892,49 +1530,212 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return items;
         }
         
-        // Patrón 1: Viñetas estándar (•)
-        Pattern pattern1 = Pattern.compile("•\\s*(.+?)(?=\\n(?:•|\\s*$|Orden|Ruegos|Clausura))", Pattern.MULTILINE);
-        Matcher matcher1 = pattern1.matcher(text);
-        while (matcher1.find()) {
-            String item = matcher1.group(1).trim();
-            if (!item.isEmpty()) {
-                items.add(item);
+        // Skip if the text doesn't start with a delimiter (might be descriptive text)
+        String trimmed = text.trim();
+        if (!trimmed.startsWith("•") && !trimmed.matches("^\\s*[-*]") && !trimmed.matches("^\\s*\\d+\\.")) {
+            // Text doesn't start with delimiter, find first delimiter
+            int firstBullet = trimmed.indexOf("•");
+            int firstDash = trimmed.indexOf("-");
+            int firstAsterisk = trimmed.indexOf("*");
+            int firstNumber = trimmed.indexOf("1.");
+            
+            int firstDelimiter = Integer.MAX_VALUE;
+            if (firstBullet >= 0) firstDelimiter = Math.min(firstDelimiter, firstBullet);
+            if (firstDash >= 0) firstDelimiter = Math.min(firstDelimiter, firstDash);
+            if (firstAsterisk >= 0) firstDelimiter = Math.min(firstDelimiter, firstAsterisk);
+            if (firstNumber >= 0) firstDelimiter = Math.min(firstDelimiter, firstNumber);
+            
+            if (firstDelimiter < Integer.MAX_VALUE) {
+                trimmed = trimmed.substring(firstDelimiter);
+            } else {
+                // No delimiter found, return empty
+                return items;
             }
         }
         
-        // Patrón 2: Viñetas alternativas (-, *, números) si no se encontraron con •
-        if (items.isEmpty()) {
-            Pattern pattern2 = Pattern.compile("(?:[-*]|\\d+\\.)\\s*(.+?)(?=\\n(?:[-*]|\\d+\\.|\\s*$|Orden|Ruegos|Clausura))", Pattern.MULTILINE);
-            Matcher matcher2 = pattern2.matcher(text);
-            while (matcher2.find()) {
-                String item = matcher2.group(1).trim();
-                if (!item.isEmpty()) {
-                    items.add(item);
+        // Detect the most common list symbol in the cleaned text
+        String detectedSymbol = detectListSymbol(trimmed);
+        
+        // Method 1: Split by detected symbol if multiple items in same line
+        if (detectedSymbol != null && !detectedSymbol.equals("1.")) {
+            // Escape special regex characters
+            String escapedSymbol = Pattern.quote(detectedSymbol);
+            String[] parts = trimmed.split(escapedSymbol);
+            if (parts.length > 1) {
+                // Multiple items separated by the same symbol
+                for (int i = 0; i < parts.length; i++) {
+                    String part = parts[i].trim();
+                    // Skip the first part if it's empty or doesn't look like a name (might be leftover text)
+                    if (i == 0 && (part.isEmpty() || part.length() < 3 || 
+                        part.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*"))) {
+                        continue;
+                    }
+                    // Remove leading/trailing list symbols and whitespace
+                    part = part.replaceAll("^[•\\-*\\d\\.\\s]+", "").replaceAll("[•\\-*\\d\\.\\s]+$", "").trim();
+                    if (!part.isEmpty() && part.length() > 2) {
+                        // Remove roles in parentheses (extracted separately)
+                        part = part.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                        // Filter out descriptive text
+                        if (!part.isEmpty() && !part.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*")) {
+                            items.add(part);
+                        }
+                    }
                 }
             }
         }
         
-        return items;
+        // Method 2: Pattern-based extraction (one item per line or separated by newlines)
+        if (items.isEmpty()) {
+            // Pattern for bullet points (•)
+            Pattern pattern1 = Pattern.compile("•\\s*([^•\\n]+?)(?=\\s*•|\\n|$)", Pattern.MULTILINE);
+            Matcher matcher1 = pattern1.matcher(text);
+            while (matcher1.find()) {
+                String item = matcher1.group(1).trim();
+                item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                if (!item.isEmpty() && item.length() > 2) {
+                    items.add(item);
+                }
+            }
+            
+            // Pattern for dashes (-)
+            if (items.isEmpty()) {
+                Pattern pattern2 = Pattern.compile("(?:^|\\n)\\s*-\\s*([^\\n\\-]+?)(?=\\s*-|\\n|$)", Pattern.MULTILINE);
+                Matcher matcher2 = pattern2.matcher(text);
+                while (matcher2.find()) {
+                    String item = matcher2.group(1).trim();
+                    item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                    if (!item.isEmpty() && item.length() > 2) {
+                        items.add(item);
+                    }
+                }
+            }
+            
+            // Pattern for asterisks (*)
+            if (items.isEmpty()) {
+                Pattern pattern3 = Pattern.compile("(?:^|\\n)\\s*\\*\\s*([^\\n\\*]+?)(?=\\s*\\*|\\n|$)", Pattern.MULTILINE);
+                Matcher matcher3 = pattern3.matcher(text);
+                while (matcher3.find()) {
+                    String item = matcher3.group(1).trim();
+                    item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                    if (!item.isEmpty() && item.length() > 2) {
+                        items.add(item);
+                    }
+                }
+            }
+            
+            // Pattern for numbered lists (1., 2., etc.)
+            if (items.isEmpty()) {
+                Pattern pattern4 = Pattern.compile("\\d+\\.\\s*([^\\n]+?)(?=\\n\\d+\\.|\\n|$)", Pattern.MULTILINE);
+                Matcher matcher4 = pattern4.matcher(text);
+                while (matcher4.find()) {
+                    String item = matcher4.group(1).trim();
+                    item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                    if (!item.isEmpty() && item.length() > 2) {
+                        items.add(item);
+                    }
+                }
+            }
+        }
+        
+        // Clean and deduplicate
+        return items.stream()
+            .map(String::trim)
+            .filter(item -> !item.isEmpty())
+            .filter(item -> item.length() > 2)
+            .distinct()
+            .collect(Collectors.toList());
+    }
+    
+    /**
+     * Detects the most common list symbol in the text.
+     * Returns the symbol that appears most frequently as a list marker.
+     */
+    private String detectListSymbol(String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return null;
+        }
+        
+        // Count occurrences of each list symbol
+        int bulletCount = countOccurrences(text, "•");
+        int dashCount = countOccurrences(text, "-");
+        int asteriskCount = countOccurrences(text, "*");
+        int numberCount = countNumberedListItems(text);
+        
+        // Return the most common symbol
+        int maxCount = Math.max(Math.max(bulletCount, dashCount), Math.max(asteriskCount, numberCount));
+        
+        if (maxCount < 2) {
+            // Not enough items to be a list
+            return null;
+        }
+        
+        if (bulletCount == maxCount) return "•";
+        if (dashCount == maxCount) return "-";
+        if (asteriskCount == maxCount) return "*";
+        if (numberCount == maxCount) return "1."; // Represent numbered lists
+        
+        return null;
+    }
+    
+    /**
+     * Counts occurrences of a symbol that appear to be list markers (followed by text).
+     */
+    private int countOccurrences(String text, String symbol) {
+        if (text == null || symbol == null) {
+            return 0;
+        }
+        
+        // Count symbol followed by whitespace and text (not just punctuation)
+        String escapedSymbol = Pattern.quote(symbol);
+        Pattern pattern = Pattern.compile(escapedSymbol + "\\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]", Pattern.MULTILINE);
+        Matcher matcher = pattern.matcher(text);
+        
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+    
+    /**
+     * Counts numbered list items (1., 2., etc.).
+     */
+    private int countNumberedListItems(String text) {
+        if (text == null) {
+            return 0;
+        }
+        
+        Pattern pattern = Pattern.compile("\\d+\\.\\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]", Pattern.MULTILINE);
+        Matcher matcher = pattern.matcher(text);
+        
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
     }
 
     /**
-     * MEJORA: Extracción mejorada de agenda con soporte para sub-items y múltiples formatos.
+     * Improved agenda extraction with support for sub-items and multiple formats.
      */
     private Map<String, String> extractAgendaMap(String content) {
         Map<String, String> agenda = new LinkedHashMap<>();
         if (content == null || content.trim().isEmpty()) {
+            log().debug("Content is null or empty, cannot extract agenda");
             return agenda;
         }
         
-        // Extraer bloque completo del orden del día
+        // Extract complete agenda block
         String agendaBlock = extractAgendaBlock(content);
         if (agendaBlock == null || agendaBlock.trim().isEmpty()) {
-            // No es crítico - la agenda es opcional y puede estar en otros formatos
-            log().debug("No se encontró el bloque del orden del día (esto es opcional y no afecta el funcionamiento)");
+            // Not critical - the agenda is optional and may be in other formats
+            log().debug("No agenda block found in content (this is optional and does not affect functionality)");
             return agenda;
         }
         
-        // Dividir en items principales
+        log().debug("Found agenda block (length: {} chars), parsing items", agendaBlock.length());
+        
+        // Divide into main items
         String[] lines = agendaBlock.split("\\n");
         String currentKey = null;
         StringBuilder currentValue = new StringBuilder();
@@ -943,51 +1744,81 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             line = line.trim();
             if (line.isEmpty()) continue;
             
-            // Detectar inicio de nuevo item (viñeta, número, o línea que empieza con mayúscula)
+            // Detect start of new item (bullet, number, or line starting with capital letter)
             if (line.matches("^[•·▪▫◦‣⁃*\\-]\\s+.+") || 
                 line.matches("^\\d+[.)]\\s+.+") ||
                 (line.matches("^[A-ZÁÉÍÓÚÑ].+") && currentKey == null)) {
                 
-                // Guardar item anterior
+                // Save previous item
                 if (currentKey != null && currentValue.length() > 0) {
                     agenda.put(currentKey, currentValue.toString().trim());
                     currentValue.setLength(0);
                 }
                 
-                // Extraer clave del nuevo item
+                // Extract key of new item (main item or sub-item)
                 currentKey = extractAgendaItemKey(line);
             } else if (currentKey != null) {
-                // Continuación del item actual (sub-item o descripción)
+                // Continuation of current item (sub-item or description)
                 if (!line.matches("(?i)^(?:Ruegos|No habiendo|Clausura).*")) {
                     currentValue.append(line).append(" ");
                 }
             }
         }
         
-        // Guardar último item
-        if (currentKey != null && currentValue.length() > 0) {
+        // Guardar último item (incluir aunque no tenga descripción, e.g. "Ruegos y preguntas")
+        if (currentKey != null) {
             agenda.put(currentKey, currentValue.toString().trim());
         }
         
-        log().debug("Extracted {} agenda items", agenda.size());
+        log().debug("Extracted {} agenda items from agenda block", agenda.size());
+        if (agenda.isEmpty()) {
+            log().warn("Agenda map is empty after parsing agenda block. Content may not have structured agenda format.");
+        }
+        
         return agenda;
     }
     
     /**
-     * Extrae el bloque completo del orden del día con múltiples fallbacks.
-     * MEJORA: Soporta múltiples formatos y variaciones de texto.
+     * Creates an agenda map from topics list as fallback when agenda extraction fails.
+     * Each topic becomes an agenda item with the topic as both key and value.
+     * 
+     * @param topics List of topics to convert to agenda
+     * @return Map representing agenda (key: topic, value: topic)
+     */
+    private Map<String, String> createAgendaFromTopics(List<String> topics) {
+        Map<String, String> agenda = new LinkedHashMap<>();
+        if (topics == null || topics.isEmpty()) {
+            return agenda;
+        }
+        
+        for (String topic : topics) {
+            if (topic != null && !topic.trim().isEmpty()) {
+                String trimmedTopic = topic.trim();
+                // Use topic as both key and value
+                agenda.put(trimmedTopic, trimmedTopic);
+            }
+        }
+        
+        log().debug("Created agenda from {} topics", agenda.size());
+        return agenda;
+    }
+    
+    /**
+     * Extract the complete agenda block with multiple fallbacks.
      */
     private String extractAgendaBlock(String content) {
         if (content == null || content.trim().isEmpty()) {
             return null;
         }
+        // Ensure we have newlines (content may have been normalized with wrong regex in the past)
+        String normalized = content.contains("\n") ? content : content.replaceAll("(?<=[.!])\\s+", "\n");
         
-        // Patrón 1: "Orden del día:" hasta "Ruegos y preguntas" o "No habiendo más asuntos"
+        // Pattern 1: "Orden del día:" until newline + optional bullet + "Ruegos..." or "No habiendo más asuntos"
         Pattern pattern = Pattern.compile(
-            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:Ruegos y preguntas|No habiendo más asuntos|Clausura|$))",
+            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos y preguntas|No habiendo más asuntos|Clausura|$))",
             Pattern.DOTALL
         );
-        Matcher matcher = pattern.matcher(content);
+        Matcher matcher = pattern.matcher(normalized);
         if (matcher.find()) {
             String block = matcher.group(1).trim();
             if (!block.isEmpty()) {
@@ -995,12 +1826,12 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Patrón 2: "Orden del día:" hasta cualquier sección siguiente (más flexible)
+        // Pattern 2: "Orden del día:" until any next section (more flexible; optional bullet before keyword)
         pattern = Pattern.compile(
-            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:Ruegos|Preguntas|Clausura|No habiendo|Asistentes|$))",
+            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|Asistentes|$))",
             Pattern.DOTALL
         );
-        matcher = pattern.matcher(content);
+        matcher = pattern.matcher(normalized);
         if (matcher.find()) {
             String block = matcher.group(1).trim();
             if (!block.isEmpty()) {
@@ -1008,12 +1839,12 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Patrón 3: "ORDEN DEL DÍA" (mayúsculas) hasta sección siguiente
+        // Pattern 3: "ORDEN DEL DÍA" (capital letters) until next section
         pattern = Pattern.compile(
-            "(?i)ORDEN DEL DÍA:?\\s*(.*?)(?=\\n\\s*(?:Ruegos|Preguntas|Clausura|No habiendo|$))",
+            "(?i)ORDEN DEL DÍA:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|$))",
             Pattern.DOTALL
         );
-        matcher = pattern.matcher(content);
+        matcher = pattern.matcher(normalized);
         if (matcher.find()) {
             String block = matcher.group(1).trim();
             if (!block.isEmpty()) {
@@ -1021,31 +1852,29 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Patrón 4: Buscar sección que contenga items numerados o con viñetas después de "Asistentes:"
-        // Esto captura el orden del día aunque no tenga la etiqueta explícita
-        String afterAttendees = extractBlock(content, "(?i)Asistentes:", "(?i)(?:Ruegos|Preguntas|Clausura|No habiendo|$)");
+        // Pattern 4: Search for section that contains numbered or bulleted items after "Asistentes:"
+        String afterAttendees = extractBlock(normalized, "(?i)Asistentes:", "(?i)(?:Ruegos|Preguntas|Clausura|No habiendo|$)");
         if (afterAttendees != null && !afterAttendees.trim().isEmpty()) {
-            // Buscar items que parezcan ser del orden del día (numerados o con viñetas)
-            Pattern agendaPattern = Pattern.compile(
-                "(?i)(?:Orden del día:?\\s*)?((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|No habiendo)[^\\n]+)*)",
+            // Search for "Orden del día:" block within that section
+            Pattern ordenPattern = Pattern.compile(
+                "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|No habiendo)|$)",
                 Pattern.DOTALL
             );
-            Matcher agendaMatcher = agendaPattern.matcher(afterAttendees);
-            if (agendaMatcher.find()) {
-                String block = agendaMatcher.group(1).trim();
-                if (!block.isEmpty() && block.length() > 10) { // Debe tener contenido significativo
+            Matcher ordenMatcher = ordenPattern.matcher(afterAttendees);
+            if (ordenMatcher.find()) {
+                String block = ordenMatcher.group(1).trim();
+                if (!block.isEmpty() && block.length() > 10) {
                     return block;
                 }
             }
         }
         
-        // Patrón 5: Buscar cualquier bloque con items numerados o viñetas que parezca ser agenda
-        // Esto es un último recurso para documentos sin estructura clara
+        // Pattern 5: Search for any block with numbered or bulleted items that seems to be agenda
         pattern = Pattern.compile(
             "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]+)*)",
             Pattern.DOTALL
         );
-        matcher = pattern.matcher(content);
+        matcher = pattern.matcher(normalized);
         if (matcher.find()) {
             String block = matcher.group(1).trim();
             if (!block.isEmpty() && block.length() > 10) {
@@ -1053,7 +1882,6 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Si no se encuentra, devolver null (no es crítico)
         return null;
     }
     
@@ -1069,5 +1897,73 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Tomar solo la primera parte (hasta dos puntos o punto final)
         String[] parts = line.split("[:.]", 2);
         return parts[0].trim();
+    }
+
+    
+
+    private String trimOrNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private List<String> cleanStringList(List<String> input) {
+        if (input == null) {
+            return new ArrayList<>();
+        }
+        return input.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    private Map<String, String> cleanStringMap(Map<String, String> input) {
+        if (input == null) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, String> cleaned = new LinkedHashMap<>();
+        input.forEach((k, v) -> {
+            if (k != null && v != null) {
+                String kt = k.trim();
+                String vt = v.trim();
+                if (!kt.isEmpty() && !vt.isEmpty()) {
+                    cleaned.put(kt, vt);
+                }
+            }
+        });
+        return cleaned;
+    }
+    
+    private String extractSingle(String text, String regex) {
+        Matcher matcher = Pattern.compile(regex).matcher(text);
+        return matcher.find() ? matcher.group(1).trim() : null;
+    }
+
+    private String extractBlock(String text, String startRegex, String endRegex) {
+        Pattern pattern = Pattern.compile(startRegex + "(.*?)" + endRegex, Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(text);
+        return matcher.find() ? matcher.group(1).trim() : "";
+    }
+    
+    /**
+     * Truncates content before sending to LLM prompt to avoid context length errors.
+     * Preserves header and footer to maintain relevant signal.
+     */
+    private String truncateForPrompt(String content, int maxChars) {
+        if (content == null) {
+            return "";
+        }
+        String trimmed = content.trim();
+        if (trimmed.length() <= maxChars) {
+            return trimmed;
+        }
+
+        int head = (int) (maxChars * 0.65); // Keep more header
+        int tail = maxChars - head;
+        String truncated = trimmed.substring(0, head) + "\n...\n" + trimmed.substring(trimmed.length() - tail);
+        log().info("Prompt content truncated from {} to {} characters", trimmed.length(), truncated.length());
+        return truncated;
     }
 }

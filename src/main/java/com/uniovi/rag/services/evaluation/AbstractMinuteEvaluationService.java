@@ -6,6 +6,7 @@ import com.uniovi.rag.services.query.QueryService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -16,15 +17,23 @@ import java.nio.charset.StandardCharsets;
 public abstract class AbstractMinuteEvaluationService extends AbstractEvaluationService {
 
     public AbstractMinuteEvaluationService(
-            RagFeatureConfiguration featureConfig,
-            ChatClient chatClient,
-            DocumentService documentService,
-            QueryService queryService) {
-        super(featureConfig, chatClient, documentService, queryService);
+        RagFeatureConfiguration featureConfig,
+        ChatClient chatClient,
+        DocumentService documentService,
+        QueryService queryService,
+        boolean cleanBeforeLoad
+    ) {
+        super(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
     }
 
     @Override
     protected void loadSpecificData() {
+        // Default implementation: use HTTP endpoint (for default configuration)
+        loadSpecificDataWithService(documentService);
+    }
+    
+    @Override
+    protected void loadSpecificDataWithService(DocumentService docService) {
         try {
             ClassPathResource resource = new ClassPathResource("docs/actas");
             File directory = resource.getFile();
@@ -33,21 +42,44 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
                 File[] files = directory.listFiles((dir, name) -> name.toLowerCase().endsWith(".pdf"));
 
                 if (files != null) {
+                    log().info("Loading {} PDF files from docs/actas", files.length);
                     for (File file : files) {
                         try {
-                            sendFileToEndpoint(file);
+                            // Convert File to MultipartFile
+                            MultipartFile multipartFile = fileToMultipartFile(file);
+                            docService.processDocument(multipartFile);
+                            log().info("Successfully loaded file: {}", file.getName());
                         } catch (Exception e) {
-                            System.err.println("Error enviando el archivo: " + file.getName());
+                            log().error("Error loading file: {}", file.getName(), e);
                         }
                     }
+                    log().info("Finished loading documents");
                 }
+            } else {
+                log().warn("Directory docs/actas does not exist or is not a directory");
             }
         } catch (Exception e) {
+            log().error("Error loading files from docs/actas directory", e);
             throw new RuntimeException("Error al cargar archivos desde la carpeta actas", e);
         }
     }
+    
+    /**
+     * Converts a File to a MultipartFile for processing.
+     */
+    private MultipartFile fileToMultipartFile(File file) throws IOException {
+        try (FileInputStream input = new FileInputStream(file)) {
+            byte[] content = input.readAllBytes();
+            return new SimpleMultipartFile(
+                    "file",
+                    file.getName(),
+                    "application/pdf",
+                    content
+            );
+        }
+    }
 
-    private void sendFileToEndpoint(File file) throws IOException {
+    protected void sendFileToEndpoint(File file) throws IOException {
         String endpoint = "http://localhost:9000/api/v3/documents";
         String boundary = "===" + System.currentTimeMillis() + "===";
 
@@ -81,7 +113,7 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
         if (responseCode != HttpURLConnection.HTTP_OK) {
             throw new IOException("Error al enviar archivo: " + file.getName() + ". Código: " + responseCode);
         } else {
-            System.out.println("Archivo enviado correctamente: " + file.getName());
+            log().info("Archivo enviado correctamente: " + file.getName());
         }
     }
 

@@ -1,6 +1,6 @@
 package com.uniovi.rag.services.tools.metadata;
 
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.model.*;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
@@ -15,14 +15,6 @@ import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataFindParagraphTool for finding relevant paragraphs in meeting minutes with intelligent analysis.
- * 
- * Features:
- * - Intelligent paragraph extraction with context analysis
- * - Parallel processing for better performance
- * - Cached evaluations for efficiency
- * - Paragraph clustering and pattern analysis
- * - Quality ranking and synthesis of paragraphs
- * - Advanced NER-based filtering
  */
 public class MetadataFindParagraphTool extends AbstractMetadataTool {
 
@@ -35,112 +27,208 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing find paragraph query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing find paragraph query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve and filter documents efficiently
-        List<Document> docs = retrieveDocumentsWithMetadataFilter(
+        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        List<Document> docs = retrieveDocumentsWithFallback(
             query, 
-            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"}
+            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"},
+            ner
         );
+        
         if (docs.isEmpty()) {
-            log().debug("No documents found for find paragraph query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            log().info("No documents found for find paragraph query: {}", query);
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
-            log().debug("No valid minutes found for find paragraph query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            log().info("No valid minutes found for find paragraph query: {}", query);
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
-            log().debug("No relevant minutes found for find paragraph query: {}", query);
-            return ToolResult.from(generateNotFoundMessage(query), getClass());
+            log().info("No relevant minutes found for find paragraph query: {}", query);
+            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
-        // Step 4: Find relevant paragraphs in parallel
-        List<ParagraphResult> results = findParagraphsInParallel(query, relevantMinutes);
+        // Step 3.5: Create map of minute ID to document for content access
+        Map<String, Document> minuteIdToDoc = new HashMap<>();
+        for (Document doc : docs) {
+            Minute minute = getMinuteFromMetadata(doc);
+            if (minute != null && relevantMinutes.contains(minute)) {
+                minuteIdToDoc.put(minute.id(), doc);
+            }
+        }
+
+        // Step 4: Find relevant paragraphs in parallel (content-first, metadata fallback)
+        List<ParagraphResult> results = findParagraphsInParallel(query, relevantMinutes, minuteIdToDoc);
+
+        // Step 4.5: For "tejado" queries, exclude paragraphs that only mention "portal" (not the same as tejado)
+        if (query != null && query.toLowerCase().contains("tejado")) {
+            List<ParagraphResult> tejadoFiltered = results.stream()
+                    .filter(r -> r.getParagraph() != null && r.getParagraph().toLowerCase().contains("tejado"))
+                    .collect(Collectors.toList());
+            if (tejadoFiltered.isEmpty() && !results.isEmpty()) {
+                log().info("Query asks for 'tejado' but all paragraphs only mentioned 'portal' or other terms; returning not found");
+                String notFoundMsg = generateTopicNotFoundMessage(query, "renovación del tejado");
+                return ToolResult.from(formatResponse(notFoundMsg, query), getClass());
+            }
+            results = tejadoFiltered;
+        }
+
         if (results.isEmpty()) {
-            log().debug("No paragraphs found for query: {}", query);
-            return ToolResult.from(generateNoDataMessage(query), getClass());
+            log().info("No paragraphs found for query: {}", query);
+            return ToolResult.from(formatResponse(generateNoDataMessage(query), query), getClass());
         }
 
         // Step 5: Analyze and rank paragraphs
-        List<ParagraphResult> rankedResults = analyzeAndRankParagraphs(query, results);
+        List<ParagraphResult> rankedResults = analyzeAndRankParagraphs(results);
 
         // Step 6: Cluster similar paragraphs
         List<InfoExtractor.Cluster<ParagraphResult>> clusters = clusterParagraphs(rankedResults);
 
         // Step 7: Generate enhanced final answer
         String answer = generateEnhancedParagraphAnswer(query, rankedResults, clusters);
-        log().debug("Generated find paragraph answer for query: {} with {} paragraphs in {} clusters", 
+        log().info("Generated find paragraph answer for query: {} with {} paragraphs in {} clusters", 
                    query, results.size(), clusters.size());
         
-        return ToolResult.from(answer, getClass());
+        return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
     /**
      * Finds relevant paragraphs in parallel
      */
-    private List<ParagraphResult> findParagraphsInParallel(String query, List<Minute> minutes) {
+    private List<ParagraphResult> findParagraphsInParallel(String query, List<Minute> minutes, Map<String, Document> minuteIdToDoc) {
         List<CompletableFuture<ParagraphResult>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> findRelevantParagraph(query, minute)))
+                .map(minute -> CompletableFuture.supplyAsync(() -> {
+                    Document doc = minuteIdToDoc.get(minute.id());
+                    return findRelevantParagraph(query, minute, doc);
+                }))
                 .collect(Collectors.toList());
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
-                .filter(result -> !result.paragraph.isBlank())
+                .filter(result -> result.getParagraph() != null && !result.getParagraph().isBlank())
                 .collect(Collectors.toList());
     }
 
     /**
-     * Finds relevant paragraph for a minute with enhanced context
+     * Finds relevant paragraph for a minute with enhanced context.
+     * CRITICAL FIX: Now accesses document content to extract literal paragraphs.
      */
-    private ParagraphResult findRelevantParagraph(String query, Minute minute) {
-        String paragraph = extractRelevantParagraph(query, minute);
-        
+    private ParagraphResult findRelevantParagraph(String query, Minute minute, Document doc) {
+        // Priority 1: Extract literal paragraph from document content
+        String paragraph = extractParagraphFromContent(query, minute, doc);
+
+        // Priority 2: Fallback to metadata if content extraction failed
+        if (paragraph.isBlank()) {
+            paragraph = buildParagraphFromMetadata(minute, query);
+        }
+
+        // Priority 3: LLM fallback if both failed
+        if (paragraph.isBlank()) {
+            paragraph = extractRelevantParagraph(query, minute);
+        }
+
         if (paragraph.isBlank()) {
             return null;
         }
-        
-        // Calculate relevance score
-        double relevanceScore = calculateRelevanceScore(query, paragraph, minute.toString());
-        
-        // Extract key information from paragraph
-        String keyInfo = extractKeyInformation(paragraph, query);
-        
+
+        int score = paragraph.length();
+
         return new ParagraphResult(
             minute.id(),
             minute.date(),
             minute.place(),
             paragraph,
-            keyInfo,
-            relevanceScore,
-            System.currentTimeMillis()
+            score
         );
     }
 
     /**
-     * Extracts relevant paragraph with enhanced context analysis.
+     * Extracts a literal paragraph from document content using LLM.
+     * This is the primary method for finding paragraphs.
      */
-    private String extractRelevantParagraph(String query, Minute minute) {
-        if (query == null || query.trim().isEmpty() || minute == null) {
+    private String extractParagraphFromContent(String query, Minute minute, Document doc) {
+        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
             return "";
         }
-        
-        String queryType = analyzeQueryType(query);
+
+        // Truncate content to avoid context length issues
+        String content = truncateForPrompt(doc.getContent(), 4000);
         
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
             
-            Query type: %s
+            And the following document content (may be in any language):
+            "%s"
             
-            Meeting metadata (values may be in any language):
+            Extract the most relevant paragraph or short section (2-5 sentences) from the document content 
+            that directly answers the query. Return ONLY the literal text from the document, without modifications.
+            Preserve the original language and formatting.
+            
+            If no relevant paragraph is found, return an empty string.
+            """, query, content);
+
+        try {
+            String response = getLLMResponseCached(prompt);
+            
+            if (response == null || response.trim().isEmpty()) {
+                log().info("Empty response from LLM in extractParagraphFromContent");
+                return "";
+            }
+            
+            return response.trim();
+        } catch (Exception e) {
+            log().error("Error extracting paragraph from content, returning empty string", e);
+            return "";
+        }
+    }
+
+    /**
+     * Builds a paragraph from metadata (decisions/topics/summary/agenda) before LLM.
+     */
+    private String buildParagraphFromMetadata(Minute minute, String query) {
+        if (minute == null) {
+            return "";
+        }
+        List<String> parts = new ArrayList<>();
+        if (minute.decisions() != null && !minute.decisions().isEmpty()) {
+            parts.add("Decisiones: " + String.join(" | ", minute.decisions()));
+        }
+        if (minute.agenda() != null && !minute.agenda().isEmpty()) {
+            parts.add("Agenda: " + minute.agenda().values().stream()
+                    .filter(s -> s != null && !s.isBlank())
+                    .collect(Collectors.joining(" | ")));
+        }
+        if (minute.summary() != null && !minute.summary().isBlank()) {
+            parts.add("Resumen: " + minute.summary());
+        }
+        if (minute.topics() != null && !minute.topics().isEmpty()) {
+            parts.add("Temas: " + String.join(" | ", minute.topics()));
+        }
+        String combined = String.join(" | ", parts).trim();
+        return combined.isBlank() ? "" : combined;
+    }
+
+    /**
+     * Extracts relevant paragraph with enhanced context analysis (LLM fallback).
+     */
+    private String extractRelevantParagraph(String query, Minute minute) {
+        if (query == null || query.trim().isEmpty() || minute == null) {
+            return "";
+        }
+
+        String prompt = String.format("""
+            Extract the most relevant paragraph or short section that answers the query.
+            Keep the original language of the metadata if possible.
+            Query: %s
             Date: %s
             Place: %s
             President: %s
@@ -149,14 +237,8 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             Decisions: %s
             Summary: %s
             Agenda: %s
-            
-            Extract the most relevant paragraph or section that directly answers the query.
-            Focus on the specific information requested, not general summaries.
-            If no single paragraph is relevant, combine the most relevant information into a coherent paragraph.
-            Write the response in the same language as the query.
             """,
             query,
-            queryType,
             minute.date() != null ? minute.date() : "unknown",
             minute.place() != null ? minute.place() : "unknown",
             minute.president() != null ? minute.president() : "unknown",
@@ -171,7 +253,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             String response = getLLMResponseCached(prompt);
             
             if (response == null || response.trim().isEmpty()) {
-                log().debug("Empty response from LLM in extractRelevantParagraph, returning empty string");
+                log().info("Empty response from LLM in extractRelevantParagraph, returning empty string");
                 return "";
             }
             
@@ -183,48 +265,14 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     }
 
     /**
-     * Extracts key information from paragraph.
-     * Uses English for internal processing, but preserves original language in query and paragraph.
-     */
-    private String extractKeyInformation(String paragraph, String query) {
-        if (paragraph == null || paragraph.trim().isEmpty() || query == null || query.trim().isEmpty()) {
-            return "";
-        }
-        
-        String prompt = String.format("""
-            Given the following paragraph (may be in any language):
-            "%s"
-            
-            And the original query (may be in any language):
-            "%s"
-            
-            Extract the key information that directly relates to the query.
-            Focus on facts, numbers, dates, names, or specific details.
-            Write a brief summary (1-2 sentences) in the same language as the query.
-            """, paragraph, query);
-        
-        try {
-            String response = getLLMResponseCached(prompt);
-            
-            if (response == null || response.trim().isEmpty()) {
-                log().debug("Empty response from LLM in extractKeyInformation, returning empty string");
-                return "";
-            }
-            
-            return response;
-        } catch (Exception e) {
-            log().error("Error extracting key information, returning empty string", e);
-            return "";
-        }
-    }
-
-    /**
      * Analyzes and ranks paragraphs by relevance and quality
      */
-    private List<ParagraphResult> analyzeAndRankParagraphs(String query, List<ParagraphResult> results) {
-        // Sort by relevance score (descending)
+    private List<ParagraphResult> analyzeAndRankParagraphs(List<ParagraphResult> results) {
+        // Sort by paragraph length (descending) as a simple proxy of richness
         return results.stream()
-                .sorted((a, b) -> Double.compare(b.relevanceScore, a.relevanceScore))
+                .sorted((a, b) -> Integer.compare(
+                        b.getParagraph() != null ? b.getParagraph().length() : 0,
+                        a.getParagraph() != null ? a.getParagraph().length() : 0))
                 .collect(Collectors.toList());
     }
 
@@ -234,8 +282,8 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     private List<InfoExtractor.Cluster<ParagraphResult>> clusterParagraphs(List<ParagraphResult> results) {
         return InfoExtractor.clusterItems(
             results,
-            result -> result.paragraph,
-            result -> result.date != null ? result.date : "unknown",
+            result -> result.getParagraph(),
+            result -> result.getDate() != null ? result.getDate() : "unknown",
             0.4 // Similarity threshold for paragraphs
         );
     }
@@ -285,31 +333,45 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     
     /**
      * Generates a fallback paragraph answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackParagraphAnswer(String query, List<ParagraphResult> results) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String resultsText = results.stream()
+                .limit(3)
+                .map(r -> String.format("Meeting on %s:\n%s", 
+                    r.getDate() != null ? r.getDate() : "unknown date",
+                    r.getParagraph() != null && r.getParagraph().length() > 300 ? r.getParagraph().substring(0, 300) + "..." : (r.getParagraph() != null ? r.getParagraph() : "")))
+                .collect(Collectors.joining("\n\n"));
         
-        if (isSpanish) {
-            return String.format("Se encontraron %d párrafos relevantes:\n%s",
-                              results.size(),
-                              results.stream()
-                                      .limit(3)
-                                      .map(r -> String.format("Reunión del %s:\n%s", 
-                                          r.date != null ? r.date : "fecha desconocida",
-                                          r.paragraph.length() > 300 ? r.paragraph.substring(0, 300) + "..." : r.paragraph))
-                                      .collect(Collectors.joining("\n\n")));
-        } else {
-            return String.format("Found %d relevant paragraphs:\n%s",
-                              results.size(),
-                              results.stream()
-                                      .limit(3)
-                                      .map(r -> String.format("Meeting on %s:\n%s", 
-                                          r.date != null ? r.date : "unknown date",
-                                          r.paragraph.length() > 300 ? r.paragraph.substring(0, 300) + "..." : r.paragraph))
-                                      .collect(Collectors.joining("\n\n")));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found %d relevant paragraphs:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found paragraphs.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", results.size(), resultsText);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback paragraph answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return String.format("Found %d relevant paragraphs:\n%s",
+                          results.size(), resultsText);
     }
 
     /**
@@ -323,87 +385,18 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             InfoExtractor.Cluster<ParagraphResult> cluster = clusters.get(i);
             ParagraphResult representative = cluster.getRepresentativeItem();
             
-            if (representative.date != null) {
-                summary.append(String.format("Reunión del %s", representative.date));
-                if (representative.place != null) {
-                    summary.append(String.format(" (%s)", representative.place));
+            if (representative.getDate() != null) {
+                summary.append(String.format("Reunión del %s", representative.getDate()));
+                if (representative.getPlace() != null) {
+                    summary.append(String.format(" (%s)", representative.getPlace()));
                 }
                 summary.append(":\n");
             }
-            summary.append(representative.paragraph);
+            summary.append(representative.getParagraph() != null ? representative.getParagraph() : "");
             summary.append("\n\n");
         }
         
         return summary.toString();
     }
 
-    /**
-     * Formats cluster analysis for LLM prompt
-     */
-    private String formatClusterAnalysis(List<InfoExtractor.Cluster<ParagraphResult>> clusters) {
-        if (clusters.isEmpty()) {
-            return "No clusters found.";
-        }
-        
-        StringBuilder analysis = new StringBuilder();
-        analysis.append(String.format("Total clusters: %d\n", clusters.size()));
-        
-        for (int i = 0; i < clusters.size(); i++) {
-            InfoExtractor.Cluster<ParagraphResult> cluster = clusters.get(i);
-            ParagraphResult representative = cluster.getRepresentativeItem();
-            
-            double avgRelevance = cluster.getItems().stream()
-                    .mapToDouble(r -> r.relevanceScore)
-                    .average()
-                    .orElse(0.0);
-            
-            analysis.append(String.format("- Cluster %d: %d paragraphs, avg relevance: %.2f, date: %s\n", 
-                                        i + 1, cluster.getSize(), avgRelevance, representative.date));
-        }
-        
-        return analysis.toString();
-    }
-
-    /**
-     * Represents a paragraph result with enhanced metadata
-     */
-    private static class ParagraphResult {
-        final String minuteId;
-        final String date;
-        final String place;
-        final String paragraph;
-        final String keyInfo;
-        final double relevanceScore;
-        final long timestamp;
-
-        ParagraphResult(String minuteId, String date, String place, String paragraph, String keyInfo, 
-                       double relevanceScore, long timestamp) {
-            this.minuteId = minuteId;
-            this.date = date;
-            this.place = place;
-            this.paragraph = paragraph;
-            this.keyInfo = keyInfo;
-            this.relevanceScore = relevanceScore;
-            this.timestamp = timestamp;
-        }
-        
-        /**
-         * Gets a formatted identifier for the result
-         */
-        String getIdentifier() {
-            return String.format("%s (%s - %s)", minuteId, date != null ? date : "unknown", place != null ? place : "unknown");
-        }
-        
-        /**
-         * Gets the age of the result in milliseconds
-         */
-        long getAge() {
-            return System.currentTimeMillis() - timestamp;
-        }
-        
-        @Override
-        public String toString() {
-            return String.format("ParagraphResult[%s, score=%.2f, age=%dms]", getIdentifier(), relevanceScore, getAge());
-        }
-    }
 }

@@ -10,6 +10,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.BufferedReader;
@@ -21,10 +22,12 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
 
     protected final PgVectorStore vectorStore;
     protected final ChatClient chatClient;
+    protected final JdbcTemplate jdbcTemplate;
 
-    public AbstractDocumentService(PgVectorStore vectorStore, ChatClient chatClient) {
+    public AbstractDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate) {
         this.vectorStore = vectorStore;
         this.chatClient = chatClient;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
@@ -33,17 +36,105 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             vectorStore.add(documents);
         }
     }
+    
+    @Override
+    public void clearDatabase() {
+        try {
+            log().info("Clearing vector_store and documents tables");
+            jdbcTemplate.update("DELETE FROM vector_store");
+            jdbcTemplate.update("DELETE FROM documents");
+            log().info("Database cleared successfully");
+        } catch (Exception e) {
+            log().error("Error clearing database", e);
+            throw new RuntimeException("Failed to clear database", e);
+        }
+    }
+    
+    @Override
+    public boolean hasDocuments() {
+        try {
+            Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM vector_store", Integer.class);
+            return count != null && count > 0;
+        } catch (Exception e) {
+            log().warn("Error checking if database has documents", e);
+            return false;
+        }
+    }
+    
+    @Override
+    public int deleteDocumentByDocumentId(String documentId) {
+        if (documentId == null || documentId.trim().isEmpty()) {
+            log().warn("Attempted to delete document with null or empty document_id");
+            return 0;
+        }
+        
+        try {
+            // Delete all chunks with this document_id from vector_store
+            int deletedChunks = jdbcTemplate.update(
+                "DELETE FROM vector_store WHERE metadata->>'document_id' = ?",
+                documentId
+            );
+            
+            // Also try to delete by id field in metadata (fallback for older documents)
+            if (deletedChunks == 0) {
+                deletedChunks = jdbcTemplate.update(
+                    "DELETE FROM vector_store WHERE metadata->>'id' = ?",
+                    documentId
+                );
+            }
+            
+            // Delete from documents table if document_name matches
+            int deletedDocs = jdbcTemplate.update(
+                "DELETE FROM documents WHERE document_name = ? OR (metadata->>'document_id')::text = ?",
+                documentId, documentId
+            );
+            
+            log().info("Deleted {} chunks and {} document entries for document_id: {}", 
+                      deletedChunks, deletedDocs, documentId);
+            
+            return deletedChunks;
+        } catch (Exception e) {
+            log().error("Error deleting document by document_id: {}", documentId, e);
+            throw new RuntimeException("Failed to delete document: " + documentId, e);
+        }
+    }
+
+    @Override
+    public boolean hasDocumentWithId(String documentId) {
+        if (documentId == null || documentId.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM vector_store WHERE metadata->>'document_id' = ?",
+                Integer.class,
+                documentId
+            );
+            if (count != null && count > 0) {
+                return true;
+            }
+            count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM vector_store WHERE metadata->>'id' = ?",
+                Integer.class,
+                documentId
+            );
+            return count != null && count > 0;
+        } catch (Exception e) {
+            log().warn("Error checking document_id existence: {}", documentId, e);
+            return false;
+        }
+    }
 
     protected String extractContent(MultipartFile file) {
         String contentType = file.getContentType();
         String fileName = file.getOriginalFilename();
 
         if (contentType == null) {
-            throw new IllegalArgumentException("Tipo de archivo no especificado");
+            throw new IllegalArgumentException("File type not specified");
         }
 
         if (fileName == null) {
-            throw new IllegalArgumentException("Nombre de archivo no especificado");
+            throw new IllegalArgumentException("File name not specified");
         }
 
         try {
@@ -57,11 +148,11 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
                 return extractFromCsv(file);
             }
         } catch (Exception e) {
-            throw new RuntimeException("Error procesando el archivo", e);
+            throw new RuntimeException("Error processing the file", e);
         }
 
 
-        throw new IllegalArgumentException("Tipo de archivo no soportado");
+        throw new IllegalArgumentException("Not supported file type");
     }
 
     protected String extractFromPdf(MultipartFile file) throws Exception {
@@ -75,22 +166,22 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             PDFTextStripper stripper = new PDFTextStripper();
             String rawText = stripper.getText(document);
             
-            // Validar que el texto no esté vacío
+            // Validate that the text is not empty
             if (rawText == null || rawText.trim().isEmpty()) {
-                System.err.println("PDF extraction returned empty text for file: " + filename);
-                throw new IllegalArgumentException("El PDF no contiene texto extraíble. Puede estar protegido o ser una imagen.");
+                log().error("PDF extraction returned empty text for file: " + filename);
+                throw new IllegalArgumentException("The PDF does not contain extractable text. It may be protected or an image.");
             }
             
-            System.out.println("PDF extracted " + rawText.length() + " characters from file: " + filename);
+            log().info("PDF extracted " + rawText.length() + " characters from file: " + filename);
             
-            // Normalizar el texto extraído para mejorar la extracción posterior
+            // Normalize the extracted text to improve subsequent extraction
             String normalized = normalizeExtractedText(rawText);
             
-            System.out.println("After normalization: " + normalized.length() + " characters for file: " + filename);
+            log().info("After normalization: " + normalized.length() + " characters for file: " + filename);
             
-            // Validar longitud mínima
+            // Validate minimum length
             if (normalized.length() < 20) {
-                System.err.println("WARNING: Normalized text is very short (" + normalized.length() + " chars) for file: " + filename);
+                log().warn("Normalized text is very short (" + normalized.length() + " chars) for file: " + filename);
             }
             
             return normalized;
@@ -98,16 +189,15 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             // Re-lanzar IllegalArgumentException tal cual
             throw e;
         } catch (Exception e) {
-            System.err.println("Error processing PDF file: " + filename);
+            log().error("Error processing PDF file: " + filename, e);
             e.printStackTrace();
-            throw new RuntimeException("Error procesando el PDF " + filename + ": " + e.getMessage(), e);
+            throw new RuntimeException("Error processing the PDF " + filename + ": " + e.getMessage(), e);
         }
     }
     
     /**
-     * Normaliza el texto extraído de PDFs para mejorar la extracción posterior.
-     * Limpia espacios múltiples, normaliza saltos de línea y caracteres especiales.
-     * MEJORA: Maneja diferentes encodings y caracteres especiales.
+     * Normalize the extracted text from PDFs to improve subsequent extraction.
+     * Clean multiple spaces, normalize line breaks and special characters.
      */
     protected String normalizeExtractedText(String text) {
         if (text == null) return "";
@@ -119,18 +209,18 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             .replaceAll("\\u2007", " ")  // Figure space
             .replaceAll("\\u202F", " ")  // Narrow NBSP
             .replaceAll("\\u2009", " ")  // Thin space
-            // Normalizar espacios múltiples a un solo espacio
-            .replaceAll("\\s+", " ")
-            // Normalizar saltos de línea múltiples a uno solo
+            // Collapse horizontal whitespace only
+            .replaceAll("[ \t]+", " ")
+            // Normalize multiple line breaks to one
             .replaceAll("\\n\\s*\\n+", "\n")
-            // Normalizar espacios alrededor de dos puntos
+            // Normalize spaces around colons
             .replaceAll("\\s*:\\s*", ": ")
-            // Normalizar espacios alrededor de paréntesis
+            // Normalize spaces around parentheses
             .replaceAll("\\s*\\(\\s*", " (")
             .replaceAll("\\s*\\)", ")")
             // Normalizar viñetas (diferentes tipos a •)
             .replaceAll("[•·▪▫◦‣⁃]", "•")
-            // Limpiar caracteres de control excepto saltos de línea
+            // Clean control characters except line breaks
             .replaceAll("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "")
             .replaceAll("\\uFFFD", "")  // Replacement character
             .trim();

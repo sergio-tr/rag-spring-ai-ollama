@@ -8,7 +8,9 @@ import org.springframework.ai.document.Document;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 import static com.uniovi.rag.utils.InfoExtractor.extractDate;
 import static com.uniovi.rag.utils.InfoExtractor.extractTime;
@@ -34,9 +36,12 @@ public class GetDurationTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing get duration query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing get duration query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for get duration query", docs.size());
         List<MeetingDuration> durations = new ArrayList<>();
 
         // Try with NER filtering if available
@@ -94,11 +99,18 @@ public class GetDurationTool extends AbstractTool {
 
         String answer;
         if (!durations.isEmpty()) {
+            log().debug("Found {} durations for query, generating answer", durations.size());
             answer = generateFinalAnswer(query, durations);
         } else {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No durations found for query: '{}' (execution time: {} ms)", query, totalTime);
             answer = generateNotFoundMessage(query);
         }
-        return ToolResult.from(answer, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated get duration answer for query: '{}' (execution time: {} ms)", query, totalTime);
+        // Apply formatResponse to clean the response
+        String formattedAnswer = formatResponse(answer, query);
+        return ToolResult.from(formattedAnswer, getClass());
     }
 
     /**
@@ -136,26 +148,89 @@ public class GetDurationTool extends AbstractTool {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            // Check for positive responses in multiple languages
-            return normalized.startsWith("yes") || normalized.startsWith("sí") || normalized.startsWith("si") || 
-                   normalized.startsWith("oui") || normalized.startsWith("ja") || normalized.startsWith("da");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "isRelevantByLLM");
         } catch (Exception e) {
             log().error("Error in isRelevantByLLM, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
         }
     }
 
+    /** Prefer metadata startTime/endTime when present (avoids "No durations found" when data exists in metadata). */
+    private static final java.util.regex.Pattern TIME_PATTERN = Pattern.compile("(\\d{1,2}):(\\d{2})");
+
     /**
-     * Extracts meeting duration from document
+     * Extracts meeting duration from document with validation.
+     * Uses metadata startTime/endTime when available (P2), otherwise parses content.
      */
     private MeetingDuration extractMeetingDuration(Document doc) {
+        if (doc == null) {
+            log().debug("Cannot extract duration: document is null");
+            return null;
+        }
+        // Try metadata first (documents may have startTime/endTime from MetadataMinuteDocumentService)
+        Map<String, Object> meta = doc.getMetadata();
+        if (meta != null) {
+            Object startObj = meta.get("startTime");
+            Object endObj = meta.get("endTime");
+            if (startObj != null && endObj != null) {
+                String startTime = startObj.toString().trim();
+                String endTime = endObj.toString().trim();
+                if (!startTime.isEmpty() && !endTime.isEmpty()) {
+                    int durationMinutes = durationMinutesFromTimes(startTime, endTime);
+                    if (durationMinutes > 0 && durationMinutes <= 24 * 60) {
+                        String date = null;
+                        if (meta.containsKey("date_iso")) date = meta.get("date_iso").toString().trim();
+                        else if (meta.containsKey("date")) date = meta.get("date").toString().trim();
+                        if (date == null || date.isEmpty()) date = "Unknown date";
+                        log().debug("Extracted duration from metadata for document {}: {} minutes ({} - {})",
+                                doc.getId(), durationMinutes, startTime, endTime);
+                        return new MeetingDuration(date, startTime, endTime, durationMinutes);
+                    }
+                }
+            }
+        }
+        // Fallback: content-based extraction
+        if (doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+            log().debug("Cannot extract duration: document content is null or empty");
+            return null;
+        }
         String content = doc.getContent();
         String date = extractDate(content);
         String startTime = extractTime(content, "start");
         String endTime = extractTime(content, "end");
+        if (startTime == null || startTime.trim().isEmpty()) {
+            log().debug("Cannot extract duration: startTime is null or empty for document {}", doc.getId());
+            return null;
+        }
+        if (endTime == null || endTime.trim().isEmpty()) {
+            log().debug("Cannot extract duration: endTime is null or empty for document {}", doc.getId());
+            return null;
+        }
         int duration = calculateDuration(content);
+        if (duration <= 0) {
+            log().debug("Invalid duration: {} minutes (too short) for document {}", duration, doc.getId());
+            return null;
+        }
+        if (duration > 24 * 60) {
+            log().warn("Invalid duration: {} minutes (too long, >24h) for document {}", duration, doc.getId());
+            return null;
+        }
+        log().debug("Extracted duration for document {}: {} minutes ({} - {})", doc.getId(), duration, startTime, endTime);
         return new MeetingDuration(date, startTime, endTime, duration);
+    }
+
+    /** Parses "HH:mm" or "H:mm" and returns duration in minutes; 0 if invalid. */
+    private int durationMinutesFromTimes(String startTime, String endTime) {
+        java.util.regex.Matcher startM = TIME_PATTERN.matcher(startTime);
+        java.util.regex.Matcher endM = TIME_PATTERN.matcher(endTime);
+        if (startM.find() && endM.find()) {
+            int startMin = Integer.parseInt(startM.group(1)) * 60 + Integer.parseInt(startM.group(2));
+            int endMin = Integer.parseInt(endM.group(1)) * 60 + Integer.parseInt(endM.group(2));
+            int d = endMin - startMin;
+            return d > 0 ? d : 0;
+        }
+        return 0;
     }
 
     /**
@@ -180,6 +255,9 @@ public class GetDurationTool extends AbstractTool {
                     
                     Write a brief and clear answer, in the same language as the query, 
                     indicating which meeting had the longest/shortest duration and its details.
+                    DO NOT repeat the question or any part of it.
+                    Start directly with the answer content.
+                    Be concise and direct.
                     """, query, durations.stream().map(MeetingDuration::toString).collect(Collectors.joining("\n")));
                 
                 try {
@@ -190,11 +268,12 @@ public class GetDurationTool extends AbstractTool {
                             .content();
                     
                     if (response == null || response.trim().isEmpty()) {
-                        log().warn("Empty response from LLM in generateFinalAnswer (comparison), using fallback");
+                        log().warn("Empty response from LLM in generateFinalAnswer (comparison) for query: '{}', using fallback", query);
                         return generateFallbackAnswer(query, durations, result);
                     }
                     
-                    return response.strip();
+                    // Apply formatResponse to clean and format the response
+                    return formatResponse(response.strip(), query);
                 } catch (Exception e) {
                     log().error("Error generating final answer (comparison), using fallback", e);
                     return generateFallbackAnswer(query, durations, result);
@@ -209,8 +288,18 @@ public class GetDurationTool extends AbstractTool {
             The following meetings were found (date, start, end, duration in minutes):
             %s
             
+            CRITICAL RULES:
+            1. Write in the EXACT SAME LANGUAGE as the user's question
+            2. Be CONCISE - maximum 2-3 sentences per meeting
+            3. Do NOT repeat the question
+            4. Focus on the duration and key details
+            5. If multiple meetings, summarize each briefly
+            
             Write a brief and clear answer, in the same language as the query, 
             indicating the duration and details of each meeting found.
+            DO NOT repeat the question or any part of it.
+            Start directly with the answer content.
+            Be concise and direct.
             """, query, durations.stream().map(MeetingDuration::toString).collect(Collectors.joining("\n")));
         
         try {
@@ -221,11 +310,12 @@ public class GetDurationTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateFinalAnswer, using fallback");
+                log().warn("Empty response from LLM in generateFinalAnswer for query: '{}', using fallback", query);
                 return generateFallbackAnswer(query, durations, null);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating final answer, using fallback", e);
             return generateFallbackAnswer(query, durations, null);
@@ -263,10 +353,8 @@ public class GetDurationTool extends AbstractTool {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            // Check for positive responses in multiple languages
-            return normalized.startsWith("yes") || normalized.startsWith("sí") || normalized.startsWith("si") || 
-                   normalized.startsWith("oui") || normalized.startsWith("ja") || normalized.startsWith("da");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "isComparisonQuery");
         } catch (Exception e) {
             log().error("Error in isComparisonQuery, defaulting to false", e);
             return false;
@@ -351,53 +439,137 @@ public class GetDurationTool extends AbstractTool {
     }
     
     /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
+    }
+
+    /**
      * Generates a fallback answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackAnswer(String query, List<MeetingDuration> durations, MeetingDuration comparisonResult) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String durationsText = durations.stream()
+                .limit(5)
+                .map(d -> String.format("- %s: %d minutes", d.date != null ? d.date : "unknown date", d.durationMinutes))
+                .collect(Collectors.joining("\n"));
         
+        String prompt;
         if (comparisonResult != null) {
-            if (isSpanish) {
-                return String.format("La reunión con mayor/menor duración fue la del %s, con una duración de %d minutos.",
-                                   comparisonResult.date != null ? comparisonResult.date : "fecha desconocida",
-                                   comparisonResult.durationMinutes);
-            } else {
-                return String.format("The meeting with longest/shortest duration was on %s, with a duration of %d minutes.",
-                                   comparisonResult.date != null ? comparisonResult.date : "unknown date",
-                                   comparisonResult.durationMinutes);
-            }
+            prompt = String.format("""
+                The user asked (in any language): "%s"
+                
+                The meeting with longest/shortest duration was on %s, with a duration of %d minutes.
+                
+                Respond with a short message in the EXACT SAME LANGUAGE as the question,
+                stating the comparison result.
+                Be concise and direct.
+                Do not repeat the question.
+                """, query != null ? query : "", 
+                comparisonResult.date != null ? comparisonResult.date : "unknown date",
+                comparisonResult.durationMinutes);
         } else {
-            if (isSpanish) {
-                return "Duraciones encontradas:\n" + 
-                       durations.stream()
-                               .limit(5)
-                               .map(d -> String.format("- %s: %d minutos", d.date != null ? d.date : "fecha desconocida", d.durationMinutes))
-                               .collect(Collectors.joining("\n"));
-            } else {
-                return "Durations found:\n" + 
-                       durations.stream()
-                               .limit(5)
-                               .map(d -> String.format("- %s: %d minutes", d.date != null ? d.date : "unknown date", d.durationMinutes))
-                               .collect(Collectors.joining("\n"));
+            prompt = String.format("""
+                The user asked (in any language): "%s"
+                
+                Found the following durations:
+                %s
+                
+                Respond with a short message in the EXACT SAME LANGUAGE as the question,
+                listing the found durations.
+                Be concise and direct.
+                Do not repeat the question.
+                """, query != null ? query : "", durationsText);
+        }
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
             }
+        } catch (Exception e) {
+            log().warn("Error generating fallback answer with LLM", e);
+        }
+        
+        // Ultimate fallback
+        if (comparisonResult != null) {
+            return String.format("The meeting with longest/shortest duration was on %s, with a duration of %d minutes.",
+                               comparisonResult.date != null ? comparisonResult.date : "unknown date",
+                               comparisonResult.durationMinutes);
+        } else {
+            return "Durations found:\n" + durationsText;
         }
     }
     
     /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No information about meeting durations was found in the available documents for this query.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no duration information was found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "");
         
-        if (isSpanish) {
-            return "No se encontró información sobre la duración de las reuniones en los documentos disponibles para esta consulta.";
-        } else {
-            return "No information about meeting durations was found in the available documents for this query.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No information about meeting durations was found in the available documents for this query.";
     }
 
     private static class MeetingDuration {

@@ -30,9 +30,12 @@ public class FindParagraphTool extends AbstractTool {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
         
-        log().debug("Executing find paragraph query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
+        log().info("Executing find paragraph query: '{}' with NER: {}", 
+                  query, ner != null ? ner.toString() : "null");
+        long startTime = System.currentTimeMillis();
         
         List<Document> docs = retrieveDocuments(query);
+        log().debug("Retrieved {} documents for find paragraph query", docs.size());
         List<String> results = new ArrayList<>();
 
         // Try with NER filtering if available
@@ -77,11 +80,21 @@ public class FindParagraphTool extends AbstractTool {
 
         String answer;
         if (!results.isEmpty()) {
-            answer = generateFinalAnswer(query, results);
+            log().debug("Found {} paragraphs for query, limiting to 3 for conciseness", results.size());
+            // Limit paragraphs to 3 maximum for conciseness
+            List<String> limitedResults = results.stream().limit(3).collect(java.util.stream.Collectors.toList());
+            answer = generateFinalAnswer(query, limitedResults);
         } else {
+            long totalTime = System.currentTimeMillis() - startTime;
+            log().info("No paragraphs found for query: '{}' (execution time: {} ms)", query, totalTime);
             answer = generateNotFoundResponse(query);
         }
-        return ToolResult.from(answer, getClass());
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("Generated find paragraph answer for query: '{}' (execution time: {} ms, paragraphs: {})", 
+                  query, totalTime, results.size());
+        // Apply formatResponse to clean the response
+        String formattedAnswer = formatResponse(answer, query);
+        return ToolResult.from(formattedAnswer, getClass());
     }
 
     /**
@@ -162,13 +175,49 @@ public class FindParagraphTool extends AbstractTool {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            // Check for positive responses in multiple languages
-            return normalized.startsWith("yes") || normalized.contains("sí") || normalized.contains("si") || 
-                   normalized.contains("oui") || normalized.contains("ja") || normalized.contains("da");
+            // Use LLM to interpret the response as yes/no
+            return interpretBooleanResponse(result, "isParagraphRelevantByLLM");
         } catch (Exception e) {
             log().error("Error in isParagraphRelevantByLLM, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
+        }
+    }
+
+    /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
         }
     }
 
@@ -197,6 +246,10 @@ public class FindParagraphTool extends AbstractTool {
             
             Write a brief and clear answer in the same language as the query, 
             summarizing the relevant information from all the paragraphs found.
+            DO NOT repeat the question or any part of it at the beginning.
+            DO NOT start with phrases like "Dime qué...", "The user asked...", etc.
+            Start directly with the answer content.
+            Be concise - maximum 3-4 sentences.
             """, query, joined);
         
         try {
@@ -207,11 +260,12 @@ public class FindParagraphTool extends AbstractTool {
                     .content();
             
             if (response == null || response.trim().isEmpty()) {
-                log().warn("Empty response from LLM in generateFinalAnswer, using fallback");
+                log().warn("Empty response from LLM in generateFinalAnswer for query: '{}', using fallback", query);
                 return generateFallbackAnswer(query, results);
             }
             
-            return response.strip();
+            // Apply formatResponse to clean and format the response
+            return formatResponse(response.strip(), query);
         } catch (Exception e) {
             log().error("Error generating final answer, using fallback", e);
             return generateFallbackAnswer(query, results);
@@ -229,6 +283,8 @@ public class FindParagraphTool extends AbstractTool {
             No relevant paragraphs were found for this query in the available meeting minutes.
             
             Write a polite response in the same language as the query explaining that no relevant paragraphs were found.
+            Be concise and direct.
+            DO NOT repeat the question or any part of it.
             """, query);
         
         try {
@@ -251,33 +307,74 @@ public class FindParagraphTool extends AbstractTool {
     
     /**
      * Generates a fallback answer when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackAnswer(String query, List<String> results) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String resultsText = results.stream()
+                .limit(5)
+                .collect(java.util.stream.Collectors.joining("\n\n"));
         
-        if (isSpanish) {
-            return "Párrafos relevantes encontrados:\n\n" + 
-                   results.stream().limit(5).collect(java.util.stream.Collectors.joining("\n\n"));
-        } else {
-            return "Relevant paragraphs found:\n\n" + 
-                   results.stream().limit(5).collect(java.util.stream.Collectors.joining("\n\n"));
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            Found the following relevant paragraphs:
+            %s
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            listing the found paragraphs.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query != null ? query : "", resultsText);
+        
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+            
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback answer with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "Relevant paragraphs found:\n\n" + resultsText;
     }
     
     /**
      * Generates a fallback "not found" message when LLM fails.
-     * Detects language from query and responds accordingly.
+     * Uses LLM to generate message in correct language.
      */
     private String generateFallbackNotFoundMessage(String query) {
-        String queryLower = query.toLowerCase();
-        boolean isSpanish = queryLower.matches(".*[áéíóúñ¿¡].*");
+        String prompt = String.format("""
+            The user asked (in any language): "%s"
+            
+            No relevant paragraphs were found in the available documents for this query.
+            
+            Respond with a short message in the EXACT SAME LANGUAGE as the question,
+            stating that no relevant paragraphs were found.
+            Be concise and direct.
+            Do not repeat the question.
+            """, query);
         
-        if (isSpanish) {
-            return "No se encontraron párrafos relevantes en los documentos disponibles para esta consulta.";
-        } else {
-            return "No relevant paragraphs were found in the available documents for this query.";
+        try {
+            String response = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip();
+            if (response != null && !response.trim().isEmpty()) {
+                return response.trim();
+            }
+        } catch (Exception e) {
+            log().warn("Error generating fallback not found message with LLM", e);
         }
+        
+        // Ultimate fallback
+        return "No relevant paragraphs were found in the available documents for this query.";
     }
 }

@@ -3,6 +3,7 @@ package com.uniovi.rag.services.analyser;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.cache.annotation.Cacheable;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -110,13 +111,38 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     private final ChatClient chatClient;
     
-    // Date patterns for normalization
+    // Date patterns for normalization - enhanced to match parseDateFlexible and parseDateToLocalDate
+    // These formatters are used to normalize dates extracted from NER
     private static final List<DateTimeFormatter> DATE_FORMATTERS = Arrays.asList(
+        // ISO format first (most reliable)
+        DateTimeFormatter.ISO_LOCAL_DATE,
+        // Spanish formats with quotes
         DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        // Spanish formats without quotes
+        DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
+        // Abbreviated month names
+        DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
+        // Without "de" between day and month
+        DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
+        // English formats
         DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH),
+        // Numeric formats
         DateTimeFormatter.ofPattern("d/M/yyyy"),
-        DateTimeFormatter.ofPattern("yyyy-MM-dd"),
-        DateTimeFormatter.ofPattern("d-MM-yyyy")
+        DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+        DateTimeFormatter.ofPattern("d-M-yyyy"),
+        DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+        DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+        DateTimeFormatter.ofPattern("yyyy.MM.dd"),
+        // With day of the week
+        DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH)
     );
     
     // Patterns for common entity types
@@ -129,54 +155,69 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     @Override
     public JSONObject analyse(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            log().warn("NER: Empty query provided");
+            return createFallbackResponse(query);
+        }
+        
         try {
-            // Use simple string replacement instead of PromptTemplate to avoid issues with [ and ] in JSON examples
-            String prompt = NER_PROMPT.replace("{query}", query != null ? query : "");
+            return analyseWithCache(query);
+        } catch (Exception e) {
+            log().error("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage(), e);
+            return createFallbackResponse(query);
+        }
+    }
+    
+    /**
+     * Analyzes the query with robust validation and normalization.
+     */
+    @Cacheable(value = "nerAnalysis", key = "#query.hashCode()")
+    private JSONObject analyseWithCache(String query) {
+        // Use simple string replacement instead of PromptTemplate to avoid issues with [ and ] in JSON examples
+        String prompt = NER_PROMPT.replace("{query}", query);
 
-            String response = chatClient
-                    .prompt()
-                    .system(getSystemPrompt())
-                    .user(prompt)
-                    .call()
-                    .content();
+        String response = chatClient
+                .prompt()
+                .system(getSystemPrompt())
+                .user(prompt)
+                .call()
+                .content();
 
-            if (response == null || response.trim().isEmpty()) {
-                log().warn("NER: Empty response from LLM for query: {}", query);
+        if (response == null || response.trim().isEmpty()) {
+            log().warn("NER: Empty response from LLM for query: {}", query);
+            return createFallbackResponse(query);
+        }
+
+        String cleanResponse = cleanJsonResponse(response);
+        
+        log().info("NER-QUERY: Raw response length: {}, Cleaned response:\n{}", response.length(), cleanResponse);
+
+        if (!cleanResponse.trim().startsWith("{")) {
+            log().warn("NER: Response does not start with {{, attempting to extract JSON");
+            // Try to extract JSON from response
+            int startIdx = cleanResponse.indexOf("{");
+            int endIdx = cleanResponse.lastIndexOf("}");
+            if (startIdx >= 0 && endIdx > startIdx) {
+                cleanResponse = cleanResponse.substring(startIdx, endIdx + 1);
+                log().info("NER: Extracted JSON substring: {}", cleanResponse);
+            } else {
+                log().error("NER: Response does not contain valid JSON structure for query: {}", query);
                 return createFallbackResponse(query);
             }
+        }
 
-            String cleanResponse = cleanJsonResponse(response);
-            
-            log().debug("NER-QUERY: Raw response length: {}, Cleaned response:\n{}", response.length(), cleanResponse);
-
-            // Validate JSON structure
-            if (!cleanResponse.trim().startsWith("{")) {
-                log().warn("NER: Response does not start with {{, attempting to extract JSON");
-                // Try to extract JSON from response
-                int startIdx = cleanResponse.indexOf("{");
-                int endIdx = cleanResponse.lastIndexOf("}");
-                if (startIdx >= 0 && endIdx > startIdx) {
-                    cleanResponse = cleanResponse.substring(startIdx, endIdx + 1);
-                    log().debug("NER: Extracted JSON substring: {}", cleanResponse);
-                } else {
-                    throw new IllegalArgumentException("Response does not contain valid JSON structure.");
-                }
-            }
-
+        try {
             JSONObject json = new JSONObject(cleanResponse);
             validateAndNormalize(json);
             enhanceWithContextAnalysis(json, query);
             
-            log().debug("NER: Successfully parsed and normalized JSON for query: {}", query);
+            log().info("NER: Successfully parsed and normalized JSON for query: {}", query);
             return json;
         } catch (org.json.JSONException e) {
             log().error("NER: JSON parsing error for query '{}': {}", query, e.getMessage(), e);
             return createFallbackResponse(query);
         } catch (IllegalArgumentException e) {
             log().error("NER: Invalid JSON structure for query '{}': {}", query, e.getMessage(), e);
-            return createFallbackResponse(query);
-        } catch (Exception e) {
-            log().error("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage(), e);
             return createFallbackResponse(query);
         }
     }
@@ -331,29 +372,45 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     }
 
     /**
-     * Normalizes a single date string
+     * Normalizes a single date string to ISO format (yyyy-MM-dd).
+     * Handles relative dates and various date formats consistently with the rest of the system.
      */
     private String normalizeDate(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) return null;
         
-        String lower = dateStr.toLowerCase().trim();
+        String trimmed = dateStr.trim();
+        String lower = trimmed.toLowerCase();
         
-        // Handle relative dates
+        // Handle relative dates (keep as-is for temporal context, don't normalize to ISO)
         if (lower.contains("última") || lower.contains("last")) return "latest";
         if (lower.contains("primera") || lower.contains("first")) return "oldest";
         if (lower.contains("pasada") || lower.contains("past")) return "past";
         if (lower.contains("próxima") || lower.contains("next")) return "future";
         
-        // Try to parse with different formatters
+        // Try ISO format first (most reliable and fastest) - use original trimmed for ISO
+        try {
+            LocalDate date = LocalDate.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE);
+            return date.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+            // Not ISO format, continue to other formatters
+        }
+        
+        // Try to parse with different formatters - use lowercase for Spanish formats
         for (DateTimeFormatter formatter : DATE_FORMATTERS) {
             try {
-                LocalDate date = LocalDate.parse(dateStr, formatter);
-                return date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                // Use lowercase for parsing to handle case variations (e.g., "Agosto" vs "agosto")
+                String toParse = formatter.getLocale() != null && formatter.getLocale().getLanguage().equals("es") 
+                    ? lower : trimmed;
+                LocalDate date = LocalDate.parse(toParse, formatter);
+                // Always return in ISO format for consistency
+                return date.format(DateTimeFormatter.ISO_LOCAL_DATE);
             } catch (DateTimeParseException ignored) {
                 // Continue to next formatter
             }
         }
         
+        // If all parsing fails, log for debugging but return original
+        log().debug("Could not normalize date: {}", dateStr);
         return null; // Could not normalize
     }
 
@@ -511,7 +568,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             }
             return defaultValue;
         } catch (Exception e) {
-            log().debug("Error getting string value for key '{}': {}", key, e.getMessage());
+            log().info("Error getting string value for key '{}': {}", key, e.getMessage());
             return defaultValue;
         }
     }

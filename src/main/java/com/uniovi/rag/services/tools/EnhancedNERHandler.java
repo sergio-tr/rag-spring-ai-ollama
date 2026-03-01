@@ -29,13 +29,37 @@ public class EnhancedNERHandler implements Loggable {
 
     private final ChatClient chatClient;
     
-    // Date patterns for normalization
+    // Date patterns for normalization - enhanced to match parseDateFlexible for consistency
     private static final List<DateTimeFormatter> DATE_FORMATTERS = Arrays.asList(
+        // ISO format first (most reliable)
+        DateTimeFormatter.ISO_LOCAL_DATE,
+        // Spanish formats with quotes
         DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        // Spanish formats without quotes
+        DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
+        // Abbreviated month names
+        DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
+        // Without "de" between day and month
+        DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
+        // English formats
         DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH),
+        // Numeric formats
         DateTimeFormatter.ofPattern("d/M/yyyy"),
-        DateTimeFormatter.ofPattern("yyyy-MM-dd"),
-        DateTimeFormatter.ofPattern("d-MM-yyyy")
+        DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+        DateTimeFormatter.ofPattern("d-M-yyyy"),
+        DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+        DateTimeFormatter.ofPattern("yyyy/MM/dd"),
+        DateTimeFormatter.ofPattern("yyyy.MM.dd"),
+        // With day of the week
+        DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
+        DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH)
     );
     
     // Patterns for common entity types
@@ -71,8 +95,8 @@ public class EnhancedNERHandler implements Loggable {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            // Use LLM to interpret the response as yes/no
+            return interpretBooleanResponse(result, "matchesDocumentWithNER");
         } catch (Exception e) {
             log().error("Error in matchesDocumentWithNER, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
@@ -100,15 +124,15 @@ public class EnhancedNERHandler implements Loggable {
                     .content();
             
             if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in matchesMinuteWithNER, defaulting to false");
-                return false;
+                log().warn("Empty response from LLM in matchesMinuteWithNER, defaulting to true to avoid false negatives");
+                return true;
             }
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "matchesMinuteWithNER");
         } catch (Exception e) {
-            log().error("Error in matchesMinuteWithNER, defaulting to false", e);
-            return false; // Default to false on error to avoid false positives
+            log().error("Error in matchesMinuteWithNER, defaulting to true to avoid false negatives", e);
+            return true;
         }
     }
 
@@ -403,8 +427,8 @@ public class EnhancedNERHandler implements Loggable {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "matchesTemporalContext");
         } catch (Exception e) {
             log().error("Error in matchesTemporalContext, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
@@ -469,8 +493,8 @@ public class EnhancedNERHandler implements Loggable {
                 return false;
             }
             
-            String normalized = result.strip().toLowerCase();
-            return normalized.contains("yes") || normalized.contains("sí");
+            // Use LLM to interpret boolean response
+            return interpretBooleanResponse(result, "matchesMinuteTemporalContext");
         } catch (Exception e) {
             log().error("Error in matchesMinuteTemporalContext, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
@@ -636,5 +660,43 @@ public class EnhancedNERHandler implements Loggable {
         }
         
         return normalized.toString();
+    }
+
+    /**
+     * Interprets LLM response as boolean using another LLM call.
+     */
+    private boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+        
+        String prompt = String.format("""
+            Context: %s
+            
+            The LLM generated this response: "%s"
+            
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+            
+            Consider semantic meaning, not just exact words.
+            
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+        
+        try {
+            String interpretation = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip()
+                    .toUpperCase();
+            
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
     }
 }

@@ -1,12 +1,11 @@
 package com.uniovi.rag.services.retriever;
 
-import com.uniovi.rag.model.Loggable;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.PgVectorStore;
 
-public class FilteredContextRetriever extends AbstractContextRetriever implements Loggable {
+public class FilteredContextRetriever extends AbstractContextRetriever {
 
     private static final String PROMPT_TEMPLATE = """
         You are a content filtering system for meeting minutes. Your task is to filter document content 
@@ -65,14 +64,17 @@ public class FilteredContextRetriever extends AbstractContextRetriever implement
         }
         
         if (query == null || query.trim().isEmpty()) {
-            // If no query, return original content
-            return doc.getContent();
+            // If no query, return original content with optional metadata prefix
+            return buildContentWithOptionalMetadataPrefix(doc, doc.getContent());
         }
+
+        String contentWithPrefix = buildContentWithOptionalMetadataPrefix(doc, doc.getContent());
+        String promptContent = truncateForPrompt(contentWithPrefix, DEFAULT_MAX_PROMPT_CHARS);
 
         try {
             String filterPrompt = entities == null || entities.isEmpty() ?
-                    String.format(PROMPT_TEMPLATE, doc.getContent(), query) :
-                    String.format(NER_PROMPT_TEMPLATE, doc.getContent(), query, 
+                    String.format(PROMPT_TEMPLATE, promptContent, query) :
+                    String.format(NER_PROMPT_TEMPLATE, promptContent, query, 
                                  entities != null ? entities.toString(2) : "{}");
 
             String filteredContent = chatClient
@@ -84,17 +86,17 @@ public class FilteredContextRetriever extends AbstractContextRetriever implement
 
             // Validate filtered content
             if (filteredContent == null || filteredContent.isEmpty()) {
-                log().debug("Filtered content is empty for document: {}", doc.getId());
+                log().info("Filtered content is empty for document: {}", doc.getId());
                 return "";
             }
 
-            log().debug("Filtered content length: {} (original: {})", 
+            log().info("Filtered content length: {} (original: {})", 
                        filteredContent.length(), doc.getContent().length());
             return filteredContent;
         } catch (Exception e) {
             log().error("Error filtering document content, returning original content", e);
-            // Return original content as fallback instead of empty string
-            return doc.getContent();
+            // Return original content with optional metadata prefix as fallback
+            return contentWithPrefix;
         }
     }
 }
