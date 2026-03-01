@@ -143,24 +143,12 @@ public class RagConfiguration {
     }
 
     /**
-     * Single ChatClient; configuration depends on RagFeatureConfiguration.
-     * When function-calling is enabled: adds defaultTools (MeetingMinutesToolsAdapter with @Tool).
-     * Adds QuestionAnswerAdvisor so retrieval can inject context in the askModel path.
-     * Other components (ranker, reasoning, etc.) use this same client.
+     * Single ChatClient with no tools/advisor to avoid circular dependency.
+     * ProcessQueryService applies tools and QuestionAnswerAdvisor at call time via .tools() and .advisors().
      */
     @Bean
-    public ChatClient chatClient(
-            ChatModel chatModel,
-            RagFeatureConfiguration featureConfig,
-            MeetingMinutesToolsAdapter meetingMinutesToolsAdapter,
-            QuestionAnswerAdvisor questionAnswerAdvisor
-    ) {
-        var builder = ChatClient.builder(chatModel);
-        if (featureConfig.isFunctionCallingEnabled()) {
-            builder.defaultTools(meetingMinutesToolsAdapter);
-        }
-        builder.defaultAdvisors(questionAnswerAdvisor);
-        return builder.build();
+    public ChatClient chatClient(ChatModel chatModel) {
+        return ChatClient.builder(chatModel).build();
     }
 
     @Bean
@@ -381,7 +369,8 @@ public class RagConfiguration {
             ResponseRanker responseRanker,
             PostRetrievalProcessor postRetrievalProcessor,
             ToolRagService toolRagService,
-            ResponseValidator responseValidator
+            ResponseValidator responseValidator,
+            QuestionAnswerAdvisor questionAnswerAdvisor
     ) {
         return new ProcessQueryService(
                 featureConfig,
@@ -398,7 +387,8 @@ public class RagConfiguration {
                 responseRanker,
                 postRetrievalProcessor,
                 toolRagService,
-                responseValidator
+                responseValidator,
+                questionAnswerAdvisor
         );
     }
 

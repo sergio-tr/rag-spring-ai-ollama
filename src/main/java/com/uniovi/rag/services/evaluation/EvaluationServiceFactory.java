@@ -115,7 +115,8 @@ public class EvaluationServiceFactory {
                 responseRanker,
                 postRetrievalProcessor,
                 toolRagService,
-                responseValidator
+                responseValidator,
+                null  // questionAnswerAdvisor: evaluation uses manual retrieval path
         );
     }
 

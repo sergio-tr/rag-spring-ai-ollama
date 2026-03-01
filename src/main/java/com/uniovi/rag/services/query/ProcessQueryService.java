@@ -26,6 +26,7 @@ import com.uniovi.rag.services.tools.ToolRagService;
 import com.uniovi.rag.services.tools.ToolResult;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
 
@@ -86,6 +87,7 @@ public class ProcessQueryService implements QueryService {
     private final PostRetrievalProcessor postRetrievalProcessor;
     private final ToolRagService toolRagService;
     private final ResponseValidator responseValidator;
+    private final QuestionAnswerAdvisor questionAnswerAdvisor;
 
     public ProcessQueryService(RagFeatureConfiguration featureConfig,
                                RagToolsConfiguration toolsConfig,
@@ -101,9 +103,11 @@ public class ProcessQueryService implements QueryService {
                                ResponseRanker responseRanker,
                                PostRetrievalProcessor postRetrievalProcessor,
                                ToolRagService toolRagService,
-                               ResponseValidator responseValidator) {
+                               ResponseValidator responseValidator,
+                               QuestionAnswerAdvisor questionAnswerAdvisor) {
         this.featureConfig = featureConfig;
         this.chatClient = chatClient;
+        this.questionAnswerAdvisor = questionAnswerAdvisor;
         this.expander = expander;
         this.analyser = analyser;
         this.nerQueryEnricher = nerQueryEnricher;
@@ -199,10 +203,9 @@ public class ProcessQueryService implements QueryService {
                     String toolResponse = null;
                     if (featureConfig.isFunctionCallingEnabled()) {
                         try {
-                            String content = chatClient.prompt()
-                                    .user(expandedQuery)
-                                    .call()
-                                    .content();
+                            String content = (meetingMinutesToolsAdapter != null)
+                                    ? chatClient.prompt().user(expandedQuery).tools(meetingMinutesToolsAdapter).call().content()
+                                    : chatClient.prompt().user(expandedQuery).call().content();
                             if (content != null && !content.trim().isEmpty()) {
                                 toolResponse = responseValidator.validateAndClean(content, "Tool-function-calling");
                                 if (toolResponse != null && !toolResponse.trim().isEmpty()) {
@@ -541,10 +544,11 @@ public class ProcessQueryService implements QueryService {
      */
     private String askModel(String query, JSONObject nerEntities, QueryType queryType) {
         // Use QuestionAnswerAdvisor path when no NER or post-retrieval (advisor injects context from vector store)
-        if (!featureConfig.isNerEnabled() && !featureConfig.isPostRetrievalEnabled()) {
+        if (questionAnswerAdvisor != null && !featureConfig.isNerEnabled() && !featureConfig.isPostRetrievalEnabled()) {
             try {
                 String rawContent = chatClient.prompt()
                         .user(query)
+                        .advisors(questionAnswerAdvisor)
                         .call()
                         .content();
                 String validated = rawContent != null ? responseValidator.validateAndClean(rawContent, "ProcessQueryService-Advisor") : null;
