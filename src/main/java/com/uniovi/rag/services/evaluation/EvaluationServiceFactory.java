@@ -4,6 +4,7 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.model.Minute;
 import com.uniovi.rag.services.analyser.MinuteNERQueryAnalyser;
+import com.uniovi.rag.services.analyser.NERQueryEnricher;
 import com.uniovi.rag.services.analyser.QueryAnalyser;
 import com.uniovi.rag.services.classifier.PythonQueryClassifier;
 import com.uniovi.rag.services.classifier.QueryClassifier;
@@ -75,12 +76,14 @@ public class EvaluationServiceFactory {
         RagToolsConfiguration toolsConfig = new RagToolsConfiguration(createTools(featureConfig, retriever));
         QueryDateExtractor queryDateExtractor = new QueryDateExtractor();
         DateExistenceGuard dateExistenceGuard = new DateExistenceGuard(retriever, queryDateExtractor);
+        NERQueryEnricher nerQueryEnricher = new NERQueryEnricher(80, 512);
 
         return new ProcessQueryService(
                 featureConfig,
                 toolsConfig,
                 expander,
                 analyser,
+                nerQueryEnricher,
                 classifier,
                 retriever,
                 chatClient,

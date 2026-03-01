@@ -36,7 +36,7 @@ public class DecisionExtractionTool extends AbstractTool {
                   query, ner != null ? ner.toString() : "null");
         long startTime = System.currentTimeMillis();
         
-        List<Document> docs = retrieveDocuments(query);
+        List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for decision extraction query", docs.size());
         List<String> decisions = new ArrayList<>();
 
@@ -82,7 +82,7 @@ public class DecisionExtractionTool extends AbstractTool {
         }
         
         if (decisions.isEmpty()) {
-            docs = retrieveAllDocuments(query);
+            docs = retrieveAllDocuments(query, ner);
             if (!docs.isEmpty()) {
                 for (Document doc : docs) {
                     if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {

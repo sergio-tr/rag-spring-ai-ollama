@@ -1,10 +1,51 @@
 package com.uniovi.rag.services.expand;
 
 import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.model.ExpansionStrategy;
 
+import java.util.regex.Pattern;
+
+/**
+ * Query expander for meeting minutes retrieval, aligned with findings from
+ * "Query Expansion by Prompting Large Language Models" (Jagerman et al.): use of
+ * Chain-of-Thought (CoT) or keyword expansion (Q2E), concatenation with the original
+ * query (and optional upweighting by repeating it) instead of replacing it.
+ */
 public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
 
-    private static final String DOCUMENT_STRUCTURE_PROMPT = """
+    /** Default max length of the expansion segment (configurable via rag.expansion.max-expansion-chars). */
+    private static final int DEFAULT_MAX_EXPANSION_LENGTH = 350;
+    /** Default max total query length (configurable via rag.expansion.max-query-total-chars). */
+    private static final int DEFAULT_MAX_QUERY_LENGTH_TOTAL = 512;
+
+    /** Sentences/phrases to strip from CoT output before using as expansion (paper: "The final answer:", etc.). */
+    private static final Pattern COT_FINAL_ANSWER_PATTERN = Pattern.compile(
+            "(?i)(\\s*(?:the\\s+final\\s+answer|so\\s+the\\s+final\\s+answer is|la\\s+respuesta\\s+final|así que\\s+la\\s+respuesta\\s+es)\\s*:?\\s*[^.]*\\.?)\\s*$"
+    );    
+
+    private final ExpansionStrategy strategy;
+    private final int originalQueryRepeatCount;
+    private final int maxExpansionLength;
+    private final int maxQueryLengthTotal;
+
+    public MinuteDocumentStructureExpander(ChatClient client) {
+        this(client, ExpansionStrategy.COT, 1, DEFAULT_MAX_EXPANSION_LENGTH, DEFAULT_MAX_QUERY_LENGTH_TOTAL);
+    }
+
+    public MinuteDocumentStructureExpander(ChatClient client, ExpansionStrategy strategy, int originalQueryRepeatCount) {
+        this(client, strategy, originalQueryRepeatCount, DEFAULT_MAX_EXPANSION_LENGTH, DEFAULT_MAX_QUERY_LENGTH_TOTAL);
+    }
+
+    public MinuteDocumentStructureExpander(ChatClient client, ExpansionStrategy strategy, int originalQueryRepeatCount,
+                                          int maxExpansionLength, int maxQueryLengthTotal) {
+        super(client);
+        this.strategy = strategy != null ? strategy : ExpansionStrategy.COT;
+        this.originalQueryRepeatCount = Math.max(1, Math.min(5, originalQueryRepeatCount));
+        this.maxExpansionLength = maxExpansionLength > 0 ? maxExpansionLength : DEFAULT_MAX_EXPANSION_LENGTH;
+        this.maxQueryLengthTotal = maxQueryLengthTotal > 0 ? maxQueryLengthTotal : DEFAULT_MAX_QUERY_LENGTH_TOTAL;
+    }
+
+    private static final String DOCUMENT_STRUCTURE_REPHRASE_PROMPT = """
         You are a query enhancement system for meeting minutes retrieval.
         
         Your task is to rephrase the user's question to make it clearer, more structured, and more relevant 
@@ -37,10 +78,37 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         Rephrased question (in the same language):
         """;
 
+    /** CoT prompt: rationale step-by-step produces many keywords (paper: best for recall). Domain-adapted for actas. */
+    private static final String COT_PROMPT = """
+        You are helping to expand a search query for finding information in homeowners' association meeting minutes.
+        
+        The minutes contain: date, location, times, attendees (names, roles), agenda (topics, agreements, decisions, votes), and questions/requests.
+        
+        Task: Answer the following query as if you were explaining step-by-step what information is needed to answer it. 
+        Give the rationale before giving any final answer. Use the SAME LANGUAGE as the query.
+        Do NOT end with a single "final answer" line - focus on the reasoning and key concepts (dates, people, topics, types of data).
+        Your explanation will be used as extra search terms, so include relevant keywords and phrases that might appear in the minutes.
+        
+        Query: "%s"
+        
+        Rationale (same language as query):
+        """;
 
-    public MinuteDocumentStructureExpander(ChatClient client) {
-        super(client);
-    }
+    /** Q2E-style: list of keywords only (paper: Q2E prompts). */
+    private static final String Q2E_KEYWORDS_PROMPT = """
+        You are a query expansion system for meeting minutes retrieval.
+        
+        The minutes contain: date, location, start/end time, attendees (names, roles), agenda (topics, agreements, decisions), questions and requests.
+        
+        Task: Write a short list of keywords or short phrases that would help find meeting minutes answering this query.
+        Use the SAME LANGUAGE as the query. Output ONLY the keywords or phrases, separated by commas or newlines.
+        Do not write full sentences. Include: dates or time references if relevant, role names (president, secretary), 
+        and topic terms (budget, repairs, elevator, cleaning, security, etc.) that might appear in the minutes.
+        
+        Query: "%s"
+        
+        Keywords (same language, comma or newline separated):
+        """;
 
     @Override
     public String expand(String query) {
@@ -48,87 +116,150 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
             log().debug("Empty query provided to expander, returning original");
             return query != null ? query : "";
         }
-        
-        String prompt = String.format(DOCUMENT_STRUCTURE_PROMPT, query);
+        String original = query.trim();
 
+        String expansion;
+        switch (strategy) {
+            case COT -> expansion = callAndPostProcessCoT(original);
+            case Q2E -> expansion = callAndExtractKeywords(original);
+            default -> expansion = callRephrase(original);
+        }
+
+        if (expansion == null || expansion.isBlank()) {
+            log().debug("Expansion empty or failed, returning original query only");
+            return buildResult(original, "");
+        }
+
+        expansion = truncateExpansion(expansion);
+        String result = buildResult(original, expansion);
+        result = capTotalLength(original, result);
+
+        if (!isValidExpansion(original, expansion, result)) {
+            log().debug("Expansion failed quality validation, returning original query only");
+            return original;
+        }
+
+        log().info("-----------------------------------------------------------------------------");
+        log().info("EXPANDER: strategy={}, original: {}", strategy, original);
+        log().info("EXPANDER: expansion: {}", expansion);
+        log().info("EXPANDER: final query (first 200 chars): {}", result.length() > 200 ? result.substring(0, 200) + "..." : result);
+
+        return result;
+    }
+
+    /** Ensures total length does not exceed maxQueryLengthTotal to avoid context/embedding truncation. */
+    private String capTotalLength(String original, String result) {
+        if (result == null || result.length() <= maxQueryLengthTotal) return result;
+        int prefixLen = original == null ? 0 : originalQueryRepeatCount * original.length() + Math.max(0, originalQueryRepeatCount - 1);
+        if (prefixLen >= maxQueryLengthTotal) return original != null ? original : result.substring(0, maxQueryLengthTotal);
+        String expansionPart = result.length() > prefixLen ? result.substring(prefixLen).trim() : "";
+        int maxExpansion = maxQueryLengthTotal - prefixLen - 1;
+        if (maxExpansion <= 0 || expansionPart.isEmpty()) return result.substring(0, Math.min(result.length(), maxQueryLengthTotal));
+        if (expansionPart.length() <= maxExpansion) return result;
+        log().debug("Capping total query length to {} (expansion truncated from {} to {} chars)",
+                maxQueryLengthTotal, expansionPart.length(), maxExpansion);
+        return result.substring(0, prefixLen) + " " + expansionPart.substring(0, maxExpansion).trim();
+    }
+
+    /** Builds final query: upweight original by repeating it, then append expansion (paper: Concat(q,q,q,q,q, LLM)). */
+    private String buildResult(String original, String expansion) {
+        if (expansion == null || expansion.isBlank()) {
+            return original;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < originalQueryRepeatCount; i++) {
+            if (i > 0) sb.append(" ");
+            sb.append(original);
+        }
+        sb.append(" ").append(expansion.trim());
+        return sb.toString().trim();
+    }
+
+    private String callRephrase(String query) {
+        String prompt = String.format(DOCUMENT_STRUCTURE_REPHRASE_PROMPT, query);
+        return callLlm(prompt);
+    }
+
+    private String callAndPostProcessCoT(String query) {
+        String prompt = String.format(COT_PROMPT, query);
+        String raw = callLlm(prompt);
+        if (raw == null || raw.isBlank()) return "";
+        String filtered = COT_FINAL_ANSWER_PATTERN.matcher(raw.trim()).replaceFirst("").trim();
+        return filtered.isEmpty() ? raw.trim() : filtered;
+    }
+
+    private String callAndExtractKeywords(String query) {
+        String prompt = String.format(Q2E_KEYWORDS_PROMPT, query);
+        String raw = callLlm(prompt);
+        if (raw == null || raw.isBlank()) return "";
+        return raw.trim().replace('\n', ' ').replaceAll("\\s+", " ").trim();
+    }
+
+    private String callLlm(String prompt) {
         try {
-            String result = client.prompt()
+            String content = client.prompt()
                     .user(prompt)
                     .call()
                     .content();
-            
-            if (result == null || result.trim().isEmpty()) {
-                log().debug("Empty response from LLM in expander, returning original query");
-                return query;
-            }
-            
-            String trimmed = result.trim();
-            
-            if (!isValidExpansion(query, trimmed)) {
-                log().debug("Expansion failed quality validation, returning original query");
-                return query;
-            }
-            
-            log().info("-----------------------------------------------------------------------------");
-            log().info("EXPANDER: Pregunta original: {}", query);
-            log().info("EXPANDER: Pregunta reformulada: {}", trimmed);
-
-            return trimmed;
+            return content != null ? content.trim() : "";
         } catch (Exception e) {
-            log().error("Error expanding query, returning original", e);
-            return query; // Return original query on error
+            log().error("Error calling LLM in expander", e);
+            return "";
         }
     }
-    
+
+    private String truncateExpansion(String expansion) {
+        if (expansion == null || expansion.length() <= maxExpansionLength) {
+            return expansion;
+        }
+        String truncated = expansion.substring(0, maxExpansionLength).trim();
+        int lastSpace = truncated.lastIndexOf(' ');
+        if (lastSpace > maxExpansionLength / 2) {
+            truncated = truncated.substring(0, lastSpace);
+        }
+        return truncated + " ";
+    }
+
     /**
-     * Validates the quality of the expansion.
+     * Validates the expansion segment and the final result.
+     * Original is always kept in result, so we validate expansion language and result size.
      */
-    private boolean isValidExpansion(String original, String expanded) {
-        if (expanded == null || expanded.trim().isEmpty()) {
+    private boolean isValidExpansion(String original, String expansion, String fullResult) {
+        if (fullResult == null || fullResult.isBlank()) {
             return false;
         }
-        
-        String trimmed = expanded.trim();
-        
-        // Validation 1: Same language
-        boolean originalHasSpanish = original.matches(".*[áéíóúñ¿¡].*");
-        boolean resultHasSpanish = trimmed.matches(".*[áéíóúñ¿¡].*");
-        
-        if (originalHasSpanish && !resultHasSpanish) {
-            log().warn("Expansion changed language from Spanish to another");
+        if (!fullResult.contains(original)) {
+            log().warn("Expander result does not contain original query");
             return false;
         }
-        
-        // Validation 2: Reasonable length (no more than 3x nor less than 1/3)
-        if (trimmed.length() > original.length() * 3 || trimmed.length() < original.length() / 3) {
-            log().debug("Expansion result length is very different from original (original: {}, expanded: {})", 
-                      original.length(), trimmed.length());
-            return false;
-        }
-        
-        // Validation 3: Should not be identical (if identical, there's no useful expansion)
-        if (trimmed.equalsIgnoreCase(original)) {
-            // This is fine, it means the query was already well-formulated
-            return true;
-        }
-        
-        // Validation 4: Must contain at least some words from the original (basic similarity)
-        String[] originalWords = original.toLowerCase().split("\\s+");
-        String expandedLower = trimmed.toLowerCase();
-        int matchingWords = 0;
-        for (String word : originalWords) {
-            if (word.length() > 3 && expandedLower.contains(word)) {  // Only words with more than 3 characters
-                matchingWords++;
+
+        if (expansion != null && !expansion.isBlank()) {
+            boolean originalHasSpanish = original.matches(".*[áéíóúñ¿¡].*");
+            boolean expansionHasSpanish = expansion.matches(".*[áéíóúñ¿¡].*");
+            if (originalHasSpanish && !expansionHasSpanish) {
+                log().warn("Expansion changed language from Spanish to another");
+                return false;
             }
         }
-        
-        // At least 30% of words must be present
-        if (originalWords.length > 0 && matchingWords < originalWords.length * 0.3) {
-            log().debug("Expansion has too few matching words with original ({} out of {})", 
-                      matchingWords, originalWords.length);
-            return false;
+
+        if (fullResult.length() > original.length() * 5) {
+            log().debug("Expanded query very long (original: {}, result: {})", original.length(), fullResult.length());
         }
-        
+
+        if (expansion != null && !expansion.isBlank()) {
+            String[] originalWords = original.toLowerCase().split("\\s+");
+            String expansionLower = expansion.toLowerCase();
+            int matchingWords = 0;
+            for (String word : originalWords) {
+                if (word.length() > 3 && expansionLower.contains(word)) {
+                    matchingWords++;
+                }
+            }
+            if (originalWords.length > 0 && matchingWords < originalWords.length * 0.2) {
+                log().debug("Expansion has very few matching words with original ({} out of {})", matchingWords, originalWords.length);
+            }
+        }
+
         return true;
     }
 }

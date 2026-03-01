@@ -38,7 +38,7 @@ public class CountAndExplainTool extends AbstractTool {
                   query, ner != null ? ner.toString() : "null");
         long startTime = System.currentTimeMillis();
         
-        List<Document> docs = retrieveDocuments(query);
+        List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for count and explain query", docs.size());
         List<String> explanations = new ArrayList<>();
         List<String> matchedIds = new ArrayList<>();

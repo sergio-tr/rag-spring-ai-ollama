@@ -34,7 +34,7 @@ public class FindParagraphTool extends AbstractTool {
                   query, ner != null ? ner.toString() : "null");
         long startTime = System.currentTimeMillis();
         
-        List<Document> docs = retrieveDocuments(query);
+        List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for find paragraph query", docs.size());
         List<String> results = new ArrayList<>();
 
@@ -66,7 +66,7 @@ public class FindParagraphTool extends AbstractTool {
         }
         
         if (results.isEmpty()) {
-            docs = retrieveAllDocuments(query);
+            docs = retrieveAllDocuments(query, ner);
             if (!docs.isEmpty()) {
                 for (Document doc : docs) {
                     if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {

@@ -2017,10 +2017,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         // LEVEL 2: Try metadata filtering without NER (original approach)
         List<Document> docs = retrieveDocumentsWithMetadataFilter(query, relevantFields);
         
-        // Fallback 1: If empty, try basic retrieval
+        // Fallback 1: If empty, try basic retrieval (with NER when enabled for date/metadata filtering)
         if (docs.isEmpty()) {
             log().info("Metadata filtering returned no documents, trying basic retrieval");
-            docs = retrieveDocuments(query);
+            docs = retrieveDocuments(query, ner);
         }
         
         // Fallback 2: If still empty, log and continue (will return empty list, not null)
@@ -2171,6 +2171,22 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 }
             }
             
+            // Check for agenda in NER (topic may be an agenda item, e.g. "aprobación de cuentas")
+            if (ner.has("agenda") && !ner.isNull("agenda")) {
+                try {
+                    org.json.JSONArray agenda = ner.getJSONArray("agenda");
+                    if (agenda.length() > 0) {
+                        String agendaItem = agenda.getString(0).trim();
+                        if (!agendaItem.isEmpty()) {
+                            log().info("Extracted topic from NER agenda: {}", agendaItem);
+                            return agendaItem;
+                        }
+                    }
+                } catch (Exception e) {
+                    log().debug("Error extracting topic from NER agenda: {}", e.getMessage());
+                }
+            }
+
             // Check for mentionedEntities that might be topics
             if (ner.has("mentionedEntities") && !ner.isNull("mentionedEntities")) {
                 try {
