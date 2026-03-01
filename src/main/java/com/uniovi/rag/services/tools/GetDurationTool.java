@@ -12,9 +12,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractDate;
-import static com.uniovi.rag.utils.InfoExtractor.extractTime;
-import static com.uniovi.rag.utils.InfoExtractor.calculateDuration;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 
 /**
  * Enhanced GetDurationTool for retrieving meeting durations with intelligent NER analysis.
@@ -27,8 +25,8 @@ import static com.uniovi.rag.utils.InfoExtractor.calculateDuration;
  */
 public class GetDurationTool extends AbstractTool {
 
-    public GetDurationTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public GetDurationTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -196,9 +194,9 @@ public class GetDurationTool extends AbstractTool {
             return null;
         }
         String content = doc.getContent();
-        String date = extractDate(content);
-        String startTime = extractTime(content, "start");
-        String endTime = extractTime(content, "end");
+        String date = extractor.extractDate(content);
+        String startTime = extractor.extractTime(content, "start");
+        String endTime = extractor.extractTime(content, "end");
         if (startTime == null || startTime.trim().isEmpty()) {
             log().debug("Cannot extract duration: startTime is null or empty for document {}", doc.getId());
             return null;
@@ -207,7 +205,7 @@ public class GetDurationTool extends AbstractTool {
             log().debug("Cannot extract duration: endTime is null or empty for document {}", doc.getId());
             return null;
         }
-        int duration = calculateDuration(content);
+        int duration = extractor.calculateDuration(content);
         if (duration <= 0) {
             log().debug("Invalid duration: {} minutes (too short) for document {}", duration, doc.getId());
             return null;

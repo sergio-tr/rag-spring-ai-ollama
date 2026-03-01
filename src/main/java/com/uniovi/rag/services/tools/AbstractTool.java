@@ -1,5 +1,6 @@
 package com.uniovi.rag.services.tools;
 
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
@@ -12,11 +13,13 @@ public abstract class AbstractTool implements Tool {
     protected final ChatClient chatClient;
     protected final ContextRetriever retriever;
     protected final EnhancedNERHandler nerHandler;
+    protected final DocumentContentExtractor extractor;
 
-    public AbstractTool(ChatClient chatClient, ContextRetriever retriever) {
+    public AbstractTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
         this.chatClient = chatClient;
         this.retriever = retriever;
         this.nerHandler = new EnhancedNERHandler(chatClient);
+        this.extractor = extractor;
     }
 
     /**

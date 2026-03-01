@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.tools.metadata;
 
 import com.uniovi.rag.model.*;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
@@ -17,8 +18,8 @@ import java.util.stream.Collectors;
  */
 public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
-    public MetadataSummarizeTopicTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public MetadataSummarizeTopicTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override

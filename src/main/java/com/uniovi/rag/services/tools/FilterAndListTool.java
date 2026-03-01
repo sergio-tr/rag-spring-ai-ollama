@@ -9,8 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractDate;
-import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 
 /**
  * Enhanced FilterAndListTool for filtering and listing meeting minutes with intelligent NER analysis.
@@ -23,8 +22,8 @@ import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
  */
 public class FilterAndListTool extends AbstractTool {
 
-    public FilterAndListTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public FilterAndListTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -48,7 +47,7 @@ public class FilterAndListTool extends AbstractTool {
             for (Document doc : filteredDocs) {
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String content = doc.getContent();
-                    String date = extractDate(content);
+                    String date = extractor.extractDate(content);
                     String summary = extractAndSummarize(content, query);
                     results.add("Meeting minutes from " + date + ":\n" + summary);
                 }
@@ -57,7 +56,7 @@ public class FilterAndListTool extends AbstractTool {
             // Fallback to LLM-based relevance
             for (Document doc : docs) {
                 String content = doc.getContent();
-                String date = extractDate(content);
+                String date = extractor.extractDate(content);
                 if (isRelevantByLLM(content, query)) {
                     String summary = extractAndSummarize(content, query);
                     results.add("Meeting minutes from " + date + ":\n" + summary);
@@ -135,7 +134,7 @@ public class FilterAndListTool extends AbstractTool {
             return "";
         }
         
-        String fragment = extractRelevantFragment(content, query);
+        String fragment = extractor.extractRelevantFragment(content, query);
         if (fragment == null || fragment.trim().isEmpty()) {
             return "";
         }

@@ -11,7 +11,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 
 /**
  * Enhanced CountDocumentsTool for counting meeting minutes based on specific criteria.
@@ -25,8 +25,8 @@ import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
  */
 public class CountDocumentsTool extends AbstractTool {
 
-    public CountDocumentsTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public CountDocumentsTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -60,7 +60,7 @@ public class CountDocumentsTool extends AbstractTool {
             if (ner != null && !nerHandler.matchesDocumentWithNER(doc, ner)) continue;
 
             String id = extractMinuteIdentifier(doc);
-            String fragment = extractRelevantFragment(doc.getContent(), query);
+            String fragment = extractor.extractRelevantFragment(doc.getContent(), query);
             if (matchesQueryWithLLM(query, id, fragment)) {
                 matchedIds.add(id);
             }

@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.tools.metadata;
 
 import com.uniovi.rag.model.*;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
@@ -18,8 +19,8 @@ import java.util.Objects;
  */
 public class MetadataCompareTool extends AbstractMetadataTool {
 
-    public MetadataCompareTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public MetadataCompareTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override

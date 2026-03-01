@@ -1,5 +1,6 @@
 package com.uniovi.rag.services.tools;
 
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
@@ -19,8 +20,8 @@ import java.util.List;
  */
 public class SummarizeMeetingTool extends AbstractTool {
 
-    public SummarizeMeetingTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public SummarizeMeetingTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override

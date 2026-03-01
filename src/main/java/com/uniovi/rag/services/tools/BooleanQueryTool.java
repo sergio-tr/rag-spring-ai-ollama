@@ -9,8 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.uniovi.rag.utils.InfoExtractor.extractDate;
-import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 
 /**
  * Enhanced BooleanQueryTool for answering yes/no questions about meeting minutes.
@@ -24,8 +23,8 @@ import static com.uniovi.rag.utils.InfoExtractor.extractRelevantFragment;
  */
 public class BooleanQueryTool extends AbstractTool {
 
-    public BooleanQueryTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public BooleanQueryTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -53,9 +52,9 @@ public class BooleanQueryTool extends AbstractTool {
                 }
                 
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    String fragment = extractRelevantFragment(doc.getContent(), query);
+                    String fragment = extractor.extractRelevantFragment(doc.getContent(), query);
                     if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment, ner)) {
-                        String date = extractDate(doc.getContent());
+                        String date = extractor.extractDate(doc.getContent());
                         evidence.add(generateEvidenceMessage(date, fragment));
                         found = true;
                     }
@@ -70,9 +69,9 @@ public class BooleanQueryTool extends AbstractTool {
                     continue;
                 }
                 
-                String fragment = extractRelevantFragment(doc.getContent(), query);
+                String fragment = extractor.extractRelevantFragment(doc.getContent(), query);
                 if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment, ner)) {
-                    String date = extractDate(doc.getContent());
+                    String date = extractor.extractDate(doc.getContent());
                     evidence.add(generateEvidenceMessage(date, fragment));
                     found = true;
                 }
@@ -87,9 +86,9 @@ public class BooleanQueryTool extends AbstractTool {
                         continue;
                     }
                     
-                    String fragment = extractRelevantFragment(doc.getContent(), query);
+                    String fragment = extractor.extractRelevantFragment(doc.getContent(), query);
                     if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment, ner)) {
-                        String date = extractDate(doc.getContent());
+                        String date = extractor.extractDate(doc.getContent());
                         evidence.add(generateEvidenceMessage(date, fragment));
                         found = true;
                     }

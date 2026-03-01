@@ -1,5 +1,6 @@
 package com.uniovi.rag.services.tools;
 
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
@@ -7,8 +8,6 @@ import org.springframework.ai.document.Document;
 
 import java.util.*;
 import java.util.stream.Collectors;
-
-import static com.uniovi.rag.utils.InfoExtractor.*;
 
 /**
  * Enhanced CompareTool for comparing meeting minutes across different dimensions.
@@ -22,8 +21,8 @@ import static com.uniovi.rag.utils.InfoExtractor.*;
  */
 public class CompareTool extends AbstractTool {
 
-    public CompareTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public CompareTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
@@ -55,7 +54,7 @@ public class CompareTool extends AbstractTool {
             for (Document doc : filteredDocs) {
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String content = doc.getContent();
-                    String date = extractDate(content);
+                    String date = extractor.extractDate(content);
                     summary.put(date, buildMinuteInfo(content, date));
                 }
             }
@@ -63,7 +62,7 @@ public class CompareTool extends AbstractTool {
             // Baseline: group and compare by heuristic
             for (Document doc : docs) {
                 String content = doc.getContent();
-                String date = extractDate(content);
+                String date = extractor.extractDate(content);
                 summary.put(date, buildMinuteInfo(content, date));
             }
         }
@@ -93,14 +92,17 @@ public class CompareTool extends AbstractTool {
      * Builds minute information from content
      */
     private MinuteInfo buildMinuteInfo(String content, String date) {
+        if (extractor == null) {
+            return new MinuteInfo(date, 0, 0, 0, 0, 0, null);
+        }
         return new MinuteInfo(
                 date,
-                extractAttendeeCount(content),
-                calculateDuration(content),
-                countProposals(content),
-                countAgendaItems(content),
-                countQuestions(content),
-                extractLiteralField("place", content)
+                extractor.extractAttendeeCount(content),
+                extractor.calculateDuration(content),
+                extractor.countProposals(content),
+                extractor.countAgendaItems(content),
+                extractor.countQuestions(content),
+                extractor.extractLiteralField("place", content)
         );
     }
 

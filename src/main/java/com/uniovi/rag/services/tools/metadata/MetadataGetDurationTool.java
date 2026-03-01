@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.tools.metadata;
 
 import com.uniovi.rag.model.*;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
 import com.uniovi.rag.services.tools.ToolResult;
@@ -20,8 +21,8 @@ import java.util.stream.Collectors;
  */
 public class MetadataGetDurationTool extends AbstractMetadataTool {
 
-    public MetadataGetDurationTool(ChatClient chatClient, ContextRetriever retriever) {
-        super(chatClient, retriever);
+    public MetadataGetDurationTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+        super(chatClient, retriever, extractor);
     }
 
     @Override
