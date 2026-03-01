@@ -262,8 +262,7 @@ public class RagConfiguration {
     @Bean(name = "nerCacheKeyGenerator")
     public KeyGenerator nerCacheKeyGenerator() {
         return (target, method, params) -> {
-            if (params != null && params.length > 0 && params[0] instanceof String) {
-                String q = (String) params[0];
+            if (params.length > 0 && params[0] instanceof String q) {
                 try {
                     MessageDigest md = MessageDigest.getInstance("SHA-256");
                     byte[] hash = md.digest(q.trim().getBytes(StandardCharsets.UTF_8));
@@ -276,7 +275,7 @@ public class RagConfiguration {
                     return "ner::" + q.hashCode();
                 }
             }
-            return "ner::" + (params != null ? java.util.Arrays.hashCode(params) : 0);
+            return "ner::" + java.util.Arrays.hashCode(params);
         };
     }
 
