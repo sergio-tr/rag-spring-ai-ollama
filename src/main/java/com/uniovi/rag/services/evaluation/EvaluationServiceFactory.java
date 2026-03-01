@@ -14,17 +14,25 @@ import com.uniovi.rag.services.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.services.document.SimpleDocumentService;
 import com.uniovi.rag.services.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.services.expand.QueryExpander;
+import com.uniovi.rag.services.postretrieval.DefaultPostRetrievalProcessor;
+import com.uniovi.rag.services.ranker.LLMAsJudgeRanker;
+import com.uniovi.rag.services.reasoning.SimpleReasoningStrategy;
+import com.uniovi.rag.services.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.services.guard.DateExistenceGuard;
 import com.uniovi.rag.services.guard.QueryDateExtractor;
 import com.uniovi.rag.services.query.ProcessQueryService;
 import com.uniovi.rag.services.query.QueryService;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
+import com.uniovi.rag.services.query.ResponseValidator;
+import com.uniovi.rag.services.tools.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.services.retriever.BasicContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.Tool;
 import com.uniovi.rag.services.tools.*;
 import com.uniovi.rag.services.tools.metadata.*;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.HashMap;
@@ -39,30 +47,39 @@ public class EvaluationServiceFactory {
     private final ChatClient chatClient;
     private final PgVectorStore vectorStore;
     private final JdbcTemplate jdbcTemplate;
+    private final EmbeddingModel embeddingModel;
     private final int topK;
     private final double similarityThreshold;
     private final String pythonClassifierExecutable;
     private final String pythonClassifierScript;
     private final int chunkMaxChars;
+    private final ResponseValidator responseValidator;
+    private final DocumentContentExtractor documentContentExtractor;
 
     public EvaluationServiceFactory(
-        ChatClient chatClient, 
-        PgVectorStore vectorStore, 
+        ChatClient chatClient,
+        PgVectorStore vectorStore,
         JdbcTemplate jdbcTemplate,
+        EmbeddingModel embeddingModel,
         int topK,
         double similarityThreshold,
         String pythonClassifierExecutable,
         String pythonClassifierScript,
-        int chunkMaxChars
+        int chunkMaxChars,
+        ResponseValidator responseValidator,
+        DocumentContentExtractor documentContentExtractor
     ) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
+        this.embeddingModel = embeddingModel;
         this.topK = topK;
         this.similarityThreshold = similarityThreshold;
         this.pythonClassifierExecutable = pythonClassifierExecutable != null ? pythonClassifierExecutable : "";
         this.pythonClassifierScript = pythonClassifierScript != null ? pythonClassifierScript : "";
         this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
+        this.responseValidator = responseValidator;
+        this.documentContentExtractor = documentContentExtractor;
     }
 
     /**
@@ -73,10 +90,15 @@ public class EvaluationServiceFactory {
         QueryAnalyser analyser = new MinuteNERQueryAnalyser(chatClient);
         QueryClassifier classifier = new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript);
         ContextRetriever retriever = new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
-        RagToolsConfiguration toolsConfig = new RagToolsConfiguration(createTools(featureConfig, retriever));
+        RagToolsConfiguration toolsConfig = new RagToolsConfiguration(createTools(featureConfig, retriever, documentContentExtractor));
         QueryDateExtractor queryDateExtractor = new QueryDateExtractor();
-        DateExistenceGuard dateExistenceGuard = new DateExistenceGuard(retriever, queryDateExtractor);
+        DateExistenceGuard dateExistenceGuard = new DefaultDateExistenceGuard(retriever, queryDateExtractor);
         NERQueryEnricher nerQueryEnricher = new NERQueryEnricher(80, 512);
+        MeetingMinutesToolsAdapter meetingMinutesToolsAdapter = new MeetingMinutesToolsAdapter(toolsConfig, analyser);
+        SimpleReasoningStrategy reasoningStrategy = new SimpleReasoningStrategy();
+        LLMAsJudgeRanker responseRanker = new LLMAsJudgeRanker(chatClient);
+        DefaultPostRetrievalProcessor postRetrievalProcessor = new DefaultPostRetrievalProcessor(10);
+        ToolRagService toolRagService = new ToolRagService(embeddingModel, 5);
 
         return new ProcessQueryService(
                 featureConfig,
@@ -87,7 +109,13 @@ public class EvaluationServiceFactory {
                 classifier,
                 retriever,
                 chatClient,
-                dateExistenceGuard
+                dateExistenceGuard,
+                meetingMinutesToolsAdapter,
+                reasoningStrategy,
+                responseRanker,
+                postRetrievalProcessor,
+                toolRagService,
+                responseValidator
         );
     }
 
@@ -113,42 +141,42 @@ public class EvaluationServiceFactory {
     /**
      * Creates the tools map based on the feature configuration.
      */
-    private Map<QueryType, Tool> createTools(RagFeatureConfiguration featureConfig, ContextRetriever retriever) {
+    private Map<QueryType, Tool> createTools(RagFeatureConfiguration featureConfig, ContextRetriever retriever, DocumentContentExtractor extractor) {
         Map<QueryType, Tool> tools = new HashMap<>();
-        
+
         if (featureConfig.isMetadataEnabled()) {
             tools.putAll(Map.of(
-                    QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, retriever),
-                    QueryType.FIND_PARAGRAPH, new MetadataFindParagraphTool(chatClient, retriever),
-                    QueryType.COUNT_AND_EXPLAIN, new MetadataCountAndExplainTool(chatClient, retriever),
-                    QueryType.EXTRACT_ENTITIES, new MetadataExtractEntitiesTool(chatClient, retriever),
-                    QueryType.SUMMARIZE_TOPIC, new MetadataSummarizeTopicTool(chatClient, retriever),
-                    QueryType.BOOLEAN_QUERY, new MetadataBooleanQueryTool(chatClient, retriever)
+                    QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, retriever, extractor),
+                    QueryType.FIND_PARAGRAPH, new MetadataFindParagraphTool(chatClient, retriever, extractor),
+                    QueryType.COUNT_AND_EXPLAIN, new MetadataCountAndExplainTool(chatClient, retriever, extractor),
+                    QueryType.EXTRACT_ENTITIES, new MetadataExtractEntitiesTool(chatClient, retriever, extractor),
+                    QueryType.SUMMARIZE_TOPIC, new MetadataSummarizeTopicTool(chatClient, retriever, extractor),
+                    QueryType.BOOLEAN_QUERY, new MetadataBooleanQueryTool(chatClient, retriever, extractor)
             ));
             tools.putAll(Map.of(
-                    QueryType.COMPARE, new MetadataCompareTool(chatClient, retriever),
-                    QueryType.GET_DURATION, new MetadataGetDurationTool(chatClient, retriever),
-                    QueryType.GET_FIELD, new MetadataGetFieldTool(chatClient, retriever),
-                    QueryType.FILTER_AND_LIST, new MetadataFilterAndListTool(chatClient, retriever),
-                    QueryType.DECISION_EXTRACTION, new MetadataDecisionExtractionTool(chatClient, retriever),
-                    QueryType.SUMMARIZE_MEETING, new MetadataSummarizeMeetingTool(chatClient, retriever)
+                    QueryType.COMPARE, new MetadataCompareTool(chatClient, retriever, extractor),
+                    QueryType.GET_DURATION, new MetadataGetDurationTool(chatClient, retriever, extractor),
+                    QueryType.GET_FIELD, new MetadataGetFieldTool(chatClient, retriever, extractor),
+                    QueryType.FILTER_AND_LIST, new MetadataFilterAndListTool(chatClient, retriever, extractor),
+                    QueryType.DECISION_EXTRACTION, new MetadataDecisionExtractionTool(chatClient, retriever, extractor),
+                    QueryType.SUMMARIZE_MEETING, new MetadataSummarizeMeetingTool(chatClient, retriever, extractor)
             ));
         } else {
             tools.putAll(Map.of(
-                    QueryType.COUNT_DOCUMENTS, new CountDocumentsTool(chatClient, retriever),
-                    QueryType.FIND_PARAGRAPH, new FindParagraphTool(chatClient, retriever),
-                    QueryType.COUNT_AND_EXPLAIN, new CountAndExplainTool(chatClient, retriever),
-                    QueryType.EXTRACT_ENTITIES, new ExtractEntitiesTool(chatClient, retriever),
-                    QueryType.SUMMARIZE_TOPIC, new SummarizeTopicTool(chatClient, retriever),
-                    QueryType.BOOLEAN_QUERY, new BooleanQueryTool(chatClient, retriever)
+                    QueryType.COUNT_DOCUMENTS, new CountDocumentsTool(chatClient, retriever, extractor),
+                    QueryType.FIND_PARAGRAPH, new FindParagraphTool(chatClient, retriever, extractor),
+                    QueryType.COUNT_AND_EXPLAIN, new CountAndExplainTool(chatClient, retriever, extractor),
+                    QueryType.EXTRACT_ENTITIES, new ExtractEntitiesTool(chatClient, retriever, extractor),
+                    QueryType.SUMMARIZE_TOPIC, new SummarizeTopicTool(chatClient, retriever, extractor),
+                    QueryType.BOOLEAN_QUERY, new BooleanQueryTool(chatClient, retriever, extractor)
             ));
             tools.putAll(Map.of(
-                    QueryType.COMPARE, new CompareTool(chatClient, retriever),
-                    QueryType.GET_DURATION, new GetDurationTool(chatClient, retriever),
-                    QueryType.GET_FIELD, new GetFieldTool(chatClient, retriever),
-                    QueryType.FILTER_AND_LIST, new FilterAndListTool(chatClient, retriever),
-                    QueryType.DECISION_EXTRACTION, new DecisionExtractionTool(chatClient, retriever),
-                    QueryType.SUMMARIZE_MEETING, new SummarizeMeetingTool(chatClient, retriever)
+                    QueryType.COMPARE, new CompareTool(chatClient, retriever, extractor),
+                    QueryType.GET_DURATION, new GetDurationTool(chatClient, retriever, extractor),
+                    QueryType.GET_FIELD, new GetFieldTool(chatClient, retriever, extractor),
+                    QueryType.FILTER_AND_LIST, new FilterAndListTool(chatClient, retriever, extractor),
+                    QueryType.DECISION_EXTRACTION, new DecisionExtractionTool(chatClient, retriever, extractor),
+                    QueryType.SUMMARIZE_MEETING, new SummarizeMeetingTool(chatClient, retriever, extractor)
             ));
         }
 

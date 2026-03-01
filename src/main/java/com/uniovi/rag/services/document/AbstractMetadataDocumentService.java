@@ -1,8 +1,9 @@
 package com.uniovi.rag.services.document;
 
+import com.uniovi.rag.model.DocumentAlreadyExistsException;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -68,14 +69,14 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
                 throw new IllegalArgumentException("Metadata extraction returned null or empty for file: " + filename);
             }
             
-            // Step 4b: If document with same document_id already exists, remove it to avoid duplicates
+            // Step 4b: Never insert duplicates — if document_id already exists, do not add
             Object docIdObj = metadata.get("document_id");
             String documentId = docIdObj != null ? docIdObj.toString() : null;
             if (documentId != null && !documentId.isBlank() && hasDocumentWithId(documentId)) {
-                log().info("Document already exists (document_id={}), removing previous chunks and re-inserting", documentId);
-                deleteDocumentByDocumentId(documentId);
+                log().info("Document already exists (document_id={}), skipping insert to avoid duplicate", documentId);
+                throw new DocumentAlreadyExistsException(documentId);
             }
-            
+
             // Step 5: Validate critical metadata fields
             validateMetadata(metadata, filename);
             

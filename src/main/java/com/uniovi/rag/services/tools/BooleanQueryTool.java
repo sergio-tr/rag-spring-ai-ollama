@@ -47,14 +47,14 @@ public class BooleanQueryTool extends AbstractTool {
             List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
             
             for (Document doc : filteredDocs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    String fragment = extractor.extractRelevantFragment(doc.getContent(), query);
+                    String fragment = extractor.extractRelevantFragment(doc.getText(), query);
                     if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment, ner)) {
-                        String date = extractor.extractDate(doc.getContent());
+                        String date = extractor.extractDate(doc.getText());
                         evidence.add(generateEvidenceMessage(date, fragment));
                         found = true;
                     }
@@ -65,13 +65,13 @@ public class BooleanQueryTool extends AbstractTool {
         if (!found && !docs.isEmpty()) {
             // Try without NER filtering
             for (Document doc : docs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
-                String fragment = extractor.extractRelevantFragment(doc.getContent(), query);
+                String fragment = extractor.extractRelevantFragment(doc.getText(), query);
                 if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment, ner)) {
-                    String date = extractor.extractDate(doc.getContent());
+                    String date = extractor.extractDate(doc.getText());
                     evidence.add(generateEvidenceMessage(date, fragment));
                     found = true;
                 }
@@ -82,13 +82,13 @@ public class BooleanQueryTool extends AbstractTool {
             docs = retrieveAllDocuments(query, ner);
             if (!docs.isEmpty()) {
                 for (Document doc : docs) {
-                    if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                         continue;
                     }
                     
-                    String fragment = extractor.extractRelevantFragment(doc.getContent(), query);
+                    String fragment = extractor.extractRelevantFragment(doc.getText(), query);
                     if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment, ner)) {
-                        String date = extractor.extractDate(doc.getContent());
+                        String date = extractor.extractDate(doc.getText());
                         evidence.add(generateEvidenceMessage(date, fragment));
                         found = true;
                     }

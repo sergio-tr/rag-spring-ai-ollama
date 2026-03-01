@@ -157,12 +157,12 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
      * This is the primary method for finding paragraphs.
      */
     private String extractParagraphFromContent(String query, Minute minute, Document doc) {
-        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+        if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
             return "";
         }
 
         // Truncate content to avoid context length issues
-        String content = truncateForPrompt(doc.getContent(), 4000);
+        String content = truncateForPrompt(doc.getText(), 4000);
         
         String prompt = String.format("""
             Given the following user query (in any language):

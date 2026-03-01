@@ -48,7 +48,7 @@ public class GetDurationTool extends AbstractTool {
             List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
             
             for (Document doc : filteredDocs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
@@ -64,11 +64,11 @@ public class GetDurationTool extends AbstractTool {
         if (durations.isEmpty() && !docs.isEmpty()) {
             // Fallback to LLM-based relevance
             for (Document doc : docs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
-                if (isRelevantByLLM(doc.getContent(), query)) {
+                if (isRelevantByLLM(doc.getText(), query)) {
                     MeetingDuration duration = extractMeetingDuration(doc);
                     if (duration != null && duration.durationMinutes > 0) {
                         durations.add(duration);
@@ -81,11 +81,11 @@ public class GetDurationTool extends AbstractTool {
             docs = retrieveAllDocuments(query, ner);
             if (!docs.isEmpty()) {
                 for (Document doc : docs) {
-                    if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                         continue;
                     }
                     
-                    if (isRelevantByLLM(doc.getContent(), query)) {
+                    if (isRelevantByLLM(doc.getText(), query)) {
                         MeetingDuration duration = extractMeetingDuration(doc);
                         if (duration != null && duration.durationMinutes > 0) {
                             durations.add(duration);
@@ -189,11 +189,11 @@ public class GetDurationTool extends AbstractTool {
             }
         }
         // Fallback: content-based extraction
-        if (doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+        if (doc.getText() == null || doc.getText().trim().isEmpty()) {
             log().debug("Cannot extract duration: document content is null or empty");
             return null;
         }
-        String content = doc.getContent();
+        String content = doc.getText();
         String date = extractor.extractDate(content);
         String startTime = extractor.extractTime(content, "start");
         String endTime = extractor.extractTime(content, "end");

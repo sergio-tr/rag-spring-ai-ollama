@@ -44,7 +44,7 @@ public class FindParagraphTool extends AbstractTool {
             List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
             
             for (Document doc : filteredDocs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
@@ -57,7 +57,7 @@ public class FindParagraphTool extends AbstractTool {
         if (results.isEmpty() && !docs.isEmpty()) {
             // Fallback to LLM-based relevance
             for (Document doc : docs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
@@ -69,7 +69,7 @@ public class FindParagraphTool extends AbstractTool {
             docs = retrieveAllDocuments(query, ner);
             if (!docs.isEmpty()) {
                 for (Document doc : docs) {
-                    if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                         continue;
                     }
                     
@@ -102,12 +102,12 @@ public class FindParagraphTool extends AbstractTool {
      * Uses English for internal processing, but preserves original language in content.
      */
     private List<String> findRelevantParagraphs(Document doc, String query) {
-        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+        if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
             return new ArrayList<>();
         }
         
         List<String> relevant = new ArrayList<>();
-        String content = doc.getContent();
+        String content = doc.getText();
         String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
         String date = extractor.extractDate(content);
         
@@ -124,12 +124,12 @@ public class FindParagraphTool extends AbstractTool {
      * Uses English for internal processing, but preserves original language in content.
      */
     private List<String> findRelevantParagraphsByLLM(Document doc, String query) {
-        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+        if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
             return new ArrayList<>();
         }
         
         List<String> relevant = new ArrayList<>();
-        String content = doc.getContent();
+        String content = doc.getText();
         String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
         String date = extractor.extractDate(content);
         

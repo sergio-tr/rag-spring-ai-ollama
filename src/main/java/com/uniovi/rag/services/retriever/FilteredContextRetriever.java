@@ -3,7 +3,7 @@ package com.uniovi.rag.services.retriever;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
 public class FilteredContextRetriever extends AbstractContextRetriever {
 
@@ -59,16 +59,20 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
 
     @Override
     public String filterDocumentContent(Document doc, String query, JSONObject entities) {
-        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+        if (doc == null) {
+            return "";
+        }
+        String text = doc.getText();
+        if (text == null || text.trim().isEmpty()) {
             return "";
         }
         
         if (query == null || query.trim().isEmpty()) {
             // If no query, return original content with optional metadata prefix
-            return buildContentWithOptionalMetadataPrefix(doc, doc.getContent());
+            return buildContentWithOptionalMetadataPrefix(doc, text);
         }
 
-        String contentWithPrefix = buildContentWithOptionalMetadataPrefix(doc, doc.getContent());
+        String contentWithPrefix = buildContentWithOptionalMetadataPrefix(doc, text);
         String promptContent = truncateForPrompt(contentWithPrefix, DEFAULT_MAX_PROMPT_CHARS);
 
         try {
@@ -77,12 +81,12 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
                     String.format(NER_PROMPT_TEMPLATE, promptContent, query, 
                                  entities != null ? entities.toString(2) : "{}");
 
-            String filteredContent = chatClient
+            String rawContent = chatClient
                     .prompt()
                     .user(filterPrompt)
                     .call()
-                    .content()
-                    .trim();
+                    .content();
+            String filteredContent = rawContent != null ? rawContent.trim() : "";
 
             // Validate filtered content
             if (filteredContent == null || filteredContent.isEmpty()) {
@@ -90,8 +94,8 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
                 return "";
             }
 
-            log().info("Filtered content length: {} (original: {})", 
-                       filteredContent.length(), doc.getContent().length());
+            log().info("Filtered content length: {} (original: {})",
+                       filteredContent.length(), text.length());
             return filteredContent;
         } catch (Exception e) {
             log().error("Error filtering document content, returning original content", e);

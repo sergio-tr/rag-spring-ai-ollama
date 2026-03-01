@@ -45,7 +45,7 @@ public class SummarizeTopicTool extends AbstractTool {
             
             int matchedCount = 0;
             for (Document doc : filteredDocs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     log().debug("Skipping document {}: null or empty content", doc != null ? doc.getId() : "null");
                     continue;
                 }
@@ -62,11 +62,11 @@ public class SummarizeTopicTool extends AbstractTool {
         if (fragments.isEmpty() && !docs.isEmpty()) {
             // Fallback to LLM-based relevance
             for (Document doc : docs) {
-                if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                     continue;
                 }
                 
-                if (isRelevantByLLM(doc.getContent(), query)) {
+                if (isRelevantByLLM(doc.getText(), query)) {
                     fragments.addAll(extractRelevantFragments(doc, query));
                 }
                 if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
@@ -77,11 +77,11 @@ public class SummarizeTopicTool extends AbstractTool {
             docs = retrieveAllDocuments(query, ner);
             if (!docs.isEmpty()) {
                 for (Document doc : docs) {
-                    if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+                    if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                         continue;
                     }
                     
-                    if (isRelevantByLLM(doc.getContent(), query)) {
+                    if (isRelevantByLLM(doc.getText(), query)) {
                         fragments.addAll(extractRelevantFragments(doc, query));
                     }
                     if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
@@ -157,12 +157,12 @@ public class SummarizeTopicTool extends AbstractTool {
     }
     
     private List<String> extractRelevantFragments(Document doc, String query) {
-        if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
+        if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
             return new ArrayList<>();
         }
         
         List<String> relevant = new ArrayList<>();
-        String content = doc.getContent();
+        String content = doc.getText();
         String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
         for (String p : paragraphs) {
             if (p != null && !p.trim().isEmpty() && isParagraphRelevantByLLM(query, p)) {

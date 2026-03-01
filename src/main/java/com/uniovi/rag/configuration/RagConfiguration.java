@@ -7,6 +7,8 @@ import com.uniovi.rag.services.analyser.QueryAnalyser;
 import com.uniovi.rag.services.classifier.PythonQueryClassifier;
 import com.uniovi.rag.services.classifier.QueryClassifier;
 import com.uniovi.rag.services.classifier.QueryType;
+import com.uniovi.rag.repository.MinuteDocumentRepository;
+import com.uniovi.rag.repository.MinuteDocumentRepositoryImpl;
 import com.uniovi.rag.services.document.DocumentService;
 import com.uniovi.rag.services.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.services.document.SimpleDocumentService;
@@ -16,22 +18,34 @@ import com.uniovi.rag.services.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.services.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.services.expand.QueryExpander;
 import com.uniovi.rag.services.guard.DateExistenceGuard;
+import com.uniovi.rag.services.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.services.guard.QueryDateExtractor;
 import com.uniovi.rag.services.query.ProcessQueryService;
 import com.uniovi.rag.services.query.QueryService;
 import com.uniovi.rag.services.retriever.BasicContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
+import com.uniovi.rag.services.postretrieval.DefaultPostRetrievalProcessor;
+import com.uniovi.rag.services.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.services.ranker.FaithfulnessRanker;
+import com.uniovi.rag.services.ranker.LLMAsJudgeRanker;
+import com.uniovi.rag.services.ranker.ResponseRanker;
+import com.uniovi.rag.services.reasoning.COTReasoningStrategy;
+import com.uniovi.rag.services.reasoning.PlanAndVerifyReasoningStrategy;
+import com.uniovi.rag.services.reasoning.ReasoningStrategy;
+import com.uniovi.rag.services.query.LLMResponseValidatorService;
+import com.uniovi.rag.services.query.ResponseValidator;
+import com.uniovi.rag.services.extraction.DefaultDocumentContentExtractor;
+import com.uniovi.rag.services.extraction.DocumentContentExtractor;
+import com.uniovi.rag.services.reasoning.SimpleReasoningStrategy;
 import com.uniovi.rag.services.tools.*;
 import com.uniovi.rag.services.tools.metadata.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.evaluation.RelevancyEvaluator;
-import org.springframework.ai.ollama.OllamaChatModel;
-import org.springframework.ai.ollama.OllamaEmbeddingModel;
-import org.springframework.ai.ollama.api.OllamaApi;
-import org.springframework.ai.ollama.api.OllamaOptions;
-import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.context.annotation.Bean;
@@ -52,13 +66,53 @@ public class RagConfiguration {
     }
 
     @Bean
+    public MeetingMinutesToolsAdapter meetingMinutesToolsAdapter(
+            RagToolsConfiguration toolsConfig,
+            QueryAnalyser queryAnalyser) {
+        return new MeetingMinutesToolsAdapter(toolsConfig, queryAnalyser);
+    }
+
+    @Bean
+    public ReasoningStrategy reasoningStrategy(RagReasoningProperties reasoningProperties, ChatClient chatClient) {
+        String strategy = reasoningProperties.getStrategy() != null ? reasoningProperties.getStrategy().toUpperCase() : "SIMPLE";
+        return switch (strategy) {
+            case "COT" -> new COTReasoningStrategy(chatClient);
+            case "PLAN_AND_VERIFY" -> new PlanAndVerifyReasoningStrategy(chatClient);
+            default -> new SimpleReasoningStrategy();
+        };
+    }
+
+    @Bean
+    public ResponseRanker responseRanker(RagRankerProperties rankerProperties, ChatClient chatClient) {
+        String strategy = rankerProperties.getStrategy() != null ? rankerProperties.getStrategy().toUpperCase() : "LLM_AS_JUDGE";
+        return "FAITHFULNESS".equals(strategy) ? new FaithfulnessRanker(chatClient) : new LLMAsJudgeRanker(chatClient);
+    }
+
+    @Bean
+    public PostRetrievalProcessor postRetrievalProcessor(@Value("${rag.post-retrieval.top-k:10}") int topK) {
+        return new DefaultPostRetrievalProcessor(topK);
+    }
+
+    @Bean
+    public ResponseValidator responseValidator() {
+        return new LLMResponseValidatorService();
+    }
+
+    @Bean
+    public ToolRagService toolRagService(
+            EmbeddingModel embeddingModel,
+            @Value("${rag.tool-rag.top-k:5}") int topK) {
+        return new ToolRagService(embeddingModel, topK);
+    }
+
+    @Bean
     public RagFeatureConfiguration featureConfig() {
         return new RagFeatureConfiguration();
     }
 
     @Bean
     public PgVectorStore pgVectorStore(JdbcTemplate jdbcTemplate, EmbeddingModel embeddingModel) {
-        return new PgVectorStore(jdbcTemplate, embeddingModel);
+        return PgVectorStore.builder(jdbcTemplate, embeddingModel).build();
     }
 
     @Bean
@@ -75,33 +129,38 @@ public class RagConfiguration {
     }
 
     @Bean
-    public OllamaEmbeddingModel embeddingModel(
-            @Value("${spring.ai.ollama.base-url}") String url,
-            @Value("${spring.ai.ollama.embedding.model}") String chatModel
+    public QuestionAnswerAdvisor questionAnswerAdvisor(
+            PgVectorStore vectorStore,
+            @Value("${spring.ai.ollama.top-k:10}") int topK,
+            @Value("${spring.ai.ollama.similarity-threshold:0.7}") double similarityThreshold
     ) {
-
-        return new OllamaEmbeddingModel(
-                new OllamaApi(url),
-                OllamaOptions.create().withModel(chatModel)
-        );
+        return QuestionAnswerAdvisor.builder(vectorStore)
+                .searchRequest(SearchRequest.builder()
+                        .topK(topK)
+                        .similarityThreshold(similarityThreshold)
+                        .build())
+                .build();
     }
 
-    @Bean
-    public ChatModel chatModel(
-            @Value("${spring.ai.ollama.base-url}") String url,
-            @Value("${spring.ai.ollama.chat.model}") String chatModel
-    ) {
-        return new OllamaChatModel(
-                new OllamaApi(url),
-                OllamaOptions.create().withModel(chatModel)
-        );
-    }
+    /**
+     * Single ChatClient; configuration depends on RagFeatureConfiguration.
+     * When function-calling is enabled: adds defaultTools (MeetingMinutesToolsAdapter with @Tool).
+     * Adds QuestionAnswerAdvisor so retrieval can inject context in the askModel path.
+     * Other components (ranker, reasoning, etc.) use this same client.
+     */
     @Bean
     public ChatClient chatClient(
-            @Value("${spring.ai.ollama.base-url}") String url,
-            @Value("${spring.ai.ollama.chat.model}") String chatModel
+            ChatModel chatModel,
+            RagFeatureConfiguration featureConfig,
+            MeetingMinutesToolsAdapter meetingMinutesToolsAdapter,
+            QuestionAnswerAdvisor questionAnswerAdvisor
     ) {
-        return ChatClient.builder(chatModel(url, chatModel)).build();
+        var builder = ChatClient.builder(chatModel);
+        if (featureConfig.isFunctionCallingEnabled()) {
+            builder.defaultTools(meetingMinutesToolsAdapter);
+        }
+        builder.defaultAdvisors(questionAnswerAdvisor);
+        return builder.build();
     }
 
     @Bean
@@ -125,18 +184,28 @@ public class RagConfiguration {
     }
 
     @Bean
+    public MinuteDocumentRepository minuteDocumentRepository(
+            DocumentService documentService,
+            MetadataMinuteDocumentService metadataMinuteDocumentService) {
+        return new MinuteDocumentRepositoryImpl(documentService, metadataMinuteDocumentService);
+    }
+
+    @Bean
     public EvaluationServiceFactory evaluationServiceFactory(
-        ChatClient chatClient, 
+        ChatClient chatClient,
         PgVectorStore vectorStore,
         JdbcTemplate jdbcTemplate,
+        EmbeddingModel embeddingModel,
         @Value("${spring.ai.ollama.top-k}") int topK,
         @Value("${spring.ai.ollama.similarity-threshold}") double similarityThreshold,
         @Value("${rag.classifier.python.executable:}") String pythonClassifierExecutable,
         @Value("${rag.classifier.python.script:}") String pythonClassifierScript,
-        @Value("${rag.chunk.max-chars:400}") int chunkMaxChars
+        @Value("${rag.chunk.max-chars:400}") int chunkMaxChars,
+        ResponseValidator responseValidator,
+        DocumentContentExtractor documentContentExtractor
     ) {
-        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
-                pythonClassifierExecutable, pythonClassifierScript, chunkMaxChars);
+        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, embeddingModel, topK, similarityThreshold,
+                pythonClassifierExecutable, pythonClassifierScript, chunkMaxChars, responseValidator, documentContentExtractor);
     }
 
     @Bean
@@ -234,47 +303,53 @@ public class RagConfiguration {
     }
 
     @Bean
+    public DocumentContentExtractor documentContentExtractor() {
+        return new DefaultDocumentContentExtractor();
+    }
+
+    @Bean
     public Map<QueryType, Tool> tools(
             RagFeatureConfiguration featureConfig,
             ContextRetriever retriever,
-            ChatClient chatClient
+            ChatClient chatClient,
+            DocumentContentExtractor documentContentExtractor
     ) {
 
         Map<QueryType, Tool> tools = new HashMap<>();
         if (featureConfig.isMetadataEnabled()) {
             tools.putAll(Map.of(
-                    QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, retriever),
-                    QueryType.FIND_PARAGRAPH, new MetadataFindParagraphTool(chatClient, retriever),
-                    QueryType.COUNT_AND_EXPLAIN, new MetadataCountAndExplainTool(chatClient, retriever),
-                    QueryType.EXTRACT_ENTITIES, new MetadataExtractEntitiesTool(chatClient, retriever),
-                    QueryType.SUMMARIZE_TOPIC, new MetadataSummarizeTopicTool(chatClient, retriever),
-                    QueryType.BOOLEAN_QUERY, new MetadataBooleanQueryTool(chatClient, retriever)
+                    QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.FIND_PARAGRAPH, new MetadataFindParagraphTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.COUNT_AND_EXPLAIN, new MetadataCountAndExplainTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.EXTRACT_ENTITIES, new MetadataExtractEntitiesTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.SUMMARIZE_TOPIC, new MetadataSummarizeTopicTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.BOOLEAN_QUERY, new MetadataBooleanQueryTool(chatClient, retriever, documentContentExtractor)
             ));
 
             tools.putAll(Map.of(
-                    QueryType.COMPARE, new MetadataCompareTool(chatClient, retriever),
-                    QueryType.GET_DURATION, new MetadataGetDurationTool(chatClient, retriever),
-                    QueryType.GET_FIELD, new MetadataGetFieldTool(chatClient, retriever),
-                    QueryType.FILTER_AND_LIST, new MetadataFilterAndListTool(chatClient, retriever),
-                    QueryType.DECISION_EXTRACTION, new MetadataDecisionExtractionTool(chatClient, retriever),
-                    QueryType.SUMMARIZE_MEETING, new MetadataSummarizeMeetingTool(chatClient, retriever)
+                    QueryType.COMPARE, new MetadataCompareTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.GET_DURATION, new MetadataGetDurationTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.GET_FIELD, new MetadataGetFieldTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.FILTER_AND_LIST, new MetadataFilterAndListTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.DECISION_EXTRACTION, new MetadataDecisionExtractionTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.SUMMARIZE_MEETING, new MetadataSummarizeMeetingTool(chatClient, retriever, documentContentExtractor)
             ));
         } else {
             tools.putAll(Map.of(
-                    QueryType.COUNT_DOCUMENTS, new CountDocumentsTool(chatClient, retriever),
-                    QueryType.FIND_PARAGRAPH, new FindParagraphTool(chatClient, retriever),
-                    QueryType.COUNT_AND_EXPLAIN, new CountAndExplainTool(chatClient, retriever),
-                    QueryType.EXTRACT_ENTITIES, new ExtractEntitiesTool(chatClient, retriever),
-                    QueryType.SUMMARIZE_TOPIC, new SummarizeTopicTool(chatClient, retriever),
-                    QueryType.BOOLEAN_QUERY, new BooleanQueryTool(chatClient, retriever)
+                    QueryType.COUNT_DOCUMENTS, new CountDocumentsTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.FIND_PARAGRAPH, new FindParagraphTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.COUNT_AND_EXPLAIN, new CountAndExplainTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.EXTRACT_ENTITIES, new ExtractEntitiesTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.SUMMARIZE_TOPIC, new SummarizeTopicTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.BOOLEAN_QUERY, new BooleanQueryTool(chatClient, retriever, documentContentExtractor)
             ));
             tools.putAll(Map.of(
-                    QueryType.COMPARE, new CompareTool(chatClient, retriever),
-                    QueryType.GET_DURATION, new GetDurationTool(chatClient, retriever),
-                    QueryType.GET_FIELD, new GetFieldTool(chatClient, retriever),
-                    QueryType.FILTER_AND_LIST, new FilterAndListTool(chatClient, retriever),
-                    QueryType.DECISION_EXTRACTION, new DecisionExtractionTool(chatClient, retriever),
-                    QueryType.SUMMARIZE_MEETING, new SummarizeMeetingTool(chatClient, retriever)
+                    QueryType.COMPARE, new CompareTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.GET_DURATION, new GetDurationTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.GET_FIELD, new GetFieldTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.FILTER_AND_LIST, new FilterAndListTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.DECISION_EXTRACTION, new DecisionExtractionTool(chatClient, retriever, documentContentExtractor),
+                    QueryType.SUMMARIZE_MEETING, new SummarizeMeetingTool(chatClient, retriever, documentContentExtractor)
             ));
         }
 
@@ -288,7 +363,7 @@ public class RagConfiguration {
 
     @Bean
     public DateExistenceGuard dateExistenceGuard(ContextRetriever retriever, QueryDateExtractor queryDateExtractor) {
-        return new DateExistenceGuard(retriever, queryDateExtractor);
+        return new DefaultDateExistenceGuard(retriever, queryDateExtractor);
     }
 
     @Bean
@@ -301,7 +376,13 @@ public class RagConfiguration {
             QueryClassifier classifier,
             ContextRetriever retriever,
             ChatClient chatClient,
-            DateExistenceGuard dateExistenceGuard
+            DateExistenceGuard dateExistenceGuard,
+            MeetingMinutesToolsAdapter meetingMinutesToolsAdapter,
+            ReasoningStrategy reasoningStrategy,
+            ResponseRanker responseRanker,
+            PostRetrievalProcessor postRetrievalProcessor,
+            ToolRagService toolRagService,
+            ResponseValidator responseValidator
     ) {
         return new ProcessQueryService(
                 featureConfig,
@@ -312,7 +393,13 @@ public class RagConfiguration {
                 classifier,
                 retriever,
                 chatClient,
-                dateExistenceGuard
+                dateExistenceGuard,
+                meetingMinutesToolsAdapter,
+                reasoningStrategy,
+                responseRanker,
+                postRetrievalProcessor,
+                toolRagService,
+                responseValidator
         );
     }
 

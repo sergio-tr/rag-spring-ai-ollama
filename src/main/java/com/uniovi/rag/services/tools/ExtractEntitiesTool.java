@@ -50,7 +50,7 @@ public class ExtractEntitiesTool extends AbstractTool {
             for (Document doc : filteredDocs) {
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     matchedCount++;
-                    String content = doc.getContent();
+                    String content = doc.getText();
                     String date = extractor.extractDate(content);
                     String entities = extractRequestedEntities(content, query, ner);
                     if (!entities.isBlank()) {
@@ -68,7 +68,7 @@ public class ExtractEntitiesTool extends AbstractTool {
             log().debug("No NER available, extracting entities from all {} documents", docs.size());
             int entitiesFoundCount = 0;
             for (Document doc : docs) {
-                String content = doc.getContent();
+                String content = doc.getText();
                 String date = extractor.extractDate(content);
                 String entities = extractRequestedEntities(content, query, null);
                 if (!entities.isBlank()) {

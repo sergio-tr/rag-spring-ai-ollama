@@ -51,7 +51,7 @@ public class SummarizeMeetingTool extends AbstractTool {
         } else {
             // Fallback to LLM-based relevance
             for (Document doc : docs) {
-                if (isRelevantByLLM(doc.getContent(), query)) {
+                if (isRelevantByLLM(doc.getText(), query)) {
                     fragments.addAll(extractRelevantFragments(doc, query));
                 }
                 if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
@@ -127,7 +127,7 @@ public class SummarizeMeetingTool extends AbstractTool {
 
     private List<String> extractRelevantFragments(Document doc, String query) {
         List<String> relevant = new ArrayList<>();
-        String content = doc.getContent();
+        String content = doc.getText();
         String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
         for (String p : paragraphs) {
             if (isParagraphRelevantByLLM(query, p)) {

@@ -46,7 +46,7 @@ public class FilterAndListTool extends AbstractTool {
             
             for (Document doc : filteredDocs) {
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    String content = doc.getContent();
+                    String content = doc.getText();
                     String date = extractor.extractDate(content);
                     String summary = extractAndSummarize(content, query);
                     results.add("Meeting minutes from " + date + ":\n" + summary);
@@ -55,7 +55,7 @@ public class FilterAndListTool extends AbstractTool {
         } else {
             // Fallback to LLM-based relevance
             for (Document doc : docs) {
-                String content = doc.getContent();
+                String content = doc.getText();
                 String date = extractor.extractDate(content);
                 if (isRelevantByLLM(content, query)) {
                     String summary = extractAndSummarize(content, query);

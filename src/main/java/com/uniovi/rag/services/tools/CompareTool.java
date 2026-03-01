@@ -53,7 +53,7 @@ public class CompareTool extends AbstractTool {
             
             for (Document doc : filteredDocs) {
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    String content = doc.getContent();
+                    String content = doc.getText();
                     String date = extractor.extractDate(content);
                     summary.put(date, buildMinuteInfo(content, date));
                 }
@@ -61,7 +61,7 @@ public class CompareTool extends AbstractTool {
         } else {
             // Baseline: group and compare by heuristic
             for (Document doc : docs) {
-                String content = doc.getContent();
+                String content = doc.getText();
                 String date = extractor.extractDate(content);
                 summary.put(date, buildMinuteInfo(content, date));
             }

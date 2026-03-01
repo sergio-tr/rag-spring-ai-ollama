@@ -4,7 +4,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.ai.vectorstore.SearchRequest;
 
 import java.util.List;
@@ -36,11 +36,12 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
         }
         
         // Build metadata filters from NER entities
-        SearchRequest req = SearchRequest.
-                query(query).
-                withTopK(topK * 2). // Retrieve more documents to account for post-filtering
-                withSimilarityThreshold(similarityThreshold);
-        
+        SearchRequest req = SearchRequest.builder()
+                .query(query)
+                .topK(topK * 2) // Retrieve more documents to account for post-filtering
+                .similarityThreshold(similarityThreshold)
+                .build();
+
         List<Document> retrievedDocs = vectorStore.similaritySearch(req);
         
         // Group and combine chunks first (before filtering)

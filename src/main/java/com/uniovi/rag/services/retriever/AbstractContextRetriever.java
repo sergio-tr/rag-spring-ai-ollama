@@ -4,7 +4,7 @@ import com.uniovi.rag.model.Loggable;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.ai.vectorstore.SearchRequest;
 
 import java.time.LocalDate;
@@ -39,10 +39,11 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
 
     @Override
     public List<Document> retrieve(String query) {
-        SearchRequest req = SearchRequest.
-                query(query).
-                withTopK(topK).
-                withSimilarityThreshold(similarityThreshold);
+        SearchRequest req = SearchRequest.builder()
+                .query(query)
+                .topK(topK)
+                .similarityThreshold(similarityThreshold)
+                .build();
         List<Document> docs = vectorStore.similaritySearch(req);
         // Group and combine chunks by document_id to ensure complete content
         return groupAndCombineChunks(docs);
@@ -55,7 +56,11 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         }
 
         return documents.stream()
-                .filter(doc -> doc != null && doc.getContent() != null && !doc.getContent().trim().isEmpty())
+                .filter(doc -> doc != null) 
+                .filter(doc -> {
+                    String text = doc.getText();
+                    return text != null && !text.trim().isEmpty();
+                })
                 .map(doc -> filterDocumentContent(doc, query, entities))
                 .filter(content -> content != null && !content.trim().isEmpty())
                 .collect(Collectors.joining("\n"));
@@ -469,9 +474,10 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
                 Document combined = combineChunks(chunks);
                 if (combined != null) {
                     combinedDocuments.add(combined);
-                    log().info("Combined {} chunks for document_id: {} (total content length: {})", 
-                              chunks.size(), documentId, 
-                              combined.getContent() != null ? combined.getContent().length() : 0);
+                    String combinedText = combined.getText();
+                    log().info("Combined {} chunks for document_id: {} (total content length: {})",
+                              chunks.size(), documentId,
+                              combinedText != null ? combinedText.length() : 0);
                 }
             }
         }
@@ -508,7 +514,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         // Combine content from all chunks
         StringBuilder combinedContent = new StringBuilder();
         for (Document chunk : sortedChunks) {
-            String content = chunk.getContent();
+            String content = chunk.getText();
             if (content != null && !content.trim().isEmpty()) {
                 if (combinedContent.length() > 0) {
                     combinedContent.append("\n\n");

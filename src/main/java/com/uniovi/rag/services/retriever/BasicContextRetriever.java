@@ -3,7 +3,7 @@ package com.uniovi.rag.services.retriever;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.PgVectorStore;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
 public class BasicContextRetriever extends AbstractContextRetriever {
 
@@ -13,7 +13,7 @@ public class BasicContextRetriever extends AbstractContextRetriever {
 
     @Override
     public String filterDocumentContent(Document doc, String query, JSONObject entities) {
-        String content = doc.getContent() != null ? doc.getContent() : "";
+        String content = doc.getText() != null ? doc.getText() : "";
         return buildContentWithOptionalMetadataPrefix(doc, content);
     }
 }

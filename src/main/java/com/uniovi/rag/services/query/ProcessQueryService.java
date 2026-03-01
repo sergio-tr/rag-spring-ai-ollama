@@ -8,18 +8,28 @@ import com.uniovi.rag.services.classifier.QueryClassifier;
 import com.uniovi.rag.services.classifier.QueryType;
 import com.uniovi.rag.services.expand.QueryExpander;
 import com.uniovi.rag.services.guard.DateExistenceGuard;
+import com.uniovi.rag.services.tools.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.services.tools.Tool;
 import com.uniovi.rag.services.retriever.AbstractContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
 import com.uniovi.rag.services.tools.ToolExecutionContext;
+import com.uniovi.rag.model.CandidateResponse;
+import com.uniovi.rag.model.DraftAndContext;
+import com.uniovi.rag.model.PostStepOutput;
 import com.uniovi.rag.model.QueryResponse;
+import com.uniovi.rag.model.RankerResult;
+import com.uniovi.rag.model.ReasoningPreOutput;
+import com.uniovi.rag.services.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.services.ranker.ResponseRanker;
+import com.uniovi.rag.services.reasoning.ReasoningStrategy;
+import com.uniovi.rag.services.tools.ToolRagService;
 import com.uniovi.rag.services.tools.ToolResult;
-import com.uniovi.rag.utils.LLMResponseValidator;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -49,6 +59,7 @@ public class ProcessQueryService implements QueryService {
         8. Do not add information that is not in the context
         9. Do not include headers, introductions, or explanatory text - just provide the direct answer
         10. If multiple fragments contain relevant information, synthesize them into a coherent answer
+        11. When relevant, mention or cite the source (e.g. document, date) from the context.
         
         <QueryType> %s </QueryType>
         <Question> %s </Question>
@@ -69,6 +80,12 @@ public class ProcessQueryService implements QueryService {
     private final ContextRetriever retriever;
     private final RagToolsConfiguration toolsConfig;
     private final DateExistenceGuard dateExistenceGuard;
+    private final MeetingMinutesToolsAdapter meetingMinutesToolsAdapter;
+    private final ReasoningStrategy reasoningStrategy;
+    private final ResponseRanker responseRanker;
+    private final PostRetrievalProcessor postRetrievalProcessor;
+    private final ToolRagService toolRagService;
+    private final ResponseValidator responseValidator;
 
     public ProcessQueryService(RagFeatureConfiguration featureConfig,
                                RagToolsConfiguration toolsConfig,
@@ -78,7 +95,13 @@ public class ProcessQueryService implements QueryService {
                                QueryClassifier classifier,
                                ContextRetriever retriever,
                                ChatClient chatClient,
-                               DateExistenceGuard dateExistenceGuard) {
+                               DateExistenceGuard dateExistenceGuard,
+                               MeetingMinutesToolsAdapter meetingMinutesToolsAdapter,
+                               ReasoningStrategy reasoningStrategy,
+                               ResponseRanker responseRanker,
+                               PostRetrievalProcessor postRetrievalProcessor,
+                               ToolRagService toolRagService,
+                               ResponseValidator responseValidator) {
         this.featureConfig = featureConfig;
         this.chatClient = chatClient;
         this.expander = expander;
@@ -88,6 +111,12 @@ public class ProcessQueryService implements QueryService {
         this.retriever = retriever;
         this.toolsConfig = toolsConfig;
         this.dateExistenceGuard = dateExistenceGuard;
+        this.meetingMinutesToolsAdapter = meetingMinutesToolsAdapter;
+        this.reasoningStrategy = reasoningStrategy;
+        this.responseRanker = responseRanker;
+        this.postRetrievalProcessor = postRetrievalProcessor;
+        this.toolRagService = toolRagService;
+        this.responseValidator = responseValidator;
     }
 
     @Override
@@ -139,6 +168,66 @@ public class ProcessQueryService implements QueryService {
                     log().info("DateExistenceGuard: returning no-acta response for date-dependent query (queryType={})", queryType);
                     log().info("Response generated with tool {}: {}", guardResult.get().source(), guardResult.get().result());
                     return QueryResponse.fromTool(guardResult.get().result(), guardResult.get().source(), queryType);
+                }
+            }
+
+            if (featureConfig.isReasoningEnabled() && reasoningStrategy != null) {
+                ReasoningPreOutput preOutput = reasoningStrategy.runPreStep(query, queryType, nerEntities, expandedQuery);
+                DraftAndContext draftAndContext = getDraftForReasoning(expandedQuery, nerEntities, queryType, preOutput);
+                if (draftAndContext != null && draftAndContext.draft() != null && !draftAndContext.draft().trim().isEmpty()) {
+                    PostStepOutput postOutput = reasoningStrategy.runPostStep(query, draftAndContext.context(), draftAndContext.draft());
+                    String candidate = (postOutput != null && postOutput.verifiedOrRefinedText() != null)
+                            ? postOutput.verifiedOrRefinedText()
+                            : draftAndContext.draft();
+                    List<CandidateResponse> candidates = new ArrayList<>();
+                    candidates.add(CandidateResponse.of(candidate, "reasoning"));
+                    if (featureConfig.isRankerEnabled() && responseRanker != null) {
+                        RankerResult rankerResult = responseRanker.selectBest(query, draftAndContext.context(), candidates);
+                        if (rankerResult != null && rankerResult.chosenText() != null) {
+                            return QueryResponse.fromTool(rankerResult.chosenText(), "reasoning+ranker", queryType);
+                        }
+                    }
+                    return QueryResponse.fromTool(candidate, "reasoning", queryType);
+                }
+            }
+
+            if (featureConfig.isToolsEnabled() && meetingMinutesToolsAdapter != null) {
+                QueryType toolQueryType = (featureConfig.isToolRagEnabled() && toolRagService != null)
+                        ? toolRagService.findBestQueryType(expandedQuery)
+                        : queryType;
+                if (toolQueryType != null) {
+                    String toolResponse = null;
+                    if (featureConfig.isFunctionCallingEnabled()) {
+                        try {
+                            String content = chatClient.prompt()
+                                    .user(expandedQuery)
+                                    .call()
+                                    .content();
+                            if (content != null && !content.trim().isEmpty()) {
+                                toolResponse = responseValidator.validateAndClean(content, "Tool-function-calling");
+                                if (toolResponse != null && !toolResponse.trim().isEmpty()) {
+                                    log().info("Response generated via ChatClient.tools(adapter) (function-calling path)");
+                                    return QueryResponse.fromTool(toolResponse, "function-calling", toolQueryType);
+                                }
+                            }
+                        } catch (Exception e) {
+                            log().warn("ChatClient.tools(adapter) failed, falling back to deterministic execute: {}", e.getMessage());
+                        }
+                    }
+                    if (toolResponse == null || toolResponse.trim().isEmpty()) {
+                        try {
+                            ToolResult adapterResult = meetingMinutesToolsAdapter.execute(toolQueryType, expandedQuery);
+                            if (adapterResult != null && adapterResult.result() != null && !adapterResult.result().trim().isEmpty()) {
+                                String validated = responseValidator.validateAndClean(adapterResult.result(), "Tool-" + queryType);
+                                if (validated != null && !validated.trim().isEmpty()) {
+                                    log().info("Response generated via tool adapter (deterministic path)");
+                                    return QueryResponse.fromTool(validated, adapterResult.source() != null ? adapterResult.source() : "tool", toolQueryType);
+                                }
+                            }
+                        } catch (Exception e) {
+                            log().warn("Tool adapter execution failed: {}", e.getMessage());
+                        }
+                    }
                 }
             }
 
@@ -313,7 +402,7 @@ public class ProcessQueryService implements QueryService {
                               originalResult.length() > 100 ? originalResult.substring(0, 100) + "..." : originalResult);
                     
                     // Validate tool result
-                    String validatedResult = LLMResponseValidator.validateAndClean(originalResult, "Tool-" + queryType);
+                    String validatedResult = responseValidator.validateAndClean(originalResult, "Tool-" + queryType);
                     if (validatedResult != null && !validatedResult.trim().isEmpty()) {
                         log().info("Successfully executed tool {} on attempt {} (execution time: {} ms). " +
                                   "Result length: {} chars, validated length: {} chars", 
@@ -325,7 +414,7 @@ public class ProcessQueryService implements QueryService {
                     } else {
                         log().warn("Tool {} returned result that failed validation on attempt {}. " +
                                   "Original result length: {} chars, Validated result: null or empty. " +
-                                  "Original preview: {}. This may indicate LLMResponseValidator rejected the response.",
+                                  "Original preview: {}. This may indicate ResponseValidator rejected the response.",
                                   queryType, attempt + 1, originalResult.length(),
                                   originalResult.length() > 200 ? originalResult.substring(0, 200) + "..." : originalResult);
                         if (attempt < MAX_RETRIES) {
@@ -383,15 +472,95 @@ public class ProcessQueryService implements QueryService {
         return null; // Fall back to direct model query
     }
 
+    private DraftAndContext getDraftForReasoning(String query, JSONObject nerEntities, QueryType queryType, ReasoningPreOutput preOutput) {
+        ToolResult toolResult = null;
+        if (featureConfig.isToolsEnabled() && queryType != null && meetingMinutesToolsAdapter != null) {
+            try {
+                toolResult = meetingMinutesToolsAdapter.execute(queryType, query);
+            } catch (Exception ignored) {
+            }
+        }
+        if (toolResult == null) {
+            toolResult = tryToolRoute(query, nerEntities, queryType);
+        }
+        if (toolResult != null && toolResult.result() != null && !toolResult.result().trim().isEmpty()) {
+            String validated = responseValidator.validateAndClean(toolResult.result(), "Tool-" + queryType);
+            if (validated != null && !validated.trim().isEmpty()) {
+                return new DraftAndContext(validated, validated);
+            }
+        }
+        return askModelWithPreStep(query, nerEntities, queryType, preOutput != null ? preOutput.thoughtOrPlan() : null);
+    }
+
+    private DraftAndContext askModelWithPreStep(String query, JSONObject nerEntities, QueryType queryType, String preStepThought) {
+        String retrievalQuery = (featureConfig.isNerEnabled() && nerQueryEnricher != null && nerEntities != null && !nerEntities.isEmpty())
+                ? nerQueryEnricher.buildEnrichedQueryForRetrieval(query, nerEntities)
+                : query;
+        List<Document> docs;
+        try {
+            if (retriever instanceof AbstractContextRetriever && nerEntities != null && !nerEntities.isEmpty()) {
+                docs = ((AbstractContextRetriever) retriever).retrieveWithMetadataFilters(retrievalQuery, nerEntities);
+            } else {
+                docs = retriever.retrieve(retrievalQuery);
+            }
+        } catch (Exception e) {
+            log().warn("Retrieval failed in reasoning path: {}", e.getMessage());
+            return null;
+        }
+        if (featureConfig.isPostRetrievalEnabled() && postRetrievalProcessor != null) {
+            docs = postRetrievalProcessor.process(docs, query);
+        }
+        String context = retriever.createContext(docs, query, nerEntities);
+        if (context == null || context.trim().isEmpty()) {
+            String fallback = generateNoContextResponse(query);
+            return new DraftAndContext(fallback, "");
+        }
+        String contextWithReasoning = context;
+        if (preStepThought != null && !preStepThought.trim().isEmpty()) {
+            contextWithReasoning = "<Reasoning>\n" + preStepThought.trim() + "\n</Reasoning>\n\n" + context;
+        }
+        String prompt = String.format(DEFAULT_PROMPT_TEMPLATE,
+                queryType != null ? queryType.name() : "UNKNOWN",
+                query,
+                contextWithReasoning);
+        try {
+            String response = chatClient.prompt().user(prompt).call().content();
+            String validated = responseValidator.validateAndClean(response, "ProcessQueryService");
+            if (validated != null) {
+                return new DraftAndContext(validated, context);
+            }
+        } catch (Exception e) {
+            log().warn("LLM call failed in reasoning path: {}", e.getMessage());
+        }
+        return new DraftAndContext(generateNoContextResponse(query), context);
+    }
+
     /**
      * Asks the LLM model with retry logic and response validation.
      * Retries up to MAX_RETRIES times if the response is invalid or an error occurs.
      */
     private String askModel(String query, JSONObject nerEntities, QueryType queryType) {
-        boolean isProblematicConfig = featureConfig.isMetadataEnabled() && 
-                                      featureConfig.isNerEnabled() && 
+        // Use QuestionAnswerAdvisor path when no NER or post-retrieval (advisor injects context from vector store)
+        if (!featureConfig.isNerEnabled() && !featureConfig.isPostRetrievalEnabled()) {
+            try {
+                String rawContent = chatClient.prompt()
+                        .user(query)
+                        .call()
+                        .content();
+                String validated = rawContent != null ? responseValidator.validateAndClean(rawContent, "ProcessQueryService-Advisor") : null;
+                if (validated != null && !validated.trim().isEmpty()) {
+                    log().info("Response generated via QuestionAnswerAdvisor (askModel path)");
+                    return validated;
+                }
+            } catch (Exception e) {
+                log().warn("QuestionAnswerAdvisor path failed, falling back to manual retrieve+createContext: {}", e.getMessage());
+            }
+        }
+
+        boolean isProblematicConfig = featureConfig.isMetadataEnabled() &&
+                                      featureConfig.isNerEnabled() &&
                                       !featureConfig.isToolsEnabled();
-        
+
         String retrievalQuery = (featureConfig.isNerEnabled() && nerQueryEnricher != null && nerEntities != null && !nerEntities.isEmpty())
                 ? nerQueryEnricher.buildEnrichedQueryForRetrieval(query, nerEntities)
                 : query;
@@ -426,6 +595,9 @@ public class ProcessQueryService implements QueryService {
             throw e;
         }
 
+        if (featureConfig.isPostRetrievalEnabled() && postRetrievalProcessor != null) {
+            docs = postRetrievalProcessor.process(docs, query);
+        }
         String context = retriever.createContext(docs, query, nerEntities);
 
         log().info("Retrieved {} documents, context length: {}", docs.size(), context != null ? context.length() : 0);
@@ -467,7 +639,7 @@ public class ProcessQueryService implements QueryService {
                         .content();
                 
                 // Validate and clean response
-                String validatedResponse = LLMResponseValidator.validateAndClean(response, "ProcessQueryService");
+                String validatedResponse = responseValidator.validateAndClean(response, "ProcessQueryService");
                 
                 if (validatedResponse != null) {
                     log().info("Successfully generated response on attempt {}", attempt + 1);

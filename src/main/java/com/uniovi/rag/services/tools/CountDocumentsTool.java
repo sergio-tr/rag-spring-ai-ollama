@@ -56,11 +56,11 @@ public class CountDocumentsTool extends AbstractTool {
         List<String> matchedIds = new java.util.ArrayList<>();
 
         for (Document doc : candidateDocs) {
-            if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) continue;
+            if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) continue;
             if (ner != null && !nerHandler.matchesDocumentWithNER(doc, ner)) continue;
 
             String id = extractMinuteIdentifier(doc);
-            String fragment = extractor.extractRelevantFragment(doc.getContent(), query);
+            String fragment = extractor.extractRelevantFragment(doc.getText(), query);
             if (matchesQueryWithLLM(query, id, fragment)) {
                 matchedIds.add(id);
             }
@@ -157,7 +157,7 @@ public class CountDocumentsTool extends AbstractTool {
             return filename.toString();
         }
 
-        String date = extractDateFromContent(doc.getContent());
+        String date = extractDateFromContent(doc.getText());
         if (date != null && !date.isBlank()) {
             return "Acta del " + date;
         }
