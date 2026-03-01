@@ -36,7 +36,7 @@ public class ExtractEntitiesTool extends AbstractTool {
                   query, ner != null ? ner.toString() : "null");
         long startTime = System.currentTimeMillis();
         
-        List<Document> docs = retrieveDocuments(query);
+        List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for extract entities query", docs.size());
         List<String> results = new ArrayList<>();
 

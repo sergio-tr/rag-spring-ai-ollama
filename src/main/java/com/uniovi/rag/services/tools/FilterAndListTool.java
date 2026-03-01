@@ -36,7 +36,7 @@ public class FilterAndListTool extends AbstractTool {
                   query, ner != null ? ner.toString() : "null");
         long startTime = System.currentTimeMillis();
         
-        List<Document> docs = retrieveDocuments(query);
+        List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for filter and list query", docs.size());
         List<String> results = new ArrayList<>();
 

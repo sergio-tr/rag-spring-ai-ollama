@@ -32,7 +32,7 @@ public class SummarizeMeetingTool extends AbstractTool {
                   query, ner != null ? ner.toString() : "null");
         long startTime = System.currentTimeMillis();
         
-        List<Document> docs = retrieveDocuments(query);
+        List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for summarize meeting query", docs.size());
         List<String> fragments = new ArrayList<>();
 

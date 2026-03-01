@@ -171,7 +171,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     /**
      * Analyzes the query with robust validation and normalization.
      */
-    @Cacheable(value = "nerAnalysis", key = "#query.hashCode()")
+    @Cacheable(value = "nerAnalysis", keyGenerator = "nerCacheKeyGenerator")
     private JSONObject analyseWithCache(String query) {
         // Use simple string replacement instead of PromptTemplate to avoid issues with [ and ] in JSON examples
         String prompt = NER_PROMPT.replace("{query}", query);

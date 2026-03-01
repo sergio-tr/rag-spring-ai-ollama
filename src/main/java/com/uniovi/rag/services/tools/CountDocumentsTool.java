@@ -38,7 +38,7 @@ public class CountDocumentsTool extends AbstractTool {
                   query, ner != null ? ner.toString() : "null");
         long startTime = System.currentTimeMillis();
                 
-        List<Document> docs = retrieveDocuments(query);
+        List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for count documents query", docs.size());
         if (docs == null || docs.isEmpty()) {
             long totalTime = System.currentTimeMillis() - startTime;

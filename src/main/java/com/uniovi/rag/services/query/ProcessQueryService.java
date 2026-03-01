@@ -2,6 +2,7 @@ package com.uniovi.rag.services.query;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
+import com.uniovi.rag.services.analyser.NERQueryEnricher;
 import com.uniovi.rag.services.analyser.QueryAnalyser;
 import com.uniovi.rag.services.classifier.QueryClassifier;
 import com.uniovi.rag.services.classifier.QueryType;
@@ -63,6 +64,7 @@ public class ProcessQueryService implements QueryService {
     private final ChatClient chatClient;
     private final QueryExpander expander;
     private final QueryAnalyser analyser;
+    private final NERQueryEnricher nerQueryEnricher;
     private final QueryClassifier classifier;
     private final ContextRetriever retriever;
     private final RagToolsConfiguration toolsConfig;
@@ -72,6 +74,7 @@ public class ProcessQueryService implements QueryService {
                                RagToolsConfiguration toolsConfig,
                                QueryExpander expander,
                                QueryAnalyser analyser,
+                               NERQueryEnricher nerQueryEnricher,
                                QueryClassifier classifier,
                                ContextRetriever retriever,
                                ChatClient chatClient,
@@ -80,6 +83,7 @@ public class ProcessQueryService implements QueryService {
         this.chatClient = chatClient;
         this.expander = expander;
         this.analyser = analyser;
+        this.nerQueryEnricher = nerQueryEnricher;
         this.classifier = classifier;
         this.retriever = retriever;
         this.toolsConfig = toolsConfig;
@@ -388,19 +392,25 @@ public class ProcessQueryService implements QueryService {
                                       featureConfig.isNerEnabled() && 
                                       !featureConfig.isToolsEnabled();
         
+        String retrievalQuery = (featureConfig.isNerEnabled() && nerQueryEnricher != null && nerEntities != null && !nerEntities.isEmpty())
+                ? nerQueryEnricher.buildEnrichedQueryForRetrieval(query, nerEntities)
+                : query;
+        if (!retrievalQuery.equals(query)) {
+            log().debug("Using NER-enriched query for retrieval (length {} vs {} chars)", retrievalQuery.length(), query.length());
+        }
         List<Document> docs;
         try {
             if (retriever instanceof AbstractContextRetriever && nerEntities != null && !nerEntities.isEmpty()) {
                 if (isProblematicConfig) {
                     log().debug("Attempting retrieval with metadata filters and NER entities");
                 }
-                docs = ((AbstractContextRetriever) retriever).retrieveWithMetadataFilters(query, nerEntities);
+                docs = ((AbstractContextRetriever) retriever).retrieveWithMetadataFilters(retrievalQuery, nerEntities);
                 log().info("Using optimized retrieval with metadata filters, retrieved {} documents", docs.size());
             } else {
                 if (isProblematicConfig) {
                     log().debug("Using standard retrieval (no metadata filters or NER)");
                 }
-                docs = retriever.retrieve(query);
+                docs = retriever.retrieve(retrievalQuery);
             }
         } catch (NullPointerException e) {
             log().error("NullPointerException during document retrieval (config: metadata={}, ner={}): {}", 

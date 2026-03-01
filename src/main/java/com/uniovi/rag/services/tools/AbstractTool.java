@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.tools;
 
 import com.uniovi.rag.services.retriever.ContextRetriever;
+import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
@@ -19,34 +20,65 @@ public abstract class AbstractTool implements Tool {
     }
 
     /**
-     * Retrieves all documents matching the query with maximum recall.
-     * If more documents are needed, use retrieveDocumentsIntelligently().
+     * Performs retrieval; when NER entities are provided and the retriever supports it,
+     * uses metadata filters (e.g. date) for better relevance.
      */
-    protected List<Document> retrieveAllDocuments(String query) {
-        retriever.setTopK(100);  // Reduced from 1000 to improve performance
-        retriever.setSimilarityThreshold(0);
-        return retriever.retrieve(query);
-    }
-    
-    /**
-     * Retrieves documents intelligently with a configurable limit.
-     * Use this when you need more control over the number of documents retrieved.
-     */
-    protected List<Document> retrieveDocumentsIntelligently(String query, int maxDocuments) {
-        retriever.setTopK(Math.min(maxDocuments, 200));  // Maximum 200 to avoid overload
-        retriever.setSimilarityThreshold(0);
+    protected List<Document> doRetrieve(String query, JSONObject nerEntities) {
+        if (nerEntities != null && !nerEntities.isEmpty()) {
+            return retriever.retrieveWithMetadataFilters(query, nerEntities);
+        }
         return retriever.retrieve(query);
     }
 
+    /**
+     * Retrieves all documents matching the query with maximum recall.
+     * When NER is enabled and context provides nerEntities, retrieval uses metadata filters (e.g. date).
+     */
+    protected List<Document> retrieveAllDocuments(String query) {
+        return retrieveAllDocuments(query, null);
+    }
+
+    protected List<Document> retrieveAllDocuments(String query, JSONObject nerEntities) {
+        retriever.setTopK(100);  // Reduced from 1000 to improve performance
+        retriever.setSimilarityThreshold(0);
+        return doRetrieve(query, nerEntities);
+    }
+
+    /**
+     * Retrieves documents intelligently with a configurable limit.
+     * When NER is enabled, uses metadata filters for retrieval.
+     */
+    protected List<Document> retrieveDocumentsIntelligently(String query, int maxDocuments) {
+        return retrieveDocumentsIntelligently(query, maxDocuments, null);
+    }
+
+    protected List<Document> retrieveDocumentsIntelligently(String query, int maxDocuments, JSONObject nerEntities) {
+        retriever.setTopK(Math.min(maxDocuments, 200));  // Maximum 200 to avoid overload
+        retriever.setSimilarityThreshold(0);
+        return doRetrieve(query, nerEntities);
+    }
+
+    /**
+     * Retrieves documents with default settings.
+     * When NER is enabled and context provides nerEntities, uses metadata filters (e.g. date) for retrieval.
+     */
     protected List<Document> retrieveDocuments(String query) {
+        return retrieveDocuments(query, null);
+    }
+
+    protected List<Document> retrieveDocuments(String query, JSONObject nerEntities) {
         retriever.restoreDefaultSettings();
-        return retriever.retrieve(query);
+        return doRetrieve(query, nerEntities);
     }
 
     protected List<Document> retrieveDocumentsWithTopK(String query, int topK) {
+        return retrieveDocumentsWithTopK(query, topK, null);
+    }
+
+    protected List<Document> retrieveDocumentsWithTopK(String query, int topK, JSONObject nerEntities) {
         retriever.restoreDefaultSettings();
         retriever.setTopK(topK);
-        return retriever.retrieve(query);
+        return doRetrieve(query, nerEntities);
     }
 
     /**

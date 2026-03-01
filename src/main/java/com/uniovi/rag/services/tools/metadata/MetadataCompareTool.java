@@ -43,7 +43,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             log().info("Query compares two specific dates; re-retrieving and filtering by any of {} dates", dateCandidates.size());
             List<Document> allDocs = retrieveDocumentsWithMetadataFilter(query, new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"});
             if (allDocs.isEmpty()) {
-                allDocs = retrieveDocuments(query);
+                allDocs = retrieveDocuments(query, ner);
             }
             if (!allDocs.isEmpty()) {
                 List<String> requestedYears = extractYearsFromQuery(query, ner);

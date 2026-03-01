@@ -1,6 +1,8 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.model.ExpansionStrategy;
 import com.uniovi.rag.services.analyser.MinuteNERQueryAnalyser;
+import com.uniovi.rag.services.analyser.NERQueryEnricher;
 import com.uniovi.rag.services.analyser.QueryAnalyser;
 import com.uniovi.rag.services.classifier.PythonQueryClassifier;
 import com.uniovi.rag.services.classifier.QueryClassifier;
@@ -31,10 +33,13 @@ import org.springframework.ai.ollama.api.OllamaApi;
 import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.ai.vectorstore.PgVectorStore;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -148,8 +153,26 @@ public class RagConfiguration {
     }
 
     @Bean
-    public QueryExpander queryExpander(ChatClient chatClient) {
-        return new MinuteDocumentStructureExpander(chatClient);
+    public QueryExpander queryExpander(
+            ChatClient chatClient,
+            @Value("${rag.expansion.strategy:COT}") String expansionStrategy,
+            @Value("${rag.expansion.original-repeat:1}") int originalRepeat,
+            @Value("${rag.expansion.max-expansion-chars:350}") int maxExpansionChars,
+            @Value("${rag.expansion.max-query-total-chars:512}") int maxQueryTotalChars
+    ) {
+        ExpansionStrategy strategy;
+        try {
+            strategy = ExpansionStrategy.valueOf(expansionStrategy.toUpperCase());
+        } catch (Exception e) {
+            strategy = ExpansionStrategy.COT;
+        }
+        return new MinuteDocumentStructureExpander(
+            chatClient,
+            strategy,
+            originalRepeat,
+            maxExpansionChars,
+            maxQueryTotalChars
+        );
     }
 
     @Bean
@@ -164,6 +187,36 @@ public class RagConfiguration {
     @Bean
     public QueryAnalyser queryAnalyser(ChatClient chatClient) {
         return new MinuteNERQueryAnalyser(chatClient);
+    }
+
+    /** Content-based cache key for NER to avoid hashCode collisions (see docs/ANALISIS_NER_Y_MEJORAS.md). */
+    @Bean(name = "nerCacheKeyGenerator")
+    public KeyGenerator nerCacheKeyGenerator() {
+        return (target, method, params) -> {
+            if (params != null && params.length > 0 && params[0] instanceof String) {
+                String q = (String) params[0];
+                try {
+                    MessageDigest md = MessageDigest.getInstance("SHA-256");
+                    byte[] hash = md.digest(q.trim().getBytes(StandardCharsets.UTF_8));
+                    StringBuilder hex = new StringBuilder();
+                    for (int i = 0; i < Math.min(8, hash.length); i++) {
+                        hex.append(String.format("%02x", hash[i]));
+                    }
+                    return "ner::" + hex;
+                } catch (Exception e) {
+                    return "ner::" + q.hashCode();
+                }
+            }
+            return "ner::" + (params != null ? java.util.Arrays.hashCode(params) : 0);
+        };
+    }
+
+    @Bean
+    public NERQueryEnricher nerQueryEnricher(
+            @Value("${rag.ner.enrichment.max-extra-chars:80}") int maxExtraChars,
+            @Value("${rag.ner.enrichment.max-total-chars:512}") int maxTotalChars
+    ) {
+        return new NERQueryEnricher(maxExtraChars, maxTotalChars);
     }
 
     @Bean
@@ -244,6 +297,7 @@ public class RagConfiguration {
             RagToolsConfiguration toolsConfig,
             QueryExpander expander,
             QueryAnalyser analyser,
+            NERQueryEnricher nerQueryEnricher,
             QueryClassifier classifier,
             ContextRetriever retriever,
             ChatClient chatClient,
@@ -254,6 +308,7 @@ public class RagConfiguration {
                 toolsConfig,
                 expander,
                 analyser,
+                nerQueryEnricher,
                 classifier,
                 retriever,
                 chatClient,

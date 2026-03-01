@@ -37,7 +37,7 @@ public class BooleanQueryTool extends AbstractTool {
                   query, ner != null ? ner.toString() : "null");
         long startTime = System.currentTimeMillis();
         
-        List<Document> docs = retrieveDocuments(query);
+        List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for boolean query", docs.size());
         List<String> evidence = new ArrayList<>();
         boolean found = false;
@@ -54,7 +54,7 @@ public class BooleanQueryTool extends AbstractTool {
                 
                 if (nerHandler.matchesDocumentWithNER(doc, ner)) {
                     String fragment = extractRelevantFragment(doc.getContent(), query);
-                    if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment)) {
+                    if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment, ner)) {
                         String date = extractDate(doc.getContent());
                         evidence.add(generateEvidenceMessage(date, fragment));
                         found = true;
@@ -71,7 +71,7 @@ public class BooleanQueryTool extends AbstractTool {
                 }
                 
                 String fragment = extractRelevantFragment(doc.getContent(), query);
-                if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment)) {
+                if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment, ner)) {
                     String date = extractDate(doc.getContent());
                     evidence.add(generateEvidenceMessage(date, fragment));
                     found = true;
@@ -80,7 +80,7 @@ public class BooleanQueryTool extends AbstractTool {
         }
         
         if (!found) {
-            docs = retrieveAllDocuments(query);
+            docs = retrieveAllDocuments(query, ner);
             if (!docs.isEmpty()) {
                 for (Document doc : docs) {
                     if (doc == null || doc.getContent() == null || doc.getContent().trim().isEmpty()) {
@@ -88,7 +88,7 @@ public class BooleanQueryTool extends AbstractTool {
                     }
                     
                     String fragment = extractRelevantFragment(doc.getContent(), query);
-                    if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment)) {
+                    if (fragment != null && !fragment.trim().isEmpty() && fragmentConfirmsClaim(query, fragment, ner)) {
                         String date = extractDate(doc.getContent());
                         evidence.add(generateEvidenceMessage(date, fragment));
                         found = true;
@@ -116,14 +116,14 @@ public class BooleanQueryTool extends AbstractTool {
 
     /**
      * Checks if fragment confirms the claim using intelligent analysis.
-     * Uses English for internal processing, but preserves original language in query and fragment.
+     * Uses NER when available for answer type; otherwise falls back to LLM.
      */
-    private boolean fragmentConfirmsClaim(String query, String fragment) {
+    private boolean fragmentConfirmsClaim(String query, String fragment, JSONObject ner) {
         if (query == null || query.trim().isEmpty() || fragment == null || fragment.trim().isEmpty()) {
             return false;
         }
         
-        String answerType = nerHandler.determineAnswerType(query, null);
+        String answerType = nerHandler.determineAnswerType(query, ner);
         
         String prompt = String.format("""
             Given the following user query (in any language):

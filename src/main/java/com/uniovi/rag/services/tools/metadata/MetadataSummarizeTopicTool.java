@@ -87,7 +87,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         }
 
         // Step 4: Generate topic summaries in parallel (metadata-first, LLM fallback)
-        List<TopicResult> results = generateTopicSummariesInParallel(query, relevantMinutes);
+        List<TopicResult> results = generateTopicSummariesInParallel(query, relevantMinutes, ner);
         if (results.isEmpty()) {
             log().info("No topic summaries generated for query: {}", query);
             return ToolResult.from(formatResponse(generateNoDataMessage(query), query), getClass());
@@ -105,11 +105,11 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates topic summaries in parallel
+     * Generates topic summaries in parallel (uses NER when available for topic focus).
      */
-    private List<TopicResult> generateTopicSummariesInParallel(String query, List<Minute> minutes) {
+    private List<TopicResult> generateTopicSummariesInParallel(String query, List<Minute> minutes, JSONObject ner) {
         List<CompletableFuture<TopicResult>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> generateTopicSummary(query, minute)))
+                .map(minute -> CompletableFuture.supplyAsync(() -> generateTopicSummary(query, minute, ner)))
                 .collect(Collectors.toList());
 
         return futures.stream()
@@ -120,13 +120,13 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     }
 
     /**
-     * Generates topic summary for a minute with enhanced context
+     * Generates topic summary for a minute with enhanced context (NER used when available for topic).
      */
-    private TopicResult generateTopicSummary(String query, Minute minute) {
+    private TopicResult generateTopicSummary(String query, Minute minute, JSONObject ner) {
         String topicSummary = buildTopicSummaryFromMetadata(minute);
         
         if (topicSummary.isBlank()) {
-            topicSummary = generateTopicSummaryWithLLM(query, minute);
+            topicSummary = generateTopicSummaryWithLLM(query, minute, ner);
         }
 
         if (topicSummary.isBlank()) {
@@ -165,12 +165,12 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
      * Fallback LLM topic summary when metadata is insufficient.
      * Item 39: Instruct LLM to focus ONLY on the queried topic (e.g. calefacción), not other meeting topics.
      */
-    private String generateTopicSummaryWithLLM(String query, Minute minute) {
+    private String generateTopicSummaryWithLLM(String query, Minute minute, JSONObject ner) {
         if (query == null || query.trim().isEmpty() || minute == null) {
             return "";
         }
 
-        String topic = extractTopicFromQuery(query, null);
+        String topic = extractTopicFromQuery(query, ner);
         String topicFocus = (topic != null && !topic.isBlank())
                 ? String.format(" Your answer must focus ONLY on what was said about \"%s\". Do not include other meeting topics (e.g. regulations, pests, signage, approval of minutes). If the meeting discussed this topic, summarize only that part (e.g. improvements, budget requests). Keep the answer brief (1-3 sentences). Example for topic 'calefacción': 'La calefacción se trató en la reunión del 25 de febrero de 2026. Se discutieron posibles mejoras y se acordó solicitar presupuestos.'"
                         , topic)
