@@ -5,6 +5,7 @@ import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.model.Minute;
 import com.uniovi.rag.services.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.services.analyser.NERQueryEnricher;
+import com.uniovi.rag.services.analyser.NoOpQueryAnalyser;
 import com.uniovi.rag.services.analyser.QueryAnalyser;
 import com.uniovi.rag.services.classifier.PythonQueryClassifier;
 import com.uniovi.rag.services.classifier.QueryClassifier;
@@ -22,11 +23,15 @@ import com.uniovi.rag.services.guard.DateExistenceGuard;
 import com.uniovi.rag.services.guard.QueryDateExtractor;
 import com.uniovi.rag.services.query.ProcessQueryService;
 import com.uniovi.rag.services.query.QueryService;
+import com.uniovi.rag.services.query.SimpleProcessQueryService;
+import com.uniovi.rag.services.query.SimpleQueryService;
 import com.uniovi.rag.services.extraction.DocumentContentExtractor;
 import com.uniovi.rag.services.query.ResponseValidator;
 import com.uniovi.rag.services.tools.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.services.retriever.BasicContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
+import com.uniovi.rag.services.retriever.FilteredContextRetriever;
+import com.uniovi.rag.services.retriever.MinuteDocumentContextRetriever;
 import com.uniovi.rag.services.tools.Tool;
 import com.uniovi.rag.services.tools.*;
 import com.uniovi.rag.services.tools.metadata.*;
@@ -84,12 +89,19 @@ public class EvaluationServiceFactory {
 
     /**
      * Creates a QueryService with a custom configuration.
+     * Uses featureConfig.getQueryServiceImpl(), getRetrieverImpl(), getAnalyserImpl() when set (e.g. from POST /evaluate/custom body).
      */
     public QueryService createQueryService(RagFeatureConfiguration featureConfig) {
         QueryExpander expander = new MinuteDocumentStructureExpander(chatClient);
-        QueryAnalyser analyser = new MinuteNERQueryAnalyser(chatClient);
+        String analyserImpl = featureConfig.getAnalyserImpl() != null ? featureConfig.getAnalyserImpl().trim().toLowerCase() : "minute-ner";
+        QueryAnalyser analyser = "no-op".equals(analyserImpl) ? new NoOpQueryAnalyser() : new MinuteNERQueryAnalyser(chatClient);
         QueryClassifier classifier = new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript);
-        ContextRetriever retriever = new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+        String retrieverImpl = featureConfig.getRetrieverImpl() != null ? featureConfig.getRetrieverImpl().trim().toLowerCase() : "basic";
+        ContextRetriever retriever = switch (retrieverImpl) {
+            case "filtered" -> new FilteredContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+            case "minute-document" -> new MinuteDocumentContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+            default -> new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+        };
         RagToolsConfiguration toolsConfig = new RagToolsConfiguration(createTools(featureConfig, retriever, documentContentExtractor));
         QueryDateExtractor queryDateExtractor = new QueryDateExtractor();
         DateExistenceGuard dateExistenceGuard = new DefaultDateExistenceGuard(retriever, queryDateExtractor);
@@ -100,24 +112,29 @@ public class EvaluationServiceFactory {
         DefaultPostRetrievalProcessor postRetrievalProcessor = new DefaultPostRetrievalProcessor(10);
         ToolRagService toolRagService = new ToolRagService(embeddingModel, 5);
 
-        return new ProcessQueryService(
-                featureConfig,
-                toolsConfig,
-                expander,
-                analyser,
-                nerQueryEnricher,
-                classifier,
-                retriever,
-                chatClient,
-                dateExistenceGuard,
-                meetingMinutesToolsAdapter,
-                reasoningStrategy,
-                responseRanker,
-                postRetrievalProcessor,
-                toolRagService,
-                responseValidator,
-                null  // questionAnswerAdvisor: evaluation uses manual retrieval path
-        );
+        String queryServiceImpl = featureConfig.getQueryServiceImpl() != null ? featureConfig.getQueryServiceImpl().trim().toLowerCase() : "process";
+        return switch (queryServiceImpl) {
+            case "simple" -> new SimpleQueryService(expander, analyser, retriever, chatClient);
+            case "simple-process" -> new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient);
+            default -> new ProcessQueryService(
+                    featureConfig,
+                    toolsConfig,
+                    expander,
+                    analyser,
+                    nerQueryEnricher,
+                    classifier,
+                    retriever,
+                    chatClient,
+                    dateExistenceGuard,
+                    meetingMinutesToolsAdapter,
+                    reasoningStrategy,
+                    responseRanker,
+                    postRetrievalProcessor,
+                    toolRagService,
+                    responseValidator,
+                    null  // questionAnswerAdvisor: evaluation uses manual retrieval path
+            );
+        };
     }
 
     /**

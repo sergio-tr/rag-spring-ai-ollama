@@ -175,10 +175,36 @@ public class ProcessQueryService implements QueryService {
                 }
             }
 
+            // A.4: Prefer tool response for date-scoped queries (DECISION_EXTRACTION, GET_FIELD) so tools answer before reasoning
+            if (featureConfig.isToolsEnabled() && meetingMinutesToolsAdapter != null && shouldPreferToolResponse(queryType, nerEntities)) {
+                QueryType toolQueryType = (featureConfig.isToolRagEnabled() && toolRagService != null)
+                        ? toolRagService.findBestQueryType(expandedQuery)
+                        : queryType;
+                if (toolQueryType != null) {
+                    try {
+                        ToolResult adapterResult = meetingMinutesToolsAdapter.execute(toolQueryType, expandedQuery);
+                        if (adapterResult != null && adapterResult.result() != null && !adapterResult.result().trim().isEmpty()) {
+                            String validated = responseValidator.validateAndClean(adapterResult.result(), "Tool-" + queryType);
+                            if (validated != null && !validated.trim().isEmpty()) {
+                                log().info("Response generated via tool (prefer-tool path for date-scoped query)");
+                                return QueryResponse.fromTool(validated, adapterResult.source() != null ? adapterResult.source() : "tool", toolQueryType);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log().warn("Prefer-tool path failed, continuing to reasoning: {}", e.getMessage());
+                    }
+                }
+            }
+
             if (featureConfig.isReasoningEnabled() && reasoningStrategy != null) {
                 ReasoningPreOutput preOutput = reasoningStrategy.runPreStep(query, queryType, nerEntities, expandedQuery);
                 DraftAndContext draftAndContext = getDraftForReasoning(expandedQuery, nerEntities, queryType, preOutput);
                 if (draftAndContext != null && draftAndContext.draft() != null && !draftAndContext.draft().trim().isEmpty()) {
+                    if (!isDraftAcceptable(draftAndContext)) {
+                        log().info("Draft not acceptable (A.5 fallback), using askModel");
+                        String answer = askModel(expandedQuery, nerEntities, queryType);
+                        return QueryResponse.fromLLM(answer != null ? answer : draftAndContext.draft(), queryType);
+                    }
                     PostStepOutput postOutput = reasoningStrategy.runPostStep(query, draftAndContext.context(), draftAndContext.draft());
                     String candidate = (postOutput != null && postOutput.verifiedOrRefinedText() != null)
                             ? postOutput.verifiedOrRefinedText()
@@ -352,7 +378,37 @@ public class ProcessQueryService implements QueryService {
             log().debug("Classifier override: query matches duration -> GET_DURATION");
             return QueryType.GET_DURATION;
         }
+        // "acuerdos tomados [fecha]", "dime los acuerdos", "acuerdos del/de la reunión" -> DECISION_EXTRACTION (C.1)
+        if (q.contains("acuerdos") && (q.contains("tomados") || q.contains("tomadas") || q.contains("de la reunión") || q.contains("del acta") || q.contains("en el acta") || q.contains("dime los acuerdos") || q.contains("lista de acuerdos"))) {
+            log().debug("Classifier override: query matches agreements by date -> DECISION_EXTRACTION");
+            return QueryType.DECISION_EXTRACTION;
+        }
         return classifiedType;
+    }
+
+    /** True when we should try the tool path before reasoning (e.g. date-scoped DECISION_EXTRACTION, GET_FIELD). */
+    private boolean shouldPreferToolResponse(QueryType queryType, JSONObject nerEntities) {
+        if (queryType == null) return false;
+        boolean dateScoped = hasDateInNer(nerEntities);
+        return dateScoped && (queryType == QueryType.DECISION_EXTRACTION || queryType == QueryType.GET_FIELD);
+    }
+
+    private boolean hasDateInNer(JSONObject ner) {
+        if (ner == null || ner.isEmpty()) return false;
+        for (String key : List.of("date", "fecha", "dates", "fechas", "date_iso")) {
+            if (ner.has(key) && ner.get(key) != null && !ner.optString(key).isBlank()) return true;
+        }
+        return false;
+    }
+
+    /** A.5: Heuristic for unacceptable draft (empty, no encontrado, too short). */
+    private boolean isDraftAcceptable(DraftAndContext draftAndContext) {
+        String draft = draftAndContext.draft();
+        if (draft == null || draft.trim().isEmpty()) return false;
+        if (draft.trim().length() < 30) return false;
+        String lower = draft.toLowerCase();
+        if (lower.contains("no puedo encontrar") || lower.contains("no encontrado") || lower.contains("no se encontró") || lower.contains("no hay información")) return false;
+        return true;
     }
 
     /**
@@ -476,10 +532,19 @@ public class ProcessQueryService implements QueryService {
     }
 
     private DraftAndContext getDraftForReasoning(String query, JSONObject nerEntities, QueryType queryType, ReasoningPreOutput preOutput) {
+        // C.2: When tool-rag is enabled, use tool-rag to choose the tool for the draft (override classifier)
+        QueryType draftQueryType = queryType;
+        if (featureConfig.isToolRagEnabled() && toolRagService != null) {
+            QueryType toolRagType = toolRagService.findBestQueryType(query);
+            if (toolRagType != null) {
+                draftQueryType = toolRagType;
+                log().debug("Tool-rag selected queryType {} for reasoning draft (classifier was {})", draftQueryType, queryType);
+            }
+        }
         ToolResult toolResult = null;
-        if (featureConfig.isToolsEnabled() && queryType != null && meetingMinutesToolsAdapter != null) {
+        if (featureConfig.isToolsEnabled() && draftQueryType != null && meetingMinutesToolsAdapter != null) {
             try {
-                toolResult = meetingMinutesToolsAdapter.execute(queryType, query);
+                toolResult = meetingMinutesToolsAdapter.execute(draftQueryType, query);
             } catch (Exception ignored) {
             }
         }
@@ -487,15 +552,25 @@ public class ProcessQueryService implements QueryService {
             toolResult = tryToolRoute(query, nerEntities, queryType);
         }
         if (toolResult != null && toolResult.result() != null && !toolResult.result().trim().isEmpty()) {
-            String validated = responseValidator.validateAndClean(toolResult.result(), "Tool-" + queryType);
+            String validated = responseValidator.validateAndClean(toolResult.result(), "Tool-" + draftQueryType);
             if (validated != null && !validated.trim().isEmpty()) {
                 return new DraftAndContext(validated, validated);
             }
         }
-        return askModelWithPreStep(query, nerEntities, queryType, preOutput != null ? preOutput.thoughtOrPlan() : null);
+        return askModelWithPreStep(query, nerEntities, draftQueryType != null ? draftQueryType : queryType, preOutput != null ? preOutput.thoughtOrPlan() : null);
     }
 
     private DraftAndContext askModelWithPreStep(String query, JSONObject nerEntities, QueryType queryType, String preStepThought) {
+        if (!featureConfig.isUseRetrieval()) {
+            try {
+                String response = chatClient.prompt().user(query).call().content();
+                String validated = response != null ? responseValidator.validateAndClean(response, "ProcessQueryService-NoContext") : null;
+                return new DraftAndContext(validated != null ? validated : generateNoContextResponse(query), "");
+            } catch (Exception e) {
+                log().warn("LLM call without context failed in reasoning path: {}", e.getMessage());
+                return new DraftAndContext(generateNoContextResponse(query), "");
+            }
+        }
         String retrievalQuery = (featureConfig.isNerEnabled() && nerQueryEnricher != null && nerEntities != null && !nerEntities.isEmpty())
                 ? nerQueryEnricher.buildEnrichedQueryForRetrieval(query, nerEntities)
                 : query;
@@ -543,8 +618,23 @@ public class ProcessQueryService implements QueryService {
      * Retries up to MAX_RETRIES times if the response is invalid or an error occurs.
      */
     private String askModel(String query, JSONObject nerEntities, QueryType queryType) {
-        // Use QuestionAnswerAdvisor path when no NER or post-retrieval (advisor injects context from vector store)
-        if (questionAnswerAdvisor != null && !featureConfig.isNerEnabled() && !featureConfig.isPostRetrievalEnabled()) {
+        // Baseline real (TFG): no retrieval = LLM with question only, no context
+        if (!featureConfig.isUseRetrieval()) {
+            try {
+                String rawContent = chatClient.prompt().user(query).call().content();
+                String validated = rawContent != null ? responseValidator.validateAndClean(rawContent, "ProcessQueryService-NoContext") : null;
+                if (validated != null && !validated.trim().isEmpty()) {
+                    log().info("Response generated without context (use-retrieval=false)");
+                    return validated;
+                }
+            } catch (Exception e) {
+                log().warn("LLM call without context failed: {}", e.getMessage());
+            }
+            return generateNoContextResponse(query);
+        }
+
+        // Use QuestionAnswerAdvisor path when useAdvisor and no NER or post-retrieval (advisor injects context from vector store)
+        if (featureConfig.isUseAdvisor() && questionAnswerAdvisor != null && !featureConfig.isNerEnabled() && !featureConfig.isPostRetrievalEnabled()) {
             try {
                 String rawContent = chatClient.prompt()
                         .user(query)

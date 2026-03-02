@@ -3,6 +3,7 @@ package com.uniovi.rag.configuration;
 import com.uniovi.rag.model.ExpansionStrategy;
 import com.uniovi.rag.services.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.services.analyser.NERQueryEnricher;
+import com.uniovi.rag.services.analyser.NoOpQueryAnalyser;
 import com.uniovi.rag.services.analyser.QueryAnalyser;
 import com.uniovi.rag.services.classifier.PythonQueryClassifier;
 import com.uniovi.rag.services.classifier.QueryClassifier;
@@ -22,8 +23,12 @@ import com.uniovi.rag.services.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.services.guard.QueryDateExtractor;
 import com.uniovi.rag.services.query.ProcessQueryService;
 import com.uniovi.rag.services.query.QueryService;
+import com.uniovi.rag.services.query.SimpleProcessQueryService;
+import com.uniovi.rag.services.query.SimpleQueryService;
 import com.uniovi.rag.services.retriever.BasicContextRetriever;
 import com.uniovi.rag.services.retriever.ContextRetriever;
+import com.uniovi.rag.services.retriever.FilteredContextRetriever;
+import com.uniovi.rag.services.retriever.MinuteDocumentContextRetriever;
 import com.uniovi.rag.services.postretrieval.DefaultPostRetrievalProcessor;
 import com.uniovi.rag.services.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.services.ranker.FaithfulnessRanker;
@@ -242,7 +247,11 @@ public class RagConfiguration {
     }
 
     @Bean
-    public QueryAnalyser queryAnalyser(ChatClient chatClient) {
+    public QueryAnalyser queryAnalyser(ChatClient chatClient, RagImplementationProperties implProps) {
+        String impl = implProps.getAnalyserImpl() != null ? implProps.getAnalyserImpl().trim().toLowerCase() : "minute-ner";
+        if ("no-op".equals(impl)) {
+            return new NoOpQueryAnalyser();
+        }
         return new MinuteNERQueryAnalyser(chatClient);
     }
 
@@ -277,16 +286,18 @@ public class RagConfiguration {
 
     @Bean
     public ContextRetriever retriever(
-        PgVectorStore vectorStore, 
-        ChatClient chatClient, 
-        RagFeatureConfiguration featureConfig, 
-        @Value("${spring.ai.ollama.top-k}") int topK, 
+        PgVectorStore vectorStore,
+        ChatClient chatClient,
+        RagImplementationProperties implProps,
+        @Value("${spring.ai.ollama.top-k}") int topK,
         @Value("${spring.ai.ollama.similarity-threshold}") double similarityThreshold
     ) {
-        //if (featureConfig.isCacheDocumentsEnabled()) {
-        //    return new CachedContextRetriever(vectorStore, chatClient, featureConfig, topK, similarityThreshold);
-        //}
-        return new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+        String impl = implProps.getRetrieverImpl() != null ? implProps.getRetrieverImpl().trim().toLowerCase() : "basic";
+        return switch (impl) {
+            case "filtered" -> new FilteredContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+            case "minute-document" -> new MinuteDocumentContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+            default -> new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+        };
     }
 
     @Bean
@@ -370,26 +381,32 @@ public class RagConfiguration {
             PostRetrievalProcessor postRetrievalProcessor,
             ToolRagService toolRagService,
             ResponseValidator responseValidator,
-            QuestionAnswerAdvisor questionAnswerAdvisor
+            QuestionAnswerAdvisor questionAnswerAdvisor,
+            RagImplementationProperties implProps
     ) {
-        return new ProcessQueryService(
-                featureConfig,
-                toolsConfig,
-                expander,
-                analyser,
-                nerQueryEnricher,
-                classifier,
-                retriever,
-                chatClient,
-                dateExistenceGuard,
-                meetingMinutesToolsAdapter,
-                reasoningStrategy,
-                responseRanker,
-                postRetrievalProcessor,
-                toolRagService,
-                responseValidator,
-                questionAnswerAdvisor
-        );
+        String impl = implProps.getQueryServiceImpl() != null ? implProps.getQueryServiceImpl().trim().toLowerCase() : "process";
+        return switch (impl) {
+            case "simple" -> new SimpleQueryService(expander, analyser, retriever, chatClient);
+            case "simple-process" -> new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient);
+            default -> new ProcessQueryService(
+                    featureConfig,
+                    toolsConfig,
+                    expander,
+                    analyser,
+                    nerQueryEnricher,
+                    classifier,
+                    retriever,
+                    chatClient,
+                    dateExistenceGuard,
+                    meetingMinutesToolsAdapter,
+                    reasoningStrategy,
+                    responseRanker,
+                    postRetrievalProcessor,
+                    toolRagService,
+                    responseValidator,
+                    questionAnswerAdvisor
+            );
+        };
     }
 
 }

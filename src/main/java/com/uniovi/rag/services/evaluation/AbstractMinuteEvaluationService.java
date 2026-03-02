@@ -1,6 +1,7 @@
 package com.uniovi.rag.services.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.model.SimpleMultipartFile;
 import com.uniovi.rag.services.document.DocumentService;
 import com.uniovi.rag.services.query.QueryService;
 import org.springframework.ai.chat.client.ChatClient;
