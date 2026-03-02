@@ -29,9 +29,9 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         
         log().info("Executing get field query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
+        // Step 1: Retrieve with NER/date so "quién presidió la reunión del 25 de agosto de 2026" gets that acta (E.1)
         List<Document> docs = retrieveDocumentsWithFallback(
-            query, 
+            query,
             new String[] {"date", "place", "startTime", "endTime", "topics", "decisions", "summary", "president", "secretary", "attendees"},
             ner
         );

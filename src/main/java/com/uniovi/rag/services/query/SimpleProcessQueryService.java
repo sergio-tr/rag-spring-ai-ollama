@@ -90,6 +90,15 @@ public class SimpleProcessQueryService implements QueryService {
     }
 
     private String askModel(String query, JSONObject nerEntities) {
+        if (!featureConfig.isUseRetrieval()) {
+            try {
+                String content = chatClient.prompt().user(query).call().content();
+                return content != null && !content.trim().isEmpty() ? content : generateNoContextResponse(query);
+            } catch (Exception e) {
+                log().warn("LLM call without context failed: {}", e.getMessage());
+                return generateNoContextResponse(query);
+            }
+        }
         List<Document> docs;
         if (retriever instanceof AbstractContextRetriever && nerEntities != null && !nerEntities.isEmpty()) {
             docs = ((AbstractContextRetriever) retriever).retrieveWithMetadataFilters(query, nerEntities);

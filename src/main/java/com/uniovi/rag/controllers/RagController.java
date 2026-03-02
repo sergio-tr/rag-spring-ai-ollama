@@ -104,26 +104,47 @@ public class RagController implements Loggable {
     
     /**
      * Evaluates with a specific custom configuration.
-     * POST body may contain: expansion, ner, tools, metadata, reasoning, ranker, post-retrieval, tool-rag, function-calling (all boolean).
-     * Used for the 5 scenarios in EVALUATION_RAG_IMPROVEMENTS (baseline, reasoning, reasoning+ranker, function-calling, tool-rag).
+     * POST body may contain: expansion, ner, tools, metadata, reasoning, ranker, post-retrieval, tool-rag, function-calling, use-retrieval, use-advisor (boolean);
+     * and query-service-impl, retriever-impl, analyser-impl (string, optional).
      */
     @PostMapping("/evaluate/custom")
-    public ResponseEntity<Map<String, Object>> evaluateWithCustomConfig(@RequestBody Map<String, Boolean> config) {
+    public ResponseEntity<Map<String, Object>> evaluateWithCustomConfig(@RequestBody Map<String, Object> config) {
         evaluationService.loadData();
 
         RagFeatureConfiguration customConfig = new RagFeatureConfiguration();
-        customConfig.setExpansionEnabled(config.getOrDefault("expansion", false));
-        customConfig.setNerEnabled(config.getOrDefault("ner", false));
-        customConfig.setToolsEnabled(config.getOrDefault("tools", false));
-        customConfig.setMetadataEnabled(config.getOrDefault("metadata", false));
-        customConfig.setReasoningEnabled(config.getOrDefault("reasoning", false));
-        customConfig.setRankerEnabled(config.getOrDefault("ranker", false));
-        customConfig.setPostRetrievalEnabled(config.getOrDefault("post-retrieval", false));
-        customConfig.setToolRagEnabled(config.getOrDefault("tool-rag", false));
-        customConfig.setFunctionCallingEnabled(config.getOrDefault("function-calling", false));
+        customConfig.setExpansionEnabled(getBoolean(config, "expansion", false));
+        customConfig.setNerEnabled(getBoolean(config, "ner", false));
+        customConfig.setToolsEnabled(getBoolean(config, "tools", false));
+        customConfig.setMetadataEnabled(getBoolean(config, "metadata", false));
+        customConfig.setReasoningEnabled(getBoolean(config, "reasoning", false));
+        customConfig.setRankerEnabled(getBoolean(config, "ranker", false));
+        customConfig.setPostRetrievalEnabled(getBoolean(config, "post-retrieval", false));
+        customConfig.setToolRagEnabled(getBoolean(config, "tool-rag", false));
+        customConfig.setFunctionCallingEnabled(getBoolean(config, "function-calling", false));
+        customConfig.setUseRetrieval(getBoolean(config, "use-retrieval", true));
+        customConfig.setUseAdvisor(getBoolean(config, "use-advisor", true));
+        if (config.get("query-service-impl") instanceof String s) customConfig.setQueryServiceImpl(s);
+        if (config.get("retriever-impl") instanceof String s) customConfig.setRetrieverImpl(s);
+        if (config.get("analyser-impl") instanceof String s) customConfig.setAnalyserImpl(s);
 
         Map<String, Object> results = evaluationService.evaluateWithConfiguration(customConfig);
+        Map<String, Object> implementations = new java.util.LinkedHashMap<>();
+        implementations.put("queryService", customConfig.getQueryServiceImpl() != null ? customConfig.getQueryServiceImpl() : "process");
+        implementations.put("retriever", customConfig.getRetrieverImpl() != null ? customConfig.getRetrieverImpl() : "basic");
+        implementations.put("analyser", customConfig.getAnalyserImpl() != null ? customConfig.getAnalyserImpl() : "minute-ner");
+        implementations.put("reasoningStrategy", "SIMPLE");
+        implementations.put("responseRanker", "LLM_AS_JUDGE");
+        implementations.put("documentService", customConfig.isMetadataEnabled() ? "MetadataMinuteDocumentService" : "SimpleDocumentService");
+        results.put("config", new java.util.HashMap<>(Map.of("implementations", implementations)));
         return ResponseEntity.ok(results);
+    }
+
+    private static boolean getBoolean(Map<String, Object> config, String key, boolean defaultValue) {
+        Object v = config.get(key);
+        if (v == null) return defaultValue;
+        if (v instanceof Boolean b) return b;
+        if (v instanceof String s) return Boolean.parseBoolean(s);
+        return defaultValue;
     }
     
     /**

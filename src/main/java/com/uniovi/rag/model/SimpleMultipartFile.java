@@ -1,4 +1,4 @@
-package com.uniovi.rag.services.evaluation;
+package com.uniovi.rag.model;
 
 import org.springframework.lang.NonNull;
 import org.springframework.web.multipart.MultipartFile;

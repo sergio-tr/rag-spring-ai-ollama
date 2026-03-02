@@ -1823,9 +1823,16 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Retrieves documents with intelligent metadata filtering using EnhancedNERHandler.
      * Filters documents that have relevant metadata fields (either complete Minute object or individual fields).
      * Implements robust fallback when metadata filtering removes all documents.
+     * When nerEntities is non-null, uses retrieveWithMetadataFilters for date/entity-aware retrieval.
      */
     protected List<Document> retrieveDocumentsWithMetadataFilter(String query, String[] relevantFields) {
-        List<Document> docs = retriever.retrieve(query);
+        return retrieveDocumentsWithMetadataFilter(query, relevantFields, null);
+    }
+
+    protected List<Document> retrieveDocumentsWithMetadataFilter(String query, String[] relevantFields, JSONObject nerEntities) {
+        List<Document> docs = (nerEntities != null && !nerEntities.isEmpty())
+                ? retriever.retrieveWithMetadataFilters(query, nerEntities)
+                : retriever.retrieve(query);
 
         List<Document> metadataDocs = docs.stream()
                 .filter(doc -> hasMetadataFields(doc, relevantFields))
@@ -2013,8 +2020,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
         
-        // LEVEL 2: Try metadata filtering without NER (original approach)
-        List<Document> docs = retrieveDocumentsWithMetadataFilter(query, relevantFields);
+        // LEVEL 2: Try metadata filtering (use NER for retrieval when available)
+        List<Document> docs = retrieveDocumentsWithMetadataFilter(query, relevantFields, ner);
         
         // Fallback 1: If empty, try basic retrieval (with NER when enabled for date/metadata filtering)
         if (docs.isEmpty()) {

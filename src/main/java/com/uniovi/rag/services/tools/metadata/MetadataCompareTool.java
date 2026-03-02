@@ -42,7 +42,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         List<String> dateCandidates = extractDateCandidates(query, ner);
         if (dateCandidates != null && dateCandidates.size() >= 2 && isCompareTwoDatesQuery(query)) {
             log().info("Query compares two specific dates; re-retrieving and filtering by any of {} dates", dateCandidates.size());
-            List<Document> allDocs = retrieveDocumentsWithMetadataFilter(query, new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"});
+            List<Document> allDocs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"}, ner);
             if (allDocs.isEmpty()) {
                 allDocs = retrieveDocuments(query, ner);
             }

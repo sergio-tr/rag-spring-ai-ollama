@@ -564,9 +564,6 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         }
         
         java.util.Map<String, Object> metadata = doc.getMetadata();
-        if (metadata == null) {
-            return doc.getId();
-        }
         
         // Try to get document_id first (new documents)
         Object docId = metadata.get("document_id");
@@ -593,9 +590,6 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         }
         
         java.util.Map<String, Object> metadata = doc.getMetadata();
-        if (metadata == null) {
-            return 0;
-        }
         
         int count = 0;
         for (Object value : metadata.values()) {

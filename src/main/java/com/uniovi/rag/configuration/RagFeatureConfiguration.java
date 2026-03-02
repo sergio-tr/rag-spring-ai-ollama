@@ -18,6 +18,14 @@ public class RagFeatureConfiguration {
     private boolean postRetrievalEnabled;
     private boolean toolRagEnabled;
     private boolean functionCallingEnabled;
+    private boolean useRetrieval = true;
+    private boolean useAdvisor = true;
+    /** Optional override for evaluation: query-service-impl (simple, simple-process, process). */
+    private String queryServiceImpl;
+    /** Optional override for evaluation: retriever-impl (basic, filtered, minute-document). */
+    private String retrieverImpl;
+    /** Optional override for evaluation: analyser-impl (minute-ner, no-op). */
+    private String analyserImpl;
 
     public boolean isExpansionEnabled() { return expansionEnabled; }
     public void setExpansionEnabled(boolean expansionEnabled) { this.expansionEnabled = expansionEnabled; }
@@ -46,6 +54,19 @@ public class RagFeatureConfiguration {
     public boolean isFunctionCallingEnabled() { return functionCallingEnabled; }
     public void setFunctionCallingEnabled(boolean functionCallingEnabled) { this.functionCallingEnabled = functionCallingEnabled; }
 
+    public boolean isUseRetrieval() { return useRetrieval; }
+    public void setUseRetrieval(boolean useRetrieval) { this.useRetrieval = useRetrieval; }
+
+    public boolean isUseAdvisor() { return useAdvisor; }
+    public void setUseAdvisor(boolean useAdvisor) { this.useAdvisor = useAdvisor; }
+
+    public String getQueryServiceImpl() { return queryServiceImpl; }
+    public void setQueryServiceImpl(String queryServiceImpl) { this.queryServiceImpl = queryServiceImpl; }
+    public String getRetrieverImpl() { return retrieverImpl; }
+    public void setRetrieverImpl(String retrieverImpl) { this.retrieverImpl = retrieverImpl; }
+    public String getAnalyserImpl() { return analyserImpl; }
+    public void setAnalyserImpl(String analyserImpl) { this.analyserImpl = analyserImpl; }
+
     public Map<String, Boolean> getConfiguration() {
         Map<String, Boolean> config = new HashMap<>();
         config.put("expansion", expansionEnabled);
@@ -57,6 +78,8 @@ public class RagFeatureConfiguration {
         config.put("post-retrieval", postRetrievalEnabled);
         config.put("tool-rag", toolRagEnabled);
         config.put("function-calling", functionCallingEnabled);
+        config.put("use-retrieval", useRetrieval);
+        config.put("use-advisor", useAdvisor);
         return config;
     }
 }
