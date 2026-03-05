@@ -1,14 +1,12 @@
 package com.uniovi.rag.configuration;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
 
 /**
  * Properties for selecting service implementations (query-service, retriever, analyser).
  * Keys: rag.query-service-impl (simple|simple-process|process), rag.retriever-impl (basic|filtered|minute-document), rag.analyser-impl (minute-ner|no-op).
  * See EVALUACION_RESULTADOS_2026-03-01.md section 6.
  */
-@Component
 @ConfigurationProperties(prefix = "rag")
 public class RagImplementationProperties {
 

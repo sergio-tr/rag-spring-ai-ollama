@@ -1,6 +1,6 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.services.classifier.QueryType;
+import com.uniovi.rag.model.QueryType;
 
 import java.util.Collections;
 import java.util.EnumMap;
