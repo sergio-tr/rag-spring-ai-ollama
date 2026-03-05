@@ -17,6 +17,10 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
     private static final int DEFAULT_MAX_EXPANSION_LENGTH = 350;
     /** Default max total query length (configurable via rag.expansion.max-query-total-chars). */
     private static final int DEFAULT_MAX_QUERY_LENGTH_TOTAL = 512;
+    /** Default max query length sent to the LLM to avoid GGML errors (configurable via rag.expansion.max-query-length-for-llm). */
+    private static final int DEFAULT_MAX_QUERY_LENGTH_FOR_LLM = 500;
+    /** Default query length used when retrying after a 500/GGML error (configurable via rag.expansion.retry-query-length). */
+    private static final int DEFAULT_RETRY_QUERY_LENGTH = 200;
 
     /** Sentences/phrases to strip from CoT output before using as expansion (paper: "The final answer:", etc.). */
     private static final Pattern COT_FINAL_ANSWER_PATTERN = Pattern.compile(
@@ -27,22 +31,33 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
     private final int originalQueryRepeatCount;
     private final int maxExpansionLength;
     private final int maxQueryLengthTotal;
+    private final int maxQueryLengthForLlm;
+    private final int retryQueryLength;
 
     public MinuteDocumentStructureExpander(ChatClient client) {
-        this(client, ExpansionStrategy.COT, 1, DEFAULT_MAX_EXPANSION_LENGTH, DEFAULT_MAX_QUERY_LENGTH_TOTAL);
+        this(client, ExpansionStrategy.COT, 1, DEFAULT_MAX_EXPANSION_LENGTH, DEFAULT_MAX_QUERY_LENGTH_TOTAL, DEFAULT_MAX_QUERY_LENGTH_FOR_LLM, DEFAULT_RETRY_QUERY_LENGTH);
     }
 
     public MinuteDocumentStructureExpander(ChatClient client, ExpansionStrategy strategy, int originalQueryRepeatCount) {
-        this(client, strategy, originalQueryRepeatCount, DEFAULT_MAX_EXPANSION_LENGTH, DEFAULT_MAX_QUERY_LENGTH_TOTAL);
+        this(client, strategy, originalQueryRepeatCount, DEFAULT_MAX_EXPANSION_LENGTH, DEFAULT_MAX_QUERY_LENGTH_TOTAL, DEFAULT_MAX_QUERY_LENGTH_FOR_LLM, DEFAULT_RETRY_QUERY_LENGTH);
     }
 
     public MinuteDocumentStructureExpander(ChatClient client, ExpansionStrategy strategy, int originalQueryRepeatCount,
                                           int maxExpansionLength, int maxQueryLengthTotal) {
+        this(client, strategy, originalQueryRepeatCount, maxExpansionLength, maxQueryLengthTotal, DEFAULT_MAX_QUERY_LENGTH_FOR_LLM, DEFAULT_RETRY_QUERY_LENGTH);
+    }
+
+    /** Full constructor with all expansion params (used by RagConfiguration and EvaluationServiceFactory from properties). */
+    public MinuteDocumentStructureExpander(ChatClient client, ExpansionStrategy strategy, int originalQueryRepeatCount,
+                                          int maxExpansionLength, int maxQueryLengthTotal,
+                                          int maxQueryLengthForLlm, int retryQueryLength) {
         super(client);
         this.strategy = strategy != null ? strategy : ExpansionStrategy.COT;
         this.originalQueryRepeatCount = Math.max(1, Math.min(5, originalQueryRepeatCount));
         this.maxExpansionLength = maxExpansionLength > 0 ? maxExpansionLength : DEFAULT_MAX_EXPANSION_LENGTH;
         this.maxQueryLengthTotal = maxQueryLengthTotal > 0 ? maxQueryLengthTotal : DEFAULT_MAX_QUERY_LENGTH_TOTAL;
+        this.maxQueryLengthForLlm = maxQueryLengthForLlm > 0 ? maxQueryLengthForLlm : DEFAULT_MAX_QUERY_LENGTH_FOR_LLM;
+        this.retryQueryLength = retryQueryLength > 0 ? retryQueryLength : DEFAULT_RETRY_QUERY_LENGTH;
     }
 
     private static final String DOCUMENT_STRUCTURE_REPHRASE_PROMPT = """
@@ -61,7 +76,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         - Questions and Requests: open interventions at the end of the session.
         
         IMPORTANT REQUIREMENTS:
-        1. Maintain the EXACT SAME LANGUAGE as the original question (if Spanish, keep Spanish; if English, keep English, etc.)
+        1. Maintain the EXACT SAME LANGUAGE as the original question. If the question is in Spanish, you MUST respond only in Spanish. Do not translate or switch to English or any other language.
         2. Keep the original meaning and intent of the question
         3. Use terminology from the meeting minutes structure when appropriate
         4. Do not translate or change the language
@@ -85,7 +100,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         The minutes contain: date, location, times, attendees (names, roles), agenda (topics, agreements, decisions, votes), and questions/requests.
         
         Task: Answer the following query as if you were explaining step-by-step what information is needed to answer it. 
-        Give the rationale before giving any final answer. Use the SAME LANGUAGE as the query.
+        Give the rationale before giving any final answer. Use the SAME LANGUAGE as the query (if the query is in Spanish, write ONLY in Spanish).
         Do NOT end with a single "final answer" line - focus on the reasoning and key concepts (dates, people, topics, types of data).
         Your explanation will be used as extra search terms, so include relevant keywords and phrases that might appear in the minutes.
         
@@ -101,7 +116,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         The minutes contain: date, location, start/end time, attendees (names, roles), agenda (topics, agreements, decisions), questions and requests.
         
         Task: Write a short list of keywords or short phrases that would help find meeting minutes answering this query.
-        Use the SAME LANGUAGE as the query. Output ONLY the keywords or phrases, separated by commas or newlines.
+        Use the SAME LANGUAGE as the query (if the query is in Spanish, output ONLY Spanish keywords). Output ONLY the keywords or phrases, separated by commas or newlines.
         Do not write full sentences. Include: dates or time references if relevant, role names (president, secretary), 
         and topic terms (budget, repairs, elevator, cleaning, security, etc.) that might appear in the minutes.
         
@@ -117,13 +132,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
             return query != null ? query : "";
         }
         String original = query.trim();
-
-        String expansion;
-        switch (strategy) {
-            case COT -> expansion = callAndPostProcessCoT(original);
-            case Q2E -> expansion = callAndExtractKeywords(original);
-            default -> expansion = callRephrase(original);
-        }
+        String expansion = runExpansionWithRetry(original);
 
         if (expansion == null || expansion.isBlank()) {
             log().debug("Expansion empty or failed, returning original query only");
@@ -175,6 +184,43 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         return sb.toString().trim();
     }
 
+    /**
+     * Runs expansion with bounded query length and one retry on Ollama 500/GGML errors.
+     * Limits input length to avoid GGML_ASSERT(ggml_can_repeat) and similar internal errors.
+     */
+    private String runExpansionWithRetry(String original) {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            int maxLen = attempt == 0 ? maxQueryLengthForLlm : retryQueryLength;
+            String queryForLlm = truncateForLlm(original, maxLen);
+            try {
+                return switch (strategy) {
+                    case COT -> callAndPostProcessCoT(queryForLlm);
+                    case Q2E -> callAndExtractKeywords(queryForLlm);
+                    default -> callRephrase(queryForLlm);
+                };
+            } catch (RuntimeException e) {
+                if (isRetryableOllamaError(e) && attempt == 0) {
+                    log().warn("Expander LLM error (will retry with shorter query): {}", e.getMessage());
+                } else {
+                    log().error("Error calling LLM in expander", e);
+                    return "";
+                }
+            }
+        }
+        return "";
+    }
+
+    private static String truncateForLlm(String query, int maxLen) {
+        if (query == null || query.length() <= maxLen) return query != null ? query : "";
+        return query.substring(0, maxLen).trim() + (query.length() > maxLen ? "…" : "");
+    }
+
+    private static boolean isRetryableOllamaError(RuntimeException e) {
+        String msg = e.getMessage();
+        return msg != null && (msg.contains("500") || msg.contains("Internal Server Error")
+                || msg.contains("GGML_ASSERT") || msg.contains("ggml_can_repeat"));
+    }
+
     private String callRephrase(String query) {
         String prompt = String.format(DOCUMENT_STRUCTURE_REPHRASE_PROMPT, query);
         return callLlm(prompt);
@@ -203,8 +249,10 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
                     .content();
             return content != null ? content.trim() : "";
         } catch (Exception e) {
-            log().error("Error calling LLM in expander", e);
-            return "";
+            if (e instanceof RuntimeException re) {
+                throw re;
+            }
+            throw new RuntimeException(e);
         }
     }
 
@@ -237,7 +285,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
             boolean originalHasSpanish = original.matches(".*[áéíóúñ¿¡].*");
             boolean expansionHasSpanish = expansion.matches(".*[áéíóúñ¿¡].*");
             if (originalHasSpanish && !expansionHasSpanish) {
-                log().warn("Expansion changed language from Spanish to another");
+                log().debug("Expansion changed language from Spanish to another; using original query only");
                 return false;
             }
         }

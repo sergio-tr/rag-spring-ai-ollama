@@ -195,10 +195,18 @@ public class RagConfiguration {
         @Value("${rag.classifier.python.script:}") String pythonClassifierScript,
         @Value("${rag.chunk.max-chars:400}") int chunkMaxChars,
         ResponseValidator responseValidator,
-        DocumentContentExtractor documentContentExtractor
+        DocumentContentExtractor documentContentExtractor,
+        @Value("${rag.expansion.strategy:COT}") String expansionStrategy,
+        @Value("${rag.expansion.original-repeat:1}") int expansionOriginalRepeat,
+        @Value("${rag.expansion.max-expansion-chars:350}") int expansionMaxExpansionChars,
+        @Value("${rag.expansion.max-query-total-chars:512}") int expansionMaxQueryTotalChars,
+        @Value("${rag.expansion.max-query-length-for-llm:500}") int expansionMaxQueryLengthForLlm,
+        @Value("${rag.expansion.retry-query-length:200}") int expansionRetryQueryLength
     ) {
         return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, embeddingModel, topK, similarityThreshold,
-                pythonClassifierExecutable, pythonClassifierScript, chunkMaxChars, responseValidator, documentContentExtractor);
+                pythonClassifierExecutable, pythonClassifierScript, chunkMaxChars, responseValidator, documentContentExtractor,
+                expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
+                expansionMaxQueryLengthForLlm, expansionRetryQueryLength);
     }
 
     @Bean
@@ -220,7 +228,9 @@ public class RagConfiguration {
             @Value("${rag.expansion.strategy:COT}") String expansionStrategy,
             @Value("${rag.expansion.original-repeat:1}") int originalRepeat,
             @Value("${rag.expansion.max-expansion-chars:350}") int maxExpansionChars,
-            @Value("${rag.expansion.max-query-total-chars:512}") int maxQueryTotalChars
+            @Value("${rag.expansion.max-query-total-chars:512}") int maxQueryTotalChars,
+            @Value("${rag.expansion.max-query-length-for-llm:500}") int maxQueryLengthForLlm,
+            @Value("${rag.expansion.retry-query-length:200}") int retryQueryLength
     ) {
         ExpansionStrategy strategy;
         try {
@@ -233,7 +243,9 @@ public class RagConfiguration {
             strategy,
             originalRepeat,
             maxExpansionChars,
-            maxQueryTotalChars
+            maxQueryTotalChars,
+            maxQueryLengthForLlm,
+            retryQueryLength
         );
     }
 
