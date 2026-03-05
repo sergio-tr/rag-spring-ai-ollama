@@ -13,6 +13,7 @@ import com.uniovi.rag.services.classifier.QueryType;
 import com.uniovi.rag.services.document.DocumentService;
 import com.uniovi.rag.services.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.services.document.SimpleDocumentService;
+import com.uniovi.rag.model.ExpansionStrategy;
 import com.uniovi.rag.services.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.services.expand.QueryExpander;
 import com.uniovi.rag.services.postretrieval.DefaultPostRetrievalProcessor;
@@ -60,6 +61,12 @@ public class EvaluationServiceFactory {
     private final int chunkMaxChars;
     private final ResponseValidator responseValidator;
     private final DocumentContentExtractor documentContentExtractor;
+    private final String expansionStrategy;
+    private final int expansionOriginalRepeat;
+    private final int expansionMaxExpansionChars;
+    private final int expansionMaxQueryTotalChars;
+    private final int expansionMaxQueryLengthForLlm;
+    private final int expansionRetryQueryLength;
 
     public EvaluationServiceFactory(
         ChatClient chatClient,
@@ -72,7 +79,13 @@ public class EvaluationServiceFactory {
         String pythonClassifierScript,
         int chunkMaxChars,
         ResponseValidator responseValidator,
-        DocumentContentExtractor documentContentExtractor
+        DocumentContentExtractor documentContentExtractor,
+        String expansionStrategy,
+        int expansionOriginalRepeat,
+        int expansionMaxExpansionChars,
+        int expansionMaxQueryTotalChars,
+        int expansionMaxQueryLengthForLlm,
+        int expansionRetryQueryLength
     ) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
@@ -85,6 +98,12 @@ public class EvaluationServiceFactory {
         this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
         this.responseValidator = responseValidator;
         this.documentContentExtractor = documentContentExtractor;
+        this.expansionStrategy = expansionStrategy != null ? expansionStrategy : "COT";
+        this.expansionOriginalRepeat = expansionOriginalRepeat > 0 ? Math.min(5, expansionOriginalRepeat) : 1;
+        this.expansionMaxExpansionChars = expansionMaxExpansionChars > 0 ? expansionMaxExpansionChars : 350;
+        this.expansionMaxQueryTotalChars = expansionMaxQueryTotalChars > 0 ? expansionMaxQueryTotalChars : 512;
+        this.expansionMaxQueryLengthForLlm = expansionMaxQueryLengthForLlm > 0 ? expansionMaxQueryLengthForLlm : 500;
+        this.expansionRetryQueryLength = expansionRetryQueryLength > 0 ? expansionRetryQueryLength : 200;
     }
 
     /**
@@ -92,7 +111,21 @@ public class EvaluationServiceFactory {
      * Uses featureConfig.getQueryServiceImpl(), getRetrieverImpl(), getAnalyserImpl() when set (e.g. from POST /evaluate/custom body).
      */
     public QueryService createQueryService(RagFeatureConfiguration featureConfig) {
-        QueryExpander expander = new MinuteDocumentStructureExpander(chatClient);
+        ExpansionStrategy strategy;
+        try {
+            strategy = ExpansionStrategy.valueOf((expansionStrategy != null ? expansionStrategy : "COT").toUpperCase());
+        } catch (Exception e) {
+            strategy = ExpansionStrategy.COT;
+        }
+        QueryExpander expander = new MinuteDocumentStructureExpander(
+                chatClient,
+                strategy,
+                expansionOriginalRepeat,
+                expansionMaxExpansionChars,
+                expansionMaxQueryTotalChars,
+                expansionMaxQueryLengthForLlm,
+                expansionRetryQueryLength
+        );
         String analyserImpl = featureConfig.getAnalyserImpl() != null ? featureConfig.getAnalyserImpl().trim().toLowerCase() : "minute-ner";
         QueryAnalyser analyser = "no-op".equals(analyserImpl) ? new NoOpQueryAnalyser() : new MinuteNERQueryAnalyser(chatClient);
         QueryClassifier classifier = new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript);
