@@ -315,6 +315,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             %s
             
             Write a clear, direct answer in the same language as the query.
+            Use ONLY information from the paragraphs provided. Do not add external or invented information.
             Provide only the information requested by the user.
             DO NOT mention any technical details like "clusters", "análisis", "analysis", "grouped into", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".
