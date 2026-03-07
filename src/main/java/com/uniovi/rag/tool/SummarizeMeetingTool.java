@@ -217,6 +217,7 @@ public class SummarizeMeetingTool extends AbstractTool {
             8. Remove any technical details or internal processing information
             9. If multiple fragments, provide a unified summary of key points across all, not individual summaries
             10. Use the most important information first - prioritize relevance over completeness
+            11. Base your answer ONLY on the fragments provided. If they do not contain enough to answer the query (e.g. specific date or topic), say so clearly in the user's language. Do NOT invent content.
             
             Examples of CORRECT responses:
             - Query: "Dame un resumen de la reunión del 25 de agosto"
