@@ -440,14 +440,20 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
      * Parses entity type from string
      */
     private EntityType parseEntityType(String type) {
-        return switch (type.toUpperCase()) {
-            case "PERSON" -> EntityType.PERSON;
-            case "ORGANIZATION" -> EntityType.ORGANIZATION;
-            case "ROLE" -> EntityType.ROLE;
-            case "DATE" -> EntityType.DATE;
-            case "AMOUNT" -> EntityType.AMOUNT;
-            default -> EntityType.OTHER;
-        };
+        switch (type.toUpperCase()) {
+            case "PERSON":
+                return EntityType.PERSON;
+            case "ORGANIZATION":
+                return EntityType.ORGANIZATION;
+            case "ROLE":
+                return EntityType.ROLE;
+            case "DATE":
+                return EntityType.DATE;
+            case "AMOUNT":
+                return EntityType.AMOUNT;
+            default:
+                return EntityType.OTHER;
+        }
     }
 
     /**
@@ -456,13 +462,18 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     private EntityRole parseEntityRole(String role) {
         if (role == null) return EntityRole.UNKNOWN;
         
-        return switch (role.toUpperCase()) {
-            case "PRESIDENT" -> EntityRole.PRESIDENT;
-            case "SECRETARY" -> EntityRole.SECRETARY;
-            case "ATTENDEE" -> EntityRole.ATTENDEE;
-            case "MEETING_PLACE" -> EntityRole.MEETING_PLACE;
-            default -> EntityRole.UNKNOWN;
-        };
+        switch (role.toUpperCase()) {
+            case "PRESIDENT":
+                return EntityRole.PRESIDENT;
+            case "SECRETARY":
+                return EntityRole.SECRETARY;
+            case "ATTENDEE":
+                return EntityRole.ATTENDEE;
+            case "MEETING_PLACE":
+                return EntityRole.MEETING_PLACE;
+            default:
+                return EntityRole.UNKNOWN;
+        }
     }
 
     /**
@@ -492,20 +503,32 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
 
     private int typePriority(EntityType type) {
-        return switch (type) {
-            case PERSON, ROLE, LOCATION -> 3;
-            case ORGANIZATION -> 2;
-            case TOPIC, DECISION -> 1;
-            default -> 0;
-        };
+        switch (type) {
+            case PERSON:
+            case ROLE:
+            case LOCATION:
+                return 3;
+            case ORGANIZATION:
+                return 2;
+            case TOPIC:
+            case DECISION:
+                return 1;
+            default:
+                return 0;
+        }
     }
 
     private int rolePriority(EntityRole role) {
-        return switch (role) {
-            case PRESIDENT, SECRETARY -> 3;
-            case ATTENDEE, MEETING_PLACE -> 2;
-            default -> 0;
-        };
+        switch (role) {
+            case PRESIDENT:
+            case SECRETARY:
+                return 3;
+            case ATTENDEE:
+            case MEETING_PLACE:
+                return 2;
+            default:
+                return 0;
+        }
     }
 
     /**
@@ -710,12 +733,16 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
      * Gets a natural label for entity type
      */
     private String getTypeLabel(String type) {
-        return switch (type.toUpperCase()) {
-            case "PERSON" -> "Personas";
-            case "LOCATION" -> "Lugares";
-            case "ORGANIZATION" -> "Organizaciones";
-            default -> "Otros";
-        };
+        switch (type.toUpperCase()) {
+            case "PERSON":
+                return "Personas";
+            case "LOCATION":
+                return "Lugares";
+            case "ORGANIZATION":
+                return "Organizaciones";
+            default:
+                return "Otros";
+        }
     }
 
 
@@ -825,18 +852,27 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     /** Builds a deduplicated, sorted list of values from minutes for the given entity type. */
     private List<String> buildListFromMinutes(ListableEntity type, List<Minute> minutes) {
         if (minutes == null || minutes.isEmpty()) return Collections.emptyList();
-        return switch (type) {
-            case DATES -> minutes.stream().map(Minute::date).filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().collect(Collectors.toList());
-            case PLACES -> minutes.stream().map(Minute::place).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().collect(Collectors.toList());
-            case PRESIDENTS -> minutes.stream().map(Minute::president).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().collect(Collectors.toList());
-            case SECRETARIES -> minutes.stream().map(Minute::secretary).filter(Objects::nonNull).filter(s -> !s.isBlank()).distinct().sorted().collect(Collectors.toList());
-            case TOPICS -> minutes.stream().filter(m -> m.topics() != null).flatMap(m -> m.topics().stream())
-                    .filter(Objects::nonNull).filter(t -> !t.isBlank()).distinct().sorted().collect(Collectors.toList());
-            case DECISIONS -> minutes.stream().filter(m -> m.decisions() != null).flatMap(m -> m.decisions().stream())
-                    .filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().collect(Collectors.toList());
-            case ATTENDEES -> minutes.stream().filter(m -> m.attendees() != null).flatMap(m -> m.attendees().stream())
-                    .filter(Objects::nonNull).filter(a -> !a.isBlank()).filter(a -> !isGenericEntity(a)).distinct().sorted().collect(Collectors.toList());
-        };
+        switch (type) {
+            case DATES:
+                return minutes.stream().map(Minute::date).filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case PLACES:
+                return minutes.stream().map(Minute::place).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case PRESIDENTS:
+                return minutes.stream().map(Minute::president).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case SECRETARIES:
+                return minutes.stream().map(Minute::secretary).filter(Objects::nonNull).filter(s -> !s.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case TOPICS:
+                return minutes.stream().filter(m -> m.topics() != null).flatMap(m -> m.topics().stream())
+                        .filter(Objects::nonNull).filter(t -> !t.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case DECISIONS:
+                return minutes.stream().filter(m -> m.decisions() != null).flatMap(m -> m.decisions().stream())
+                        .filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().collect(Collectors.toList());
+            case ATTENDEES:
+                return minutes.stream().filter(m -> m.attendees() != null).flatMap(m -> m.attendees().stream())
+                        .filter(Objects::nonNull).filter(a -> !a.isBlank()).filter(a -> !isGenericEntity(a)).distinct().sorted().collect(Collectors.toList());
+            default:
+                return Collections.emptyList();
+        }
     }
 
     /** Formats a list of items for the response (comma-separated or newlines for long lists). */

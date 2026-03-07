@@ -173,18 +173,37 @@ public class GetFieldTool extends AbstractTool {
     private String extractLiteralFieldByIntent(String query, JSONObject ner, String content) {
         // When user asks for "date of the acta where X was president", extract date only (not president name)
         String detectedField = asksForDateOfActaWherePerson(query) ? "date" : classifyLiteralIntentWithLLM(query);
-        return switch (detectedField) {
-            case "date", "fecha" -> extractor.extractDate(content);
-            case "startTime", "hora_inicio" -> extractor.extractTime(content, "start");
-            case "endTime", "hora_fin" -> extractor.extractTime(content, "end");
-            case "place", "lugar" -> extractor.extractLiteralField("place", content);
-            case "president", "presidente" -> extractor.extractLiteralField("president", content);
-            case "secretary", "secretario" -> extractor.extractLiteralField("secretary", content);
-            case "attendees_list", "asistentes_lista" -> String.join(", ", extractor.extractAttendees(content));
-            case "attendees_number", "asistentes_numero" -> String.valueOf(extractor.extractAttendeeCount(content));
-            case "agenda", "orden_dia" -> extractor.extractAgenda(content);
-            default -> null;
-        };
+        switch (detectedField) {
+            case "date":
+            case "fecha":
+                return extractor.extractDate(content);
+            case "startTime":
+            case "hora_inicio":
+                return extractor.extractTime(content, "start");
+            case "endTime":
+            case "hora_fin":
+                return extractor.extractTime(content, "end");
+            case "place":
+            case "lugar":
+                return extractor.extractLiteralField("place", content);
+            case "president":
+            case "presidente":
+                return extractor.extractLiteralField("president", content);
+            case "secretary":
+            case "secretario":
+                return extractor.extractLiteralField("secretary", content);
+            case "attendees_list":
+            case "asistentes_lista":
+                return String.join(", ", extractor.extractAttendees(content));
+            case "attendees_number":
+            case "asistentes_numero":
+                return String.valueOf(extractor.extractAttendeeCount(content));
+            case "agenda":
+            case "orden_dia":
+                return extractor.extractAgenda(content);
+            default:
+                return null;
+        }
     }
 
     /**

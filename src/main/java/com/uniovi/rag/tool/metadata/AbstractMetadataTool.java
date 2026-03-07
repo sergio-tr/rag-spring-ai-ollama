@@ -984,35 +984,49 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * @return Field value or null if not found
      */
     private Object getFieldValueByCanonicalName(Minute minute, String canonicalField) {
-        return switch (canonicalField) {
-            case "date" -> minute.date();
-            case "place" -> minute.place();
-            case "president" -> minute.president();
-            case "secretary" -> minute.secretary();
-            case "starttime" -> minute.startTime();
-            case "endtime" -> minute.endTime();
-            case "topics" -> minute.topics();
-            case "decisions" -> minute.decisions();
-            case "summary" -> minute.summary();
-            case "agenda", "orden_del_dia", "order_of_day" -> {
-                // Agenda: return list of points of the day (values), not key:value pairs
+        switch (canonicalField) {
+            case "date":
+                return minute.date();
+            case "place":
+                return minute.place();
+            case "president":
+                return minute.president();
+            case "secretary":
+                return minute.secretary();
+            case "starttime":
+                return minute.startTime();
+            case "endtime":
+                return minute.endTime();
+            case "topics":
+                return minute.topics();
+            case "decisions":
+                return minute.decisions();
+            case "summary":
+                return minute.summary();
+            case "agenda":
+            case "orden_del_dia":
+            case "order_of_day": {
                 Map<String, String> agenda = minute.agenda();
                 if (agenda == null || agenda.isEmpty()) {
-                    yield null;
+                    return null;
                 }
-                // Return readable list of agenda points (order of the day), e.g. "Lectura del acta anterior, Reparaciones, Presupuesto del ascensor"
-                yield agenda.values().stream()
+                return agenda.values().stream()
                         .filter(v -> v != null && !v.isBlank())
                         .collect(Collectors.joining(", "));
             }
-            case "attendees" -> minute.attendees();
-            case "numberofattendees", "attendeescount" -> minute.numberOfAttendees();
-            case "durationminutes", "duration" -> {
+            case "attendees":
+                return minute.attendees();
+            case "numberofattendees":
+            case "attendeescount":
+                return minute.numberOfAttendees();
+            case "durationminutes":
+            case "duration": {
                 int duration = calculateDurationFromMinute(minute);
-                yield duration > 0 ? duration : null;
+                return duration > 0 ? duration : null;
             }
-            default -> null;
-        };
+            default:
+                return null;
+        }
     }
 
     /**

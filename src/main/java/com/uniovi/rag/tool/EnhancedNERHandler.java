@@ -538,10 +538,18 @@ public class EnhancedNERHandler implements Loggable {
             
             // Extract the comparison type from response
             String cleaned = result.split("\\s+")[0].trim();
-            return switch (cleaned) {
-                case "duration", "attendees", "topics", "decisions", "place", "date", "general" -> cleaned;
-                default -> "general";
-            };
+            switch (cleaned) {
+                case "duration":
+                case "attendees":
+                case "topics":
+                case "decisions":
+                case "place":
+                case "date":
+                case "general":
+                    return cleaned;
+                default:
+                    return "general";
+            }
         } catch (Exception e) {
             return "general"; // Default fallback
         }
@@ -587,11 +595,21 @@ public class EnhancedNERHandler implements Loggable {
             
             // Extract the answer type from response
             String cleaned = result.split("\\s+")[0].trim();
-            return switch (cleaned) {
-                case "person", "number", "date", "location", "text", "boolean", "list", 
-                     "comparison", "duration", "field" -> cleaned;
-                default -> "text";
-            };
+            switch (cleaned) {
+                case "person":
+                case "number":
+                case "date":
+                case "location":
+                case "text":
+                case "boolean":
+                case "list":
+                case "comparison":
+                case "duration":
+                case "field":
+                    return cleaned;
+                default:
+                    return "text";
+            }
         } catch (Exception e) {
             return "text"; // Default fallback
         }

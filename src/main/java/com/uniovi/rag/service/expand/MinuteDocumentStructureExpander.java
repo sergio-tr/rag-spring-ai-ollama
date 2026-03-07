@@ -193,11 +193,14 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
             int maxLen = attempt == 0 ? maxQueryLengthForLlm : retryQueryLength;
             String queryForLlm = truncateForLlm(original, maxLen);
             try {
-                return switch (strategy) {
-                    case COT -> callAndPostProcessCoT(queryForLlm);
-                    case Q2E -> callAndExtractKeywords(queryForLlm);
-                    default -> callRephrase(queryForLlm);
-                };
+                switch (strategy) {
+                    case COT:
+                        return callAndPostProcessCoT(queryForLlm);
+                    case Q2E:
+                        return callAndExtractKeywords(queryForLlm);
+                    default:
+                        return callRephrase(queryForLlm);
+                }
             } catch (RuntimeException e) {
                 if (isRetryableOllamaError(e) && attempt == 0) {
                     log().warn("Expander LLM error (will retry with shorter query): {}", e.getMessage());
