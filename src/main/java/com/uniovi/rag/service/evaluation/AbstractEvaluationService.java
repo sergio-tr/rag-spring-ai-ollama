@@ -15,11 +15,45 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
-public abstract class AbstractEvaluationService implements EvaluationService {
+public abstract class AbstractEvaluationService implements EvaluationService {    
+    
+    /**
+     * Descriptors for each feature flag varied in evaluateAllConfigurations.
+     * Order defines bit position: first = bit 0, second = bit 1, etc.
+     * To add/remove/reorder flags, edit only this array; the number of combinations is 2^length.
+     */
+    private static final FlagDescriptor[] FEATURE_FLAG_DESCRIPTORS = {
+        new FlagDescriptor("exp", RagFeatureConfiguration::setExpansionEnabled, RagFeatureConfiguration::isExpansionEnabled),
+        new FlagDescriptor("ner", RagFeatureConfiguration::setNerEnabled, RagFeatureConfiguration::isNerEnabled),
+        new FlagDescriptor("tools", RagFeatureConfiguration::setToolsEnabled, RagFeatureConfiguration::isToolsEnabled),
+        new FlagDescriptor("meta", RagFeatureConfiguration::setMetadataEnabled, RagFeatureConfiguration::isMetadataEnabled),
+        new FlagDescriptor("reas", RagFeatureConfiguration::setReasoningEnabled, RagFeatureConfiguration::isReasoningEnabled),
+        new FlagDescriptor("rank", RagFeatureConfiguration::setRankerEnabled, RagFeatureConfiguration::isRankerEnabled),
+        new FlagDescriptor("post", RagFeatureConfiguration::setPostRetrievalEnabled, RagFeatureConfiguration::isPostRetrievalEnabled),
+        new FlagDescriptor("tr", RagFeatureConfiguration::setToolRagEnabled, RagFeatureConfiguration::isToolRagEnabled),
+        new FlagDescriptor("fc", RagFeatureConfiguration::setFunctionCallingEnabled, RagFeatureConfiguration::isFunctionCallingEnabled),
+    };
+
+    /** Descriptor for a single feature flag: label, setter and getter on RagFeatureConfiguration. */
+    private static final class FlagDescriptor {
+        final String label;
+        final BiConsumer<RagFeatureConfiguration, Boolean> setter;
+        final Function<RagFeatureConfiguration, Boolean> getter;
+
+        FlagDescriptor(String label,
+                    BiConsumer<RagFeatureConfiguration, Boolean> setter,
+                    Function<RagFeatureConfiguration, Boolean> getter) {
+            this.label = label;
+            this.setter = setter;
+            this.getter = getter;
+        }
+    }
 
     protected final ChatClient chatClient;
     protected final DocumentService documentService;
@@ -251,7 +285,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         results.put("evaluation_summary", evaluationSummary);
         return results;
     }
-    
+
     /**
      * Evaluates all possible configuration combinations of the main feature flags.
      * For each combination the database is cleared and reloaded so results are coherent with that config.
@@ -263,47 +297,43 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             throw new IllegalStateException("EvaluationServiceFactory must be set to evaluate all configurations");
         }
         Map<String, Map<String, Object>> allResults = new HashMap<>();
-        boolean[] flags = {false, true};
-        int configNumber = 0;
-        
-        for (boolean expansion : flags) {
-            for (boolean ner : flags) {
-                for (boolean tools : flags) {
-                    for (boolean metadata : flags) {
-                        for (boolean reasoning : flags) {
-                            for (boolean ranker : flags) {
-                                for (boolean postRetrieval : flags) {
-                                    for (boolean toolRag : flags) {
-                                        for (boolean functionCalling : flags) {
-                                            RagFeatureConfiguration config = new RagFeatureConfiguration();
-                                            config.setUseRetrieval(true);
-                                            config.setUseAdvisor(true);
-                                            config.setExpansionEnabled(expansion);
-                                            config.setNerEnabled(ner);
-                                            config.setToolsEnabled(tools);
-                                            config.setMetadataEnabled(metadata);
-                                            config.setReasoningEnabled(reasoning);
-                                            config.setRankerEnabled(ranker);
-                                            config.setPostRetrievalEnabled(postRetrieval);
-                                            config.setToolRagEnabled(toolRag);
-                                            config.setFunctionCallingEnabled(functionCalling);
-                                            String configName = String.format(
-                                                    "config_%03d_exp_%s_ner_%s_tools_%s_meta_%s_reas_%s_rank_%s_post_%s_tr_%s_fc_%s",
-                                                    configNumber++, expansion, ner, tools, metadata,
-                                                    reasoning, ranker, postRetrieval, toolRag, functionCalling);
-                                            log().info("Evaluating configuration: {}", configName);
-                                            Map<String, Object> result = evaluateWithConfiguration(config);
-                                            allResults.put(configName, result);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        int totalConfigs = 1 << FEATURE_FLAG_DESCRIPTORS.length;
+
+        for (int configIndex = 0; configIndex < totalConfigs; configIndex++) {
+            RagFeatureConfiguration config = buildFeatureConfigFromIndex(configIndex);
+            String configName = buildFeatureConfigName(configIndex, config);
+            log().info("Evaluating configuration: {}", configName);
+            Map<String, Object> result = evaluateWithConfiguration(config);
+            allResults.put(configName, result);
         }
         return allResults;
+    }
+
+    /**
+     * Builds a RagFeatureConfiguration from a bit mask index (0 .. 2^N - 1, N = number of flag descriptors).
+     * Bit 0 = first flag in FEATURE_FLAG_DESCRIPTORS, bit 1 = second, etc.
+     */
+    private static RagFeatureConfiguration buildFeatureConfigFromIndex(int configIndex) {
+        RagFeatureConfiguration config = new RagFeatureConfiguration();
+        config.setUseRetrieval(true);
+        config.setUseAdvisor(true);
+        for (int i = 0; i < FEATURE_FLAG_DESCRIPTORS.length; i++) {
+            boolean value = (configIndex & (1 << i)) != 0;
+            FEATURE_FLAG_DESCRIPTORS[i].setter.accept(config, value);
+        }
+        return config;
+    }
+
+    /**
+     * Builds a short name for the configuration (e.g. config_000_exp_false_ner_true_...).
+     */
+    private static String buildFeatureConfigName(int configIndex, RagFeatureConfiguration config) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("config_%03d", configIndex));
+        for (FlagDescriptor d : FEATURE_FLAG_DESCRIPTORS) {
+            sb.append("_").append(d.label).append("_").append(Boolean.TRUE.equals(d.getter.apply(config)));
+        }
+        return sb.toString();
     }
     
     /**
