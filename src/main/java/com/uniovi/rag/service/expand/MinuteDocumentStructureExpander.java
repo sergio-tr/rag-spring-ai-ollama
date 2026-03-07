@@ -77,14 +77,13 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         
         IMPORTANT REQUIREMENTS:
         1. Maintain the EXACT SAME LANGUAGE as the original question. If the question is in Spanish, you MUST respond only in Spanish. Do not translate or switch to English or any other language.
-        2. Keep the original meaning and intent of the question
-        3. Use terminology from the meeting minutes structure when appropriate
-        4. Do not translate or change the language
-        5. Do not answer the question - only rephrase it
+        2. Keep the original meaning and intent of the question.
+        3. PRESERVE THE TYPE OF QUESTION: if the user asks to summarize a topic, summarize a meeting, find a paragraph, count and explain, confirm presence, or get a specific field (date, president, etc.), do not change that intent. Add only terms that help retrieval for the SAME intent. Do not add generic keywords that could make the query look like a different type (e.g. do not turn a "summarize topic X" into a list of unrelated section terms).
+        4. Use terminology from the meeting minutes structure when appropriate, but only when it supports the same question type.
+        5. Do not answer the question - only rephrase it.
         
-        Rephrase the question taking this structure into account, using specific terms from the sections mentioned above,
-        while also keeping the user's wording and orienting the generated query to facilitate the precise location 
-        of information within the minutes later on.
+        Rephrase the question taking this structure into account, using specific terms from the sections mentioned above
+        that help locate the same kind of answer the user is asking for, while keeping the user's wording.
         
         If the question cannot be rephrased because it is already well-formulated, simply return the original question unchanged.
         
@@ -102,6 +101,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         Task: Answer the following query as if you were explaining step-by-step what information is needed to answer it. 
         Give the rationale before giving any final answer. Use the SAME LANGUAGE as the query (if the query is in Spanish, write ONLY in Spanish).
         Do NOT end with a single "final answer" line - focus on the reasoning and key concepts (dates, people, topics, types of data).
+        PRESERVE THE QUESTION TYPE: if the user asks to summarize a topic, summarize a meeting, find a paragraph, count and explain, or get a specific fact, keep that intent. Include only keywords that help find documents for that same intent. Do not add generic terms that could change how the query is classified.
         Your explanation will be used as extra search terms, so include relevant keywords and phrases that might appear in the minutes.
         
         Query: "%s"
@@ -117,8 +117,8 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
         
         Task: Write a short list of keywords or short phrases that would help find meeting minutes answering this query.
         Use the SAME LANGUAGE as the query (if the query is in Spanish, output ONLY Spanish keywords). Output ONLY the keywords or phrases, separated by commas or newlines.
-        Do not write full sentences. Include: dates or time references if relevant, role names (president, secretary), 
-        and topic terms (budget, repairs, elevator, cleaning, security, etc.) that might appear in the minutes.
+        PRESERVE THE QUESTION TYPE: do not add keywords that would change the intent (e.g. for "summarize topic X" include topic-related terms, not generic section names that suggest a different question type). Include: dates or time references if relevant, role names (president, secretary), and topic terms that might appear in the minutes and support the same question.
+        Do not write full sentences.
         
         Query: "%s"
         
