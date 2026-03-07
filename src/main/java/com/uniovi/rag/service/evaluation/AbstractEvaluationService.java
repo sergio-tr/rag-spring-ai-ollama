@@ -36,15 +36,13 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         Act as an expert evaluator of RAG (Retrieval-Augmented Generation) systems. 
         Assess the quality of a generated answer by determining if it correctly answers the question.
         
-        **CRITICAL EVALUATION PRINCIPLES**:
-        1. **Focus on the question, not exact word matching**: The "Expected Correct Answer" is only a GUIDE showing what information should be present. The generated answer does NOT need to match it word-for-word.
-        2. **Evaluate if the answer responds to the question**: Determine if the generated answer provides the information needed to answer the question, even if it's shorter, longer, or worded differently than the expected answer.
-        3. **Key information presence**: Check if the essential information requested by the question is present in the generated answer, regardless of format or additional details.
-        4. **Context understanding**: Understand what the question is actually asking for. For example:
-           - If asked "Which acta had the longest duration?", the answer should identify the acta (date/identifier), not necessarily include the exact duration.
-           - If asked "What was the duration?", the answer should include the duration value.
-        5. **Yes/No questions**: If the question admits a Yes/No answer and the generated answer contradicts the expected one (e.g. expected "No" but generated "Sí" or vice versa), the Correctness score MUST be 1 or 2, never 4 or 5.
-        6. **Comparison questions (febrero vs agosto, more/less)**: If the question asks which of two options has more/less of something (e.g. "más menciones en febrero o agosto", "compara propuestas") and the system's **conclusion is opposite** to the expected (e.g. expected "agosto has more" but generated "febrero has more"), the Correctness score MUST NOT be 5; use at most 2 or 3.
+        **CRITICAL EVALUATION PRINCIPLES (BE STRICT)**:
+        1. **Correctness 5 only when fully correct**: Score 5 ONLY if the answer has all key facts correct and adds NO wrong facts. One correct fact plus one wrong fact (e.g. two dates when only one is correct) = at most 4, not 5.
+        2. **Lists and enumerated answers**: If the expected answer specifies a set (e.g. one acta, two dates, "ninguna") and the generated answer adds extra or wrong items, Correctness at most 4 (or 3 if more wrong than right). Expected "one date" and generated "date A and date B" with one wrong → not 5.
+        3. **"No information found" / "Ninguna"**: If the expected answer says no information was found (e.g. "No se ha encontrado ninguna información", "Ninguna acta") and the generated answer invents or lists content, Correctness MUST be 1 or 2 and Groundedness 1 or 2.
+        4. **Yes/No questions**: If the generated answer contradicts the expected Yes/No, Correctness MUST be 1 or 2.
+        5. **Comparison questions**: If the conclusion is opposite to the expected (e.g. expected "agosto" but generated "febrero"), Correctness at most 2 or 3.
+        6. **Context understanding**: If asked for a specific fact (e.g. which acta, duration), the answer must contain that information; partial or wrong set of items reduces the score.
         
         **IMPORTANT**: Do not invent or use any external knowledge. 
         Evaluate only what can be inferred from the three provided inputs: the question, the expected correct answer (as a guide), and the system-generated answer.
@@ -69,12 +67,14 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         
         5. **Groundedness (Fidelity)**: Does the answer rely only on the provided context, without inventing facts? Score 1–5 (1 = invented/unsupported, 5 = fully grounded in context).
         
-        **Scoring Guidelines**:
-        - If the question has a clear Yes/No answer and the generated answer contradicts the expected (Yes vs No or No vs Yes), Correctness MUST be 1 or 2.
-        - Score 5 if the answer correctly responds to the question, even if it's shorter or worded differently than expected.
-        - Score 4-5 if the answer contains the essential information requested, even if some non-essential details are missing.
-        - Score 3-4 if the answer is partially correct but missing some important information.
-        - Score 1-2 only if the answer is incorrect, irrelevant, or doesn't address the question (including Yes/No inversion).
+        **Strict Scoring Guidelines**:
+        - Score 5 ONLY when the answer is fully correct: all key facts present, no wrong or extra facts added. One correct fact plus one wrong fact = at most 4.
+        - If the expected answer lists a specific number of items (e.g. one acta, two dates) and the generated answer includes extra or wrong items, Correctness at most 4 (or 3 if more wrong than right).
+        - If expected says "none"/"ninguna"/"no information found" and generated invents or lists content, Correctness 1 or 2, Groundedness 1 or 2.
+        - Yes/No contradiction → Correctness 1 or 2.
+        - Score 4 only when essential information is correct and at most minor, non-contradictory extras.
+        - Score 3 when partially correct but with missing or wrong important information.
+        - Score 1-2 when incorrect, contradictory, irrelevant, or inventing content.
         
         Respond in this format:
         
