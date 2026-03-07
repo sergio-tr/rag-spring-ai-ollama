@@ -187,6 +187,7 @@ public class CountAndExplainTool extends AbstractTool {
             6. Otherwise, answer with (1) the count and (2) a short explanation grounded in the snippets
             7. If the user is asking "which minutes", include the list
             8. Keep explanations brief - one sentence per minute maximum
+            9. Base your answer ONLY on the evidence snippets and matching minutes listed. If there are no matching minutes, state that clearly in the user's language. Do NOT invent matching minutes or explanations.
 
             User question:
             "%s"

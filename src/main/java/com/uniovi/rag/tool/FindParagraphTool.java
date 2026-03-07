@@ -246,6 +246,7 @@ public class FindParagraphTool extends AbstractTool {
             
             Write a brief and clear answer in the same language as the query, 
             summarizing the relevant information from all the paragraphs found.
+            Use ONLY information from the paragraphs provided. Do NOT add external or invented information.
             DO NOT repeat the question or any part of it at the beginning.
             DO NOT start with phrases like "Dime qué...", "The user asked...", etc.
             Start directly with the answer content.
@@ -282,9 +283,7 @@ public class FindParagraphTool extends AbstractTool {
             
             No relevant paragraphs were found for this query in the available meeting minutes.
             
-            Write a polite response in the same language as the query explaining that no relevant paragraphs were found.
-            Be concise and direct.
-            DO NOT repeat the question or any part of it.
+            Write a polite response in the EXACT SAME LANGUAGE as the query, stating clearly that no relevant paragraphs were found. Be concise and direct. DO NOT repeat the question or any part of it.
             """, query);
         
         try {

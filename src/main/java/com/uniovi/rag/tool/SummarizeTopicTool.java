@@ -255,6 +255,7 @@ public class SummarizeTopicTool extends AbstractTool {
             8. Remove any technical details or internal processing information
             9. If multiple fragments, provide a unified summary of key points across all, not individual summaries
             10. Use the most important information first - prioritize relevance over completeness
+            11. If the fragments do NOT actually discuss the requested topic, respond clearly that no information was found on that topic in the available minutes. Do NOT invent or extrapolate content.
             
             Examples of CORRECT responses:
             - Query: "Resume lo tratado en las reuniones sobre la climatización de la piscina"
