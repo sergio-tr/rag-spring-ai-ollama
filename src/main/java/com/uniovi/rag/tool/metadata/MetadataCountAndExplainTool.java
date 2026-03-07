@@ -328,6 +328,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
             4. Example if the query is in English: "Found 5 meeting minutes. [explanations]" (NOT "The question was... Found 5...")
             5. Example if the query is in Spanish: "Se encontraron 5 actas. [explicaciones]" (NOT "La pregunta era... Se encontraron 5...")
             
+            Base your answer ONLY on the meeting minutes and explanations listed above. Do not invent matching minutes or explanations.
             Provide only the information requested.
             DO NOT mention any technical details like "clusters", "análisis", "analysis", "grouped into", or internal processing.
             DO NOT include phrases like "Basándonos en el análisis" or "Según los datos proporcionados".

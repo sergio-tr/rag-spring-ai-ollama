@@ -221,6 +221,7 @@ import java.util.stream.Collectors;
             - Do NOT include generic meeting descriptions unless specifically requested
             - Do NOT repeat information that's already obvious from the context
             - Use the most important information first
+            - Do NOT invent content; base your summary only on the Meeting information provided above.
             """,
             query,
             pointsBlock,

@@ -262,6 +262,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             7. If the question starts with "Resume", "Dime", "Busca", etc., do NOT include those words in your response
             8. Remove redundant information and focus on what's most relevant to the query
             9. If multiple meetings, summarize the key points across all meetings, not each one individually
+            10. Do not invent content; use only the topic summary information provided. If that information does not address the query topic, say so clearly in the user's language.
             
             Examples of CORRECT responses:
             - Query: "Resume lo tratado en las reuniones sobre la climatización de la piscina"
