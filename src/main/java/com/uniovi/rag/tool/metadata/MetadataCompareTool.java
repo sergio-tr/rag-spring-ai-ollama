@@ -417,16 +417,27 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         return availability.entrySet().stream()
                 .filter(e -> e.getValue() > 0)
                 .max(Map.Entry.comparingByValue())
-                .map(e -> switch (e.getKey()) {
-                    case "numberOfAttendees" -> new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
-                    case "duration" -> new ComparisonField("duration", ComparisonType.NUMERIC);
-                    case "date" -> new ComparisonField("date", ComparisonType.DATE);
-                    case "place" -> new ComparisonField("place", ComparisonType.TEXT);
-                    case "topics" -> new ComparisonField("topics", ComparisonType.COUNT);
-                    case "decisions" -> new ComparisonField("decisions", ComparisonType.COUNT);
-                    default -> null;
-                })
+                .map(e -> mapKeyToComparisonField(e.getKey()))
                 .orElse(null);
+    }
+
+    private ComparisonField mapKeyToComparisonField(String key) {
+        switch (key) {
+            case "numberOfAttendees":
+                return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
+            case "duration":
+                return new ComparisonField("duration", ComparisonType.NUMERIC);
+            case "date":
+                return new ComparisonField("date", ComparisonType.DATE);
+            case "place":
+                return new ComparisonField("place", ComparisonType.TEXT);
+            case "topics":
+                return new ComparisonField("topics", ComparisonType.COUNT);
+            case "decisions":
+                return new ComparisonField("decisions", ComparisonType.COUNT);
+            default:
+                return null;
+        }
     }
 
     /**
@@ -453,16 +464,23 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      * Checks if minute has valid data for a field
      */
     private boolean hasValidFieldData(Minute minute, String field) {
-        return switch (field) {
-            case "numberOfAttendees" -> minute.numberOfAttendees() > 0 ||
-                    (minute.attendees() != null && !minute.attendees().isEmpty());
-            case "duration" -> calculateDurationFromMinute(minute) > 0;
-            case "date" -> minute.date() != null && !minute.date().isBlank();
-            case "place" -> minute.place() != null && !minute.place().isBlank();
-            case "topics" -> minute.topics() != null && !minute.topics().isEmpty();
-            case "decisions" -> minute.decisions() != null && !minute.decisions().isEmpty();
-            default -> false;
-        };
+        switch (field) {
+            case "numberOfAttendees":
+                return minute.numberOfAttendees() > 0 ||
+                        (minute.attendees() != null && !minute.attendees().isEmpty());
+            case "duration":
+                return calculateDurationFromMinute(minute) > 0;
+            case "date":
+                return minute.date() != null && !minute.date().isBlank();
+            case "place":
+                return minute.place() != null && !minute.place().isBlank();
+            case "topics":
+                return minute.topics() != null && !minute.topics().isEmpty();
+            case "decisions":
+                return minute.decisions() != null && !minute.decisions().isEmpty();
+            default:
+                return false;
+        }
     }
 
     /**
@@ -915,17 +933,24 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      * Extracts field value based on field type
      */
     private Object extractFieldValue(Minute minute, ComparisonField field) {
-        return switch (field.fieldName) {
-            case "numberOfAttendees" -> minute.numberOfAttendees() > 0
-                    ? minute.numberOfAttendees()
-                    : (minute.attendees() != null ? minute.attendees().size() : 0);
-            case "duration" -> calculateDurationFromMinute(minute);
-            case "date" -> minute.date();
-            case "place" -> minute.place();
-            case "topics" -> minute.topics() != null ? minute.topics().size() : 0;
-            case "decisions" -> minute.decisions() != null ? minute.decisions().size() : 0;
-            default -> null;
-        };
+        switch (field.fieldName) {
+            case "numberOfAttendees":
+                return minute.numberOfAttendees() > 0
+                        ? minute.numberOfAttendees()
+                        : (minute.attendees() != null ? minute.attendees().size() : 0);
+            case "duration":
+                return calculateDurationFromMinute(minute);
+            case "date":
+                return minute.date();
+            case "place":
+                return minute.place();
+            case "topics":
+                return minute.topics() != null ? minute.topics().size() : 0;
+            case "decisions":
+                return minute.decisions() != null ? minute.decisions().size() : 0;
+            default:
+                return null;
+        }
     }
 
     /**

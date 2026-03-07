@@ -470,15 +470,22 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                     }
                     
                     // less_than: strictly fewer than threshold (e.g. "menos de diez" -> count < 10, so 10 is excluded)
-                    boolean matches = switch (operator) {
-                        case "less_than" -> count < threshold;
-                        case "more_than" -> count > threshold;
-                        case "equal" -> count == threshold;
-                        default -> {
+                    boolean matches;
+                    switch (operator) {
+                        case "less_than":
+                            matches = count < threshold;
+                            break;
+                        case "more_than":
+                            matches = count > threshold;
+                            break;
+                        case "equal":
+                            matches = count == threshold;
+                            break;
+                        default:
                             log().warn("Unknown operator: {}, defaulting to less_than", operator);
-                            yield count < threshold;
-                        }
-                    };
+                            matches = count < threshold;
+                            break;
+                    }
                     
                     if (matches) {
                         log().debug("Document {} passed filter: count={} {} threshold={}", 

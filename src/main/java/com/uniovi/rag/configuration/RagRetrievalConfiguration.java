@@ -45,10 +45,13 @@ public class RagRetrievalConfiguration {
         @Value("${spring.ai.ollama.similarity-threshold}") double similarityThreshold
     ) {
         String impl = implProps.getRetrieverImpl() != null ? implProps.getRetrieverImpl().trim().toLowerCase() : "basic";
-        return switch (impl) {
-            case "filtered" -> new FilteredContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
-            case "minute-document" -> new MinuteDocumentContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
-            default -> new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
-        };
+        switch (impl) {
+            case "filtered":
+                return new FilteredContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+            case "minute-document":
+                return new MinuteDocumentContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+            default:
+                return new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+        }
     }
 }

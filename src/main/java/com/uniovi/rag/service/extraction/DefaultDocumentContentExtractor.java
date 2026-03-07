@@ -82,15 +82,22 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
 
     @Override
     public String extractLiteralField(String field, String content) {
-        return switch (field) {
-            case "place" -> match(content, "(?i)Lugar:\\s*(.+)");
-            case "date" -> extractDate(content);
-            case "startTime" -> extractTime(content, "start");
-            case "endTime" -> extractTime(content, "end");
-            case "president" -> match(content, "(?i)•\\s*(.+?)\\s*\\(Presidente\\)");
-            case "secretary" -> match(content, "(?i)•\\s*(.+?)\\s*\\(Secretari[ao]\\)");
-            default -> null;
-        };
+        switch (field) {
+            case "place":
+                return match(content, "(?i)Lugar:\\s*(.+)");
+            case "date":
+                return extractDate(content);
+            case "startTime":
+                return extractTime(content, "start");
+            case "endTime":
+                return extractTime(content, "end");
+            case "president":
+                return match(content, "(?i)•\\s*(.+?)\\s*\\(Presidente\\)");
+            case "secretary":
+                return match(content, "(?i)•\\s*(.+?)\\s*\\(Secretari[ao]\\)");
+            default:
+                return null;
+        }
     }
 
     @Override

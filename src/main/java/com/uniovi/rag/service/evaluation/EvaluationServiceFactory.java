@@ -130,11 +130,18 @@ public class EvaluationServiceFactory {
         QueryAnalyser analyser = "no-op".equals(analyserImpl) ? new NoOpQueryAnalyser() : new MinuteNERQueryAnalyser(chatClient);
         QueryClassifier classifier = new PythonQueryClassifier(pythonClassifierExecutable, pythonClassifierScript);
         String retrieverImpl = featureConfig.getRetrieverImpl() != null ? featureConfig.getRetrieverImpl().trim().toLowerCase() : "basic";
-        ContextRetriever retriever = switch (retrieverImpl) {
-            case "filtered" -> new FilteredContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
-            case "minute-document" -> new MinuteDocumentContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
-            default -> new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
-        };
+        ContextRetriever retriever;
+        switch (retrieverImpl) {
+            case "filtered":
+                retriever = new FilteredContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+                break;
+            case "minute-document":
+                retriever = new MinuteDocumentContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+                break;
+            default:
+                retriever = new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+                break;
+        }
         RagToolsConfiguration toolsConfig = new RagToolsConfiguration(createTools(featureConfig, retriever, documentContentExtractor));
         QueryDateExtractor queryDateExtractor = new QueryDateExtractor();
         DateExistenceGuard dateExistenceGuard = new DefaultDateExistenceGuard(retriever, queryDateExtractor);
@@ -146,28 +153,31 @@ public class EvaluationServiceFactory {
         ToolRagService toolRagService = new ToolRagService(embeddingModel, 5);
 
         String queryServiceImpl = featureConfig.getQueryServiceImpl() != null ? featureConfig.getQueryServiceImpl().trim().toLowerCase() : "process";
-        return switch (queryServiceImpl) {
-            case "simple" -> new SimpleQueryService(expander, analyser, retriever, chatClient);
-            case "simple-process" -> new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient);
-            default -> new ProcessQueryService(
-                    featureConfig,
-                    toolsConfig,
-                    expander,
-                    analyser,
-                    nerQueryEnricher,
-                    classifier,
-                    retriever,
-                    chatClient,
-                    dateExistenceGuard,
-                    meetingMinutesToolsAdapter,
-                    reasoningStrategy,
-                    responseRanker,
-                    postRetrievalProcessor,
-                    toolRagService,
-                    responseValidator,
-                    null  // questionAnswerAdvisor: evaluation uses manual retrieval path
-            );
-        };
+        switch (queryServiceImpl) {
+            case "simple":
+                return new SimpleQueryService(expander, analyser, retriever, chatClient);
+            case "simple-process":
+                return new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient);
+            default:
+                return new ProcessQueryService(
+                        featureConfig,
+                        toolsConfig,
+                        expander,
+                        analyser,
+                        nerQueryEnricher,
+                        classifier,
+                        retriever,
+                        chatClient,
+                        dateExistenceGuard,
+                        meetingMinutesToolsAdapter,
+                        reasoningStrategy,
+                        responseRanker,
+                        postRetrievalProcessor,
+                        toolRagService,
+                        responseValidator,
+                        null  // questionAnswerAdvisor: evaluation uses manual retrieval path
+                );
+        }
     }
 
     /**

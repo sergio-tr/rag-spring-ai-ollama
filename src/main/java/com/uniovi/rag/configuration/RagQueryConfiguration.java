@@ -66,11 +66,14 @@ public class RagQueryConfiguration {
     @Bean
     public ReasoningStrategy reasoningStrategy(RagReasoningProperties reasoningProperties, ChatClient chatClient) {
         String strategy = reasoningProperties.getStrategy() != null ? reasoningProperties.getStrategy().toUpperCase() : "SIMPLE";
-        return switch (strategy) {
-            case "COT" -> new COTReasoningStrategy(chatClient);
-            case "PLAN_AND_VERIFY" -> new PlanAndVerifyReasoningStrategy(chatClient);
-            default -> new SimpleReasoningStrategy();
-        };
+        switch (strategy) {
+            case "COT":
+                return new COTReasoningStrategy(chatClient);
+            case "PLAN_AND_VERIFY":
+                return new PlanAndVerifyReasoningStrategy(chatClient);
+            default:
+                return new SimpleReasoningStrategy();
+        }
     }
 
     @Bean
@@ -183,27 +186,30 @@ public class RagQueryConfiguration {
             RagImplementationProperties implProps
     ) {
         String impl = implProps.getQueryServiceImpl() != null ? implProps.getQueryServiceImpl().trim().toLowerCase() : "process";
-        return switch (impl) {
-            case "simple" -> new SimpleQueryService(expander, analyser, retriever, chatClient);
-            case "simple-process" -> new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient);
-            default -> new ProcessQueryService(
-                    featureConfig,
-                    toolsConfig,
-                    expander,
-                    analyser,
-                    nerQueryEnricher,
-                    classifier,
-                    retriever,
-                    chatClient,
-                    dateExistenceGuard,
-                    meetingMinutesToolsAdapter,
-                    reasoningStrategy,
-                    responseRanker,
-                    postRetrievalProcessor,
-                    toolRagService,
-                    responseValidator,
-                    questionAnswerAdvisor
-            );
-        };
+        switch (impl) {
+            case "simple":
+                return new SimpleQueryService(expander, analyser, retriever, chatClient);
+            case "simple-process":
+                return new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient);
+            default:
+                return new ProcessQueryService(
+                        featureConfig,
+                        toolsConfig,
+                        expander,
+                        analyser,
+                        nerQueryEnricher,
+                        classifier,
+                        retriever,
+                        chatClient,
+                        dateExistenceGuard,
+                        meetingMinutesToolsAdapter,
+                        reasoningStrategy,
+                        responseRanker,
+                        postRetrievalProcessor,
+                        toolRagService,
+                        responseValidator,
+                        questionAnswerAdvisor
+                );
+        }
     }
 }

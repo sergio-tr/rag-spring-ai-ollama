@@ -216,14 +216,20 @@ public class CompareTool extends AbstractTool {
      * Gets value for comparison type
      */
     private int getValue(MinuteInfo info, String comparisonType) {
-        return switch (comparisonType) {
-            case "attendees" -> info.attendeeCount();
-            case "duration" -> info.duration();
-            case "proposals" -> info.proposalCount();
-            case "agenda" -> info.agendaItemCount();
-            case "questions" -> info.questionCount();
-            default -> info.attendeeCount(); // Default to attendees
-        };
+        switch (comparisonType) {
+            case "attendees":
+                return info.attendeeCount();
+            case "duration":
+                return info.duration();
+            case "proposals":
+                return info.proposalCount();
+            case "agenda":
+                return info.agendaItemCount();
+            case "questions":
+                return info.questionCount();
+            default:
+                return info.attendeeCount(); // Default to attendees
+        }
     }
 
     /**

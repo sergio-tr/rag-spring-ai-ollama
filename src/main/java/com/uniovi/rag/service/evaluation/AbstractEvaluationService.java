@@ -265,6 +265,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         Map<String, Map<String, Object>> allResults = new HashMap<>();
         boolean[] flags = {false, true};
         int configNumber = 0;
+        
         for (boolean expansion : flags) {
             for (boolean ner : flags) {
                 for (boolean tools : flags) {
