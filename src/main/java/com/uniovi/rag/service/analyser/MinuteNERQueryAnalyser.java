@@ -1,5 +1,7 @@
 package com.uniovi.rag.service.analyser;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
@@ -109,6 +111,12 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         Query to analyze: {query}
     """;
 
+    /**
+     * Parses NER JSON string. If org.json throws due to duplicate keys (e.g. LLM returns "comparisonType" twice),
+     * falls back to Jackson which keeps the last value per key, then returns an org.json.JSONObject.
+     */
+    private static final ObjectMapper JACKSON_MAPPER = new ObjectMapper();
+
     private final ChatClient chatClient;
     
     // Date patterns for normalization - enhanced to match parseDateFlexible and parseDateToLocalDate
@@ -207,7 +215,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         }
 
         try {
-            JSONObject json = new JSONObject(cleanResponse);
+            JSONObject json = parseNerJson(cleanResponse);
             validateAndNormalize(json);
             enhanceWithContextAnalysis(json, query);
             
@@ -219,6 +227,24 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         } catch (IllegalArgumentException e) {
             log().error("NER: Invalid JSON structure for query '{}': {}", query, e.getMessage(), e);
             return createFallbackResponse(query);
+        }
+    }
+
+    private JSONObject parseNerJson(String cleanResponse) throws org.json.JSONException {
+        try {
+            return new JSONObject(cleanResponse);
+        } catch (org.json.JSONException e) {
+            if (e.getMessage() != null && e.getMessage().contains("Duplicate key")) {
+                try {
+                    JsonNode node = JACKSON_MAPPER.readTree(cleanResponse);
+                    String deduped = JACKSON_MAPPER.writeValueAsString(node);
+                    return new JSONObject(deduped);
+                } catch (Exception jacksonEx) {
+                    log().warn("NER: Jackson fallback failed for duplicate-key JSON: {}", jacksonEx.getMessage());
+                    throw e;
+                }
+            }
+            throw e;
         }
     }
 
