@@ -1,7 +1,7 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.services.classifier.QueryType;
-import com.uniovi.rag.services.tools.Tool;
+import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.tool.Tool;
 
 import java.util.Map;
 

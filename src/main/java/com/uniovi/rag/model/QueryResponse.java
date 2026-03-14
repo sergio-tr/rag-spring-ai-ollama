@@ -1,7 +1,5 @@
 package com.uniovi.rag.model;
 
-import com.uniovi.rag.services.classifier.QueryType;
-
 /**
  * Represents a query response with metadata about how it was generated.
  */
