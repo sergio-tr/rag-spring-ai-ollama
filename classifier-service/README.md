@@ -56,7 +56,7 @@ Or with Docker (from repo root):
 docker compose -f docker/docker-compose.yml up -d classifier-service
 ```
 
-The RAG backend is configured via `RAG_CLASSIFIER_ML_SERVICE_URL` (default `http://localhost:8000`; in Docker `http://classifier-service:8000`).
+The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://localhost:8000`; in Docker `http://classifier-service:8000`).
 
 ## Environment
 
