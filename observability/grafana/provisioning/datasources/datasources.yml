@@ -1,0 +1,22 @@
+# Provisioned datasources: Prometheus (metrics) and Jaeger (traces).
+# Grafana will show traces from Jaeger in Explore and in dashboard panels.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+  - name: Jaeger
+    uid: jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    editable: false
+    jsonData:
+      nodeGraph:
+        enabled: true
