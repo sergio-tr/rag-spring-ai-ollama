@@ -9,8 +9,10 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
+from opentelemetry.trace import Status, StatusCode
 
 from app.container import ServiceContainer
+from app.telemetry import get_tracer
 from app.exceptions import (
     ClassificationError,
     EvaluationError,
@@ -62,24 +64,44 @@ def classify(
     resolved_model_id = (modelId or body_model_id or "").strip() or None
 
     svc = container.classification_service
+    tracer = get_tracer()
+    span = tracer.start_span("classifier.classify") if tracer else None
     try:
+        if span:
+            span.set_attribute("query", (query or "")[:500])
+            span.set_attribute("model_id", (resolved_model_id or "default")[:64])
         result = svc.classify(query=query, model_id=resolved_model_id or None)
+        if span:
+            span.set_attribute("query_type", (result.query_type or "")[:64])
+            span.set_status(Status(StatusCode.OK))
         return result.to_response_dict()
     except ValidationError as e:
+        if span:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
         raise HTTPException(
             status_code=400,
             detail=ErrorDetail(code=e.code, message=e.message).to_response_dict(),
         ) from e
     except ModelNotFoundError as e:
+        if span:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
         raise HTTPException(
             status_code=404,
             detail=ErrorDetail(code=e.code, message=e.message).to_response_dict(),
         ) from e
     except ClassificationError as e:
+        if span:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
         raise HTTPException(
             status_code=503,
             detail=ErrorDetail(code=e.code, message=e.message).to_response_dict(),
         ) from e
+    finally:
+        if span:
+            span.end()
 
 
 @router.post("/train", response_model=dict)
@@ -116,7 +138,13 @@ async def train_endpoint(
         content = (await labels_file.read()).decode("utf-8", errors="replace")
         class_names = [line.strip() for line in content.splitlines() if line.strip()]
     tmp_path = None
+    tracer = get_tracer()
+    span = tracer.start_span("classifier.train") if tracer else None
     try:
+        if span:
+            span.set_attribute("model_name", (model_name or "")[:128])
+            span.set_attribute("epochs", int(epochs))
+            span.set_attribute("batch_size", int(batch_size))
         with tempfile.NamedTemporaryFile(suffix=Path(file.filename).suffix, delete=False) as tmp:
             content = await file.read()
             tmp.write(content)
@@ -129,18 +157,29 @@ async def train_endpoint(
             epochs=epochs,
             batch_size=batch_size,
         )
+        if span:
+            span.set_status(Status(StatusCode.OK))
         return result.to_response_dict()
     except ValidationError as e:
+        if span:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
         raise HTTPException(
             status_code=400,
             detail=ErrorDetail(code=e.code, message=e.message).to_response_dict(),
         ) from e
     except TrainingError as e:
+        if span:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
         raise HTTPException(
             status_code=500,
             detail=ErrorDetail(code=e.code, message=e.message).to_response_dict(),
         ) from e
     except Exception as e:
+        if span:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
         _logger.exception("Training failed: %s", e)
         raise HTTPException(
             status_code=500,
@@ -151,6 +190,8 @@ async def train_endpoint(
             ).to_response_dict(),
         ) from e
     finally:
+        if span:
+            span.end()
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
 
@@ -180,25 +221,40 @@ async def evaluate_endpoint(
             eval_path = tmp_path
         except Exception as e:
             _logger.exception("Failed to save uploaded eval file: %s", e)
+    tracer = get_tracer()
+    span = tracer.start_span("classifier.evaluate") if tracer else None
     try:
+        if span:
+            span.set_attribute("model_id", (modelId or "default")[:64])
+            span.set_attribute("include_images", bool(includeImages))
         svc = container.evaluation_service
         result = svc.evaluate(
             model_id=modelId or None,
             eval_dataset_path=eval_path,
             include_images=includeImages,
         )
+        if span:
+            span.set_status(Status(StatusCode.OK))
         return result.to_response_dict(include_images_base64=includeImages)
     except ModelNotFoundError as e:
+        if span:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
         raise HTTPException(
             status_code=404,
             detail=ErrorDetail(code=e.code, message=e.message).to_response_dict(),
         ) from e
     except EvaluationError as e:
+        if span:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
         raise HTTPException(
             status_code=400,
             detail=ErrorDetail(code=e.code, message=e.message).to_response_dict(),
         ) from e
     finally:
+        if span:
+            span.end()
         if tmp_path:
             Path(tmp_path).unlink(missing_ok=True)
 

@@ -1,15 +1,17 @@
 """
 Classification service: ensures model is loaded and delegates prediction to InferenceEngine.
 Returns domain model ClassificationResult; raises service exceptions on failure.
+Traced via TracedService.run_traced for classifier.service.classify span.
 """
-from app.base import BaseService
+from app.base import TracedService
 from app.config import Config
 from app.exceptions import ClassificationError, ModelNotFoundError, ValidationError
 from app.inference.inference_engine import InferenceEngine
 from app.models.classification_result import ClassificationResult
+from app.telemetry import record_classifier_call
 
 
-class ClassificationService(BaseService):
+class ClassificationService(TracedService):
     """Orchestrates classification: validation, model resolution, inference."""
 
     def __init__(self, inference_engine: InferenceEngine, config: Config | None = None) -> None:
@@ -30,14 +32,30 @@ class ClassificationService(BaseService):
                 self._engine._loader.load_by_id(resolved_id)
         except FileNotFoundError as e:
             raise ModelNotFoundError(resolved_id) from e
+        return self.run_traced(
+            "classifier.service.classify",
+            lambda: self._classify_impl(query.strip(), resolved_id),
+            input_attrs={
+                "query": (query or "").strip()[:500],
+                "model_id": resolved_id,
+            },
+            output_attr="query_type",
+            output_value_fn=lambda r: r.query_type,
+        )
+
+    def _classify_impl(self, query: str, resolved_id: str) -> ClassificationResult:
         try:
-            query_type = self._engine.predict(query.strip(), resolved_id)
+            query_type = self._engine.predict(query, resolved_id)
+            record_classifier_call("success", resolved_id)
             return ClassificationResult(query_type=query_type)
         except RuntimeError as e:
+            record_classifier_call("error", resolved_id)
             self.logger.exception("Model not ready: %s", e)
             raise ClassificationError("Model not available") from e
         except FileNotFoundError as e:
+            record_classifier_call("error", resolved_id)
             raise ModelNotFoundError(resolved_id) from e
         except Exception as e:
+            record_classifier_call("error", resolved_id)
             self.logger.exception("Classification failed: %s", e)
             raise ClassificationError("Classification failed") from e
