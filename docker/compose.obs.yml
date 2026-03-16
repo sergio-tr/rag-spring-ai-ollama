@@ -1,0 +1,84 @@
+# Observability stack: OpenTelemetry Collector, Jaeger, Prometheus, Grafana.
+# Image versions and Grafana password from observability/.env (create with scripts/create-env-observability.sh).
+# Usage: cd docker && docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env --env-file ../observability/.env up -d
+# Jaeger UI: http://localhost:16686 | Prometheus: http://localhost:9090 | Grafana: http://localhost:3000
+
+services:
+  backend:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: rag-backend
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: otlp
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  classifier-service:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: classifier-service
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: otlp
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  otel-collector:
+    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.102.0}
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ../observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus scrape (metrics)
+    restart: unless-stopped
+
+  jaeger:
+    image: ${JAEGER_IMAGE:-jaegertracing/all-in-one:1.61}
+    container_name: jaeger
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686"
+      - "14268:14268"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    restart: unless-stopped
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v2.52.0}
+    container_name: prometheus
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    restart: unless-stopped
+    depends_on:
+      - otel-collector
+
+  grafana:
+    image: ${GRAFANA_IMAGE:-grafana/grafana:11.2.0}
+    container_name: grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - jaeger
+
+volumes:
+  prometheus_data:
+  grafana_data:

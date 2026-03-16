@@ -1,0 +1,72 @@
+# Main stack: DB, classifier, backend. DB variables from db/.env (create with scripts/create-env-db.sh). 
+# Run: cd docker && docker compose --env-file ../db/.env up -d
+services:
+  postgres:
+    build:
+      context: ../db
+      dockerfile: Dockerfile
+    container_name: postgres
+    env_file:
+      - ../db/.env
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-vectordb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../db/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-vectordb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  classifier-service:
+    build:
+      context: ../classifier-service
+      dockerfile: Dockerfile
+    container_name: classifier-service
+    ports:
+      - "${CLASSIFIER_SERVICE_PORT:-8000}:8000"
+    environment:
+      PORT: "8000"
+      MODELS_DIR: /app/models
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  backend:
+    build:
+      context: ../rag-service
+      dockerfile: Dockerfile
+    container_name: backend
+    env_file:
+      - ../db/.env
+    ports:
+      - "${BACKEND_PORT:-9000}:9000"
+    environment:
+      SERVER_PORT: "9000"
+      # DB connection (same user/password as in db/.env)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-vectordb}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      SPRING_AI_OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      SPRING_AI_OLLAMA_CHAT_MODEL: ${SPRING_AI_OLLAMA_CHAT_MODEL:-gemma3:4b}
+      SPRING_AI_OLLAMA_EMBEDDING_MODEL: ${SPRING_AI_OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large}
+      RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      classifier-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
