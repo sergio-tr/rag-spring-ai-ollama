@@ -13,6 +13,7 @@ from app.config import Config
 from app.container import ServiceContainer
 from app.models.api_errors import ErrorDetail
 from app.routes import router
+from app.telemetry import setup_telemetry
 
 _logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Classifier Service (RAG Query Classifier)", lifespan=lifespan)
     app.state.container = container
     app.include_router(router)
+    setup_telemetry(app)
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
