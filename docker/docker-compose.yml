@@ -1,10 +1,12 @@
-# Main stack: DB, classifier, backend. DB variables from db/.env (create with scripts/create-env-db.sh). 
-# Run: cd docker && docker compose --env-file ../db/.env up -d
+# Main stack: DB, classifier, backend. Uses db/.env, classifier-service/.env, rag-service/.env (create with scripts in scripts/).
+# Run: cd docker && docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d
 services:
   postgres:
     build:
       context: ../db
       dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${POSTGRES_BASE_IMAGE:-postgres:16}
     container_name: postgres
     env_file:
       - ../db/.env
@@ -28,12 +30,20 @@ services:
     build:
       context: ../classifier-service
       dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${CLASSIFIER_PYTHON_BASE_IMAGE:-python:3.11-slim}
+        PORT: ${PORT:-8000}
+        MODELS_DIR: ${MODELS_DIR:-/app/models}
+        DATA_DIR: ${DATA_DIR:-/app/data}
     container_name: classifier-service
+    env_file:
+      - ../classifier-service/.env
     ports:
-      - "${CLASSIFIER_SERVICE_PORT:-8000}:8000"
+      - "${CLASSIFIER_SERVICE_PORT:-8000}:${PORT:-8000}"
     environment:
-      PORT: "8000"
-      MODELS_DIR: /app/models
+      PORT: ${PORT:-8000}
+      MODELS_DIR: ${MODELS_DIR:-/app/models}
+      DATA_DIR: ${DATA_DIR:-/app/data}
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1"]
@@ -46,13 +56,18 @@ services:
     build:
       context: ../rag-service
       dockerfile: Dockerfile
+      args:
+        JDK_BASE_IMAGE: ${RAG_JAVA_JDK_BASE_IMAGE:-eclipse-temurin:21-jdk}
+        JRE_BASE_IMAGE: ${RAG_JAVA_JRE_BASE_IMAGE:-eclipse-temurin:21-jre-alpine}
+        SERVER_PORT: ${SERVER_PORT:-9000}
     container_name: backend
     env_file:
       - ../db/.env
+      - ../rag-service/.env
     ports:
-      - "${BACKEND_PORT:-9000}:9000"
+      - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
     environment:
-      SERVER_PORT: "9000"
+      SERVER_PORT: ${SERVER_PORT:-9000}
       # DB connection (same user/password as in db/.env)
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-vectordb}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
@@ -60,7 +75,7 @@ services:
       SPRING_AI_OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       SPRING_AI_OLLAMA_CHAT_MODEL: ${SPRING_AI_OLLAMA_CHAT_MODEL:-gemma3:4b}
       SPRING_AI_OLLAMA_EMBEDDING_MODEL: ${SPRING_AI_OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large}
-      RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:8000
+      RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${PORT:-8000}
     depends_on:
       postgres:
         condition: service_healthy
