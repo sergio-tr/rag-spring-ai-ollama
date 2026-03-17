@@ -20,6 +20,9 @@ The **db/init/** directory contains the SQL scripts that run when the container 
 | `POSTGRES_DB`      | Database name | `vectordb` |
 | `POSTGRES_MONITOR_USER` | Read-only monitoring user (metrics) | `postgres_exporter` |
 | `POSTGRES_MONITOR_PASSWORD` | Password for monitoring user | `postgres_exporter` |
+| `POSTGRES_BASE_IMAGE` | Base image for db/Dockerfile | `postgres:16` |
+
+Ollama (GPU stack) has its own folder **ollama/** with Dockerfile and `.env`; see `ollama/README.md`.
 
 Create `db/.env` from defaults (from repo root):
 
@@ -31,17 +34,19 @@ Use `--force` to overwrite. The template is **db/.env.example**.
 
 ## Using Docker Compose
 
-The main stack uses **db/.env** only for database-related configuration. The `postgres` service is built from **db/** and loads **db/.env**; the backend also uses **db/.env** for `SPRING_DATASOURCE_*`. Port and URL substitution in the compose file use the same file when you pass it to Compose.
+The main stack uses **db/.env**, **classifier-service/.env** and **rag-service/.env** for build-args and runtime variables. The `postgres` service is built from **db/Dockerfile** (base image from `POSTGRES_BASE_IMAGE`); the backend and classifier are built from their own Dockerfiles with args from their `.env` files.
 
 From the repo root:
 
 ```bash
-./scripts/create-env-db.sh   # creates db/.env if missing
+./scripts/create-env-db.sh
+./scripts/create-env-classifier-service.sh
+./scripts/create-env-rag-service.sh
 cd docker
-docker compose --env-file ../db/.env up -d
+docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d
 ```
 
-Ports and other app defaults (e.g. `BACKEND_PORT`, `OLLAMA_BASE_URL`) are defined with defaults in the compose file; override them via the environment when running `docker compose` if needed.
+Or use `./scripts/set-env.sh` to create env files interactively and run compose. Ports and base images are in the respective `.env` files; override them there or when running `docker compose`.
 
 ## Running only the database (local development)
 
@@ -68,7 +73,7 @@ The `db/init/init.sql` script:
   - `postgres_exporter` with password `postgres_exporter`
   - Grants the `pg_monitor` role, as recommended in the Last9 guide.
 
-The collector configuration in `observability/otel-collector-config.yaml` adds:
+The collector configuration in `observability/otel-collector/config.yaml` adds:
 
 - A `postgresql` receiver that connects to the `postgres` service on port 5432 using the `postgres_exporter` user.
 - A metrics pipeline that includes both `otlp` (application metrics) and `postgresql` as receivers, and exports everything via the existing Prometheus exporter.

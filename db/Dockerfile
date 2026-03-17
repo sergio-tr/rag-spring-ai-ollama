@@ -1,4 +1,6 @@
-FROM postgres:16
+# Base image from db/.env (POSTGRES_BASE_IMAGE). Must be Postgres 16 for server-dev-16.
+ARG BASE_IMAGE=postgres:16
+FROM ${BASE_IMAGE}
 
 # Instalar herramientas necesarias para compilar
 RUN apt-get update && apt-get install -y \
