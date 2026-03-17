@@ -1,7 +1,7 @@
-# Observability stack: OpenTelemetry Collector, Jaeger, Prometheus, Grafana.
-# Image versions and Grafana password from observability/.env (create with scripts/create-env-observability.sh).
+# Observability stack: OTEL Collector, Jaeger, Prometheus, Grafana (all built from Dockerfiles).
+# Base images and ports from observability/.env (create with scripts/create-env-observability.sh).
 # Usage: cd docker && docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env --env-file ../observability/.env up -d
-# Jaeger UI: http://localhost:16686 | Prometheus: http://localhost:9090 | Grafana: http://localhost:3000
+# Jaeger UI: http://localhost:${JAEGER_UI_PORT:-16686} | Prometheus: http://localhost:${PROMETHEUS_PORT:-9090} | Grafana: http://localhost:${GRAFANA_PORT:-3000}
 
 services:
   backend:
@@ -25,32 +25,44 @@ services:
         condition: service_started
 
   otel-collector:
-    image: ${OTEL_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.102.0}
+    build:
+      context: ../observability/otel-collector
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${OTEL_COLLECTOR_BASE_IMAGE:-otel/opentelemetry-collector-contrib:0.102.0}
     container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
-      - ../observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - ../observability/otel-collector/config.yaml:/etc/otel-collector-config.yaml
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-      - "8889:8889"   # Prometheus scrape (metrics)
+      - "${OTEL_GRPC_PORT:-4317}:4317"
+      - "${OTEL_HTTP_PORT:-4318}:4318"
+      - "${OTEL_PROMETHEUS_SCRAPE_PORT:-8889}:8889"
     restart: unless-stopped
 
   jaeger:
-    image: ${JAEGER_IMAGE:-jaegertracing/all-in-one:1.61}
+    build:
+      context: ../observability/jaeger
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${JAEGER_BASE_IMAGE:-jaegertracing/jaeger:2}
     container_name: jaeger
     ports:
       - "${JAEGER_UI_PORT:-16686}:16686"
-      - "14268:14268"
+      - "${JAEGER_COLLECTOR_PORT:-14268}:14268"
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     restart: unless-stopped
 
   prometheus:
-    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v2.52.0}
+    build:
+      context: ../observability/prometheus
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${PROMETHEUS_BASE_IMAGE:-prom/prometheus:v2.52.0}
     container_name: prometheus
     volumes:
-      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -63,7 +75,11 @@ services:
       - otel-collector
 
   grafana:
-    image: ${GRAFANA_IMAGE:-grafana/grafana:11.2.0}
+    build:
+      context: ../observability/grafana
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${GRAFANA_BASE_IMAGE:-grafana/grafana:11.2.0}
     container_name: grafana
     ports:
       - "${GRAFANA_PORT:-3000}:3000"

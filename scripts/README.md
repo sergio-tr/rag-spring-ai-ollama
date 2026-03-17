@@ -6,11 +6,12 @@ Scripts to generate default `.env` files for each component and to run Docker Co
 
 | Script | Creates | Purpose |
 |--------|---------|---------|
-| `create-env-db.sh` | `db/.env` | PostgreSQL (port, user, password, database). Used by `docker-compose.yml` for postgres and backend. |
-| `create-env-observability.sh` | `observability/.env` | Image versions (OTEL, Jaeger, Prometheus, Grafana), Grafana password, ports. Used by `compose.obs.yml`. |
-| `create-env-rag-service.sh` | `rag-service/.env` | Backend: server port, DB URL, Ollama, classifier URL. For local runs. |
-| `create-env-classifier-service.sh` | `classifier-service/.env` | Classifier: port, MODELS_DIR, DATA_DIR, etc. For local runs. |
-| `create-env-all.sh` | All four above | Runs all four create-env-* scripts. |
+| `create-env-db.sh` | `db/.env` | Postgres (port, user, password, DB), base image (POSTGRES_BASE_IMAGE). Used by main compose. |
+| `create-env-observability.sh` | `observability/.env` | Base images (OTEL, Jaeger, Prometheus, Grafana), Grafana password, ports. Used by `compose.obs.yml`. |
+| `create-env-rag-service.sh` | `rag-service/.env` | Backend: base images (RAG_JAVA_*), SERVER_PORT, BACKEND_PORT, DB URL, Ollama, classifier URL. For build and local runs. |
+| `create-env-classifier-service.sh` | `classifier-service/.env` | Classifier: base image, PORT, MODELS_DIR, DATA_DIR, CLASSIFIER_SERVICE_PORT. For build and local runs. |
+| `create-env-ollama.sh` | `ollama/.env` | Ollama (GPU stack): base image (OLLAMA_BASE_IMAGE), OLLAMA_PORT. Used by `compose.gpu.yml`. |
+| `create-env-all.sh` | All five above | Runs all five create-env-* scripts. |
 
 Example:
 
@@ -28,13 +29,13 @@ Default values are in each component's `.env.example`. After creating the `.env`
 
 ## Interactive setup and run: set-env.sh
 
-`set-env.sh` asks whether to create each component's `.env` file (db, observability, rag-service, classifier-service), then asks which Docker Compose option to run and runs it:
+`set-env.sh` asks whether to create each component's `.env` file (db, observability, rag-service, classifier-service, ollama), then asks which Docker Compose option to run and runs it:
 
 ```bash
 ./scripts/set-env.sh
 ```
 
-- **Create .env**: for each of the four components you get "Create db/.env? [y/N]" (and similar). Answer `y` to create that `.env` from its `.env.example` (only creates if the file is missing).
+- **Create .env**: for each of the five components you get "Create db/.env? [y/N]" (and similar). Answer `y` to create that `.env` from its `.env.example` (only creates if the file is missing).
 - **Run Compose**: then you choose one of:
   1. Main stack only (postgres, classifier, backend)
   2. Main stack + observability (Jaeger, Prometheus, Grafana, OTEL)
@@ -46,8 +47,8 @@ Options 1–4 run `docker compose` from `docker/` with the appropriate `-f` and 
 
 ## Running Compose manually
 
-From `docker/`:
+From `docker/` (env files are optional; compose uses defaults if a file is missing):
 
-- Main stack: `docker compose --env-file ../db/.env up -d`
-- With observability: `docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env --env-file ../observability/.env up -d`
-- With GPU: `docker compose -f docker-compose.yml -f compose.gpu.yml --env-file ../db/.env up -d`
+- Main stack: `docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d`
+- With observability: add `-f compose.obs.yml` and `--env-file ../observability/.env`
+- With GPU: add `-f compose.gpu.yml` and `--env-file ../ollama/.env` (Ollama is built from `ollama/Dockerfile`; see `ollama/README.md`)
