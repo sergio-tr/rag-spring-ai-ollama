@@ -1,5 +1,12 @@
 # Classifier service: query type classification for RAG.
-FROM python:3.11-slim
+# Base image and env from classifier-service/.env (CLASSIFIER_PYTHON_BASE_IMAGE, PORT, MODELS_DIR, DATA_DIR).
+ARG BASE_IMAGE=python:3.11-slim
+FROM ${BASE_IMAGE}
+
+ARG PORT=8000
+ARG MODELS_DIR=/app/models
+ARG DATA_DIR=/app/data
+ENV PORT=${PORT} MODELS_DIR=${MODELS_DIR} DATA_DIR=${DATA_DIR}
 
 WORKDIR /app
 
@@ -15,10 +22,6 @@ COPY models/ ./models/
 # Default datasets (optional; used for training or reference)
 COPY data/ ./data/
 
-ENV PORT=8000
-ENV MODELS_DIR=/app/models
-ENV DATA_DIR=/app/data
+EXPOSE ${PORT}
 
-EXPOSE 8000
-
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
