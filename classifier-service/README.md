@@ -46,7 +46,7 @@ These were moved from `rag-service/src/main/resources/python/` and are the singl
 
 ```bash
 pip install -r requirements.txt
-# Ensure models/default/model.keras and models/default/labels.txt exist (copy from ml-service if needed)
+# Ensure models/default/model.keras and models/default/labels.txt exist
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
