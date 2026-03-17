@@ -1,6 +1,6 @@
 # Observability: OpenTelemetry, Jaeger, Prometheus, Grafana
 
-This directory holds configuration for the **OpenTelemetry Collector** and **Prometheus**; the observability stack (Jaeger, Grafana) is defined in Docker. Image versions and options (Grafana password, ports) are parameterized in **observability/.env**.
+This directory holds configuration and **Dockerfiles** for the observability stack: OpenTelemetry Collector, Jaeger, Prometheus, Grafana. All four services are **built from Dockerfiles** (no pre-built images in compose); base images and ports are in **observability/.env**.
 
 ## Create observability/.env
 
@@ -10,7 +10,7 @@ From the repository root:
 ./scripts/create-env-observability.sh
 ```
 
-Or copy `observability/.env.example` to `observability/.env`. Use `--force` to overwrite. In the `.env` you can change image versions (`OTEL_COLLECTOR_IMAGE`, `JAEGER_IMAGE`, `PROMETHEUS_IMAGE`, `GRAFANA_IMAGE`), Grafana password, and ports.
+Or copy `observability/.env.example` to `observability/.env`. Use `--force` to overwrite. In the `.env` you can change **base images** (`OTEL_COLLECTOR_BASE_IMAGE`, `JAEGER_BASE_IMAGE`, `PROMETHEUS_BASE_IMAGE`, `GRAFANA_BASE_IMAGE`), Grafana password (`GRAFANA_ADMIN_PASSWORD`), and **ports** (`OTEL_GRPC_PORT`, `OTEL_HTTP_PORT`, `OTEL_PROMETHEUS_SCRAPE_PORT`, `JAEGER_UI_PORT`, `PROMETHEUS_PORT`, `GRAFANA_PORT`).
 
 ## Running the stack with observability
 
@@ -18,10 +18,10 @@ From the repository root (create env files first with `scripts/create-env-all.sh
 
 ```bash
 cd docker
-docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env --env-file ../observability/.env up -d
+docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env --env-file ../observability/.env up -d
 ```
 
-If you rely on default values in the compose file for observability, you can omit `../observability/.env`; image tags and ports will use the defaults in `compose.obs.yml`.
+Or use `./scripts/set-env.sh` and choose option 2 or 4. If an env file is missing, compose uses defaults from the compose file.
 
 Volume paths in `compose.obs.yml` are relative to the `docker/` directory (`../observability/`).
 
@@ -56,9 +56,15 @@ So that **rag-backend** (Spring) and **classifier-service** (Python) send traces
 
 The collector listens for OTLP HTTP on port **4318** and re-exports metrics on **8889** for Prometheus to scrape.
 
-## Components
+## Layout
 
-- **otel-collector-config.yaml**: Pipelines for *traces* (OTLP → batch → logging + Jaeger) and *metrics* (OTLP → batch → logging + Prometheus exporter on `:8889`).
-- **prometheus.yml**: Scrape jobs for Prometheus (backend `/actuator/prometheus`, otel-collector `:8889`).
+Each component has its own folder with a `Dockerfile` and any config it needs:
 
-For compose details (images, volumes, networks), see `docker/compose.obs.yml`.
+| Folder | Contents |
+|--------|----------|
+| **grafana/** | `Dockerfile`; `provisioning/` (dashboards and datasources) |
+| **jaeger/** | `Dockerfile` |
+| **otel-collector/** | `Dockerfile`; `config.yaml` — pipelines for *traces* (OTLP → batch → logging + Jaeger) and *metrics* (OTLP + PostgreSQL → batch → logging + Prometheus exporter on `:8889`) |
+| **prometheus/** | `Dockerfile`; `prometheus.yml` — scrape jobs (backend `/actuator/prometheus`, otel-collector `:8889`) |
+
+Compose builds each service from its folder (`context: ../observability/<folder>`, `dockerfile: Dockerfile`). For details see `docker/compose.obs.yml`.
