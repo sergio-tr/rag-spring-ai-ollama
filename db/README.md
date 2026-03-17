@@ -18,6 +18,8 @@ The **db/init/** directory contains the SQL scripts that run when the container 
 | `POSTGRES_USER`    | User          | `postgres` |
 | `POSTGRES_PASSWORD`| Password      | `postgres` |
 | `POSTGRES_DB`      | Database name | `vectordb` |
+| `POSTGRES_MONITOR_USER` | Read-only monitoring user (metrics) | `postgres_exporter` |
+| `POSTGRES_MONITOR_PASSWORD` | Password for monitoring user | `postgres_exporter` |
 
 Create `db/.env` from defaults (from repo root):
 
@@ -53,3 +55,30 @@ docker run -d --name postgres -p 5432:5432 \
 ```
 
 Then in the backend (rag-service) use in `.env` or in the environment: `SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/vectordb`, with the same user and password as in db/.env.
+
+## PostgreSQL observability (metrics via OpenTelemetry Collector)
+
+The observability stack includes an OpenTelemetry Collector that already exposes Prometheus metrics on `:8889` and is configured to scrape PostgreSQL using the **postgresql receiver**, following the guide\
+“How to Use OpenTelemetry with Postgres” from Last9 ([link](https://last9.io/blog/how-to-use-opentelemetry-with-postgres/)).
+
+The `db/init/init.sql` script:
+
+- Ensures the standard extensions for RAG are created.
+- Creates a **read-only monitoring user** if it does not exist:
+  - `postgres_exporter` with password `postgres_exporter`
+  - Grants the `pg_monitor` role, as recommended in the Last9 guide.
+
+The collector configuration in `observability/otel-collector-config.yaml` adds:
+
+- A `postgresql` receiver that connects to the `postgres` service on port 5432 using the `postgres_exporter` user.
+- A metrics pipeline that includes both `otlp` (application metrics) and `postgresql` as receivers, and exports everything via the existing Prometheus exporter.
+
+Grafana (under `observability/grafana`) is provisioned with a dashboard\
+`postgres-metrics.json` that uses the `prometheus` datasource and shows:
+
+- Active connections (`postgresql.backends`)
+- Transaction rate (commits / rollbacks)
+- Rows fetched per second
+- Blocks read (I/O)
+
+With the observability compose stack and the main stack up, you should see PostgreSQL metrics in Grafana under the “RAG” folder, dashboard “PostgreSQL - Metrics (via OpenTelemetry Collector)”.
