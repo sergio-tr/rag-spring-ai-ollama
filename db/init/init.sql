@@ -36,3 +36,14 @@ CREATE INDEX idx_vector_store_metadata_filename ON vector_store USING GIN ((meta
 -- Composite index for common searches (date + president)
 CREATE INDEX idx_vector_store_metadata_date_president ON vector_store
     USING GIN ((metadata->>'date'), (metadata->>'president'));
+
+-- Read-only monitoring user for PostgreSQL metrics (OpenTelemetry Collector).
+DO
+$$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres_exporter') THEN
+        CREATE USER postgres_exporter WITH PASSWORD 'postgres_exporter';
+        GRANT pg_monitor TO postgres_exporter;
+    END IF;
+END
+$$;
