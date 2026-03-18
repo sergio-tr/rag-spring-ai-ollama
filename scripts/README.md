@@ -52,3 +52,49 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 - Main stack: `docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d`
 - With observability: add `-f compose.obs.yml` and `--env-file ../observability/.env`
 - With GPU: add `-f compose.gpu.yml` and `--env-file ../ollama/.env` (Ollama is built from `ollama/Dockerfile`; see `ollama/README.md`)
+
+## Prod local (hardening) - `up`/`down`
+
+El modo “prod local” levanta el stack con `compose.prod.yml` (reverse proxy + puertos endurecidos para servicios internos).
+
+- Levantar: `./scripts/up-prod-local.sh [--no-obs] [--gpu]`
+- Parar: `./scripts/down.sh [--no-obs] [--gpu] [--volumes]`
+
+Notas rápidas:
+- Por defecto incluye `compose.obs.yml` (Jaeger/Prometheus/Grafana/OTEL internos, sin puertos publicados en el host).
+- Con `--gpu` se añade `compose.gpu.yml` (requiere `.env` de `ollama/` y runtime compatible con GPU).
+
+## Backup / Restore de la base de datos
+
+Los scripts están pensados para `Postgres` en contenedor (por defecto el contenedor se llama `postgres`).
+
+### Backup
+
+Genera un `.sql` con `pg_dump`:
+
+```bash
+./scripts/backup-db.sh
+```
+
+Variables opcionales:
+
+- `DB_CONTAINER_NAME` (por defecto `postgres`)
+- `OUTPUT_DIR` (por defecto `backups`)
+- `POSTGRES_USER` (por defecto `postgres`)
+- `POSTGRES_DB` (por defecto `vectordb`)
+
+El fichero se guarda en `OUTPUT_DIR` con nombre tipo `db-backup-<YYYYMMDD-HHMMSS>.sql`.
+
+### Restore
+
+Restaura un backup `.sql` con `psql` (destructivo: sustituye el estado actual del esquema/datos según el dump):
+
+```bash
+./scripts/restore-db.sh path/to/db-backup-YYYYMMDD-HHMMSS.sql
+```
+
+Variables opcionales:
+
+- `DB_CONTAINER_NAME` (por defecto `postgres`)
+- `POSTGRES_USER` (por defecto `postgres`)
+- `POSTGRES_DB` (por defecto `vectordb`)
