@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Creates observability/.env from observability/.env.example if missing. Use --force to overwrite.
+# Creates observability/.env from .env.example (OBS_INTERNAL_* ports + host + images).
+# After a pull of the repo, check .env.example for new variables or use --force.
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
