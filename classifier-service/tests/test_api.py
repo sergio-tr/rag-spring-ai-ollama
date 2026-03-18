@@ -5,6 +5,22 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+QUERY_TYPES_ALLOWED = {
+    "COUNT_DOCUMENTS",
+    "EXTRACT_ENTITIES",
+    "COUNT_AND_EXPLAIN",
+    "FIND_PARAGRAPH",
+    "DECISION_EXTRACTION",
+    "GET_DURATION",
+    "GET_FIELD",
+    "SUMMARIZE_TOPIC",
+    "SUMMARIZE_MEETING",
+    "BOOLEAN_QUERY",
+    "FILTER_AND_LIST",
+    "COMPARE",
+}
+
+
 def test_health_returns_200(client: TestClient):
     r = client.get("/health")
     assert r.status_code == 200
@@ -54,6 +70,7 @@ def test_classify_returns_query_type(client: TestClient):
     assert "queryType" in data
     assert isinstance(data["queryType"], str)
     assert len(data["queryType"]) > 0
+    assert data["queryType"] in QUERY_TYPES_ALLOWED
 
 
 def test_classify_empty_query_returns_400(client: TestClient):

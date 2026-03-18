@@ -71,6 +71,10 @@ The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://
 
 ## Tests
 
+- **`tests/unit/`** — tests unitarios (modelo, inferencia, config, servicios aislados).
+- **`tests/test_api.py`** — API con `TestClient` (sin red externa).
+- **`tests/regression/`** — regresión manual frente a HTTP en marcha (`capture_baseline.py` / `check_baseline.py`) y tests pytest de la lógica del harness (`test_baseline_lib.py`). Ver `tests/regression/README.md`.
+
 ```bash
 pytest tests/ -v
 ```
