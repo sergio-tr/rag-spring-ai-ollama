@@ -9,7 +9,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 
 /**
@@ -78,30 +77,17 @@ public class ObservabilitySupport {
     }
 
     /**
-     * Records a timer for the given callable (duration in the default time unit).
-     */
-    public <T> T recordTimer(String timerName, Callable<T> callable) throws Exception {
-        Timer.Sample sample = Timer.start(meterRegistry);
-        try {
-            T result = callable.call();
-            sample.stop(Timer.builder(timerName).register(meterRegistry));
-            return result;
-        } catch (Exception e) {
-            sample.stop(Timer.builder(timerName).tag("error", "true").register(meterRegistry));
-            throw e;
-        }
-    }
-
-    /**
      * Wraps a supplier with a timer and returns the result.
      */
     public <T> T recordTimer(String timerName, Supplier<T> supplier) {
+        Timer.Sample sample = Timer.start(meterRegistry);
         try {
-            return recordTimer(timerName, supplier::get);
+            T result = supplier.get();
+            sample.stop(Timer.builder(timerName).register(meterRegistry));
+            return result;
         } catch (RuntimeException e) {
+            sample.stop(Timer.builder(timerName).tag("error", "true").register(meterRegistry));
             throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
         }
     }
 

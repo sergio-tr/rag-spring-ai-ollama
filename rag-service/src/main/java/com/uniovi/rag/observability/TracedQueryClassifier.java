@@ -29,9 +29,11 @@ public final class TracedQueryClassifier implements QueryClassifier {
         observability.recordCounter("rag.classifier.calls", "operation", "classify");
         return observability.recordTimer("rag.classifier.classify", () ->
                 observability.runWithSpan(
-                        "rag.classifier.classify",
+                        // Domain convention: classification is part of the query pipeline
+                        "rag.query.classify",
                         Map.of("query", truncate(query != null ? query : "")),
-                        "queryType",
+                        // Domain convention: attribute name starts with `rag.`
+                        "rag.query.type",
                         () -> delegate.classify(query)));
     }
 
@@ -43,9 +45,12 @@ public final class TracedQueryClassifier implements QueryClassifier {
         observability.recordCounter("rag.classifier.calls", "operation", "classifyWithText");
         return observability.recordTimer("rag.classifier.classifyWithText", () ->
                 observability.runWithSpan(
-                        "rag.classifier.classifyWithText",
-                        Map.of("query", truncate(query != null ? query : "")),
-                        "queryType",
+                        "rag.query.classify",
+                        Map.of(
+                                "query", truncate(query != null ? query : ""),
+                                "mode", "classifyWithText"
+                        ),
+                        "rag.query.type",
                         () -> delegate.classifyWithText(query)));
     }
 
