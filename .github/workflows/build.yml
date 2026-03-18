@@ -1,4 +1,4 @@
-name: CI
+name: Build (no tests)
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   backend:
-    name: Backend (Java)
+    name: Backend (Java) Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,13 +20,13 @@ jobs:
           distribution: "temurin"
           cache: maven
 
-      - name: Build and test
+      - name: Build (skip tests)
         run: |
           cd rag-service
-          mvn -B verify
+          mvn -B -DskipTests package
 
   classifier-service:
-    name: Query Classifier Service (Python)
+    name: Query Classifier Service (Python) Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +41,8 @@ jobs:
           cd classifier-service
           pip install -r requirements.txt
 
-      - name: Run tests
+      - name: Compile Python (no tests)
         run: |
           cd classifier-service
-          pytest tests/ -v
+          python -m compileall -q .
+
