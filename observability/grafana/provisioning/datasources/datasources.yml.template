@@ -1,12 +1,11 @@
-# Provisioned datasources: Prometheus (metrics) and Jaeger (traces).
-# Grafana will show traces from Jaeger in Explore and in dashboard panels.
+# Genrated at Grafana contrainer starting procedure (ports specified at observability/.env).
 apiVersion: 1
 datasources:
   - name: Prometheus
     uid: prometheus
     type: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: http://prometheus:__OBS_INTERNAL_PROMETHEUS__
     isDefault: true
     editable: false
     jsonData:
@@ -15,8 +14,14 @@ datasources:
     uid: jaeger
     type: jaeger
     access: proxy
-    url: http://jaeger:16686
+    url: http://jaeger:__OBS_INTERNAL_JAEGER_UI__
     editable: false
     jsonData:
       nodeGraph:
         enabled: true
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:__OBS_INTERNAL_LOKI_HTTP__
+    editable: false
