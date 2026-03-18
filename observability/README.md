@@ -1,70 +1,78 @@
-# Observability: OpenTelemetry, Jaeger, Prometheus, Grafana
+# Observability (OTEL, Jaeger, Prometheus, Grafana, Loki/Promtail)
 
-This directory holds configuration and **Dockerfiles** for the observability stack: OpenTelemetry Collector, Jaeger, Prometheus, Grafana. All four services are **built from Dockerfiles** (no pre-built images in compose); base images and ports are in **observability/.env**.
+Configuración y Dockerfiles del stack. **Puertos y credenciales relevantes se definen en un solo sitio:** `observability/.env` (plantilla: `.env.example`).
 
-## Create observability/.env
+## Crear `observability/.env`
 
-From the repository root:
+Desde la raíz del repo:
 
 ```bash
 ./scripts/create-env-observability.sh
 ```
 
-Or copy `observability/.env.example` to `observability/.env`. Use `--force` to overwrite. In the `.env` you can change **base images** (`OTEL_COLLECTOR_BASE_IMAGE`, `JAEGER_BASE_IMAGE`, `PROMETHEUS_BASE_IMAGE`, `GRAFANA_BASE_IMAGE`), Grafana password (`GRAFANA_ADMIN_PASSWORD`), and **ports** (`OTEL_GRPC_PORT`, `OTEL_HTTP_PORT`, `OTEL_PROMETHEUS_SCRAPE_PORT`, `JAEGER_UI_PORT`, `PROMETHEUS_PORT`, `GRAFANA_PORT`).
+Tras actualizar el repositorio, si aparecen variables nuevas en `.env.example`, cópialas manualmente a tu `.env` o regenera con `--force` (sobrescribe).
 
-## Running the stack with observability
+## Variables (resumen)
 
-From the repository root (create env files first with `scripts/create-env-all.sh` or the per-component scripts):
+| Grupo | Variables | Uso |
+|-------|-----------|-----|
+| Imágenes | `OTEL_COLLECTOR_BASE_IMAGE`, `JAEGER_BASE_IMAGE`, `PROMETHEUS_BASE_IMAGE`, `GRAFANA_BASE_IMAGE` | Build-args en Dockerfiles |
+| Grafana | `GRAFANA_ADMIN_PASSWORD` | Admin UI |
+| Collector | `OTEL_COLLECTOR_LOG_LEVEL` | Verbosidad del exporter `logging` |
+| **Red Docker (internos)** | `OBS_INTERNAL_*` | Puertos entre contenedores (backend actuator, OTLP, Prometheus scrape del collector, Prometheus/Grafana/Jaeger UI, Loki, Promtail). Deben ser coherentes entre sí. |
+| **Host** | `OTEL_*_PORT`, `JAEGER_*_PORT`, `PROMETHEUS_PORT`, `GRAFANA_PORT`, `LOKI_HOST_PORT`, `PROMTAIL_HOST_PORT`, `NODE_EXPORTER_HOST_PORT`, `CADVISOR_HOST_PORT` | Mapeo `host:contenedor` |
+| PostgreSQL (collector) | `OBS_PG_ENDPOINT`, `OBS_PG_EXPORTER_*`, `OBS_PG_DB` | Receiver `postgresql` del collector (alinear con `db/init`) |
+| Jaeger (trazas) | `OBS_OTEL_EXPORT_JAEGER_ENDPOINT` | Destino OTLP gRPC del collector (p. ej. `jaeger:4317`) |
+
+`docker/compose.obs.yml`, `compose.logs.yml` y `compose.infra.yml` deben lanzarse con:
+
+```bash
+--env-file ../observability/.env
+```
+
+(junto al resto de `--env-file` que uses).
+
+## Arranque con Compose
 
 ```bash
 cd docker
-docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env --env-file ../observability/.env up -d
+docker compose -f docker-compose.yml -f compose.obs.yml \
+  --env-file ../db/.env \
+  --env-file ../classifier-service/.env \
+  --env-file ../rag-service/.env \
+  --env-file ../observability/.env \
+  up -d
 ```
 
-Or use `./scripts/set-env.sh` and choose option 2 or 4. If an env file is missing, compose uses defaults from the compose file.
+Opcional: `./scripts/set-env.sh` (opciones 2 o 4) hace lo mismo si existen los `.env`.
 
-Volume paths in `compose.obs.yml` are relative to the `docker/` directory (`../observability/`).
+## URLs en el host (sustituye por tus puertos del `.env`)
 
-## UI URLs
+| Componente | URL típica |
+|------------|------------|
+| Grafana | `http://localhost:${GRAFANA_PORT}` |
+| Jaeger | `http://localhost:${JAEGER_UI_PORT}` |
+| Prometheus | `http://localhost:${PROMETHEUS_PORT}` |
 
-| Component   | URL                     | Use                                      |
-|-------------|-------------------------|------------------------------------------|
-| **Grafana** | http://localhost:3000   | Dashboards and **traces** (default user/password: `admin`/`admin`) |
-| **Jaeger**  | http://localhost:16686  | Distributed traces UI (backend + classifier); also available inside Grafana via Jaeger datasource |
-| **Prometheus** | http://localhost:9090 | Metric queries                    |
+## Cómo se aplican los puertos
 
-### Viewing traces in Grafana
-
-Grafana is provisioned with a **Jaeger** datasource pointing at the Jaeger instance. To view traces:
-
-1. Open **Explore** (compass icon in the left sidebar), select the **Jaeger** datasource.
-2. Choose a **Service** (e.g. `rag-backend`, `classifier-service`) and click **Run query** to see traces for the selected time range.
-3. Or open the **Traces (Jaeger)** or **RAG Overview** dashboard; the trace panel lets you run a query there.
-
-Metrics from the backend (Prometheus scrape) and from the OTEL collector (metrics sent via OTLP by backend and classifier) are available in the **Prometheus** datasource. Use the **RAG Overview** and **Classifier & OTEL metrics** dashboards.
-
-## OTEL environment variables (backend and classifier)
-
-So that **rag-backend** (Spring) and **classifier-service** (Python) send traces and metrics to the collector, `compose.obs.yml` sets:
-
-| Variable                    | Typical value                 | Description                          |
-|----------------------------|------------------------------|--------------------------------------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-collector:4318` | Collector base URL (OTLP HTTP)   |
-| `OTEL_SERVICE_NAME`        | `rag-backend` / `classifier-service` | Service name in traces   |
-| `OTEL_METRICS_EXPORTER`    | `otlp`                       | Export metrics via OTLP           |
-| `OTEL_TRACES_EXPORTER`     | `otlp`                       | Export traces via OTLP            |
-
-The collector listens for OTLP HTTP on port **4318** and re-exports metrics on **8889** for Prometheus to scrape.
+- **Compose (`compose.obs.yml`)**: lee `observability/.env` y pasa variables a los servicios (mapeos host, `SERVER_PORT` del backend, `OTEL_EXPORTER_OTLP_ENDPOINT`, entorno del collector, Prometheus, Grafana).
+- **OTEL Collector** (`otel-collector/config.yaml`): sustitución `${env:...}` con las variables que inyecta Compose.
+- **Prometheus** (`prometheus/prometheus.yml.template`): el entrypoint del contenedor sustituye placeholders y arranca Prometheus con `--web.listen-address` acorde a `OBS_INTERNAL_PROMETHEUS`.
+- **Grafana** (`grafana/docker-entrypoint.sh` + `datasources.yml.template`): genera datasources con URLs `http://prometheus:PUERTO`, etc., según el `.env`.
+- **Loki / Promtail** (`*.yml.template` + `compose.logs.yml`): `sed` en el arranque con valores del `.env`.
 
 ## Layout
 
-Each component has its own folder with a `Dockerfile` and any config it needs:
+| Carpeta | Contenido |
+|---------|-----------|
+| `grafana/` | Dockerfile + entrypoint; `provisioning/` (dashboards JSON + `datasources.yml.template`) |
+| `jaeger/` | Dockerfile |
+| `otel-collector/` | Dockerfile; `config.yaml` |
+| `prometheus/` | Dockerfile; `prometheus.yml.template`; `docker-entrypoint.sh` |
+| `loki/` | `config.yml.template` |
+| `promtail/` | `config.yml.template` |
 
-| Folder | Contents |
-|--------|----------|
-| **grafana/** | `Dockerfile`; `provisioning/` (dashboards and datasources) |
-| **jaeger/** | `Dockerfile` |
-| **otel-collector/** | `Dockerfile`; `config.yaml` — pipelines for *traces* (OTLP → batch → logging + Jaeger) and *metrics* (OTLP + PostgreSQL → batch → logging + Prometheus exporter on `:8889`) |
-| **prometheus/** | `Dockerfile`; `prometheus.yml` — scrape jobs (backend `/actuator/prometheus`, otel-collector `:8889`) |
+## OTEL en backend y classifier
 
-Compose builds each service from its folder (`context: ../observability/<folder>`, `dockerfile: Dockerfile`). For details see `docker/compose.obs.yml`.
+Con `compose.obs.yml`, backend y classifier reciben `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:<OBS_INTERNAL_OTEL_OTLP_HTTP>` (valor del `.env`).

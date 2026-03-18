@@ -1,38 +1,40 @@
-# OpenTelemetry Collector: receives OTLP traces and metrics from rag-backend and classifier-service,
-# exports traces to Jaeger and exposes metrics for Prometheus scrape.
-
+# Host ports and destinations via env (observability/.env → compose passes variables to the container).
 receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317
+        endpoint: 0.0.0.0:${env:OBS_INTERNAL_OTEL_OTLP_GRPC}
       http:
-        endpoint: 0.0.0.0:4318
+        endpoint: 0.0.0.0:${env:OBS_INTERNAL_OTEL_OTLP_HTTP}
   postgresql:
-    endpoint: postgres:5432
+    endpoint: ${env:OBS_PG_ENDPOINT}
     transport: tcp
-    username: postgres_exporter
-    password: postgres_exporter
+    username: ${env:OBS_PG_EXPORTER_USER}
+    password: ${env:OBS_PG_EXPORTER_PASSWORD}
     databases:
-      - vectordb
+      - ${env:OBS_PG_DB}
     collection_interval: 10s
 
 processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 512
+    spike_limit_mib: 64
   batch:
     timeout: 5s
     send_batch_size: 1024
 
 exporters:
   logging:
-    loglevel: debug
+    loglevel: ${env:OTEL_COLLECTOR_LOG_LEVEL}
     sampling_initial: 5
     sampling_thereafter: 200
   otlp/jaeger:
-    endpoint: jaeger:4317
+    endpoint: ${env:OBS_OTEL_EXPORT_JAEGER_ENDPOINT}
     tls:
       insecure: true
   prometheus:
-    endpoint: "0.0.0.0:8889"
+    endpoint: 0.0.0.0:${env:OBS_INTERNAL_OTEL_PROM_EXPORT}
     namespace: otel
     const_labels:
       collector: otel-collector
@@ -41,11 +43,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [memory_limiter, batch]
       exporters: [logging, otlp/jaeger]
     metrics:
       receivers: [otlp, postgresql]
-      processors: [batch]
+      processors: [memory_limiter, batch]
       exporters: [logging, prometheus]
 
   telemetry:
