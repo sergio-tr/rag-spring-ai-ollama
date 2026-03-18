@@ -1,0 +1,61 @@
+services:
+  # Backend only exposed through reverse proxy in prod local
+  backend:
+    ports: []
+    environment:
+      # En prod local/prod no usamos ddl-auto=update. Se controla por migraciones (Flyway).
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
+    networks:
+      - public
+      - private
+
+  postgres:
+    # Do not expose Postgres on the host in prod local
+    ports: []
+    networks:
+      - private
+
+  classifier-service:
+    ports: []
+    networks:
+      - private
+
+  reverse-proxy:
+    build:
+      context: ../reverse-proxy
+      dockerfile: Dockerfile
+    container_name: reverse-proxy
+    depends_on:
+      - backend
+    ports:
+      - "${REVERSE_PROXY_HTTP_PORT:-8080}:80"
+      - "${REVERSE_PROXY_HTTPS_PORT:-8443}:443"
+    networks:
+      - public
+    restart: unless-stopped
+
+  # Hardening for observability UIs in prod local: keep Jaeger/Prometheus internal
+  jaeger:
+    ports: []
+    networks:
+      - private
+
+  prometheus:
+    ports: []
+    networks:
+      - private
+
+  grafana:
+    ports: []
+    networks:
+      - private
+
+  otel-collector:
+    ports: []
+    networks:
+      - private
+
+networks:
+  public:
+  private:
+
