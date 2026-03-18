@@ -1,0 +1,8 @@
+# Controlled datasets (performance baseline)
+¿Cuántas actas hay en el corpus?
+¿En qué secciones se menciona la palabra "acta"?
+¿Qué actas tratan el tema de la "luz"?
+¿Cómo se explica el proceso en las actas más recientes?
+¿Cuáles son las entidades principales mencionadas en las actas?
+¿Hay actas que contengan la palabra "universidad"?
+
