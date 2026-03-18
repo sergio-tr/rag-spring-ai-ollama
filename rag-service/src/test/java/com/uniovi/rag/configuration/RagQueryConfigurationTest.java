@@ -19,7 +19,7 @@ class RagQueryConfigurationTest {
     @Test
     void responseValidatorBean_returnsLLMValidator() {
         RagQueryConfiguration config = new RagQueryConfiguration();
-        ResponseValidator validator = config.responseValidator();
+        ResponseValidator validator = config.responseValidator(null);
         assertNotNull(validator);
     }
 
@@ -29,7 +29,7 @@ class RagQueryConfigurationTest {
         RagReasoningProperties props = new RagReasoningProperties();
         props.setStrategy(null);
         ChatClient chatClient = mock(ChatClient.class);
-        ReasoningStrategy strategy = config.reasoningStrategy(props, chatClient);
+        ReasoningStrategy strategy = config.reasoningStrategy(props, chatClient, null);
         assertNotNull(strategy);
         assertTrue(strategy instanceof SimpleReasoningStrategy);
     }
@@ -37,7 +37,7 @@ class RagQueryConfigurationTest {
     @Test
     void queryClassifierBean_returnsClassifierServiceClient() {
         RagQueryConfiguration config = new RagQueryConfiguration();
-        QueryClassifier classifier = config.queryClassifier("http://localhost:8000", "default", 5000);
+        QueryClassifier classifier = config.queryClassifier("http://localhost:8000", "default", 5000, null);
         assertNotNull(classifier);
         assertTrue(classifier instanceof ClassifierServiceClient);
     }

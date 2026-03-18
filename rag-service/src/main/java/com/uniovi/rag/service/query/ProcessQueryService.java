@@ -126,7 +126,6 @@ public class ProcessQueryService implements QueryService {
     }
 
     @Override
-    @Override
     public QueryResponse generateResponse(String query) {
         boolean isProblematicConfig = featureConfig.isMetadataEnabled() && 
                                       featureConfig.isNerEnabled() && 

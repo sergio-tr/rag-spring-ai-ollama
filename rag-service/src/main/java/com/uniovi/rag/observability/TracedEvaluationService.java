@@ -25,7 +25,8 @@ public final class TracedEvaluationService implements EvaluationService {
         observability.recordCounter("rag.evaluation.calls", "operation", "evaluate");
         return observability.recordTimer("rag.evaluation.evaluate", () ->
                 observability.runWithSpan(
-                        "rag.evaluation.evaluate",
+                        // Domain convention: evaluation execution
+                        "rag.evaluation.run",
                         Map.of(),
                         "result",
                         () -> delegate.evaluate()
@@ -38,8 +39,8 @@ public final class TracedEvaluationService implements EvaluationService {
         String configLabel = customConfig != null ? "custom" : "null";
         return observability.recordTimer("rag.evaluation.evaluateWithConfiguration", () ->
                 observability.runWithSpan(
-                        "rag.evaluation.evaluateWithConfiguration",
-                        Map.of("config", configLabel),
+                        "rag.evaluation.run",
+                        Map.of("rag.evaluation.id", configLabel),
                         "result",
                         () -> delegate.evaluateWithConfiguration(customConfig)
                 ));
@@ -50,8 +51,8 @@ public final class TracedEvaluationService implements EvaluationService {
         observability.recordCounter("rag.evaluation.calls", "operation", "evaluateAllConfigurations");
         return observability.recordTimer("rag.evaluation.evaluateAllConfigurations", () ->
                 observability.runWithSpan(
-                        "rag.evaluation.evaluateAllConfigurations",
-                        Map.of(),
+                        "rag.evaluation.run",
+                        Map.of("rag.evaluation.id", "all"),
                         "result",
                         () -> delegate.evaluateAllConfigurations()
                 ));
@@ -61,7 +62,11 @@ public final class TracedEvaluationService implements EvaluationService {
     public void loadData() {
         observability.recordCounter("rag.evaluation.calls", "operation", "loadData");
         observability.recordTimer("rag.evaluation.loadData", () -> {
-            observability.runWithSpan("rag.evaluation.loadData", Map.of(), () -> delegate.loadData());
+            observability.runWithSpan(
+                    "rag.evaluation.run",
+                    Map.of("operation", "loadData"),
+                    () -> delegate.loadData()
+            );
             return null;
         });
     }
@@ -70,7 +75,7 @@ public final class TracedEvaluationService implements EvaluationService {
     public Map<String, String> getQuestionsAndAnswers() {
         observability.recordCounter("rag.evaluation.calls", "operation", "getQuestionsAndAnswers");
         return observability.runWithSpan(
-                "rag.evaluation.getQuestionsAndAnswers",
+                "rag.evaluation.run",
                 Map.of(),
                 "result",
                 () -> delegate.getQuestionsAndAnswers()

@@ -28,9 +28,11 @@ public final class TracedQueryExpander implements QueryExpander {
         observability.recordCounter("rag.expander.calls", "expander", delegate.getClass().getSimpleName());
         return observability.recordTimer("rag.expander.expand", () ->
                 observability.runWithSpan(
-                        "rag.expander.expand",
+                        // Domain convention: query expansion is part of the query pipeline
+                        "rag.query.expand",
                         Map.of("query", truncate(query != null ? query : "")),
-                        "expanded",
+                        // Domain convention: attribute name starts with `rag.`
+                        "rag.query.expanded",
                         () -> delegate.expand(query)));
     }
 

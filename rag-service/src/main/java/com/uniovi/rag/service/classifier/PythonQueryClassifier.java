@@ -7,6 +7,14 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Legacy classifier implementation that runs a Python script via {@link ProcessBuilder}.
+ * <p>
+ * The current backend configuration ({@link com.uniovi.rag.configuration.RagQueryConfiguration})
+ * uses {@code ClassifierServiceClient} talking over HTTP to the running {@code classifier-service}.
+ * This class is kept only as a legacy fallback / reference implementation.
+ */
+@Deprecated
 public class PythonQueryClassifier implements QueryClassifier {
 
     private final String pythonExecutable;

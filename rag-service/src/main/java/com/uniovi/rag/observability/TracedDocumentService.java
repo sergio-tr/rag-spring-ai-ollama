@@ -30,7 +30,8 @@ public final class TracedDocumentService implements DocumentService {
         observability.recordCounter("rag.document.calls", "operation", "processDocument");
         observability.recordTimer("rag.document.processDocument", () -> {
             observability.runWithSpan(
-                    "rag.document.processDocument",
+                    // Domain convention: document ingestion/loading
+                    "rag.documents.load",
                     Map.of("filename", truncate(filename)),
                     () -> delegate.processDocument(file)
             );
@@ -44,7 +45,8 @@ public final class TracedDocumentService implements DocumentService {
         observability.recordCounter("rag.document.calls", "operation", "add");
         observability.recordTimer("rag.document.add", () -> {
             observability.runWithSpan(
-                    "rag.document.add",
+                    // Domain convention: document ingestion/loading
+                    "rag.documents.load",
                     Map.of("documentCount", String.valueOf(count)),
                     () -> delegate.add(documents)
             );
@@ -56,7 +58,12 @@ public final class TracedDocumentService implements DocumentService {
     public void clearDatabase() {
         observability.recordCounter("rag.document.calls", "operation", "clearDatabase");
         observability.recordTimer("rag.document.clearDatabase", () -> {
-            observability.runWithSpan("rag.document.clearDatabase", Map.of(), () -> delegate.clearDatabase());
+            observability.runWithSpan(
+                    // Domain convention: ingestion/loading is the closest operation bucket
+                    "rag.documents.load",
+                    Map.of("operation", "clearDatabase"),
+                    () -> delegate.clearDatabase()
+            );
             return null;
         });
     }
@@ -65,7 +72,8 @@ public final class TracedDocumentService implements DocumentService {
     public boolean hasDocuments() {
         observability.recordCounter("rag.document.calls", "operation", "hasDocuments");
         return observability.runWithSpan(
-                "rag.document.hasDocuments",
+                // Domain convention: document ingestion/loading
+                "rag.documents.load",
                 Map.of(),
                 "result",
                 () -> delegate.hasDocuments()
@@ -77,7 +85,7 @@ public final class TracedDocumentService implements DocumentService {
         observability.recordCounter("rag.document.calls", "operation", "deleteDocumentByDocumentId");
         return observability.recordTimer("rag.document.deleteDocumentByDocumentId", () ->
                 observability.runWithSpan(
-                        "rag.document.deleteDocumentByDocumentId",
+                        "rag.documents.load",
                         Map.of("documentId", truncate(documentId != null ? documentId : "")),
                         "deletedCount",
                         () -> delegate.deleteDocumentByDocumentId(documentId)
@@ -88,7 +96,7 @@ public final class TracedDocumentService implements DocumentService {
     public boolean hasDocumentWithId(String documentId) {
         observability.recordCounter("rag.document.calls", "operation", "hasDocumentWithId");
         return observability.runWithSpan(
-                "rag.document.hasDocumentWithId",
+                "rag.documents.load",
                 Map.of("documentId", truncate(documentId != null ? documentId : "")),
                 "result",
                 () -> delegate.hasDocumentWithId(documentId)
