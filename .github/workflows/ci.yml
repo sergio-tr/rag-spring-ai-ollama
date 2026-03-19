@@ -23,7 +23,7 @@ jobs:
       - name: Build and test
         run: |
           cd rag-service
-          mvn -B verify
+          ./mvnw -B verify
 
   classifier-service:
     name: Query Classifier Service (Python)

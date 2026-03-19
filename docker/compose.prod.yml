@@ -30,6 +30,10 @@ services:
     ports:
       - "${REVERSE_PROXY_HTTP_PORT:-8080}:80"
       - "${REVERSE_PROXY_HTTPS_PORT:-8443}:443"
+    environment:
+      # Must match SERVER_PORT of the backend container (default 9000).
+      # envsubst in the Dockerfile CMD substitutes this into nginx.conf at startup.
+      BACKEND_INTERNAL_PORT: ${SERVER_PORT:-9000}
     networks:
       - public
     restart: unless-stopped
