@@ -11,5 +11,10 @@ RUN apk add --no-cache openssl \
     -subj "/CN=localhost" \
   && rm -rf /var/cache/apk/*
 
-COPY nginx.conf /etc/nginx/nginx.conf
+# nginx.conf uses ${BACKEND_INTERNAL_PORT}; envsubst substitutes it at container start.
+COPY nginx.conf /etc/nginx/nginx.conf.template
+
+# Entrypoint: substitute env vars in template, then start nginx
+CMD ["/bin/sh", "-c", \
+  "envsubst '${BACKEND_INTERNAL_PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"]
 
