@@ -27,7 +27,7 @@ import static org.mockito.Mockito.mock;
 class DocumentPersistenceJdbcIntegrationTest {
 
     @Container
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16")
+    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16")
             .withDatabaseName("testdb")
             .withUsername("test")
             .withPassword("test")
