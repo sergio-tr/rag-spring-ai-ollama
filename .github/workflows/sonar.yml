@@ -1,0 +1,101 @@
+name: SonarCloud Analysis
+
+# Triggers:
+#   - Push to main or dev (full branch analysis)
+#   - Pull Requests targeting main or dev (PR decoration + gate check)
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+    branches: [main, master, dev]
+    types: [opened, synchronize, reopened]
+
+# Required permissions for SonarCloud PR decoration
+permissions:
+  contents: read
+  pull-requests: read   # Read PR metadata for inline PR decoration
+  checks: write         # Write check-run status badge on PRs
+
+jobs:
+  sonar:
+    name: SonarCloud Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      # ─── Checkout ─────────────────────────────────────────────────────────
+      # fetch-depth: 0 is REQUIRED by SonarCloud — it needs the full git history
+      # to compute blame (new code attribution) and blame-based deduplication.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ─── Java ─────────────────────────────────────────────────────────────
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      # ─── Python ───────────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: classifier-service/requirements.txt
+
+      # ─── Java: build + tests + JaCoCo coverage report ─────────────────────
+      # `verify` lifecycle = compile → test (with JaCoCo agent) → jacoco:report
+      # Output: rag-service/target/classes/  (binaries for Sonar)
+      #         rag-service/target/site/jacoco/jacoco.xml  (coverage for Sonar)
+      # Note: ubuntu-latest runners include Docker, required by Testcontainers tests.
+      - name: Build backend and generate Java coverage (mvn verify)
+        working-directory: rag-service
+        run: ./mvnw -B verify --no-transfer-progress
+        env:
+          # Prevent tests from attempting real OTLP exports
+          OTEL_EXPORTER_OTLP_ENDPOINT: ""
+          MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "false"
+
+      # ─── Java: copy dependencies for SonarCloud type resolution ───────────
+      # sonar.java.libraries in sonar-project.properties points to this directory.
+      # Without it, the SonarScanner cannot resolve third-party types and produces
+      # false positives and misses issues. Deps are already in ~/.m2 after verify;
+      # this step just copies them to the path Sonar expects.
+      - name: Copy Maven dependencies for SonarCloud
+        working-directory: rag-service
+        run: ./mvnw -B dependency:copy-dependencies -DoutputDirectory=target/dependency --no-transfer-progress
+
+      # ─── Python: install dependencies ─────────────────────────────────────
+      - name: Install Python dependencies
+        working-directory: classifier-service
+        run: pip install -r requirements.txt
+
+      # ─── Python: tests + coverage ─────────────────────────────────────────
+      # pytest.ini already sets addopts with --cov=app --cov-report=xml:coverage.xml.
+      # Do NOT duplicate those flags here — they are applied by pytest.ini automatically.
+      # Only pass test paths and marker filters; pytest.ini handles the rest.
+      # Output: classifier-service/coverage.xml  (referenced in sonar-project.properties)
+      - name: Run classifier tests with coverage
+        working-directory: classifier-service
+        run: |
+          pytest tests/unit tests/regression/test_baseline_lib.py \
+            -m "not integration and not slow" \
+            -v
+        env:
+          MODELS_DIR: ./models
+          DATA_DIR: ./data
+
+      # ─── SonarCloud scan ──────────────────────────────────────────────────
+      # Reads sonar-project.properties from the repository root.
+      # All coverage artifacts must exist before this step runs.
+      #
+      # Required secrets (add in GitHub → Settings → Secrets → Actions):
+      #   SONAR_TOKEN: generated at sonarcloud.io → My Account → Security
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
