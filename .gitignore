@@ -43,3 +43,13 @@ __pycache__/
 venv/
 enhancement/
 logs/
+
+### SonarCloud / Coverage ###
+.sonar/
+.scannerwork/
+# Java coverage (local HTML report; XML is committed to allow CI to upload)
+rag-service/target/site/jacoco/
+# Python coverage (local HTML report; XML generated fresh in CI)
+classifier-service/htmlcov/
+classifier-service/coverage.xml
+classifier-service/.coverage
