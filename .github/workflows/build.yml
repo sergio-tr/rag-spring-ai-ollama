@@ -23,7 +23,7 @@ jobs:
       - name: Build (skip tests)
         run: |
           cd rag-service
-          mvn -B -DskipTests package
+          ./mvnw -B -DskipTests package
 
   classifier-service:
     name: Query Classifier Service (Python) Build
