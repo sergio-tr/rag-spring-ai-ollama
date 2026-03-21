@@ -8,6 +8,7 @@ import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.service.classifier.QueryClassifier;
 import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import com.uniovi.rag.tool.Tool;
 import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;
@@ -46,7 +47,7 @@ class SimpleProcessQueryServiceTest {
         analyser = mock(QueryAnalyser.class);
         classifier = mock(QueryClassifier.class);
         retriever = mock(ContextRetriever.class);
-        chatClient = mock(ChatClient.class);
+        chatClient = ChatClientTestSupport.mockForUserPromptChain();
         service = new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient);
     }
 
@@ -55,12 +56,7 @@ class SimpleProcessQueryServiceTest {
         when(expander.expand(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(retriever.retrieve(anyString())).thenReturn(List.of(new Document("ctx", java.util.Map.of())));
         when(retriever.createContext(anyList(), anyString(), any())).thenReturn("context");
-        var callSpec = mock(org.springframework.ai.chat.client.CallResponseSpec.class);
-        var promptSpec = mock(org.springframework.ai.chat.client.PromptSpec.class);
-        when(chatClient.prompt()).thenReturn(promptSpec);
-        when(promptSpec.user(anyString())).thenReturn(callSpec);
-        when(callSpec.call()).thenReturn(callSpec);
-        when(callSpec.content()).thenReturn("LLM answer");
+        ChatClientTestSupport.stubUserPromptReturns(chatClient, "LLM answer");
 
         QueryResponse response = service.generateResponse("question");
 
@@ -75,12 +71,7 @@ class SimpleProcessQueryServiceTest {
         when(classifier.classify(anyString())).thenReturn(null);
         when(retriever.retrieve(anyString())).thenReturn(List.of());
         when(retriever.createContext(anyList(), anyString(), any())).thenReturn("");
-        var callSpec = mock(org.springframework.ai.chat.client.CallResponseSpec.class);
-        var promptSpec = mock(org.springframework.ai.chat.client.PromptSpec.class);
-        when(chatClient.prompt()).thenReturn(promptSpec);
-        when(promptSpec.user(anyString())).thenReturn(callSpec);
-        when(callSpec.call()).thenReturn(callSpec);
-        when(callSpec.content()).thenReturn("No context answer");
+        ChatClientTestSupport.stubUserPromptReturns(chatClient, "No context answer");
 
         QueryResponse response = service.generateResponse("q");
 

@@ -20,7 +20,7 @@ class ClusterTest {
     }
 
     @Test
-    void toString() {
+    void clusterToString_containsRepresentative() {
         Cluster<String> c = new Cluster<>("rep");
         assertTrue(c.toString().contains("Cluster") && c.toString().contains("rep"));
     }

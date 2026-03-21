@@ -25,8 +25,8 @@ class MinuteInfoTest {
         assertTrue(s.contains("2025-02-01"));
         assertTrue(s.contains("20"));
         assertTrue(s.contains("60"));
-        assertTrue(s.contains("asistentes"));
-        assertTrue(s.contains("minutos"));
+        assertTrue(s.contains("attendees"));
+        assertTrue(s.contains("minutes"));
         assertTrue(s.contains("Oficina"));
     }
 }

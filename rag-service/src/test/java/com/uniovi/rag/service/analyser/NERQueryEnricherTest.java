@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.analyser;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ class NERQueryEnricherTest {
     }
 
     @Test
-    void buildEnrichedQuery_withDate_addsDateToQuery() {
+    void buildEnrichedQuery_withDate_addsDateToQuery() throws JSONException {
         JSONObject ner = new JSONObject();
         ner.put("date", new JSONArray().put("2025-01-15"));
         String result = enricher.buildEnrichedQueryForRetrieval("reunión", ner);

@@ -37,6 +37,7 @@ class EvaluationServiceFactoryTest {
                 10,
                 0.7,
                 "http://localhost:8000",
+                "default",
                 5000,
                 400,
                 responseValidator,

@@ -13,7 +13,7 @@
 #   --volumes     When used with --down, also remove named volumes (clears DB data)
 #
 # Default (no flags): only postgres in Docker.
-#   Backend → run locally:    cd rag-service && ../mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+#   Backend → run locally:    cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 #   Classifier → run locally: cd classifier-service && uvicorn main:app --reload --reload-dir app
 #   Frontend → run locally:   cd frontend && npm run dev
 
@@ -110,7 +110,7 @@ echo "Run locally (with hot-reload):"
 if [ "$WITH_CLASSIFIER" = false ]; then
   echo "  Classifier:  cd classifier-service && uvicorn main:app --reload --reload-dir app --port 8000"
 fi
-echo "  Backend:     cd rag-service && ../mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
+echo "  Backend:     cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
 echo "  Frontend:    cd frontend && npm run dev"
 echo ""
 echo "Postgres available at:  localhost:${POSTGRES_PORT:-5432}"

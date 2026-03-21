@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.expand;
 
-import com.uniovi.rag.model.ExpansionStrategy;
+import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -16,7 +16,7 @@ class MinuteDocumentStructureExpanderTest {
 
     @BeforeEach
     void setUp() {
-        client = mock(ChatClient.class);
+        client = ChatClientTestSupport.mockForUserPromptChain();
         expander = new MinuteDocumentStructureExpander(client);
     }
 
@@ -33,12 +33,7 @@ class MinuteDocumentStructureExpanderTest {
 
     @Test
     void expand_withMockedLlmReturnsOriginalPlusExpansion() {
-        var callSpec = mock(org.springframework.ai.chat.client.CallResponseSpec.class);
-        var promptSpec = mock(org.springframework.ai.chat.client.PromptSpec.class);
-        when(client.prompt()).thenReturn(promptSpec);
-        when(promptSpec.user(anyString())).thenReturn(callSpec);
-        when(callSpec.call()).thenReturn(callSpec);
-        when(callSpec.content()).thenReturn("reunión acta fecha asistentes");
+        ChatClientTestSupport.stubUserPromptReturns(client, "reunión acta fecha asistentes");
 
         String result = expander.expand("¿Quién presidió?");
 
@@ -48,9 +43,7 @@ class MinuteDocumentStructureExpanderTest {
 
     @Test
     void expand_llmThrowsReturnsOriginalOnly() {
-        var promptSpec = mock(org.springframework.ai.chat.client.PromptSpec.class);
-        when(client.prompt()).thenReturn(promptSpec);
-        when(promptSpec.user(anyString())).thenThrow(new RuntimeException("LLM error"));
+        when(client.prompt().user(anyString())).thenThrow(new RuntimeException("LLM error"));
 
         String result = expander.expand("query");
 

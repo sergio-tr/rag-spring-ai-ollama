@@ -12,6 +12,7 @@ import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.ranker.ResponseRanker;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -73,7 +74,7 @@ class TracedDecoratorsMetricsTest {
     }
 
     @Test
-    void tracedQueryAnalyser_recordsCounterAndTimer() {
+    void tracedQueryAnalyser_recordsCounterAndTimer() throws JSONException {
         QueryAnalyser delegate = mock(QueryAnalyser.class);
         JSONObject analysis = new JSONObject().put("k", "v");
         when(delegate.analyse("q")).thenReturn(analysis);

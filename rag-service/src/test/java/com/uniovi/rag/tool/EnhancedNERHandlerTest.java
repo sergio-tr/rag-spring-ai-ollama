@@ -1,5 +1,6 @@
 package com.uniovi.rag.tool;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,12 +31,12 @@ class EnhancedNERHandlerTest {
     }
 
     @Test
-    void matchesDocumentWithNER_nullDoc_returnsFalse() {
+    void matchesDocumentWithNER_nullDoc_returnsFalse() throws JSONException {
         assertFalse(handler.matchesDocumentWithNER(null, new JSONObject().put("date", "2025-01-01")));
     }
 
     @Test
-    void matchesDocumentWithNER_emptyDocText_returnsFalse() {
+    void matchesDocumentWithNER_emptyDocText_returnsFalse() throws JSONException {
         Document doc = new Document("", Map.of());
         assertFalse(handler.matchesDocumentWithNER(doc, new JSONObject().put("key", "val")));
     }

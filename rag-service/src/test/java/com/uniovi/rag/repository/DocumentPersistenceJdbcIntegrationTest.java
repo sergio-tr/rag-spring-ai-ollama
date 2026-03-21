@@ -23,7 +23,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class DocumentPersistenceJdbcIntegrationTest {
 
     @Container
@@ -168,7 +168,7 @@ class DocumentPersistenceJdbcIntegrationTest {
     }
 
     private static String toJson(Map<String, String> map) {
-        // Producción de JSON mínimo para pruebas (no necesitas librerías extra).
+        // Minimal JSON for tests (no extra libraries).
         StringBuilder sb = new StringBuilder();
         sb.append('{');
         boolean first = true;

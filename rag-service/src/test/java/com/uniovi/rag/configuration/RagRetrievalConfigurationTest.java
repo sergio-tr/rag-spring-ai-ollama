@@ -23,14 +23,14 @@ class RagRetrievalConfigurationTest {
     @Test
     void documentContentExtractorBean_returnsDefaultExtractor() {
         RagRetrievalConfiguration config = new RagRetrievalConfiguration();
-        DocumentContentExtractor extractor = config.documentContentExtractor();
+        DocumentContentExtractor extractor = config.documentContentExtractor(null);
         assertNotNull(extractor);
     }
 
     @Test
     void postRetrievalProcessorBean_returnsProcessorWithTopK() {
         RagRetrievalConfiguration config = new RagRetrievalConfiguration();
-        PostRetrievalProcessor processor = config.postRetrievalProcessor(10);
+        PostRetrievalProcessor processor = config.postRetrievalProcessor(10, null);
         assertNotNull(processor);
     }
 
@@ -42,7 +42,7 @@ class RagRetrievalConfigurationTest {
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setRetrieverImpl(null);
 
-        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7);
+        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, null);
         assertNotNull(retriever);
         assertTrue(retriever instanceof BasicContextRetriever);
     }
@@ -55,7 +55,7 @@ class RagRetrievalConfigurationTest {
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setRetrieverImpl("filtered");
 
-        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7);
+        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, null);
         assertNotNull(retriever);
         assertTrue(retriever instanceof FilteredContextRetriever);
     }
@@ -68,7 +68,7 @@ class RagRetrievalConfigurationTest {
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setRetrieverImpl("minute-document");
 
-        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7);
+        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, null);
         assertNotNull(retriever);
         assertTrue(retriever instanceof MinuteDocumentContextRetriever);
     }

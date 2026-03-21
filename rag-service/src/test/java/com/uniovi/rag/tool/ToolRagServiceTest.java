@@ -22,7 +22,7 @@ class ToolRagServiceTest {
         embeddingModel = mock(EmbeddingModel.class);
         float[] vec = new float[]{0.1f, 0.2f};
         when(embeddingModel.embed(any(String.class))).thenReturn(vec);
-        // ToolRagService constructor calls embed(List<String>) with one entry per QueryType in ToolDescriptor
+        // First find* call triggers embed(List<String>) (lazy initialization).
         int n = com.uniovi.rag.configuration.ToolDescriptor.getAll().size();
         List<float[]> list = new java.util.ArrayList<>();
         for (int i = 0; i < n; i++) list.add(new float[]{0.1f + i * 0.01f, 0.2f});
