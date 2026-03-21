@@ -81,7 +81,7 @@ def test_mismatches_vs_baseline_both_none_is_match():
     assert bl.mismatches_vs_baseline({"q": {"queryType": None}}, {"q": None}) == []
 
 
-def test_default_baseline_json_path_points_under_docs():
+def test_default_baseline_json_path_points_under_regression():
     p = bl.default_baseline_json_path()
     assert p.name == "classifier_regression_baseline.json"
-    assert p.parent.name == "docs"
+    assert p.parent.name == "regression"

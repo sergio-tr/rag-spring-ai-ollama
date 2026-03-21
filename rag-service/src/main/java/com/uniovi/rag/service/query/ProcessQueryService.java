@@ -620,7 +620,7 @@ public class ProcessQueryService implements QueryService {
      * Retries up to MAX_RETRIES times if the response is invalid or an error occurs.
      */
     private String askModel(String query, JSONObject nerEntities, QueryType queryType) {
-        // Baseline real (TFG): no retrieval = LLM with question only, no context
+        // Baseline real: no retrieval = LLM with question only, no context
         if (!featureConfig.isUseRetrieval()) {
             try {
                 String rawContent = chatClient.prompt().user(query).call().content();

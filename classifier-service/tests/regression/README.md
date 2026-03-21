@@ -1,24 +1,24 @@
 # Regression tests (classifier-service)
 
-Esta carpeta contiene **harnesses y datos de regresión manual** frente a una instancia HTTP en ejecución. No sustituyen a los **tests unitarios** (`tests/unit/`) ni a los tests de API (`tests/test_api.py`).
+This folder contains **manual regression harnesses and data** against a running HTTP instance. It does not replace **unit tests** (`tests/unit/`) or API tests (`tests/test_api.py`).
 
-| Archivo | Rol |
-|--------|-----|
-| `questions.txt` | Preguntas fijas para capturar/comparar baseline. |
-| `baseline_lib.py` | Utilidades compartidas (lectura de preguntas, comparación); cubierto por pytest en `test_baseline_lib.py`. |
-| `capture_baseline.py` | Genera `docs/classifier_regression_baseline.json` llamando a `POST /classify` (y opcionalmente `/evaluate`). |
-| `check_baseline.py` | Compara el comportamiento actual contra ese JSON. |
+| File | Role |
+|------|------|
+| `questions.txt` | Fixed questions to capture/compare baseline. |
+| `baseline_lib.py` | Shared utilities (read questions, compare); covered by pytest in `test_baseline_lib.py`. |
+| `capture_baseline.py` | Writes `classifier_regression_baseline.json` in this folder via `POST /classify` (and optionally `/evaluate`). |
+| `check_baseline.py` | Compares current behavior against that JSON. |
 
-## Uso (desde `classifier-service/`)
+## Usage (from `classifier-service/`)
 
 ```bash
-# Con el servicio levantado (uvicorn o Docker)
+# With the service running (uvicorn or Docker)
 python tests/regression/capture_baseline.py
 python tests/regression/check_baseline.py
 ```
 
-## Tests unitarios del servicio
+## Other tests in the service
 
-- `tests/unit/` — lógica aislada (model loader, inference, config, etc.).
-- `tests/test_api.py` — API con `TestClient` (sin red).
-- `tests/regression/test_baseline_lib.py` — solo la lógica pura del harness de regresión (sin HTTP).
+- `tests/unit/` — isolated logic (model loader, inference, config, etc.).
+- `tests/test_api.py` — API with `TestClient` (no network).
+- `tests/regression/test_baseline_lib.py` — pure harness logic only (no HTTP).

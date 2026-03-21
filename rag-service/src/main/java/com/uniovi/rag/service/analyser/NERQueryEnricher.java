@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * Builds a short "enriched" query from NER entities for retrieval only (vector search).
- * Keeps strict length limits to avoid context/embedding truncation (see docs/REVISION_MEJORAS_LIMITE_CONTEXTO_LLM.md).
+ * Keeps strict length limits to avoid context/embedding truncation (see notes under rag-service/docs/ or local /docs/ drafts).
  * The enriched query is used only for retriever.retrieve() / retrieveWithMetadataFilters();
  * createContext and LLM prompts continue to use the original query.
  */

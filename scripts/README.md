@@ -53,48 +53,97 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 - With observability: add `-f compose.obs.yml` and `--env-file ../observability/.env`
 - With GPU: add `-f compose.gpu.yml` and `--env-file ../ollama/.env` (Ollama is built from `ollama/Dockerfile`; see `ollama/README.md`)
 
-## Prod local (hardening) - `up`/`down`
+## Prod local (hardening) — `up` / `down`
 
-El modo “prod local” levanta el stack con `compose.prod.yml` (reverse proxy + puertos endurecidos para servicios internos).
+**Prod local** starts the stack with `compose.prod.yml` (reverse proxy + hardened ports for internal services).
 
-- Levantar: `./scripts/up-prod-local.sh [--no-obs] [--gpu]`
-- Parar: `./scripts/down.sh [--no-obs] [--gpu] [--volumes]`
+- Start: `./scripts/up-prod-local.sh [--no-obs] [--gpu]`
+- Stop: `./scripts/down.sh [--no-obs] [--gpu] [--volumes]`
 
-Notas rápidas:
-- Por defecto incluye `compose.obs.yml` (Jaeger/Prometheus/Grafana/OTEL internos, sin puertos publicados en el host).
-- Con `--gpu` se añade `compose.gpu.yml` (requiere `.env` de `ollama/` y runtime compatible con GPU).
+Notes:
+- By default includes `compose.obs.yml` (internal Jaeger/Prometheus/Grafana/OTEL; no published host ports).
+- With `--gpu`, adds `compose.gpu.yml` (requires `ollama/.env` and a GPU-capable runtime).
 
-## Backup / Restore de la base de datos
+## Database backup / restore
 
-Los scripts están pensados para `Postgres` en contenedor (por defecto el contenedor se llama `postgres`).
+These scripts target Postgres in a container (default container name `postgres`).
 
 ### Backup
 
-Genera un `.sql` con `pg_dump`:
+Produces a `.sql` file with `pg_dump`:
 
 ```bash
 ./scripts/backup-db.sh
 ```
 
-Variables opcionales:
+Optional variables:
 
-- `DB_CONTAINER_NAME` (por defecto `postgres`)
-- `OUTPUT_DIR` (por defecto `backups`)
-- `POSTGRES_USER` (por defecto `postgres`)
-- `POSTGRES_DB` (por defecto `vectordb`)
+- `DB_CONTAINER_NAME` (default `postgres`)
+- `OUTPUT_DIR` (default `backups`)
+- `POSTGRES_USER` (default `postgres`)
+- `POSTGRES_DB` (default `vectordb`)
 
-El fichero se guarda en `OUTPUT_DIR` con nombre tipo `db-backup-<YYYYMMDD-HHMMSS>.sql`.
+The file is saved under `OUTPUT_DIR` with a name like `db-backup-<YYYYMMDD-HHMMSS>.sql`.
 
 ### Restore
 
-Restaura un backup `.sql` con `psql` (destructivo: sustituye el estado actual del esquema/datos según el dump):
+Restores a `.sql` backup with `psql` (destructive: replaces current schema/data per the dump):
 
 ```bash
 ./scripts/restore-db.sh path/to/db-backup-YYYYMMDD-HHMMSS.sql
 ```
 
-Variables opcionales:
+Optional variables:
 
-- `DB_CONTAINER_NAME` (por defecto `postgres`)
-- `POSTGRES_USER` (por defecto `postgres`)
-- `POSTGRES_DB` (por defecto `vectordb`)
+- `DB_CONTAINER_NAME` (default `postgres`)
+- `POSTGRES_USER` (default `postgres`)
+- `POSTGRES_DB` (default `vectordb`)
+
+## Smoke test
+
+After `docker compose up -d`, verify that services respond and that an RAG query goes through the classifier.
+
+For a **repeatable pytest suite** (health + classify + backend + optional observability), see [`tests/integration/README.md`](../tests/integration/README.md).
+
+### Technical E2E (script)
+
+To automate the flow (base + optional observability/GPU):
+
+- `./tests/e2e/e2e-technical-compose.sh` (base stack)
+- `./tests/e2e/e2e-technical-compose.sh --obs` (Jaeger/Prometheus/Grafana/OTEL)
+- `./tests/e2e/e2e-technical-compose.sh --gpu` (Ollama in container with GPU; host must support GPU)
+- `./tests/e2e/e2e-technical-compose.sh --obs --gpu` (both)
+
+By default the script brings the stack up and then tears it down; use `--keep` to leave it running.
+
+### 1. Health checks
+
+- **classifier-service:** `curl -s http://localhost:8000/health` → should return `{"status":"ok","model":"loaded"}` (or `"not_loaded"` if the model failed to load).
+- **Backend:** `curl -s http://localhost:9000/actuator/health` (if actuator is enabled) or any endpoint that returns 200.
+
+### 2. Classifier
+
+- **Direct to classifier-service:**  
+  `curl -s -X POST http://localhost:8000/classify -H "Content-Type: application/json" -d "{\"query\": \"How many documents are there?\"}"`  
+  → should return something like `{"queryType":"COUNT_DOCUMENTS"}` (or another valid type).
+
+### 3. RAG query
+
+- **Backend (classification happens internally):**  
+  `curl -s "http://localhost:9000/api/v4/query?question=How%20many%20documents%20are%20there?"`  
+  → should return 200 and a response body. If the classifier is unavailable, the backend may still respond using an LLM fallback.
+
+### Optional script (from repo root, stack running)
+
+```bash
+# classifier-service health
+curl -sf http://localhost:8000/health && echo " classifier-service OK"
+
+# Classify
+curl -sf -X POST http://localhost:8000/classify -H "Content-Type: application/json" -d '{"query":"How many documents?"}' && echo " Classify OK"
+
+# Backend query (needs DB data and Ollama for a full answer)
+curl -sf -o /dev/null -w "%{http_code}" "http://localhost:9000/api/v4/query?question=test" && echo " Backend query OK"
+```
+
+If the DB is empty or Ollama is down, the backend may still return 200 with an error message in the body; the minimum smoke check is HTTP 200.
