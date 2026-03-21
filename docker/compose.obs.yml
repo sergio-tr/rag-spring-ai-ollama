@@ -55,7 +55,7 @@ services:
       context: ../observability/jaeger
       dockerfile: Dockerfile
       args:
-        BASE_IMAGE: ${JAEGER_BASE_IMAGE:-jaegertracing/jaeger:2}
+        BASE_IMAGE: ${JAEGER_BASE_IMAGE:-jaegertracing/jaeger:2.16.0}
     container_name: jaeger
     ports:
       - "${JAEGER_UI_PORT:-16686}:${OBS_INTERNAL_JAEGER_UI:-16686}"
