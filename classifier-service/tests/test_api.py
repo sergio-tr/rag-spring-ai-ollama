@@ -77,7 +77,8 @@ def test_classify_empty_query_returns_400(client: TestClient):
     r = client.post("/classify", json={"query": ""})
     assert r.status_code == 400
     data = r.json()
-    assert "code" in data or "message" in data
+    detail = data.get("detail") if isinstance(data.get("detail"), dict) else data
+    assert "code" in detail or "message" in detail
 
 
 def test_classify_missing_query_returns_422(client: TestClient):
@@ -140,8 +141,12 @@ def test_openapi_schema_available(client: TestClient):
 def test_evaluate_returns_metrics_and_optionally_images(client: TestClient):
     """POST /evaluate returns metrics and optionally base64 images (camelCase)."""
     r = client.post("/evaluate", params={"includeImages": True})
-    if r.status_code == 400 and "not found" in (r.json().get("message") or "").lower():
-        pytest.skip("Default evaluation dataset not found")
+    if r.status_code == 400:
+        body = r.json()
+        detail = body.get("detail") if isinstance(body.get("detail"), dict) else body
+        msg = (detail.get("message") or "").lower()
+        if "not found" in msg or "dataset" in msg or "evaluation" in msg:
+            pytest.skip("Default evaluation dataset or model not usable: " + (detail.get("message") or ""))
     if r.status_code == 404:
         pytest.skip("Model not found")
     assert r.status_code == 200

@@ -15,6 +15,7 @@ import seaborn as sns
 from sklearn.metrics import classification_report, confusion_matrix
 
 from app.base import Loggable
+from app.dataset_columns import normalize_excel_classification_columns
 from app.evaluation.result import EvaluationResult
 from app.inference.model_loader import ModelLoader
 from app.registry.model_registry import ModelRegistry
@@ -49,7 +50,7 @@ class EvaluationPipeline(Loggable):
         model = self._loader.get_model(model_id)
         class_names = self._loader.get_class_names(model_id)
 
-        df = pd.read_excel(eval_dataset_path)
+        df = normalize_excel_classification_columns(pd.read_excel(eval_dataset_path))
         if "Question" not in df.columns or "QueryType" not in df.columns:
             raise ValueError("Evaluation dataset must have columns 'Question' and 'QueryType'")
         X = df["Question"].astype(str).values
