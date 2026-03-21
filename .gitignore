@@ -49,6 +49,9 @@ logs/
 .scannerwork/
 # Java coverage (local HTML report; XML is committed to allow CI to upload)
 rag-service/target/site/jacoco/
+# Classifier model files
+models/
+!models/default/
 # Python coverage (local HTML report; XML generated fresh in CI)
 classifier-service/htmlcov/
 classifier-service/coverage.xml

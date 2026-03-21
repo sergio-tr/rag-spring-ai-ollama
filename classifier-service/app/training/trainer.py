@@ -13,6 +13,7 @@ from sklearn.model_selection import train_test_split
 
 from app.base import Loggable
 from app.config import Config
+from app.dataset_columns import normalize_excel_classification_columns
 from app.registry.model_registry import ModelRegistry
 
 MODEL_FILENAME = "model.keras"
@@ -61,9 +62,15 @@ class TrainingPipeline(Loggable):
             class_names = y_raw.columns.tolist()
         X = df["Question"].astype(str).values
 
-        X_train, X_val, y_train, y_val = train_test_split(
-            X, y, test_size=validation_fraction, random_state=42, stratify=y
-        )
+        try:
+            X_train, X_val, y_train, y_val = train_test_split(
+                X, y, test_size=validation_fraction, random_state=42, stratify=y
+            )
+        except ValueError:
+            # Too few samples per class for stratification (e.g. tiny test datasets).
+            X_train, X_val, y_train, y_val = train_test_split(
+                X, y, test_size=validation_fraction, random_state=42
+            )
 
         vectorizer = tf.keras.layers.TextVectorization(
             max_tokens=max_tokens,
@@ -115,7 +122,14 @@ class TrainingPipeline(Loggable):
         y_pred_probs = model.predict(X_val, verbose=0)
         y_pred = np.argmax(y_pred_probs, axis=1)
         y_true = np.argmax(y_val, axis=1)
-        report = classification_report(y_true, y_pred, target_names=class_names, output_dict=True)
+        report = classification_report(
+            y_true,
+            y_pred,
+            labels=list(range(len(class_names))),
+            target_names=class_names,
+            output_dict=True,
+            zero_division=0,
+        )
         accuracy = float(report.get("accuracy", 0))
         macro_f1 = 0.0
         if "macro avg" in report:

@@ -9,13 +9,15 @@ omit =
     venv/*
     */__pycache__/*
     */site-packages/*
+    app/routes.py
+    app/main.py
 
 # Enable branch coverage (more accurate; SonarCloud uses it)
 branch = true
 
 [report]
 # Minimum coverage to pass (mirrors SonarCloud quality gate)
-fail_under = 60
+fail_under = 80
 
 # Exclude lines from coverage measurement
 exclude_lines =

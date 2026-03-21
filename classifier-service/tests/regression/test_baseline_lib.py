@@ -75,3 +75,13 @@ def test_questions_file_has_minimum_lines():
 def test_questions_file_no_duplicate_lines():
     qs = bl.read_questions(bl.default_questions_path())
     assert len(qs) == len(set(qs))
+
+
+def test_mismatches_vs_baseline_both_none_is_match():
+    assert bl.mismatches_vs_baseline({"q": {"queryType": None}}, {"q": None}) == []
+
+
+def test_default_baseline_json_path_points_under_docs():
+    p = bl.default_baseline_json_path()
+    assert p.name == "classifier_regression_baseline.json"
+    assert p.parent.name == "docs"
