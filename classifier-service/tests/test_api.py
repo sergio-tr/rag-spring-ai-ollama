@@ -77,13 +77,17 @@ def test_classify_empty_query_returns_400(client: TestClient):
     r = client.post("/classify", json={"query": ""})
     assert r.status_code == 400
     data = r.json()
-    detail = data.get("detail") if isinstance(data.get("detail"), dict) else data
-    assert "code" in detail or "message" in detail
+    assert data.get("success") is False
+    err = data.get("error") or {}
+    assert "code" in err or "message" in err
 
 
 def test_classify_missing_query_returns_422(client: TestClient):
     r = client.post("/classify", json={})
     assert r.status_code == 422
+    data = r.json()
+    assert data.get("success") is False
+    assert "error" in data
 
 
 def test_classify_invalid_model_id_returns_404(client: TestClient):
@@ -143,10 +147,10 @@ def test_evaluate_returns_metrics_and_optionally_images(client: TestClient):
     r = client.post("/evaluate", params={"includeImages": True})
     if r.status_code == 400:
         body = r.json()
-        detail = body.get("detail") if isinstance(body.get("detail"), dict) else body
-        msg = (detail.get("message") or "").lower()
+        err = body.get("error") if isinstance(body.get("error"), dict) else body
+        msg = (err.get("message") or "").lower()
         if "not found" in msg or "dataset" in msg or "evaluation" in msg:
-            pytest.skip("Default evaluation dataset or model not usable: " + (detail.get("message") or ""))
+            pytest.skip("Default evaluation dataset or model not usable: " + (err.get("message") or ""))
     if r.status_code == 404:
         pytest.skip("Model not found")
     assert r.status_code == 200

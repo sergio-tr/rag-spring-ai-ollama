@@ -14,6 +14,10 @@ echo -n "Classifier /classify ... "
 curl -sf -X POST "$CLASSIFIER/classify" -H "Content-Type: application/json" -d '{"query":"¿Cuántas actas?"}' | grep -q queryType && echo "OK" || { echo "FAIL"; exit 1; }
 
 echo -n "Backend /api/v4/query ... "
-CODE=$(curl -sf -o /dev/null -w "%{http_code}" "$BACKEND/api/v4/query?question=test") && echo "HTTP $CODE" || { echo "FAIL"; exit 1; }
-if [ "$CODE" != "200" ]; then echo "Expected 200"; exit 1; fi
+TMP=$(mktemp)
+CODE=$(curl -sS -o "$TMP" -w "%{http_code}" "$BACKEND/api/v4/query?question=test") || { echo "FAIL (curl)"; rm -f "$TMP"; exit 1; }
+echo "HTTP $CODE"
+if [ "$CODE" != "200" ]; then echo "Response:"; cat "$TMP"; rm -f "$TMP"; echo "Expected 200 (is Ollama up and reachable?)"; exit 1; fi
+grep -q '"success"[[:space:]]*:[[:space:]]*true' "$TMP" || { echo "Expected JSON envelope with success:true"; cat "$TMP"; rm -f "$TMP"; exit 1; }
+rm -f "$TMP"
 echo "Smoke test passed."

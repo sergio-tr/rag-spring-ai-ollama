@@ -1,9 +1,13 @@
 # Development override — hot-reload for classifier-service via bind-mount.
 #
-# RECOMMENDED WORKFLOW (hybrid: infra in Docker, backend+classifier in local):
-#   ./scripts/dev.sh          # starts only postgres (+ ollama if --gpu)
+# RECOMMENDED WORKFLOW (hybrid: infra in Docker, backend+classifier en local):
+#   ./scripts/up.sh dev       # postgres only; add --gpu|--ollama --obs --classifier --logs --infra as needed
 #   cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 #   cd classifier-service && uvicorn main:app --reload --reload-dir app
+#
+# BACKEND EN DOCKER con recarga (volumen + mvn compile + Spring DevTools):
+#   ./scripts/up.sh dev --rag [--gpu|--ollama] ...   # añade compose.rag-dev.yml → servicio backend-dev
+#   Ver docker/compose.rag-dev.yml y rag-service/Dockerfile.dev
 #
 # ALTERNATIVE: keep classifier in Docker with hot-reload (backend still local):
 #   cd docker
@@ -33,13 +37,12 @@ services:
       PORT: ${PORT:-8000}
       MODELS_DIR: ${MODELS_DIR:-/app/models}
       DATA_DIR: ${DATA_DIR:-/app/data}
-    # In dev, a simpler healthcheck that doesn't require python on PATH
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:${PORT:-8000}/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\" || exit 1"]
       interval: 10s
-      timeout: 5s
+      timeout: 8s
       retries: 5
-      start_period: 15s
+      start_period: 60s
 
   # Remove backend from compose.dev.yml stack — run it locally instead.
   # If you need the backend in Docker for some reason, keep it from docker-compose.yml

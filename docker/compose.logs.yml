@@ -1,5 +1,6 @@
 # Loki + Promtail. Values from observability/.env (pass --env-file ../observability/.env).
 # The template is rendered at startup with the ports defined in .env.
+# Also: ./scripts/up.sh dev|prod --logs
 
 services:
   loki:
