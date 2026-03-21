@@ -41,6 +41,11 @@ public class RagConfiguration {
      */
     @Bean
     public ChatClient chatClient(ChatModel chatModel) {
-        return ChatClient.builder(chatModel).build();
+        return ChatClient.builder(chatModel)
+                .defaultSystem("""
+                        You are a helpful assistant. Always answer the user's message directly in the same language they use.
+                        When document context is provided below, use it for facts about those documents; otherwise use general knowledge.
+                        Never ask the user to provide context, conversation history, or retrieved fragments unless they are debugging the system.""")
+                .build();
     }
 }

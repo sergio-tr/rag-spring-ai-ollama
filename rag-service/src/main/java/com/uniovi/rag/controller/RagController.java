@@ -14,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import com.uniovi.rag.api.dto.ApiResponse;
+import com.uniovi.rag.api.dto.QuerySuccessPayload;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.model.Loggable;
 import java.util.Map;
@@ -125,19 +127,28 @@ public class RagController implements Loggable {
         }
     }
 
-    @GetMapping("/query")
-    public ResponseEntity<String> query(@RequestParam String question) {
+    /**
+     * RAG query. Returns JSON envelope {@link ApiResponse} with {@link QuerySuccessPayload} on success,
+     * or {@code success: false} + error code (e.g. {@code LLM_UNAVAILABLE}, HTTP 503) when Ollama is unreachable.
+     *
+     * @param chatModel optional Ollama chat model for this request (lab); if omitted, the default from configuration is used.
+     *                  Before answering, the backend checks connectivity and pulls missing embedding/chat models when {@code rag.ollama.auto-pull-enabled=true}.
+     */
+    @GetMapping(value = "/query", produces = org.springframework.http.MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ApiResponse<QuerySuccessPayload>> query(
+            @RequestParam String question,
+            @RequestParam(required = false) String chatModel) {
         if (observability != null) {
             return observability.runWithSpan("rag.controller.query",
                     Map.of("question", question != null ? question : ""),
                     "result",
                     () -> {
-                        QueryResponse response = queryService.generateResponse(question);
-                        return ResponseEntity.ok(response.getAnswer());
+                        QueryResponse response = queryService.generateResponse(question, chatModel);
+                        return ResponseEntity.ok(ApiResponse.ok(QuerySuccessPayload.from(response)));
                     });
         }
-        QueryResponse response = queryService.generateResponse(question);
-        return ResponseEntity.ok(response.getAnswer());
+        QueryResponse response = queryService.generateResponse(question, chatModel);
+        return ResponseEntity.ok(ApiResponse.ok(QuerySuccessPayload.from(response)));
     }
 
     @GetMapping("/evaluate")

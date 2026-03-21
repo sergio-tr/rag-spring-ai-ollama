@@ -1,5 +1,6 @@
 package com.uniovi.rag.service.evaluation;
 
+import com.uniovi.rag.api.OllamaConnectivityChecker;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.query.QueryService;
@@ -13,6 +14,7 @@ import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class EvaluationServiceFactoryTest {
@@ -28,6 +30,8 @@ class EvaluationServiceFactoryTest {
         EmbeddingModel embeddingModel = mock(EmbeddingModel.class);
         ResponseValidator responseValidator = mock(ResponseValidator.class);
         DocumentContentExtractor documentContentExtractor = mock(DocumentContentExtractor.class);
+        OllamaConnectivityChecker ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
+        doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         factory = new EvaluationServiceFactory(
                 chatClient,
@@ -47,7 +51,8 @@ class EvaluationServiceFactoryTest {
                 350,
                 512,
                 500,
-                200
+                200,
+                ollamaConnectivityChecker
         );
         featureConfig = new RagFeatureConfiguration();
     }

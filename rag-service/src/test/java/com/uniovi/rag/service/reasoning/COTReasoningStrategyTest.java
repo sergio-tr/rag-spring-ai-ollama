@@ -3,15 +3,12 @@ package com.uniovi.rag.service.reasoning;
 import com.uniovi.rag.model.PostStepOutput;
 import com.uniovi.rag.model.QueryType;
 import com.uniovi.rag.model.ReasoningPreOutput;
-import org.json.JSONObject;
+import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.model.Generation;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class COTReasoningStrategyTest {
@@ -46,5 +43,23 @@ class COTReasoningStrategyTest {
         assertNotNull(out);
         assertEquals("draft", out.verifiedOrRefinedText());
         assertFalse(out.verified());
+    }
+
+    @Test
+    void runPreStep_success() {
+        ChatClient c = ChatClientTestSupport.clientWithUserPromptReturning("Need facts; use search.");
+        COTReasoningStrategy s = new COTReasoningStrategy(c);
+        ReasoningPreOutput out = s.runPreStep("q", QueryType.COUNT_DOCUMENTS, null, "expanded");
+        assertEquals("Need facts; use search.", out.thoughtOrPlan());
+    }
+
+    @Test
+    void runPostStep_longContext_usesExcerptBranch() {
+        ChatClient c = ChatClientTestSupport.clientWithUserPromptReturning("Yes");
+        COTReasoningStrategy s = new COTReasoningStrategy(c);
+        String ctx = "x".repeat(600);
+        PostStepOutput out = s.runPostStep("q", ctx, "draft");
+        assertNotNull(out);
+        assertTrue(out.verified());
     }
 }

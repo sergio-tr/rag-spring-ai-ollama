@@ -18,7 +18,7 @@ import java.util.Map;
 
 public class DatasetMinuteEvaluationService extends AbstractMinuteEvaluationService {
 
-    private static final String EXCEL_CLASSPATH = "python/evaluation_dataset.xlsx";
+    private static final String EXCEL_CLASSPATH = "evaluation/evaluation_dataset.xlsx";
 
     public DatasetMinuteEvaluationService(
         RagFeatureConfiguration featureConfig,

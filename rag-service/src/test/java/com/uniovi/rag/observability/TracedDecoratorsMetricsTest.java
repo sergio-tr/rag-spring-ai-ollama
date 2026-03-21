@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 class TracedDecoratorsMetricsTest {
@@ -97,13 +98,13 @@ class TracedDecoratorsMetricsTest {
     void tracedQueryService_recordsCounterAndTimer() {
         QueryService delegate = mock(QueryService.class);
         QueryResponse expected = QueryResponse.fromLLM("answer", QueryType.COUNT_DOCUMENTS);
-        when(delegate.generateResponse("question")).thenReturn(expected);
+        when(delegate.generateResponse(eq("question"), isNull())).thenReturn(expected);
 
         TracedQueryService traced = new TracedQueryService(delegate, observability);
         QueryResponse result = traced.generateResponse("question");
 
         assertSame(expected, result);
-        verify(delegate).generateResponse("question");
+        verify(delegate).generateResponse(eq("question"), isNull());
 
         assertEquals(1.0, meterRegistry.find("rag.query.calls")
                 .tag("operation", "generateResponse")

@@ -20,6 +20,7 @@ import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.DefaultPostRetrievalProcessor;
+import com.uniovi.rag.api.OllamaConnectivityChecker;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -68,6 +69,7 @@ public class EvaluationServiceFactory {
     private final int expansionMaxQueryTotalChars;
     private final int expansionMaxQueryLengthForLlm;
     private final int expansionRetryQueryLength;
+    private final OllamaConnectivityChecker ollamaConnectivityChecker;
 
     public EvaluationServiceFactory(
         ChatClient chatClient,
@@ -87,7 +89,8 @@ public class EvaluationServiceFactory {
         int expansionMaxExpansionChars,
         int expansionMaxQueryTotalChars,
         int expansionMaxQueryLengthForLlm,
-        int expansionRetryQueryLength
+        int expansionRetryQueryLength,
+        OllamaConnectivityChecker ollamaConnectivityChecker
     ) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
@@ -107,6 +110,7 @@ public class EvaluationServiceFactory {
         this.expansionMaxQueryTotalChars = expansionMaxQueryTotalChars > 0 ? expansionMaxQueryTotalChars : 512;
         this.expansionMaxQueryLengthForLlm = expansionMaxQueryLengthForLlm > 0 ? expansionMaxQueryLengthForLlm : 500;
         this.expansionRetryQueryLength = expansionRetryQueryLength > 0 ? expansionRetryQueryLength : 200;
+        this.ollamaConnectivityChecker = ollamaConnectivityChecker;
     }
 
     /**
@@ -158,9 +162,9 @@ public class EvaluationServiceFactory {
         String queryServiceImpl = featureConfig.getQueryServiceImpl() != null ? featureConfig.getQueryServiceImpl().trim().toLowerCase() : "process";
         switch (queryServiceImpl) {
             case "simple":
-                return new SimpleQueryService(expander, analyser, retriever, chatClient);
+                return new SimpleQueryService(expander, analyser, retriever, chatClient, ollamaConnectivityChecker);
             case "simple-process":
-                return new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient);
+                return new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient, ollamaConnectivityChecker);
             default:
                 return new ProcessQueryService(
                         featureConfig,
@@ -178,7 +182,8 @@ public class EvaluationServiceFactory {
                         postRetrievalProcessor,
                         toolRagService,
                         responseValidator,
-                        null  // questionAnswerAdvisor: evaluation uses manual retrieval path
+                        null,  // questionAnswerAdvisor: evaluation uses manual retrieval path
+                        ollamaConnectivityChecker
                 );
         }
     }

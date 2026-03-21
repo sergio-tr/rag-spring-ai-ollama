@@ -23,6 +23,11 @@ public final class ChatClientTestSupport {
         when(client.prompt().user(anyString()).call().content()).thenReturn(content);
     }
 
+    /** Makes the common {@code prompt().user(any).call().content()} chain throw (e.g. Ollama down). */
+    public static void stubUserPromptThrows(ChatClient client, Throwable t) {
+        when(client.prompt().user(anyString()).call().content()).thenThrow(t);
+    }
+
     public static void stubSystemUserPromptReturns(ChatClient client, String content) {
         when(client.prompt().system(anyString()).user(anyString()).call().content()).thenReturn(content);
     }

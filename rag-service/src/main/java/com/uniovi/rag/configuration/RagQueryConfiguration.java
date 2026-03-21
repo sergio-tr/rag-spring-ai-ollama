@@ -22,6 +22,7 @@ import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.api.OllamaConnectivityChecker;
 import com.uniovi.rag.service.query.LLMResponseValidatorService;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
@@ -243,6 +244,7 @@ public class RagQueryConfiguration {
             ToolRagService toolRagService,
             ResponseValidator responseValidator,
             QuestionAnswerAdvisor questionAnswerAdvisor,
+            OllamaConnectivityChecker ollamaConnectivityChecker,
             RagImplementationProperties implProps,
             @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
     ) {
@@ -250,10 +252,10 @@ public class RagQueryConfiguration {
         QueryService raw;
         switch (impl) {
             case "simple":
-                raw = new SimpleQueryService(expander, analyser, retriever, chatClient);
+                raw = new SimpleQueryService(expander, analyser, retriever, chatClient, ollamaConnectivityChecker);
                 break;
             case "simple-process":
-                raw = new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient);
+                raw = new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient, ollamaConnectivityChecker);
                 break;
             default:
                 raw = new ProcessQueryService(
@@ -272,7 +274,8 @@ public class RagQueryConfiguration {
                         postRetrievalProcessor,
                         toolRagService,
                         responseValidator,
-                        questionAnswerAdvisor
+                        questionAnswerAdvisor,
+                        ollamaConnectivityChecker
                 );
                 break;
         }
