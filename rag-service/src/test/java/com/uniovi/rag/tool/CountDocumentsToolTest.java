@@ -3,6 +3,7 @@ package com.uniovi.rag.tool;
 import com.uniovi.rag.model.QueryType;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,17 +25,11 @@ class CountDocumentsToolTest {
 
     @BeforeEach
     void setUp() {
-        chatClient = mock(ChatClient.class);
+        chatClient = ChatClientTestSupport.clientWithUserPromptReturning("No meeting minutes match.");
         retriever = mock(ContextRetriever.class);
         extractor = mock(DocumentContentExtractor.class);
         when(retriever.retrieve(anyString())).thenReturn(List.of());
         when(retriever.retrieveWithMetadataFilters(anyString(), any(JSONObject.class))).thenReturn(List.of());
-        var callSpec = mock(org.springframework.ai.chat.client.CallResponseSpec.class);
-        var promptSpec = mock(org.springframework.ai.chat.client.PromptSpec.class);
-        when(chatClient.prompt()).thenReturn(promptSpec);
-        when(promptSpec.user(anyString())).thenReturn(callSpec);
-        when(callSpec.call()).thenReturn(callSpec);
-        when(callSpec.content()).thenReturn("No meeting minutes match.");
         tool = new CountDocumentsTool(chatClient, retriever, extractor);
     }
 

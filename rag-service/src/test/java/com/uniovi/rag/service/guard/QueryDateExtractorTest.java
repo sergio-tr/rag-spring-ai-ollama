@@ -1,10 +1,12 @@
 package com.uniovi.rag.service.guard;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -48,7 +50,7 @@ class QueryDateExtractorTest {
     }
 
     @Test
-    void extractNormalizedDate_fromNer() {
+    void extractNormalizedDate_fromNer() throws JSONException {
         JSONObject ner = new JSONObject();
         ner.put("date", new org.json.JSONArray(List.of("2026-03-15")));
         String result = extractor.extractNormalizedDate("algo", ner);

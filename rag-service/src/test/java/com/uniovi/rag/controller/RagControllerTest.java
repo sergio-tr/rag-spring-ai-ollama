@@ -157,7 +157,11 @@ class RagControllerTest {
     @Test
     void evaluateWithCustomConfig_returnsOkWithResults() throws Exception {
         doNothing().when(evaluationService).loadData();
-        when(evaluationService.evaluateWithConfiguration(any())).thenReturn(Map.of("score", 0.9));
+        when(evaluationService.evaluateWithConfiguration(any())).thenAnswer(inv -> {
+            java.util.Map<String, Object> m = new java.util.HashMap<>();
+            m.put("score", 0.9);
+            return m;
+        });
 
         mockMvc.perform(post("/api/v4/evaluate/custom")
                         .contentType(MediaType.APPLICATION_JSON)

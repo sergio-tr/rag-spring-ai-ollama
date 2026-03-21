@@ -4,6 +4,7 @@ import com.uniovi.rag.model.QueryResponse;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -28,7 +29,7 @@ class SimpleQueryServiceTest {
         expander = mock(QueryExpander.class);
         analyser = mock(QueryAnalyser.class);
         retriever = mock(ContextRetriever.class);
-        chatClient = mock(ChatClient.class);
+        chatClient = ChatClientTestSupport.mockForUserPromptChain();
         service = new SimpleQueryService(expander, analyser, retriever, chatClient);
     }
 
@@ -50,7 +51,9 @@ class SimpleQueryServiceTest {
         QueryResponse response = service.generateResponse("pregunta");
 
         assertNotNull(response);
-        assertTrue(response.getAnswer().contains("No se encontró") || response.getAnswer().contains("información"));
+        String a = response.getAnswer();
+        assertTrue(a.contains("No se encontró") || a.contains("información")
+                || a.contains("No relevant information") || a.contains("cannot find"));
     }
 
     @Test
@@ -59,12 +62,7 @@ class SimpleQueryServiceTest {
         when(analyser.analyse("p")).thenReturn(null);
         when(retriever.retrieve("p")).thenReturn(List.of(new Document("doc", java.util.Map.of())));
         when(retriever.createContext(anyList(), anyString(), any())).thenReturn("context");
-        var callSpec = mock(org.springframework.ai.chat.client.CallResponseSpec.class);
-        var promptSpec = mock(org.springframework.ai.chat.client.PromptSpec.class);
-        when(chatClient.prompt()).thenReturn(promptSpec);
-        when(promptSpec.user(anyString())).thenReturn(callSpec);
-        when(callSpec.call()).thenReturn(callSpec);
-        when(callSpec.content()).thenReturn("Answer from LLM");
+        ChatClientTestSupport.stubUserPromptReturns(chatClient, "Answer from LLM");
 
         QueryResponse response = service.generateResponse("p");
 

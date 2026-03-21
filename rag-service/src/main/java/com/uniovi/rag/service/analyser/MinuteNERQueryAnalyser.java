@@ -163,7 +163,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     @Override
     public JSONObject analyse(String query) {
-        if (query == null || query.trim().isEmpty()) {
+        if (query == null || query.isBlank()) {
             log().warn("NER: Empty query provided");
             return createFallbackResponse(query);
         }
@@ -685,7 +685,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         JSONObject fallback = new JSONObject();
         
         // Try to extract basic information from the query
-        String queryLower = query.toLowerCase();
+        String queryLower = query == null ? "" : query.toLowerCase(Locale.ROOT);
         
         // Basic date detection
         if (queryLower.contains("febrero") || queryLower.contains("february")) {

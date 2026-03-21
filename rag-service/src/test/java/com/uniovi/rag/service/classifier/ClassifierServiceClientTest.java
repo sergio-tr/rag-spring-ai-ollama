@@ -85,9 +85,7 @@ class ClassifierServiceClientTest {
     @Test
     void classify_returnsNull_whenServiceReturnsNon2xx() {
         server.expect(requestTo("http://localhost:8000/classify"))
-                .andRespond(withStatus(HttpStatus.BAD_REQUEST,
-                        "{\"error\":\"bad request\"}",
-                        MediaType.APPLICATION_JSON));
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST));
 
         QueryType result = classifier.classify("any query");
 

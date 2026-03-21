@@ -66,11 +66,13 @@ class AbstractToolTest {
             return null;
         }
 
-        String removeQuestionRepetition(String response, String query) {
+        @Override
+        protected String removeQuestionRepetition(String response, String query) {
             return super.removeQuestionRepetition(response, query);
         }
 
-        String formatResponse(String response, String query) {
+        @Override
+        protected String formatResponse(String response, String query) {
             return super.formatResponse(response, query);
         }
     }

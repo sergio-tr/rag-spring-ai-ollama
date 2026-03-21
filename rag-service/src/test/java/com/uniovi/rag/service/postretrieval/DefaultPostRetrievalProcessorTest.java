@@ -38,8 +38,8 @@ class DefaultPostRetrievalProcessorTest {
         );
         List<Document> result = processor.process(docs, "q");
         assertEquals(2, result.size());
-        assertEquals("a", result.get(0).getContent());
-        assertEquals("b", result.get(1).getContent());
+        assertEquals("a", result.get(0).getText());
+        assertEquals("b", result.get(1).getText());
     }
 
     @Test

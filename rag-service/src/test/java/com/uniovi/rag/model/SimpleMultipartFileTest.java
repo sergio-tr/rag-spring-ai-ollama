@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SimpleMultipartFileTest {
 
     @Test
-    void gettersAndIsEmpty() {
+    void gettersAndIsEmpty() throws IOException {
         byte[] data = "hello".getBytes();
         SimpleMultipartFile f = new SimpleMultipartFile("param", "file.txt", "text/plain", data);
         assertEquals("param", f.getName());
@@ -30,7 +30,7 @@ class SimpleMultipartFileTest {
     }
 
     @Test
-    void nullContent_defaultsToEmptyArray() {
+    void nullContent_defaultsToEmptyArray() throws IOException {
         SimpleMultipartFile f = new SimpleMultipartFile("x", "a", "b", null);
         assertTrue(f.isEmpty());
         assertEquals(0, f.getSize());

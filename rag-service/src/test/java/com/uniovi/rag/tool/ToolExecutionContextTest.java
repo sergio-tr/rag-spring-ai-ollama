@@ -1,6 +1,7 @@
 package com.uniovi.rag.tool;
 
 import com.uniovi.rag.model.QueryType;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +26,7 @@ class ToolExecutionContextTest {
     }
 
     @Test
-    void of_full() {
+    void of_full() throws JSONException {
         JSONObject ner = new JSONObject().put("date", new org.json.JSONArray().put("2025-01-01"));
         ToolExecutionContext ctx = ToolExecutionContext.of("q", QueryType.FIND_PARAGRAPH, ner);
         assertEquals("q", ctx.query());
