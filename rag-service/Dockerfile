@@ -5,16 +5,18 @@ ARG JRE_BASE_IMAGE=eclipse-temurin:21-jre-alpine
 FROM ${JDK_BASE_IMAGE} AS build
 WORKDIR /app
 
-# Maven Wrapper (mvnw + .mvn/) — avoids requiring Maven on the host or base image.
-# mvnw and .mvn/ are present inside rag-service/ (copies of the repo-root wrapper).
+# Maven Wrapper (mvnw + .mvn/) — no Maven install required on host or base image.
+# Wrapper lives only under rag-service/ (single copy in the repo).
 COPY mvnw ./mvnw
 COPY .mvn ./.mvn
-RUN chmod +x mvnw
+# Windows CRLF checkouts break the shell shebang and wrapper URLs (e.g. jar%0D → 404).
+RUN sed -i 's/\r$//' mvnw && find .mvn -type f -exec sed -i 's/\r$//' {} + && chmod +x mvnw
 
 COPY pom.xml .
-RUN ./mvnw -B dependency:go-offline -DskipTests
+RUN ./mvnw -B dependency:go-offline -Dmaven.test.skip=true
 COPY src ./src
-RUN ./mvnw -B package -DskipTests
+# Production image: skip compiling tests (-DskipTests only skips execution, not compilation).
+RUN ./mvnw -B package -Dmaven.test.skip=true
 
 # Run stage
 FROM ${JRE_BASE_IMAGE}

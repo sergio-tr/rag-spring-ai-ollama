@@ -35,7 +35,7 @@ RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring
 ./scripts/dev.sh
 
 # 3. Backend with hot-reload (terminal 2)
-cd rag-service && ../mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 
 # 4. Classifier with hot-reload (terminal 3)
 cd classifier-service && uvicorn main:app --reload --reload-dir app

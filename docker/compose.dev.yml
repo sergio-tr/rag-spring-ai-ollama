@@ -2,7 +2,7 @@
 #
 # RECOMMENDED WORKFLOW (hybrid: infra in Docker, backend+classifier in local):
 #   ./scripts/dev.sh          # starts only postgres (+ ollama if --gpu)
-#   cd rag-service && ../mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+#   cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 #   cd classifier-service && uvicorn main:app --reload --reload-dir app
 #
 # ALTERNATIVE: keep classifier in Docker with hot-reload (backend still local):
@@ -10,7 +10,7 @@
 #   docker compose -f docker-compose.yml -f compose.dev.yml \
 #     --env-file ../db/.env --env-file ../classifier-service/.env \
 #     up -d postgres classifier-service
-#   cd rag-service && ../mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+#   cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 #
 # Changes to classifier-service/app/*.py are detected immediately by uvicorn --reload.
 # Changes to classifier-service/models/ or data/ do NOT trigger reload (excluded from watch).
