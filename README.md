@@ -32,7 +32,7 @@ RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring
 ./scripts/create-env-all.sh
 
 # 2. Start infrastructure (Postgres) in Docker
-./scripts/dev.sh
+./scripts/up.sh dev
 
 # 3. Backend with hot-reload (terminal 2)
 cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
@@ -59,17 +59,18 @@ docker compose \
 
 | Mode | Command | Description |
 |---|---|---|
-| Dev (hybrid) | `./scripts/dev.sh` | Only infra in Docker; services run locally |
+| Dev (hybrid) | `./scripts/up.sh dev` | Only infra in Docker; services run locally |
+| Dev (max infra) | `./scripts/up.sh dev --all` | `--gpu --obs --classifier --logs --infra` (GPU Ollama, obs, Loki/Promtail, node-exporter/cAdvisor) |
 | Full compose | `cd docker && docker compose ... up -d` | Everything in Docker |
 | With observability | add `-f compose.obs.yml --env-file ../observability/.env` | + OTEL/Jaeger/Prometheus/Grafana |
-| With GPU (Ollama) | add `-f compose.gpu.yml --env-file ../ollama/.env` | + Ollama with NVIDIA GPU |
-| Prod local | `./scripts/up-prod-local.sh` | Hardened: nginx reverse proxy, no exposed ports |
+| With GPU (Ollama) | add `-f compose.ollama-gpu.yml --env-file ../ollama/.env` | + Ollama with NVIDIA GPU |
+| Prod local | `./scripts/up.sh prod [--obs]` | Hardened: nginx reverse proxy; add `--obs` for OTEL/Jaeger/Prometheus/Grafana |
 
 ## Key API endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/v4/query?question=...` | RAG query |
+| `GET` | `/api/v4/query?question=...` | RAG query (JSON: `success` + `data` or `error`; HTTP **503** + `LLM_UNAVAILABLE` if Ollama unreachable) |
 | `POST` | `/api/v4/documents` | Upload document (multipart) |
 | `POST` | `/api/v4/documents/minute` | Add meeting minute (JSON) |
 | `DELETE` | `/api/v4/documents/{id}` | Delete document |

@@ -46,7 +46,7 @@ cd docker
 docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d
 ```
 
-Or use `./scripts/set-env.sh` to create env files interactively and run compose. Ports and base images are in the respective `.env` files; override them there or when running `docker compose`.
+Or use `./scripts/set-env.sh` to create `.env` files interactively, then `./scripts/up.sh dev|prod` to start the stack. Ports and base images are in the respective `.env` files; override them there or when running `docker compose`.
 
 ## Running only the database (local development)
 

@@ -1,3 +1,6 @@
 # Maven wrapper: CRLF breaks builds Linux/Docker (shebang and wrapperURLs).
 rag-service/mvnw text eol=lf
 rag-service/.mvn/wrapper/maven-wrapper.properties text eol=lf
+
+# Shell scripts: CRLF breaks shebang on Linux/WSL (/usr/bin/env: 'bash\r': No such file or directory).
+*.sh text eol=lf

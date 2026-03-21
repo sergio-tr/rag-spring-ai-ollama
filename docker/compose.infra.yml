@@ -1,5 +1,6 @@
-# node-exporter + cAdvisor. Puertos host desde observability/.env
-# Uso: docker compose ... -f compose.infra.yml --env-file ../observability/.env up -d
+# node-exporter + cAdvisor. Host ports from observability/.env
+# Usage: docker compose ... -f compose.infra.yml --env-file ../observability/.env up -d
+# Also: ./scripts/up.sh dev|prod --infra
 
 services:
   node-exporter:

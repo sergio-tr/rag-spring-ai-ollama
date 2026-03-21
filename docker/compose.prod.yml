@@ -3,7 +3,7 @@ services:
   backend:
     ports: []
     environment:
-      # En prod local/prod no usamos ddl-auto=update. Se controla por migraciones (Flyway).
+      # In prod local/prod we don't use ddl-auto=update. It is controlled by migrations (Flyway).
       SPRING_JPA_HIBERNATE_DDL_AUTO: none
     networks:
       - public

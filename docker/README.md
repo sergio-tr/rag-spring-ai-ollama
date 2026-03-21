@@ -10,6 +10,10 @@ docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env
 
 With observability, add `-f compose.obs.yml` and `--env-file ../observability/.env` (see `observability/README.md`).
 
+**Ollama (required for RAG):** the default backend URL is `http://host.docker.internal:11434` (Ollama on the **host**). If Ollama is **not** running on the host, the API will return errors and logs will show `ResourceAccessException` on `/api/embed` and `/api/chat`. Use **`compose.ollama.yml`** to run Ollama in Docker (CPU) and point the backend at `http://ollama:11434`, then pull the chat and embedding models into the container (see that file’s header comments).
+
+**Health checks (strict):** the backend container probes **`/actuator/health/readiness`** (HTTP **503** until ready). That group includes PostgreSQL, disk space, **Ollama** (`GET /api/tags` and both configured models present), and the **classifier** (`GET /health` with `model: loaded`). The classifier service only becomes healthy when its default model is loaded. Tune or relax checks via `rag.health.*` in `rag-service` (see `application.properties`).
+
 ## Execution modes
 
 Quick guide to run the stack with Docker Compose (no frontend).
@@ -53,9 +57,24 @@ docker compose \
   up -d
 ```
 
+### Base + Ollama (CPU, in Docker)
+
+Adds the **`ollama`** service (official image) and sets `SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`. Does **not** require a GPU. The **backend** pulls missing chat/embedding models via Ollama’s API on startup (`rag.ollama.auto-pull-enabled`, default `true`); the first start can take several minutes while models download. You can still run `docker exec -it ollama ollama pull <model>` manually if you prefer to preload before starting the backend.
+
+```bash
+cd docker
+docker compose \
+  -f docker-compose.yml \
+  -f compose.ollama.yml \
+  --env-file ../db/.env \
+  --env-file ../rag-service/.env \
+  --env-file ../classifier-service/.env \
+  up -d
+```
+
 ### Base + GPU
 
-Includes `ollama` in a container and points the backend at it.
+Includes `ollama` built from `ollama/` (NVIDIA GPU) and points the backend at it.
 
 Example:
 
@@ -63,7 +82,7 @@ Example:
 cd docker
 docker compose \
   -f docker-compose.yml \
-  -f compose.gpu.yml \
+  -f compose.ollama-gpu.yml \
   --env-file ../db/.env \
   --env-file ../rag-service/.env \
   --env-file ../classifier-service/.env \
@@ -79,14 +98,16 @@ By default it also includes internal observability (no Jaeger/Prometheus/Grafana
 Start / stop:
 
 ```bash
-./scripts/up-prod-local.sh
-./scripts/down.sh
+./scripts/up.sh prod
+./scripts/build.sh prod   # optional: build images with same -f chain as up
+./scripts/down.sh         # o: ./scripts/down.sh prod [--all] ...
+# Dev (incl. backend-dev): ./scripts/down.sh dev [--all|...] — mismos flags que up dev
 ```
 
 Options:
 
-- `--no-obs`: do not include `compose.obs.yml`
-- `--gpu`: include `compose.gpu.yml` (requires `ollama/.env` and a GPU-capable environment)
+- Use `./scripts/up.sh prod --obs` to include `compose.obs.yml` (OTEL, Jaeger, Prometheus, Grafana).
+- `--gpu`: include `compose.ollama-gpu.yml` (requires `ollama/.env` and a GPU-capable environment)
 - `--volumes` (only `down.sh`): also remove named volumes
 
 ## Deployment runbook

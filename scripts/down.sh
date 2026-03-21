@@ -1,78 +1,21 @@
 #!/usr/bin/env bash
-# Stop prod local stack (or matching overrides) with docker compose.
+# For the same Compose project as up: use the same mode and flags as when starting.
 #
-# Default matches scripts/up-prod-local.sh: includes observability and prod hardening.
-# Optional:
-#   --no-obs   : do not include compose.obs.yml
-#   --gpu      : include compose.gpu.yml
-#   --volumes  : also remove named volumes
+# Usage:
+#   ./scripts/down.sh              # prod (default), same as before
+#   ./scripts/down.sh prod [--all] [--obs] [--gpu|--ollama] [--logs] [--infra] [--volumes]
+#   ./scripts/down.sh dev  [--all] [--rag] [--obs] [--classifier] ... [--volumes]
 #
-# Run from repository root:
-#   ./scripts/down.sh [--no-obs] [--gpu] [--volumes]
-set -e
-
+# Examples:
+#   ./scripts/down.sh dev --all              # stop backend-dev, ollama, obs, etc.
+#   ./scripts/down.sh prod --obs --gpu
+set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-DOCKER_DIR="$ROOT_DIR/docker"
-
-WITH_OBS=true
-WITH_GPU=false
-WITH_VOLUMES=false
-
-for arg in "$@"; do
-  case "$arg" in
-    --no-obs) WITH_OBS=false ;;
-    --gpu) WITH_GPU=true ;;
-    --volumes) WITH_VOLUMES=true ;;
-    *)
-      echo "Unknown argument: $arg" >&2
-      echo "Usage: $0 [--no-obs] [--gpu] [--volumes]" >&2
-      exit 1
-      ;;
-  esac
-done
-
-COMPOSE_FILES=(-f "docker-compose.yml" -f "compose.prod.yml")
-if [ "$WITH_OBS" = true ]; then
-  COMPOSE_FILES=(-f "docker-compose.yml" -f "compose.obs.yml" -f "compose.prod.yml")
-fi
-if [ "$WITH_GPU" = true ]; then
-  if [ "$WITH_OBS" = true ]; then
-    COMPOSE_FILES=(-f "docker-compose.yml" -f "compose.obs.yml" -f "compose.gpu.yml" -f "compose.prod.yml")
-  else
-    COMPOSE_FILES=(-f "docker-compose.yml" -f "compose.gpu.yml" -f "compose.prod.yml")
-  fi
-fi
-
-ENV_ARGS=()
-add_env_file() {
-  local f="$1"
-  if [ -f "$f" ]; then
-    ENV_ARGS+=(--env-file "$f")
-  else
-    echo "Warning: env file not found: $f" >&2
-  fi
-}
-
-add_env_file "$ROOT_DIR/db/.env"
-add_env_file "$ROOT_DIR/classifier-service/.env"
-add_env_file "$ROOT_DIR/rag-service/.env"
-
-if [ "$WITH_OBS" = true ]; then
-  add_env_file "$ROOT_DIR/observability/.env"
-fi
-if [ "$WITH_GPU" = true ]; then
-  add_env_file "$ROOT_DIR/ollama/.env"
-fi
-
-cd "$DOCKER_DIR"
-
-DOWN_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" down)
-if [ "$WITH_VOLUMES" = true ]; then
-  DOWN_ARGS=( "${DOWN_ARGS[@]}" -v )
-fi
-
-docker compose "${DOWN_ARGS[@]}"
-
-echo "Prod local stopped (obs=$WITH_OBS, gpu=$WITH_GPU, volumes=$WITH_VOLUMES)."
-
+case "${1:-}" in
+  dev|prod)
+    exec "$SCRIPT_DIR/docker-compose.sh" down "$@"
+    ;;
+  *)
+    exec "$SCRIPT_DIR/docker-compose.sh" down prod "$@"
+    ;;
+esac

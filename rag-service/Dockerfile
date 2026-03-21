@@ -2,6 +2,7 @@
 # Both ARGs must be declared before the first FROM so every FROM can resolve a non-empty base (Docker / linters).
 ARG JDK_BASE_IMAGE=eclipse-temurin:21-jdk
 ARG JRE_BASE_IMAGE=eclipse-temurin:21-jre-alpine
+# Used by scripts/full-stack-verify.*: `docker build --target build` then `mvnw verify` in that image (same JDK as Compose backend).
 FROM ${JDK_BASE_IMAGE} AS build
 WORKDIR /app
 
@@ -20,6 +21,10 @@ RUN ./mvnw -B package -Dmaven.test.skip=true
 
 # Run stage
 FROM ${JRE_BASE_IMAGE}
+# curl: reliable Docker healthcheck against /actuator/health/readiness (HTTP 503 when not ready)
+RUN if command -v apk >/dev/null 2>&1; then apk add --no-cache curl; \
+    elif command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*; \
+    fi
 ARG SERVER_PORT=9000
 ENV SERVER_PORT=${SERVER_PORT}
 # Default profile when the image runs without Compose env: avoid OTLP export to localhost:4318 inside the container.

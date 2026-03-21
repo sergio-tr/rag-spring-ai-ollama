@@ -5,7 +5,7 @@ No business logic here; services are obtained from the container.
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -43,13 +43,23 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        """Return 422 with consistent error body (code, message, details)."""
+        """Return 422 with the same envelope as other errors: success + error object."""
         errors = exc.errors() if hasattr(exc, "errors") else []
-        body = ErrorDetail(
+        err = ErrorDetail(
             code="VALIDATION_ERROR",
             message="Request validation failed",
             details={"errors": errors},
         ).to_response_dict()
-        return JSONResponse(status_code=422, content=body)
+        return JSONResponse(status_code=422, content={"success": False, "error": err})
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        """Normalize HTTPException (400/404/503 from routes) to { success, error }."""
+        detail = exc.detail
+        if isinstance(detail, dict):
+            error_body = detail
+        else:
+            error_body = {"code": "HTTP_ERROR", "message": str(detail)}
+        return JSONResponse(status_code=exc.status_code, content={"success": False, "error": error_body})
 
     return app

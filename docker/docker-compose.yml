@@ -46,11 +46,12 @@ services:
       DATA_DIR: ${DATA_DIR:-/app/data}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\" || exit 1"]
+      # Process up and /health returns 200. Stricter checks (model loaded, classify OK) are in the backend Actuator readiness.
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\" || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 60s
 
   backend:
     build:
@@ -84,11 +85,13 @@ services:
       classifier-service:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:${SERVER_PORT:-9000}/actuator/health || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
+      # Liveness = JVM up (management.endpoint.health.probes.enabled in application-docker.properties).
+      # Readiness (/actuator/health/readiness) is 503 while Ollama is pulling models — do not use it for Docker.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${SERVER_PORT:-9000}/actuator/health/liveness >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 12s
+      retries: 6
+      start_period: 90s
     restart: unless-stopped
 
 volumes:

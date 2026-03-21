@@ -44,7 +44,7 @@ docker compose -f docker-compose.yml -f compose.obs.yml \
   up -d
 ```
 
-Optional: `./scripts/set-env.sh` (options 2 or 4) does the same if the `.env` files exist.
+Optional: `./scripts/set-env.sh` or `./scripts/up.sh dev --env obs` / `./scripts/up.sh prod --obs` to create `observability/.env` and start the observability stack.
 
 ## URLs on the host (replace with your `.env` ports)
 
