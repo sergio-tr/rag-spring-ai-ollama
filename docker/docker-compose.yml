@@ -68,6 +68,8 @@ services:
       - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
     environment:
       SERVER_PORT: ${SERVER_PORT:-9000}
+      # Disables OTLP to localhost inside the JVM; compose.obs.yml adds profile "obs" and sets OTEL_* to the collector.
+      SPRING_PROFILES_ACTIVE: docker
       # DB connection (same user/password as in db/.env)
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-vectordb}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}

@@ -133,7 +133,7 @@ README badges use SonarCloud’s public badge API. Replace `YOUR_SONAR_PROJECT_K
 | [db/README.md](db/README.md) | Database setup |
 | [ollama/README.md](ollama/README.md) | Ollama / GPU stack |
 | [observability/README.md](observability/README.md) | Observability stack (OTEL, Jaeger, Prometheus, Grafana) |
-| [tests/integration/README.md](tests/integration/README.md) | Integration tests (pytest) against the running stack |
+| [tests/integration/README.md](tests/integration/README.md) | Integration tests (pytest): classifier, backend, cross-service, and observability (OTEL/Jaeger/Prometheus when `compose.obs.yml` is up) |
 
 **SonarCloud:** quality gate, CI setup, and hotspot policy are documented in the [SonarCloud](#sonarcloud-quality-gate-and-static-analysis) section above (extended notes may exist only in a local `docs/` copy).
 

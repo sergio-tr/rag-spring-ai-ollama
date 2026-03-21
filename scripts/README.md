@@ -2,6 +2,35 @@
 
 Scripts to generate default `.env` files for each component and to run Docker Compose interactively. Run from the **repository root**.
 
+## Full stack verification (tests + coverage + Docker + integration)
+
+Runs **all** automated checks in order:
+
+1. `rag-service`: `./mvnw verify` (JaCoCo line coverage ≥ 80%).
+2. `classifier-service`: `pytest tests/` (coverage ≥ 80% per `pytest.ini`).
+3. Docker: `docker compose` with `docker-compose.yml` + `compose.obs.yml` + `compose.logs.yml` (build + `up -d`).
+4. `tests/integration`: `INTEGRATION_CHECK_OBS=1 pytest tests/integration` (requires observability URLs on localhost).
+
+| Script | Platform |
+|--------|----------|
+| [full-stack-verify.ps1](full-stack-verify.ps1) | Windows PowerShell (repo root) |
+| [full-stack-verify.sh](full-stack-verify.sh) | Linux/macOS/Git Bash |
+
+Examples:
+
+```powershell
+.\scripts\full-stack-verify.ps1
+.\scripts\full-stack-verify.ps1 -SkipDocker       # only Maven + classifier + integration (stack already up)
+```
+
+```bash
+chmod +x scripts/full-stack-verify.sh
+./scripts/full-stack-verify.sh
+SKIP_DOCKER=1 ./scripts/full-stack-verify.sh
+```
+
+**Note:** `compose.infra.yml` (node-exporter, cAdvisor) and `compose.gpu.yml` (Ollama GPU) are optional; they use host paths that may not work on every OS. The scripts above use **base + observability + Loki/Promtail** as the broadest portable “full” stack.
+
 ## Create default .env
 
 | Script | Creates | Purpose |
