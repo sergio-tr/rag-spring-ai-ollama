@@ -49,6 +49,12 @@ With the stack running, see [scripts/README.md](../scripts/README.md) (section *
 
 With `docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env --env-file ../rag-service/.env --env-file ../classifier-service/.env --env-file ../observability/.env up -d` you can run OpenTelemetry Collector, Jaeger, Prometheus, and Grafana. The backend exposes `/actuator/health` and `/actuator/prometheus`. Configure the Prometheus datasource in Grafana (`http://prometheus:9090`) for dashboards.
 
+**OTLP in Docker:** the base Compose file sets `SPRING_PROFILES_ACTIVE=docker` so the backend does **not** send OTLP to `localhost:4318` (inside the container that points at the JVM, not the collector). `compose.obs.yml` adds `SPRING_PROFILES_ACTIVE=docker,obs` and `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` so traces/metrics export to the collector and appear in Jaeger.
+
+## Ollama requirement (Docker without GPU compose)
+
+The default backend image talks to Ollama at `SPRING_AI_OLLAMA_BASE_URL` (from `docker-compose.yml`, usually `http://host.docker.internal:11434`). **Ollama must be running on the host** with the chat and embedding models pulled, or queries will fail with a generic error. Alternatively use `compose.gpu.yml` so Ollama runs in Docker (`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`).
+
 ## Execution modes
 Quick reference and commands: [docker/README.md](../docker/README.md) (section **Execution modes**).
 

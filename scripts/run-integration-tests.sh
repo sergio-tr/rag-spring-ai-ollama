@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Integration tests with the stack running (repo root).
-# Optional: export INTEGRATION_CHECK_OBS=1 if you started compose.obs.yml
+# Observability: default auto-detects compose.obs.yml (OTEL collector :8889/metrics).
+# INTEGRATION_CHECK_OBS=1 to require observability; INTEGRATION_CHECK_OBS=0 to skip it.
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"

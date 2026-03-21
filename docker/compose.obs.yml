@@ -6,6 +6,7 @@ services:
   backend:
     environment:
       SERVER_PORT: ${OBS_INTERNAL_BACKEND_ACTUATOR:-9000}
+      SPRING_PROFILES_ACTIVE: docker,obs
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:${OBS_INTERNAL_OTEL_OTLP_HTTP:-4318}
       OTEL_SERVICE_NAME: rag-backend
       OTEL_METRICS_EXPORTER: otlp

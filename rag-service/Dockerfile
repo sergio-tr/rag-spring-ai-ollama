@@ -22,6 +22,8 @@ RUN ./mvnw -B package -Dmaven.test.skip=true
 FROM ${JRE_BASE_IMAGE}
 ARG SERVER_PORT=9000
 ENV SERVER_PORT=${SERVER_PORT}
+# Default profile when the image runs without Compose env: avoid OTLP export to localhost:4318 inside the container.
+ENV SPRING_PROFILES_ACTIVE=docker
 WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 
