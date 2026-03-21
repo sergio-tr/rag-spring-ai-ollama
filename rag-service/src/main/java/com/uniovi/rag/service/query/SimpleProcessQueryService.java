@@ -1,5 +1,6 @@
 package com.uniovi.rag.service.query;
 
+import com.uniovi.rag.api.OllamaConnectivityChecker;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.model.QueryType;
@@ -15,6 +16,7 @@ import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -23,16 +25,16 @@ import java.util.List;
 public class SimpleProcessQueryService implements QueryService {
 
     protected static final String PROMPT_TEMPLATE = """
-        You are a helpful assistant that answers questions based on retrieved documents from a meeting minutes database.
+        You are a helpful assistant. Retrieved fragments from a meeting-minutes database are provided below when available.
         
-        CRITICAL: The following context contains RAW DOCUMENT FRAGMENTS retrieved from the database.
-        Base your answer ONLY on the information provided in the context.
+        PRIORITY — answer the user's question:
+        - If the question is general (jokes, definitions, chat, etc.) OR the context does not help answer it, answer directly using general knowledge in the user's language. Do not ask for more context.
+        - If the question is about the documents AND the context is relevant, base factual claims on the context only; never invent acta-specific facts not in the context.
         
-        RULES:
-        1. If the context is empty or does not contain enough information, clearly state that you cannot find the information. DO NOT invent, guess, or make up information.
-        2. NEVER invent names, dates, places, actas, or any other information not explicitly in the context. Do not invent acta dates or mix information from different actas.
-        3. Answer in the SAME LANGUAGE as the user's question.
-        4. Be concise but complete. Do not add headers or explanatory text - provide the direct answer.
+        RULES for document-specific answers:
+        1. NEVER invent names, dates, places, actas, or facts not in the context when answering about meetings.
+        2. Answer in the SAME LANGUAGE as the user's question.
+        3. Be concise. Do not add unnecessary headers.
         
         <Question> %s </Question>
         <Context> %s </Context>
@@ -48,6 +50,9 @@ public class SimpleProcessQueryService implements QueryService {
     protected final QueryClassifier classifier;
     protected final ContextRetriever retriever;
     protected final RagToolsConfiguration toolsConfig;
+    private final OllamaConnectivityChecker ollamaConnectivityChecker;
+
+    private static final ThreadLocal<String> REQUEST_CHAT_MODEL = new ThreadLocal<>();
 
     public SimpleProcessQueryService(RagFeatureConfiguration featureConfig,
                                      RagToolsConfiguration toolsConfig,
@@ -55,7 +60,8 @@ public class SimpleProcessQueryService implements QueryService {
                                      QueryAnalyser analyser,
                                      QueryClassifier classifier,
                                      ContextRetriever retriever,
-                                     ChatClient chatClient) {
+                                     ChatClient chatClient,
+                                     OllamaConnectivityChecker ollamaConnectivityChecker) {
         this.featureConfig = featureConfig;
         this.chatClient = chatClient;
         this.expander = expander;
@@ -63,10 +69,26 @@ public class SimpleProcessQueryService implements QueryService {
         this.classifier = classifier;
         this.retriever = retriever;
         this.toolsConfig = toolsConfig;
+        this.ollamaConnectivityChecker = ollamaConnectivityChecker;
+    }
+
+    private ChatClient.ChatClientRequestSpec chatRequestSpec() {
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        String m = REQUEST_CHAT_MODEL.get();
+        if (m != null && !m.isBlank()) {
+            spec = spec.options(OllamaOptions.builder().model(m.trim()).build());
+        }
+        return spec;
     }
 
     @Override
-    public QueryResponse generateResponse(String query) {
+    public QueryResponse generateResponse(String query, String chatModel) {
+        try {
+            if (chatModel != null && !chatModel.isBlank()) {
+                REQUEST_CHAT_MODEL.set(chatModel.trim());
+            }
+            ollamaConnectivityChecker.prepareForQuery(chatModel);
+
         String finalQuery = featureConfig.isExpansionEnabled() ? expander.expand(query) : query;
         JSONObject nerEntities = featureConfig.isNerEnabled() ? analyser.analyse(finalQuery) : null;
         QueryType queryType = featureConfig.isToolsEnabled() ? classifier.classify(finalQuery) : null;
@@ -87,16 +109,30 @@ public class SimpleProcessQueryService implements QueryService {
 
         String answer = askModel(finalQuery, nerEntities);
         return QueryResponse.fromLLM(answer, queryType);
+        } finally {
+            REQUEST_CHAT_MODEL.remove();
+        }
     }
 
     private String askModel(String query, JSONObject nerEntities) {
         if (!featureConfig.isUseRetrieval()) {
             try {
-                String content = chatClient.prompt().user(query).call().content();
+                String content = chatRequestSpec().user(query).call().content();
                 return content != null && !content.trim().isEmpty() ? content : generateNoContextResponse(query);
             } catch (Exception e) {
                 log().warn("LLM call without context failed: {}", e.getMessage());
                 return generateNoContextResponse(query);
+            }
+        }
+        if (GeneralKnowledgeQueryDetector.likelyGeneralKnowledgeOnly(query)) {
+            try {
+                String content = chatRequestSpec().user(query).call().content();
+                if (content != null && !content.trim().isEmpty()) {
+                    log().info("SimpleProcessQueryService: direct LLM (general-knowledge routing), skipping retrieval");
+                    return content;
+                }
+            } catch (Exception e) {
+                log().warn("Direct general-knowledge LLM failed, falling back to RAG path: {}", e.getMessage());
             }
         }
         List<Document> docs;
@@ -110,8 +146,7 @@ public class SimpleProcessQueryService implements QueryService {
             return generateNoContextResponse(query);
         }
         String prompt = String.format(PROMPT_TEMPLATE, query, context);
-        return chatClient
-                .prompt()
+        return chatRequestSpec()
                 .user(prompt)
                 .call()
                 .content();
@@ -121,17 +156,17 @@ public class SimpleProcessQueryService implements QueryService {
         String prompt = String.format("""
             The user asked (in any language): "%s"
             
-            No relevant information was found in the available documents to answer this question.
+            No document text was retrieved (empty vector store or no matches).
             
-            Respond with a short message in the EXACT SAME LANGUAGE as the question,
-            apologizing and stating that no relevant information was found.
-            Be concise and polite. Do not repeat the question.
+            Answer the question helpfully in the EXACT SAME LANGUAGE as the question,
+            using general knowledge where appropriate.
+            Do not repeat the question verbatim.
             """, query != null ? query : "");
         try {
-            return chatClient.prompt().user(prompt).call().content();
+            return chatRequestSpec().user(prompt).call().content();
         } catch (Exception e) {
             log().warn("Error generating no-context response, using fallback: {}", e.getMessage());
-            return "No relevant information was found in the available documents to answer this question.";
+            return "I could not generate a response. Please try again.";
         }
     }
 }

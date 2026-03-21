@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.uniovi.rag.observability.ObservabilitySupport;
 import com.uniovi.rag.observability.TracedEvaluationService;
+import com.uniovi.rag.api.OllamaConnectivityChecker;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.evaluation.DatasetMinuteEvaluationService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
@@ -48,12 +49,13 @@ public class RagEvaluationConfiguration {
         @Value("${rag.expansion.max-expansion-chars:350}") int expansionMaxExpansionChars,
         @Value("${rag.expansion.max-query-total-chars:512}") int expansionMaxQueryTotalChars,
         @Value("${rag.expansion.max-query-length-for-llm:500}") int expansionMaxQueryLengthForLlm,
-        @Value("${rag.expansion.retry-query-length:200}") int expansionRetryQueryLength
+        @Value("${rag.expansion.retry-query-length:200}") int expansionRetryQueryLength,
+        OllamaConnectivityChecker ollamaConnectivityChecker
     ) {
         return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, embeddingModel, topK, similarityThreshold,
                 classifierServiceUrl, classifierModelId, classifierTimeoutMs, chunkMaxChars, responseValidator, documentContentExtractor,
                 expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
-                expansionMaxQueryLengthForLlm, expansionRetryQueryLength);
+                expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker);
     }
 
     @Bean

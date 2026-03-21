@@ -30,4 +30,9 @@ class SimpleReasoningStrategyTest {
         assertNotNull(out);
         assertEquals("", out.thoughtOrPlan());
     }
+
+    @Test
+    void runPostStep_interfaceDefault_returnsNull() {
+        assertNull(strategy.runPostStep("q", "ctx", "draft"));
+    }
 }

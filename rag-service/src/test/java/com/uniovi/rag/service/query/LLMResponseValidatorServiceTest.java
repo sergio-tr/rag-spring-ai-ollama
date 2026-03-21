@@ -72,4 +72,28 @@ class LLMResponseValidatorServiceTest {
         assertNull(validator.validateAndClean(null, "ctx"));
         assertNull(validator.validateAndClean("x", "ctx"));
     }
+
+    @Test
+    void isValidResponse_tooLong_returnsFalse() {
+        String longText = "a".repeat(10001);
+        assertFalse(validator.isValidResponse(longText, "ctx"));
+    }
+
+    @Test
+    void isValidResponse_spanishNoErrorPhrase_notTreatedAsError() {
+        assertTrue(validator.isValidResponse("No hay error en el documento revisado.", "ctx"));
+    }
+
+    @Test
+    void cleanResponse_stripsLineComments() {
+        String in = "answer\n// comment\nmore";
+        String out = validator.cleanResponse(in);
+        assertFalse(out.contains("//"));
+    }
+
+    @Test
+    void validateAndClean_whenCleaningEmpties_returnsNull() {
+        String onlyCode = "```\n```";
+        assertNull(validator.validateAndClean(onlyCode, "ctx"));
+    }
 }

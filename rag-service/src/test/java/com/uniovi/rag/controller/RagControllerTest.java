@@ -2,17 +2,24 @@ package com.uniovi.rag.controller;
 
 import com.uniovi.rag.model.AddResult;
 import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.api.RagApiExceptionHandler;
+import com.uniovi.rag.exception.DocumentAlreadyExistsException;
+import com.uniovi.rag.exception.RagServiceException;
 import com.uniovi.rag.model.QueryResponse;
 import com.uniovi.rag.observability.ObservabilitySupport;
 import com.uniovi.rag.repository.MinuteDocumentRepository;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
+import com.uniovi.rag.ollama.OllamaProvisioningGateFilter;
 import com.uniovi.rag.service.query.QueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -22,11 +29,15 @@ import java.util.function.Supplier;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(RagController.class)
+@WebMvcTest(controllers = RagController.class, excludeFilters = @ComponentScan.Filter(
+        type = FilterType.ASSIGNABLE_TYPE,
+        classes = OllamaProvisioningGateFilter.class))
+@Import(RagApiExceptionHandler.class)
 class RagControllerTest {
 
     @Autowired
@@ -106,12 +117,28 @@ class RagControllerTest {
 
     @Test
     void query_returnsAnswerFromService() throws Exception {
-        when(queryService.generateResponse("¿Cuántos documentos?")).thenReturn(QueryResponse.fromLLM("Hay 5 documentos.", null));
+        when(queryService.generateResponse(eq("¿Cuántos documentos?"), isNull()))
+                .thenReturn(QueryResponse.fromLLM("Hay 5 documentos.", null));
 
         mockMvc.perform(get("/api/v4/query").param("question", "¿Cuántos documentos?"))
                 .andExpect(status().isOk())
-                .andExpect(content().string("Hay 5 documentos."));
-        verify(queryService).generateResponse("¿Cuántos documentos?");
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.answer").value("Hay 5 documentos."))
+                .andExpect(jsonPath("$.error").doesNotExist());
+        verify(queryService).generateResponse(org.mockito.ArgumentMatchers.eq("¿Cuántos documentos?"), org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @Test
+    void query_whenOllamaDown_returns503JsonEnvelope() throws Exception {
+        when(queryService.generateResponse(eq("x"), isNull()))
+                .thenThrow(RagServiceException.llmUnavailable(new java.net.ConnectException("refused")));
+
+        mockMvc.perform(get("/api/v4/query").param("question", "x"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("LLM_UNAVAILABLE"))
+                .andExpect(jsonPath("$.error.message").isString());
     }
 
     @Test
@@ -191,5 +218,35 @@ class RagControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("test.pdf")));
         verify(documentService).processDocument(any());
+    }
+
+    @Test
+    void uploadDocument_illegalArgument_returns400() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "test.pdf", "application/pdf", "content".getBytes());
+        doThrow(new IllegalArgumentException("bad format")).when(documentService).processDocument(any());
+
+        mockMvc.perform(multipart("/api/v4/documents").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("bad format")));
+    }
+
+    @Test
+    void uploadDocument_alreadyExists_returns409() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "dup.pdf", "application/pdf", "content".getBytes());
+        doThrow(new DocumentAlreadyExistsException("dup-id")).when(documentService).processDocument(any());
+
+        mockMvc.perform(multipart("/api/v4/documents").file(file))
+                .andExpect(status().isConflict())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("dup-id")));
+    }
+
+    @Test
+    void uploadDocument_genericException_returns400() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "x.pdf", "application/pdf", "content".getBytes());
+        doThrow(new RuntimeException("disk full")).when(documentService).processDocument(any());
+
+        mockMvc.perform(multipart("/api/v4/documents").file(file))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("disk full")));
     }
 }

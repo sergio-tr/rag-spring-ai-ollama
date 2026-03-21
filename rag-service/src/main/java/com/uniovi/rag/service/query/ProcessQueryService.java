@@ -24,8 +24,12 @@ import com.uniovi.rag.service.retriever.AbstractContextRetriever;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolRagService;
 import com.uniovi.rag.tool.ToolResult;
+import com.uniovi.rag.api.ConnectivityFailureDetector;
+import com.uniovi.rag.api.OllamaConnectivityChecker;
+import com.uniovi.rag.exception.RagServiceException;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.ai.document.Document;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,30 +43,28 @@ import java.util.Map;
 public class ProcessQueryService implements QueryService {
 
     private static final String DEFAULT_PROMPT_TEMPLATE = """
-        You are a helpful assistant that answers questions based on retrieved documents from a meeting minutes database.
-        
-        CRITICAL: The following context contains RAW DOCUMENT FRAGMENTS retrieved from the database. 
-        These are NOT pre-extracted answers - they are document fragments that may or may not contain 
-        the information needed to answer the question.
+        You are a helpful assistant. Retrieved RAW DOCUMENT FRAGMENTS from a meeting-minutes database appear below when retrieval runs.
+        They are NOT pre-extracted answers — fragments may or may not relate to the user's question.
         
         Your task is to:
-        1. ANALYZE and PROCESS the retrieved context fragments
-        2. EXTRACT the specific information needed to answer the question
-        3. SYNTHESIZE a clear, direct answer from the relevant information found
-        4. Answer in the SAME LANGUAGE as the user's question (if Spanish, answer in Spanish; if English, answer in English, etc.)
+        1. Decide whether the question is about those documents or is general / unrelated.
+        2. If document-related and the context is relevant: ANALYZE fragments, EXTRACT facts, SYNTHESIZE a direct answer.
+        3. If general or context is irrelevant: answer the question directly (see PRIORITY below).
+        4. Answer in the SAME LANGUAGE as the user's question.
         
-        CRITICAL RULES - YOU MUST FOLLOW THESE:
-        1. You must PROCESS the context - do not just copy or summarize it. Extract the specific answer.
-        2. Base your answer ONLY on the information provided in the context
-        3. If the context is empty or does not contain enough information to answer the question, you MUST clearly state that you cannot find the information in the available documents. DO NOT invent, guess, or make up information.
-        4. NEVER invent names, dates, places, actas, or any other information that is not explicitly in the context. Do not invent acta dates or mix information from different actas. Only use information that appears in the context.
-        5. NEVER provide lists of names or details if they are not in the context
-        6. If you cannot find the requested information, say so clearly in the same language as the question
-        7. Be concise but complete - provide all relevant information from the context
-        8. Do not add information that is not in the context
-        9. Do not include headers, introductions, or explanatory text - just provide the direct answer
-        10. If multiple fragments contain relevant information, synthesize them into a coherent answer
-        11. When relevant, mention or cite the source (e.g. document, date) from the context.
+        CRITICAL RULES for document-specific answers (meetings, actas, uploaded content):
+        1. When the context is relevant, PROCESS it — do not just copy; extract the specific answer.
+        2. Base factual claims about meetings/documents ONLY on information present in the context; never invent acta-specific facts.
+        3. If the question asks for document facts but the context truly lacks them, say you cannot find that information in the available documents — do not invent.
+        4. NEVER invent names, dates, places, actas, or meeting facts not explicitly supported by the context when answering about documents.
+        5. Do not fabricate lists of attendees or details not present in the context for document-style questions.
+        6. If the question is document-specific and the context lacks the requested facts, say so clearly (same language).
+        7. When the context applies: be concise but complete; synthesize multiple fragments; cite source/date when useful.
+        8. Do not include unnecessary headers — give the direct answer.
+        
+        PRIORITY — answer the user's question first:
+        - If the question is general knowledge, conversational, or clearly NOT about meeting minutes (e.g. jokes, definitions, math, small talk), OR the retrieved fragments do NOT contain information that helps answer the question, answer directly using general knowledge in the user's language. Do NOT ask the user for more context. Do NOT refuse to answer only because the fragments are unrelated or off-topic.
+        - When the question IS about the documents/meetings AND the context contains relevant material, follow the CRITICAL RULES above: base factual claims on the context only; never invent acta-specific names, dates, or facts not present in the context.
         
         <QueryType> %s </QueryType>
         <Question> %s </Question>
@@ -73,6 +75,9 @@ public class ProcessQueryService implements QueryService {
 
     private static final int MAX_RETRIES = 2;
     private static final long RETRY_DELAY_MS = 500;
+
+    /** Modelo Ollama por petición (lab); el hilo de servlet permite ThreadLocal seguro. */
+    private static final ThreadLocal<String> REQUEST_CHAT_MODEL = new ThreadLocal<>();
 
     private final RagFeatureConfiguration featureConfig;
     private final ChatClient chatClient;
@@ -90,6 +95,7 @@ public class ProcessQueryService implements QueryService {
     private final ToolRagService toolRagService;
     private final ResponseValidator responseValidator;
     private final QuestionAnswerAdvisor questionAnswerAdvisor;
+    private final OllamaConnectivityChecker ollamaConnectivityChecker;
 
     public ProcessQueryService(RagFeatureConfiguration featureConfig,
                                RagToolsConfiguration toolsConfig,
@@ -106,7 +112,8 @@ public class ProcessQueryService implements QueryService {
                                PostRetrievalProcessor postRetrievalProcessor,
                                ToolRagService toolRagService,
                                ResponseValidator responseValidator,
-                               QuestionAnswerAdvisor questionAnswerAdvisor) {
+                               QuestionAnswerAdvisor questionAnswerAdvisor,
+                               OllamaConnectivityChecker ollamaConnectivityChecker) {
         this.featureConfig = featureConfig;
         this.chatClient = chatClient;
         this.questionAnswerAdvisor = questionAnswerAdvisor;
@@ -123,10 +130,34 @@ public class ProcessQueryService implements QueryService {
         this.postRetrievalProcessor = postRetrievalProcessor;
         this.toolRagService = toolRagService;
         this.responseValidator = responseValidator;
+        this.ollamaConnectivityChecker = ollamaConnectivityChecker;
+    }
+
+    /**
+     * Aplica {@link OllamaOptions} con el modelo de chat de esta petición cuando el lab envía override.
+     */
+    private ChatClient.ChatClientRequestSpec chatRequestSpec() {
+        ChatClient.ChatClientRequestSpec spec = chatClient.prompt();
+        String m = REQUEST_CHAT_MODEL.get();
+        if (m != null && !m.isBlank()) {
+            spec = spec.options(OllamaOptions.builder().model(m.trim()).build());
+        }
+        return spec;
     }
 
     @Override
-    public QueryResponse generateResponse(String query) {
+    public QueryResponse generateResponse(String query, String chatModel) {
+        try {
+            if (chatModel != null && !chatModel.isBlank()) {
+                REQUEST_CHAT_MODEL.set(chatModel.trim());
+            }
+            return generateResponseInternal(query);
+        } finally {
+            REQUEST_CHAT_MODEL.remove();
+        }
+    }
+
+    private QueryResponse generateResponseInternal(String query) {
         boolean isProblematicConfig = featureConfig.isMetadataEnabled() && 
                                       featureConfig.isNerEnabled() && 
                                       !featureConfig.isToolsEnabled();
@@ -143,10 +174,12 @@ public class ProcessQueryService implements QueryService {
         try {
             if (query == null || query.trim().isEmpty()) {
                 log().warn("Empty query received");
-                String errorResponse = generateErrorResponse(query != null ? query : "");
+                String errorResponse = generateErrorResponse(query != null ? query : "", new IllegalArgumentException("empty query"));
                 return QueryResponse.fromLLM(errorResponse);
             }
-            
+
+            ollamaConnectivityChecker.prepareForQuery(REQUEST_CHAT_MODEL.get());
+
             String expandedQuery = expand(query);
             if (isProblematicConfig) {
                 log().debug("Expanded query: {}", expandedQuery);
@@ -232,8 +265,8 @@ public class ProcessQueryService implements QueryService {
                     if (featureConfig.isFunctionCallingEnabled()) {
                         try {
                             String content = (meetingMinutesToolsAdapter != null)
-                                    ? chatClient.prompt().user(expandedQuery).tools(meetingMinutesToolsAdapter).call().content()
-                                    : chatClient.prompt().user(expandedQuery).call().content();
+                                    ? chatRequestSpec().user(expandedQuery).tools(meetingMinutesToolsAdapter).call().content()
+                                    : chatRequestSpec().user(expandedQuery).call().content();
                             if (content != null && !content.trim().isEmpty()) {
                                 toolResponse = responseValidator.validateAndClean(content, "Tool-function-calling");
                                 if (toolResponse != null && !toolResponse.trim().isEmpty()) {
@@ -280,7 +313,13 @@ public class ProcessQueryService implements QueryService {
                        featureConfig.isToolsEnabled(), 
                        query, e);
             log().error("Stack trace:", e);
-            String errorResponse = generateErrorResponse(query);
+            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
+                throw RagServiceException.llmUnavailable(e);
+            }
+            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
+                throw RagServiceException.ollamaModelNotInstalled(e);
+            }
+            String errorResponse = generateErrorResponse(query, e);
             return QueryResponse.fromLLM(errorResponse);
         } catch (IllegalArgumentException e) {
             log().error("IllegalArgumentException processing query (config: metadata={}, ner={}, tools={}): {}", 
@@ -289,7 +328,13 @@ public class ProcessQueryService implements QueryService {
                        featureConfig.isToolsEnabled(), 
                        query, e);
             log().error("Stack trace:", e);
-            String errorResponse = generateErrorResponse(query);
+            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
+                throw RagServiceException.llmUnavailable(e);
+            }
+            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
+                throw RagServiceException.ollamaModelNotInstalled(e);
+            }
+            String errorResponse = generateErrorResponse(query, e);
             return QueryResponse.fromLLM(errorResponse);
         } catch (Exception e) {
             log().error("Unexpected error processing query (config: metadata={}, ner={}, tools={}): {}", 
@@ -299,16 +344,30 @@ public class ProcessQueryService implements QueryService {
                        query, e);
             log().error("Exception type: {}, Message: {}", e.getClass().getName(), e.getMessage());
             log().error("Stack trace:", e);
-            String errorResponse = generateErrorResponse(query);
+            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
+                throw RagServiceException.llmUnavailable(e);
+            }
+            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
+                throw RagServiceException.ollamaModelNotInstalled(e);
+            }
+            String errorResponse = generateErrorResponse(query, e);
             return QueryResponse.fromLLM(errorResponse);
         }
     }
 
     /**
-     * Generates an error response in the same language as the query.
-     * Uses LLM to generate message in correct language.
+     * Generates a user-facing apology when the pipeline fails for non-connectivity reasons.
+     * Never calls the LLM when the failure is transport/connectivity (Ollama down) — that would recurse and spam logs.
      */
-    private String generateErrorResponse(String query) {
+    private String generateErrorResponse(String query, Throwable cause) {
+        if (cause != null && ConnectivityFailureDetector.isConnectivityFailure(cause)) {
+            return "The AI inference service is unavailable. Please try again once Ollama is running and reachable.";
+        }
+        if (cause != null && ConnectivityFailureDetector.isOllamaModelMissingFailure(cause)) {
+            return "A required Ollama model is not installed. Pull the chat and embedding models on the Ollama host "
+                    + "(ollama pull …) or wait for automatic pull at startup.";
+        }
+
         String prompt = String.format("""
             The user asked (in any language): "%s"
             
@@ -319,22 +378,28 @@ public class ProcessQueryService implements QueryService {
             Be concise and polite.
             Do not repeat the question.
             """, query != null ? query : "");
-        
+
         try {
-            String response = chatClient
-                    .prompt()
+            String response = chatRequestSpec()
                     .user(prompt)
                     .call()
                     .content();
-            
+
             if (response != null && !response.trim().isEmpty()) {
                 return response.trim();
             }
         } catch (Exception e) {
+            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
+                log().warn("Skipping LLM error message: inference backend unreachable");
+                return "The AI inference service is unavailable. Please try again once Ollama is running and reachable.";
+            }
+            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
+                log().warn("Skipping LLM error message: Ollama model not installed");
+                return "A required Ollama model is not installed. Pull the chat and embedding models on the Ollama host.";
+            }
             log().warn("Error generating error response with LLM", e);
         }
-        
-        // Ultimate fallback
+
         return "I'm sorry, an error occurred while processing your query. Please try again.";
     }
 
@@ -565,12 +630,26 @@ public class ProcessQueryService implements QueryService {
     private DraftAndContext askModelWithPreStep(String query, JSONObject nerEntities, QueryType queryType, String preStepThought) {
         if (!featureConfig.isUseRetrieval()) {
             try {
-                String response = chatClient.prompt().user(query).call().content();
+                String response = chatRequestSpec().user(query).call().content();
                 String validated = response != null ? responseValidator.validateAndClean(response, "ProcessQueryService-NoContext") : null;
                 return new DraftAndContext(validated != null ? validated : generateNoContextResponse(query), "");
             } catch (Exception e) {
                 log().warn("LLM call without context failed in reasoning path: {}", e.getMessage());
                 return new DraftAndContext(generateNoContextResponse(query), "");
+            }
+        }
+        if (GeneralKnowledgeQueryDetector.likelyGeneralKnowledgeOnly(query)) {
+            try {
+                String response = chatRequestSpec().user(query).call().content();
+                String validated = response != null
+                        ? responseValidator.validateAndClean(response, "ProcessQueryService-ReasoningDirect")
+                        : null;
+                if (validated != null && !validated.trim().isEmpty()) {
+                    log().info("Reasoning path: direct LLM (general-knowledge routing), skipping retrieval");
+                    return new DraftAndContext(validated, "");
+                }
+            } catch (Exception e) {
+                log().warn("Direct general-knowledge LLM failed in reasoning path, falling back: {}", e.getMessage());
             }
         }
         String retrievalQuery = (featureConfig.isNerEnabled() && nerQueryEnricher != null && nerEntities != null && !nerEntities.isEmpty())
@@ -604,7 +683,7 @@ public class ProcessQueryService implements QueryService {
                 query,
                 contextWithReasoning);
         try {
-            String response = chatClient.prompt().user(prompt).call().content();
+            String response = chatRequestSpec().user(prompt).call().content();
             String validated = responseValidator.validateAndClean(response, "ProcessQueryService");
             if (validated != null) {
                 return new DraftAndContext(validated, context);
@@ -623,7 +702,7 @@ public class ProcessQueryService implements QueryService {
         // Baseline real: no retrieval = LLM with question only, no context
         if (!featureConfig.isUseRetrieval()) {
             try {
-                String rawContent = chatClient.prompt().user(query).call().content();
+                String rawContent = chatRequestSpec().user(query).call().content();
                 String validated = rawContent != null ? responseValidator.validateAndClean(rawContent, "ProcessQueryService-NoContext") : null;
                 if (validated != null && !validated.trim().isEmpty()) {
                     log().info("Response generated without context (use-retrieval=false)");
@@ -635,10 +714,26 @@ public class ProcessQueryService implements QueryService {
             return generateNoContextResponse(query);
         }
 
+        // Explicit bypass: small models often ignore long RAG prompts and ask for "context" instead of answering (e.g. jokes).
+        if (GeneralKnowledgeQueryDetector.likelyGeneralKnowledgeOnly(query)) {
+            try {
+                String rawContent = chatRequestSpec().user(query).call().content();
+                String validated = rawContent != null
+                        ? responseValidator.validateAndClean(rawContent, "ProcessQueryService-DirectGeneral")
+                        : null;
+                if (validated != null && !validated.trim().isEmpty()) {
+                    log().info("Direct LLM (general-knowledge routing), skipping retrieval");
+                    return validated;
+                }
+            } catch (Exception e) {
+                log().warn("Direct general-knowledge LLM failed, falling back to RAG path: {}", e.getMessage());
+            }
+        }
+
         // Use QuestionAnswerAdvisor path when useAdvisor and no NER or post-retrieval (advisor injects context from vector store)
         if (featureConfig.isUseAdvisor() && questionAnswerAdvisor != null && !featureConfig.isNerEnabled() && !featureConfig.isPostRetrievalEnabled()) {
             try {
-                String rawContent = chatClient.prompt()
+                String rawContent = chatRequestSpec()
                         .user(query)
                         .advisors(questionAnswerAdvisor)
                         .call()
@@ -728,8 +823,7 @@ public class ProcessQueryService implements QueryService {
                     Thread.sleep(RETRY_DELAY_MS * attempt); // Exponential backoff
                 }
                 
-                String response = chatClient
-                        .prompt()
+                String response = chatRequestSpec()
                         .user(prompt)
                         .call()
                         .content();
@@ -771,24 +865,23 @@ public class ProcessQueryService implements QueryService {
     }
     
     /**
-     * Generates a response when no context is available.
-     * Uses LLM to generate message in correct language.
+     * When retrieval returns no documents (or empty context), answer the user with the LLM directly.
+     * Goal: satisfy the question; do not default to "sorry, no documents" for general questions.
      */
     private String generateNoContextResponse(String query) {
         String prompt = String.format("""
             The user asked (in any language): "%s"
             
-            No relevant information was found in the available documents to answer this question.
+            No document text was retrieved from the vector store for this request (empty or no matches).
             
-            Respond with a short message in the EXACT SAME LANGUAGE as the question,
-            apologizing and stating that no relevant information was found.
-            Be concise and polite.
-            Do not repeat the question.
+            Answer the question helpfully and concisely in the EXACT SAME LANGUAGE as the question.
+            Use general knowledge where appropriate (e.g. jokes, explanations, math).
+            Only apologize for missing documents if the user explicitly asked for information that could only come from private uploaded files.
+            Do not repeat the question verbatim.
             """, query != null ? query : "");
         
         try {
-            String response = chatClient
-                    .prompt()
+            String response = chatRequestSpec()
                     .user(prompt)
                     .call()
                     .content();
@@ -800,8 +893,7 @@ public class ProcessQueryService implements QueryService {
             // Fallback if LLM fails
         }
         
-        // Ultimate fallback
-        return "I'm sorry, I couldn't find relevant information in the available documents to answer your question.";
+        return "I could not generate a response. Please try again.";
     }
 }
 

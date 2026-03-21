@@ -16,6 +16,8 @@ import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.service.ranker.ResponseRanker;
 import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.api.OllamaConnectivityChecker;
+import com.uniovi.rag.exception.RagServiceException;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.tool.Tool;
@@ -26,12 +28,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.ai.document.Document;
+import org.springframework.web.client.ResourceAccessException;
 
+import java.net.ConnectException;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.*;
 
 class ProcessQueryServiceTest {
@@ -51,6 +56,7 @@ class ProcessQueryServiceTest {
     private PostRetrievalProcessor postRetrievalProcessor;
     private com.uniovi.rag.tool.ToolRagService toolRagService;
     private ResponseValidator responseValidator;
+    private OllamaConnectivityChecker ollamaConnectivityChecker;
     private ProcessQueryService service;
 
     @BeforeEach
@@ -61,6 +67,7 @@ class ProcessQueryServiceTest {
         featureConfig.setNerEnabled(false);
         featureConfig.setReasoningEnabled(false);
         featureConfig.setUseRetrieval(true);
+        featureConfig.setUseAdvisor(false);
         toolsConfig = mock(RagToolsConfiguration.class);
         expander = mock(QueryExpander.class);
         analyser = mock(QueryAnalyser.class);
@@ -75,6 +82,8 @@ class ProcessQueryServiceTest {
         postRetrievalProcessor = mock(PostRetrievalProcessor.class);
         toolRagService = mock(com.uniovi.rag.tool.ToolRagService.class);
         responseValidator = mock(ResponseValidator.class);
+        ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
+        doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         when(expander.expand(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(analyser.analyse(anyString())).thenReturn(null);
@@ -102,7 +111,8 @@ class ProcessQueryServiceTest {
                 postRetrievalProcessor,
                 toolRagService,
                 responseValidator,
-                advisor
+                advisor,
+                ollamaConnectivityChecker
         );
     }
 
@@ -265,5 +275,11 @@ class ProcessQueryServiceTest {
         assertNotNull(r);
         assertTrue(r.isUsedTool());
         assertEquals("via adapter", r.getAnswer());
+    }
+
+    @Test
+    void generateResponse_connectivityFailure_throwsRagServiceException() {
+        when(retriever.retrieve(anyString())).thenThrow(new ResourceAccessException("I/O error", new ConnectException()));
+        assertThrows(RagServiceException.class, () -> service.generateResponse("hello"));
     }
 }

@@ -15,8 +15,10 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -69,5 +71,45 @@ class DateExistenceGuardTest {
         Optional<ToolResult> result = guard.checkNoActaForDate(
                 "¿Quién presidió la reunión?", QueryType.EXTRACT_ENTITIES, null);
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void returnsNoActaWhenFutureDateAndNoDocs_decisionExtraction() {
+        when(retriever.retrieve(anyString())).thenReturn(List.of());
+        Optional<ToolResult> result = guard.checkNoActaForDate(
+                "Decisiones el 2099-12-31", QueryType.DECISION_EXTRACTION, null);
+        assertTrue(result.isPresent());
+        assertTrue(result.get().result().contains("decisión") || result.get().result().contains("decisiones"));
+    }
+
+    @Test
+    void returnsNoActaWhenFutureDateAndNoDocs_genericMessageForGetField() {
+        when(retriever.retrieve(anyString())).thenReturn(List.of());
+        Optional<ToolResult> result = guard.checkNoActaForDate(
+                "Campo X el 2099-06-15", QueryType.GET_FIELD, null);
+        assertTrue(result.isPresent());
+        assertTrue(result.get().result().contains("ninguna acta"));
+    }
+
+    @Test
+    void usesDateFieldWhenDateIsoMissing() {
+        Document doc = new Document("c", Map.of("date", "2025-04-10"));
+        when(retriever.retrieve(anyString())).thenReturn(List.of(doc));
+        Optional<ToolResult> result = guard.checkNoActaForDate(
+                "Decisiones 2025-04-20", QueryType.GET_FIELD, null);
+        assertTrue(result.isPresent());
+    }
+
+    @Test
+    void returnsEmptyWhenNormalizedDateInvalidButDocsExist() {
+        QueryDateExtractor mockExtractor = mock(QueryDateExtractor.class);
+        when(mockExtractor.extractNormalizedDate(anyString(), any())).thenReturn("not-an-iso-date");
+        DateExistenceGuard g = new DefaultDateExistenceGuard(retriever, mockExtractor);
+        when(retriever.retrieve(anyString())).thenReturn(List.of(new Document("c", Map.of("date_iso", "2025-01-01"))));
+
+        Optional<ToolResult> result = g.checkNoActaForDate("q", QueryType.GET_FIELD, null);
+
+        assertTrue(result.isEmpty());
+        verify(mockExtractor).extractNormalizedDate(anyString(), any());
     }
 }
