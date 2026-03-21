@@ -19,7 +19,7 @@ See [classifier-service/README.md](../classifier-service/README.md) for running 
 
 ### With Docker Compose
 
-Cada componente tiene su propio `.env`: **db/.env** para la base de datos, **rag-service/.env** para el backend, **classifier-service/.env** para el clasificador y **observability/.env** (si usas observabilidad). Crea defaults desde la raíz del repo:
+Each component has its own `.env`: **db/.env** for the database, **rag-service/.env** for the backend, **classifier-service/.env** for the classifier, and **observability/.env** (if you use observability). Create defaults from the repo root:
 
 ```bash
 ./scripts/create-env-all.sh
@@ -43,22 +43,22 @@ You can use environment variables in `application.properties` with placeholders 
 
 ## Smoke test
 
-With the stack running, see [docs/SMOKE_TEST.md](docs/SMOKE_TEST.md) or run `./scripts/smoke-test.sh`.
+With the stack running, see [scripts/README.md](../scripts/README.md) (section **Smoke test**) or run `./scripts/smoke-test.sh`.
 
 ## Observability (optional)
 
-Con `docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env --env-file ../rag-service/.env --env-file ../classifier-service/.env --env-file ../observability/.env up -d` puedes ejecutar OpenTelemetry Collector, Jaeger, Prometheus y Grafana. El backend expone `/actuator/health` y `/actuator/prometheus`. Configura la datasource de Prometheus en Grafana (`http://prometheus:9090`) para los dashboards.
+With `docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env --env-file ../rag-service/.env --env-file ../classifier-service/.env --env-file ../observability/.env up -d` you can run OpenTelemetry Collector, Jaeger, Prometheus, and Grafana. The backend exposes `/actuator/health` and `/actuator/prometheus`. Configure the Prometheus datasource in Grafana (`http://prometheus:9090`) for dashboards.
 
-## Modos de ejecucion
-Referencia rápida y comandos: [docs/MODOS_EJECUCION.md](../docs/MODOS_EJECUCION.md).
+## Execution modes
+Quick reference and commands: [docker/README.md](../docker/README.md) (section **Execution modes**).
 
-Para el modo “prod local” (reverse proxy + hardening de puertos para servicios internos):
+For **prod-local** mode (reverse proxy + hardened ports for internal services):
 
 ```bash
 ./scripts/up-prod-local.sh
 ```
 
-Para parar ese modo:
+To stop that mode:
 
 ```bash
 ./scripts/down.sh

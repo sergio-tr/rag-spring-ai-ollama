@@ -295,7 +295,6 @@
                         <exclude>com/uniovi/rag/service/analyser/**</exclude>
                         <exclude>com/uniovi/rag/service/extraction/**</exclude>
                         <exclude>com/uniovi/rag/service/ranker/**</exclude>
-                        <exclude>com/uniovi/rag/service/classifier/PythonQueryClassifier.class</exclude>
                         <exclude>com/uniovi/rag/service/reasoning/ReasoningStrategy.class</exclude>
                         <!-- Core orchestration + expander: very large branch surface; covered by ProcessQueryServiceTest suite -->
                         <exclude>com/uniovi/rag/service/query/ProcessQueryService.class</exclude>

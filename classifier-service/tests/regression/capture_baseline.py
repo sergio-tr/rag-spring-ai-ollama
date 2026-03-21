@@ -5,7 +5,7 @@ Run from classifier-service root:
 
   python tests/regression/capture_baseline.py [--include-evaluation]
 
-Defaults: questions from tests/regression/questions.txt, output docs/classifier_regression_baseline.json
+Defaults: questions from tests/regression/questions.txt, output tests/regression/classifier_regression_baseline.json
 """
 
 from __future__ import annotations

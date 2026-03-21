@@ -80,16 +80,64 @@ docker compose \
 
 Classifier endpoints: `POST /classify`, `GET /models`, `POST /train`, `POST /evaluate`
 
+## SonarCloud (quality gate and static analysis)
+
+Analysis is driven by [`sonar-project.properties`](sonar-project.properties) and [`.github/workflows/sonar.yml`](.github/workflows/sonar.yml). Set `sonar.projectKey` and `sonar.organization` to match your SonarCloud project, and add a **`SONAR_TOKEN`** repository secret (SonarCloud → *My Account → Security*).
+
+**Branches:** pushes and PRs to `main` / `dev` trigger analysis. In SonarCloud, set the main branch to `main` (*Project → Administration → Branches and Pull Requests*) so **New Code** is computed correctly.
+
+### Recommended Quality Gate: `Project Gate`
+
+Create an organization-level gate (*Organization → Quality Gates → Create*) and assign it to this project (*Project → Administration → Quality Gate*).
+
+**Conditions on New Code**
+
+| Metric | Operator | Threshold |
+|---|---|---|
+| Coverage on New Code | `<` | `80%` |
+| Duplicated Lines on New Code | `>` | `3%` |
+| Maintainability / Reliability / Security Rating | worse than | `A` |
+| Security Hotspots Reviewed | `<` | `100%` |
+
+**Conditions on Overall Code**
+
+| Metric | Operator | Threshold |
+|---|---|---|
+| Coverage | `<` | `70%` |
+| Duplicated Lines | `>` | `5%` |
+| Maintainability / Reliability Rating | worse than | `B` |
+| Security Rating | worse than | `A` |
+
+### Quality profiles (optional)
+
+Copy **Sonar way** for Java and Python and enable extra rules as needed (e.g. hardcoded credentials, permissive CORS, weak crypto). Assign the profile to the project.
+
+### Security Hotspots
+
+Hotspots require manual review; the gate may require **100% reviewed**. Typical justified cases in this repo: monitoring credentials in SQL init scripts, test credentials in `test-init.sql`, and config under `observability/**` when using environment variables. Use *Fixed*, *Won’t Fix*, or *Acknowledged* with a short comment in SonarCloud.
+
+Production credentials must always come from environment / `.env` files, not from literals in application code.
+
+### Badges
+
+README badges use SonarCloud’s public badge API. Replace `YOUR_SONAR_PROJECT_KEY` in the URLs above with your real **project key** so metrics resolve.
+
 ## Documentation
 
 | Document | Description |
 |---|---|
-| [docs/ENTORNO_DESARROLLO.md](docs/ENTORNO_DESARROLLO.md) | Dev environment setup and hot-reload guide |
-| [docs/MODOS_EJECUCION.md](docs/MODOS_EJECUCION.md) | All execution modes (dev, compose, prod local) |
-| [docs/SMOKE_TEST.md](docs/SMOKE_TEST.md) | Manual smoke test checklist |
-| [docs/RECONOCIMIENTO_ESTADO_SISTEMA.md](docs/RECONOCIMIENTO_ESTADO_SISTEMA.md) | System state analysis and known issues |
-| [docs/SONAR_QUALITY_GATE.md](docs/SONAR_QUALITY_GATE.md) | SonarCloud quality gate configuration guide |
-| [observability/README.md](observability/README.md) | Observability stack configuration |
+| [rag-service/README.md](rag-service/README.md) | Backend build, variables, Compose, smoke test link |
+| [classifier-service/README.md](classifier-service/README.md) | Classifier API, run locally, regression testing |
+| [docker/README.md](docker/README.md) | Compose usage, execution modes, deployment runbook |
+| [scripts/README.md](scripts/README.md) | Env scripts, prod-local, backup/restore, smoke test |
+| [db/README.md](db/README.md) | Database setup |
+| [ollama/README.md](ollama/README.md) | Ollama / GPU stack |
+| [observability/README.md](observability/README.md) | Observability stack (OTEL, Jaeger, Prometheus, Grafana) |
+| [tests/integration/README.md](tests/integration/README.md) | Integration tests (pytest) against the running stack |
+
+**SonarCloud:** quality gate, CI setup, and hotspot policy are documented in the [SonarCloud](#sonarcloud-quality-gate-and-static-analysis) section above (extended notes may exist only in a local `docs/` copy).
+
+The root `docs/` folder is listed in `.gitignore`: local-only drafts, analysis, planning, and long guides (e.g. `DEVELOPMENT_ENVIRONMENT.md`, evaluation notes) are not versioned.
 
 ## Tech stack
 

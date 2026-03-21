@@ -24,7 +24,7 @@ public class ToolRagService {
     private final EmbeddingModel embeddingModel;
     private final List<QueryType> orderedTypes;
     private List<float[]> toolEmbeddings;
-    /** true si falló la precarga de embeddings (Ollama caído, modelo no cargado, etc.) */
+    /** True if embedding preload failed (Ollama down, model not loaded, etc.). */
     private volatile boolean degraded;
     private final Object initLock = new Object();
 

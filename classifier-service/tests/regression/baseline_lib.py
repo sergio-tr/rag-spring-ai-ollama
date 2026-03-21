@@ -19,7 +19,8 @@ def default_questions_path() -> Path:
 
 
 def default_baseline_json_path() -> Path:
-    return service_root() / "docs" / "classifier_regression_baseline.json"
+    """Baseline JSON lives next to the regression harness (`tests/regression/`)."""
+    return Path(__file__).resolve().parent / "classifier_regression_baseline.json"
 
 
 def read_questions(path: Path) -> list[str]:

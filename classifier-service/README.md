@@ -71,10 +71,66 @@ The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://
 
 ## Tests
 
-- **`tests/unit/`** — tests unitarios (modelo, inferencia, config, servicios aislados).
-- **`tests/test_api.py`** — API con `TestClient` (sin red externa).
-- **`tests/regression/`** — regresión manual frente a HTTP en marcha (`capture_baseline.py` / `check_baseline.py`) y tests pytest de la lógica del harness (`test_baseline_lib.py`). Ver `tests/regression/README.md`.
+- **`tests/unit/`** — unit tests (model, inference, config, isolated services).
+- **`tests/test_api.py`** — API tests with `TestClient` (no external network).
+- **`tests/regression/`** — manual regression against a running HTTP service (`capture_baseline.py` / `check_baseline.py`) and pytest for harness logic (`test_baseline_lib.py`). See `tests/regression/README.md` and **Manual regression testing** below.
 
 ```bash
 pytest tests/ -v
 ```
+
+## Manual regression testing
+
+**Goal:** detect behavior changes in **classifier-service** after code or model changes.
+
+The harness lives **inside the service**: `classifier-service/tests/regression/` (separate from unit tests in `tests/unit/` and API tests in `tests/test_api.py`).
+
+### Acceptance criteria
+
+- `mismatchesCount == 0` when checking against the baseline.
+- If the service returns `503` (model not loaded), the check may fail. Check `GET /health`.
+
+### Fixed dataset
+
+- `classifier-service/tests/regression/questions.txt`
+
+### Step 1: Capture baseline
+
+From **`classifier-service/`** with the service running:
+
+```bash
+cd classifier-service
+python tests/regression/capture_baseline.py \
+  --classifier-base-url http://localhost:8000 \
+  --model-id default \
+  --questions-file tests/regression/questions.txt \
+  --output-json tests/regression/classifier_regression_baseline.json
+```
+
+Defaults match the paths above (you can omit flags for local port 8000).
+
+Optional (if an evaluation dataset exists):
+
+```bash
+python tests/regression/capture_baseline.py --include-evaluation
+```
+
+### Step 2: Check regression after changes
+
+```bash
+cd classifier-service
+python tests/regression/check_baseline.py \
+  --classifier-base-url http://localhost:8000 \
+  --baseline-json tests/regression/classifier_regression_baseline.json
+```
+
+Exit code: `0` if match, `1` if differences.
+
+### Automated harness tests (no HTTP)
+
+```bash
+cd classifier-service
+pytest tests/regression/test_baseline_lib.py -v
+```
+
+See also `classifier-service/tests/regression/README.md`.
