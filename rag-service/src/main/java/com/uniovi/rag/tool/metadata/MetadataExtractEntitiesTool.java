@@ -11,6 +11,8 @@ import org.springframework.ai.document.Document;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**
@@ -80,13 +82,13 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             }
         }
 
-        // When query asks for sections/structure of the acta (not persons), return from metadata (Fecha, Lugar, Orden del día, etc.)
+        // When query asks for sections/structure of the minute (not persons), return from metadata (date, place, agenda, etc.)
         if (asksForSectionsOrStructure(query)) {
             List<Minute> forDate = filterMinutesByDate(query, ner, relevantMinutes);
             List<Minute> target = forDate.isEmpty() ? relevantMinutes : forDate;
             if (!target.isEmpty()) {
                 String sectionsAnswer = buildSectionsAnswerFromMinute(target.get(0));
-                log().info("Returning acta sections/structure for query (no entity extraction)");
+                log().info("Returning minute sections/structure for query (no entity extraction)");
                 return ToolResult.from(formatResponse(sectionsAnswer, query), getClass());
             }
         }
@@ -147,7 +149,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         
         // Second: Extract entities from minutes in parallel
         List<CompletableFuture<List<Entity>>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> extractEntitiesFromMinute(query, minute)))
+                .map(minute -> supplyAsync(() -> extractEntitiesFromMinute(query, minute)))
                 .collect(Collectors.toList());
 
         List<Entity> minuteEntities = futures.stream()
@@ -806,8 +808,8 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
     
     /**
-     * Checks if query requires filtering by both topic and person (AND logic)
-     * Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
+     * Checks if query requires filtering by both topic and person (AND logic).
+     * Example (Spanish): minutes mentioning the elevator and chaired by a named person.
      */
     private boolean asksForPresidentOrSecretaryOnly(String query) {
         if (query == null || query.trim().isEmpty()) return false;
@@ -882,7 +884,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         return String.join("\n", items);
     }
 
-    /** Detects if the query asks for sections/structure of the acta (§4: Fecha, Lugar, Hora, Asistentes, Orden del día). */
+    /** Detects if the query asks for sections/structure of the minute (§4: date, place, time, attendees, agenda). */
     private static boolean asksForSectionsOrStructure(String query) {
         if (query == null || query.isBlank()) return false;
         String q = query.toLowerCase();
@@ -894,7 +896,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                 || q.contains("secciones que tiene el acta");
     }
 
-    /** Builds a natural-language list of acta sections from minute metadata (Fecha, Lugar, Hora inicio/fin, Asistentes, Orden del día con ítems). */
+    /** Builds a natural-language list of minute sections from metadata (date, place, start/end time, attendees, agenda items). */
     private String buildSectionsAnswerFromMinute(Minute minute) {
         List<String> sections = new ArrayList<>();
         if (minute.date() != null && !minute.date().isBlank()) sections.add("Fecha");
@@ -923,8 +925,8 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
     
     /**
-     * Filters minutes by topic AND person (both conditions must be met)
-     * Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
+     * Filters minutes by topic AND person (both conditions must be met).
+     * Example (Spanish): elevator topic plus a specific chairperson.
      */
     private List<Minute> filterMinutesByTopicAndPerson(String query, List<Minute> minutes, JSONObject ner) {
         if (minutes.isEmpty() || query == null) {

@@ -24,7 +24,7 @@ These tests validate **HTTP integration** between components while services are 
 2. Ensure **`rag-service/.env`** sets **`OLLAMA_BASE_URL`** to Ollama **as seen from the backend container**:
 
    - `http://host.docker.internal:11434` (Docker Desktop on Windows/macOS), or
-   - `http://ollama:11434` if you use `compose.ollama.yml` or `compose.ollama-gpu.yml`.
+   - `http://ollama:11434` if you use `compose.ollama-gpu.yml`.
 
 3. Run tests:
 

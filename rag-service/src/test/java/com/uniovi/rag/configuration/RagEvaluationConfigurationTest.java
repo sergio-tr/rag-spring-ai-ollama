@@ -6,7 +6,6 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.query.ResponseValidator;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -26,7 +25,6 @@ class RagEvaluationConfigurationTest {
         ChatClient chatClient = mock(ChatClient.class);
         PgVectorStore vectorStore = mock(PgVectorStore.class);
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        EmbeddingModel embeddingModel = mock(EmbeddingModel.class);
         ResponseValidator responseValidator = mock(ResponseValidator.class);
         DocumentContentExtractor documentContentExtractor = mock(DocumentContentExtractor.class);
         OllamaConnectivityChecker ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
@@ -36,7 +34,6 @@ class RagEvaluationConfigurationTest {
                 chatClient,
                 vectorStore,
                 jdbcTemplate,
-                embeddingModel,
                 10,
                 0.7,
                 "http://localhost:8000",

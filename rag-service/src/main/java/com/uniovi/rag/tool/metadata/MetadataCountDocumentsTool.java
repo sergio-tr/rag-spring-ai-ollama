@@ -63,7 +63,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         }
         
         // Step 1.7: Filter by attendeesCount if query asks about number of attendees
-        // Example: "En cuántas actas participaron menos de diez personas" (§4: ninguna acta tiene <10 → 0)
+        // Example: count minutes with fewer than N attendees (§4: if none have <10 → 0)
         AttendeesCountQueryInfo attendeesQueryInfo = detectAttendeesCountQuery(query);
         if (attendeesQueryInfo != null) {
             log().info("Query asks about number of attendees (operator={}, threshold={}), filtering documents", 
@@ -72,7 +72,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             log().info("Filtered {} documents by attendees count criteria, {} remaining (applied filter even if empty)", 
                       docs.size(), filteredByAttendees.size());
             docs = filteredByAttendees; // Apply filter even if empty - this indicates no matches
-            // When filter yields 0 docs, return explicit "0 actas" (not generic "no documents found")
+            // When filter yields 0 docs, return explicit zero count (not generic "no documents found")
             if (docs.isEmpty()) {
                 String zeroAnswer = generateCountZeroMessage(query, attendeesQueryInfo);
                 return ToolResult.from(formatResponse(zeroAnswer, query), getClass());
@@ -84,14 +84,14 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
-        // Step 1.8: Dedupe documents by document_id so we have at most one doc per acta (avoids overcounting e.g. ascensor)
+        // Step 1.8: Dedupe documents by document_id so we have at most one doc per minute (avoids overcounting e.g. elevator)
         int docsBeforeDedupe = docs.size();
         docs = dedupeDocsByDocumentId(docs);
         if (docs.size() < docsBeforeDedupe) {
-            log().info("Deduped documents by document_id: {} -> {} unique actas", docsBeforeDedupe, docs.size());
+            log().info("Deduped documents by document_id: {} -> {} unique minutes", docsBeforeDedupe, docs.size());
         }
 
-        // Step 2: Extract minutes in parallel (chunks may repeat same document_id; count by unique acta)
+        // Step 2: Extract minutes in parallel (chunks may repeat same document_id; count by unique minute)
         List<Minute> minutes = extractMinutesInParallel(docs);
         minutes = dedupeMinutesByDocumentId(minutes);
         if (minutes.isEmpty()) {
@@ -112,7 +112,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         }
 
         // Step 3.5: Check if query asks for month comparison
-        // Example: "¿Qué mes tuvo más reuniones registradas, febrero o abril?"
+        // Example: which month had more registered meetings (February vs April, etc.)
         if (detectMonthComparisonQuery(query)) {
             log().info("Query asks for month comparison, processing accordingly");
             String answer = generateMonthComparisonAnswer(query, relevantMinutes);
@@ -132,7 +132,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
     }
 
     /**
-     * Deduplicates documents by document_id so we pass at most one doc per acta to extractMinutesInParallel.
+     * Deduplicates documents by document_id so we pass at most one doc per minute to extractMinutesInParallel.
      */
     private List<Document> dedupeDocsByDocumentId(List<Document> docs) {
         if (docs == null || docs.isEmpty()) return docs;
@@ -428,7 +428,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
     }
     
     /**
-     * When count by attendees filter yields 0 documents (e.g. "menos de diez" and no acta has &lt;10).
+     * When count-by-attendees filter yields 0 documents (e.g. "fewer than ten" and no minute has &lt;10 attendees).
      */
     private String generateCountZeroMessage(String query, AttendeesCountQueryInfo queryInfo) {
         if (query == null || queryInfo == null) return "0 actas.";
@@ -507,8 +507,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
     }
     
     /**
-     * Detects if query asks for month comparison.
-     * Example: "¿Qué mes tuvo más reuniones registradas, febrero o abril?"
+     * Detects if the query asks for month comparison (which month had more meetings, etc.).
      */
     private boolean detectMonthComparisonQuery(String query) {
         if (query == null || query.trim().isEmpty()) {
@@ -543,8 +542,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
     }
     
     /**
-     * Generates answer for month comparison queries.
-     * Example: "¿Qué mes tuvo más reuniones registradas, febrero o abril?"
+     * Generates the answer for month comparison queries.
      */
     private String generateMonthComparisonAnswer(String query, List<Minute> minutes) {
         if (minutes == null || minutes.isEmpty()) {

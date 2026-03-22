@@ -10,7 +10,7 @@ docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env
 
 With observability, add `-f compose.obs.yml` and `--env-file ../observability/.env` (see `observability/README.md`).
 
-**Ollama (required for RAG):** the default backend URL is `http://host.docker.internal:11434` (Ollama on the **host**). If Ollama is **not** running on the host, the API will return errors and logs will show `ResourceAccessException` on `/api/embed` and `/api/chat`. Use **`compose.ollama.yml`** to run Ollama in Docker (CPU) and point the backend at `http://ollama:11434`, then pull the chat and embedding models into the container (see that file’s header comments).
+**Ollama (required for RAG):** the default backend URL is `http://host.docker.internal:11434` (Ollama on the **host**). If Ollama is **not** running on the host, the API will return errors and logs will show `ResourceAccessException` on `/api/embed` and `/api/chat`. To run Ollama **in Docker**, this repo only ships **`compose.ollama-gpu.yml`** (NVIDIA GPU + build from `ollama/`). Point the backend at `http://ollama:11434` and pull models on startup or manually (`docker exec -it ollama ollama pull <model>`).
 
 **Health checks (strict):** the backend container probes **`/actuator/health/readiness`** (HTTP **503** until ready). That group includes PostgreSQL, disk space, **Ollama** (`GET /api/tags` and both configured models present), and the **classifier** (`GET /health` with `model: loaded`). The classifier service only becomes healthy when its default model is loaded. Tune or relax checks via `rag.health.*` in `rag-service` (see `application.properties`).
 
@@ -57,24 +57,9 @@ docker compose \
   up -d
 ```
 
-### Base + Ollama (CPU, in Docker)
+### Base + Ollama (GPU, in Docker)
 
-Adds the **`ollama`** service (official image) and sets `SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`. Does **not** require a GPU. The **backend** pulls missing chat/embedding models via Ollama’s API on startup (`rag.ollama.auto-pull-enabled`, default `true`); the first start can take several minutes while models download. You can still run `docker exec -it ollama ollama pull <model>` manually if you prefer to preload before starting the backend.
-
-```bash
-cd docker
-docker compose \
-  -f docker-compose.yml \
-  -f compose.ollama.yml \
-  --env-file ../db/.env \
-  --env-file ../rag-service/.env \
-  --env-file ../classifier-service/.env \
-  up -d
-```
-
-### Base + GPU
-
-Includes `ollama` built from `ollama/` (NVIDIA GPU) and points the backend at it.
+Adds **`ollama`** built from `ollama/` with **NVIDIA GPU** (NVIDIA Container Toolkit required). Sets `SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`. The backend pulls missing models on startup (`rag.ollama.auto-pull-enabled`, default `true`); first start can take several minutes.
 
 Example:
 
@@ -107,7 +92,7 @@ Start / stop:
 Options:
 
 - Use `./scripts/up.sh prod --obs` to include `compose.obs.yml` (OTEL, Jaeger, Prometheus, Grafana).
-- `--gpu`: include `compose.ollama-gpu.yml` (requires `ollama/.env` and a GPU-capable environment)
+- `--gpu` or `--ollama`: include `compose.ollama-gpu.yml` (requires `ollama/.env` and NVIDIA GPU / Container Toolkit)
 - `--volumes` (only `down.sh`): also remove named volumes
 
 ## Deployment runbook

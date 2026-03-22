@@ -1,10 +1,12 @@
 package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.query.QueryService;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -35,13 +37,14 @@ public class SimpleMinuteEvaluationService extends AbstractMinuteEvaluationServi
     );
 
     public SimpleMinuteEvaluationService(
-        RagFeatureConfiguration featureConfig, 
-        ChatClient chatClient, 
-        DocumentService documentService, 
+        RagFeatureConfiguration featureConfig,
+        RagImplementationProperties implementationProperties,
+        ChatClient chatClient,
+        DocumentService documentService,
         QueryService queryService,
-        boolean cleanBeforeLoad
+        @Value("${evaluation.clean-before-load:false}") boolean cleanBeforeLoad
     ) {
-        super(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
+        super(featureConfig, implementationProperties, chatClient, documentService, queryService, cleanBeforeLoad);
     }
 
     @Override

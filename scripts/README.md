@@ -8,7 +8,7 @@ Runs **all** automated checks in order:
 
 1. `rag-service`: `./mvnw verify` (JaCoCo line coverage ≥ 80%). Uses the **same image definition as the backend**: `docker build --target build -f rag-service/Dockerfile` (JDK from `RAG_JAVA_JDK_BASE_IMAGE` in `rag-service/.env`), then a container with the repo mounted runs `mvnw verify` (named volume `rag-m2-cache` for `~/.m2`). No JDK on the host unless you force local Maven: `MAVEN_ON_HOST=1` / `-UseLocalMaven`. Build-stage tag: `RAG_BUILD_IMAGE_TAG` (default `rag-service-build:local`).
 2. `classifier-service`: `pytest tests/` (coverage ≥ 80% per `pytest.ini`).
-3. Docker: `docker compose` with `docker-compose.yml` + `compose.obs.yml` + `compose.logs.yml` + `compose.ollama.yml` (Ollama in Docker so the backend does not depend on `host.docker.internal`).
+3. Docker: `docker compose` with `docker-compose.yml` + `compose.obs.yml` + `compose.logs.yml` + `compose.ollama-gpu.yml` (Ollama in Docker with GPU so the backend does not depend on `host.docker.internal`).
 4. `tests/integration`: `INTEGRATION_CHECK_OBS=1 pytest tests/integration` (requires observability URLs on localhost).
 
 **JaCoCo:** `target/site/jacoco/index.html` muestra **cobertura del código**, no un listado de tests. Los paquetes excluidos en `rag-service/pom.xml` (p. ej. `tool/**`) no aparecen en ese informe aunque tengan tests en Surefire. Tras `mvn verify` en `rag-service`, puedes comprobar **≥80% líneas en cada paquete del informe** con:
@@ -111,7 +111,7 @@ Env setup runs **before** `compose up`, not before `dev --down`.
 
 **`--rag` (dev only):** arranca **`backend-dev`** (Spring en Docker): volumen del código `rag-service/`, recompilación en bucle y **Spring Boot DevTools** reinicia al cambiar `target/classes` (similar en espíritu a uvicorn `--reload` / Vite). Incluye `classifier-service` en Docker si aún no lo pediste con `--classifier`. Ajusta **`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`** en `rag-service/.env` si Ollama va en el mismo compose. Variable opcional: **`RAG_DEV_POLL_INTERVAL`** (segundos entre comprobaciones de cambios, por defecto 2).
 
-**Compose files** (see `docker/`): `compose.dev.yml` (`--classifier`), `compose.obs.yml` (`--obs`), `compose.logs.yml` (`--logs`), `compose.infra.yml` (`--infra`), `compose.ollama-gpu.yml` (`--gpu`) or `compose.ollama.yml` (`--ollama`, CPU Ollama — mutually exclusive with `--gpu`), `compose.rag-dev.yml` (`--rag`), `compose.rag-dev-obs.yml` (solo si `--rag` y `--obs`: OTLP al collector), `compose.prod.yml` (prod only).
+**Compose files** (see `docker/`): `compose.dev.yml` (classifier hot-reload y/o `backend-dev` con `--classifier` y/o `--rag`), `compose.obs.yml` (`--obs`), `compose.logs.yml` (`--logs`), `compose.infra.yml` (`--infra`), `compose.ollama-gpu.yml` (`--gpu` or `--ollama`, Ollama in Docker **NVIDIA GPU only**), `compose.rag-dev-obs.yml` (si `--rag` y `--obs`: Spring `dev,infra` + OTLP a collector), `compose.prod.yml` (prod only).
 
 **Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, `--rag`, `--down`, `--volumes`. `prod`: `--all`, `--obs`, `--gpu`, `--ollama`, `--logs`, `--infra`. **`down.sh`**: por defecto **prod** (`./scripts/down.sh` = `down prod`); **`./scripts/down.sh dev ...`** igual que `up dev` (para parar **backend-dev**, mismos flags que al subir). **`build.sh`**: same toggles as `up.sh` for the chosen mode (runs `docker compose build`). For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag` / `--all`) so the compose file chain matches.
 
@@ -121,7 +121,7 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 
 - Main stack: `docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d`
 - With observability: add `-f compose.obs.yml` and `--env-file ../observability/.env`
-- With GPU: add `-f compose.ollama-gpu.yml` and `--env-file ../ollama/.env` (Ollama is built from `ollama/Dockerfile`; see `ollama/README.md`)
+- With Ollama in Docker (GPU): add `-f compose.ollama-gpu.yml` and `--env-file ../ollama/.env` (built from `ollama/Dockerfile`; see `ollama/README.md`)
 
 ## Prod local (hardening) — `up` / `down` / `build`
 
@@ -133,7 +133,7 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 
 Notes:
 - **`--obs`** adds `compose.obs.yml` (opt-in). Plain `up.sh prod` is base + `compose.prod.yml` only (reverse proxy, hardened ports).
-- `--gpu` → `compose.ollama-gpu.yml`; `--ollama` → `compose.ollama.yml` (CPU). Not both.
+- `--gpu` and `--ollama` → same: `compose.ollama-gpu.yml` (NVIDIA GPU).
 - `--logs` → Loki + Promtail; `--infra` → node-exporter + cAdvisor (host paths; see `docker/README.md`).
 
 ## Database backup / restore

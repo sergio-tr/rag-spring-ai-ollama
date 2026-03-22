@@ -3,9 +3,9 @@ package com.uniovi.rag.configuration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * Properties for selecting service implementations (query-service, retriever, analyser).
- * Keys: rag.query-service-impl (simple|simple-process|process), rag.retriever-impl (basic|filtered|minute-document), rag.analyser-impl (minute-ner|no-op).
- * See EVALUACION_RESULTADOS_2026-03-01.md section 6.
+ * Implementation selection (query service, retriever, analyser).
+ * <p>Single configuration source: {@code rag.*} prefix (do not duplicate under {@code rag.features.*}).
+ * Keys: {@code rag.query-service-impl}, {@code rag.retriever-impl}, {@code rag.analyser-impl}.</p>
  */
 @ConfigurationProperties(prefix = "rag")
 public class RagImplementationProperties {
@@ -39,5 +39,16 @@ public class RagImplementationProperties {
 
     public void setAnalyserImpl(String analyserImpl) {
         this.analyserImpl = analyserImpl;
+    }
+
+    /** Shallow copy for evaluation / overrides without mutating the Spring bean. */
+    public static RagImplementationProperties copyOf(RagImplementationProperties source) {
+        RagImplementationProperties c = new RagImplementationProperties();
+        if (source != null) {
+            c.setQueryServiceImpl(source.getQueryServiceImpl());
+            c.setRetrieverImpl(source.getRetrieverImpl());
+            c.setAnalyserImpl(source.getAnalyserImpl());
+        }
+        return c;
     }
 }

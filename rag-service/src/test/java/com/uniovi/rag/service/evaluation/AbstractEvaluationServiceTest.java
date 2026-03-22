@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.query.QueryService;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,7 @@ class AbstractEvaluationServiceTest {
         DocumentService documentService = mock(DocumentService.class);
         QueryService queryService = mock(QueryService.class);
         SimpleMinuteEvaluationService service = new SimpleMinuteEvaluationService(
-                featureConfig, chatClient, documentService, queryService, false);
+                featureConfig, new RagImplementationProperties(), chatClient, documentService, queryService, false);
         assertNotNull(service);
         assertTrue(service instanceof AbstractEvaluationService);
     }

@@ -81,7 +81,7 @@ public class OllamaHealthIndicator implements HealthIndicator {
                 return Health.down()
                         .withDetail("url", tagsUrl)
                         .withDetail("missingModels", missing)
-                        .withDetail("hint", "El backend puede descargarlos con rag.ollama.auto-pull-enabled=true, o: docker exec -it ollama ollama pull <model>")
+                        .withDetail("hint", "The backend can pull them with rag.ollama.auto-pull-enabled=true, or: docker exec -it ollama ollama pull <model>")
                         .build();
             }
             return Health.up()

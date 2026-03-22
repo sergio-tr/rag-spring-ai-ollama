@@ -1,6 +1,7 @@
 package com.uniovi.rag.observability;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
@@ -40,10 +41,11 @@ class TracedEvaluationServiceTest {
     @Test
     void evaluateWithConfiguration_delegates() {
         RagFeatureConfiguration config = new RagFeatureConfiguration();
+        RagImplementationProperties impl = new RagImplementationProperties();
         Map<String, Object> result = Map.of("score", 0.9);
-        when(delegate.evaluateWithConfiguration(any())).thenReturn(result);
-        assertEquals(result, traced.evaluateWithConfiguration(config));
-        verify(delegate).evaluateWithConfiguration(config);
+        when(delegate.evaluateWithConfiguration(any(), any())).thenReturn(result);
+        assertEquals(result, traced.evaluateWithConfiguration(config, impl));
+        verify(delegate).evaluateWithConfiguration(config, impl);
     }
 
     @Test

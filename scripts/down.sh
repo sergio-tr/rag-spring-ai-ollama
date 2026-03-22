@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./scripts/down.sh              # prod (default), same as before
-#   ./scripts/down.sh prod [--all] [--obs] [--gpu|--ollama] [--logs] [--infra] [--volumes]
+#   ./scripts/down.sh prod [--all] [--obs] [--gpu|--ollama] [--logs] [--infra] [--volumes]  (--gpu / --ollama = Ollama GPU compose)
 #   ./scripts/down.sh dev  [--all] [--rag] [--obs] [--classifier] ... [--volumes]
 #
 # Examples:

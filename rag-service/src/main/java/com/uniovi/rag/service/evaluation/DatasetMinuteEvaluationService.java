@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.query.QueryService;
 
@@ -22,12 +23,13 @@ public class DatasetMinuteEvaluationService extends AbstractMinuteEvaluationServ
 
     public DatasetMinuteEvaluationService(
         RagFeatureConfiguration featureConfig,
+        RagImplementationProperties implementationProperties,
         ChatClient chatClient,
         DocumentService documentService,
         QueryService queryService,
         boolean cleanBeforeLoad
     ) {
-        super(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
+        super(featureConfig, implementationProperties, chatClient, documentService, queryService, cleanBeforeLoad);
     }
 
     /** Expected answers should be verified against ACTA 1, 2, 3, 5, 6 as source of truth. */

@@ -13,10 +13,10 @@
 #
 # dev:
 #   [--all] [--gpu] [--ollama] [--obs] [--classifier] [--logs] [--infra] [--rag] [--down] [--volumes]
-#   --rag: Spring backend en Docker (volumen + mvn compile + DevTools), además de la infra.
+#   --rag: Spring backend in Docker (volume + mvn compile + DevTools), in addition to infra.
 #   With command "up":   --down / --volumes tear down the dev stack (same as "down dev").
 #   With command "down": same flags as "up dev --down".
-#   --gpu and --ollama are mutually exclusive.
+#   --gpu and --ollama are aliases: both add compose.ollama-gpu.yml (Ollama in Docker with NVIDIA GPU only).
 #   --all  = --gpu --obs --classifier --logs --infra --rag
 #
 # prod:
@@ -145,7 +145,6 @@ set -- "${REST[@]}"
 # ---------- dev ----------
 if [ "$MODE" = dev ]; then
   WITH_GPU=false
-  WITH_OLLAMA_CPU=false
   WITH_OBS=false
   WITH_CLASSIFIER=false
   WITH_LOGS=false
@@ -167,7 +166,7 @@ if [ "$MODE" = dev ]; then
     case "$arg" in
       --all)        ALL=true ;;
       --gpu)        WITH_GPU=true ;;
-      --ollama)     WITH_OLLAMA_CPU=true ;;
+      --ollama)     WITH_GPU=true ;;
       --obs)        WITH_OBS=true ;;
       --classifier) WITH_CLASSIFIER=true ;;
       --logs)       WITH_LOGS=true ;;
@@ -199,22 +198,15 @@ if [ "$MODE" = dev ]; then
     fi
   fi
 
-  if [ "$WITH_GPU" = true ] && [ "$WITH_OLLAMA_CPU" = true ]; then
-    echo "Error: use only one of --gpu (compose.ollama-gpu.yml) or --ollama (compose.ollama.yml CPU)." >&2
-    exit 1
-  fi
-
   COMPOSE_FILES=(-f "docker-compose.yml")
-  [ "$WITH_CLASSIFIER" = true ] && COMPOSE_FILES+=(-f "compose.dev.yml")
+  # compose.dev.yml: classifier hot-reload and/or backend-dev definition (--rag)
+  if [ "$WITH_CLASSIFIER" = true ] || [ "$WITH_RAG_BACKEND" = true ]; then
+    COMPOSE_FILES+=(-f "compose.dev.yml")
+  fi
   [ "$WITH_OBS" = true ]        && COMPOSE_FILES+=(-f "compose.obs.yml")
   [ "$WITH_LOGS" = true ]       && COMPOSE_FILES+=(-f "compose.logs.yml")
   [ "$WITH_INFRA" = true ]      && COMPOSE_FILES+=(-f "compose.infra.yml")
-  if [ "$WITH_GPU" = true ]; then
-    COMPOSE_FILES+=(-f "compose.ollama-gpu.yml")
-  elif [ "$WITH_OLLAMA_CPU" = true ]; then
-    COMPOSE_FILES+=(-f "compose.ollama.yml")
-  fi
-  [ "$WITH_RAG_BACKEND" = true ] && COMPOSE_FILES+=(-f "compose.rag-dev.yml")
+  [ "$WITH_GPU" = true ]        && COMPOSE_FILES+=(-f "compose.ollama-gpu.yml")
   [ "$WITH_RAG_BACKEND" = true ] && [ "$WITH_OBS" = true ] && COMPOSE_FILES+=(-f "compose.rag-dev-obs.yml")
 
   ENV_ARGS=()
@@ -232,7 +224,7 @@ if [ "$MODE" = dev ]; then
   if [ "$WITH_OBS" = true ] || [ "$WITH_LOGS" = true ] || [ "$WITH_INFRA" = true ]; then
     add_env_file "$ROOT_DIR/observability/.env"
   fi
-  if [ "$WITH_GPU" = true ] || [ "$WITH_OLLAMA_CPU" = true ]; then
+  if [ "$WITH_GPU" = true ]; then
     add_env_file "$ROOT_DIR/ollama/.env"
   fi
   [ "$WITH_RAG_BACKEND" = true ] && add_env_file "$ROOT_DIR/rag-service/.env"
@@ -240,7 +232,9 @@ if [ "$MODE" = dev ]; then
   cd "$DOCKER_DIR"
 
   if [ "$ACTION" = down ]; then
-    DOWN_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" down)
+    DOWN_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}")
+    [ "$WITH_RAG_BACKEND" = true ] && DOWN_ARGS+=(--profile rag)
+    DOWN_ARGS+=(down)
     [ "$WITH_VOLUMES" = true ] && DOWN_ARGS+=(-v)
     docker compose "${DOWN_ARGS[@]}"
     echo "Dev infrastructure stopped."
@@ -249,15 +243,21 @@ if [ "$MODE" = dev ]; then
 
   if [ "$ACTION" = build ]; then
     maybe_run_env_setup build
-    docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" build
-    echo "Dev images built (obs=$WITH_OBS, gpu=$WITH_GPU, ollama_cpu=$WITH_OLLAMA_CPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+    BUILD_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}")
+    [ "$WITH_RAG_BACKEND" = true ] && BUILD_ARGS+=(--profile rag)
+    BUILD_ARGS+=(build)
+    docker compose "${BUILD_ARGS[@]}"
+    echo "Dev images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, logs=$WITH_LOGS, infra=$WITH_INFRA)."
     exit 0
   fi
 
   maybe_run_env_setup up
 
+  PROFILE_ARGS=()
+  [ "$WITH_RAG_BACKEND" = true ] && PROFILE_ARGS+=(--profile rag)
+
   SERVICES=(postgres)
-  if [ "$WITH_GPU" = true ] || [ "$WITH_OLLAMA_CPU" = true ]; then
+  if [ "$WITH_GPU" = true ]; then
     SERVICES+=(ollama)
   fi
   [ "$WITH_OBS" = true ]        && SERVICES+=(otel-collector jaeger prometheus grafana)
@@ -269,7 +269,7 @@ if [ "$MODE" = dev ]; then
     SERVICES+=(backend-dev)
   fi
 
-  docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" up -d "${SERVICES[@]}"
+  docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" up -d "${SERVICES[@]}"
 
   echo ""
   echo "Dev infrastructure started."
@@ -280,24 +280,26 @@ if [ "$MODE" = dev ]; then
   done
   echo ""
   echo "Run locally (with hot-reload):"
-  if [ "$WITH_CLASSIFIER" = true ]; then
-    echo "  Classifier:  in Docker (compose.dev.yml + uvicorn --reload)"
-  elif [ "$WITH_RAG_BACKEND" = true ]; then
-    echo "  Classifier:  in Docker (without --classifier: normal image, no Python reload)"
+  if [ "$WITH_CLASSIFIER" = true ] || [ "$WITH_RAG_BACKEND" = true ]; then
+    echo "  Classifier:  in Docker (compose.dev.yml: Dockerfile.dev + uvicorn --reload). --rag applies this override even without --classifier."
   else
     echo "  Classifier:  cd classifier-service && uvicorn main:app --reload --reload-dir app --port 8000"
   fi
   if [ "$WITH_RAG_BACKEND" = true ]; then
     echo "  Backend:     in Docker (backend-dev) — changes in src/ recompile and DevTools restart. Port ${BACKEND_PORT:-9000}."
-    echo "               (If Ollama is in compose, set SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434 in rag-service/.env)"
+    if [ "$WITH_GPU" = true ]; then
+      echo "               Ollama: container → set SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434 in rag-service/.env"
+    else
+      echo "               Ollama on HOST: run Ollama locally and use http://host.docker.internal:11434 (see docs/DEV_STACK_OBS_Y_OLLAMA_HOST.md)"
+    fi
   else
     echo "  Backend:     cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
   fi
   echo "  Frontend:    cd frontend && npm run dev"
   echo ""
   echo "Postgres available at:  localhost:${POSTGRES_PORT:-5432}"
-  if [ "$WITH_GPU" = true ] || [ "$WITH_OLLAMA_CPU" = true ]; then
-    echo "Ollama available at:    localhost:${OLLAMA_PORT:-11434}"
+  if [ "$WITH_GPU" = true ]; then
+    echo "Ollama (GPU) available at: localhost:${OLLAMA_PORT:-11434}"
   fi
   [ "$WITH_OBS" = true ] && echo "Grafana available at:   localhost:${GRAFANA_PORT:-3000}"
   [ "$WITH_OBS" = true ] && echo "Jaeger available at:    localhost:${JAEGER_UI_PORT:-16686}"
@@ -309,7 +311,6 @@ fi
 # ---------- prod ----------
 WITH_OBS=false
 WITH_GPU=false
-WITH_OLLAMA_CPU=false
 WITH_LOGS=false
 WITH_INFRA=false
 WITH_VOLUMES=false
@@ -320,7 +321,7 @@ for arg in "$@"; do
     --all) ALL=true ;;
     --obs) WITH_OBS=true ;;
     --gpu) WITH_GPU=true ;;
-    --ollama) WITH_OLLAMA_CPU=true ;;
+    --ollama) WITH_GPU=true ;;
     --logs) WITH_LOGS=true ;;
     --infra) WITH_INFRA=true ;;
     --volumes) WITH_VOLUMES=true ;;
@@ -341,20 +342,11 @@ if [ "$ALL" = true ]; then
   fi
 fi
 
-if [ "$WITH_GPU" = true ] && [ "$WITH_OLLAMA_CPU" = true ]; then
-  echo "Error: use only one of --gpu or --ollama." >&2
-  exit 1
-fi
-
 COMPOSE_FILES=(-f "docker-compose.yml")
 [ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.obs.yml")
 [ "$WITH_LOGS" = true ]  && COMPOSE_FILES+=(-f "compose.logs.yml")
 [ "$WITH_INFRA" = true ] && COMPOSE_FILES+=(-f "compose.infra.yml")
-if [ "$WITH_GPU" = true ]; then
-  COMPOSE_FILES+=(-f "compose.ollama-gpu.yml")
-elif [ "$WITH_OLLAMA_CPU" = true ]; then
-  COMPOSE_FILES+=(-f "compose.ollama.yml")
-fi
+[ "$WITH_GPU" = true ]   && COMPOSE_FILES+=(-f "compose.ollama-gpu.yml")
 COMPOSE_FILES+=(-f "compose.prod.yml")
 
 ENV_ARGS=()
@@ -373,7 +365,7 @@ add_env_file "$ROOT_DIR/rag-service/.env"
 if [ "$WITH_OBS" = true ] || [ "$WITH_LOGS" = true ] || [ "$WITH_INFRA" = true ]; then
   add_env_file "$ROOT_DIR/observability/.env"
 fi
-if [ "$WITH_GPU" = true ] || [ "$WITH_OLLAMA_CPU" = true ]; then
+if [ "$WITH_GPU" = true ]; then
   add_env_file "$ROOT_DIR/ollama/.env"
 fi
 
@@ -385,18 +377,18 @@ if [ "$CMD" = down ]; then
     DOWN_ARGS=( "${DOWN_ARGS[@]}" -v )
   fi
   docker compose "${DOWN_ARGS[@]}"
-  echo "Prod local stopped (obs=$WITH_OBS, gpu=$WITH_GPU, ollama_cpu=$WITH_OLLAMA_CPU, logs=$WITH_LOGS, infra=$WITH_INFRA, volumes=$WITH_VOLUMES)."
+  echo "Prod local stopped (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA, volumes=$WITH_VOLUMES)."
   exit 0
 fi
 
 if [ "$CMD" = build ]; then
   maybe_run_env_setup build
   docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" build
-  echo "Prod local images built (obs=$WITH_OBS, gpu=$WITH_GPU, ollama_cpu=$WITH_OLLAMA_CPU, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+  echo "Prod local images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA)."
   exit 0
 fi
 
 maybe_run_env_setup up
 docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" up -d
 
-echo "Prod local started (obs=$WITH_OBS, gpu=$WITH_GPU, ollama_cpu=$WITH_OLLAMA_CPU, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+echo "Prod local started (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA)."

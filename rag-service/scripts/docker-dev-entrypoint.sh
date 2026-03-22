@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Hot-reload en contenedor: compila al cambiar fuentes; Spring Boot DevTools reinicia al actualizarse target/classes.
-# El polling por hash funciona también con volúmenes montados desde Windows (inotify suele fallar).
+# Hot-reload at container: compiles when sources change; Spring Boot DevTools restarts when target/classes is updated.
+# The polling by hash works also with mounted volumes from Windows (inotify usually fails).
+#
+# Compilation at startup (slow): by default it is SKIPPED if there are .class files in target/classes
+# (e.g. mvn compile on the host or a previous startup with the rag_m2_cache volume).
+#   RAG_DEV_FORCE_INITIAL_COMPILE=1  → always compile at startup (old behavior).
+#   RAG_DEV_SKIP_INITIAL_COMPILE=1    → do not compile at startup; if there are no classes, compile once anyway.
 set -euo pipefail
 cd /app
 
@@ -9,10 +14,33 @@ if [ -f mvnw ]; then
   chmod +x mvnw
 fi
 
-echo "[rag-service docker-dev] Initial compile..."
-./mvnw -q compile -Dmaven.test.skip=true
+has_compiled_classes() {
+  [ -d target/classes ] || return 1
+  # At least one .class (avoid empty directory after partial clean)
+  test -n "$(find target/classes -type f -name '*.class' 2>/dev/null | head -n 1)"
+}
 
-# Intervalo entre comprobaciones (segundos). Subir en repos muy grandes si hace falta.
+need_initial_compile=true
+if [ "${RAG_DEV_FORCE_INITIAL_COMPILE:-}" = "1" ] || [ "${RAG_DEV_FORCE_INITIAL_COMPILE:-}" = "true" ]; then
+  need_initial_compile=true
+elif [ "${RAG_DEV_SKIP_INITIAL_COMPILE:-}" = "1" ] || [ "${RAG_DEV_SKIP_INITIAL_COMPILE:-}" = "true" ]; then
+  if has_compiled_classes; then
+    need_initial_compile=false
+  else
+    echo "[rag-service docker-dev] RAG_DEV_SKIP_INITIAL_COMPILE but there are no target/classes — compiling once."
+  fi
+elif has_compiled_classes; then
+  need_initial_compile=false
+fi
+
+if [ "$need_initial_compile" = true ]; then
+  echo "[rag-service docker-dev] Initial compile..."
+  ./mvnw -q compile -Dmaven.test.skip=true
+else
+  echo "[rag-service docker-dev] Skipping initial compilation (there are classes in target/classes). Force: RAG_DEV_FORCE_INITIAL_COMPILE=1"
+fi
+
+# Interval between checks (seconds). Increase for very large repos if needed.
 POLL_INTERVAL="${RAG_DEV_POLL_INTERVAL:-2}"
 
 watch_compile() {
@@ -36,6 +64,6 @@ WATCH_PID=$!
 cleanup() { kill "$WATCH_PID" 2>/dev/null || true; }
 trap cleanup EXIT
 
+: "${SPRING_PROFILES_ACTIVE:=dev}"
 exec ./mvnw spring-boot:run \
-  -Dspring-boot.run.profiles=dev \
   -Dspring.devtools.restart.enabled=true

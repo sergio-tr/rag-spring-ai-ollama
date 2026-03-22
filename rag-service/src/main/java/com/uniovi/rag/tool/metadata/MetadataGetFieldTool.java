@@ -11,6 +11,8 @@ import org.springframework.ai.document.Document;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**
@@ -29,7 +31,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         
         log().info("Executing get field query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
-        // Step 1: Retrieve with NER/date so "quién presidió la reunión del 25 de agosto de 2026" gets that acta (E.1)
+        // Step 1: Retrieve with NER/date so a who-chaired / which-date query resolves to the correct minute (E.1)
         List<Document> docs = retrieveDocumentsWithFallback(
             query,
             new String[] {"date", "place", "startTime", "endTime", "topics", "decisions", "summary", "president", "secretary", "attendees"},
@@ -64,8 +66,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, detectedField, date, minutes.size(), "no_relevant_minutes"), query), getClass());
         }
 
-        // Step 4: Filter by person/president if query asks for "fecha del acta donde [persona]"
-        // Example: "Proporciona la fecha del acta donde Juan Pérez Gutiérrez actuó como presidente"
+        // Step 4: Filter by person/president if the query asks for the minute date where a given person was president/secretary
         if (detectedField.equals("date") && detectDateWherePersonQuery(query)) {
             List<Minute> personFilteredMinutes = filterMinutesByPerson(query, relevantMinutes, ner);
             log().info("Filtered {} minutes by person condition, {} remaining (applied filter even if empty)", 
@@ -139,7 +140,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
      */
     private List<Minute> evaluateMinutesWithLLM(String query, List<Minute> minutes) {
         List<CompletableFuture<Minute>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> {
+                .map(minute -> supplyAsync(() -> {
                     if (evaluateMinuteContainsRequestedInfo(query, minute)) {
                         return minute;
                     }
@@ -158,7 +159,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
      */
     private List<FieldResult> extractFieldValuesInParallel(List<Minute> minutes, String detectedField) {
         List<CompletableFuture<FieldResult>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> extractFieldValue(minute, detectedField)))
+                .map(minute -> supplyAsync(() -> extractFieldValue(minute, detectedField)))
                 .collect(Collectors.toList());
 
         return futures.stream()
@@ -276,7 +277,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     }
 
     /**
-     * Clasifica el campo a extraer por reglas y palabras clave (sin LLM).
+     * Classifies the field to extract using rules and keywords (no LLM).
      */
     private String classifyFieldIntent(String query, JSONObject ner) {
         if (query == null || query.trim().isEmpty()) {
@@ -285,7 +286,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         String q = query.toLowerCase();
 
         // Priority 1: Check for explicit field requests with context
-        // "fecha del acta donde [presidente]" -> date (not president)
+        // "date of the minute where [president]" -> date (not president)
         if ((containsAny(q, "fecha del acta", "fecha del", "date of the acta", "date where") ||
              (containsAny(q, "fecha", "date") && containsAny(q, "donde", "where", "acta", "minute"))) &&
             !containsAny(q, "presidió", "presidido", "presided")) {
@@ -293,7 +294,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             return "date";
         }
 
-        // Priority 2: Agenda/orden del día (check before date so "orden del día del 25 ago" → agenda not date)
+        // Priority 2: Agenda / order of business (check before date so agenda-of-day phrasing maps to agenda, not date)
         if (containsAny(q, "orden del día", "qué contiene el orden", "contenido del orden", "agenda", "puntos del día", "puntos del orden")) {
             log().debug("Classified as 'agenda'");
             return "agenda";
@@ -355,7 +356,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
      * Analyzes and ranks field results by relevance and quality
      */
     private List<FieldResult> analyzeAndRankFieldResults(List<FieldResult> results) {
-        // Ordenar por longitud del valor (desc) como señal simple de riqueza
+        // Sort by value length (desc) as a simple richness signal
         return results.stream()
                 .sorted((a, b) -> Integer.compare(
                         b.getFieldValue() != null ? b.getFieldValue().length() : 0,
@@ -476,10 +477,9 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     }
 
     /**
-    * Filters minutes by person (president/secretary) when query asks for "fecha del acta donde [persona]"
-    * Example: "Proporciona la fecha del acta donde Juan Pérez Gutiérrez actuó como presidente"
-    * Also handles queries about attendees: "¿Cuándo y en qué reuniones asistió Alejandro Torres Rojas?"
-    */
+     * Filters minutes by person (president/secretary) when the query asks for the date of the minute where a given person acted as president/secretary.
+     * Also handles attendee queries (when and in which meetings a person attended).
+     */
     private List<Minute> filterMinutesByPerson(String query, List<Minute> minutes, JSONObject ner) {
         if (minutes.isEmpty() || query == null) {
             return minutes;

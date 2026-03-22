@@ -1,7 +1,7 @@
 # Imagen de desarrollo: JDK + Maven Wrapper; en runtime se monta el repo y se ejecuta spring-boot:run + recompilación.
 # No sustituye al Dockerfile multi-stage de producción; solo para probar el backend en Docker con recarga.
 #
-# Build (desde repo): docker compose -f docker/docker-compose.yml -f docker/compose.rag-dev.yml build backend-dev
+# Build (desde repo): docker compose -f docker/docker-compose.yml -f docker/compose.dev.yml build backend-dev
 #
 ARG JDK_BASE_IMAGE=eclipse-temurin:21-jdk
 FROM ${JDK_BASE_IMAGE}

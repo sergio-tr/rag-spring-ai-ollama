@@ -350,7 +350,7 @@ class TestObservabilityStack:
         backend_base: str,
     ) -> None:
         """
-        Regression: Spring OTLP HTTP exporter must use /v1/traces; profiles docker+obs must point to otel-collector.
+        Regression: Spring OTLP HTTP exporter must use /v1/traces; profiles docker+infra must point to otel-collector.
         """
         expected = os.environ.get("INTEGRATION_EXPECT_RAG_SERVICE_NAME", "rag-backend").strip() or "rag-backend"
         try:
@@ -371,7 +371,7 @@ class TestObservabilityStack:
 
         pytest.fail(
             f"Jaeger never listed service {expected!r} after backend query. "
-            f"Last services seen: {last_services!r}. Check rag-service OTLP (SPRING_PROFILES_ACTIVE=docker,obs), "
+            f"Last services seen: {last_services!r}. Check rag-service OTLP (SPRING_PROFILES_ACTIVE=docker,infra), "
             f"OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318, and paths /v1/traces."
         )
 

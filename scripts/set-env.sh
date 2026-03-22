@@ -15,7 +15,7 @@ prompt_create() {
   local name="$1"
   local script="$2"
   echo -n "Create $name? [y/N] "
-  read -r answe
+  read -r answer
   case "${answer:-n}" in
     y|Y) "$SCRIPT_DIR/$script";;
     *) echo "Skipped $name.";;

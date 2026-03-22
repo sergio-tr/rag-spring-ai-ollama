@@ -13,6 +13,8 @@ import org.springframework.ai.document.Document;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**
@@ -92,7 +94,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             relevantMinutes = byMinCount;
         }
 
-        // Step 3.6c: Filter by topic when query mentions a topic (e.g. "agosto + videovigilancia + >18" → only ACTA 6 §4)
+        // Step 3.6c: Filter by topic when query mentions a topic (e.g. August + video surveillance + >18 attendees → only ACTA 6 §4)
         String topicForFilter = extractTopicFromQuery(query, ner);
         if (topicForFilter != null && !topicForFilter.isBlank() && !requiresTopicAndPersonFilter(query)) {
             List<Minute> byTopic = filterMinutesByTopicOnly(relevantMinutes, topicForFilter);
@@ -156,7 +158,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
      */
     private List<FilterResult> generateSummariesInParallel(String query, List<Minute> minutes) {
         List<CompletableFuture<FilterResult>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> generateSummary(query, minute)))
+                .map(minute -> supplyAsync(() -> generateSummary(query, minute)))
                 .collect(Collectors.toList());
 
         return futures.stream()
@@ -399,7 +401,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     }
 
     /**
-     * True when the query asks for meetings where a specific person attended (e.g. "¿Cuándo asistió Alejandro Torres Rojas?")
+     * True when the query asks for meetings where a specific person attended (when/which meetings someone attended).
      */
     private boolean isAttendeeListQuery(String query) {
         if (query == null) return false;
@@ -473,7 +475,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         return null;
     }
 
-    /** Extracts minimum attendees from query (e.g. "más de 18 asistentes" -> 18). Returns null if not found. */
+    /** Extracts minimum attendees from query (e.g. Spanish "more than 18 attendees" patterns -> 18). Returns null if not found. */
     private Integer extractMinAttendeesFromQuery(String query) {
         if (query == null) return null;
         java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?:más de|más que)\\s+(\\d+)\\s+asistentes", java.util.regex.Pattern.CASE_INSENSITIVE);
@@ -528,8 +530,8 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     }
     
     /**
-     * Filters minutes by topic AND person (both conditions must be met - AND logic)
-     * Example: "Dime los asistentes de reuniones donde se habló de climatización y que fueran presididas por Natalia Vázquez Gutiérrez"
+     * Filters minutes by topic AND person (both conditions must be met — AND logic).
+     * Example: attendees at meetings that discussed a topic and were chaired by a named person.
      */
     private List<Minute> filterMinutesByTopicAndPerson(String query, List<Minute> minutes, JSONObject ner) {
         if (minutes.isEmpty() || query == null) {
@@ -577,7 +579,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
                   minutes.size(), topic, normalizedTopic, personName, normalizedPersonName, 
                   filterByPresident, filterBySecretary);
         
-        // Topic synonyms so acta wording matches (e.g. ascensor <-> elevator for acta 24 feb 2025)
+        // Topic synonyms so minute wording matches (e.g. ascensor <-> elevator for minute 24 Feb 2025)
         List<String> topicTerms = topicTermsForMatch(normalizedTopic);
         
         List<Minute> filtered = minutes.stream()
@@ -666,7 +668,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
 
     /**
      * Filters minutes to those that mention the given topic (in topics, decisions, summary, or agenda).
-     * Uses synonyms for common topics (e.g. videovigilancia → vigilancia, cámaras). §4 agosto+videovigilancia+>18 → ACTA 6 only.
+     * Uses synonyms for common topics (e.g. video surveillance → surveillance, cameras). §4 August + video surveillance + >18 attendees → ACTA 6 only.
      */
     private List<Minute> filterMinutesByTopicOnly(List<Minute> minutes, String topic) {
         if (minutes.isEmpty() || topic == null || topic.isBlank()) return minutes;

@@ -7,6 +7,7 @@ import com.uniovi.rag.exception.DocumentAlreadyExistsException;
 import com.uniovi.rag.exception.RagServiceException;
 import com.uniovi.rag.model.QueryResponse;
 import com.uniovi.rag.observability.ObservabilitySupport;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.repository.MinuteDocumentRepository;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
@@ -56,12 +57,18 @@ class RagControllerTest {
     private MinuteDocumentRepository minuteDocumentRepository;
 
     @MockBean
+    private RagImplementationProperties implementationProperties;
+
+    @MockBean
     private ObservabilitySupport observability;
 
     @BeforeEach
     void stubObservabilityToRunSupplier() {
         doAnswer(inv -> ((Supplier<?>) inv.getArgument(3)).get())
                 .when(observability).runWithSpan(any(), any(), any(), any(Supplier.class));
+        lenient().when(implementationProperties.getQueryServiceImpl()).thenReturn("process");
+        lenient().when(implementationProperties.getRetrieverImpl()).thenReturn("basic");
+        lenient().when(implementationProperties.getAnalyserImpl()).thenReturn("minute-ner");
     }
 
     @Test
@@ -184,7 +191,7 @@ class RagControllerTest {
     @Test
     void evaluateWithCustomConfig_returnsOkWithResults() throws Exception {
         doNothing().when(evaluationService).loadData();
-        when(evaluationService.evaluateWithConfiguration(any())).thenAnswer(inv -> {
+        when(evaluationService.evaluateWithConfiguration(any(), any())).thenAnswer(inv -> {
             java.util.Map<String, Object> m = new java.util.HashMap<>();
             m.put("score", 0.9);
             return m;
@@ -195,7 +202,7 @@ class RagControllerTest {
                         .content("{\"expansion\":true,\"metadata\":false}"))
                 .andExpect(status().isOk());
         verify(evaluationService).loadData();
-        verify(evaluationService).evaluateWithConfiguration(any());
+        verify(evaluationService).evaluateWithConfiguration(any(), any());
     }
 
     @Test

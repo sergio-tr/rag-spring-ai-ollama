@@ -14,7 +14,7 @@ import java.time.Duration;
 import java.util.Set;
 
 /**
- * Cliente mínimo para {@code /api/tags} y {@code /api/pull} de Ollama (cualquier host alcanzable).
+ * Minimal client for Ollama {@code /api/tags} and {@code /api/pull} (any reachable host).
  */
 @Component
 public class OllamaApiClient {
@@ -47,7 +47,7 @@ public class OllamaApiClient {
     }
 
     /**
-     * Comprueba que Ollama responde en {@code baseUrl} (mismo endpoint que usa la CLI: {@code GET /api/tags}).
+     * Checks that Ollama responds at {@code baseUrl} (same endpoint as the CLI: {@code GET /api/tags}).
      */
     public boolean ping() throws IOException, InterruptedException {
         String tagsUrl = baseUrl + "/api/tags";
@@ -60,10 +60,10 @@ public class OllamaApiClient {
     }
 
     /**
-     * Descarga un modelo si no está presente (misma operación que {@code ollama pull} en CLI).
+     * Pulls a model if not present (same operation as {@code ollama pull} in the CLI).
      *
-     * @param modelName nombre exacto (p. ej. {@code gemma3:4b})
-     * @param pullReadTimeoutMs   timeout de lectura para la respuesta completa del pull
+     * @param modelName exact name (e.g. {@code gemma3:4b})
+     * @param pullReadTimeoutMs read timeout for the full pull response
      */
     public void pullModel(String modelName, long pullReadTimeoutMs) throws IOException, InterruptedException {
         String pullUrl = baseUrl + "/api/pull";
@@ -96,7 +96,7 @@ public class OllamaApiClient {
                 if (e instanceof IOException) {
                     throw (IOException) e;
                 }
-                // cuerpo no JSON; Ollama a veces devuelve líneas; si HTTP 200, asumimos OK
+                // Non-JSON body; Ollama sometimes returns line-oriented output; if HTTP 200, assume OK
             }
         }
     }

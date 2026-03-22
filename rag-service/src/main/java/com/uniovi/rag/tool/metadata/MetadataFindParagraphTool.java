@@ -14,6 +14,8 @@ import org.springframework.ai.document.Document;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**
@@ -107,7 +109,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
      */
     private List<ParagraphResult> findParagraphsInParallel(String query, List<Minute> minutes, Map<String, Document> minuteIdToDoc) {
         List<CompletableFuture<ParagraphResult>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> {
+                .map(minute -> supplyAsync(() -> {
                     Document doc = minuteIdToDoc.get(minute.id());
                     return findRelevantParagraph(query, minute, doc);
                 }))

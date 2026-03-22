@@ -10,9 +10,7 @@ import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.*;
 import com.uniovi.rag.tool.metadata.*;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -37,13 +35,6 @@ public class RagToolsBeanConfiguration {
             return new TracedMeetingMinutesToolsAdapter(toolsConfig, queryAnalyser, observability);
         }
         return new MeetingMinutesToolsAdapter(toolsConfig, queryAnalyser);
-    }
-
-    @Bean
-    public ToolRagService toolRagService(
-            EmbeddingModel embeddingModel,
-            @Value("${rag.tool-rag.top-k:5}") int topK) {
-        return new ToolRagService(embeddingModel, topK);
     }
 
     @Bean

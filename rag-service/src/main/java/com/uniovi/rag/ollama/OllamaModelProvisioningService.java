@@ -19,8 +19,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Aprovisiona modelos Ollama vía API ({@code /api/pull}) para los nombres configurados en Spring AI
- * y, en el futuro, para modelos elegidos por el usuario en la UI.
+ * Provisions Ollama models via API ({@code /api/pull}) for names configured in Spring AI
+ * and, in the future, for models chosen in the UI.
  */
 @Service
 public class OllamaModelProvisioningService {
@@ -28,13 +28,13 @@ public class OllamaModelProvisioningService {
     private static final Logger log = LoggerFactory.getLogger(OllamaModelProvisioningService.class);
 
     public enum State {
-        /** Aún no ha corrido el runner o está en curso. */
+        /** Runner has not finished or is still in progress. */
         PENDING,
-        /** Descargando modelos. */
+        /** Downloading models. */
         PULLING,
-        /** Listo para tráfico API o aprovisionamiento omitido (tests / auto-pull desactivado). */
+        /** Ready for API traffic or provisioning skipped (tests / auto-pull disabled). */
         READY,
-        /** Error irrecuperable (red, permisos, etc.); revisar logs. */
+        /** Unrecoverable error (network, permissions, etc.); check logs. */
         FAILED
     }
 
@@ -47,7 +47,7 @@ public class OllamaModelProvisioningService {
     private final AtomicReference<State> state = new AtomicReference<>(State.PENDING);
     private volatile String lastError;
 
-    /** Evita pulls concurrentes (arranque vs peticiones / lab) sobre el mismo Ollama. */
+    /** Prevents concurrent pulls (startup vs requests / lab) against the same Ollama instance. */
     private final ReentrantLock modelPullLock = new ReentrantLock();
 
     public OllamaModelProvisioningService(
@@ -71,7 +71,7 @@ public class OllamaModelProvisioningService {
     }
 
     /**
-     * Invocado al arranque: descarga los modelos de chat y embedding configurados si faltan.
+     * Invoked at startup: pulls chat and embedding models if missing.
      */
     public void ensureConfiguredModelsAtStartup() {
         if (!healthProperties.isOllamaEnabled() || !ollamaProperties.isAutoPullEnabled()) {
@@ -92,13 +92,13 @@ public class OllamaModelProvisioningService {
                 }
             }
             if (missing.isEmpty()) {
-                log.info("Ollama: modelos requeridos ya presentes (chat={}, embedding={})", chatModel, embeddingModel);
+                log.info("Ollama: required models already present (chat={}, embedding={})", chatModel, embeddingModel);
                 state.set(State.READY);
                 return;
             }
             long pullTimeout = ollamaProperties.getPullReadTimeoutMs();
             for (String model : missing) {
-                log.info("Ollama: descargando modelo faltante '{}' (POST /api/pull en {})", model, "spring.ai.ollama.base-url");
+                log.info("Ollama: downloading missing model '{}' (POST /api/pull on {})", model, "spring.ai.ollama.base-url");
                 ollamaApiClient.pullModel(model, pullTimeout);
                 installed.add(model);
             }
@@ -106,7 +106,7 @@ public class OllamaModelProvisioningService {
             log.info("Ollama: aprovisionamiento de modelos completado.");
         } catch (Exception e) {
             lastError = e.getMessage();
-            log.error("Ollama: fallo al aprovisionar modelos; la API /api/** quedará en 503 hasta reiniciar o corregir Ollama.", e);
+            log.error("Ollama: model provisioning failed; /api/** will return 503 until Ollama is fixed or the app is restarted.", e);
             state.set(State.FAILED);
         } finally {
             modelPullLock.unlock();
@@ -114,11 +114,11 @@ public class OllamaModelProvisioningService {
     }
 
     /**
-     * Antes de cada consulta (y cuando el lab cambia el modelo de chat): comprueba que existen el modelo de
-     * embedding y el de chat efectivo; si {@code rag.ollama.auto-pull-enabled=true}, lanza {@code POST /api/pull}
-     * contra el mismo {@code spring.ai.ollama.base-url} (contenedor o remoto).
+     * Before each query (and when the lab changes the chat model): ensures embedding and effective chat models exist;
+     * if {@code rag.ollama.auto-pull-enabled=true}, runs {@code POST /api/pull}
+     * against {@code spring.ai.ollama.base-url} (container or remote).
      *
-     * @param chatModelOverride modelo de chat elegido por el usuario; si es null, se usa {@code spring.ai.ollama.chat.model}
+     * @param chatModelOverride user-selected chat model; if null, {@code spring.ai.ollama.chat.model} is used
      */
     public void ensureChatAndEmbeddingModelsPresent(String chatModelOverride) {
         if (!healthProperties.isOllamaEnabled()) {
@@ -142,11 +142,11 @@ public class OllamaModelProvisioningService {
             }
             if (!ollamaProperties.isAutoPullEnabled()) {
                 throw RagServiceException.ollamaModelNotInstalled(
-                        new IOException("Faltan modelos en Ollama y auto-pull está desactivado: " + missing));
+                        new IOException("Models missing in Ollama and auto-pull is disabled: " + missing));
             }
             long pullTimeout = ollamaProperties.getPullReadTimeoutMs();
             for (String model : missing) {
-                log.info("Ollama: modelo requerido ausente '{}', ejecutando POST /api/pull (chat efectivo={}, embedding={})",
+                log.info("Ollama: required model '{}' missing, running POST /api/pull (effective chat={}, embedding={})",
                         model, effectiveChat, embeddingModel);
                 ollamaApiClient.pullModel(model, pullTimeout);
                 installed.add(model);
@@ -162,7 +162,7 @@ public class OllamaModelProvisioningService {
     }
 
     /**
-     * Descarga un modelo bajo demanda (p. ej. modelo elegido solo en la UI). Respeta {@code auto-pull-enabled}.
+     * Pulls a model on demand (e.g. model selected only in the UI). Honors {@code auto-pull-enabled}.
      */
     public void ensureModelPresent(String modelName) throws IOException, InterruptedException {
         if (!healthProperties.isOllamaEnabled()) {
@@ -180,7 +180,7 @@ public class OllamaModelProvisioningService {
             if (!ollamaProperties.isAutoPullEnabled()) {
                 throw new IOException("Model '" + modelName + "' not present and rag.ollama.auto-pull-enabled=false");
             }
-            log.info("Ollama: descarga bajo demanda del modelo '{}'", modelName);
+            log.info("Ollama: on-demand download of model '{}'", modelName);
             ollamaApiClient.pullModel(modelName, ollamaProperties.getPullReadTimeoutMs());
         } finally {
             modelPullLock.unlock();

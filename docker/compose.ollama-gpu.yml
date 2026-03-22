@@ -1,7 +1,6 @@
 # Ollama in Docker with NVIDIA GPU (NVIDIA Container Toolkit + drivers required).
+# This is the only bundled Compose override for Ollama in this repo (no CPU-only variant).
 # Build from ollama/ (Dockerfile). Pass --env-file ../ollama/.env for image/port overrides.
-#
-# Use this OR compose.ollama.yml (CPU), not both — same service name `ollama`.
 #
 # Usage:
 #   cd docker && docker compose -f docker-compose.yml -f compose.ollama-gpu.yml \

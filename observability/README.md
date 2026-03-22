@@ -77,6 +77,8 @@ Optional: `./scripts/set-env.sh` or `./scripts/up.sh dev --env obs` / `./scripts
 
 With `compose.obs.yml`, backend and classifier receive `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:<OBS_INTERNAL_OTEL_OTLP_HTTP>` (from `.env`).
 
+**Spring Boot backend:** packaged service uses `SPRING_PROFILES_ACTIVE=docker,infra` (see `docker/compose.obs.yml`). Profile **`infra`** (in `rag-service/.../application-infra.properties`) turns OTLP export on and sets collector URLs; profile **`docker`** alone keeps OTLP off. **`backend-dev`** with observability uses `dev,infra` (`compose.rag-dev-obs.yml`).
+
 ## Conventions (spans, metrics, OTLP)
 
 ### 1. Spans

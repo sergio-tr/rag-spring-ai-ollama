@@ -1,6 +1,7 @@
 package com.uniovi.rag.observability;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 
 import java.util.Map;
@@ -34,7 +35,9 @@ public final class TracedEvaluationService implements EvaluationService {
     }
 
     @Override
-    public Map<String, Object> evaluateWithConfiguration(RagFeatureConfiguration customConfig) {
+    public Map<String, Object> evaluateWithConfiguration(
+            RagFeatureConfiguration customConfig,
+            RagImplementationProperties implementationProperties) {
         observability.recordCounter("rag.evaluation.calls", "operation", "evaluateWithConfiguration");
         String configLabel = customConfig != null ? "custom" : "null";
         return observability.recordTimer("rag.evaluation.evaluateWithConfiguration", () ->
@@ -42,7 +45,7 @@ public final class TracedEvaluationService implements EvaluationService {
                         "rag.evaluation.run",
                         Map.of("rag.evaluation.id", configLabel),
                         "result",
-                        () -> delegate.evaluateWithConfiguration(customConfig)
+                        () -> delegate.evaluateWithConfiguration(customConfig, implementationProperties)
                 ));
     }
 

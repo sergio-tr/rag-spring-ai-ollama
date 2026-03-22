@@ -1,5 +1,6 @@
 package com.uniovi.rag.repository;
 
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.repository.impl.MinuteDocumentRepositoryImpl;
 import com.uniovi.rag.controller.RagController;
 import com.uniovi.rag.service.document.MetadataMinuteDocumentService;
@@ -98,6 +99,7 @@ class DocumentPersistenceJdbcIntegrationTest {
                 queryService,
                 evaluationService,
                 repository,
+                new RagImplementationProperties(),
                 null
         );
 

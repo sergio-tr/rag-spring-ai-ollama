@@ -17,6 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.uniovi.rag.api.dto.ApiResponse;
 import com.uniovi.rag.api.dto.QuerySuccessPayload;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.model.Loggable;
 import java.util.Map;
 import com.uniovi.rag.model.QueryResponse;
@@ -29,15 +30,18 @@ public class RagController implements Loggable {
     private final QueryService queryService;
     private final EvaluationService evaluationService;
     private final MinuteDocumentRepository minuteDocumentRepository;
+    private final RagImplementationProperties implementationProperties;
     private final ObservabilitySupport observability;
 
     public RagController(DocumentService documentService, QueryService queryService, EvaluationService evaluationService,
                          MinuteDocumentRepository minuteDocumentRepository,
+                         RagImplementationProperties implementationProperties,
                          @Autowired(required = false) ObservabilitySupport observability) {
         this.documentService = documentService;
         this.queryService = queryService;
         this.evaluationService = evaluationService;
         this.minuteDocumentRepository = minuteDocumentRepository;
+        this.implementationProperties = implementationProperties;
         this.observability = observability;
     }
 
@@ -167,7 +171,7 @@ public class RagController implements Loggable {
     
     /**
      * Evaluates with a specific custom configuration.
-     * POST body may contain: expansion, ner, tools, metadata, reasoning, ranker, post-retrieval, tool-rag, function-calling, use-retrieval, use-advisor (boolean);
+     * POST body may contain: expansion, ner, tools, metadata, reasoning, ranker, post-retrieval, function-calling, use-retrieval, use-advisor (boolean);
      * and query-service-impl, retriever-impl, analyser-impl (string, optional).
      */
     @PostMapping("/evaluate/custom")
@@ -190,19 +194,19 @@ public class RagController implements Loggable {
         customConfig.setReasoningEnabled(getBoolean(config, "reasoning", false));
         customConfig.setRankerEnabled(getBoolean(config, "ranker", false));
         customConfig.setPostRetrievalEnabled(getBoolean(config, "post-retrieval", false));
-        customConfig.setToolRagEnabled(getBoolean(config, "tool-rag", false));
         customConfig.setFunctionCallingEnabled(getBoolean(config, "function-calling", false));
         customConfig.setUseRetrieval(getBoolean(config, "use-retrieval", true));
         customConfig.setUseAdvisor(getBoolean(config, "use-advisor", true));
-        if (config.get("query-service-impl") instanceof String s) customConfig.setQueryServiceImpl(s);
-        if (config.get("retriever-impl") instanceof String s) customConfig.setRetrieverImpl(s);
-        if (config.get("analyser-impl") instanceof String s) customConfig.setAnalyserImpl(s);
+        RagImplementationProperties impl = RagImplementationProperties.copyOf(implementationProperties);
+        if (config.get("query-service-impl") instanceof String s) impl.setQueryServiceImpl(s);
+        if (config.get("retriever-impl") instanceof String s) impl.setRetrieverImpl(s);
+        if (config.get("analyser-impl") instanceof String s) impl.setAnalyserImpl(s);
 
-        Map<String, Object> results = evaluationService.evaluateWithConfiguration(customConfig);
+        Map<String, Object> results = evaluationService.evaluateWithConfiguration(customConfig, impl);
         Map<String, Object> implementations = new java.util.LinkedHashMap<>();
-        implementations.put("queryService", customConfig.getQueryServiceImpl() != null ? customConfig.getQueryServiceImpl() : "process");
-        implementations.put("retriever", customConfig.getRetrieverImpl() != null ? customConfig.getRetrieverImpl() : "basic");
-        implementations.put("analyser", customConfig.getAnalyserImpl() != null ? customConfig.getAnalyserImpl() : "minute-ner");
+        implementations.put("queryService", impl.getQueryServiceImpl() != null ? impl.getQueryServiceImpl() : "process");
+        implementations.put("retriever", impl.getRetrieverImpl() != null ? impl.getRetrieverImpl() : "basic");
+        implementations.put("analyser", impl.getAnalyserImpl() != null ? impl.getAnalyserImpl() : "minute-ner");
         implementations.put("reasoningStrategy", "SIMPLE");
         implementations.put("responseRanker", "LLM_AS_JUDGE");
         implementations.put("documentService", customConfig.isMetadataEnabled() ? "MetadataMinuteDocumentService" : "SimpleDocumentService");
@@ -219,7 +223,7 @@ public class RagController implements Loggable {
     }
     
     /**
-     * Evaluates all possible configuration combinations (16 combinations).
+     * Evaluates all possible configuration combinations of the main feature flags (2^8 = 256 as of current descriptors).
      * This may take a long time as it runs the full evaluation for each configuration.
      */
     @GetMapping("/evaluate/all")

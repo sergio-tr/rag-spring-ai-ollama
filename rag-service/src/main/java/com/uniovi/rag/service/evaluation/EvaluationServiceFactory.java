@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.model.Minute;
 import com.uniovi.rag.model.QueryType;
@@ -38,7 +39,6 @@ import com.uniovi.rag.tool.Tool;
 import com.uniovi.rag.tool.*;
 import com.uniovi.rag.tool.metadata.*;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -54,7 +54,6 @@ public class EvaluationServiceFactory {
     private final ChatClient chatClient;
     private final PgVectorStore vectorStore;
     private final JdbcTemplate jdbcTemplate;
-    private final EmbeddingModel embeddingModel;
     private final int topK;
     private final double similarityThreshold;
     private final String classifierServiceUrl;
@@ -75,7 +74,6 @@ public class EvaluationServiceFactory {
         ChatClient chatClient,
         PgVectorStore vectorStore,
         JdbcTemplate jdbcTemplate,
-        EmbeddingModel embeddingModel,
         int topK,
         double similarityThreshold,
         String classifierServiceUrl,
@@ -95,7 +93,6 @@ public class EvaluationServiceFactory {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
-        this.embeddingModel = embeddingModel;
         this.topK = topK;
         this.similarityThreshold = similarityThreshold;
         this.classifierServiceUrl = classifierServiceUrl != null ? classifierServiceUrl : "http://localhost:8000";
@@ -115,9 +112,10 @@ public class EvaluationServiceFactory {
 
     /**
      * Creates a QueryService with a custom configuration.
-     * Uses featureConfig.getQueryServiceImpl(), getRetrieverImpl(), getAnalyserImpl() when set (e.g. from POST /evaluate/custom body).
+     * Implementation selection comes from {@link RagImplementationProperties} (YAML or POST /evaluate/custom overrides).
      */
-    public QueryService createQueryService(RagFeatureConfiguration featureConfig) {
+    public QueryService createQueryService(RagFeatureConfiguration featureConfig, RagImplementationProperties implProps) {
+        RagImplementationProperties impl = implProps != null ? implProps : new RagImplementationProperties();
         ExpansionStrategy strategy;
         try {
             strategy = ExpansionStrategy.valueOf((expansionStrategy != null ? expansionStrategy : "COT").toUpperCase());
@@ -133,10 +131,10 @@ public class EvaluationServiceFactory {
                 expansionMaxQueryLengthForLlm,
                 expansionRetryQueryLength
         );
-        String analyserImpl = featureConfig.getAnalyserImpl() != null ? featureConfig.getAnalyserImpl().trim().toLowerCase() : "minute-ner";
+        String analyserImpl = impl.getAnalyserImpl() != null ? impl.getAnalyserImpl().trim().toLowerCase() : "minute-ner";
         QueryAnalyser analyser = "no-op".equals(analyserImpl) ? new NoOpQueryAnalyser() : new MinuteNERQueryAnalyser(chatClient);
         QueryClassifier classifier = new ClassifierServiceClient(classifierServiceUrl, classifierModelId, classifierTimeoutMs);
-        String retrieverImpl = featureConfig.getRetrieverImpl() != null ? featureConfig.getRetrieverImpl().trim().toLowerCase() : "basic";
+        String retrieverImpl = impl.getRetrieverImpl() != null ? impl.getRetrieverImpl().trim().toLowerCase() : "basic";
         ContextRetriever retriever;
         switch (retrieverImpl) {
             case "filtered":
@@ -157,9 +155,8 @@ public class EvaluationServiceFactory {
         SimpleReasoningStrategy reasoningStrategy = new SimpleReasoningStrategy();
         LLMAsJudgeRanker responseRanker = new LLMAsJudgeRanker(chatClient);
         DefaultPostRetrievalProcessor postRetrievalProcessor = new DefaultPostRetrievalProcessor(10);
-        ToolRagService toolRagService = new ToolRagService(embeddingModel, 5);
 
-        String queryServiceImpl = featureConfig.getQueryServiceImpl() != null ? featureConfig.getQueryServiceImpl().trim().toLowerCase() : "process";
+        String queryServiceImpl = impl.getQueryServiceImpl() != null ? impl.getQueryServiceImpl().trim().toLowerCase() : "process";
         switch (queryServiceImpl) {
             case "simple":
                 return new SimpleQueryService(expander, analyser, retriever, chatClient, ollamaConnectivityChecker);
@@ -180,7 +177,6 @@ public class EvaluationServiceFactory {
                         reasoningStrategy,
                         responseRanker,
                         postRetrievalProcessor,
-                        toolRagService,
                         responseValidator,
                         null,  // questionAnswerAdvisor: evaluation uses manual retrieval path
                         ollamaConnectivityChecker
@@ -201,10 +197,14 @@ public class EvaluationServiceFactory {
     /**
      * Creates an EvaluationService with a custom configuration.
      */
-    public EvaluationService createEvaluationService(RagFeatureConfiguration featureConfig, boolean cleanBeforeLoad) {
+    public EvaluationService createEvaluationService(
+            RagFeatureConfiguration featureConfig,
+            RagImplementationProperties implProps,
+            boolean cleanBeforeLoad) {
         DocumentService documentService = createDocumentService(featureConfig);
-        QueryService queryService = createQueryService(featureConfig);
-        return new DatasetMinuteEvaluationService(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
+        QueryService queryService = createQueryService(featureConfig, implProps);
+        return new DatasetMinuteEvaluationService(
+                featureConfig, implProps, chatClient, documentService, queryService, cleanBeforeLoad);
     }
 
     /**
