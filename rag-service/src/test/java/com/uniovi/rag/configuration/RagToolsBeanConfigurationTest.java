@@ -8,11 +8,9 @@ import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
-import com.uniovi.rag.tool.ToolRagService;
 import com.uniovi.rag.tool.Tool;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.embedding.EmbeddingModel;
 
 import java.util.Map;
 
@@ -54,11 +52,4 @@ class RagToolsBeanConfigurationTest {
         assertInstanceOf(TracedMeetingMinutesToolsAdapter.class, adapter);
     }
 
-    @Test
-    void toolRagServiceBean_createsService() {
-        RagToolsBeanConfiguration config = new RagToolsBeanConfiguration();
-        EmbeddingModel embeddingModel = mock(EmbeddingModel.class);
-        ToolRagService service = config.toolRagService(embeddingModel, 5);
-        assertNotNull(service);
-    }
 }

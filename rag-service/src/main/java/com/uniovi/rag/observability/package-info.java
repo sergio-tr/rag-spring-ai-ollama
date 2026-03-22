@@ -6,6 +6,10 @@
  *   <li><b>ObservabilitySupport</b>: Low-level helper to create spans ({@code runWithSpan}),
  *       record timers ({@code recordTimer}) and counters ({@code recordCounter}).
  *       Used by abstract traced bases and by decorators.</li>
+ *   <li><b>ContextPropagatingFutures</b>: Use instead of raw {@code CompletableFuture.supplyAsync} /
+ *       {@code runAsync} on the common pool; for {@code parallelStream()} use
+ *       {@code captureContext()} + {@code withSnapshot(snapshot, ...)} in each worker
+ *       (restores Observation / trace ThreadLocals — avoids orphan spans in Jaeger).</li>
  *   <li><b>Abstract base per hierarchy</b>: Each major operation hierarchy has an abstract
  *       class that wraps the public API in spans and delegates to a protected abstract
  *       method for the real implementation. This avoids repeating trace/error handling

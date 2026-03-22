@@ -12,6 +12,8 @@ import org.springframework.ai.document.Document;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**
@@ -177,7 +179,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
-    /** True when the query asks what was said/commented about a specific topic (e.g. "¿Qué se comentó respecto a la fuga de gas?", "Explica las ocasiones en las que se mencionó la iluminación"). */
+    /** True when the query asks what was said/commented about a specific topic (e.g. gas leak, lighting mentions). */
     private boolean isTopicSpecificQuery(String query) {
         if (query == null || query.isBlank()) return false;
         String q = query.toLowerCase();
@@ -186,7 +188,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                 || (q.contains("ocasiones") && (q.contains("mencion") || q.contains("mencionó") || q.contains("menciono")));
     }
 
-    /** Message when the requested topic is not mentioned in any decision (§4 e.g. fuga de gas). */
+    /** Message when the requested topic is not mentioned in any decision (§4 e.g. gas leak). */
     private String generateTopicNotMentionedMessage(String query, String topic) {
         if (query != null && query.toLowerCase().matches("(?s).*[áéíóúñ].*")) {
             return String.format("No se encuentra ninguna mención a \"%s\" en las actas disponibles.", topic != null ? topic : "ese tema");
@@ -200,7 +202,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
      */
     private List<Minute> evaluateMinutesWithLLM(String query, List<Minute> minutes) {
         List<CompletableFuture<Minute>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> {
+                .map(minute -> supplyAsync(() -> {
                     if (evaluateMinuteContainsRequestedInfo(query, minute)) {
                         return minute;
                     }
@@ -219,7 +221,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
      */
     private List<Decision> extractDecisionsInParallel(String query, List<Minute> minutes) {
         List<CompletableFuture<List<Decision>>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> extractDecisionsFromMinute(query, minute)))
+                .map(minute -> supplyAsync(() -> extractDecisionsFromMinute(query, minute)))
                 .collect(Collectors.toList());
 
         return futures.stream()
@@ -443,7 +445,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     /**
      * Generates enhanced decision answer with clustering and analysis.
      * Uses English for internal processing, but response matches query language.
-     * @param topic Extracted topic from query (e.g. "iluminación"); used to instruct LLM to link decisions to topic (item 15).
+     * @param topic extracted topic from query (e.g. lighting); used to instruct LLM to link decisions to topic (item 15).
      */
     private String generateEnhancedDecisionAnswer(String query, String topic, List<Decision> decisions, List<DecisionCluster> clusters) {
         if (query == null || query.trim().isEmpty() || decisions == null || decisions.isEmpty()) {
@@ -561,7 +563,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         String t = topic.toLowerCase().trim();
         List<String> terms = new ArrayList<>();
         terms.add(t);
-        // Iluminación (item 14, 15): include zones/security context so "mejoras junto a seguridad", "zonas comunes", "reforzar" match
+        // Lighting (items 14, 15): include zones/security context so phrases about improvements near security, common areas, reinforcement match
         if (t.contains("iluminacion") || t.contains("iluminación")) {
             terms.add("iluminacion"); terms.add("iluminación"); terms.add("alumbrado"); terms.add("luz");
             terms.add("zonas comunes"); terms.add("iluminación de zonas"); terms.add("iluminacion de zonas");

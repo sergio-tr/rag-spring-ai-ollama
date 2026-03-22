@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.model.SimpleMultipartFile;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.query.QueryService;
@@ -20,12 +21,13 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
 
     public AbstractMinuteEvaluationService(
         RagFeatureConfiguration featureConfig,
+        RagImplementationProperties implementationProperties,
         ChatClient chatClient,
         DocumentService documentService,
         QueryService queryService,
         boolean cleanBeforeLoad
     ) {
-        super(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
+        super(featureConfig, implementationProperties, chatClient, documentService, queryService, cleanBeforeLoad);
     }
 
     @Override

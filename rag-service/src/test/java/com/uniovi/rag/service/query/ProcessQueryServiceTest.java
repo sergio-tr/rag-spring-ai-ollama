@@ -54,7 +54,6 @@ class ProcessQueryServiceTest {
     private ReasoningStrategy reasoningStrategy;
     private ResponseRanker responseRanker;
     private PostRetrievalProcessor postRetrievalProcessor;
-    private com.uniovi.rag.tool.ToolRagService toolRagService;
     private ResponseValidator responseValidator;
     private OllamaConnectivityChecker ollamaConnectivityChecker;
     private ProcessQueryService service;
@@ -80,7 +79,6 @@ class ProcessQueryServiceTest {
         reasoningStrategy = mock(ReasoningStrategy.class);
         responseRanker = mock(ResponseRanker.class);
         postRetrievalProcessor = mock(PostRetrievalProcessor.class);
-        toolRagService = mock(com.uniovi.rag.tool.ToolRagService.class);
         responseValidator = mock(ResponseValidator.class);
         ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
@@ -109,7 +107,6 @@ class ProcessQueryServiceTest {
                 reasoningStrategy,
                 responseRanker,
                 postRetrievalProcessor,
-                toolRagService,
                 responseValidator,
                 advisor,
                 ollamaConnectivityChecker
@@ -263,11 +260,9 @@ class ProcessQueryServiceTest {
     }
 
     @Test
-    void generateResponse_toolRagSelectsType_deterministicToolPathReturnsAnswer() {
+    void generateResponse_toolsEnabled_deterministicAdapterPathReturnsAnswer() {
         featureConfig.setToolsEnabled(true);
-        featureConfig.setToolRagEnabled(true);
         when(classifier.classify(anyString())).thenReturn(QueryType.COUNT_DOCUMENTS);
-        when(toolRagService.findBestQueryType(anyString())).thenReturn(QueryType.COUNT_DOCUMENTS);
         when(toolsAdapter.execute(eq(QueryType.COUNT_DOCUMENTS), anyString()))
                 .thenReturn(ToolResult.from("via adapter", com.uniovi.rag.tool.CountDocumentsTool.class));
 

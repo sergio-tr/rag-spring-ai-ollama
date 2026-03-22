@@ -3,6 +3,7 @@ package com.uniovi.rag.service.document;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -14,7 +15,8 @@ public class SimpleDocumentService<T> extends AbstractDocumentService<T> {
 
     private final int chunkMaxChars;
 
-    public SimpleDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate, int chunkMaxChars) {
+    public SimpleDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate,
+                                 @Value("${rag.chunk.max-chars:400}") int chunkMaxChars) {
         super(vectorStore, chatClient, jdbcTemplate);
         this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
     }

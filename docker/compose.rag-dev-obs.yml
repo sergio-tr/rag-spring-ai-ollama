@@ -1,14 +1,24 @@
-# Optional: merge with compose.rag-dev.yml when also using compose.obs.yml
+# Optional: merge with compose.dev.yml (backend-dev) when also using compose.obs.yml
 # (e.g. ./scripts/up.sh dev --rag --obs or --all).
-# Activate dev,obs profiles in backend-dev and point OTLP to the otel-collector in the compose network.
+# Activate dev,infra profiles in backend-dev and point OTLP to the otel-collector in the compose network.
+#
+# Important: rag-service/.env usually has OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 (for Maven on the host).
+# That inside the container sends traces to the own container, not to the collector. For that reason we fix here the internal URL
+# and MANAGEMENT_* (the environment variables have precedence over application*.properties).
 services:
   backend-dev:
     environment:
-      SPRING_PROFILES_ACTIVE: dev,obs
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:${OBS_INTERNAL_OTEL_OTLP_HTTP:-4318}
+      SPRING_PROFILES_ACTIVE: dev,infra
+      # Docker network fixed (same port as HTTP OTLP receiver of the collector; see observability/otel-collector/config.yaml)
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: rag-backend-dev
       OTEL_METRICS_EXPORTER: otlp
       OTEL_TRACES_EXPORTER: otlp
+      MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED: "true"
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "true"
+      MANAGEMENT_OTLP_METRICS_EXPORT_URL: http://otel-collector:4318/v1/metrics
+      MANAGEMENT_METRICS_EXPORT_OTLP_ENABLED: "true"
     depends_on:
       otel-collector:
         condition: service_started

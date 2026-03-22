@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**
@@ -75,7 +77,7 @@ import java.util.stream.Collectors;
 
     private List<SummaryResult> generateSummariesInParallel(String query, List<Minute> minutes) {
         List<CompletableFuture<SummaryResult>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> generateSummary(query, minute)))
+                .map(minute -> supplyAsync(() -> generateSummary(query, minute)))
                 .collect(Collectors.toList());
 
         return futures.stream()

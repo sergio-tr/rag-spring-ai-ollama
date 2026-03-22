@@ -7,7 +7,7 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Parsea la respuesta JSON de {@code GET /api/tags} de Ollama.
+ * Parses the JSON response from Ollama {@code GET /api/tags}.
  */
 public final class OllamaTagsParser {
 

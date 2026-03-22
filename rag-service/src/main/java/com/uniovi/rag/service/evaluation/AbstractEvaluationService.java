@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.model.QueryResponse;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.query.QueryService;
@@ -36,7 +37,6 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         new FlagDescriptor("reas", RagFeatureConfiguration::setReasoningEnabled, RagFeatureConfiguration::isReasoningEnabled),
         new FlagDescriptor("rank", RagFeatureConfiguration::setRankerEnabled, RagFeatureConfiguration::isRankerEnabled),
         new FlagDescriptor("post", RagFeatureConfiguration::setPostRetrievalEnabled, RagFeatureConfiguration::isPostRetrievalEnabled),
-        new FlagDescriptor("tr", RagFeatureConfiguration::setToolRagEnabled, RagFeatureConfiguration::isToolRagEnabled),
         new FlagDescriptor("fc", RagFeatureConfiguration::setFunctionCallingEnabled, RagFeatureConfiguration::isFunctionCallingEnabled),
     };
 
@@ -59,6 +59,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     protected final DocumentService documentService;
     protected final QueryService queryService;
     protected final RagFeatureConfiguration featureConfig;
+    protected final RagImplementationProperties implementationProperties;
     protected boolean dataLoaded = false;
 
     protected boolean cleanBeforeLoad = true;
@@ -72,10 +73,10 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         
         **CRITICAL EVALUATION PRINCIPLES (BE STRICT)**:
         1. **Correctness 5 only when fully correct**: Score 5 ONLY if the answer has all key facts correct and adds NO wrong facts. One correct fact plus one wrong fact (e.g. two dates when only one is correct) = at most 4, not 5.
-        2. **Lists and enumerated answers**: If the expected answer specifies a set (e.g. one acta, two dates, "ninguna") and the generated answer adds extra or wrong items, Correctness at most 4 (or 3 if more wrong than right). Expected "one date" and generated "date A and date B" with one wrong → not 5.
-        3. **"No information found" / "Ninguna"**: If the expected answer says no information was found (e.g. "No se ha encontrado ninguna información", "Ninguna acta") and the generated answer invents or lists content, Correctness MUST be 1 or 2 and Groundedness 1 or 2.
+        2. **Lists and enumerated answers**: If the expected answer specifies a set (e.g. one minute, two dates, "none") and the generated answer adds extra or wrong items, Correctness at most 4 (or 3 if more wrong than right). Expected "one date" and generated "date A and date B" with one wrong → not 5.
+        3. **"No information found" / "None"**: If the expected answer says no information was found (e.g. no matching minutes) and the generated answer invents or lists content, Correctness MUST be 1 or 2 and Groundedness 1 or 2.
         4. **Yes/No questions**: If the generated answer contradicts the expected Yes/No, Correctness MUST be 1 or 2.
-        5. **Comparison questions**: If the conclusion is opposite to the expected (e.g. expected "agosto" but generated "febrero"), Correctness at most 2 or 3.
+        5. **Comparison questions**: If the conclusion is opposite to the expected (e.g. expected "August" but generated "February"), Correctness at most 2 or 3.
         6. **Context understanding**: If asked for a specific fact (e.g. which acta, duration), the answer must contain that information; partial or wrong set of items reduces the score.
         
         **IMPORTANT**: Do not invent or use any external knowledge. 
@@ -145,16 +146,21 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     );
 
     public AbstractEvaluationService(
-        RagFeatureConfiguration featureConfig, 
-        ChatClient chatClient, 
+        RagFeatureConfiguration featureConfig,
+        RagImplementationProperties implementationProperties,
+        ChatClient chatClient,
         DocumentService documentService,
         QueryService queryService,
         boolean cleanBeforeLoad
     ) {
         this.featureConfig = featureConfig;
+        this.implementationProperties = implementationProperties != null
+                ? implementationProperties
+                : new RagImplementationProperties();
         this.chatClient = chatClient;
         this.documentService = documentService;
         this.queryService = queryService;
+        this.cleanBeforeLoad = cleanBeforeLoad;
     }
 
     @Override
@@ -222,30 +228,35 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     @Override
     public Map<String, Object> evaluate() {
         // Use default configuration from application.properties
-        return evaluateWithConfiguration(featureConfig);
+        return evaluateWithConfiguration(featureConfig, implementationProperties);
     }
-    
+
     /**
      * Evaluates with a custom configuration.
-     * This allows testing different configuration combinations.
      * Automatically manages document loading: clears database and reloads documents with the custom configuration.
-     * 
-     * @param customConfig The custom configuration to use
-     * @return Evaluation results with the custom configuration
+     *
+     * @param customConfig feature flags
+     * @param implementationProperties query/retriever/analyser selection (e.g. copy of the bean with overrides)
      */
-    public Map<String, Object> evaluateWithConfiguration(RagFeatureConfiguration customConfig) {
+    @Override
+    public Map<String, Object> evaluateWithConfiguration(
+            RagFeatureConfiguration customConfig,
+            RagImplementationProperties implementationProperties) {
         if (evaluationServiceFactory == null) {
             throw new IllegalStateException("EvaluationServiceFactory must be set to evaluate with custom configuration");
         }
-        
+        RagImplementationProperties impl = implementationProperties != null
+                ? implementationProperties
+                : new RagImplementationProperties();
+
         // Load data with custom configuration (will clear and reload if needed)
         loadDataWithConfiguration(customConfig);
-        
+
         Map<String, Object> results = new HashMap<>();
         results.put("configuration", customConfig.getConfiguration());
 
         // Create services with custom configuration
-        QueryService queryServiceToUse = evaluationServiceFactory.createQueryService(customConfig);
+        QueryService queryServiceToUse = evaluationServiceFactory.createQueryService(customConfig, impl);
 
         List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
 
@@ -287,7 +298,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     }
 
     /**
-     * Evaluates all possible configuration combinations of the main feature flags.
+     * Evaluates all possible configuration combinations of the main feature flags ({@code 2^N} configs, N = number of {@link #FEATURE_FLAG_DESCRIPTORS}).
      * For each combination the database is cleared and reloaded so results are coherent with that config.
      *
      * @return Map with configuration name as key and evaluation results as value
@@ -303,7 +314,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             RagFeatureConfiguration config = buildFeatureConfigFromIndex(configIndex);
             String configName = buildFeatureConfigName(configIndex, config);
             log().info("Evaluating configuration: {}", configName);
-            Map<String, Object> result = evaluateWithConfiguration(config);
+            Map<String, Object> result = evaluateWithConfiguration(config, implementationProperties);
             allResults.put(configName, result);
         }
         return allResults;

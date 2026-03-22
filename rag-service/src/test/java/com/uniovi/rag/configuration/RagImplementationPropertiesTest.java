@@ -24,4 +24,16 @@ class RagImplementationPropertiesTest {
         assertEquals("filtered", p.getRetrieverImpl());
         assertEquals("no-op", p.getAnalyserImpl());
     }
+
+    @Test
+    void copyOf_copiesImplFields() {
+        RagImplementationProperties a = new RagImplementationProperties();
+        a.setQueryServiceImpl("simple");
+        a.setRetrieverImpl("filtered");
+        a.setAnalyserImpl("no-op");
+        RagImplementationProperties b = RagImplementationProperties.copyOf(a);
+        assertEquals("simple", b.getQueryServiceImpl());
+        assertEquals("filtered", b.getRetrieverImpl());
+        assertEquals("no-op", b.getAnalyserImpl());
+    }
 }

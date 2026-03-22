@@ -11,6 +11,8 @@ import org.springframework.ai.document.Document;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**
@@ -65,7 +67,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         }
         
         // Step 3.5: Additional filtering by specific topic with relevance threshold
-        // If threshold leaves 0 minutes, for known domain topics (calefacción, videovigilancia) retry with relaxed threshold
+        // If threshold leaves 0 minutes, for known domain topics (heating, video surveillance) retry with relaxed threshold
         String topic = extractTopicFromQuery(query, ner);
         if (topic != null && !topic.isEmpty()) {
             if (detectSpecificTopicQuery(query)) {
@@ -79,7 +81,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                               relevantMinutes.size(), topic, topicFiltered.size());
                     relevantMinutes = topicFiltered;
                 } else {
-                    // Specific topic (e.g. climatización piscina, renovación tejado) with 0 matches: return explicit "no encontrado"
+                    // Specific topic (e.g. pool HVAC, roof renovation) with 0 matches: return explicit "not found" message
                     log().info("Topic '{}' matched 0 minutes with threshold; returning topic-not-found message", topic);
                     String notFoundMsg = generateTopicNotFoundMessage(query, topic);
                     return ToolResult.from(formatResponse(notFoundMsg, query), getClass());
@@ -110,7 +112,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
      */
     private List<TopicResult> generateTopicSummariesInParallel(String query, List<Minute> minutes, JSONObject ner) {
         List<CompletableFuture<TopicResult>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> generateTopicSummary(query, minute, ner)))
+                .map(minute -> supplyAsync(() -> generateTopicSummary(query, minute, ner)))
                 .collect(Collectors.toList());
 
         return futures.stream()
@@ -164,7 +166,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
     /**
      * Fallback LLM topic summary when metadata is insufficient.
-     * Item 39: Instruct LLM to focus ONLY on the queried topic (e.g. calefacción), not other meeting topics.
+     * Item 39: Instruct LLM to focus ONLY on the queried topic (e.g. heating), not other meeting topics.
      */
     private String generateTopicSummaryWithLLM(String query, Minute minute, JSONObject ner) {
         if (query == null || query.trim().isEmpty() || minute == null) {
@@ -215,7 +217,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
      * Analyzes and ranks topic summaries by relevance and quality
      */
     private List<TopicResult> analyzeAndRankTopicSummaries(List<TopicResult> results) {
-        // Orden simple por longitud de texto
+        // Simple sort by text length
         return results.stream()
                 .sorted((a, b) -> Integer.compare(
                         b.getTopicSummary() != null ? b.getTopicSummary().length() : 0,
@@ -311,11 +313,11 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         log().info("Filtering {} minutes by topic '{}' (normalized: '{}') with relevance threshold {}", 
                   minutes.size(), topic, topicLower, String.format("%.2f", relevanceThreshold));
         
-        // Extract key terms from compound topics (e.g., "climatización de la piscina" -> ["climatización", "piscina"])
+        // Extract key terms from compound topics (e.g. pool HVAC -> ["pool", "hvac"] or Spanish compound phrases split into tokens)
         List<String> keyTerms = extractKeyTermsFromTopic(topicLower);
         log().debug("Extracted key terms from topic '{}': {}", topic, keyTerms);
         
-        // For videovigilancia/vigilancia, keyTerms are synonyms (any match counts), not compound parts (item 39)
+        // For video surveillance / surveillance, keyTerms are synonyms (any match counts), not compound parts (item 39)
         boolean isCompoundTopic = keyTerms.size() > 1
                 && !topicLower.contains("videovigilancia")
                 && !topicLower.contains("vigilancia");
@@ -337,7 +339,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                 })
                 .collect(Collectors.toList());
         
-        // Fallback for calefacción: if 0 minutes passed, include any minute where summary/topics contain "calefacción" (item 39)
+        // Fallback for heating: if 0 minutes passed, include any minute where summary/topics contain heating keywords (item 39)
         if (filtered.isEmpty() && (topicLower.contains("calefaccion") || topicLower.contains("calefacción"))) {
             filtered = minutes.stream()
                     .filter(minute -> {
@@ -352,7 +354,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                 log().info("Topic 'calefacción' matched {} minutes via literal fallback in summary/topics", filtered.size());
             }
         }
-        // Fallback for videovigilancia: if 0 minutes passed, include any minute with cámara/vigilancia/security/surveillance in summary/topics/decisions (item 40)
+        // Fallback for video surveillance: if 0 minutes passed, include any minute with camera/surveillance/security wording in summary/topics/decisions (item 40)
         if (filtered.isEmpty() && (topicLower.contains("videovigilancia") || topicLower.contains("vigilancia"))) {
             List<String> vidTerms = List.of("camara", "camaras", "vigilancia", "videovigilancia", "security", "surveillance", "cameras");
             filtered = minutes.stream()
@@ -478,7 +480,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             }
         }
         
-        // Check in agenda (order of day) - topic may appear only there (e.g. calefacción, videovigilancia)
+        // Check in agenda (order of day) - topic may appear only there (e.g. heating, video surveillance)
         if (minute.agenda() != null && !minute.agenda().isEmpty()) {
             String agendaText = minute.agenda().values().stream()
                     .filter(s -> s != null && !s.isBlank())
@@ -501,7 +503,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         
         // Calculate relevance score
         if (totalChecks == 0) {
-            // Fallback for calefacción: if topic is "calefacción" and summary/topics contain it, return min score (item 39)
+            // Fallback for heating: if topic is heating and summary/topics contain it, return min score (item 39)
             if (topicNormalized.contains("calefaccion") || topicNormalized.contains("calefacción")) {
                 String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
                 boolean inSummary = sum.contains("calefaccion") || sum.contains("calefacción");
@@ -520,7 +522,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         } else {
             // For simple topics, calculate based on how many fields contain the topic
             double score = (double) foundTerms / Math.max(totalChecks, 1);
-            // Fallback for calefacción: ensure literal match in summary/topics gives at least 0.5 (item 39)
+            // Fallback for heating: ensure literal match in summary/topics gives at least 0.5 (item 39)
             if ((topicNormalized.contains("calefaccion") || topicNormalized.contains("calefacción")) && score < 0.5) {
                 String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
                 boolean inSummary = sum.contains("calefaccion") || sum.contains("calefacción");
@@ -569,7 +571,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             keyTerms.add("accounts");
         }
 
-        // Add synonyms so acta wording is matched (calefacción ACTA 5; videovigilancia ACTA 2, 5, 6 - §4)
+        // Add synonyms so minute wording is matched (heating ACTA 5; video surveillance ACTA 2, 5, 6 - §4)
         if (keyTerms.stream().anyMatch(t -> t.contains("calefaccion") || t.contains("calefacción"))) {
             keyTerms.add("calefaccion");
             keyTerms.add("calefacción");

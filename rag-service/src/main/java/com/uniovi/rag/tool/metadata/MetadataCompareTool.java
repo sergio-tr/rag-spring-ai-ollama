@@ -11,6 +11,8 @@ import org.springframework.ai.document.Document;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 import java.util.Objects;
 
@@ -272,7 +274,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
 
     /**
      * Filters documents to those whose date matches any of the given date candidates (OR).
-     * Used when the query compares two specific dates (e.g. "qué reunión fue más larga: 25 feb 2025 o 25 ago 2025") — item 53.
+     * Used when the query compares two specific dates (e.g. which meeting was longer on date A vs date B) — item 53.
      */
     private List<Document> filterDocumentsByAnyOfDates(List<Document> docs, List<String> dateCandidates) {
         if (docs == null || docs.isEmpty() || dateCandidates == null || dateCandidates.isEmpty()) {
@@ -309,7 +311,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * Returns true if the query asks to compare two specific dates (e.g. duration: "qué reunión fue más larga: X o Y").
+     * Returns true if the query asks to compare two specific dates (e.g. duration: which of two meetings was longer).
      */
     private boolean isCompareTwoDatesQuery(String query) {
         if (query == null || query.trim().isEmpty()) return false;
@@ -488,7 +490,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      */
     private Map<String, ComparisonValue> extractComparisonDataInParallel(List<Minute> minutes, ComparisonField field, JSONObject ner, String query) {
         List<CompletableFuture<Map.Entry<String, ComparisonValue>>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> extractComparisonValue(minute, field, ner, query)))
+                .map(minute -> supplyAsync(() -> extractComparisonValue(minute, field, ner, query)))
                 .collect(Collectors.toList());
 
         boolean mergeBySum = "mentions_by_month".equals(field.fieldName)
@@ -560,8 +562,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
     
     /**
-     * Extracts mentions count by month for comparison queries.
-     * Example: "Indica si hubo más menciones a problemas de seguridad en febrero o en agosto"
+     * Extracts mentions count by month for comparison queries
+     * (e.g. more security-issue mentions in February vs August).
      */
     private Map.Entry<String, ComparisonValue> extractMentionsByMonthValue(Minute minute, ComparisonField field, JSONObject ner, String query) {
         // Extract the topic/keyword to count mentions for
@@ -616,7 +618,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     /**
      * Counts mentions of a topic in a minute (in topics, decisions, summary).
      * Uses semantic matching to find related terms, not just exact matches.
-     * For example, "problemas de seguridad" should match "seguridad", "vigilancia", "iluminación y vigilancia", etc.
+     * For example, a "security problems" phrase should match security, surveillance, lighting-and-surveillance wording, etc.
      */
     private int countTopicMentions(Minute minute, String topic) {
         if (topic == null || topic.isEmpty() || minute == null) {
@@ -682,8 +684,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     
     /**
      * Returns true if the minute mentions the security topic with sufficient context (at least two of:
-     * seguridad, vigilancia, videovigilancia, cámaras/camaras). Used for "problemas de seguridad" comparisons
-     * to avoid counting acts that only mention "seguridad" in passing (item 9).
+     * security, surveillance, video surveillance, cameras). Used for security-problem comparisons
+     * to avoid counting minutes that only mention "security" in passing (item 9).
      */
     private boolean minuteMentionsSecurityTopic(Minute minute) {
         if (minute == null) return false;
@@ -708,8 +710,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     
     /**
      * Extracts key terms from a topic phrase for semantic matching.
-     * For example, "problemas de seguridad" -> ["seguridad", "problemas"]
-     * This allows matching related terms like "vigilancia", "iluminación y vigilancia", etc.
+     * For example, "security problems" -> ["security", "problems"].
+     * This allows matching related terms like surveillance, lighting and surveillance, etc.
      */
     private List<String> extractKeyTermsFromTopic(String topic) {
         if (topic == null || topic.isEmpty()) {
@@ -730,7 +732,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         // Also add the full topic as a key term
         keyTerms.add(topic.toLowerCase());
         
-        // Add synonyms for common query topics so acta wording is matched (§4: agosto ACTA 3, 6 = seguridad/vigilancia/cámaras)
+        // Add synonyms for common query topics so minute wording is matched (§4: August ACTA 3, 6 = security/surveillance/cameras)
         if (keyTerms.stream().anyMatch(t -> t.contains("seguridad"))) {
             keyTerms.add("seguridad");
             keyTerms.add("vigilancia");
@@ -749,7 +751,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
     
     /**
-     * Extracts month names mentioned in the query (e.g. "febrero" and "abril" from "qué mes tuvo más reuniones, febrero o abril").
+     * Extracts month names mentioned in the query (Spanish or English month names).
      * Returns only months that appear in the query so we filter comparison data to the requested pair.
      */
     private List<String> extractMonthsFromQuery(String query) {
@@ -778,7 +780,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * Filters comparables map to only include requested months (so comparison is febrero vs abril when asked, not all months).
+     * Filters comparables map to only include requested months (so comparison is February vs April when asked, not all months).
      */
     private Map<String, ComparisonValue> filterComparablesByMonths(Map<String, ComparisonValue> comparables, List<String> requestedMonths) {
         if (comparables == null || requestedMonths == null || requestedMonths.isEmpty()) {
@@ -796,7 +798,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     /**
-     * Attendees count per minute by month; used for "más asistentes en febrero o en agosto".
+     * Attendees count per minute by month; used for more-attendees-in-February-vs-August style queries.
      */
     private Map.Entry<String, ComparisonValue> extractAttendeesByMonthValue(Minute minute) {
         if (minute.date() == null) {
@@ -1099,7 +1101,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         return answer.toString();
     }
 
-    /** Builds deterministic conclusion line so LLM does not invert (e.g. "Agosto tiene más que Febrero" when data says otherwise). Handles tie (empate). */
+    /** Builds deterministic conclusion line so LLM does not invert (e.g. "August has more than February" when data says otherwise). Handles ties. */
     private String formatMonthConclusion(Map<String, ComparisonValue> comparables, String unitLabel) {
         if (comparables == null || comparables.size() != 2) {
             return "";

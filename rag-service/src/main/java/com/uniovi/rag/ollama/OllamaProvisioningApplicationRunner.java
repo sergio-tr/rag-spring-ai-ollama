@@ -7,7 +7,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
- * Ejecuta el aprovisionamiento de modelos Ollama lo antes posible tras el arranque del contexto.
+ * Runs Ollama model provisioning as early as possible after the application context starts.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)

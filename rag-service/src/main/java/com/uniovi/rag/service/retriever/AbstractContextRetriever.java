@@ -407,7 +407,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     
     /**
      * Normalizes and matches names for better comparison.
-     * Handles variations in name formats (e.g., "Juan Pérez" vs "Juan Pérez Gutiérrez").
+     * Handles variations in name formats (e.g. short vs full name with middle/surname).
      */
     protected boolean normalizedNameMatches(String name1, String name2) {
         if (name1 == null || name2 == null) {

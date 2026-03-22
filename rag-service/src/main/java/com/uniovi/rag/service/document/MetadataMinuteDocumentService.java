@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.model.Minute;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -13,6 +14,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -77,7 +80,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         """;
 
 
-    public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate,int chunkMaxChars) {
+    public MetadataMinuteDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate,
+                                         @Value("${rag.chunk.max-chars:400}") int chunkMaxChars) {
         super(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
     }
 
@@ -159,25 +163,25 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
 
         CompletableFuture<List<String>> decisionsFuture = 
-            CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_DECISIONS))
+            supplyAsync(() -> extractWithPrompt(content, PROMPT_DECISIONS))
                 .exceptionally(e -> {
                     log().error("Error extracting decisions for file: {}", filename, e);
                     return new ArrayList<>();
                 });
         CompletableFuture<List<String>> entitiesFuture = 
-            CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_ENTITIES))
+            supplyAsync(() -> extractWithPrompt(content, PROMPT_ENTITIES))
                 .exceptionally(e -> {
                     log().error("Error extracting entities for file: {}", filename, e);
                     return new ArrayList<>();
                 });
         CompletableFuture<List<String>> topicsFuture = 
-            CompletableFuture.supplyAsync(() -> extractWithPrompt(content, PROMPT_TOPICS))
+            supplyAsync(() -> extractWithPrompt(content, PROMPT_TOPICS))
                 .exceptionally(e -> {
                     log().error("Error extracting topics for file: {}", filename, e);
                     return new ArrayList<>();
                 });
         CompletableFuture<String> summaryFuture = 
-            CompletableFuture.supplyAsync(() -> extractSummaryWithPrompt(content, PROMPT_SUMMARY))
+            supplyAsync(() -> extractSummaryWithPrompt(content, PROMPT_SUMMARY))
                 .exceptionally(e -> {
                     log().error("Error extracting summary for file: {}", filename, e);
                     return generateFallbackSummary(content);

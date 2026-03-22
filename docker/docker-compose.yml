@@ -69,8 +69,7 @@ services:
       - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
     environment:
       SERVER_PORT: ${SERVER_PORT:-9000}
-      # Disables OTLP to localhost inside the JVM; compose.obs.yml adds profile "obs" and sets OTEL_* to the collector.
-      SPRING_PROFILES_ACTIVE: docker
+      # Disables OTLP to localhost inside the JVM; compose.obs.yml adds profile "infra" and sets OTEL_* to the collector.
       # DB connection (same user/password as in db/.env)
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-vectordb}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
@@ -85,7 +84,7 @@ services:
       classifier-service:
         condition: service_healthy
     healthcheck:
-      # Liveness = JVM up (management.endpoint.health.probes.enabled in application-docker.properties).
+      # Liveness = JVM up (management.endpoint.health.probes.enabled in application-infra.properties when profile infra is active).
       # Readiness (/actuator/health/readiness) is 503 while Ollama is pulling models — do not use it for Docker.
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${SERVER_PORT:-9000}/actuator/health/liveness >/dev/null || exit 1"]
       interval: 20s

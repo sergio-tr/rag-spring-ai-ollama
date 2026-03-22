@@ -25,13 +25,9 @@ class RagFeatureConfigurationTest {
         c.setReasoningEnabled(true);
         c.setRankerEnabled(true);
         c.setPostRetrievalEnabled(true);
-        c.setToolRagEnabled(true);
         c.setFunctionCallingEnabled(true);
         c.setUseRetrieval(false);
         c.setUseAdvisor(false);
-        c.setQueryServiceImpl("simple");
-        c.setRetrieverImpl("filtered");
-        c.setAnalyserImpl("no-op");
 
         assertTrue(c.isExpansionEnabled());
         assertTrue(c.isNerEnabled());
@@ -40,13 +36,9 @@ class RagFeatureConfigurationTest {
         assertTrue(c.isReasoningEnabled());
         assertTrue(c.isRankerEnabled());
         assertTrue(c.isPostRetrievalEnabled());
-        assertTrue(c.isToolRagEnabled());
         assertTrue(c.isFunctionCallingEnabled());
         assertFalse(c.isUseRetrieval());
         assertFalse(c.isUseAdvisor());
-        assertEquals("simple", c.getQueryServiceImpl());
-        assertEquals("filtered", c.getRetrieverImpl());
-        assertEquals("no-op", c.getAnalyserImpl());
     }
 
     @Test
@@ -61,7 +53,6 @@ class RagFeatureConfigurationTest {
         assertTrue(config.containsKey("reasoning"));
         assertTrue(config.containsKey("ranker"));
         assertTrue(config.containsKey("post-retrieval"));
-        assertTrue(config.containsKey("tool-rag"));
         assertTrue(config.containsKey("function-calling"));
         assertTrue(config.containsKey("use-retrieval"));
         assertTrue(config.containsKey("use-advisor"));

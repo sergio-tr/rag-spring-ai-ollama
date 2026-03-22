@@ -16,8 +16,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Bloquea las rutas {@code /api/**} hasta que el aprovisionamiento de modelos Ollama haya terminado
- * (o se haya omitido en tests). Evita 404/errores genéricos durante la descarga.
+ * Blocks {@code /api/**} routes until Ollama model provisioning has finished
+ * (or was skipped in tests). Avoids generic 404/errors while models are downloading.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
@@ -47,15 +47,15 @@ public class OllamaProvisioningGateFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         OllamaModelProvisioningService.State state = provisioningService.getState();
         String detail = switch (state) {
-            case PENDING, PULLING -> "Los modelos de Ollama se están descargando; reintenta en unos segundos.";
+            case PENDING, PULLING -> "Ollama models are downloading; retry in a few seconds.";
             case FAILED -> provisioningService.getLastError() != null
                     ? provisioningService.getLastError()
-                    : "Ollama no pudo aprovisionar los modelos; revisa logs.";
+                    : "Ollama could not provision models; check logs.";
             default -> "";
         };
         ApiResponse<Void> body = ApiResponse.fail(
                 "OLLAMA_PROVISIONING",
-                "Servicio de modelos Ollama no listo.",
+                "Ollama model service not ready.",
                 detail);
         response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);

@@ -12,8 +12,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Map;
 
 /**
- * Endpoints para el lab: forzar comprobar conectividad con Ollama y descargar modelos (embedding + chat)
- * vía {@code POST /api/pull} en el host configurado en {@code spring.ai.ollama.base-url}.
+ * Lab endpoints: trigger Ollama connectivity checks and model downloads (embedding + chat)
+ * via {@code POST /api/pull} on the host configured in {@code spring.ai.ollama.base-url}.
  */
 @RestController
 @RequestMapping("/api/v4/ollama")
@@ -26,7 +26,7 @@ public class OllamaModelController {
     }
 
     /**
-     * Cuerpo opcional: {@code { "chatModel": "nombre:tag" }}. Si se omite, se usa solo el modelo de chat por defecto.
+     * Optional body: {@code { "chatModel": "name:tag" }}. If omitted, only the default chat model is used.
      */
     @PostMapping(value = "/models/ensure", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ApiResponse<Map<String, Object>>> ensureModels(@RequestBody(required = false) Map<String, String> body) {

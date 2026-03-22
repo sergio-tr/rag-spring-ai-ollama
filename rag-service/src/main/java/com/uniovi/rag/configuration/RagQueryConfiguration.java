@@ -38,7 +38,6 @@ import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.reasoning.SimpleReasoningStrategy;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
-import com.uniovi.rag.tool.ToolRagService;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.ai.vectorstore.SearchRequest;
@@ -241,7 +240,6 @@ public class RagQueryConfiguration {
             ReasoningStrategy reasoningStrategy,
             ResponseRanker responseRanker,
             PostRetrievalProcessor postRetrievalProcessor,
-            ToolRagService toolRagService,
             ResponseValidator responseValidator,
             QuestionAnswerAdvisor questionAnswerAdvisor,
             OllamaConnectivityChecker ollamaConnectivityChecker,
@@ -272,7 +270,6 @@ public class RagQueryConfiguration {
                         reasoningStrategy,
                         responseRanker,
                         postRetrievalProcessor,
-                        toolRagService,
                         responseValidator,
                         questionAnswerAdvisor,
                         ollamaConnectivityChecker

@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.query.QueryService;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,7 +24,7 @@ class DatasetMinuteEvaluationServiceTest {
         DocumentService documentService = mock(DocumentService.class);
         QueryService queryService = mock(QueryService.class);
         service = new DatasetMinuteEvaluationService(
-                featureConfig, chatClient, documentService, queryService, false);
+                featureConfig, new RagImplementationProperties(), chatClient, documentService, queryService, false);
     }
 
     @Test

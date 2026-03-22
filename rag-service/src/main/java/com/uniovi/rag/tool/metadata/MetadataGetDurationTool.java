@@ -12,6 +12,8 @@ import org.springframework.ai.document.Document;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**
@@ -137,7 +139,7 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
      */
     private List<DurationResult> extractDurationsInParallel(List<Minute> minutes) {
         List<CompletableFuture<DurationResult>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> extractDuration(minute)))
+                .map(minute -> supplyAsync(() -> extractDuration(minute)))
                 .collect(Collectors.toList());
 
         return futures.stream()
@@ -148,7 +150,7 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
     }
 
     /**
-     * Known acta duration correction: ACTA 5 (25 feb 2026) = 1h45 (19:00-20:45). §4 reference.
+     * Known minute duration correction: ACTA 5 (25 Feb 2026) = 1h45 (19:00-20:45). §4 reference.
      */
     private static final String KNOWN_END_TIME_25_FEB_2026 = "20:45";
     private static final int DURATION_25_FEB_2026_MIN = 105;
@@ -217,7 +219,7 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
      */
     private List<Minute> evaluateMinutesWithLLM(String query, List<Minute> minutes) {
         List<CompletableFuture<Minute>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> {
+                .map(minute -> supplyAsync(() -> {
                     if (evaluateMinuteContainsRequestedInfo(query, minute)) {
                         return minute;
                     }

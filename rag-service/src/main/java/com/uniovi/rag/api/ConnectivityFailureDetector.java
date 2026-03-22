@@ -12,8 +12,8 @@ import java.nio.channels.ClosedChannelException;
 /**
  * Detects transport-level failures to LLM / HTTP backends (Ollama, etc.) from exception messages.
  * <p>
- * Para comprobar explícitamente conectividad HTTP y presencia de modelos (y lanzar {@code /api/pull}),
- * usar {@link OllamaConnectivityChecker}.
+ * For explicit HTTP connectivity and model presence checks (and triggering {@code /api/pull}),
+ * use {@link OllamaConnectivityChecker}.
  */
 public final class ConnectivityFailureDetector {
 

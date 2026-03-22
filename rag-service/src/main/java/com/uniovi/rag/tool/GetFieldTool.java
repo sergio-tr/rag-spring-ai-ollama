@@ -162,7 +162,7 @@ public class GetFieldTool extends AbstractTool {
         }
     }
 
-    /** Intent→field mapping: "fecha del acta donde X fue presidente" must return date, not president. */
+    /** Intent→field mapping: "date of the minute where X was president" must return date, not president. */
     private static boolean asksForDateOfActaWherePerson(String query) {
         if (query == null) return false;
         String q = query.toLowerCase();

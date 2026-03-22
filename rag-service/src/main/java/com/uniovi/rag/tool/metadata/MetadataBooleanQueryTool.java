@@ -11,6 +11,8 @@ import org.springframework.ai.document.Document;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**
@@ -32,7 +34,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         List<Document> docs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "decisions", "topics", "summary", "attendees"}, ner);
 
-        // Step 1.4: Handle "person X appears in acta on date Y" (e.g. "Confirma si Jorge Moreno Navarro aparece en el acta del 25 de agosto de 2026")
+        // Step 1.4: Handle "person X appears in minutes on date Y" (Spanish confirmation-style queries)
         if (!docs.isEmpty() && isPersonInActaOnDateQuery(query)) {
             ToolResult personResult = handlePersonInActaOnDateQuery(query, docs, ner);
             if (personResult != null) {
@@ -103,7 +105,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
     }
 
     /**
-     * Returns true if the query is about voting or decisions (votó, votación, acuerdo, aprobación).
+     * Returns true if the query is about voting or decisions (vote, agreement, approval wording in Spanish or English).
      * For these we skip strict keyword validation and rely on evidence from decisions.
      */
     private boolean isVotingOrDecisionQuery(String query) {
@@ -115,7 +117,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             || q.contains("did they vote") || q.contains("any vote");
     }
 
-    /** True when the query asks whether a specific person appears in the acta/minutes for a specific date (e.g. "Confirma si Jorge Moreno Navarro aparece en el acta del 25 de agosto de 2026"). */
+    /** True when the query asks whether a specific person appears in the minutes for a specific date. */
     private boolean isPersonInActaOnDateQuery(String query) {
         if (query == null || query.trim().isEmpty()) return false;
         String q = query.toLowerCase().trim();
@@ -158,7 +160,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
      */
     private List<String> extractEvidenceInParallel(String query, List<Minute> minutes) {
         List<CompletableFuture<String>> evidenceFutures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> extractEvidencePreferMetadata(query, minute)))
+                .map(minute -> supplyAsync(() -> extractEvidencePreferMetadata(query, minute)))
                 .collect(Collectors.toList());
 
         return evidenceFutures.stream()
@@ -321,7 +323,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             return "";
         }
         
-        // Explicit evidence for "seguridad en [año]" (ACTA 6 25 ago 2026): topic/decisions/summary contain seguridad/vigilancia/videovigilancia
+        // Explicit evidence for "security in [year]" (ACTA 6 25 Aug 2026): topic/decisions/summary contain security/surveillance/video-surveillance terms
         String queryLower = query.toLowerCase();
         if (queryLower.contains("seguridad")) {
             String topicsStr = minute.topics() != null ? String.join(" ", minute.topics()).toLowerCase() : "";
@@ -401,15 +403,6 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
                           evidence.size(), evidenceText);
     }
     
-    /**
-     * Validates keyword exists with precise matching (not just related terms).
-     * For example, "radiación solar" should NOT match "iluminación".
-     * 
-     * @param docs Documents to check
-     * @param keyword Keyword to validate
-     * @param query Original query for context
-     * @return true if keyword exists with precise match, false otherwise
-     */
     /** Builds a single string from document metadata (topics, summary, decisions) and content for keyword search. */
     private String buildDocumentContextString(Document doc) {
         if (doc == null) return "";
@@ -442,6 +435,15 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         return sb.toString();
     }
 
+    /**
+     * Validates that the keyword exists with precise matching (not just related terms).
+     * For example, solar radiation must not count as lighting (see item 37; Spanish query forms use the same rules).
+     *
+     * @param docs documents to check
+     * @param keyword keyword to validate
+     * @param query original query for context
+     * @return true if the keyword matches with the required precision
+     */
     private boolean validateKeywordExistsPrecise(List<Document> docs, String keyword, String query) {
         if (docs == null || docs.isEmpty() || keyword == null || keyword.trim().isEmpty()) {
             return false;
@@ -449,7 +451,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         
         log().info("Validating keyword '{}' exists with PRECISE matching in {} documents", keyword, docs.size());
         
-        // Radiación solar: require literal string match only; do NOT accept "iluminación" or "illumination" (item 37)
+        // Solar radiation: require literal string match only; do NOT accept lighting or illumination as a match (item 37)
         String kwLower = keyword != null ? keyword.toLowerCase().trim() : "";
         if (kwLower.contains("radiación solar") || kwLower.contains("radiacion solar")) {
             for (Document doc : docs) {

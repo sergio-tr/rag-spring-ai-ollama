@@ -117,14 +117,14 @@ if [[ "${SKIP_DOCKER:-0}" != "1" ]]; then
   ensure_env "$ROOT_DIR/observability/.env.example" "$ROOT_DIR/observability/.env"
 
   echo ""
-  echo "=== 4) Docker build & up (compose + obs + logs + Ollama CPU) ==="
+  echo "=== 4) Docker build & up (compose + obs + logs + Ollama GPU) ==="
   cd "$ROOT_DIR/docker"
-  docker compose -f docker-compose.yml -f compose.obs.yml -f compose.logs.yml -f compose.ollama.yml \
+  docker compose -f docker-compose.yml -f compose.obs.yml -f compose.logs.yml -f compose.ollama-gpu.yml \
     --env-file ../db/.env --env-file ../classifier-service/.env \
     --env-file ../rag-service/.env --env-file ../observability/.env \
     build
 
-  docker compose -f docker-compose.yml -f compose.obs.yml -f compose.logs.yml -f compose.ollama.yml \
+  docker compose -f docker-compose.yml -f compose.obs.yml -f compose.logs.yml -f compose.ollama-gpu.yml \
     --env-file ../db/.env --env-file ../classifier-service/.env \
     --env-file ../rag-service/.env --env-file ../observability/.env \
     up -d

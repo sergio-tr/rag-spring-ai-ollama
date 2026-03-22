@@ -9,13 +9,13 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 
 /**
- * Comprueba conectividad con Ollama ({@code GET /api/tags}) y que existan los modelos necesarios
- * (embedding + chat, con posible override del modelo de chat desde el lab). Si faltan y
- * {@code rag.ollama.auto-pull-enabled=true}, delega en {@link OllamaModelProvisioningService}
- * para ejecutar {@code POST /api/pull} contra el mismo {@code spring.ai.ollama.base-url}
- * (contenedor Docker o host remoto).
+ * Checks connectivity to Ollama ({@code GET /api/tags}) and that required models exist
+ * (embedding + chat, with optional chat model override from the lab). If models are missing and
+ * {@code rag.ollama.auto-pull-enabled=true}, delegates to {@link OllamaModelProvisioningService}
+ * to run {@code POST /api/pull} against {@code spring.ai.ollama.base-url}
+ * (Docker container or remote host).
  * <p>
- * La detección de fallos a partir de mensajes de excepción sigue en {@link ConnectivityFailureDetector}.
+ * Failure detection from exception messages remains in {@link ConnectivityFailureDetector}.
  */
 @Service
 public class OllamaConnectivityChecker {
@@ -34,7 +34,7 @@ public class OllamaConnectivityChecker {
     }
 
     /**
-     * @return true si Ollama responde con éxito a {@code /api/tags}
+     * @return true if Ollama responds successfully to {@code /api/tags}
      */
     public boolean isOllamaReachable() {
         if (!healthProperties.isOllamaEnabled()) {
@@ -48,9 +48,9 @@ public class OllamaConnectivityChecker {
     }
 
     /**
-     * Debe invocarse al inicio del pipeline de consulta: ping + comprobar/descargar modelos de embedding y chat.
+     * Call at the start of the query pipeline: ping + ensure/pull embedding and chat models.
      *
-     * @param chatModelOverride modelo de chat elegido para esta petición (lab); {@code null} usa el configurado en Spring AI
+     * @param chatModelOverride chat model for this request (lab); {@code null} uses Spring AI default
      */
     public void prepareForQuery(String chatModelOverride) {
         if (!healthProperties.isOllamaEnabled()) {

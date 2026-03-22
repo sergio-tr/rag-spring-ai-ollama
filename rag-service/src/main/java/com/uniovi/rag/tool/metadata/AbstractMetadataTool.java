@@ -1,5 +1,6 @@
 package com.uniovi.rag.tool.metadata;
 
+import com.uniovi.rag.observability.ContextPropagatingFutures;
 import com.uniovi.rag.tool.AbstractTool;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
@@ -295,7 +296,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * This is a fallback when the complete object is not stored in metadata.
      */
     private Minute reconstructMinuteFromMetadata(Map<String, Object> metadata) {
-        // Use document_id for id when present so counting/deduping is by unique acta, not per chunk
+        // Use document_id for id when present so counting/deduping is by unique minute, not per chunk
         String id = safeGetString(metadata, "document_id");
         if (id == null || id.isBlank()) {
             id = safeGetString(metadata, "id");
@@ -1099,19 +1100,22 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Extracts Minute objects from documents in parallel.
      */
     protected List<Minute> extractMinutesInParallel(List<Document> docs) {
+        var ctx = ContextPropagatingFutures.captureContext();
         return docs.parallelStream()
-                .map(doc -> {
+                .map(doc -> ContextPropagatingFutures.withSnapshot(ctx, () -> {
                     try {
-                        return getMinuteFromMetadata(doc);
+                        Minute m = getMinuteFromMetadata(doc);
+                        if (m == null || !isMinuteComplete(m) || !hasUsefulData(m)) {
+                            return null;
+                        }
+                        return m;
                     } catch (Exception e) {
-                        log().warn("Error extracting minute from document {}, skipping: {}", 
+                        log().warn("Error extracting minute from document {}, skipping: {}",
                                  doc != null ? doc.getId() : "null", e.getMessage());
                         return null;
                     }
-                })
+                }))
                 .filter(Objects::nonNull)
-                .filter(this::isMinuteComplete)
-                .filter(this::hasUsefulData)
                 .collect(Collectors.toList());
     }
     
@@ -1251,7 +1255,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
         
-        // STEP 4: Relevance filtering only when we have many minutes (avoid LLM when <= 10 to reduce false "no encontrado")
+        // STEP 4: Relevance filtering only when we have many minutes (avoid LLM when <= 10 to reduce false "not found" answers)
         if (filtered.size() <= 10) {
             log().info("Skipping LLM relevance filter ({} minutes <= 10), returning filtered list", filtered.size());
             return filtered;
@@ -1494,10 +1498,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      */
     protected List<Minute> filterMinutesWithNER(String query, List<Minute> minutes, JSONObject ner) {
         log().info("Filtering {} minutes with NER entities", minutes.size());
-        
+
+        var ctx = ContextPropagatingFutures.captureContext();
         return minutes.parallelStream()
-                .filter(minute -> matchesMinuteWithNERCached(minute, ner))
-                .filter(minute -> isRelevantToQueryCached(query, minute))
+                .filter(minute -> ContextPropagatingFutures.withSnapshot(ctx, () -> matchesMinuteWithNERCached(minute, ner)))
+                .filter(minute -> ContextPropagatingFutures.withSnapshot(ctx, () -> isRelevantToQueryCached(query, minute)))
                 .collect(Collectors.toList());
     }
 
@@ -1515,9 +1520,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      */
     protected List<Minute> filterMinutesByQueryRelevance(String query, List<Minute> minutes) {
         log().info("Filtering {} minutes by query relevance", minutes.size());
-        
+
+        var ctx = ContextPropagatingFutures.captureContext();
         return minutes.parallelStream()
-                .filter(minute -> isRelevantToQueryCached(query, minute))
+                .filter(minute -> ContextPropagatingFutures.withSnapshot(ctx, () -> isRelevantToQueryCached(query, minute)))
                 .collect(Collectors.toList());
     }
 
@@ -2177,14 +2183,14 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
 
-        // Use literal topic when question explicitly mentions it (avoids LLM substituting e.g. "calefacción" → "climatización de la piscina") — item 38
+        // Use literal topic when question explicitly mentions it (avoids LLM substituting heating for pool HVAC, etc.) — item 38
         String queryLower = query.toLowerCase().trim();
         if (queryLower.contains("calefacción") || queryLower.contains("calefaccion")) {
             log().info("Extracted topic from query (literal): calefacción");
             return "calefacción";
         }
 
-        // Heuristic fallback: extract topic from "sobre X" or "mencionó X" to avoid LLM returning full question (items 8, 15)
+        // Heuristic fallback: extract topic from "about X" / "mentioned X" substrings in the query to avoid LLM returning full question (items 8, 15)
         String q = query.trim();
         if (q.length() > 50) {
             String qLower = q.toLowerCase();
@@ -2603,7 +2609,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Returns true when the query clearly requires a person (e.g. "presididas por X", "asistió X", "quién fue el presidente").
+     * Returns true when the query clearly requires a person (chairperson, attendee, president, secretary, etc.).
      * Used to log WARN only when person extraction fails and the query actually asks for a person.
      */
     protected boolean queryRequiresPerson(String query) {
@@ -3206,7 +3212,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Generates a clear "topic not found" message (e.g. for climatización piscina, renovación tejado).
+     * Generates a clear "topic not found" message (e.g. for pool HVAC, roof renovation).
      */
     protected String generateTopicNotFoundMessage(String query, String topic) {
         if (topic == null || topic.trim().isEmpty()) {

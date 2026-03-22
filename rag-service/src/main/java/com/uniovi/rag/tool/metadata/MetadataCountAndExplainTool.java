@@ -12,6 +12,8 @@ import org.springframework.cache.annotation.Cacheable;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+
+import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**
@@ -82,7 +84,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
      */
     private List<Explanation> generateExplanationsInParallel(String query, List<Minute> minutes) {
         List<CompletableFuture<Explanation>> futures = minutes.stream()
-                .map(minute -> CompletableFuture.supplyAsync(() -> generateExplanation(query, minute)))
+                .map(minute -> supplyAsync(() -> generateExplanation(query, minute)))
                 .collect(Collectors.toList());
 
         return futures.stream()

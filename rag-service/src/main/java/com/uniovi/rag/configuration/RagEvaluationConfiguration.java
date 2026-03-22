@@ -20,7 +20,6 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
 
-import org.springframework.ai.embedding.EmbeddingModel;
 
 @Configuration
 public class RagEvaluationConfiguration {
@@ -35,7 +34,6 @@ public class RagEvaluationConfiguration {
         ChatClient chatClient,
         PgVectorStore vectorStore,
         JdbcTemplate jdbcTemplate,
-        EmbeddingModel embeddingModel,
         @Value("${spring.ai.ollama.top-k}") int topK,
         @Value("${spring.ai.ollama.similarity-threshold}") double similarityThreshold,
         @Value("${rag.classifier.service.url:http://localhost:8000}") String classifierServiceUrl,
@@ -52,7 +50,7 @@ public class RagEvaluationConfiguration {
         @Value("${rag.expansion.retry-query-length:200}") int expansionRetryQueryLength,
         OllamaConnectivityChecker ollamaConnectivityChecker
     ) {
-        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, embeddingModel, topK, similarityThreshold,
+        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
                 classifierServiceUrl, classifierModelId, classifierTimeoutMs, chunkMaxChars, responseValidator, documentContentExtractor,
                 expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
                 expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker);
@@ -61,6 +59,7 @@ public class RagEvaluationConfiguration {
     @Bean
     public EvaluationService evaluationService(
         RagFeatureConfiguration featureConfig,
+        RagImplementationProperties implementationProperties,
         ChatClient chatClient,
         DocumentService documentService,
         QueryService queryService,
@@ -68,7 +67,8 @@ public class RagEvaluationConfiguration {
         @Value("${evaluation.clean-before-load:true}") boolean cleanBeforeLoad,
         @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
     ) {
-        DatasetMinuteEvaluationService service = new DatasetMinuteEvaluationService(featureConfig, chatClient, documentService, queryService, cleanBeforeLoad);
+        DatasetMinuteEvaluationService service = new DatasetMinuteEvaluationService(
+                featureConfig, implementationProperties, chatClient, documentService, queryService, cleanBeforeLoad);
         service.setEvaluationServiceFactory(evaluationServiceFactory);
         if (observability != null) {
             return new TracedEvaluationService(service, observability);

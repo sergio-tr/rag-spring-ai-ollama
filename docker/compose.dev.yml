@@ -1,39 +1,30 @@
-# Development override — hot-reload for classifier-service via bind-mount.
+# Development: classifier with hot-reload (uvicorn) + optional Spring backend in Docker (backend-dev).
 #
-# RECOMMENDED WORKFLOW (hybrid: infra in Docker, backend+classifier en local):
-#   ./scripts/up.sh dev       # postgres only; add --gpu|--ollama --obs --classifier --logs --infra as needed
+# Included in the Compose chain when you use --classifier and/or --rag (./scripts/up.sh dev …).
+# - --classifier only: classifier override; backend-dev does NOT start unless you name it in `up`.
+# - --rag: enables Compose profile "rag" → starts backend-dev in addition to the classifier (same Dockerfile.dev override).
+#
+# Typical hybrid (backend and classifier on the host):
+#   ./scripts/up.sh dev [--obs …]
 #   cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
-#   cd classifier-service && uvicorn main:app --reload --reload-dir app
+#   cd classifier-service && uvicorn …
 #
-# BACKEND EN DOCKER con recarga (volumen + mvn compile + Spring DevTools):
-#   ./scripts/up.sh dev --rag [--gpu|--ollama] ...   # añade compose.rag-dev.yml → servicio backend-dev
-#   Ver docker/compose.rag-dev.yml y rag-service/Dockerfile.dev
+# Full stack in Docker with reload:
+#   ./scripts/up.sh dev --rag [--obs] [--gpu|…]
+#   See rag-service/Dockerfile.dev and scripts/docker-dev-entrypoint.sh
 #
-# ALTERNATIVE: keep classifier in Docker with hot-reload (backend still local):
-#   cd docker
-#   docker compose -f docker-compose.yml -f compose.dev.yml \
-#     --env-file ../db/.env --env-file ../classifier-service/.env \
-#     up -d postgres classifier-service
-#   cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+# With --obs, compose.rag-dev-obs.yml fixes OTLP for backend-dev (compose.obs.yml only patches service "backend").
 #
-# Changes to classifier-service/app/*.py are detected immediately by uvicorn --reload.
-# Changes to classifier-service/models/ or data/ do NOT trigger reload (excluded from watch).
-
 services:
-  # Override classifier-service to mount source code and use uvicorn --reload
+  # Override classifier-service: bind-mount source + Dockerfile.dev (uvicorn --reload)
   classifier-service:
-    # Do not use the pre-built image: run from source directly
     build:
       context: ../classifier-service
       dockerfile: Dockerfile.dev
     volumes:
-      # Bind-mount application source — changes trigger uvicorn --reload
       - ../classifier-service/app:/app/app
       - ../classifier-service/main.py:/app/main.py
-      # Models and data still copied (not expected to change during dev)
-      # To override model path, set MODEL_PATH env var in classifier-service/.env
     environment:
-      # Uvicorn --reload is set in Dockerfile.dev CMD; no extra env needed
       PORT: ${PORT:-8000}
       MODELS_DIR: ${MODELS_DIR:-/app/models}
       DATA_DIR: ${DATA_DIR:-/app/data}
@@ -44,6 +35,47 @@ services:
       retries: 5
       start_period: 60s
 
-  # Remove backend from compose.dev.yml stack — run it locally instead.
-  # If you need the backend in Docker for some reason, keep it from docker-compose.yml
-  # (no overrides needed; just don't start it: docker compose up -d postgres classifier-service).
+  # Built/started only when profile "rag" is active (./scripts/up.sh dev --rag …).
+  backend-dev:
+    profiles:
+      - rag
+    build:
+      context: ../rag-service
+      dockerfile: Dockerfile.dev
+      args:
+        JDK_BASE_IMAGE: ${RAG_JAVA_JDK_BASE_IMAGE:-eclipse-temurin:21-jdk}
+        SERVER_PORT: ${SERVER_PORT:-9000}
+    container_name: backend-dev
+    env_file:
+      - ../db/.env
+      - ../rag-service/.env
+    ports:
+      - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-9000}
+      RAG_DEV_POLL_INTERVAL: ${RAG_DEV_POLL_INTERVAL:-2}
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-vectordb}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${PORT:-8000}
+    volumes:
+      - ../rag-service:/app
+      - rag_m2_cache:/root/.m2
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      classifier-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${SERVER_PORT:-9000}/actuator/health/liveness >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped
+
+volumes:
+  rag_m2_cache:
