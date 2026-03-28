@@ -29,6 +29,8 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     private static final String TOPIC_PRESUPUESTO_ANUAL = "presupuesto anual";
     private static final String TOPIC_PRESUPUESTO = "presupuesto";
 
+    private static final String TOPIC_CAMARAS = "camaras";
+
     private static boolean containsCalefaccion(String s) {
         return s != null && (s.contains(TOPIC_CALEFACCION_ASCII) || s.contains(TOPIC_CALEFACCION));
     }
@@ -355,7 +357,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                     
                     return passes;
                 })
-                .collect(Collectors.toList());
+                .toList();
         
         // Fallback for heating: if 0 minutes passed, include any minute where summary/topics contain heating keywords (item 39)
         if (filtered.isEmpty() && containsCalefaccion(topicLower)) {
@@ -367,14 +369,14 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                                 .anyMatch(t -> t != null && containsCalefaccion(normalizePersonName(t)));
                         return inSummary || inTopics;
                     })
-                    .collect(Collectors.toList());
+                    .toList();
             if (!filtered.isEmpty()) {
                 log().info("Topic '{}' matched {} minutes via literal fallback in summary/topics", TOPIC_CALEFACCION, filtered.size());
             }
         }
         // Fallback for video surveillance: if 0 minutes passed, include any minute with camera/surveillance/security wording in summary/topics/decisions (item 40)
         if (filtered.isEmpty() && containsVigilanciaTopic(topicLower)) {
-            List<String> vidTerms = List.of("camara", "camaras", TOPIC_VIGILANCIA, TOPIC_VIDEOVIGILANCIA, "security", "surveillance", "cameras");
+            List<String> vidTerms = List.of("camara", TOPIC_CAMARAS, TOPIC_VIGILANCIA, TOPIC_VIDEOVIGILANCIA, "security", "surveillance", "cameras");
             filtered = minutes.stream()
                     .filter(minute -> {
                         String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
@@ -385,7 +387,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                                 .anyMatch(d -> d != null && vidTerms.stream().anyMatch(term -> normalizePersonName(d).contains(term)));
                         return inSummary || inTopics || inDecisions;
                     })
-                    .collect(Collectors.toList());
+                    .toList();
             if (!filtered.isEmpty()) {
                 log().info("Topic '{}' matched {} minutes via synonym fallback in summary/topics/decisions", TOPIC_VIDEOVIGILANCIA, filtered.size());
             }
@@ -414,7 +416,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                         boolean inAgenda = cuentaTerms.stream().anyMatch(agendaText::contains);
                         return inSummary || inTopics || inAgenda;
                     })
-                    .collect(Collectors.toList());
+                    .toList();
             if (!filtered.isEmpty()) {
                 log().info("Topic 'estado de cuentas/presupuesto' matched {} minutes via literal fallback in summary/topics/agenda", filtered.size());
             }
@@ -605,11 +607,11 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         if (keyTerms.stream().anyMatch(t -> containsVigilanciaTopic(t) || (t != null && t.contains("camara")))) {
             keyTerms.add(TOPIC_VIDEOVIGILANCIA);
             keyTerms.add(TOPIC_VIGILANCIA);
-            keyTerms.add("camaras");
+            keyTerms.add(TOPIC_CAMARAS);
             keyTerms.add("cámaras");
             keyTerms.add("camara");
             keyTerms.add("cámara");
-            keyTerms.add("camaras de seguridad");
+            keyTerms.add(TOPIC_CAMARAS + " de seguridad");
             keyTerms.add("cámaras de seguridad");
             keyTerms.add("security cameras");
             keyTerms.add("video surveillance");
@@ -640,7 +642,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         if (topic == null || topic.isEmpty()) return false;
         String t = topic.toLowerCase().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n");
         return containsCalefaccion(t)
-            || containsVigilanciaTopic(t) || t.contains("camara") || t.contains("camaras")
+            || containsVigilanciaTopic(t) || t.contains("camara") || t.contains(TOPIC_CAMARAS)
             || t.contains("estado de cuentas") || t.contains(TOPIC_PRESUPUESTO) || t.contains(TOPIC_PRESUPUESTO_ANUAL);
     }
     

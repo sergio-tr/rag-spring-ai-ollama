@@ -23,6 +23,7 @@ import java.util.stream.Stream;
  */
 public class DecisionExtractionTool extends AbstractTool {
 
+    private static final String PLACEHOLDER_UNKNOWN_DATE = "unknown date";
 
     public DecisionExtractionTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
         super(chatClient, retriever, extractor);
@@ -57,7 +58,7 @@ public class DecisionExtractionTool extends AbstractTool {
                     List<String> fragments = extractDecisions(content, query);
                     for (String fragment : fragments) {
                         if (fragment != null && !fragment.trim().isEmpty()) {
-                            decisions.add("Meeting minutes from " + (date != null ? date : "unknown date") + ":\n" + fragment);
+                            decisions.add("Meeting minutes from " + (date != null ? date : PLACEHOLDER_UNKNOWN_DATE) + ":\n" + fragment);
                         }
                     }
                 }
@@ -76,7 +77,7 @@ public class DecisionExtractionTool extends AbstractTool {
                 List<String> fragments = extractDecisions(content, query);
                 for (String fragment : fragments) {
                     if (fragment != null && !fragment.trim().isEmpty() && isDecisionRelevantToQuery(fragment, query)) {
-                        decisions.add("Meeting minutes from " + (date != null ? date : "unknown date") + ":\n" + fragment);
+                        decisions.add("Meeting minutes from " + (date != null ? date : PLACEHOLDER_UNKNOWN_DATE) + ":\n" + fragment);
                     }
                 }
             }
@@ -95,7 +96,7 @@ public class DecisionExtractionTool extends AbstractTool {
                     List<String> fragments = extractDecisions(content, query);
                     for (String fragment : fragments) {
                         if (fragment != null && !fragment.trim().isEmpty() && isDecisionRelevantToQuery(fragment, query)) {
-                            decisions.add("Meeting minutes from " + (date != null ? date : "unknown date") + ":\n" + fragment);
+                            decisions.add("Meeting minutes from " + (date != null ? date : PLACEHOLDER_UNKNOWN_DATE) + ":\n" + fragment);
                         }
                     }
                 }

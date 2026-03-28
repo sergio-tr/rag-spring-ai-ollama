@@ -10,6 +10,7 @@ import java.util.Map;
 public final class TracedResponseValidator implements ResponseValidator {
 
     private static final int MAX_ATTR = 500;
+    private static final String METRIC_KEY_OPERATION = "operation";
 
     private final ResponseValidator delegate;
     private final ObservabilitySupport observability;
@@ -21,7 +22,7 @@ public final class TracedResponseValidator implements ResponseValidator {
 
     @Override
     public boolean isValidResponse(String response, String context) {
-        observability.recordCounter("rag.validator.calls", "operation", "isValidResponse");
+        observability.recordCounter("rag.validator.calls", METRIC_KEY_OPERATION, "isValidResponse");
         return observability.runWithSpan(
                 "rag.validator.isValidResponse",
                 Map.of("context", truncate(context != null ? context : "")),
@@ -32,7 +33,7 @@ public final class TracedResponseValidator implements ResponseValidator {
 
     @Override
     public String cleanResponse(String response) {
-        observability.recordCounter("rag.validator.calls", "operation", "cleanResponse");
+        observability.recordCounter("rag.validator.calls", METRIC_KEY_OPERATION, "cleanResponse");
         return observability.runWithSpan(
                 "rag.validator.cleanResponse",
                 Map.of("responseLength", String.valueOf(response != null ? response.length() : 0)),
@@ -43,7 +44,7 @@ public final class TracedResponseValidator implements ResponseValidator {
 
     @Override
     public String validateAndClean(String response, String context) {
-        observability.recordCounter("rag.validator.calls", "operation", "validateAndClean");
+        observability.recordCounter("rag.validator.calls", METRIC_KEY_OPERATION, "validateAndClean");
         return observability.runWithSpan(
                 "rag.validator.validateAndClean",
                 Map.of("context", truncate(context != null ? context : "")),

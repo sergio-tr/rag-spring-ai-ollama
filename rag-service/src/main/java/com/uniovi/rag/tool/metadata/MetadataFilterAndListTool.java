@@ -72,7 +72,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         if (exactAttendees != null) {
             List<Minute> byCount = relevantMinutes.stream()
                     .filter(m -> (m.numberOfAttendees() > 0 ? m.numberOfAttendees() : (m.attendees() != null ? m.attendees().size() : 0)) == exactAttendees)
-                    .collect(Collectors.toList());
+                    .toList();
             log().info("Filtered {} minutes by exact attendees count ({}), {} remaining", relevantMinutes.size(), exactAttendees, byCount.size());
             relevantMinutes = byCount;
         }
@@ -90,7 +90,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         if (minAttendees != null) {
             List<Minute> byMinCount = relevantMinutes.stream()
                     .filter(m -> (m.numberOfAttendees() > 0 ? m.numberOfAttendees() : (m.attendees() != null ? m.attendees().size() : 0)) > minAttendees)
-                    .collect(Collectors.toList());
+                    .toList();
             log().info("Filtered {} minutes by min attendees (>{}), {} remaining", relevantMinutes.size(), minAttendees, byMinCount.size());
             relevantMinutes = byMinCount;
         }
@@ -160,13 +160,13 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     private List<FilterResult> generateSummariesInParallel(String query, List<Minute> minutes) {
         List<CompletableFuture<FilterResult>> futures = minutes.stream()
                 .map(minute -> supplyAsync(() -> generateSummary(query, minute)))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
                 .filter(result -> result.getSummary() != null && !result.getSummary().isBlank())
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**

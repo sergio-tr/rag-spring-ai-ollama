@@ -1042,8 +1042,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             case "numberofattendees":
             case "attendeescount":
                 return minute.numberOfAttendees();
-            case "durationminutes":
-            case "duration": {
+            case "durationminutes", "duration": {
                 int duration = calculateDurationFromMinute(minute);
                 return duration > 0 ? duration : null;
             }
@@ -1126,7 +1125,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return docs.parallelStream()
                 .map(doc -> ContextPropagatingFutures.withSnapshot(ctx, () -> {
                     try {
-                        Minute m = getMinuteFromMetadata(doc);
+                        Minute m = cacheable().getMinuteFromMetadata(doc);
                         if (m == null || !isMinuteComplete(m) || !hasUsefulData(m)) {
                             return null;
                         }
@@ -1247,7 +1246,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         return true;
                     })
                     .limit(50) // Increased from 25 to 50
-                    .collect(Collectors.toList());
+                    .toList();
             
             log().info("Direct matching filtered {} minutes to {}", preFiltered.size(), directMatched.size());
         }
@@ -1266,7 +1265,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         }
                     })
                     .limit(40) // Increased from 15 to 40
-                    .collect(Collectors.toList());
+                    .toList();
             
             log().info("NER matching filtered {} minutes to {}", directMatched.size(), filtered.size());
             
@@ -1922,9 +1921,82 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
+     * LLM check for a single document against a topic; adds to {@code filtered} when the model confirms a match.
+     */
+    private void maybeAddDocumentMatchingTopic(Document doc, String topic, List<Document> filtered) {
+        StringBuilder context = new StringBuilder();
+
+        Map<String, Object> metadata = doc.getMetadata();
+        if (metadata != null) {
+            if (metadata.containsKey("topics")) {
+                Object topicsObj = metadata.get("topics");
+                if (topicsObj instanceof List) {
+                    context.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
+                } else if (topicsObj instanceof String) {
+                    context.append("Topics: ").append(topicsObj).append("\n");
+                }
+            }
+            if (metadata.containsKey("summary")) {
+                Object summaryObj = metadata.get("summary");
+                if (summaryObj != null) {
+                    context.append("Summary: ").append(summaryObj.toString()).append("\n");
+                }
+            }
+            if (metadata.containsKey("decisions")) {
+                Object decisionsObj = metadata.get("decisions");
+                if (decisionsObj instanceof List) {
+                    context.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
+                } else if (decisionsObj instanceof String) {
+                    context.append("Decisions: ").append(decisionsObj).append("\n");
+                }
+            }
+        }
+
+        String content = doc.getText();
+        if (content != null && !content.trim().isEmpty()) {
+            String truncatedContent = content.length() > 1000 ? content.substring(0, 1000) + "..." : content;
+            context.append("Content: ").append(truncatedContent);
+        }
+
+        if (context.length() == 0) {
+            return;
+        }
+
+        String prompt = String.format("""
+                Task: Determine if the following document mentions or discusses the topic/keyword.
+                
+                Topic/Keyword to search for: "%s"
+                
+                Document information:
+                %s
+                
+                Consider semantic meaning, synonyms, and related concepts, not just exact word matches.
+                
+                Respond with ONLY one word: YES if the document mentions or discusses the topic, NO otherwise.
+                """, topic, context.toString());
+
+        try {
+            String result = chatClient
+                    .prompt()
+                    .user(prompt)
+                    .call()
+                    .content()
+                    .strip();
+
+            Boolean validated = validateLLMFilterResponse(result, "filterDocumentsByTopic");
+            if (validated != null && validated) {
+                filtered.add(doc);
+            }
+        } catch (Exception e) {
+            log().warn("Error filtering document by topic '{}', including document to avoid false negatives: {}", topic, e.getMessage());
+            filtered.add(doc);
+        }
+    }
+
+    /**
      * Filters documents by topic/keyword using LLM semantic matching.
      * Searches for the topic in metadata fields (topics, summary, decisions) and content.
-     * 
+     *
      * @param docs List of documents to filter
      * @param topic Topic or keyword to search for
      * @return Filtered list of documents that mention the topic
@@ -1939,79 +2011,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         List<Document> filtered = new ArrayList<>();
         
         for (Document doc : docs) {
-            if (doc == null) continue;
-            
-            // Build context from metadata and content
-            StringBuilder context = new StringBuilder();
-            
-            // Add metadata fields
-            Map<String, Object> metadata = doc.getMetadata();
-            if (metadata != null) {
-                if (metadata.containsKey("topics")) {
-                    Object topicsObj = metadata.get("topics");
-                    if (topicsObj instanceof List) {
-                        context.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
-                    } else if (topicsObj instanceof String) {
-                        context.append("Topics: ").append(topicsObj).append("\n");
-                    }
-                }
-                if (metadata.containsKey("summary")) {
-                    Object summaryObj = metadata.get("summary");
-                    if (summaryObj != null) {
-                        context.append("Summary: ").append(summaryObj.toString()).append("\n");
-                    }
-                }
-                if (metadata.containsKey("decisions")) {
-                    Object decisionsObj = metadata.get("decisions");
-                    if (decisionsObj instanceof List) {
-                        context.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
-                    } else if (decisionsObj instanceof String) {
-                        context.append("Decisions: ").append(decisionsObj).append("\n");
-                    }
-                }
-            }
-            
-            // Add content (truncated for efficiency)
-            String content = doc.getText();
-            if (content != null && !content.trim().isEmpty()) {
-                String truncatedContent = content.length() > 1000 ? content.substring(0, 1000) + "..." : content;
-                context.append("Content: ").append(truncatedContent);
-            }
-            
-            if (context.length() == 0) {
-                continue; // Skip documents with no context
-            }
-            
-            // Use LLM to check if document mentions the topic
-            String prompt = String.format("""
-                Task: Determine if the following document mentions or discusses the topic/keyword.
-                
-                Topic/Keyword to search for: "%s"
-                
-                Document information:
-                %s
-                
-                Consider semantic meaning, synonyms, and related concepts, not just exact word matches.
-                
-                Respond with ONLY one word: YES if the document mentions or discusses the topic, NO otherwise.
-                """, topic, context.toString());
-            
-            try {
-                String result = chatClient
-                        .prompt()
-                        .user(prompt)
-                        .call()
-                        .content()
-                        .strip();
-                
-                Boolean validated = validateLLMFilterResponse(result, "filterDocumentsByTopic");
-                if (validated != null && validated) {
-                    filtered.add(doc);
-                }
-            } catch (Exception e) {
-                log().warn("Error filtering document by topic '{}', including document to avoid false negatives: {}", topic, e.getMessage());
-                // Include document on error to avoid false negatives
-                filtered.add(doc);
+            if (doc != null) {
+                maybeAddDocumentMatchingTopic(doc, topic, filtered);
             }
         }
         
@@ -2753,12 +2754,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .content()
                     .strip();
             
-            if (response != null && !response.trim().isEmpty() && !response.trim().equalsIgnoreCase("NONE")) {
-                // Validate it's a year (4 digits starting with 20)
-                if (response.matches("20\\d{2}")) {
-                    log().info("Extracted year from query using LLM: {}", response);
-                    return response;
-                }
+            if (response != null && !response.trim().isEmpty() && !response.trim().equalsIgnoreCase("NONE")
+                    && response.matches("20\\d{2}")) {
+                log().info("Extracted year from query using LLM: {}", response);
+                return response;
             }
         } catch (Exception e) {
             log().warn("Error extracting year from query using LLM: {}", e.getMessage());
@@ -2884,9 +2883,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         for (String field : usefulFields) {
             if (ner.has(field)) {
                 Object value = ner.get(field);
-                if (value instanceof org.json.JSONArray && ((org.json.JSONArray) value).length() > 0) {
+                if (value instanceof org.json.JSONArray ja && ja.length() > 0) {
                     return true;
-                } else if (value instanceof String && !((String) value).trim().isEmpty()) {
+                } else if (value instanceof String str && !str.trim().isEmpty()) {
                     return true;
                 }
             }
@@ -3299,6 +3298,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             try {
                 return LocalDate.parse(v, formatter);
             } catch (DateTimeParseException ignored) {
+                // Try next formatter in list
             }
         }
 
@@ -3320,6 +3320,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             try {
                 return LocalDate.parse(v, formatter);
             } catch (DateTimeParseException ignored) {
+                // Try next formatter in list
             }
         }
 
@@ -3874,7 +3875,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
         // Try to get date from Minute object if available
         try {
-            Minute minute = getMinuteFromMetadata(doc);
+            Minute minute = cacheable().getMinuteFromMetadata(doc);
             if (minute != null && minute.date() != null && !minute.date().trim().isEmpty()) {
                 LocalDate parsed = parseDateFlexible(minute.date());
                 if (parsed != null) {
@@ -4046,7 +4047,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         // Also try to get from minute object if available
         try {
-            Minute minute = getMinuteFromMetadata(doc);
+            Minute minute = cacheable().getMinuteFromMetadata(doc);
             if (minute != null && minute.attendees() != null) {
                 for (String attendee : minute.attendees()) {
                     if (attendee != null && !attendee.isBlank() && !attendees.contains(attendee)) {
@@ -4093,7 +4094,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         // Try to get from Minute object
         try {
-            Minute minute = getMinuteFromMetadata(doc);
+            Minute minute = cacheable().getMinuteFromMetadata(doc);
             if (minute != null) {
                 if (minute.numberOfAttendees() > 0) {
                     return minute.numberOfAttendees();

@@ -182,14 +182,14 @@ import java.util.stream.Collectors;
                 sb.append("Temas: ").append(String.join(", ", minute.topics()));
             }
             if (minute.decisions() != null && !minute.decisions().isEmpty() && (asksForGeneralSummary || asksForTopics)) {
-                if (sb.length() > 0) sb.append(". ");
+                if (!sb.isEmpty()) sb.append(". ");
                 sb.append("Decisiones: ").append(String.join("; ", minute.decisions()));
             }
             if (minute.agenda() != null && !minute.agenda().isEmpty()) {
-                if (sb.length() > 0) sb.append(". ");
+                if (!sb.isEmpty()) sb.append(". ");
                 sb.append("Orden del día: ").append(minute.agenda().values().stream().filter(s -> s != null && !s.isBlank()).collect(Collectors.joining(", ")));
             }
-            if (sb.length() > 0) {
+            if (!sb.isEmpty()) {
                 pointsBlock = "\n\nPoints/topics discussed in this meeting (you MUST include these in your answer): " + sb + "\n";
             }
         }

@@ -29,6 +29,23 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
+    private static final int UNICODE_TEXT_REGEX_FLAGS =
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ;
+
+    /** Filters descriptive attendee lines (not person names) using Unicode-aware matching. */
+    private static final Pattern ATTENDEE_DESCRIPTOR_NOISE_PATTERN = Pattern.compile(
+            ".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*",
+            UNICODE_TEXT_REGEX_FLAGS);
+
+    private static final String SPANISH_MONTH_AGOSTO = "agosto";
+
+    private static final String SPANISH_MONTH_SEPTIEMBRE = "septiembre";
+
+    private static final String[] SPANISH_MONTH_NAMES = {
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", SPANISH_MONTH_AGOSTO, SPANISH_MONTH_SEPTIEMBRE, "octubre", "noviembre", "diciembre"
+    };
+
     /** Spring proxy so {@code @Cacheable} extraction methods are not self-invoked. */
     private MetadataMinuteDocumentService extractionSelf;
 
@@ -743,8 +760,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // attendeesCount
         int attendeesCount = 0;
         Object numberOfAttendees = metadata.get("numberOfAttendees");
-        if (numberOfAttendees instanceof Number) {
-            attendeesCount = ((Number) numberOfAttendees).intValue();
+        if (numberOfAttendees instanceof Number number) {
+            attendeesCount = number.intValue();
         }
         Object attendeesObj = metadata.get("attendees");
         if (attendeesObj instanceof List<?> list && !list.isEmpty()) {
@@ -960,7 +977,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         String v = dateStr.trim();
         java.util.regex.Pattern spanishPattern = java.util.regex.Pattern.compile(
             "(\\d{1,2})\\s+de\\s+(\\p{L}+)\\s+de\\s+(\\d{4})",
-            java.util.regex.Pattern.CASE_INSENSITIVE
+            java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CHARACTER_CLASS
         );
         java.util.regex.Matcher m = spanishPattern.matcher(v);
         if (m.find()) {
@@ -986,8 +1003,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     private static final Map<String, Integer> SPANISH_MONTH_MAP = Map.ofEntries(
         Map.entry("enero", 1), Map.entry("febrero", 2), Map.entry("marzo", 3), Map.entry("abril", 4),
-        Map.entry("mayo", 5), Map.entry("junio", 6), Map.entry("julio", 7), Map.entry("agosto", 8),
-        Map.entry("septiembre", 9), Map.entry("setiembre", 9), Map.entry("octubre", 10),
+        Map.entry("mayo", 5), Map.entry("junio", 6), Map.entry("julio", 7), Map.entry(SPANISH_MONTH_AGOSTO, 8),
+        Map.entry(SPANISH_MONTH_SEPTIEMBRE, 9), Map.entry("setiembre", 9), Map.entry("octubre", 10),
         Map.entry("noviembre", 11), Map.entry("diciembre", 12)
     );
 
@@ -1097,11 +1114,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 int month = Integer.parseInt(parts[1]);
                 int year = Integer.parseInt(parts[2]);
                 
-                String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
-                                       "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
-                
                 if (month >= 1 && month <= 12) {
-                    return String.format("%d de %s de %d", day, monthNames[month - 1], year);
+                    return String.format("%d de %s de %d", day, SPANISH_MONTH_NAMES[month - 1], year);
                 }
             }
         } catch (Exception e) {
@@ -1118,11 +1132,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 int month = Integer.parseInt(parts[1]);
                 int day = Integer.parseInt(parts[2]);
                 
-                String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
-                                       "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
-                
                 if (month >= 1 && month <= 12) {
-                    return String.format("%d de %s de %d", day, monthNames[month - 1], year);
+                    return String.format("%d de %s de %d", day, SPANISH_MONTH_NAMES[month - 1], year);
                 }
             }
         } catch (Exception e) {
@@ -1422,6 +1433,13 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         return null;
     }
     
+    private static boolean isAttendeeDescriptorNoise(String text) {
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+        return ATTENDEE_DESCRIPTOR_NOISE_PATTERN.matcher(text).matches();
+    }
+
     /**
      * Improved attendees extraction with multiple fallback methods.
      */
@@ -1575,8 +1593,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             for (String name : nameParts) {
                 name = name.trim();
                 // Filter out descriptive text
-                if (!name.isEmpty() && name.length() > 2 && 
-                    !name.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*")) {
+                if (!name.isEmpty() && name.length() > 2 && !isAttendeeDescriptorNoise(name)) {
                     names.add(name);
                 }
             }
@@ -1632,8 +1649,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 for (int i = 0; i < parts.length; i++) {
                     String part = parts[i].trim();
                     // Skip the first part if it's empty or doesn't look like a name (might be leftover text)
-                    if (i == 0 && (part.isEmpty() || part.length() < 3 || 
-                        part.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*"))) {
+                    if (i == 0 && (part.isEmpty() || part.length() < 3 || isAttendeeDescriptorNoise(part))) {
                         continue;
                     }
                     // Remove leading/trailing list symbols and whitespace
@@ -1642,7 +1658,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                         // Remove roles in parentheses (extracted separately)
                         part = part.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
                         // Filter out descriptive text
-                        if (!part.isEmpty() && !part.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*")) {
+                        if (!part.isEmpty() && !isAttendeeDescriptorNoise(part)) {
                             items.add(part);
                         }
                     }
@@ -1653,7 +1669,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Method 2: Pattern-based extraction (one item per line or separated by newlines)
         if (items.isEmpty()) {
             // Pattern for bullet points (•)
-            Pattern pattern1 = Pattern.compile("•\\s*([^•\\n]+?)(?=\\s*•|\\n|$)", Pattern.MULTILINE);
+            Pattern pattern1 = Pattern.compile("•\\s*([^•\\n]+)(?=\\s*•|\\n|$)", Pattern.MULTILINE);
             Matcher matcher1 = pattern1.matcher(text);
             while (matcher1.find()) {
                 String item = matcher1.group(1).trim();
@@ -1709,7 +1725,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             .filter(item -> !item.isEmpty())
             .filter(item -> item.length() > 2)
             .distinct()
-            .collect(Collectors.toList());
+            .toList();
     }
     
     /**
@@ -1781,6 +1797,43 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         return count;
     }
 
+    private static void flushAgendaEntry(Map<String, String> agenda, String currentKey, StringBuilder currentValue) {
+        if (currentKey != null && currentValue.length() > 0) {
+            agenda.put(currentKey, currentValue.toString().trim());
+            currentValue.setLength(0);
+        }
+    }
+
+    private static boolean isAgendaNewItemLine(String line, String currentKey) {
+        return line.matches("^[•·▪▫◦‣⁃*\\-]\\s+.+")
+                || line.matches("^\\d+[.)]\\s+.+")
+                || (line.matches("^[A-ZÁÉÍÓÚÑ].+") && currentKey == null);
+    }
+
+    private static boolean isAgendaContinuationLine(String line) {
+        return !line.matches("(?i)^(?:Ruegos|No habiendo|Clausura).*");
+    }
+
+    private void parseAgendaLinesIntoMap(String[] lines, Map<String, String> agenda) {
+        String currentKey = null;
+        StringBuilder currentValue = new StringBuilder();
+        for (String rawLine : lines) {
+            String line = rawLine.trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            if (isAgendaNewItemLine(line, currentKey)) {
+                flushAgendaEntry(agenda, currentKey, currentValue);
+                currentKey = extractAgendaItemKey(line);
+            } else if (currentKey != null && isAgendaContinuationLine(line)) {
+                currentValue.append(line).append(" ");
+            }
+        }
+        if (currentKey != null) {
+            agenda.put(currentKey, currentValue.toString().trim());
+        }
+    }
+
     /**
      * Improved agenda extraction with support for sub-items and multiple formats.
      */
@@ -1801,40 +1854,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         log().debug("Found agenda block (length: {} chars), parsing items", agendaBlock.length());
         
-        // Divide into main items
-        String[] lines = agendaBlock.split("\\n");
-        String currentKey = null;
-        StringBuilder currentValue = new StringBuilder();
-        
-        for (String line : lines) {
-            line = line.trim();
-            if (line.isEmpty()) continue;
-            
-            // Detect start of new item (bullet, number, or line starting with capital letter)
-            if (line.matches("^[•·▪▫◦‣⁃*\\-]\\s+.+") || 
-                line.matches("^\\d+[.)]\\s+.+") ||
-                (line.matches("^[A-ZÁÉÍÓÚÑ].+") && currentKey == null)) {
-                
-                // Save previous item
-                if (currentKey != null && currentValue.length() > 0) {
-                    agenda.put(currentKey, currentValue.toString().trim());
-                    currentValue.setLength(0);
-                }
-                
-                // Extract key of new item (main item or sub-item)
-                currentKey = extractAgendaItemKey(line);
-            } else if (currentKey != null) {
-                // Continuation of current item (sub-item or description)
-                if (!line.matches("(?i)^(?:Ruegos|No habiendo|Clausura).*")) {
-                    currentValue.append(line).append(" ");
-                }
-            }
-        }
-        
-        // Save last item (include even if it has no description, e.g. "Any other business")
-        if (currentKey != null) {
-            agenda.put(currentKey, currentValue.toString().trim());
-        }
+        parseAgendaLinesIntoMap(agendaBlock.split("\\n"), agenda);
         
         log().debug("Extracted {} agenda items from agenda block", agenda.size());
         if (agenda.isEmpty()) {
@@ -1882,7 +1902,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Pattern 1: "Agenda:" until newline + optional bullet + "Any other business" or "No further business"
         Pattern pattern = Pattern.compile(
             "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos y preguntas|No habiendo más asuntos|Clausura|$))",
-            Pattern.DOTALL
+            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS
         );
         Matcher matcher = pattern.matcher(normalized);
         if (matcher.find()) {
@@ -1895,7 +1915,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Pattern 2: "Agenda:" until any next section (more flexible; optional bullet before keyword)
         pattern = Pattern.compile(
             "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|Asistentes|$))",
-            Pattern.DOTALL
+            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS
         );
         matcher = pattern.matcher(normalized);
         if (matcher.find()) {
@@ -1908,7 +1928,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Pattern 3: "ORDEN DEL DÍA" (capital letters) until next section
         pattern = Pattern.compile(
             "(?i)ORDEN DEL DÍA:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|$))",
-            Pattern.DOTALL
+            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS
         );
         matcher = pattern.matcher(normalized);
         if (matcher.find()) {
@@ -1924,7 +1944,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             // Search for "Agenda:" block within that section
             Pattern ordenPattern = Pattern.compile(
                 "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|No habiendo)|$)",
-                Pattern.DOTALL
+                Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS
             );
             Matcher ordenMatcher = ordenPattern.matcher(afterAttendees);
             if (ordenMatcher.find()) {
@@ -1938,7 +1958,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Pattern 5: Search for any block with numbered or bulleted items that seems to be agenda
         pattern = Pattern.compile(
             "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]+)*)",
-            Pattern.DOTALL
+            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS
         );
         matcher = pattern.matcher(normalized);
         if (matcher.find()) {

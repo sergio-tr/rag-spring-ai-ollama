@@ -32,6 +32,8 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
     private static final String FIELD_END_TIME = "endTime";
 
+    private static final String LABEL_SECRETARIO = "secretario";
+
     public MetadataGetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -186,34 +188,36 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
      * Extracts field value for a minute (metadata-first).
      * Tries multiple field name variations and synonyms.
      */
+    private String resolveFieldValueWithAlternatives(String detectedField, Minute minute) {
+        String fieldValue = extractFieldFromMinute(detectedField, minute);
+        log().debug("Extracted field '{}' with name '{}': {}", detectedField, detectedField,
+                fieldValue != null ? fieldValue : "null");
+        if (fieldValue != null && !fieldValue.isBlank()) {
+            return fieldValue;
+        }
+        String[] alternativeNames = getAlternativeFieldNames(detectedField);
+        log().debug("Trying alternative names for field '{}': {}", detectedField,
+                java.util.Arrays.toString(alternativeNames));
+        for (String altName : alternativeNames) {
+            if (altName.equals(detectedField)) {
+                continue;
+            }
+            fieldValue = extractFieldFromMinute(altName, minute);
+            log().debug("Tried alternative name '{}' for field '{}': {}", altName, detectedField,
+                    fieldValue != null ? fieldValue : "null");
+            if (fieldValue != null && !fieldValue.isBlank()) {
+                log().info("Found field '{}' using alternative name '{}'", detectedField, altName);
+                return fieldValue;
+            }
+        }
+        return fieldValue;
+    }
+
     private FieldResult extractFieldValue(Minute minute, String detectedField) {
         log().debug("Extracting field '{}' from minute {} (date: {})", 
                    detectedField, minute.id(), minute.date());
         
-        // Try to extract with detected field name
-        String fieldValue = extractFieldFromMinute(detectedField, minute);
-        log().debug("Extracted field '{}' with name '{}': {}", detectedField, detectedField, 
-                   fieldValue != null ? fieldValue : "null");
-        
-        // If not found, try alternative field names
-        if (fieldValue == null || fieldValue.isBlank()) {
-            // Try synonyms for common fields
-            String[] alternativeNames = getAlternativeFieldNames(detectedField);
-            log().debug("Trying alternative names for field '{}': {}", detectedField, 
-                       java.util.Arrays.toString(alternativeNames));
-            for (String altName : alternativeNames) {
-                if (altName.equals(detectedField)) {
-                    continue; // Skip if same as detected field (already tried)
-                }
-                fieldValue = extractFieldFromMinute(altName, minute);
-                log().debug("Tried alternative name '{}' for field '{}': {}", altName, detectedField, 
-                           fieldValue != null ? fieldValue : "null");
-                if (fieldValue != null && !fieldValue.isBlank()) {
-                    log().info("Found field '{}' using alternative name '{}'", detectedField, altName);
-                    break;
-                }
-            }
-        }
+        String fieldValue = resolveFieldValueWithAlternatives(detectedField, minute);
         
         if (fieldValue == null || fieldValue.isBlank()) {
             log().warn("Could not extract field '{}' from minute {} (date: {}). " +
@@ -250,9 +254,9 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         // Return alternative names based on field type
         switch (fieldLower) {
             case FIELD_SECRETARY:
-            case "secretario":
+            case LABEL_SECRETARIO:
             case "secretaria":
-                return new String[]{FIELD_SECRETARY, "secretario", "secretaria"};
+                return new String[]{FIELD_SECRETARY, LABEL_SECRETARIO, "secretaria"};
             case "agenda":
             case "orden_del_dia":
             case "orden del día":
@@ -326,7 +330,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         if (containsAny(q, "inicio", "start time", "hora de inicio", "comienzo")) return "startTime";
         if (containsAny(q, "fin", "final", "end time", "hora de cierre", "termin")) return FIELD_END_TIME;
         if (containsAny(q, "presidente", FIELD_PRESIDENT, "quién presidió", "who presided")) return FIELD_PRESIDENT;
-        if (containsAny(q, "secretario", FIELD_SECRETARY, "secretaria", "quién fue la secretaria", "who was the secretary")) {
+        if (containsAny(q, LABEL_SECRETARIO, FIELD_SECRETARY, "secretaria", "quién fue la secretaria", "who was the secretary")) {
             log().debug("Classified as 'secretary' based on query: '{}'", query);
             return FIELD_SECRETARY;
         }
@@ -342,7 +346,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
 
         // Fallback: NER hints (but be careful - NER date might be for filtering, not extraction)
-        if (ner != null && ner.has("date") && !containsAny(q, "presidente", "secretario", "agenda", "orden")) {
+        if (ner != null && ner.has("date") && !containsAny(q, "presidente", LABEL_SECRETARIO, "agenda", "orden")) {
             log().debug("Classified as 'date' based on NER");
             return "date";
         }
@@ -527,7 +531,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         // Determine if filtering by president, secretary, or attendee
         boolean filterByPresident = queryLower.contains("presidente") || queryLower.contains(FIELD_PRESIDENT) ||
                                     queryLower.contains("presidió") || queryLower.contains("presided");
-        boolean filterBySecretary = queryLower.contains("secretario") || queryLower.contains(FIELD_SECRETARY) || 
+        boolean filterBySecretary = queryLower.contains(LABEL_SECRETARIO) || queryLower.contains(FIELD_SECRETARY) || 
                                     queryLower.contains("secretaria");
         boolean filterByAttendee = asksAboutAttendee && !filterByPresident && !filterBySecretary;
         
