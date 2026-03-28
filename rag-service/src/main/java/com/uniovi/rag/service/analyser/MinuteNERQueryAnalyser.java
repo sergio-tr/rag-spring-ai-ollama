@@ -370,8 +370,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
                 if (field.equals(JSON_KEY_ANSWER_TYPE) || field.equals("comparisonType") || field.equals("temporalContext")) {
                     Object value = json.get(field);
                     // If it's an array, take the first element or default value
-                    if (value instanceof JSONArray) {
-                        JSONArray array = (JSONArray) value;
+                    if (value instanceof JSONArray array) {
                         if (array.length() > 0) {
                             String firstValue = array.getString(0);
                             json.put(field, firstValue != null && !firstValue.trim().isEmpty() ? firstValue.trim() : getDefaultStringValue(field));

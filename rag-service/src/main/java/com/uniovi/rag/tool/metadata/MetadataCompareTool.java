@@ -28,6 +28,10 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
     };
 
+    private static final String NER_KEY_FILTERS = "filters";
+    private static final String FIELD_KEY_DURATION = "duration";
+    private static final String FIELD_KEY_PLACE = "place";
+
     public MetadataCompareTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -183,8 +187,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         // Try to extract from NER first
         if (ner != null && !ner.isEmpty()) {
             try {
-                if (ner.has("filters") && !ner.isNull("filters")) {
-                    JSONObject filters = ner.getJSONObject("filters");
+                if (ner.has(NER_KEY_FILTERS) && !ner.isNull(NER_KEY_FILTERS)) {
+                    JSONObject filters = ner.getJSONObject(NER_KEY_FILTERS);
                     if (filters.has("date") && !filters.isNull("date")) {
                         org.json.JSONArray dates = filters.getJSONArray("date");
                         for (int i = 0; i < dates.length(); i++) {
@@ -227,44 +231,36 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      * @param years List of years to filter by (e.g., ["2025", "2026"])
      * @return Filtered list of documents from the specified years
      */
+    private boolean documentDateMatchesAnyRequestedYear(String docDate, List<String> years) {
+        for (String year : years) {
+            if (docDate.contains(year)) {
+                return true;
+            }
+            try {
+                java.time.LocalDate parsedDate = parseDateFlexible(docDate);
+                if (parsedDate != null && String.valueOf(parsedDate.getYear()).equals(year)) {
+                    return true;
+                }
+            } catch (Exception e) {
+                log().debug("Error parsing date for year filtering: {}", e.getMessage());
+            }
+        }
+        return false;
+    }
+
     private List<Document> filterDocumentsByYears(List<Document> docs, List<String> years) {
         if (docs == null || docs.isEmpty() || years == null || years.isEmpty()) {
             return docs != null ? docs : new ArrayList<>();
         }
-        
+
         log().info("Filtering {} documents by years: {}", docs.size(), years);
-        
+
         List<Document> filtered = new ArrayList<>();
-        
+
         for (Document doc : docs) {
-            if (doc == null) continue;
-            
-            String docDate = getDocumentDate(doc);
-            if (docDate != null) {
-                // Check if document date contains any of the requested years
-                boolean matches = false;
-                for (String year : years) {
-                    if (docDate.contains(year)) {
-                        matches = true;
-                        break;
-                    } else {
-                        // Try parsing the date to extract year
-                        try {
-                            java.time.LocalDate parsedDate = parseDateFlexible(docDate);
-                            if (parsedDate != null) {
-                                String docYear = String.valueOf(parsedDate.getYear());
-                                if (docYear.equals(year)) {
-                                    matches = true;
-                                    break;
-                                }
-                            }
-                        } catch (Exception e) {
-                            log().debug("Error parsing date '{}' for year filtering: {}", docDate, e.getMessage());
-                        }
-                    }
-                }
-                
-                if (matches) {
+            if (doc != null) {
+                String docDate = getDocumentDate(doc);
+                if (docDate != null && documentDateMatchesAnyRequestedYear(docDate, years)) {
                     filtered.add(doc);
                 }
             }
@@ -321,7 +317,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                     }
                     return normalizedCandidates.contains(docLocal.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE));
                 })
-                .collect(Collectors.toList());
+                .toList();
         log().info("Filtered {} documents by any-of-dates {}: {} match", docs.size(), dateCandidates, filtered.size());
         return filtered;
     }
@@ -402,26 +398,39 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                     .content()
                     .strip()
                     .toLowerCase();
-            
-            if (response.contains("mentions_by_month") || response.contains("mentions by month")) {
-                return new ComparisonField("mentions_by_month", ComparisonType.COUNT);
-            } else if (response.contains("numberofattendees") || response.contains("attendees") || response.contains("people")) {
-                return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
-            } else if (response.contains("duration") || response.contains("time") || response.contains("length")) {
-                return new ComparisonField("duration", ComparisonType.NUMERIC);
-            } else if (response.contains("date") || response.contains("when")) {
-                return new ComparisonField("date", ComparisonType.DATE);
-            } else if (response.contains("place") || response.contains("location") || response.contains("where")) {
-                return new ComparisonField("place", ComparisonType.TEXT);
-            } else if (response.contains("topics") || response.contains("subjects")) {
-                return new ComparisonField("topics", ComparisonType.COUNT);
-            } else if (response.contains("decisions") || response.contains("agreements")) {
-                return new ComparisonField("decisions", ComparisonType.COUNT);
-            }
+            return mapLlmResponseToComparisonField(response);
         } catch (Exception e) {
             log().warn("Error inferring comparison field with LLM: {}", e.getMessage());
         }
-        
+
+        return null;
+    }
+
+    private ComparisonField mapLlmResponseToComparisonField(String response) {
+        if (response == null || response.isEmpty()) {
+            return null;
+        }
+        if (response.contains("mentions_by_month") || response.contains("mentions by month")) {
+            return new ComparisonField("mentions_by_month", ComparisonType.COUNT);
+        }
+        if (response.contains("numberofattendees") || response.contains("attendees") || response.contains("people")) {
+            return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
+        }
+        if (response.contains(FIELD_KEY_DURATION) || response.contains("time") || response.contains("length")) {
+            return new ComparisonField(FIELD_KEY_DURATION, ComparisonType.NUMERIC);
+        }
+        if (response.contains("date") || response.contains("when")) {
+            return new ComparisonField("date", ComparisonType.DATE);
+        }
+        if (response.contains(FIELD_KEY_PLACE) || response.contains("location") || response.contains("where")) {
+            return new ComparisonField(FIELD_KEY_PLACE, ComparisonType.TEXT);
+        }
+        if (response.contains("topics") || response.contains("subjects")) {
+            return new ComparisonField("topics", ComparisonType.COUNT);
+        }
+        if (response.contains("decisions") || response.contains("agreements")) {
+            return new ComparisonField("decisions", ComparisonType.COUNT);
+        }
         return null;
     }
 
@@ -448,12 +457,12 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         switch (key) {
             case "numberOfAttendees":
                 return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
-            case "duration":
-                return new ComparisonField("duration", ComparisonType.NUMERIC);
+            case FIELD_KEY_DURATION:
+                return new ComparisonField(FIELD_KEY_DURATION, ComparisonType.NUMERIC);
             case "date":
                 return new ComparisonField("date", ComparisonType.DATE);
-            case "place":
-                return new ComparisonField("place", ComparisonType.TEXT);
+            case FIELD_KEY_PLACE:
+                return new ComparisonField(FIELD_KEY_PLACE, ComparisonType.TEXT);
             case "topics":
                 return new ComparisonField("topics", ComparisonType.COUNT);
             case "decisions":
@@ -468,7 +477,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      */
     private Map<String, Integer> analyzeFieldAvailability(List<Minute> minutes) {
         Map<String, Integer> availability = new HashMap<>();
-        String[] fields = {"numberOfAttendees", "duration", "date", "place", "topics", "decisions"};
+        String[] fields = {"numberOfAttendees", FIELD_KEY_DURATION, "date", FIELD_KEY_PLACE, "topics", "decisions"};
         
         for (String field : fields) {
             int count = 0;
@@ -491,11 +500,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             case "numberOfAttendees":
                 return minute.numberOfAttendees() > 0 ||
                         (minute.attendees() != null && !minute.attendees().isEmpty());
-            case "duration":
+            case FIELD_KEY_DURATION:
                 return calculateDurationFromMinute(minute) > 0;
             case "date":
                 return minute.date() != null && !minute.date().isBlank();
-            case "place":
+            case FIELD_KEY_PLACE:
                 return minute.place() != null && !minute.place().isBlank();
             case "topics":
                 return minute.topics() != null && !minute.topics().isEmpty();
@@ -963,11 +972,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         switch (field.fieldName) {
             case "numberOfAttendees":
                 return attendeeCountForComparison(minute);
-            case "duration":
+            case FIELD_KEY_DURATION:
                 return calculateDurationFromMinute(minute);
             case "date":
                 return minute.date();
-            case "place":
+            case FIELD_KEY_PLACE:
                 return minute.place();
             case "topics":
                 return minute.topics() != null ? minute.topics().size() : 0;
@@ -1029,7 +1038,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         String simpleStats = formatSimpleStats(analysis, field);
         
         boolean singleDataPoint = comparables != null && comparables.size() == 1;
-        boolean isDurationField = "duration".equals(field != null ? field.fieldName : null);
+        boolean isDurationField = field != null && FIELD_KEY_DURATION.equals(field.fieldName);
         boolean queryComparesTwoDates = query != null && (query.toLowerCase().contains("más larga") || query.toLowerCase().contains("más corta") || query.toLowerCase().contains("which was longer"));
         String extraInstructions = "";
         if (singleDataPoint && isDurationField && queryComparesTwoDates) {
@@ -1192,15 +1201,12 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             log().info("Formatting attendees comparison data. Total entries: {}", comparables.size());
             List<Map.Entry<String, ComparisonValue>> sorted = comparables.entrySet().stream()
                     .sorted(Map.Entry.<String, ComparisonValue>comparingByValue((a, b) -> {
-                        if (a.value instanceof Number && b.value instanceof Number) {
-                            double aVal = ((Number) a.value).doubleValue();
-                            double bVal = ((Number) b.value).doubleValue();
-                            log().debug("Comparing attendees: {} vs {}", aVal, bVal);
-                            return Double.compare(bVal, aVal); // Descending: higher first
+                        if (a.value instanceof Number na && b.value instanceof Number nb) {
+                            return Double.compare(nb.doubleValue(), na.doubleValue());
                         }
                         return 0;
                     }).reversed())
-                    .collect(Collectors.toList());
+                    .toList();
             
             log().info("Sorted attendees comparison (descending): {}", 
                       sorted.stream()
@@ -1208,20 +1214,15 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                           .collect(Collectors.joining(", ")));
             
             return sorted.stream()
-                    .map(entry -> {
-                        String label = entry.getKey();
-                        Object value = entry.getValue().value;
-                        log().debug("Formatting attendees entry: {} = {}", label, value);
-                        return String.format("- %s: %s asistentes", label, value);
-                    })
+                    .map(entry -> String.format("- %s: %s asistentes", entry.getKey(), entry.getValue().value))
                     .collect(Collectors.joining("\n"));
         }
 
         // Default formatting for other comparison types (sort descending for numeric/count)
         return comparables.entrySet().stream()
                 .sorted(Map.Entry.<String, ComparisonValue>comparingByValue((a, b) -> {
-                    if (a.value instanceof Number && b.value instanceof Number) {
-                        return Double.compare(((Number) b.value).doubleValue(), ((Number) a.value).doubleValue());
+                    if (a.value instanceof Number na && b.value instanceof Number nb) {
+                        return Double.compare(nb.doubleValue(), na.doubleValue());
                     }
                     return 0;
                 }).reversed()) // Sort descending (highest first)

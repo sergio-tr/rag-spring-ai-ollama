@@ -38,25 +38,10 @@ public class SummarizeMeetingTool extends AbstractTool {
         log().debug("Retrieved {} documents for summarize meeting query", docs.size());
         List<String> fragments = new ArrayList<>();
 
-        // Filter documents based on NER if available
         if (ner != null) {
-            // Use EnhancedNERHandler for intelligent filtering
-            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
-            
-            for (Document doc : filteredDocs) {
-                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    fragments.addAll(extractRelevantFragments(doc, query));
-                }
-                if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
-            }
+            collectSummarizeFragmentsWithNer(query, ner, docs, fragments);
         } else {
-            // Fallback to LLM-based relevance
-            for (Document doc : docs) {
-                if (isRelevantByLLM(doc.getText(), query)) {
-                    fragments.addAll(extractRelevantFragments(doc, query));
-                }
-                if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
-            }
+            collectSummarizeFragmentsWithoutNer(query, docs, fragments);
         }
 
         if (fragments.isEmpty()) {
@@ -70,7 +55,7 @@ public class SummarizeMeetingTool extends AbstractTool {
 
         log().debug("Extracted {} fragments for summarize meeting query, limiting to 3 for conciseness", fragments.size());
         // Limit fragments to 3 maximum for conciseness
-        List<String> limitedFragments = fragments.stream().limit(3).collect(java.util.stream.Collectors.toList());
+        List<String> limitedFragments = fragments.stream().limit(3).toList();
         
         String summary = generateSummaryWithLLM(query, limitedFragments);
         long totalTime = System.currentTimeMillis() - startTime;
@@ -81,6 +66,29 @@ public class SummarizeMeetingTool extends AbstractTool {
         // (formatResponse is idempotent, so it's safe)
         String formattedSummary = formatResponse(summary, query);
         return ToolResult.from(formattedSummary, getClass());
+    }
+
+    private void collectSummarizeFragmentsWithNer(String query, JSONObject ner, List<Document> docs, List<String> fragments) {
+        List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+        for (Document doc : filteredDocs) {
+            if (nerHandler.matchesDocumentWithNER(doc, ner)) {
+                fragments.addAll(extractRelevantFragments(doc, query));
+            }
+            if (fragments.size() >= 3) {
+                break;
+            }
+        }
+    }
+
+    private void collectSummarizeFragmentsWithoutNer(String query, List<Document> docs, List<String> fragments) {
+        for (Document doc : docs) {
+            if (isRelevantByLLM(doc.getText(), query)) {
+                fragments.addAll(extractRelevantFragments(doc, query));
+            }
+            if (fragments.size() >= 3) {
+                break;
+            }
+        }
     }
 
     /**

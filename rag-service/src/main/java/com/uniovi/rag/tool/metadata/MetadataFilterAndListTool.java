@@ -454,7 +454,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
                     }
                     return false;
                 })
-                .collect(Collectors.toList());
+                .toList();
         log().info("Filtered to {} minutes where '{}' (normalized: '{}') is in attendees", out.size(), personName, normalized);
         return out;
     }

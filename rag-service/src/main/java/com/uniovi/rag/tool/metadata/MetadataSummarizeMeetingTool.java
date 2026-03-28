@@ -79,13 +79,13 @@ import java.util.stream.Collectors;
     private List<SummaryResult> generateSummariesInParallel(String query, List<Minute> minutes) {
         List<CompletableFuture<SummaryResult>> futures = minutes.stream()
                 .map(minute -> supplyAsync(() -> generateSummary(query, minute)))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
                 .filter(result -> result.getSummary() != null && !result.getSummary().isBlank())
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private SummaryResult generateSummary(String query, Minute minute) {

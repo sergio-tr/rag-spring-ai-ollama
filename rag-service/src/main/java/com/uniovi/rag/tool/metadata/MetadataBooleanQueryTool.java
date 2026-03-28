@@ -301,13 +301,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
      * Builds evidence directly from minute metadata using LLM to determine relevance.
      * This is a fallback to avoid false negatives.
      */
-    private String buildEvidenceFromMetadata(Minute minute, String query) {
-        if (minute == null || query == null || query.trim().isEmpty()) {
-            return "";
-        }
-        
-        // Build minute context
-        StringBuilder context = new StringBuilder();
+    private static void appendMinuteMetadataContext(Minute minute, StringBuilder context) {
         if (minute.date() != null) {
             context.append("Date: ").append(minute.date()).append("\n");
         }
@@ -323,23 +317,44 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         if (minute.summary() != null && !minute.summary().trim().isEmpty()) {
             context.append("Summary: ").append(minute.summary()).append("\n");
         }
-        
+    }
+
+    /**
+     * Explicit evidence for "security in [year]" (ACTA 6 25 Aug 2026): topic/decisions/summary contain security terms.
+     */
+    private String trySecurityEvidenceForSeguridadQuery(Minute minute, String query) {
+        String queryLower = query.toLowerCase();
+        if (!queryLower.contains("seguridad")) {
+            return null;
+        }
+        String topicsStr = minute.topics() != null ? String.join(" ", minute.topics()).toLowerCase() : "";
+        String decisionsStr = minute.decisions() != null ? String.join(" ", minute.decisions()).toLowerCase() : "";
+        String summaryStr = minute.summary() != null ? minute.summary().toLowerCase() : "";
+        String combined = topicsStr + " " + decisionsStr + " " + summaryStr;
+        if (combined.contains("seguridad") || combined.contains(KEYWORD_VIGILANCIA) || combined.contains(KEYWORD_VIDEOVIGILANCIA)
+                || combined.contains("camara")) {
+            return "Topic/Summary: Seguridad o vigilancia tratada en esta reunión. Date: " + (minute.date() != null ? minute.date() : "");
+        }
+        return null;
+    }
+
+    private String buildEvidenceFromMetadata(Minute minute, String query) {
+        if (minute == null || query == null || query.trim().isEmpty()) {
+            return "";
+        }
+
+        StringBuilder context = new StringBuilder();
+        appendMinuteMetadataContext(minute, context);
+
         if (context.length() == 0) {
             return "";
         }
-        
-        // Explicit evidence for "security in [year]" (ACTA 6 25 Aug 2026): topic/decisions/summary contain security/surveillance/video-surveillance terms
-        String queryLower = query.toLowerCase();
-        if (queryLower.contains("seguridad")) {
-            String topicsStr = minute.topics() != null ? String.join(" ", minute.topics()).toLowerCase() : "";
-            String decisionsStr = minute.decisions() != null ? String.join(" ", minute.decisions()).toLowerCase() : "";
-            String summaryStr = minute.summary() != null ? minute.summary().toLowerCase() : "";
-            String combined = topicsStr + " " + decisionsStr + " " + summaryStr;
-            if (combined.contains("seguridad") || combined.contains(KEYWORD_VIGILANCIA) || combined.contains(KEYWORD_VIDEOVIGILANCIA) || combined.contains("camara")) {
-                return "Topic/Summary: Seguridad o vigilancia tratada en esta reunión. Date: " + (minute.date() != null ? minute.date() : "");
-            }
+
+        String securityEvidence = trySecurityEvidenceForSeguridadQuery(minute, query);
+        if (securityEvidence != null) {
+            return securityEvidence;
         }
-        
+
         // Use LLM to extract relevant evidence based on query with precise matching
         String prompt = String.format("""
             Task: Extract relevant evidence from meeting minute metadata that helps answer the query.

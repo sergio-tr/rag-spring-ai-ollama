@@ -46,7 +46,7 @@ public abstract class AbstractDocumentService implements DocumentService {
             jdbcTemplate.update("DELETE FROM documents");
             log().info("Database cleared successfully");
         } catch (Exception e) {
-            log().error("Error clearing database", e);
+            log().error("Error clearing database: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to clear database", e);
         }
     }
@@ -173,7 +173,7 @@ public abstract class AbstractDocumentService implements DocumentService {
             
             // Validate that the text is not empty
             if (rawText == null || rawText.trim().isEmpty()) {
-                log().error("PDF extraction returned empty text for file: {}", filename);
+                log().error("PDF extraction returned empty text (filename length: {})", filename != null ? filename.length() : 0);
                 throw new IllegalArgumentException("The PDF does not contain extractable text. It may be protected or an image.");
             }
             
@@ -182,11 +182,11 @@ public abstract class AbstractDocumentService implements DocumentService {
             // Normalize the extracted text to improve subsequent extraction
             String normalized = normalizeExtractedText(rawText);
             
-            log().info("After normalization: {} characters for file: {}", normalized.length(), filename);
+            log().info("After normalization: {} characters (filename length: {})", normalized.length(), filename != null ? filename.length() : 0);
             
             // Validate minimum length
             if (normalized.length() < 20) {
-                log().warn("Normalized text is very short ({} chars) for file: {}", normalized.length(), filename);
+                log().warn("Normalized text is very short ({} chars; filename length: {})", normalized.length(), filename != null ? filename.length() : 0);
             }
             
             return normalized;
@@ -194,7 +194,7 @@ public abstract class AbstractDocumentService implements DocumentService {
             // Re-lanzar IllegalArgumentException tal cual
             throw e;
         } catch (Exception e) {
-            log().error("Error processing PDF file: {}", filename, e);
+            log().error("Error processing PDF file (filename length: {})", filename != null ? filename.length() : 0, e);
             throw new IllegalStateException("Error processing the PDF " + filename + ": " + e.getMessage(), e);
         }
     }

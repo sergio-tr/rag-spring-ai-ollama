@@ -83,8 +83,13 @@ public class LLMResponseValidatorService implements ResponseValidator {
         if (lower.startsWith("error:") || lower.startsWith("exception:")) return true;
         if (lower.contains("error occurred") || lower.contains("an error occurred")) return true;
         if (lower.contains("processing error") || lower.contains("processing exception")) return true;
-        if (lower.contains("exception") && (lower.contains("thrown") || lower.contains("caught") || lower.contains("at "))) return true;
+        if (looksLikeExceptionTrace(lower)) return true;
         if (lower.contains("failed to process") || lower.contains("failed to retrieve")) return true;
         return false;
+    }
+
+    private static boolean looksLikeExceptionTrace(String lower) {
+        return lower.contains("exception")
+                && (lower.contains("thrown") || lower.contains("caught") || lower.contains("at "));
     }
 }

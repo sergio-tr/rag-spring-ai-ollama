@@ -51,33 +51,10 @@ public class CountAndExplainTool extends AbstractTool {
             return ToolResult.from(formattedResponse, getClass());
         }
 
-        // Filter documents based on NER if available
         if (ner != null) {
-            // Use EnhancedNERHandler for intelligent filtering
-            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
-            
-            for (Document doc : filteredDocs) {
-                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    String content = doc.getText();
-                    String id = extractMinuteIdentifier(doc);
-                    String fragment = extractor.extractRelevantFragment(content, query);
-                    if (matchesQueryWithLLM(query, id, fragment)) {
-                        explanations.add(formatExplanationLine(id, fragment));
-                        matchedIds.add(id);
-                    }
-                }
-            }
+            appendCountAndExplainMatchesWithNer(query, ner, docs, explanations, matchedIds);
         } else {
-            // Fallback to query-based relevance
-            for (Document doc : docs) {
-                String content = doc.getText();
-                String fragment = extractor.extractRelevantFragment(content, query);
-                String id = extractMinuteIdentifier(doc);
-                if (matchesQueryWithLLM(query, id, fragment)) {
-                    explanations.add(formatExplanationLine(id, fragment));
-                    matchedIds.add(id);
-                }
-            }
+            appendCountAndExplainMatchesWithoutNer(query, docs, explanations, matchedIds);
         }
 
         log().debug("Matched {} documents with {} explanations for count and explain query", 
@@ -89,6 +66,35 @@ public class CountAndExplainTool extends AbstractTool {
         // Apply formatResponse to clean the response
         String formattedResponse = formatResponse(response, query);
         return ToolResult.from(formattedResponse, getClass());
+    }
+
+    private void appendCountAndExplainMatchesWithNer(String query, JSONObject ner, List<Document> docs,
+            List<String> explanations, List<String> matchedIds) {
+        List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+        for (Document doc : filteredDocs) {
+            if (nerHandler.matchesDocumentWithNER(doc, ner)) {
+                String content = doc.getText();
+                String id = extractMinuteIdentifier(doc);
+                String fragment = extractor.extractRelevantFragment(content, query);
+                if (matchesQueryWithLLM(query, id, fragment)) {
+                    explanations.add(formatExplanationLine(id, fragment));
+                    matchedIds.add(id);
+                }
+            }
+        }
+    }
+
+    private void appendCountAndExplainMatchesWithoutNer(String query, List<Document> docs,
+            List<String> explanations, List<String> matchedIds) {
+        for (Document doc : docs) {
+            String content = doc.getText();
+            String fragment = extractor.extractRelevantFragment(content, query);
+            String id = extractMinuteIdentifier(doc);
+            if (matchesQueryWithLLM(query, id, fragment)) {
+                explanations.add(formatExplanationLine(id, fragment));
+                matchedIds.add(id);
+            }
+        }
     }
 
     /**

@@ -266,8 +266,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             case "date":
             case "fecha":
                 return new String[]{"date", "fecha", "date_iso"};
-            case "place":
-            case "lugar":
+            case "place", "lugar":
                 return new String[]{"place", "lugar", "ubicación"};
             case FIELD_PRESIDENT:
             case "presidente":

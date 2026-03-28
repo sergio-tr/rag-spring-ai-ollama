@@ -124,8 +124,8 @@ public final class AnswerGenerationKernel {
                 : query;
         List<Document> docs;
         try {
-            if (retriever instanceof AbstractContextRetriever && nerEntities != null && !nerEntities.isEmpty()) {
-                docs = ((AbstractContextRetriever) retriever).retrieveWithMetadataFilters(retrievalQuery, nerEntities);
+            if (retriever instanceof AbstractContextRetriever abstractRetriever && nerEntities != null && !nerEntities.isEmpty()) {
+                docs = abstractRetriever.retrieveWithMetadataFilters(retrievalQuery, nerEntities);
             } else {
                 docs = retriever.retrieve(retrievalQuery);
             }
