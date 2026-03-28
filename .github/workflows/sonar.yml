@@ -20,6 +20,27 @@ jobs:
   sonar:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
+    # Same Postgres setup as ci.yml — required for @SpringBootTest and JDBC integration tests during mvn verify.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
 
     steps:
       # ─── Checkout ─────────────────────────────────────────────────────────
@@ -55,7 +76,23 @@ jobs:
       # `verify` lifecycle = compile → test (with JaCoCo agent) → jacoco:report
       # Output: rag-service/target/classes/  (binaries for Sonar)
       #         rag-service/target/site/jacoco/jacoco.xml  (coverage for Sonar)
-      # Note: ubuntu-latest runners include Docker, required by Testcontainers tests.
+      - name: Prepare Postgres for tests (extensions, integration DB)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          for i in $(seq 1 40); do
+            if pg_isready -h localhost -p 5432 -U postgres; then break; fi
+            sleep 2
+          done
+          PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c \
+            "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS hstore; CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
+          if ! PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -tAc \
+            "SELECT 1 FROM pg_database WHERE datname = 'testdb'" | grep -q 1; then
+            PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE testdb;"
+          fi
+          PGPASSWORD=postgres psql -h localhost -U postgres -d testdb -v ON_ERROR_STOP=1 -f rag-service/src/test/resources/test-init.sql
+
+      # Note: With the service + env above, tests use the runner Postgres; Testcontainers is not required in CI.
       - name: Build backend and generate Java coverage (mvn verify)
         working-directory: rag-service
         run: ./mvnw -B verify --no-transfer-progress

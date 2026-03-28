@@ -21,6 +21,9 @@ import java.util.stream.Collectors;
 public class MetadataGetFieldTool extends AbstractMetadataTool {
 
     private static final String FIELD_TOPICS = "topics";
+
+    private static final String FIELD_DURATION = "duration";
+
     private static final String FIELD_ATTENDEES = "attendees";
 
     public MetadataGetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
@@ -310,7 +313,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
 
         // Priority 4: Other specific field requests
-        if (containsAny(q, "duración", "duration", "cuánto dur")) return "durationMinutes";
+        if (containsAny(q, "duración", FIELD_DURATION, "cuánto dur")) return "durationMinutes";
         if (containsAny(q, "año", "year")) return "year";
         if (containsAny(q, "mes", "month")) return "month";
         if (containsAny(q, "lugar", "sitio", "place", "ubicación")) return "place";
@@ -390,7 +393,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         String fieldInstructions = "";
         if ("agenda".equals(detectedField) || detectedField != null && detectedField.toLowerCase().contains("orden")) {
             fieldInstructions = " For agenda/orden del día: list only the points of the day (puntos del día), not attendees or other fields.";
-        } else if ("duration".equals(detectedField) || "durationminutes".equals(detectedField)) {
+        } else if (FIELD_DURATION.equals(detectedField) || "durationminutes".equals(detectedField)) {
             fieldInstructions = " For duration: state in natural language (e.g. 'La reunión duró 1 hora y 30 minutos').";
         } else if ("place".equals(detectedField) || "lugar".equals(detectedField)) {
             fieldInstructions = " For place: state in one sentence (e.g. 'La reunión se celebró en la Sala de reuniones').";
@@ -460,7 +463,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             return rawValue;
         }
         String f = detectedField != null ? detectedField.toLowerCase() : "";
-        if (("duration".equals(f) || "durationminutes".equals(f)) && rawValue.matches("\\d+")) {
+        if ((FIELD_DURATION.equals(f) || "durationminutes".equals(f)) && rawValue.matches("\\d+")) {
             try {
                 int minutes = Integer.parseInt(rawValue.trim());
                 if (minutes < 60) {

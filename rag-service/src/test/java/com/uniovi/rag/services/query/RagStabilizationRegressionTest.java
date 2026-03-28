@@ -5,6 +5,7 @@ import com.uniovi.rag.model.QueryType;
 import com.uniovi.rag.service.query.QueryService;
 
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
+import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Run with data loaded and Ollama for full coverage; unit-level guards are tested in DateExistenceGuardTest.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@Import(TestAiStubConfiguration.class)
+@Import({ TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class })
 @ActiveProfiles("test")
 class RagStabilizationRegressionTest {
 
