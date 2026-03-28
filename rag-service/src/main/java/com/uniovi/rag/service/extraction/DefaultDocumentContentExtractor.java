@@ -15,13 +15,15 @@ import java.util.stream.Collectors;
  */
 public class DefaultDocumentContentExtractor implements DocumentContentExtractor {
 
+    private static final int CASE_INSENSITIVE_UNICODE = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
+
     @Override
     public String extractDate(String content) {
         if (content == null) {
             return "Unknown date";
         }
         String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
-        Matcher matcher = Pattern.compile("(?i)Fecha:\\s*(\\d{1,2} de [a-záéíóú]+ de \\d{4})").matcher(c);
+        Matcher matcher = Pattern.compile("Fecha:\\s*(\\d{1,2} de [a-záéíóú]+ de \\d{4})", CASE_INSENSITIVE_UNICODE).matcher(c);
         return matcher.find() ? matcher.group(1) : "Unknown date";
     }
 
@@ -72,8 +74,8 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
         }
         String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
         Pattern pattern = type.equals("start")
-                ? Pattern.compile("(?i)hora de inicio:\\s*(\\d{1,2}:\\d{2})")
-                : Pattern.compile("(?i)(hora de finalización|hora de fin):\\s*(\\d{1,2}:\\d{2})");
+                ? Pattern.compile("hora de inicio:\\s*(\\d{1,2}:\\d{2})", CASE_INSENSITIVE_UNICODE)
+                : Pattern.compile("(hora de finalización|hora de fin):\\s*(\\d{1,2}:\\d{2})", CASE_INSENSITIVE_UNICODE);
         Matcher matcher = pattern.matcher(c);
         return matcher.find() ? matcher.group(matcher.groupCount()) : null;
     }
@@ -84,7 +86,7 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
             return 0;
         }
         String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
-        Matcher matcher = Pattern.compile("(?i)(\\d{1,2})\\s+propietarios").matcher(c);
+        Matcher matcher = Pattern.compile("(\\d{1,2})\\s+propietarios", CASE_INSENSITIVE_UNICODE).matcher(c);
         return matcher.find() ? Integer.parseInt(matcher.group(1)) : 0;
     }
 
@@ -94,8 +96,8 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
             return 0;
         }
         String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
-        Matcher startMatcher = Pattern.compile("(?i)Hora de inicio:\\s*(\\d{1,2}):(\\d{2})").matcher(c);
-        Matcher endMatcher = Pattern.compile("(?i)Hora de finalización.*?(\\d{1,2}):(\\d{2})").matcher(c);
+        Matcher startMatcher = Pattern.compile("Hora de inicio:\\s*(\\d{1,2}):(\\d{2})", CASE_INSENSITIVE_UNICODE).matcher(c);
+        Matcher endMatcher = Pattern.compile("Hora de finalización.*?(\\d{1,2}):(\\d{2})", CASE_INSENSITIVE_UNICODE).matcher(c);
         if (startMatcher.find() && endMatcher.find()) {
             int start = Integer.parseInt(startMatcher.group(1)) * 60 + Integer.parseInt(startMatcher.group(2));
             int end = Integer.parseInt(endMatcher.group(1)) * 60 + Integer.parseInt(endMatcher.group(2));

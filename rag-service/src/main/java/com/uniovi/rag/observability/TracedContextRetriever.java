@@ -28,7 +28,7 @@ public final class TracedContextRetriever implements ContextRetriever {
 
     @Override
     public List<Document> retrieve(String query) {
-        observability.recordCounter("rag.retriever.calls", "operation", "retrieve");
+        observability.recordCounter(METRIC_RETRIEVER_CALLS, "operation", "retrieve");
         return observability.recordTimer("rag.retriever.retrieve", () ->
                 observability.runWithSpan(
                         // Domain convention: retrieval is part of document search

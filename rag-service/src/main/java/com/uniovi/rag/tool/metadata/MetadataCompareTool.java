@@ -32,6 +32,15 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     private static final String FIELD_KEY_DURATION = "duration";
     private static final String FIELD_KEY_PLACE = "place";
 
+    /** Comparison field: topic mention counts aggregated by calendar month. */
+    private static final String FIELD_MENTIONS_BY_MONTH = "mentions_by_month";
+
+    /** Comparison field: number of meetings (actas) per month. */
+    private static final String FIELD_MEETINGS_COUNT_BY_MONTH = "meetings_count_by_month";
+
+    /** Topic keyword for security-related comparisons (Spanish). */
+    private static final String TOPIC_SEGURIDAD = "seguridad";
+
     public MetadataCompareTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -39,90 +48,126 @@ public class MetadataCompareTool extends AbstractMetadataTool {
 
     @Override
     public ToolResult execute(ToolExecutionContext ctx) {
-        String query = ctx.query();
-        JSONObject ner = ctx.nerEntities();
-        
+        return executeComparison(ctx.query(), ctx.nerEntities());
+    }
+
+    private ToolResult executeComparison(String query, JSONObject ner) {
         log().info("Executing comparison query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
-        
-        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
-        List<Document> docs = retrieveDocumentsWithFallback(
-            query, 
-            new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"},
-            ner
-        );
-        
-        // Step 1.4: When query compares two specific dates (e.g. "qué reunión fue más larga: 25 feb 2025 o 25 ago 2025"),
-        // use OR of dates so both actas are included (item 53)
-        List<String> dateCandidates = extractDateCandidates(query, ner);
-        docs = mergeDocumentsWhenComparingTwoDates(query, ner, docs, dateCandidates);
-        
-        // Step 1.5: Extract and validate years from query to avoid confusion (2025 vs 2026)
+
+        List<Document> docs = retrieveInitialDocumentsForComparison(query, ner);
         YearNarrowOutcome yearNarrow = applyYearNarrowing(query, ner, docs);
         if (yearNarrow.earlyExit() != null) {
             return yearNarrow.earlyExit();
         }
         docs = yearNarrow.documents();
-        
-        if (docs.isEmpty()) {
-            log().info("No documents found for comparison query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs);
+        if (missing != null) {
+            return missing;
         }
 
-        // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
-        if (minutes.isEmpty()) {
-            log().info("No valid minutes found for comparison query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyMinutes(query, minutes);
+        if (missing != null) {
+            return missing;
         }
 
-        // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        if (relevantMinutes.isEmpty()) {
-            log().info("No relevant minutes found for comparison query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes);
+        if (missing != null) {
+            return missing;
         }
 
-        // Step 4: Infer comparison field with enhanced analysis
         ComparisonField fieldToCompare = inferComparisonFieldEnhanced(query, relevantMinutes);
         if (fieldToCompare == null) {
             log().info("Could not infer comparison field for query: {}", query);
             return ToolResult.from(formatResponse(generateUnknownFieldMessage(query), query), getClass());
         }
 
-        // Step 5: Extract comparison data in parallel
         Map<String, ComparisonValue> comparables = extractComparisonDataInParallel(relevantMinutes, fieldToCompare, ner, query);
         if (comparables.isEmpty()) {
             log().info("No comparison data found for field: {}", fieldToCompare.fieldName);
             return ToolResult.from(formatResponse(generateNoDataMessage(fieldToCompare.fieldName, query), query), getClass());
         }
 
-        // Step 5.5: Aggregate by month for mentions or meetings count
-        if ("mentions_by_month".equals(fieldToCompare.fieldName)) {
-            comparables = aggregateMentionsByMonth(comparables);
-            log().info("Aggregated mentions by month: {}", comparables);
-        } else if ("meetings_count_by_month".equals(fieldToCompare.fieldName)) {
-            comparables = aggregateMentionsByMonth(comparables); // same aggregation: group by month, sum
-            log().info("Aggregated meetings count by month: {}", comparables);
-        } else if (FIELD_NUMBER_OF_ATTENDEES_BY_MONTH.equals(fieldToCompare.fieldName)) {
-            comparables = aggregateMentionsByMonth(comparables); // group by month, sum attendees
-            log().info("Aggregated attendees by month: {}", comparables);
-        }
+        comparables = applyMonthlyAggregationIfApplicable(fieldToCompare, comparables);
+        comparables = filterComparablesByQueryMonthsIfApplicable(query, fieldToCompare, comparables);
 
-        // Step 5.6: Filter to only months mentioned in the query (e.g. febrero y abril, not all months)
-        List<String> requestedMonths = extractMonthsFromQuery(query);
-        if (!requestedMonths.isEmpty() && ("mentions_by_month".equals(fieldToCompare.fieldName) || "meetings_count_by_month".equals(fieldToCompare.fieldName) || FIELD_NUMBER_OF_ATTENDEES_BY_MONTH.equals(fieldToCompare.fieldName))) {
-            comparables = filterComparablesByMonths(comparables, requestedMonths);
-            log().info("Filtered comparables to requested months {}: {}", requestedMonths, comparables);
-        }
-
-        // Step 6: Perform statistical analysis
         ComparisonAnalysis analysis = performStatisticalAnalysis(comparables, fieldToCompare);
-
-        // Step 7: Generate enhanced comparison answer
         String answer = generateEnhancedComparisonAnswer(query, fieldToCompare, comparables, analysis);
         log().info("Generated comparison answer for query: {} with {} data points", query, comparables.size());
-        
+
         return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private List<Document> retrieveInitialDocumentsForComparison(String query, JSONObject ner) {
+        List<Document> docs = retrieveDocumentsWithFallback(
+                query,
+                new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"},
+                ner);
+        List<String> dateCandidates = extractDateCandidates(query, ner);
+        return mergeDocumentsWhenComparingTwoDates(query, ner, docs, dateCandidates);
+    }
+
+    private ToolResult notFoundIfEmptyDocuments(String query, List<Document> docs) {
+        if (!docs.isEmpty()) {
+            return null;
+        }
+        log().info("No documents found for comparison query: {}", query);
+        return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+    }
+
+    private ToolResult notFoundIfEmptyMinutes(String query, List<Minute> minutes) {
+        if (!minutes.isEmpty()) {
+            return null;
+        }
+        log().info("No valid minutes found for comparison query: {}", query);
+        return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+    }
+
+    private ToolResult notFoundIfEmptyRelevantMinutes(String query, List<Minute> relevantMinutes) {
+        if (!relevantMinutes.isEmpty()) {
+            return null;
+        }
+        log().info("No relevant minutes found for comparison query: {}", query);
+        return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+    }
+
+    private Map<String, ComparisonValue> applyMonthlyAggregationIfApplicable(
+            ComparisonField fieldToCompare, Map<String, ComparisonValue> comparables) {
+        if (!isMonthlyAggregationField(fieldToCompare.fieldName)) {
+            return comparables;
+        }
+        Map<String, ComparisonValue> aggregated = aggregateMentionsByMonth(comparables);
+        logMonthlyAggregation(fieldToCompare.fieldName, aggregated);
+        return aggregated;
+    }
+
+    private boolean isMonthlyAggregationField(String fieldName) {
+        return FIELD_MENTIONS_BY_MONTH.equals(fieldName)
+                || FIELD_MEETINGS_COUNT_BY_MONTH.equals(fieldName)
+                || FIELD_NUMBER_OF_ATTENDEES_BY_MONTH.equals(fieldName);
+    }
+
+    private void logMonthlyAggregation(String fieldName, Map<String, ComparisonValue> aggregated) {
+        if (FIELD_MENTIONS_BY_MONTH.equals(fieldName)) {
+            log().info("Aggregated mentions by month: {}", aggregated);
+        } else if (FIELD_MEETINGS_COUNT_BY_MONTH.equals(fieldName)) {
+            log().info("Aggregated meetings count by month: {}", aggregated);
+        } else {
+            log().info("Aggregated attendees by month: {}", aggregated);
+        }
+    }
+
+    private Map<String, ComparisonValue> filterComparablesByQueryMonthsIfApplicable(
+            String query, ComparisonField fieldToCompare, Map<String, ComparisonValue> comparables) {
+        List<String> requestedMonths = extractMonthsFromQuery(query);
+        if (requestedMonths.isEmpty() || !isMonthlyAggregationField(fieldToCompare.fieldName)) {
+            return comparables;
+        }
+        Map<String, ComparisonValue> filtered = filterComparablesByMonths(comparables, requestedMonths);
+        log().info("Filtered comparables to requested months {}: {}", requestedMonths, filtered);
+        return filtered;
     }
 
     private YearNarrowOutcome applyYearNarrowing(String query, JSONObject ner, List<Document> docs) {
@@ -374,14 +419,14 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         if ((queryLower.contains("reuniones") || queryLower.contains("actas"))
                 && monthComparisonCueInQuery(queryLower)) {
             log().info("Detected meetings count by month comparison");
-            return new ComparisonField("meetings_count_by_month", ComparisonType.COUNT);
+            return new ComparisonField(FIELD_MEETINGS_COUNT_BY_MONTH, ComparisonType.COUNT);
         }
         // Special case: Comparison of mentions by month (e.g., "más menciones a problemas de seguridad en febrero o en agosto")
         if ((queryLower.contains("menciones") || queryLower.contains("mentions") || queryLower.contains("menciona"))
                 && monthComparisonCueInQuery(queryLower)) {
             // This is a mentions comparison query - we need to count mentions of a topic by month
             log().info("Detected mentions comparison query, will use special comparison logic");
-            return new ComparisonField("mentions_by_month", ComparisonType.COUNT);
+            return new ComparisonField(FIELD_MENTIONS_BY_MONTH, ComparisonType.COUNT);
         }
         
         // Use LLM to infer comparison field
@@ -423,8 +468,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         if (response == null || response.isEmpty()) {
             return null;
         }
-        if (response.contains("mentions_by_month") || response.contains("mentions by month")) {
-            return new ComparisonField("mentions_by_month", ComparisonType.COUNT);
+        if (response.contains(FIELD_MENTIONS_BY_MONTH) || response.contains("mentions by month")) {
+            return new ComparisonField(FIELD_MENTIONS_BY_MONTH, ComparisonType.COUNT);
         }
         if (response.contains("numberofattendees") || response.contains("attendees") || response.contains("people")) {
             return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
@@ -536,8 +581,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 .map(minute -> supplyAsync(() -> extractComparisonValue(minute, field, ner, query)))
                 .toList();
 
-        boolean mergeBySum = "mentions_by_month".equals(field.fieldName)
-                || "meetings_count_by_month".equals(field.fieldName)
+        boolean mergeBySum = FIELD_MENTIONS_BY_MONTH.equals(field.fieldName)
+                || FIELD_MEETINGS_COUNT_BY_MONTH.equals(field.fieldName)
                 || FIELD_NUMBER_OF_ATTENDEES_BY_MONTH.equals(field.fieldName);
         return futures.stream()
                 .map(CompletableFuture::join)
@@ -564,11 +609,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      */
     private Map.Entry<String, ComparisonValue> extractComparisonValue(Minute minute, ComparisonField field, JSONObject ner, String query) {
         // Special handling for mentions_by_month comparison
-        if ("mentions_by_month".equals(field.fieldName)) {
+        if (FIELD_MENTIONS_BY_MONTH.equals(field.fieldName)) {
             return extractMentionsByMonthValue(minute, field, ner, query);
         }
         // Count of meetings (actas) per month: one minute = one meeting
-        if ("meetings_count_by_month".equals(field.fieldName)) {
+        if (FIELD_MEETINGS_COUNT_BY_MONTH.equals(field.fieldName)) {
             return extractMeetingsCountByMonthValue(minute);
         }
         // Attendees per month (for "más asistentes en febrero o en agosto")
@@ -639,7 +684,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             // Count mentions of the topic in this minute; use binary per-minute value (1 if any mention, 0 otherwise)
             // For "seguridad" topic: require at least two security-related terms to avoid false positives (item 9)
             String topicLower = topic != null ? topic.toLowerCase().trim() : "";
-            boolean isSecurityTopic = topicLower.contains("seguridad");
+            boolean isSecurityTopic = topicLower.contains(TOPIC_SEGURIDAD);
             int mentionCount = countTopicMentions(minute, topic);
             int valueForMonth;
             if (isSecurityTopic) {
@@ -735,7 +780,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      */
     private boolean minuteMentionsSecurityTopic(Minute minute) {
         if (minute == null) return false;
-        List<String> securityTerms = List.of("seguridad", "vigilancia", "videovigilancia", "camaras", "camara");
+        List<String> securityTerms = List.of(TOPIC_SEGURIDAD, "vigilancia", "videovigilancia", "camaras", "camara");
         StringBuilder text = new StringBuilder();
         if (minute.topics() != null) {
             minute.topics().stream().filter(t -> t != null).forEach(t -> text.append(t.toLowerCase()).append(" "));
@@ -779,8 +824,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         keyTerms.add(topic.toLowerCase());
         
         // Add synonyms for common query topics so minute wording is matched (§4: August ACTA 3, 6 = security/surveillance/cameras)
-        if (keyTerms.stream().anyMatch(t -> t.contains("seguridad"))) {
-            keyTerms.add("seguridad");
+        if (keyTerms.stream().anyMatch(t -> t.contains(TOPIC_SEGURIDAD))) {
+            keyTerms.add(TOPIC_SEGURIDAD);
             keyTerms.add("vigilancia");
             keyTerms.add("videovigilancia");
             keyTerms.add("cámaras");
@@ -1170,7 +1215,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      * Formats comparison data for LLM prompt
      */
     private String formatComparisonData(Map<String, ComparisonValue> comparables, ComparisonField field) {
-        if ("mentions_by_month".equals(field.fieldName)) {
+        if (FIELD_MENTIONS_BY_MONTH.equals(field.fieldName)) {
             // Preserve order: list each month with its count, add context phrase and conclusion
             List<Map.Entry<String, ComparisonValue>> entries = new ArrayList<>(comparables.entrySet());
             String contextPhrase = "";
@@ -1186,7 +1231,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             lines = contextPhrase + "\n" + lines + formatMonthConclusion(comparables, "menciones");
             return lines;
         }
-        if ("meetings_count_by_month".equals(field.fieldName)) {
+        if (FIELD_MEETINGS_COUNT_BY_MONTH.equals(field.fieldName)) {
             String lines = comparables.entrySet().stream()
                     .map(entry -> {
                         String month = entry.getKey();

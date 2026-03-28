@@ -12,7 +12,6 @@ import java.util.Map;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.stream.Collectors;
 
 public abstract class AbstractMetadataContextRetriever extends AbstractContextRetriever {
 
@@ -58,7 +57,7 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
             // If still empty, return unfiltered documents
             if (filtered.isEmpty()) {
                 log().info("Lenient filtering also removed all documents, returning unfiltered documents (limit: {})", topK);
-                return groupedDocs.stream().limit(topK).collect(Collectors.toList());
+                return groupedDocs.stream().limit(topK).toList();
             }
         }
         
@@ -76,7 +75,7 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
         
         return documents.stream()
                 .filter(doc -> matchesDocumentMetadata(doc, ner))
-                .collect(java.util.stream.Collectors.toList());
+                .toList();
     }
     
     /**
@@ -90,7 +89,7 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
         
         return documents.stream()
                 .filter(doc -> matchesDocumentMetadataLenient(doc, ner))
-                .collect(java.util.stream.Collectors.toList());
+                .toList();
     }
     
     /**

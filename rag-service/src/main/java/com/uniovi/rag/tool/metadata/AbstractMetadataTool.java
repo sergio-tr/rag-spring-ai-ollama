@@ -52,6 +52,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /** Metadata key for original filename (ingestion / chunk grouping). */
     private static final String METADATA_KEY_FILENAME = "filename";
 
+    /** Serialized minute object or JSON in document metadata. */
+    private static final String METADATA_KEY_MINUTE = "minute";
+
+    /** Agenda items in minute metadata or NER filter key. */
+    private static final String METADATA_KEY_AGENDA = "agenda";
+
+    /** NER array key for entity names to match. */
+    private static final String NER_KEY_MENTIONED_ENTITIES = "mentionedEntities";
+
     private static final String METADATA_KEY_ATTENDEES_COUNT = "attendeesCount";
 
     private static final String QUERY_TYPE_GENERAL = "general";
@@ -322,7 +331,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         Map<String, Object> metadata = doc.getMetadata();
         
         // Try to get complete Minute object from "minute" key
-        Object minuteObj = metadata.get("minute");
+        Object minuteObj = metadata.get(METADATA_KEY_MINUTE);
         if (minuteObj instanceof Minute) {
             return (Minute) minuteObj;
         }
@@ -368,7 +377,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             ? safeGetInt(metadata, "numberOfAttendees", attendees.size())
             : attendees.size();
         
-        Map<String, String> agenda = safeGetStringMap(metadata, "agenda");
+        Map<String, String> agenda = safeGetStringMap(metadata, METADATA_KEY_AGENDA);
         List<String> decisions = safeGetStringList(metadata, "decisions");
         List<String> mentionedEntities = safeGetStringList(metadata, "mentionedEntities");
         List<String> topics = safeGetStringList(metadata, METADATA_KEY_TOPICS);
@@ -538,7 +547,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     private boolean passesMentionedEntitiesGate(Minute minute, JSONObject ner) {
-        if (ner.has("mentionedEntities") && !ner.getJSONArray("mentionedEntities").isEmpty()) {
+        if (ner.has(NER_KEY_MENTIONED_ENTITIES) && !ner.getJSONArray(NER_KEY_MENTIONED_ENTITIES).isEmpty()) {
             if (!matchesMentionedEntities(minute, ner)) {
                 log().info("Minute {} filtered out by mentionedEntities mismatch", minute.id());
                 return false;
@@ -548,7 +557,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     private boolean passesAgendaNerGate(Minute minute, JSONObject ner) {
-        if (ner.has("agenda") && !ner.getJSONArray("agenda").isEmpty()) {
+        if (ner.has(METADATA_KEY_AGENDA) && !ner.getJSONArray(METADATA_KEY_AGENDA).isEmpty()) {
             if (!matchesAgendaItems(minute, ner)) {
                 log().info("Minute {} filtered out by agenda items mismatch", minute.id());
                 return false;
@@ -624,7 +633,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         try {
-            org.json.JSONArray nerAgenda = ner.getJSONArray("agenda");
+            org.json.JSONArray nerAgenda = ner.getJSONArray(METADATA_KEY_AGENDA);
             if (nerAgenda.length() == 0) {
                 return true; // No agenda items to match
             }
@@ -1063,7 +1072,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return minute.decisions();
             case "summary":
                 return minute.summary();
-            case "agenda":
+            case METADATA_KEY_AGENDA:
             case "orden_del_dia":
             case "order_of_day": {
                 Map<String, String> agenda = minute.agenda();
@@ -1237,6 +1246,19 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return hasUseful;
     }
 
+    /** Direct NER filters (mentioned entities, agenda) without LLM. */
+    private boolean passesDirectNerFilters(Minute minute, JSONObject ner) {
+        if (ner.has(NER_KEY_MENTIONED_ENTITIES) && !ner.getJSONArray(NER_KEY_MENTIONED_ENTITIES).isEmpty()
+                && !matchesMentionedEntities(minute, ner)) {
+            return false;
+        }
+        if (ner.has(METADATA_KEY_AGENDA) && !ner.getJSONArray(METADATA_KEY_AGENDA).isEmpty()
+                && !matchesAgendaItems(minute, ner)) {
+            return false;
+        }
+        return true;
+    }
+
     /**
      * Filters relevant minutes based on NER or query relevance using EnhancedNERHandler.
      * Implements progressive fallback when filters are too strict.
@@ -1268,20 +1290,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         List<Minute> directMatched = preFiltered;
         if (ner != null && !ner.isEmpty()) {
             directMatched = preFiltered.stream()
-                    .filter(minute -> {
-                        // Only filter if we have clear criteria
-                        if (ner.has("mentionedEntities") && !ner.getJSONArray("mentionedEntities").isEmpty()) {
-                            if (!matchesMentionedEntities(minute, ner)) {
-                                return false;
-                            }
-                        }
-                        if (ner.has("agenda") && !ner.getJSONArray("agenda").isEmpty()) {
-                            if (!matchesAgendaItems(minute, ner)) {
-                                return false;
-                            }
-                        }
-                        return true;
-                    })
+                    .filter(minute -> passesDirectNerFilters(minute, ner))
                     .limit(50) // Increased from 25 to 50
                     .toList();
             
@@ -1309,7 +1318,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // If NER filtering removed too many, use direct matched
             if (filtered.isEmpty() && !directMatched.isEmpty()) {
                 log().warn("NER filtering removed all minutes, using direct matched minutes");
-                filtered = directMatched.stream().limit(40).collect(Collectors.toList());
+                filtered = directMatched.stream().limit(40).toList();
             }
         }
         
@@ -1329,7 +1338,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         }
                     })
                     .limit(30) // Final limit
-                    .collect(Collectors.toList());
+                    .toList();
             
             log().info("Relevance filtering reduced to {} minutes", filtered.size());
         }
@@ -1789,8 +1798,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         Map<String, Object> metadata = doc.getMetadata();
         
         // If it has the "minute" key, validate that it's not malformed
-        if (metadata.containsKey("minute")) {
-            Object minuteObj = metadata.get("minute");
+        if (metadata.containsKey(METADATA_KEY_MINUTE)) {
+            Object minuteObj = metadata.get(METADATA_KEY_MINUTE);
             // Validate that minute is not null, empty string, or obviously invalid
             if (minuteObj != null && 
                 !(minuteObj instanceof String && ((String) minuteObj).trim().isEmpty())) {
@@ -1830,7 +1839,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return hasFieldOrDerived(metadata, "date") || 
                metadata.containsKey("id") || 
                metadata.containsKey(METADATA_KEY_FILENAME) ||
-               metadata.containsKey("minute");
+               metadata.containsKey(METADATA_KEY_MINUTE);
     }
 
     /**
@@ -2102,9 +2111,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
             
             // Check for agenda in NER (topic may be an agenda item, e.g. "aprobación de cuentas")
-            if (ner.has("agenda") && !ner.isNull("agenda")) {
+            if (ner.has(METADATA_KEY_AGENDA) && !ner.isNull(METADATA_KEY_AGENDA)) {
                 try {
-                    org.json.JSONArray agenda = ner.getJSONArray("agenda");
+                    org.json.JSONArray agenda = ner.getJSONArray(METADATA_KEY_AGENDA);
                     if (agenda.length() > 0) {
                         String agendaItem = agenda.getString(0).trim();
                         if (!agendaItem.isEmpty()) {
@@ -2118,9 +2127,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
 
             // Check for mentionedEntities that might be topics
-            if (ner.has("mentionedEntities") && !ner.isNull("mentionedEntities")) {
+            if (ner.has(NER_KEY_MENTIONED_ENTITIES) && !ner.isNull(NER_KEY_MENTIONED_ENTITIES)) {
                 try {
-                    org.json.JSONArray entities = ner.getJSONArray("mentionedEntities");
+                    org.json.JSONArray entities = ner.getJSONArray(NER_KEY_MENTIONED_ENTITIES);
                     if (entities.length() > 0) {
                         // Use first entity as potential topic
                         String entity = entities.getString(0).trim();
@@ -3334,6 +3343,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         try {
             return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
         } catch (DateTimeParseException ignored) {
+            // Not ISO-8601; continue with flexible parsers below.
         }
 
         // Try existing parseDateToLocalDate formatters

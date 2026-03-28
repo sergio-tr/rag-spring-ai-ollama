@@ -258,8 +258,9 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             return EntityType.OTHER;
         }
         
-        // If it looks like a person name (starts with capital, has spaces, or common name patterns)
-        if (entityName.matches("^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+")) {
+        // Bounded repetition avoids pathological backtracking on long inputs (Sonar S5998).
+        if (entityName.length() <= 256
+                && entityName.matches("^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{1,48}(\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{1,48}){1,8}$")) {
             return EntityType.PERSON;
         }
         

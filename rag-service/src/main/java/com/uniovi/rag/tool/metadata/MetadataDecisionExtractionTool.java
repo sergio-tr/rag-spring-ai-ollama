@@ -370,7 +370,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         
         // Extract capitalized words/phrases (likely names or organizations)
         java.util.regex.Pattern namePattern = java.util.regex.Pattern.compile(
-            "\\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)+\\b"
+            "\\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{1,48}(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{1,48}){1,12}\\b"
         );
         java.util.regex.Matcher nameMatcher = namePattern.matcher(decisionText);
         while (nameMatcher.find()) {

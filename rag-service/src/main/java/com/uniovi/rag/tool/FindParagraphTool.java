@@ -115,21 +115,8 @@ public class FindParagraphTool extends AbstractTool {
      * Uses English for internal processing, but preserves original language in content.
      */
     private List<String> findRelevantParagraphsByLLM(Document doc, String query) {
-        if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-            return new ArrayList<>();
-        }
-        
-        List<String> relevant = new ArrayList<>();
-        String content = doc.getText();
-        String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
-        String date = extractor.extractDate(content);
-        
-        for (String paragraph : paragraphs) {
-            if (paragraph != null && !paragraph.trim().isEmpty() && isParagraphRelevantByLLM(query, paragraph)) {
-                relevant.add("Meeting minutes from " + (date != null ? date : "unknown date") + ":\n" + paragraph.trim());
-            }
-        }
-        return relevant;
+        // Same paragraph scan and LLM relevance as findRelevantParagraphs; kept for call-site clarity.
+        return findRelevantParagraphs(doc, query);
     }
 
     /**

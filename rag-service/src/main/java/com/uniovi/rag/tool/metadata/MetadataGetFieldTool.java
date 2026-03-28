@@ -38,6 +38,8 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
     private static final String FIELD_SUMMARY = "summary";
 
+    private static final String LABEL_FECHA = "fecha";
+
     public MetadataGetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -265,9 +267,8 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             case "orden_del_dia":
             case "orden del día":
                 return new String[]{"agenda", "orden_del_dia", "order_of_day", "agenda_raw"};
-            case "date":
-            case "fecha":
-                return new String[]{"date", "fecha", "date_iso"};
+            case "date", LABEL_FECHA:
+                return new String[]{"date", LABEL_FECHA, "date_iso"};
             case "place", "lugar":
                 return new String[]{"place", "lugar", "ubicación"};
             case FIELD_PRESIDENT:
@@ -279,8 +280,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                 return new String[]{FIELD_END_TIME, "hora_fin", "end_time"};
             case FIELD_TOPICS, "temas":
                 return new String[]{FIELD_TOPICS, "temas"};
-            case "decisions":
-            case "decisiones":
+            case "decisions", "decisiones":
                 return new String[]{"decisions", "decisiones", "acuerdos"};
             case FIELD_SUMMARY, "resumen":
                 return new String[]{FIELD_SUMMARY, "resumen"};
@@ -304,7 +304,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         // Priority 1: Check for explicit field requests with context
         // "date of the minute where [president]" -> date (not president)
         if ((containsAny(q, "fecha del acta", "fecha del", "date of the acta", "date where") ||
-             (containsAny(q, "fecha", "date") && containsAny(q, "donde", "where", "acta", "minute"))) &&
+             (containsAny(q, LABEL_FECHA, "date") && containsAny(q, "donde", "where", "acta", "minute"))) &&
             !containsAny(q, "presidió", "presidido", "presided")) {
             log().debug("Classified as 'date' based on context (fecha del acta)");
             return "date";
@@ -342,7 +342,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
 
         // Priority 4: Date (general, after checking context)
-        if (containsAny(q, "fecha", "date", "día", "cuándo", "when")) {
+        if (containsAny(q, LABEL_FECHA, "date", "día", "cuándo", "when")) {
             log().debug("Classified as 'date' (general)");
             return "date";
         }
@@ -352,7 +352,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             log().debug("Classified as 'date' based on NER");
             return "date";
         }
-        if (ner != null && ner.has("location") && !containsAny(q, "fecha", "date")) {
+        if (ner != null && ner.has("location") && !containsAny(q, LABEL_FECHA, "date")) {
             log().debug("Classified as 'place' based on NER");
             return "place";
         }

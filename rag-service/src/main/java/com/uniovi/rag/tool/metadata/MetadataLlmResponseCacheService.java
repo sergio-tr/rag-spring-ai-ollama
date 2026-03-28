@@ -36,36 +36,21 @@ public class MetadataLlmResponseCacheService {
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             try {
-                if (attempt > 0) {
-                    log.debug("Retry attempt {} for LLM call", attempt);
-                    Thread.sleep(500L * attempt);
-                }
-
-                String response = chatClient
-                        .prompt()
-                        .user(prompt)
-                        .call()
-                        .content();
-
-                if (response == null || response.trim().isEmpty()) {
-                    log.warn("Empty response from LLM in getCachedResponse (attempt {})", attempt + 1);
-                    if (attempt >= maxRetries) {
-                        return "";
-                    }
-                } else {
+                sleepBeforeRetryIfNeeded(attempt);
+                String response = invokeLlm(prompt);
+                if (response != null && !response.trim().isEmpty()) {
                     return response.strip();
+                }
+                log.warn("Empty response from LLM in getCachedResponse (attempt {})", attempt + 1);
+                if (attempt >= maxRetries) {
+                    return "";
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.error("Thread interrupted in getCachedResponse", e);
                 return "";
-            } catch (NullPointerException e) {
-                lastException = e;
-                log.error("NullPointerException in getCachedResponse (attempt {}): {}", attempt + 1, e.getMessage(), e);
-                return "";
-            } catch (IllegalArgumentException e) {
-                lastException = e;
-                log.error("IllegalArgumentException in getCachedResponse (attempt {}): {}", attempt + 1, e.getMessage(), e);
+            } catch (NullPointerException | IllegalArgumentException e) {
+                log.error("{} in getCachedResponse (attempt {}): {}", e.getClass().getSimpleName(), attempt + 1, e.getMessage(), e);
                 return "";
             } catch (Exception e) {
                 lastException = e;
@@ -78,6 +63,17 @@ public class MetadataLlmResponseCacheService {
                     maxRetries + 1, lastException.getMessage(), lastException);
         }
         return "";
+    }
+
+    private void sleepBeforeRetryIfNeeded(int attempt) throws InterruptedException {
+        if (attempt > 0) {
+            log.debug("Retry attempt {} for LLM call", attempt);
+            Thread.sleep(500L * attempt);
+        }
+    }
+
+    private String invokeLlm(String prompt) {
+        return chatClient.prompt().user(prompt).call().content();
     }
 
     private static void logLlmExceptionByKind(int attemptOneBased, Exception e) {
