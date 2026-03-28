@@ -81,8 +81,8 @@ class SimpleQueryServiceTest {
         ner.put("any", "1");
         when(expander.expand("p")).thenReturn("p");
         when(analyser.analyse("p")).thenReturn(ner);
-        when(retriever.retrieveWithMetadataFilters(eq("p"), eq(ner))).thenReturn(List.of(new Document("d", java.util.Map.of())));
-        when(retriever.createContext(anyList(), anyString(), eq(ner))).thenReturn("ctx");
+        when(retriever.retrieveWithMetadataFilters("p", ner)).thenReturn(List.of(new Document("d", java.util.Map.of())));
+        when(retriever.createContext(anyList(), anyString(), ner)).thenReturn("ctx");
         ChatClientTestSupport.stubUserPromptReturns(chatClient, "out");
 
         QueryResponse response = service.generateResponse("p");

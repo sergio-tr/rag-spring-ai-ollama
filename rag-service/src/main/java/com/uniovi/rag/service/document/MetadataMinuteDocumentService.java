@@ -37,6 +37,9 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     private static final String PROMPT_HINT_TOPICS = "topics";
 
+    /** Normalized ISO date key in chunk metadata (see {@link #addDerivedFields}). */
+    private static final String METADATA_KEY_DATE_ISO = "date_iso";
+
     /** Fallback: bullet/numbered block after Orden|Agenda|Puntos (complexity isolated for static analysis). */
     private static final Pattern AGENDA_LIKE_BULLET_BLOCK_PATTERN = Pattern.compile(
             "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]+)*)",
@@ -197,8 +200,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         if (content.trim().length() < 20) {
-            log().warn("Content very short for file: {} (length: {}). Processing anyway but extraction may be incomplete.", 
-                      filename, content.length());
+            log().warn("Content very short (length: {}). Processing anyway but extraction may be incomplete.",
+                    content.length());
         }
         
         String date = extractDate(content);
@@ -213,10 +216,9 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         // Log agenda extraction result
         if (agenda == null || agenda.isEmpty()) {
-            log().warn("Agenda is empty for document: {}. Will try fallback from topics.", filename);
+            log().warn("Agenda is empty. Will try fallback from topics.");
         } else {
-            log().info("Extracted agenda with {} items (document name length: {})", agenda.size(),
-                    filename != null ? filename.length() : 0);
+            log().info("Extracted agenda with {} items", agenda.size());
         }
 
         MetadataMinuteDocumentService ext = extraction();
@@ -443,7 +445,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Pattern for common decision phrases in Spanish
         Pattern decisionPattern = Pattern.compile(
             "(?i)(?:se\\s+acordó|se\\s+decidió|se\\s+aprobó|se\\s+resolvió|se\\s+decide|se\\s+acuerda|se\\s+aprueba)[:.]?\\s*(.+?)(?:\\.|$|\\n)",
-            Pattern.MULTILINE | Pattern.DOTALL
+            Pattern.MULTILINE | Pattern.DOTALL | Pattern.UNICODE_CASE
         );
         
         Matcher matcher = decisionPattern.matcher(bounded);
@@ -656,11 +658,11 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         addDerivedFields(metadata);
         
         // Validate that date_iso was generated successfully
-        if (metadata.containsKey("date") && !metadata.containsKey("date_iso")) {
-            String dateValue = metadata.get("date") != null ? metadata.get("date").toString() : "null";
-            log().warn("date_iso was not generated for document with date: {}. This may cause date filtering issues.", dateValue);
-        } else if (metadata.containsKey("date_iso")) {
-            log().debug("date_iso successfully generated: {}", metadata.get("date_iso"));
+        if (metadata.containsKey("date") && !metadata.containsKey(METADATA_KEY_DATE_ISO)) {
+            log().warn("Derived {} was not set while date is present. This may cause date filtering issues.",
+                    METADATA_KEY_DATE_ISO);
+        } else if (metadata.containsKey(METADATA_KEY_DATE_ISO)) {
+            log().debug("{} successfully generated", METADATA_KEY_DATE_ISO);
         }
         
         warnIfMissingOptionalContent(metadata);
@@ -784,7 +786,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 }
             }
             if (parsed != null) {
-                metadata.put("date_iso", parsed.format(DateTimeFormatter.ISO_LOCAL_DATE));
+                metadata.put(METADATA_KEY_DATE_ISO, parsed.format(DateTimeFormatter.ISO_LOCAL_DATE));
                 metadata.put("year", parsed.getYear());
                 metadata.put("month", parsed.getMonthValue());
             }
@@ -1535,7 +1537,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             .map(name -> name.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim())
             .filter(name -> !name.isEmpty())
             // Filter out descriptive text that might have been captured
-            .filter(name -> !name.toLowerCase().matches(".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*"))
+            .filter(name -> !ATTENDEE_DESCRIPTOR_NOISE_PATTERN.matcher(name).matches())
             .distinct()
             .collect(Collectors.toList());
         
@@ -1551,7 +1553,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        log().info("Extracted {} attendees: {}", attendees.size(), attendees);
+        log().info("Extracted {} attendees", attendees.size());
         return attendees;
     }
     

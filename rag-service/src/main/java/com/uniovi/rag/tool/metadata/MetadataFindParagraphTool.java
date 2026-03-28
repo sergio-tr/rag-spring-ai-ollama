@@ -382,7 +382,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         }
         
         // Ultimate fallback
-        return String.format("Found %d relevant paragraphs:\n%s",
+        return String.format("Found %d relevant paragraphs:%n%s",
                           results.size(), resultsText);
     }
 

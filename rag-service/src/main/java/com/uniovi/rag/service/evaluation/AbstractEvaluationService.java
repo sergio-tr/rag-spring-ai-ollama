@@ -222,7 +222,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
      * Loads specific data using a provided document service.
      * This allows loading documents with a custom configuration.
      */
-    protected void loadSpecificDataWithService(@SuppressWarnings("unused") DocumentService docService) {
+    protected void loadSpecificDataWithService(DocumentService docService) {
+        log().debug("Default loadSpecificData path (documentService bean present: {})", docService != null);
         loadSpecificData(); // Default implementation uses HTTP endpoint
         // Subclasses can override to use docService directly
     }

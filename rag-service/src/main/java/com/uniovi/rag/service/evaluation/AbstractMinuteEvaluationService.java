@@ -68,6 +68,7 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
             log().info("Successfully loaded file: {}", file.getName());
         } catch (Exception e) {
             log().error("Error loading file: {}", file.getName(), e);
+            // Best-effort batch load: continue with remaining PDFs; failure is recorded above.
         }
     }
 

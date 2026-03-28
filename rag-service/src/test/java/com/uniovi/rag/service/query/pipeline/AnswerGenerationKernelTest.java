@@ -20,7 +20,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -96,7 +95,7 @@ class AnswerGenerationKernelTest {
         when(featureConfig.isUseRetrieval()).thenReturn(true);
         ContextRetriever retriever = mock(ContextRetriever.class);
         when(callResponseSpec.content()).thenReturn("Ha ha.");
-        when(responseValidator.validateAndClean(eq("Ha ha."), eq("ProcessQueryService-DirectGeneral"))).thenReturn("Ha ha.");
+        when(responseValidator.validateAndClean("Ha ha.", "ProcessQueryService-DirectGeneral")).thenReturn("Ha ha.");
 
         AnswerGenerationKernel kernel = new AnswerGenerationKernel(
                 featureConfig,
@@ -118,8 +117,8 @@ class AnswerGenerationKernelTest {
 
         when(callResponseSpec.content()).thenReturn("Why did the chicken cross the road?");
         when(responseValidator.validateAndClean(
-                eq("Why did the chicken cross the road?"),
-                eq("ProcessQueryService-ReasoningDirect"))).thenReturn("Why did the chicken cross the road?");
+                "Why did the chicken cross the road?",
+                "ProcessQueryService-ReasoningDirect")).thenReturn("Why did the chicken cross the road?");
 
         AnswerGenerationKernel kernel = new AnswerGenerationKernel(
                 featureConfig,
@@ -165,7 +164,7 @@ class AnswerGenerationKernelTest {
         when(retriever.retrieve(any())).thenReturn(List.of(new Document("fragment")));
         when(retriever.createContext(any(), anyString(), any())).thenReturn("retrieved context");
         when(callResponseSpec.content()).thenReturn("Synthesized answer.");
-        when(responseValidator.validateAndClean(eq("Synthesized answer."), eq("ProcessQueryService"))).thenReturn("Synthesized answer.");
+        when(responseValidator.validateAndClean("Synthesized answer.", "ProcessQueryService")).thenReturn("Synthesized answer.");
 
         AnswerGenerationKernel kernel = new AnswerGenerationKernel(
                 featureConfig,

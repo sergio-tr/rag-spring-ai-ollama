@@ -284,7 +284,7 @@ public class EnhancedNERHandler implements Loggable {
      * Checks if NER indicates a specific section query
      */
     public boolean isSectionSpecificQuery(JSONObject ner) {
-        return ner != null && ner.has("section") && ner.getJSONArray("section").length() > 0;
+        return ner != null && ner.has(NER_KEY_SECTION) && ner.getJSONArray(NER_KEY_SECTION).length() > 0;
     }
 
     /**

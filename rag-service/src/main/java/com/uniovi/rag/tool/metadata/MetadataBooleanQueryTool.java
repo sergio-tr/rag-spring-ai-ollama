@@ -31,82 +31,109 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
 
     @Override
     public ToolResult execute(ToolExecutionContext ctx) {
-        String query = ctx.query();
-        JSONObject ner = ctx.nerEntities();
-        
+        return runBooleanQuery(ctx.query(), ctx.nerEntities());
+    }
+
+    private ToolResult runBooleanQuery(String query, JSONObject ner) {
         log().info("Executing boolean query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
-        
-        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
-        List<Document> docs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "decisions", "topics", "summary", "attendees"}, ner);
 
-        // Step 1.4: Handle "person X appears in minutes on date Y" (Spanish confirmation-style queries)
-        if (!docs.isEmpty() && isPersonInActaOnDateQuery(query)) {
-            ToolResult personResult = handlePersonInActaOnDateQuery(query, docs, ner);
-            if (personResult != null) {
-                return personResult;
-            }
+        List<Document> docs = retrieveDocumentsWithFallback(
+                query, new String[] {"date", "place", "decisions", "topics", "summary", "attendees"}, ner);
+
+        ToolResult early = tryPersonInActaOnDateQuery(query, docs, ner);
+        if (early != null) {
+            return early;
         }
 
-        // Step 1.5: Filter by year first (e.g. "seguridad en 2026") so keyword validation runs on the correct subset
-        String requestedYear = extractYearFromQuery(query, ner);
-        if (requestedYear != null && !docs.isEmpty()) {
-            log().info("Filtering documents by year: {} (includes 2026 when present in docs)", requestedYear);
-            List<Document> filteredDocs = filterDocumentsByYear(docs, requestedYear);
-            if (filteredDocs.isEmpty()) {
-                log().info("No documents found for year {} in query: {}", requestedYear, query);
-                String errorMessage = generateSpecificErrorMessage(query, "year", requestedYear, docs.size(), "No documents found for this year");
-                return ToolResult.from(formatResponse(errorMessage, query), getClass());
-            }
-            docs = filteredDocs;
-            log().info("Filtered to {} documents for year {}", docs.size(), requestedYear);
+        DocumentsOrEarlyExit yearStep = applyYearFilter(query, ner, docs);
+        if (yearStep.earlyExit() != null) {
+            return yearStep.earlyExit();
+        }
+        docs = yearStep.documents();
+        ToolResult keywordError = validateTopicKeywordIfNeeded(query, ner, docs);
+        if (keywordError != null) {
+            return keywordError;
         }
 
-        // Step 1.6: Extract keyword and validate (skip for voting queries: evidence from decisions is enough)
-        boolean isVotingQuery = isVotingOrDecisionQuery(query);
-        String keyword = extractTopicFromQuery(query, ner);
-        if (!isVotingQuery && keyword != null && !keyword.trim().isEmpty() && !docs.isEmpty()) {
-            log().info("Validating keyword '{}' exists in documents with precise matching", keyword);
-            boolean keywordExists = validateKeywordExistsPrecise(docs, keyword, query);
-            if (!keywordExists) {
-                log().info("Keyword '{}' not found in any documents (precise match) for query: {}", keyword, query);
-                String errorMessage = generateSpecificErrorMessage(query, "keyword", keyword, docs.size(), "The keyword was not found in any documents");
-                return ToolResult.from(formatResponse(errorMessage, query), getClass());
-            }
-            log().info("Keyword '{}' validated as existing in documents", keyword);
-        }
-        
         if (docs.isEmpty()) {
             log().info("No documents found for query: {}", query);
             return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
-        // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for query: {}", query);
             return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
-        // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for query: {}", query);
             return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
-        // Step 4: Extract evidence in parallel (metadata-first, LLM as fallback per minute)
         List<String> evidence = extractEvidenceInParallel(query, relevantMinutes);
-        
         if (evidence.isEmpty()) {
             log().info("No evidence found for query: {}", query);
             return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
         }
 
-        // Step 5: Generate final answer
         String answer = generateBooleanAnswerWithLLM(query, evidence, relevantMinutes.size());
         log().info("Generated answer for query: {} with {} evidence pieces", query, evidence.size());
-        
         return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private ToolResult tryPersonInActaOnDateQuery(String query, List<Document> docs, JSONObject ner) {
+        if (docs.isEmpty() || !isPersonInActaOnDateQuery(query)) {
+            return null;
+        }
+        return handlePersonInActaOnDateQuery(query, docs, ner);
+    }
+
+    private DocumentsOrEarlyExit applyYearFilter(String query, JSONObject ner, List<Document> docs) {
+        String requestedYear = extractYearFromQuery(query, ner);
+        if (requestedYear == null || docs.isEmpty()) {
+            return DocumentsOrEarlyExit.proceed(docs);
+        }
+        log().info("Filtering documents by year: {} (includes 2026 when present in docs)", requestedYear);
+        List<Document> filteredDocs = filterDocumentsByYear(docs, requestedYear);
+        if (filteredDocs.isEmpty()) {
+            log().info("No documents found for year {} in query: {}", requestedYear, query);
+            String errorMessage = generateSpecificErrorMessage(query, "year", requestedYear, docs.size(),
+                    "No documents found for this year");
+            return DocumentsOrEarlyExit.exit(ToolResult.from(formatResponse(errorMessage, query), getClass()));
+        }
+        log().info("Filtered to {} documents for year {}", filteredDocs.size(), requestedYear);
+        return DocumentsOrEarlyExit.proceed(filteredDocs);
+    }
+
+    private record DocumentsOrEarlyExit(List<Document> documents, ToolResult earlyExit) {
+        static DocumentsOrEarlyExit proceed(List<Document> documents) {
+            return new DocumentsOrEarlyExit(documents, null);
+        }
+
+        static DocumentsOrEarlyExit exit(ToolResult earlyExit) {
+            return new DocumentsOrEarlyExit(null, earlyExit);
+        }
+    }
+
+    private ToolResult validateTopicKeywordIfNeeded(String query, JSONObject ner, List<Document> docs) {
+        if (docs.isEmpty() || isVotingOrDecisionQuery(query)) {
+            return null;
+        }
+        String keyword = extractTopicFromQuery(query, ner);
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return null;
+        }
+        log().info("Validating keyword '{}' exists in documents with precise matching", keyword);
+        if (validateKeywordExistsPrecise(docs, keyword, query)) {
+            log().info("Keyword '{}' validated as existing in documents", keyword);
+            return null;
+        }
+        log().info("Keyword '{}' not found in any documents (precise match) for query: {}", keyword, query);
+        String errorMessage = generateSpecificErrorMessage(query, "keyword", keyword, docs.size(),
+                "The keyword was not found in any documents");
+        return ToolResult.from(formatResponse(errorMessage, query), getClass());
     }
 
     /**
