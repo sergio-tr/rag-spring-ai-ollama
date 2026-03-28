@@ -16,6 +16,7 @@ import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.evaluation.DatasetMinuteEvaluationService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
+import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -48,12 +49,14 @@ public class RagEvaluationConfiguration {
         @Value("${rag.expansion.max-query-total-chars:512}") int expansionMaxQueryTotalChars,
         @Value("${rag.expansion.max-query-length-for-llm:500}") int expansionMaxQueryLengthForLlm,
         @Value("${rag.expansion.retry-query-length:200}") int expansionRetryQueryLength,
-        OllamaConnectivityChecker ollamaConnectivityChecker
+        OllamaConnectivityChecker ollamaConnectivityChecker,
+        MetadataLlmResponseCacheService metadataLlmResponseCacheService
     ) {
         return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
                 classifierServiceUrl, classifierModelId, classifierTimeoutMs, chunkMaxChars, responseValidator, documentContentExtractor,
                 expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
-                expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker);
+                expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker,
+                metadataLlmResponseCacheService);
     }
 
     @Bean

@@ -164,7 +164,7 @@ public class CountAndExplainTool extends AbstractTool {
     private String generateFinalAnswerWithLLM(String query, List<String> matchedIds, List<String> explanations) {
         List<String> uniqueIds = matchedIds == null
                 ? List.of()
-                : matchedIds.stream().filter(Objects::nonNull).distinct().limit(20).collect(Collectors.toList());
+                : matchedIds.stream().filter(Objects::nonNull).distinct().limit(20).toList();
 
         String idsBlock = uniqueIds.isEmpty()
                 ? "(none)"

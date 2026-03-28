@@ -32,7 +32,7 @@ public class FaithfulnessRanker implements ResponseRanker {
         if (candidates.size() == 1) {
             return RankerResult.of(candidates.get(0).text(), 0, List.of(1.0));
         }
-        String contextExcerpt = context != null && context.length() > 600 ? context.substring(0, 600) + "..." : (context != null ? context : "");
+        String contextExcerpt = truncateForRankerContext(context, 600);
         List<Double> scores = new ArrayList<>();
         for (CandidateResponse c : candidates) {
             double score = scoreCandidate(contextExcerpt, c.text());
@@ -55,5 +55,15 @@ public class FaithfulnessRanker implements ResponseRanker {
         } catch (Exception e) {
             return 0.0;
         }
+    }
+
+    private static String truncateForRankerContext(String context, int maxLen) {
+        if (context == null) {
+            return "";
+        }
+        if (context.length() <= maxLen) {
+            return context;
+        }
+        return context.substring(0, maxLen) + "...";
     }
 }

@@ -191,7 +191,6 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             throw e;
         } catch (Exception e) {
             log().error("Error processing PDF file: " + filename, e);
-            e.printStackTrace();
             throw new RuntimeException("Error processing the PDF " + filename + ": " + e.getMessage(), e);
         }
     }

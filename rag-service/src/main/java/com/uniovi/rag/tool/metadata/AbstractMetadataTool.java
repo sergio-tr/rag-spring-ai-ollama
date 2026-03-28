@@ -27,8 +27,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    public AbstractMetadataTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+    private final MetadataLlmResponseCacheService llmResponseCache;
+
+    public AbstractMetadataTool(
+            ChatClient chatClient,
+            ContextRetriever retriever,
+            DocumentContentExtractor extractor,
+            MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor);
+        this.llmResponseCache = llmResponseCache;
     }
 
     protected boolean matchesBooleanCondition(Document doc, String query, JSONObject nerEntities) {
@@ -661,7 +668,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             
             List<String> minuteEntityList = minute.mentionedEntities().stream()
                     .filter(e -> e != null && !e.trim().isEmpty())
-                    .collect(Collectors.toList());
+                    .toList();
             
             if (minuteEntityList.isEmpty()) {
                 return false; // No minute entities to match against
@@ -1670,125 +1677,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
-     * Cached LLM response with error handling and validation.
-     * Returns empty string if LLM call fails or response is empty.
+     * Delegates to {@link MetadataLlmResponseCacheService} so {@code @Cacheable} runs through the Spring proxy.
      */
-    @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
     protected String getLLMResponseCached(String prompt) {
-        if (prompt == null || prompt.trim().isEmpty()) {
-            log().warn("Empty prompt provided to getLLMResponseCached");
-            return "";
-        }
-        
-        // Retry logic for transient errors
-        int maxRetries = 2;
-        Exception lastException = null;
-        
-        for (int attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-                if (attempt > 0) {
-                    log().debug("Retry attempt {} for LLM call", attempt);
-                    Thread.sleep(500 * attempt); // Exponential backoff
-                }
-                
-                String response = chatClient
-                        .prompt()
-                        .user(prompt)
-                        .call()
-                        .content();
-                
-                if (response == null || response.trim().isEmpty()) {
-                    log().warn("Empty response from LLM in getLLMResponseCached (attempt {})", attempt + 1);
-                    if (attempt < maxRetries) {
-                        continue; // Retry on empty response
-                    }
-                    return "";
-                }
-                
-                return response.strip();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log().error("Thread interrupted in getLLMResponseCached", e);
-                return "";
-            } catch (NullPointerException e) {
-                lastException = e;
-                log().error("NullPointerException in getLLMResponseCached (attempt {}): {}", attempt + 1, e.getMessage(), e);
-                // Don't retry on NPE, likely a code issue
-                return "";
-            } catch (IllegalArgumentException e) {
-                lastException = e;
-                log().error("IllegalArgumentException in getLLMResponseCached (attempt {}): {}", attempt + 1, e.getMessage(), e);
-                // Don't retry on illegal argument, likely a code issue
-                return "";
-            } catch (Exception e) {
-                lastException = e;
-                String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-                String className = e.getClass().getName();
-                
-                // Check if it's a timeout-related error (even if not explicitly TimeoutException)
-                boolean isTimeout = errorMsg.contains("timeout") || 
-                                  errorMsg.contains("timed out") ||
-                                  className.contains("Timeout");
-                
-                // Check if it's a network-related error
-                boolean isNetworkError = errorMsg.contains("connection") ||
-                                       errorMsg.contains("network") ||
-                                       errorMsg.contains("socket") ||
-                                       className.contains("Connection") ||
-                                       className.contains("Network");
-                
-                if (isTimeout || isNetworkError) {
-                    log().warn("Timeout/network error in getLLMResponseCached (attempt {}): {}", attempt + 1, e.getMessage());
-                } else {
-                    log().error("Error in getLLMResponseCached (attempt {}): {}", attempt + 1, e.getMessage(), e);
-                }
-                
-                // Retry on timeout/network errors or other retryable exceptions
-                if (attempt < maxRetries && (isTimeout || isNetworkError || isRetryableException(e))) {
-                    continue;
-                }
-            }
-        }
-        
-        // All retries failed
-        if (lastException != null) {
-            log().error("Failed to get LLM response after {} attempts. Last error: {}", 
-                       maxRetries + 1, lastException.getMessage(), lastException);
-        }
-        return "";
-    }
-    
-    /**
-     * Determines if an exception is retryable.
-     * PHASE 10: Helper method to identify retryable exceptions.
-     */
-    private boolean isRetryableException(Throwable e) {
-        if (e == null) {
-            return false;
-        }
-        
-        String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-        String className = e.getClass().getName().toLowerCase();
-        
-        // Retry on network-related errors
-        if (className.contains("timeout") || 
-            className.contains("connection") ||
-            className.contains("network") ||
-            errorMsg.contains("timeout") ||
-            errorMsg.contains("connection") ||
-            errorMsg.contains("network")) {
-            return true;
-        }
-        
-        // Don't retry on programming errors
-        if (e instanceof NullPointerException ||
-            e instanceof IllegalArgumentException ||
-            e instanceof IllegalStateException) {
-            return false;
-        }
-        
-        // Default: retry on other exceptions (conservative approach)
-        return true;
+        return llmResponseCache.getCachedResponse(prompt);
     }
 
     /**
@@ -2859,9 +2751,28 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         return null;
     }
 
+    private boolean documentMatchesYear(Document doc, String year) {
+        String docDate = getDocumentDate(doc);
+        if (docDate == null) {
+            return false;
+        }
+        if (docDate.contains(year)) {
+            return true;
+        }
+        try {
+            java.time.LocalDate parsedDate = parseDateFlexible(docDate);
+            if (parsedDate != null) {
+                return String.valueOf(parsedDate.getYear()).equals(year);
+            }
+        } catch (Exception e) {
+            log().debug("Error parsing date '{}' for year filtering: {}", docDate, e.getMessage());
+        }
+        return false;
+    }
+
     /**
      * Filters documents by year using date metadata.
-     * 
+     *
      * @param docs List of documents to filter
      * @param year Year to filter by (e.g., "2025")
      * @return Filtered list of documents from the specified year
@@ -2870,33 +2781,16 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (docs == null || docs.isEmpty() || year == null || year.trim().isEmpty()) {
             return docs != null ? docs : new ArrayList<>();
         }
-        
+
         log().info("Filtering {} documents by year: {}", docs.size(), year);
-        
+
         List<Document> filtered = new ArrayList<>();
-        
         for (Document doc : docs) {
-            if (doc == null) continue;
-            
-            String docDate = getDocumentDate(doc);
-            if (docDate != null) {
-                // Check if document date contains the year
-                if (docDate.contains(year)) {
-                    filtered.add(doc);
-                } else {
-                    // Try parsing the date to extract year
-                    try {
-                        java.time.LocalDate parsedDate = parseDateFlexible(docDate);
-                        if (parsedDate != null) {
-                            String docYear = String.valueOf(parsedDate.getYear());
-                            if (docYear.equals(year)) {
-                                filtered.add(doc);
-                            }
-                        }
-                    } catch (Exception e) {
-                        log().debug("Error parsing date '{}' for year filtering: {}", docDate, e.getMessage());
-                    }
-                }
+            if (doc == null) {
+                continue;
+            }
+            if (documentMatchesYear(doc, year)) {
+                filtered.add(doc);
             }
         }
         

@@ -20,8 +20,9 @@ import java.util.stream.Collectors;
  */
 public class MetadataBooleanQueryTool extends AbstractMetadataTool {
 
-    public MetadataBooleanQueryTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
-        super(chatClient, retriever, extractor);
+    public MetadataBooleanQueryTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
+            MetadataLlmResponseCacheService llmResponseCache) {
+        super(chatClient, retriever, extractor, llmResponseCache);
     }
 
     @Override

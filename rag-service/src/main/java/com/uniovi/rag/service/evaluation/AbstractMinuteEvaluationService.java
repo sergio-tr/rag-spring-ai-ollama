@@ -64,7 +64,7 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
             }
         } catch (Exception e) {
             log().error("Error loading files from docs directory", e);
-            throw new RuntimeException("Error al cargar archivos desde la carpeta actas", e);
+            throw new IllegalStateException("Failed to load files from docs directory", e);
         }
     }
     

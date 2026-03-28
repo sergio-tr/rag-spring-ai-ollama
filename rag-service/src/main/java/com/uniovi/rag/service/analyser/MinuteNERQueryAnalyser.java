@@ -26,6 +26,8 @@ import java.util.regex.Pattern;
  */
 public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
+    private static final String JSON_KEY_ATTENDEES = "attendees";
+
     // Enhanced prompt with multilingual support and better examples
     private static final String NER_PROMPT = """
         Analyze the following <query> to extract key entities that may be present in meeting minutes.
@@ -309,8 +311,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     private void validateAndNormalize(JSONObject json) {
         // List of all expected fields
         String[] fields = {
-            "date", "place", "startTime", "endTime", "president", "secretary", 
-            "attendees", "numberOfAttendees", "agenda", "decisions", 
+            "date", "place", "startTime", "endTime", "president", "secretary",
+            JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", "decisions", 
             "mentionedEntities", "topics", "section", "summary", "answerType",
             "comparisonType", "temporalContext"
         };
@@ -528,7 +530,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     private void normalizeNames(JSONObject json) {
         normalizeNameField(json, "president");
         normalizeNameField(json, "secretary");
-        normalizeNameField(json, "attendees");
+        normalizeNameField(json, JSON_KEY_ATTENDEES);
     }
 
     /**
@@ -617,7 +619,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
                 if (queryLower.contains("duration") || queryLower.contains("duración")) {
                     json.put("comparisonType", "duration");
                 } else if (queryLower.contains("attendee") || queryLower.contains("asistente")) {
-                    json.put("comparisonType", "attendees");
+                    json.put("comparisonType", JSON_KEY_ATTENDEES);
                 } else if (queryLower.contains("topic") || queryLower.contains("tema")) {
                     json.put("comparisonType", "topics");
                 } else if (queryLower.contains("decision") || queryLower.contains("decisión")) {
@@ -704,8 +706,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         }
         
         // Fill remaining fields
-        String[] fields = {"place", "startTime", "endTime", "president", "secretary", 
-                          "attendees", "numberOfAttendees", "agenda", "decisions", 
+        String[] fields = {"place", "startTime", "endTime", "president", "secretary",
+                          JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", "decisions", 
                           "mentionedEntities", "topics", "section", "summary"};
         
         for (String field : fields) {

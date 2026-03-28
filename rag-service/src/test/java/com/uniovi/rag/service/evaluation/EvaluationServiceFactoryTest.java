@@ -7,6 +7,7 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.service.query.SimpleQueryService;
+import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -31,6 +32,7 @@ class EvaluationServiceFactoryTest {
         ResponseValidator responseValidator = mock(ResponseValidator.class);
         DocumentContentExtractor documentContentExtractor = mock(DocumentContentExtractor.class);
         OllamaConnectivityChecker ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
+        MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         factory = new EvaluationServiceFactory(
@@ -51,7 +53,8 @@ class EvaluationServiceFactoryTest {
                 512,
                 500,
                 200,
-                ollamaConnectivityChecker
+                ollamaConnectivityChecker,
+                metadataLlmResponseCacheService
         );
         featureConfig = new RagFeatureConfiguration();
         implProps = new RagImplementationProperties();

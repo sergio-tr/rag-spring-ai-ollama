@@ -13,6 +13,8 @@ import java.util.Map;
  */
 public final class TracedEvaluationService implements EvaluationService {
 
+    private static final String SPAN_RESULT_KEY = "result";
+
     private final EvaluationService delegate;
     private final ObservabilitySupport observability;
 
@@ -29,7 +31,7 @@ public final class TracedEvaluationService implements EvaluationService {
                         // Domain convention: evaluation execution
                         "rag.evaluation.run",
                         Map.of(),
-                        "result",
+                        SPAN_RESULT_KEY,
                         () -> delegate.evaluate()
                 ));
     }
@@ -44,7 +46,7 @@ public final class TracedEvaluationService implements EvaluationService {
                 observability.runWithSpan(
                         "rag.evaluation.run",
                         Map.of("rag.evaluation.id", configLabel),
-                        "result",
+                        SPAN_RESULT_KEY,
                         () -> delegate.evaluateWithConfiguration(customConfig, implementationProperties)
                 ));
     }
@@ -56,7 +58,7 @@ public final class TracedEvaluationService implements EvaluationService {
                 observability.runWithSpan(
                         "rag.evaluation.run",
                         Map.of("rag.evaluation.id", "all"),
-                        "result",
+                        SPAN_RESULT_KEY,
                         () -> delegate.evaluateAllConfigurations()
                 ));
     }
@@ -80,7 +82,7 @@ public final class TracedEvaluationService implements EvaluationService {
         return observability.runWithSpan(
                 "rag.evaluation.run",
                 Map.of(),
-                "result",
+                SPAN_RESULT_KEY,
                 () -> delegate.getQuestionsAndAnswers()
         );
     }

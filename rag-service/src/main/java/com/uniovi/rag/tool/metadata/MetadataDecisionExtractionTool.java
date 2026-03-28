@@ -21,8 +21,9 @@ import java.util.stream.Collectors;
  */
 public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
 
-    public MetadataDecisionExtractionTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
-        super(chatClient, retriever, extractor);
+    public MetadataDecisionExtractionTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
+            MetadataLlmResponseCacheService llmResponseCache) {
+        super(chatClient, retriever, extractor, llmResponseCache);
     }
 
     @Override
@@ -532,7 +533,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         }
         
         // Ultimate fallback
-        return String.format("Found %d relevant decisions:\n%s",
+        return String.format("Found %d relevant decisions:%n%s",
                           decisions.size(), decisionsText);
     }
 
