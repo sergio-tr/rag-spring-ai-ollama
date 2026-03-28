@@ -9,6 +9,8 @@ import org.springframework.cache.annotation.Cacheable;
 import com.uniovi.rag.model.Minute;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -28,7 +30,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final String METADATA_KEY_END_TIME = "endTime";
 
+    private static final String QUERY_TYPE_GENERAL = "general";
+
     private final MetadataLlmResponseCacheService llmResponseCache;
+
+    /** Spring-injected proxy so {@code @Cacheable} methods are not invoked via {@code this} (self-invocation). */
+    private AbstractMetadataTool cacheableSelf;
 
     public AbstractMetadataTool(
             ChatClient chatClient,
@@ -37,6 +44,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor);
         this.llmResponseCache = llmResponseCache;
+    }
+
+    @Autowired
+    public void setCacheableSelf(@Lazy AbstractMetadataTool cacheableSelf) {
+        this.cacheableSelf = cacheableSelf;
+    }
+
+    private AbstractMetadataTool cacheable() {
+        return cacheableSelf != null ? cacheableSelf : this;
     }
 
     protected boolean matchesBooleanCondition(Document doc, String query, JSONObject nerEntities) {
@@ -617,8 +633,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             
             // Use validateLLMFilterResponse for consistent validation
             Boolean validated = validateLLMFilterResponse(result, "agenda items matching");
-            boolean matches = validated != null ? validated : true; // Default to true to avoid false negatives
-            
+            boolean matches = validated == null || validated; // Default to true to avoid false negatives
+
             if (matches) {
                 log().info("Found matching agenda items. NER agenda: {}, Minute agenda: {}", 
                            nerAgendaItems, minuteAgendaItems);
@@ -776,71 +792,65 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                    minute.id(), startTimeStr, normalizedStart, endTimeStr, normalizedEnd);
         
         try {
-            // Try parsing with TIME_FORMATTER (HH:mm)
             LocalTime start = LocalTime.parse(normalizedStart, TIME_FORMATTER);
             LocalTime end = LocalTime.parse(normalizedEnd, TIME_FORMATTER);
-            
-            // Validate: end time should be after start time
-            if (end.isBefore(start) || end.equals(start)) {
-                log().warn("Invalid duration: endTime ({}) is not after startTime ({}) for minute {} (date: {})", 
-                          normalizedEnd, normalizedStart, minute.id(), minute.date());
-                // Check if end time is on next day (e.g., meeting ends at 01:00 next day)
-                if (end.isBefore(start)) {
-                    // Assume next day: add 24 hours
-                    int duration = (24 * 60) - (start.getHour() * 60 + start.getMinute()) + 
-                                  (end.getHour() * 60 + end.getMinute());
-                    log().debug("Calculated duration assuming next day: {} minutes ({}h{}m) for minute {} (date: {})", 
-                              duration, duration / 60, duration % 60, minute.id(), minute.date());
-                    return duration > 0 && duration <= 24 * 60 ? duration : 0;
-                }
-                return 0;
-            }
-            
-            // Calculate duration in minutes
-            int startMinutes = start.getHour() * 60 + start.getMinute();
-            int endMinutes = end.getHour() * 60 + end.getMinute();
-            int duration = endMinutes - startMinutes;
-            
-            // Validate: duration should be reasonable (between 1 minute and 24 hours)
-            if (duration < 1) {
-                log().warn("Invalid duration: {} minutes (too short) for minute {} (date: {}, start: {}, end: {})", 
-                          duration, minute.id(), minute.date(), normalizedStart, normalizedEnd);
-                return 0;
-            }
-            if (duration > 24 * 60) {
-                log().warn("Invalid duration: {} minutes (too long, >24h) for minute {} (date: {}, start: {}, end: {})", 
-                          duration, minute.id(), minute.date(), normalizedStart, normalizedEnd);
-                return 0;
-            }
-            
-            log().info("Calculated duration: {} minutes ({}h{}m) for minute {} (date: {}, start: {}, end: {})", 
-                      duration, duration / 60, duration % 60, minute.id(), minute.date(), normalizedStart, normalizedEnd);
-            return duration;
+            return computeDurationFromParsedTimes(start, end, minute, normalizedStart, normalizedEnd);
         } catch (DateTimeParseException e) {
             log().warn("Cannot parse normalized times for duration calculation: startTime='{}', endTime='{}' for minute {} (date: {}). Error: {}", 
                       normalizedStart, normalizedEnd, minute.id(), minute.date(), e.getMessage());
-            
-            // Try alternative formats
-            try {
-                // Try HH:mm:ss format
-                LocalTime start = LocalTime.parse(normalizedStart, 
-                    DateTimeFormatter.ofPattern("HH:mm:ss"));
-                LocalTime end = LocalTime.parse(normalizedEnd, 
-                    DateTimeFormatter.ofPattern("HH:mm:ss"));
-                int startMinutes = start.getHour() * 60 + start.getMinute();
-                int endMinutes = end.getHour() * 60 + end.getMinute();
-                int duration = endMinutes - startMinutes;
-                log().debug("Parsed times with HH:mm:ss format, duration: {} minutes ({}h{}m)", 
-                          duration, duration / 60, duration % 60);
-                return duration > 0 && duration <= 24 * 60 ? duration : 0;
-            } catch (DateTimeParseException e2) {
-                log().warn("Failed to parse times with alternative format for minute {} (date: {})", 
-                          minute.id(), minute.date());
-                return 0;
-            }
+            return tryDurationWithHhMmSsFallback(normalizedStart, normalizedEnd, minute);
         } catch (Exception ex) {
             log().error("Unexpected error calculating duration for minute {} (date: {}): {}", 
                        minute.id(), minute.date(), ex.getMessage(), ex);
+            return 0;
+        }
+    }
+
+    private int computeDurationFromParsedTimes(LocalTime start, LocalTime end, Minute minute,
+            String normalizedStart, String normalizedEnd) {
+        if (end.isBefore(start) || end.equals(start)) {
+            log().warn("Invalid duration: endTime ({}) is not after startTime ({}) for minute {} (date: {})",
+                    normalizedEnd, normalizedStart, minute.id(), minute.date());
+            if (end.isBefore(start)) {
+                int duration = (24 * 60) - (start.getHour() * 60 + start.getMinute())
+                        + (end.getHour() * 60 + end.getMinute());
+                log().debug("Calculated duration assuming next day: {} minutes ({}h{}m) for minute {} (date: {})",
+                        duration, duration / 60, duration % 60, minute.id(), minute.date());
+                return duration > 0 && duration <= 24 * 60 ? duration : 0;
+            }
+            return 0;
+        }
+        int startMinutes = start.getHour() * 60 + start.getMinute();
+        int endMinutes = end.getHour() * 60 + end.getMinute();
+        int duration = endMinutes - startMinutes;
+        if (duration < 1) {
+            log().warn("Invalid duration: {} minutes (too short) for minute {} (date: {}, start: {}, end: {})",
+                    duration, minute.id(), minute.date(), normalizedStart, normalizedEnd);
+            return 0;
+        }
+        if (duration > 24 * 60) {
+            log().warn("Invalid duration: {} minutes (too long, >24h) for minute {} (date: {}, start: {}, end: {})",
+                    duration, minute.id(), minute.date(), normalizedStart, normalizedEnd);
+            return 0;
+        }
+        log().info("Calculated duration: {} minutes ({}h{}m) for minute {} (date: {}, start: {}, end: {})",
+                duration, duration / 60, duration % 60, minute.id(), minute.date(), normalizedStart, normalizedEnd);
+        return duration;
+    }
+
+    private int tryDurationWithHhMmSsFallback(String normalizedStart, String normalizedEnd, Minute minute) {
+        try {
+            LocalTime start = LocalTime.parse(normalizedStart, DateTimeFormatter.ofPattern("HH:mm:ss"));
+            LocalTime end = LocalTime.parse(normalizedEnd, DateTimeFormatter.ofPattern("HH:mm:ss"));
+            int startMinutes = start.getHour() * 60 + start.getMinute();
+            int endMinutes = end.getHour() * 60 + end.getMinute();
+            int duration = endMinutes - startMinutes;
+            log().debug("Parsed times with HH:mm:ss format, duration: {} minutes ({}h{}m)",
+                    duration, duration / 60, duration % 60);
+            return duration > 0 && duration <= 24 * 60 ? duration : 0;
+        } catch (DateTimeParseException e2) {
+            log().warn("Failed to parse times with alternative format for minute {} (date: {})",
+                    minute.id(), minute.date());
             return 0;
         }
     }
@@ -1507,10 +1517,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         log().info("Filtering {} minutes with NER entities", minutes.size());
 
         var ctx = ContextPropagatingFutures.captureContext();
+        AbstractMetadataTool proxy = cacheable();
         return minutes.parallelStream()
-                .filter(minute -> ContextPropagatingFutures.withSnapshot(ctx, () -> matchesMinuteWithNERCached(minute, ner)))
-                .filter(minute -> ContextPropagatingFutures.withSnapshot(ctx, () -> isRelevantToQueryCached(query, minute)))
-                .collect(Collectors.toList());
+                .filter(minute -> ContextPropagatingFutures.withSnapshot(ctx, () -> proxy.matchesMinuteWithNERCached(minute, ner)))
+                .filter(minute -> ContextPropagatingFutures.withSnapshot(ctx, () -> proxy.isRelevantToQueryCached(query, minute)))
+                .toList();
     }
 
     /**
@@ -1530,8 +1541,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
         var ctx = ContextPropagatingFutures.captureContext();
         return minutes.parallelStream()
-                .filter(minute -> ContextPropagatingFutures.withSnapshot(ctx, () -> isRelevantToQueryCached(query, minute)))
-                .collect(Collectors.toList());
+                .filter(minute -> ContextPropagatingFutures.withSnapshot(ctx, () -> cacheable().isRelevantToQueryCached(query, minute)))
+                .toList();
     }
 
     /**
@@ -1618,7 +1629,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      */
     protected String analyzeQueryType(String query) {
         if (query == null || query.trim().isEmpty()) {
-            return "general";
+            return QUERY_TYPE_GENERAL;
         }
         
         String prompt = String.format("""
@@ -1668,11 +1679,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             } else if (result.contains("comparison") || result.contains("compare")) {
                 return "comparison-focused";
             } else {
-                return "general";
+                return QUERY_TYPE_GENERAL;
             }
         } catch (Exception e) {
             log().warn("Error analyzing query type, defaulting to general", e);
-            return "general";
+            return QUERY_TYPE_GENERAL;
         }
     }
 
@@ -2437,7 +2448,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             ),
             // Pattern 5: "attended [Full Name]" (e.g. "In which meetings did X attend?")
             Pattern.compile(
-                "(?i)(?:asistió|asistió|attendee?d?)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
+                "(?i)(?:asistió|attended|attendee?d?)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
                 Pattern.CASE_INSENSITIVE
             ),
             // Pattern 6: "meetings attended [Name]" - name at end before ?
@@ -2447,8 +2458,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             ),
             // Pattern 7: "When and in which meetings did [Name] attend" - capture name after "attend"
             Pattern.compile(
-                "(?i)asistió\\s+([A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]+){2,4})\\s*\\??",
-                Pattern.CASE_INSENSITIVE
+                "(?i)asistió\\s+([\\p{L}]+(?:\\s+[\\p{L}]+){2,4})\\s*\\??",
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS
             )
         };
         
@@ -3189,9 +3200,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         StringBuilder summary = new StringBuilder();
         
         for (int i = 0; i < clusters.size(); i++) {
-            summary.append(String.format("Cluster %d (%s):\n", i + 1, clusterType));
+            summary.append(String.format("Cluster %d (%s):%n", i + 1, clusterType));
             summary.append(clusters.get(i).toString());
-            summary.append("\n\n");
+            summary.append(String.format("%n%n"));
         }
         
         return summary.toString();
@@ -3206,10 +3217,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         StringBuilder analysis = new StringBuilder();
-        analysis.append(String.format("Total %s clusters: %d\n", clusterType, clusters.size()));
+        analysis.append(String.format("Total %s clusters: %d%n", clusterType, clusters.size()));
         
         for (int i = 0; i < clusters.size(); i++) {
-            analysis.append(String.format("- Cluster %d: %s\n", i + 1, clusterType));
+            analysis.append(String.format("- Cluster %d: %s%n", i + 1, clusterType));
         }
         
         return analysis.toString();

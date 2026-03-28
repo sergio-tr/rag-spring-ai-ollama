@@ -40,6 +40,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         new FlagDescriptor("fc", RagFeatureConfiguration::setFunctionCallingEnabled, RagFeatureConfiguration::isFunctionCallingEnabled),
     };
 
+    private static final String JSON_KEY_CORRECT_ANSWER = "correct_answer";
+
     /** Descriptor for a single feature flag: label, setter and getter on RagFeatureConfiguration. */
     private static final class FlagDescriptor {
         final String label;
@@ -270,7 +272,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
             Map<String, Object> result = new HashMap<>();
             result.put("question", question);
-            result.put("correct_answer", correctAnswer);
+            result.put(JSON_KEY_CORRECT_ANSWER, correctAnswer);
             result.put("generated_answer", llmResponse);
             result.put("llm_evaluation", evaluation);
             
@@ -492,7 +494,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         double sum = 0;
         int count = 0;
         for (Map<String, Object> r : results) {
-            String ref = getString(r, "correct_answer");
+            String ref = getString(r, JSON_KEY_CORRECT_ANSWER);
             String hyp = getString(r, "generated_answer");
             if (ref == null && hyp == null) continue;
             List<String> refTok = tokenize(ref != null ? ref : "");
@@ -537,7 +539,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         double sum = 0;
         int count = 0;
         for (Map<String, Object> r : results) {
-            String ref = getString(r, "correct_answer");
+            String ref = getString(r, JSON_KEY_CORRECT_ANSWER);
             String hyp = getString(r, "generated_answer");
             if (ref == null && hyp == null) continue;
             List<String> refTok = tokenize(ref != null ? ref : "");
@@ -576,7 +578,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         double sum = 0;
         int count = 0;
         for (Map<String, Object> r : results) {
-            String ref = getString(r, "correct_answer");
+            String ref = getString(r, JSON_KEY_CORRECT_ANSWER);
             String hyp = getString(r, "generated_answer");
             if (ref == null && hyp == null) continue;
             List<String> refTok = tokenize(ref != null ? ref : "");

@@ -445,10 +445,10 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
             Explanation representative = cluster.getRepresentativeExplanation();
             
             if (representative.getDate() != null) {
-                summary.append(String.format("Reunión del %s:\n", representative.getDate()));
+                summary.append(String.format("Reunión del %s:%n", representative.getDate()));
             }
             summary.append(representative.getContent() != null ? representative.getContent() : "");
-            summary.append("\n\n");
+            summary.append(String.format("%n%n"));
         }
         
         return summary.toString();

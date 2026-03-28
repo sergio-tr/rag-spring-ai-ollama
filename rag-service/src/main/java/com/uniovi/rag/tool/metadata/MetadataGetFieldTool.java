@@ -24,6 +24,10 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
     private static final String FIELD_DURATION = "duration";
 
+    private static final String FIELD_PRESIDENT = "president";
+
+    private static final String FIELD_SECRETARY = "secretary";
+
     private static final String FIELD_ATTENDEES = "attendees";
 
     public MetadataGetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
@@ -41,7 +45,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         // Step 1: Retrieve with NER/date so a who-chaired / which-date query resolves to the correct minute (E.1)
         List<Document> docs = retrieveDocumentsWithFallback(
             query,
-            new String[] {"date", "place", "startTime", "endTime", FIELD_TOPICS, "decisions", "summary", "president", "secretary", FIELD_ATTENDEES},
+            new String[] {"date", "place", "startTime", "endTime", FIELD_TOPICS, "decisions", "summary", FIELD_PRESIDENT, FIELD_SECRETARY, FIELD_ATTENDEES},
             ner
         );
         
@@ -123,7 +127,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                 if (detectedField.equals("date") && (value.matches(".*[a-z].*") && !value.matches(".*\\d{4}.*"))) {
                     // Got text that doesn't look like a date when date was requested
                     log().warn("Possible field mismatch: requested 'date' but got text that doesn't look like date: {}", result.getFieldValue());
-                } else if ((detectedField.equals("president") || detectedField.equals("secretary")) && value.matches(".*\\d{4}.*")) {
+                } else if ((detectedField.equals(FIELD_PRESIDENT) || detectedField.equals(FIELD_SECRETARY)) && value.matches(".*\\d{4}.*")) {
                     // Got something that looks like a date when person was requested
                     log().warn("Possible field mismatch: requested '{}' but got text that looks like date: {}", detectedField, result.getFieldValue());
                 }
@@ -243,10 +247,10 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         
         // Return alternative names based on field type
         switch (fieldLower) {
-            case "secretary":
+            case FIELD_SECRETARY:
             case "secretario":
             case "secretaria":
-                return new String[]{"secretary", "secretario", "secretaria"};
+                return new String[]{FIELD_SECRETARY, "secretario", "secretaria"};
             case "agenda":
             case "orden_del_dia":
             case "orden del día":
@@ -257,9 +261,9 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             case "place":
             case "lugar":
                 return new String[]{"place", "lugar", "ubicación"};
-            case "president":
+            case FIELD_PRESIDENT:
             case "presidente":
-                return new String[]{"president", "presidente"};
+                return new String[]{FIELD_PRESIDENT, "presidente"};
             case "starttime":
             case "hora_inicio":
                 return new String[]{"startTime", "hora_inicio", "start_time"};
@@ -319,10 +323,10 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         if (containsAny(q, "lugar", "sitio", "place", "ubicación")) return "place";
         if (containsAny(q, "inicio", "start time", "hora de inicio", "comienzo")) return "startTime";
         if (containsAny(q, "fin", "final", "end time", "hora de cierre", "termin")) return "endTime";
-        if (containsAny(q, "presidente", "president", "quién presidió", "who presided")) return "president";
-        if (containsAny(q, "secretario", "secretary", "secretaria", "quién fue la secretaria", "who was the secretary")) {
+        if (containsAny(q, "presidente", FIELD_PRESIDENT, "quién presidió", "who presided")) return FIELD_PRESIDENT;
+        if (containsAny(q, "secretario", FIELD_SECRETARY, "secretaria", "quién fue la secretaria", "who was the secretary")) {
             log().debug("Classified as 'secretary' based on query: '{}'", query);
-            return "secretary";
+            return FIELD_SECRETARY;
         }
         if (containsAny(q, "asistente", "attendee", "participante", "personas")) return "attendees";
         if (containsAny(q, "número de asistentes", "cuántos asistieron", "attendees count")) return "attendeesCount";
@@ -397,7 +401,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             fieldInstructions = " For duration: state in natural language (e.g. 'La reunión duró 1 hora y 30 minutos').";
         } else if ("place".equals(detectedField) || "lugar".equals(detectedField)) {
             fieldInstructions = " For place: state in one sentence (e.g. 'La reunión se celebró en la Sala de reuniones').";
-        } else if ("date".equals(detectedField) || "president".equals(detectedField) || "secretary".equals(detectedField)) {
+        } else if ("date".equals(detectedField) || FIELD_PRESIDENT.equals(detectedField) || FIELD_SECRETARY.equals(detectedField)) {
             fieldInstructions = " Do not duplicate the date (state it once).";
         }
 
@@ -519,9 +523,9 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         final String normalizedPersonName = normalizePersonName(personName);
         
         // Determine if filtering by president, secretary, or attendee
-        boolean filterByPresident = queryLower.contains("presidente") || queryLower.contains("president") ||
+        boolean filterByPresident = queryLower.contains("presidente") || queryLower.contains(FIELD_PRESIDENT) ||
                                     queryLower.contains("presidió") || queryLower.contains("presided");
-        boolean filterBySecretary = queryLower.contains("secretario") || queryLower.contains("secretary") || 
+        boolean filterBySecretary = queryLower.contains("secretario") || queryLower.contains(FIELD_SECRETARY) || 
                                     queryLower.contains("secretaria");
         boolean filterByAttendee = asksAboutAttendee && !filterByPresident && !filterBySecretary;
         
