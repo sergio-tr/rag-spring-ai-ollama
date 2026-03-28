@@ -9,13 +9,13 @@
 [![Build (no tests)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml)
 [![SonarCloud](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml/badge.svg?branch=main)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml)
 
-<!-- SonarCloud quality metrics -->
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=alert_status)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=coverage)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=bugs)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=vulnerabilities)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
-[![Security Hotspots](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=security_hotspots)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=sqale_rating)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
+<!-- SonarCloud quality metrics (must match sonar.projectKey in sonar-project.properties) -->
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=coverage)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=bugs)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+[![Security Hotspots](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=security_hotspots)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
 
 <!-- Last release -->
 [![GitHub Release](https://img.shields.io/github/v/release/sergio-tr/rag-spring-ai-ollama?label=latest%20release&color=blue)](https://github.com/sergio-tr/rag-spring-ai-ollama/releases/latest)
@@ -121,7 +121,8 @@ Production credentials must always come from environment / `.env` files, not fro
 
 ### Badges
 
-README badges use SonarCloud’s public badge API. Replace `YOUR_SONAR_PROJECT_KEY` in the URLs above with your real **project key** so metrics resolve.
+- **SonarCloud:** URLs use `sergio-tr_rag-spring-ai-ollama` (same as `sonar.projectKey` in [`sonar-project.properties`](sonar-project.properties)). If you create a **new** SonarCloud project, update both files consistently.
+- **GitHub Actions / Release:** URLs use `sergio-tr/rag-spring-ai-ollama`. If the repo lives under another `owner/name`, replace that segment in the badge and link URLs at the top of this file.
 
 ## Documentation
 
