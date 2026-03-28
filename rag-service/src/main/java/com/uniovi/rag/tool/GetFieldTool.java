@@ -20,6 +20,7 @@ import java.util.List;
  */
 public class GetFieldTool extends AbstractTool {
 
+    private static final String VALUE_UNKNOWN = "unknown";
 
     public GetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
         super(chatClient, retriever, extractor);
@@ -240,12 +241,12 @@ public class GetFieldTool extends AbstractTool {
             
             if (result == null || result.trim().isEmpty()) {
                 log().warn("Empty response from LLM in classifyLiteralIntentWithLLM, defaulting to unknown");
-                return "unknown";
+                return VALUE_UNKNOWN;
             }
             
             String normalized = result.strip().toLowerCase();
-            if (normalized.contains("unknown") || normalized.contains("desconocido")) {
-                return "unknown";
+            if (normalized.contains(VALUE_UNKNOWN) || normalized.contains("desconocido")) {
+                return VALUE_UNKNOWN;
             }
             
             // Extract the first word
@@ -253,7 +254,7 @@ public class GetFieldTool extends AbstractTool {
             return cleaned;
         } catch (Exception e) {
             log().error("Error in classifyLiteralIntentWithLLM, defaulting to unknown", e);
-            return "unknown";
+            return VALUE_UNKNOWN;
         }
     }
 

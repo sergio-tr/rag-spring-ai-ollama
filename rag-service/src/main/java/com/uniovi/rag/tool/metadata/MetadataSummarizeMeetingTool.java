@@ -259,7 +259,7 @@ import java.util.stream.Collectors;
                 .sorted((a, b) -> Integer.compare(
                         b.getSummary() != null ? b.getSummary().length() : 0,
                         a.getSummary() != null ? a.getSummary().length() : 0))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private String generateSummaryAnswer(String query, List<SummaryResult> results) {
@@ -267,10 +267,27 @@ import java.util.stream.Collectors;
             return generateNotFoundMessage(query);
         }
 
-        // Build summary content (limit to 3 meetings max). Use higher char limit when query asks for agreements/decisions to avoid truncation (item 54)
         boolean asksForAgreements = query != null && (query.toLowerCase().contains("acuerdos") || query.toLowerCase().contains("decisiones"));
         int maxCharsPerSummary = asksForAgreements ? 500 : 200;
         StringBuilder summaryContent = new StringBuilder();
+        appendLimitedMeetingSummaries(summaryContent, results, maxCharsPerSummary);
+
+        String prompt = buildMeetingSummaryUserPrompt(query, summaryContent.toString());
+
+        try {
+            String response = getLLMResponseCached(prompt);
+            if (response != null && !response.trim().isEmpty()) {
+                return formatResponse(response, query);
+            }
+        } catch (Exception e) {
+            log().warn("Error generating summary answer with LLM, using raw content", e);
+        }
+
+        return summaryContent.toString().trim();
+    }
+
+    /** Appends up to 3 meeting blocks for the summarization prompt. */
+    private static void appendLimitedMeetingSummaries(StringBuilder summaryContent, List<SummaryResult> results, int maxCharsPerSummary) {
         results.stream().limit(3).forEach(r -> {
             if (r.getDate() != null) {
                 summaryContent.append("Date: ").append(r.getDate());
@@ -283,8 +300,10 @@ import java.util.stream.Collectors;
             summaryContent.append(content.length() > maxCharsPerSummary ? content.substring(0, maxCharsPerSummary) + "..." : content);
             summaryContent.append("\n\n");
         });
+    }
 
-        String prompt = String.format("""
+    private static String buildMeetingSummaryUserPrompt(String query, String meetingSummaryBlock) {
+        return String.format("""
             The user asked (in any language): "%s"
             
             Meeting summary information:
@@ -312,20 +331,7 @@ import java.util.stream.Collectors;
               Wrong: "Resume la reunión del 24 de febrero de 2025.\\n\\nLa reunión..."
             
             Format and present this summary information concisely and clearly.
-            """, query, summaryContent.toString());
-
-        try {
-            String response = getLLMResponseCached(prompt);
-            if (response != null && !response.trim().isEmpty()) {
-                // Post-process to format and clean response
-                return formatResponse(response, query);
-            }
-        } catch (Exception e) {
-            log().warn("Error generating summary answer with LLM, using raw content", e);
-        }
-
-        // Fallback: return raw content
-        return summaryContent.toString().trim();
+            """, query, meetingSummaryBlock);
     }
 
 }

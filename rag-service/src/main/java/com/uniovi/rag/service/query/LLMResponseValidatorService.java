@@ -52,7 +52,7 @@ public class LLMResponseValidatorService implements ResponseValidator {
         String cleaned = response
                 .replaceAll("(?s)```.*?```", "")
                 .replaceAll("(?s)```.*?\\n", "")
-                .replaceAll("```", "")
+                .replace("```", "")
                 .replaceAll("(?m)^\\s*//.*$", "")
                 .replaceAll("(?m)^\\s*#.*$", "")
                 .trim();

@@ -275,6 +275,7 @@ class ProcessQueryServiceTest {
     @Test
     void generateResponse_connectivityFailure_throwsRagServiceException() {
         when(retriever.retrieve(anyString())).thenThrow(new ResourceAccessException("I/O error", new ConnectException()));
-        assertThrows(RagServiceException.class, () -> service.generateResponse("hello"));
+        // Document-scoped query: avoids general-knowledge shortcut that skips retrieval.
+        assertThrows(RagServiceException.class, () -> service.generateResponse("acuerdos de la última reunión"));
     }
 }

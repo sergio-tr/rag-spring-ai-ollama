@@ -27,6 +27,9 @@ import java.util.stream.Collectors;
  */
 public class EnhancedNERHandler implements Loggable {
 
+    private static final String NER_KEY_COMPARISON_TYPE = "comparisonType";
+    private static final String NER_KEY_SECTION = "section";
+
     private final ChatClient chatClient;
     
     // Date patterns for normalization - enhanced to match parseDateFlexible for consistency
@@ -168,8 +171,8 @@ public class EnhancedNERHandler implements Loggable {
      * Determines comparison type from NER or infers it intelligently
      */
     public String determineComparisonType(String query, JSONObject ner) {
-        if (ner != null && ner.has("comparisonType")) {
-            String comparisonType = ner.getString("comparisonType");
+        if (ner != null && ner.has(NER_KEY_COMPARISON_TYPE)) {
+            String comparisonType = ner.getString(NER_KEY_COMPARISON_TYPE);
             if (!comparisonType.equals("none")) {
                 return comparisonType;
             }
@@ -264,9 +267,9 @@ public class EnhancedNERHandler implements Loggable {
      * Extracts section information from NER for targeted analysis
      */
     public List<String> extractSections(JSONObject ner) {
-        if (ner == null || !ner.has("section")) return Collections.emptyList();
+        if (ner == null || !ner.has(NER_KEY_SECTION)) return Collections.emptyList();
         
-        JSONArray sections = ner.getJSONArray("section");
+        JSONArray sections = ner.getJSONArray(NER_KEY_SECTION);
         List<String> sectionList = new ArrayList<>();
         
         for (int i = 0; i < sections.length(); i++) {
@@ -287,8 +290,8 @@ public class EnhancedNERHandler implements Loggable {
      * Checks if NER indicates a comparison query
      */
     public boolean isComparisonQuery(JSONObject ner) {
-        return ner != null && ner.has("comparisonType") && 
-               !ner.getString("comparisonType").equals("none");
+        return ner != null && ner.has(NER_KEY_COMPARISON_TYPE) &&
+               !ner.getString(NER_KEY_COMPARISON_TYPE).equals("none");
     }
 
     /**
