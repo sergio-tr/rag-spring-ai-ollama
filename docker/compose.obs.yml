@@ -1,0 +1,119 @@
+# Observability: images, host ports and internals from observability/.env
+# (./scripts/create-env-observability.sh). Without .env, the default values match .env.example.
+# Usage: cd docker && docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env ... --env-file ../observability/.env up -d
+
+services:
+  backend:
+    environment:
+      SERVER_PORT: ${OBS_INTERNAL_BACKEND_ACTUATOR:-9000}
+      SPRING_PROFILES_ACTIVE: infra
+      # Fix collector in Docker network (rag-service/.env usually has localhost:4318 for host development).
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: rag-backend
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: otlp
+      MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED: "true"
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "true"
+      MANAGEMENT_OTLP_METRICS_EXPORT_URL: http://otel-collector:4318/v1/metrics
+      MANAGEMENT_METRICS_EXPORT_OTLP_ENABLED: "true"
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  classifier-service:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: classifier-service
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: otlp
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  otel-collector:
+    build:
+      context: ../observability/otel-collector
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${OTEL_COLLECTOR_BASE_IMAGE:-otel/opentelemetry-collector-contrib:0.102.0}
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ../observability/otel-collector/config.yaml:/etc/otel-collector-config.yaml
+    environment:
+      OTEL_COLLECTOR_LOG_LEVEL: ${OTEL_COLLECTOR_LOG_LEVEL:-info}
+      OBS_INTERNAL_OTEL_OTLP_GRPC: ${OBS_INTERNAL_OTEL_OTLP_GRPC:-4317}
+      OBS_INTERNAL_OTEL_OTLP_HTTP: ${OBS_INTERNAL_OTEL_OTLP_HTTP:-4318}
+      OBS_INTERNAL_OTEL_PROM_EXPORT: ${OBS_INTERNAL_OTEL_PROM_EXPORT:-8889}
+      OBS_PG_ENDPOINT: ${OBS_PG_ENDPOINT:-postgres:5432}
+      OBS_PG_EXPORTER_USER: ${OBS_PG_EXPORTER_USER:-postgres_exporter}
+      OBS_PG_EXPORTER_PASSWORD: ${OBS_PG_EXPORTER_PASSWORD:-postgres_exporter}
+      OBS_PG_DB: ${OBS_PG_DB:-vectordb}
+      OBS_OTEL_EXPORT_JAEGER_ENDPOINT: ${OBS_OTEL_EXPORT_JAEGER_ENDPOINT:-jaeger:4317}
+    ports:
+      - "${OTEL_GRPC_PORT:-4317}:${OBS_INTERNAL_OTEL_OTLP_GRPC:-4317}"
+      - "${OTEL_HTTP_PORT:-4318}:${OBS_INTERNAL_OTEL_OTLP_HTTP:-4318}"
+      - "${OTEL_PROMETHEUS_SCRAPE_PORT:-8889}:${OBS_INTERNAL_OTEL_PROM_EXPORT:-8889}"
+    restart: unless-stopped
+
+  jaeger:
+    build:
+      context: ../observability/jaeger
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${JAEGER_BASE_IMAGE:-jaegertracing/jaeger:2.16.0}
+    container_name: jaeger
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:${OBS_INTERNAL_JAEGER_UI:-16686}"
+      - "${JAEGER_COLLECTOR_PORT:-14268}:${OBS_INTERNAL_JAEGER_COLLECTOR_HTTP:-14268}"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    restart: unless-stopped
+
+  prometheus:
+    build:
+      context: ../observability/prometheus
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${PROMETHEUS_BASE_IMAGE:-prom/prometheus:v2.52.0}
+    container_name: prometheus
+    environment:
+      OBS_INTERNAL_BACKEND_ACTUATOR: ${OBS_INTERNAL_BACKEND_ACTUATOR:-9000}
+      OBS_INTERNAL_OTEL_PROM_EXPORT: ${OBS_INTERNAL_OTEL_PROM_EXPORT:-8889}
+      OBS_INTERNAL_PROMETHEUS: ${OBS_INTERNAL_PROMETHEUS:-9090}
+    volumes:
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:${OBS_INTERNAL_PROMETHEUS:-9090}"
+    restart: unless-stopped
+    depends_on:
+      - otel-collector
+
+  grafana:
+    build:
+      context: ../observability/grafana
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${GRAFANA_BASE_IMAGE:-grafana/grafana:11.2.0}
+    container_name: grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:${OBS_INTERNAL_GRAFANA:-3000}"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_HTTP_PORT: ${OBS_INTERNAL_GRAFANA:-3000}
+      OBS_INTERNAL_PROMETHEUS: ${OBS_INTERNAL_PROMETHEUS:-9090}
+      OBS_INTERNAL_JAEGER_UI: ${OBS_INTERNAL_JAEGER_UI:-16686}
+      OBS_INTERNAL_LOKI_HTTP: ${OBS_INTERNAL_LOKI_HTTP:-3100}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../observability/grafana/provisioning:/mnt/repo-provisioning:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - jaeger
+
+volumes:
+  prometheus_data:
+  grafana_data:

@@ -1,0 +1,71 @@
+"""
+Unit tests for Config singleton (paths and defaults from env).
+"""
+import os
+
+import pytest
+
+from app.config import Config
+
+
+@pytest.fixture(autouse=True)
+def reset_config_singleton():
+    """Reset Config singleton so tests can set env and get fresh behaviour."""
+    Config._instance = None
+    yield
+    Config._instance = None
+
+
+def test_config_singleton_same_instance():
+    a = Config()
+    b = Config()
+    assert a is b
+
+
+def test_get_port_default():
+    if "PORT" in os.environ:
+        del os.environ["PORT"]
+    Config._instance = None
+    c = Config()
+    assert c.get_port() == 8000
+
+
+def test_get_models_dir_default():
+    if "MODELS_DIR" in os.environ:
+        del os.environ["MODELS_DIR"]
+    Config._instance = None
+    c = Config()
+    assert c.get_models_dir() == "models"
+
+
+def test_get_default_model_id_default():
+    if "DEFAULT_MODEL_ID" in os.environ:
+        del os.environ["DEFAULT_MODEL_ID"]
+    Config._instance = None
+    c = Config()
+    assert c.get_default_model_id() == "default"
+
+
+def test_get_default_model_id_from_env():
+    os.environ["DEFAULT_MODEL_ID"] = "custom"
+    Config._instance = None
+    c = Config()
+    assert c.get_default_model_id() == "custom"
+    del os.environ["DEFAULT_MODEL_ID"]
+
+
+def test_get_default_model_path_uses_models_dir():
+    if "MODEL_PATH" in os.environ:
+        del os.environ["MODEL_PATH"]
+    if "MODELS_DIR" in os.environ:
+        del os.environ["MODELS_DIR"]
+    Config._instance = None
+    c = Config()
+    path = c.get_default_model_path()
+    assert "models" in path
+    assert "default" in path
+    assert path.endswith("model.keras")
+
+
+def test_default_model_tag_constant():
+    assert Config.DEFAULT_MODEL_TAG == "default"

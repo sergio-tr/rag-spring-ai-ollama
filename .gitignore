@@ -29,11 +29,30 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+### Python ###
+__pycache__/
+.pytest_cache/
+*.pyc
+
 ### VS Code ###
 .vscode/
 
 ### Custom  ###
+.env
 
 venv/
 enhancement/
 logs/
+
+### SonarCloud / Coverage ###
+.sonar/
+.scannerwork/
+# Java coverage (local HTML report; XML is committed to allow CI to upload)
+rag-service/target/site/jacoco/
+# Classifier model files
+models/
+!models/default/
+# Python coverage (local HTML report; XML generated fresh in CI)
+classifier-service/htmlcov/
+classifier-service/coverage.xml
+classifier-service/.coverage
