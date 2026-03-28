@@ -10,7 +10,7 @@
 [![Sonar workflow](https://img.shields.io/badge/Sonar-sonar.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml)
 [![Docker images](https://img.shields.io/badge/Images-build--images.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build-images.yml)
 
-<!-- SonarCloud: project key must match sonar.projectKey. Public badge API only allows certain metrics (not security_hotspots). -->
+<!-- SonarCloud quality metrics (must match sonar.projectKey in sonar-project.properties) -->
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=coverage)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=bugs)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
@@ -121,9 +121,8 @@ Production credentials must always come from environment / `.env` files, not fro
 
 ### Badges
 
-- **GitHub Actions:** Native `badge.svg` URLs often return **404** until the workflow exists on the **default branch** and has run. The README uses **static Shields badges** (always render) linking to each workflow. For live pass/fail, use Shields `github/actions/workflow/status` after runs exist on `main`.
-- **SonarCloud:** `sonar.projectKey` must match [`sonar-project.properties`](sonar-project.properties). The public badge API only allows specific `metric` values — **not** `security_hotspots`; use e.g. **`security_rating`**.
-- **Repo path:** Replace `sergio-tr/rag-spring-ai-ollama` if your GitHub `owner/repo` differs.
+- **SonarCloud:** URLs use `sergio-tr_rag-spring-ai-ollama` (same as `sonar.projectKey` in [`sonar-project.properties`](sonar-project.properties)). If you create a **new** SonarCloud project, update both files consistently.
+- **GitHub Actions / Release:** URLs use `sergio-tr/rag-spring-ai-ollama`. If the repo lives under another `owner/name`, replace that segment in the badge and link URLs at the top of this file.
 
 ## Documentation
 
