@@ -148,6 +148,10 @@ public abstract class AbstractDocumentService implements DocumentService {
             } else if ("text/csv".contentEquals(contentType) || "application/octet-stream".contentEquals(contentType) && fileName.endsWith(".csv")) {
                 return extractFromCsv(file);
             }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Error processing the file", e);
         } catch (Exception e) {
             throw new IllegalStateException("Error processing the file", e);
         }

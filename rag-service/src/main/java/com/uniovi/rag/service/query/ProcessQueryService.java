@@ -270,9 +270,6 @@ public class ProcessQueryService implements QueryService {
             return false;
         }
         String lower = draft.toLowerCase();
-        if (lower.contains("no puedo encontrar") || lower.contains("no encontrado") || lower.contains("no se encontró") || lower.contains("no hay información")) {
-            return false;
-        }
-        return true;
+        return !(lower.contains("no puedo encontrar") || lower.contains("no encontrado") || lower.contains("no se encontró") || lower.contains("no hay información"));
     }
 }

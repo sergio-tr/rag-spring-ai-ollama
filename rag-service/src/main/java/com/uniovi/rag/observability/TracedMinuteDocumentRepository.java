@@ -13,6 +13,7 @@ import java.util.Map;
 public final class TracedMinuteDocumentRepository implements MinuteDocumentRepository {
 
     private static final int MAX_ATTR = 500;
+    private static final String METRIC_KEY_OPERATION = "operation";
 
     private final MinuteDocumentRepository delegate;
     private final ObservabilitySupport observability;
@@ -27,7 +28,7 @@ public final class TracedMinuteDocumentRepository implements MinuteDocumentRepos
         if (observability == null) {
             return delegate.addMinute(minute);
         }
-        observability.recordCounter("rag.repository.calls", "operation", "addMinute");
+        observability.recordCounter("rag.repository.calls", METRIC_KEY_OPERATION, "addMinute");
         String minuteId = minute != null && minute.id() != null ? minute.id() : "null";
         return observability.recordTimer("rag.repository.addMinute", () ->
                 observability.runWithSpan(
@@ -42,7 +43,7 @@ public final class TracedMinuteDocumentRepository implements MinuteDocumentRepos
         if (observability == null) {
             return delegate.deleteById(id);
         }
-        observability.recordCounter("rag.repository.calls", "operation", "deleteById");
+        observability.recordCounter("rag.repository.calls", METRIC_KEY_OPERATION, "deleteById");
         return observability.recordTimer("rag.repository.deleteById", () ->
                 observability.runWithSpan(
                         "rag.repository.deleteById",
@@ -56,7 +57,7 @@ public final class TracedMinuteDocumentRepository implements MinuteDocumentRepos
         if (observability == null) {
             return delegate.hasDocumentWithId(id);
         }
-        observability.recordCounter("rag.repository.calls", "operation", "hasDocumentWithId");
+        observability.recordCounter("rag.repository.calls", METRIC_KEY_OPERATION, "hasDocumentWithId");
         return observability.runWithSpan(
                 "rag.repository.hasDocumentWithId",
                 Map.of("id", truncate(id != null ? id : "")),

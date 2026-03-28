@@ -138,6 +138,31 @@ public final class ToolRoutingService {
         return Optional.empty();
     }
 
+    private ToolResult validateAndWrapToolOutput(ToolResult result, QueryType queryType, long executionTime, int attempt) {
+        if (result == null || result.result() == null || result.result().trim().isEmpty()) {
+            return null;
+        }
+        String originalResult = result.result();
+        log.debug("Tool {} returned result (length: {} chars) on attempt {}. Preview: {}",
+                queryType, originalResult.length(), attempt + 1,
+                originalResult.length() > 100 ? originalResult.substring(0, 100) + "..." : originalResult);
+
+        String validatedResult = responseValidator.validateAndClean(originalResult, "Tool-" + queryType);
+        if (validatedResult != null && !validatedResult.trim().isEmpty()) {
+            log.info("Successfully executed tool {} on attempt {} (execution time: {} ms). "
+                            + "Result length: {} chars, validated length: {} chars",
+                    queryType, attempt + 1, executionTime,
+                    originalResult.length(), validatedResult.length());
+            return new ToolResult(validatedResult, result.source());
+        }
+        log.warn("Tool {} returned result that failed validation on attempt {}. "
+                        + "Original result length: {} chars, Validated result: null or empty. "
+                        + "Original preview: {}. This may indicate ResponseValidator rejected the response.",
+                queryType, attempt + 1, originalResult.length(),
+                originalResult.length() > 200 ? originalResult.substring(0, 200) + "..." : originalResult);
+        return null;
+    }
+
     public ToolResult tryToolRoute(String query, JSONObject nerEntities, QueryType queryType) {
         if (!featureConfig.isToolsEnabled()) {
             log.debug("Tools (manual registry) disabled, skipping tool routing");
@@ -172,33 +197,16 @@ public final class ToolRoutingService {
                 long executionTime = System.currentTimeMillis() - startTime;
                 log.debug("Tool {} execution completed in {} ms", queryType, executionTime);
 
+                ToolResult validated = validateAndWrapToolOutput(result, queryType, executionTime, attempt);
+                if (validated != null) {
+                    return validated;
+                }
                 if (result != null && result.result() != null && !result.result().trim().isEmpty()) {
-                    String originalResult = result.result();
-                    log.debug("Tool {} returned result (length: {} chars) on attempt {}. Preview: {}",
-                            queryType, originalResult.length(), attempt + 1,
-                            originalResult.length() > 100 ? originalResult.substring(0, 100) + "..." : originalResult);
-
-                    String validatedResult = responseValidator.validateAndClean(originalResult, "Tool-" + queryType);
-                    if (validatedResult != null && !validatedResult.trim().isEmpty()) {
-                        log.info("Successfully executed tool {} on attempt {} (execution time: {} ms). " +
-                                        "Result length: {} chars, validated length: {} chars",
-                                queryType, attempt + 1, executionTime,
-                                originalResult.length(), validatedResult.length());
-                        return new ToolResult(validatedResult, result.source());
-                    } else {
-                        log.warn("Tool {} returned result that failed validation on attempt {}. " +
-                                        "Original result length: {} chars, Validated result: null or empty. " +
-                                        "Original preview: {}. This may indicate ResponseValidator rejected the response.",
-                                queryType, attempt + 1, originalResult.length(),
-                                originalResult.length() > 200 ? originalResult.substring(0, 200) + "..." : originalResult);
-                        if (attempt < MAX_RETRIES) {
-                            continue;
-                        }
+                    if (attempt < MAX_RETRIES) {
+                        continue;
                     }
                 } else {
-                    String resultInfo = result == null ? "null" :
-                            (result.result() == null ? "result() is null" :
-                                    (result.result().trim().isEmpty() ? "result() is empty" : "unknown"));
+                    String resultInfo = describeToolResultState(result);
                     log.warn("Tool {} returned {} on attempt {} of {}. Tool class: {}. Query: '{}'",
                             queryType, resultInfo, attempt + 1, MAX_RETRIES + 1,
                             tool.getClass().getSimpleName(),
@@ -263,5 +271,18 @@ public final class ToolRoutingService {
             }
         }
         return false;
+    }
+
+    private static String describeToolResultState(ToolResult result) {
+        if (result == null) {
+            return "null";
+        }
+        if (result.result() == null) {
+            return "result() is null";
+        }
+        if (result.result().trim().isEmpty()) {
+            return "result() is empty";
+        }
+        return "unknown";
     }
 }

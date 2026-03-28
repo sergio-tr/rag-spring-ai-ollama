@@ -190,7 +190,7 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
         return Arrays.stream(cleaned.split("\\s+"))
                 .filter(word -> !stopwords.contains(word) && word.length() > 2)
                 .distinct()
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private static <T> boolean isSimilarToCluster(T item, Cluster<T> cluster,

@@ -560,7 +560,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     }
 
     protected int lcsLength(List<String> a, List<String> b) {
-        int n = a.size(), m = b.size();
+        int n = a.size();
+        int m = b.size();
         int[][] dp = new int[n + 1][m + 1];
         for (int i = 1; i <= n; i++) {
             for (int j = 1; j <= m; j++) {

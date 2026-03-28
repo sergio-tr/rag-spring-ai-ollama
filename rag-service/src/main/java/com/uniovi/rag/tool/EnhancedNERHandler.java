@@ -30,6 +30,8 @@ public class EnhancedNERHandler implements Loggable {
     private static final String NER_KEY_COMPARISON_TYPE = "comparisonType";
     private static final String NER_KEY_SECTION = "section";
 
+    private static final String TEMPORAL_CONTEXT_GENERAL = "general";
+
     private final ChatClient chatClient;
     
     // Date patterns for normalization - enhanced to match parseDateFlexible for consistency
@@ -146,7 +148,7 @@ public class EnhancedNERHandler implements Loggable {
         if (ner == null || !ner.has("temporalContext")) return docs;
         
         String temporalContext = ner.getString("temporalContext");
-        if (temporalContext.equals("none") || temporalContext.equals("general")) return docs;
+        if (temporalContext.equals("none") || temporalContext.equals(TEMPORAL_CONTEXT_GENERAL)) return docs;
         
         return docs.stream()
                 .filter(doc -> matchesTemporalContext(doc, temporalContext))
@@ -160,7 +162,7 @@ public class EnhancedNERHandler implements Loggable {
         if (ner == null || !ner.has("temporalContext")) return minutes;
         
         String temporalContext = ner.getString("temporalContext");
-        if (temporalContext.equals("none") || temporalContext.equals("general")) return minutes;
+        if (temporalContext.equals("none") || temporalContext.equals(TEMPORAL_CONTEXT_GENERAL)) return minutes;
         
         return minutes.stream()
                 .filter(minute -> matchesMinuteTemporalContext(minute, temporalContext))
@@ -300,7 +302,7 @@ public class EnhancedNERHandler implements Loggable {
     public boolean isTemporalQuery(JSONObject ner) {
         return ner != null && ner.has("temporalContext") && 
                !ner.getString("temporalContext").equals("none") &&
-               !ner.getString("temporalContext").equals("general");
+               !ner.getString("temporalContext").equals(TEMPORAL_CONTEXT_GENERAL);
     }
 
     // ============================================================================
@@ -541,20 +543,12 @@ public class EnhancedNERHandler implements Loggable {
             
             // Extract the comparison type from response
             String cleaned = result.split("\\s+")[0].trim();
-            switch (cleaned) {
-                case "duration":
-                case "attendees":
-                case "topics":
-                case "decisions":
-                case "place":
-                case "date":
-                case "general":
-                    return cleaned;
-                default:
-                    return "general";
-            }
+            return switch (cleaned) {
+                case "duration", "attendees", "topics", "decisions", "place", "date", TEMPORAL_CONTEXT_GENERAL -> cleaned;
+                default -> TEMPORAL_CONTEXT_GENERAL;
+            };
         } catch (Exception e) {
-            return "general"; // Default fallback
+            return TEMPORAL_CONTEXT_GENERAL; // Default fallback
         }
     }
 

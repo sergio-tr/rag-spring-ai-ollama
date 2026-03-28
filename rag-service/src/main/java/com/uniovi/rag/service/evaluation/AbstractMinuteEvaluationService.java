@@ -19,7 +19,7 @@ import java.nio.charset.StandardCharsets;
 @Service
 public abstract class AbstractMinuteEvaluationService extends AbstractEvaluationService {
 
-    public AbstractMinuteEvaluationService(
+    protected AbstractMinuteEvaluationService(
         RagFeatureConfiguration featureConfig,
         RagImplementationProperties implementationProperties,
         ChatClient chatClient,
@@ -48,14 +48,7 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
                 if (files != null) {
                     log().info("Loading {} PDF files from docs", files.length);
                     for (File file : files) {
-                        try {
-                            // Convert File to MultipartFile
-                            MultipartFile multipartFile = fileToMultipartFile(file);
-                            docService.processDocument(multipartFile);
-                            log().info("Successfully loaded file: {}", file.getName());
-                        } catch (Exception e) {
-                            log().error("Error loading file: {}", file.getName(), e);
-                        }
+                        loadSinglePdfFromDocs(file, docService);
                     }
                     log().info("Finished loading documents");
                 }
@@ -68,6 +61,16 @@ public abstract class AbstractMinuteEvaluationService extends AbstractEvaluation
         }
     }
     
+    private void loadSinglePdfFromDocs(File file, DocumentService docService) {
+        try {
+            MultipartFile multipartFile = fileToMultipartFile(file);
+            docService.processDocument(multipartFile);
+            log().info("Successfully loaded file: {}", file.getName());
+        } catch (Exception e) {
+            log().error("Error loading file: {}", file.getName(), e);
+        }
+    }
+
     /**
      * Converts a File to a MultipartFile for processing.
      */

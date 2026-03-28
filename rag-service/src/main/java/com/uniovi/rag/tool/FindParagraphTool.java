@@ -36,53 +36,13 @@ public class FindParagraphTool extends AbstractTool {
         
         List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for find paragraph query", docs.size());
-        List<String> results = new ArrayList<>();
-
-        // Try with NER filtering if available
-        if (ner != null && !docs.isEmpty()) {
-            // Use EnhancedNERHandler for intelligent filtering
-            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
-            
-            for (Document doc : filteredDocs) {
-                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-                    continue;
-                }
-                
-                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    results.addAll(findRelevantParagraphs(doc, query));
-                }
-            }
-        }
-        
-        if (results.isEmpty() && !docs.isEmpty()) {
-            // Fallback to LLM-based relevance
-            for (Document doc : docs) {
-                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-                    continue;
-                }
-                
-                results.addAll(findRelevantParagraphsByLLM(doc, query));
-            }
-        }
-        
-        if (results.isEmpty()) {
-            docs = retrieveAllDocuments(query, ner);
-            if (!docs.isEmpty()) {
-                for (Document doc : docs) {
-                    if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-                        continue;
-                    }
-                    
-                    results.addAll(findRelevantParagraphsByLLM(doc, query));
-                }
-            }
-        }
+        List<String> results = collectParagraphResults(query, ner, docs);
 
         String answer;
         if (!results.isEmpty()) {
             log().debug("Found {} paragraphs for query, limiting to 3 for conciseness", results.size());
             // Limit paragraphs to 3 maximum for conciseness
-            List<String> limitedResults = results.stream().limit(3).collect(java.util.stream.Collectors.toList());
+            List<String> limitedResults = results.stream().limit(3).toList();
             answer = generateFinalAnswer(query, limitedResults);
         } else {
             long totalTime = System.currentTimeMillis() - startTime;
@@ -95,6 +55,37 @@ public class FindParagraphTool extends AbstractTool {
         // Apply formatResponse to clean the response
         String formattedAnswer = formatResponse(answer, query);
         return ToolResult.from(formattedAnswer, getClass());
+    }
+
+    private List<String> collectParagraphResults(String query, JSONObject ner, List<Document> docs) {
+        List<String> results = new ArrayList<>();
+        if (ner != null && !docs.isEmpty()) {
+            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+            for (Document doc : filteredDocs) {
+                if (doc != null && doc.getText() != null && !doc.getText().trim().isEmpty()
+                        && nerHandler.matchesDocumentWithNER(doc, ner)) {
+                    results.addAll(findRelevantParagraphs(doc, query));
+                }
+            }
+        }
+        if (results.isEmpty() && !docs.isEmpty()) {
+            appendLlmParagraphsForDocuments(docs, query, results);
+        }
+        if (results.isEmpty()) {
+            List<Document> allDocs = retrieveAllDocuments(query, ner);
+            if (!allDocs.isEmpty()) {
+                appendLlmParagraphsForDocuments(allDocs, query, results);
+            }
+        }
+        return results;
+    }
+
+    private void appendLlmParagraphsForDocuments(List<Document> docs, String query, List<String> results) {
+        for (Document doc : docs) {
+            if (doc != null && doc.getText() != null && !doc.getText().trim().isEmpty()) {
+                results.addAll(findRelevantParagraphsByLLM(doc, query));
+            }
+        }
     }
 
     /**

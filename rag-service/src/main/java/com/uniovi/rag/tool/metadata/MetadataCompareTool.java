@@ -21,6 +21,8 @@ import java.util.Objects;
  */
 public class MetadataCompareTool extends AbstractMetadataTool {
 
+    private static final String FIELD_NUMBER_OF_ATTENDEES_BY_MONTH = "numberOfAttendees_by_month";
+
     private static final String[] SPANISH_MONTH_NAMES_ORDERED = {
             "enero", "febrero", "marzo", "abril", "mayo", "junio",
             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
@@ -121,14 +123,14 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         } else if ("meetings_count_by_month".equals(fieldToCompare.fieldName)) {
             comparables = aggregateMentionsByMonth(comparables); // same aggregation: group by month, sum
             log().info("Aggregated meetings count by month: {}", comparables);
-        } else if ("numberOfAttendees_by_month".equals(fieldToCompare.fieldName)) {
+        } else if (FIELD_NUMBER_OF_ATTENDEES_BY_MONTH.equals(fieldToCompare.fieldName)) {
             comparables = aggregateMentionsByMonth(comparables); // group by month, sum attendees
             log().info("Aggregated attendees by month: {}", comparables);
         }
 
         // Step 5.6: Filter to only months mentioned in the query (e.g. febrero y abril, not all months)
         List<String> requestedMonths = extractMonthsFromQuery(query);
-        if (!requestedMonths.isEmpty() && ("mentions_by_month".equals(fieldToCompare.fieldName) || "meetings_count_by_month".equals(fieldToCompare.fieldName) || "numberOfAttendees_by_month".equals(fieldToCompare.fieldName))) {
+        if (!requestedMonths.isEmpty() && ("mentions_by_month".equals(fieldToCompare.fieldName) || "meetings_count_by_month".equals(fieldToCompare.fieldName) || FIELD_NUMBER_OF_ATTENDEES_BY_MONTH.equals(fieldToCompare.fieldName))) {
             comparables = filterComparablesByMonths(comparables, requestedMonths);
             log().info("Filtered comparables to requested months {}: {}", requestedMonths, comparables);
         }
@@ -349,7 +351,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         if ((queryLower.contains("asistentes") || queryLower.contains("attendees") || queryLower.contains("asistencia"))
                 && monthComparisonCueInQuery(queryLower)) {
             log().info("Detected attendees comparison by month");
-            return new ComparisonField("numberOfAttendees_by_month", ComparisonType.NUMERIC);
+            return new ComparisonField(FIELD_NUMBER_OF_ATTENDEES_BY_MONTH, ComparisonType.NUMERIC);
         }
         // Special case: Number of meetings/actas by month (e.g., "más reuniones registradas, febrero o abril")
         if ((queryLower.contains("reuniones") || queryLower.contains("actas"))
@@ -506,7 +508,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
 
         boolean mergeBySum = "mentions_by_month".equals(field.fieldName)
                 || "meetings_count_by_month".equals(field.fieldName)
-                || "numberOfAttendees_by_month".equals(field.fieldName);
+                || FIELD_NUMBER_OF_ATTENDEES_BY_MONTH.equals(field.fieldName);
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
@@ -537,7 +539,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             return extractMeetingsCountByMonthValue(minute);
         }
         // Attendees per month (for "más asistentes en febrero o en agosto")
-        if ("numberOfAttendees_by_month".equals(field.fieldName)) {
+        if (FIELD_NUMBER_OF_ATTENDEES_BY_MONTH.equals(field.fieldName)) {
             return extractAttendeesByMonthValue(minute);
         }
         
@@ -1119,11 +1121,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         double v1 = n1.doubleValue();
         double v2 = n2.doubleValue();
         if (v1 == v2) {
-            return String.format("\nCONCLUSION: Ambos meses tienen el mismo número de %s.", unitLabel);
+            return String.format("%nCONCLUSION: Ambos meses tienen el mismo número de %s.", unitLabel);
         }
         String more = v1 > v2 ? e1.getKey() : e2.getKey();
         String less = v1 > v2 ? e2.getKey() : e1.getKey();
-        return String.format("\nCONCLUSION: %s tiene más %s que %s.", more, unitLabel, less);
+        return String.format("%nCONCLUSION: %s tiene más %s que %s.", more, unitLabel, less);
     }
 
     /**
@@ -1157,7 +1159,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             lines += formatMonthConclusion(comparables, "reuniones");
             return lines;
         }
-        if ("numberOfAttendees_by_month".equals(field.fieldName)) {
+        if (FIELD_NUMBER_OF_ATTENDEES_BY_MONTH.equals(field.fieldName)) {
             String lines = comparables.entrySet().stream()
                     .map(entry -> {
                         String month = entry.getKey();
