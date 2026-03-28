@@ -28,6 +28,7 @@ jobs:
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       # DocumentPersistenceJdbcIntegrationTest uses a dedicated DB + test-init.sql (no Testcontainers in CI).
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
     steps:

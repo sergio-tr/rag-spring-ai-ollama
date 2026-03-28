@@ -26,9 +26,12 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
 /**
- * JDBC integration tests: Testcontainers locally; in CI use {@code INTEGRATION_JDBC_URL} (see {@code .github/workflows/ci.yml}).
+ * JDBC integration tests: Testcontainers locally; in CI use the Postgres service (see {@code .github/workflows/ci.yml}
+ * and {@code sonar.yml}) via {@code INTEGRATION_JDBC_URL} or automatic URL when {@code GITHUB_ACTIONS=true}.
  */
 class DocumentPersistenceJdbcIntegrationTest {
+
+    private static final String CI_DEFAULT_INTEGRATION_JDBC_URL = "jdbc:postgresql://localhost:5432/testdb";
 
     private static PostgreSQLContainer<?> postgresContainer;
 
@@ -44,7 +47,7 @@ class DocumentPersistenceJdbcIntegrationTest {
 
     @BeforeAll
     static void startOrBindDatabase() {
-        String externalUrl = System.getenv("INTEGRATION_JDBC_URL");
+        String externalUrl = resolveExternalJdbcUrl();
         if (externalUrl != null && !externalUrl.isBlank()) {
             String user = Optional.ofNullable(System.getenv("SPRING_DATASOURCE_USERNAME")).orElse("postgres");
             String password = Optional.ofNullable(System.getenv("SPRING_DATASOURCE_PASSWORD")).orElse("postgres");
@@ -69,6 +72,21 @@ class DocumentPersistenceJdbcIntegrationTest {
         if (postgresContainer != null) {
             postgresContainer.stop();
         }
+    }
+
+    /**
+     * Prefer explicit {@code INTEGRATION_JDBC_URL}; on GitHub Actions fall back to the workflow Postgres service
+     * so tests do not rely on Testcontainers when the job env is missing from the forked JVM.
+     */
+    private static String resolveExternalJdbcUrl() {
+        String explicit = System.getenv("INTEGRATION_JDBC_URL");
+        if (explicit != null && !explicit.isBlank()) {
+            return explicit;
+        }
+        if ("true".equalsIgnoreCase(System.getenv("GITHUB_ACTIONS"))) {
+            return CI_DEFAULT_INTEGRATION_JDBC_URL;
+        }
+        return null;
     }
 
     @BeforeEach

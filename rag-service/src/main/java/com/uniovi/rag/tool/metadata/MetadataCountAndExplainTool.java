@@ -254,7 +254,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         // Sort by relevance score (descending)
         return explanations.stream()
                 .sorted((a, b) -> Double.compare(b.getRelevanceScore(), a.getRelevanceScore()))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -314,7 +314,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
             return generateNotFoundMessage(query);
         }
         
-        String explanationSummary = formatExplanationSummary(explanations, clusters);
+        String explanationSummary = formatExplanationSummary(clusters);
         
         String prompt = String.format("""
             You need to answer a question about meeting minutes. The question asked was about counting and explaining meeting minutes that meet certain criteria.
@@ -436,7 +436,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     /**
      * Formats explanation summary for LLM prompt (without technical details)
      */
-    private String formatExplanationSummary(List<Explanation> explanations, List<ExplanationCluster> clusters) {
+    private String formatExplanationSummary(List<ExplanationCluster> clusters) {
         StringBuilder summary = new StringBuilder();
         
         // Format explanations naturally without mentioning clusters

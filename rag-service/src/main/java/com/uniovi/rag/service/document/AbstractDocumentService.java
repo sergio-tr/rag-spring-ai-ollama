@@ -203,12 +203,12 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
         if (text == null) return "";
         
         return text
-            .replaceAll("\\r\\n", "\n")
-            .replaceAll("\\r", "\n")
-            .replaceAll("\\u00A0", " ")  // NBSP (Non-breaking space)
-            .replaceAll("\\u2007", " ")  // Figure space
-            .replaceAll("\\u202F", " ")  // Narrow NBSP
-            .replaceAll("\\u2009", " ")  // Thin space
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+            .replace('\u00A0', ' ')  // NBSP (Non-breaking space)
+            .replace('\u2007', ' ')  // Figure space
+            .replace('\u202F', ' ')  // Narrow NBSP
+            .replace('\u2009', ' ')  // Thin space
             // Collapse horizontal whitespace only
             .replaceAll("[ \t]+", " ")
             // Normalize multiple line breaks to one

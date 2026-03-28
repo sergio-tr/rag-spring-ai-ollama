@@ -133,7 +133,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
 
         // Priority 2: Fallback to metadata if content extraction failed
         if (paragraph.isBlank()) {
-            paragraph = buildParagraphFromMetadata(minute, query);
+            paragraph = buildParagraphFromMetadata(minute);
         }
 
         // Priority 3: LLM fallback if both failed
@@ -200,7 +200,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     /**
      * Builds a paragraph from metadata (decisions/topics/summary/agenda) before LLM.
      */
-    private String buildParagraphFromMetadata(Minute minute, String query) {
+    private String buildParagraphFromMetadata(Minute minute) {
         if (minute == null) {
             return "";
         }

@@ -28,6 +28,10 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     private static final String JSON_KEY_ATTENDEES = "attendees";
 
+    private static final String JSON_KEY_TOPICS = "topics";
+
+    private static final String JSON_VALUE_UNKNOWN = "unknown";
+
     // Enhanced prompt with multilingual support and better examples
     private static final String NER_PROMPT = """
         Analyze the following <query> to extract key entities that may be present in meeting minutes.
@@ -299,8 +303,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     private String cleanJsonResponse(String response) {
         return response
                 .replaceAll("(?s)```.*?\\n", "")  // Remove ```json\n or similar
-                .replaceAll("```", "")
-                .replaceAll("'", "\"")  // Convert single quotes to double quotes
+                .replace("```", "")
+                .replace("'", "\"")  // Convert single quotes to double quotes
                 .replaceAll("(?m)^\\s*//.*$", "")  // Remove comments
                 .strip();
     }
@@ -312,15 +316,15 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         // List of all expected fields
         String[] fields = {
             "date", "place", "startTime", "endTime", "president", "secretary",
-            JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", "decisions", 
-            "mentionedEntities", "topics", "section", "summary", "answerType",
+            JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", "decisions",
+            "mentionedEntities", JSON_KEY_TOPICS, "section", "summary", "answerType",
             "comparisonType", "temporalContext"
         };
         
         for (String field : fields) {
             if (!json.has(field)) {
                 if (field.equals("answerType")) {
-                    json.put(field, "unknown");
+                    json.put(field, JSON_VALUE_UNKNOWN);
                 } else if (field.equals("comparisonType") || field.equals("temporalContext")) {
                     json.put(field, "none");
                 } else {
@@ -370,7 +374,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
      */
     private String getDefaultStringValue(String field) {
         if (field.equals("answerType")) {
-            return "unknown";
+            return JSON_VALUE_UNKNOWN;
         } else if (field.equals("comparisonType") || field.equals("temporalContext")) {
             return "none";
         }
@@ -655,8 +659,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         }
         
         // Detect answer type if not specified
-        String answerType = getStringSafely(json, "answerType", "unknown");
-        if (answerType.equals("unknown")) {
+        String answerType = getStringSafely(json, "answerType", JSON_VALUE_UNKNOWN);
+        if (answerType.equals(JSON_VALUE_UNKNOWN)) {
             if (queryLower.contains("quién") || queryLower.contains("who") ||
                 queryLower.contains("president") || queryLower.contains("secretary")) {
                 json.put("answerType", "person");

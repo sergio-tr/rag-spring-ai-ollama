@@ -3,6 +3,7 @@ package com.uniovi.rag.tool;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
+import org.springframework.lang.Nullable;
 
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
@@ -196,7 +197,7 @@ public abstract class AbstractTool implements Tool {
         cleaned = cleaned.replaceAll("!{2,}", "!");
         
         // Step 4: Ensure proper sentence structure (capitalize first letter if needed)
-        if (cleaned.length() > 0 && Character.isLowerCase(cleaned.charAt(0))) {
+        if (!cleaned.isEmpty() && Character.isLowerCase(cleaned.charAt(0))) {
             cleaned = Character.toUpperCase(cleaned.charAt(0)) + cleaned.substring(1);
         }
         
@@ -260,6 +261,7 @@ public abstract class AbstractTool implements Tool {
      * Interprets LLM response as YES/NO/UNKNOWN using another LLM call.
      * @return true for YES, false for NO, null for UNKNOWN or on error
      */
+    @Nullable
     protected Boolean interpretLLMYesNoResponse(String response, String context) {
         if (response == null || response.trim().isEmpty()) {
             log().warn("Empty LLM response in {}", context);
