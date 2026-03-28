@@ -155,8 +155,8 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
         if (metadata.containsKey("attendees")) {
             Object attendees = metadata.get("attendees");
             if (attendees != null && !(attendees instanceof List)) {
-                log().warn("Invalid type for 'attendees' in file {}: {}, expected List. Will be normalized during extraction.", 
-                          filename, attendees.getClass().getName());
+                log().warn("Invalid type for 'attendees' in file (name length {}): {}, expected List. Will be normalized during extraction.",
+                          filename != null ? filename.length() : 0, attendees.getClass().getName());
             }
         }
         

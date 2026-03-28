@@ -22,6 +22,8 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
 
     private static final String KEYWORD_VIGILANCIA = "vigilancia";
 
+    private static final String KEYWORD_VIDEOVIGILANCIA = "videovigilancia";
+
     public MetadataBooleanQueryTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -333,7 +335,7 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             String decisionsStr = minute.decisions() != null ? String.join(" ", minute.decisions()).toLowerCase() : "";
             String summaryStr = minute.summary() != null ? minute.summary().toLowerCase() : "";
             String combined = topicsStr + " " + decisionsStr + " " + summaryStr;
-            if (combined.contains("seguridad") || combined.contains(KEYWORD_VIGILANCIA) || combined.contains("videovigilancia") || combined.contains("camara")) {
+            if (combined.contains("seguridad") || combined.contains(KEYWORD_VIGILANCIA) || combined.contains(KEYWORD_VIDEOVIGILANCIA) || combined.contains("camara")) {
                 return "Topic/Summary: Seguridad o vigilancia tratada en esta reunión. Date: " + (minute.date() != null ? minute.date() : "");
             }
         }
@@ -512,14 +514,14 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             String contextLower = context.toString().toLowerCase();
             // When query is about "seguridad", accept vigilancia/videovigilancia/cámaras so acta 25 ago 2026 matches
             if (keyword != null && keyword.toLowerCase().contains("seguridad")) {
-                if (contextLower.contains("seguridad") || contextLower.contains(KEYWORD_VIGILANCIA) || contextLower.contains("videovigilancia")
+                if (contextLower.contains("seguridad") || contextLower.contains(KEYWORD_VIGILANCIA) || contextLower.contains(KEYWORD_VIDEOVIGILANCIA)
                     || contextLower.contains("camara") || contextLower.contains("cámaras") || contextLower.contains("camaras")) {
                     log().info("Keyword 'seguridad' matched via synonym (vigilancia/videovigilancia/cámaras) in document");
                     return true;
                 }
                 if (doc.getText() != null) {
                     String contentLower = doc.getText().toLowerCase();
-                    if (contentLower.contains("seguridad") || contentLower.contains(KEYWORD_VIGILANCIA) || contentLower.contains("videovigilancia")
+                    if (contentLower.contains("seguridad") || contentLower.contains(KEYWORD_VIGILANCIA) || contentLower.contains(KEYWORD_VIDEOVIGILANCIA)
                         || contentLower.contains("camara") || contentLower.contains("cámaras") || contentLower.contains("camaras")) {
                         log().info("Keyword 'seguridad' matched via synonym in document content");
                         return true;

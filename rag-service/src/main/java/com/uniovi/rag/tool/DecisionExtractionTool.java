@@ -107,7 +107,7 @@ public class DecisionExtractionTool extends AbstractTool {
         if (!decisions.isEmpty()) {
             log().debug("Extracted {} decisions for query, limiting to 5 for conciseness", decisions.size());
             // Limit decisions to 5 maximum for conciseness
-            List<String> limitedDecisions = decisions.stream().limit(5).collect(java.util.stream.Collectors.toList());
+            List<String> limitedDecisions = decisions.stream().limit(5).toList();
             response = generateResponseWithLLM(query, limitedDecisions);
         } else {
             long totalTime = System.currentTimeMillis() - startTime;

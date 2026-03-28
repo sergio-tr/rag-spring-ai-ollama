@@ -33,7 +33,16 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     private static final String METADATA_KEY_DATE_ISO = "date_iso";
 
     /** Case-insensitive matching for Latin extended names (Sonar: UNICODE_CASE for non-ASCII letters). */
-    private static final int UNICODE_CASE_INSENSITIVE = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
+    private static final int UNICODE_CASE_INSENSITIVE =
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ;
+
+    private static final String NER_KEY_FILTERS = "filters";
+
+    private static final String METADATA_KEY_PRESIDENT = "president";
+
+    private static final String METADATA_KEY_TOPICS = "topics";
+
+    private static final String METADATA_KEY_ATTENDEES_COUNT = "attendeesCount";
 
     private static final String QUERY_TYPE_GENERAL = "general";
 
@@ -128,8 +137,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (entidades.has("person"))
             entidades.getJSONArray("person").forEach(item -> terms.add(item.toString().toLowerCase()));
 
-        if (entidades.has("filters")) {
-            JSONObject filtros = entidades.getJSONObject("filters");
+        if (entidades.has(NER_KEY_FILTERS)) {
+            JSONObject filtros = entidades.getJSONObject(NER_KEY_FILTERS);
             for (String key : new String[]{"date", "place", "section", "time"}) {
                 if (filtros.has(key))
                     filtros.getJSONArray(key).forEach(item -> terms.add(item.toString().toLowerCase()));
@@ -335,7 +344,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String place = safeGetString(metadata, "place");
         String startTime = safeGetString(metadata, "startTime");
         String endTime = safeGetString(metadata, METADATA_KEY_END_TIME);
-        String president = safeGetString(metadata, "president");
+        String president = safeGetString(metadata, METADATA_KEY_PRESIDENT);
         String secretary = safeGetString(metadata, "secretary");
         
         // Use safe methods for complex types
@@ -348,7 +357,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         Map<String, String> agenda = safeGetStringMap(metadata, "agenda");
         List<String> decisions = safeGetStringList(metadata, "decisions");
         List<String> mentionedEntities = safeGetStringList(metadata, "mentionedEntities");
-        List<String> topics = safeGetStringList(metadata, "topics");
+        List<String> topics = safeGetStringList(metadata, METADATA_KEY_TOPICS);
         
         String summary = safeGetString(metadata, "summary");
         
@@ -505,22 +514,36 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      */
     @Cacheable(value = "nerMatching", key = "#minute.hashCode() + '_' + #ner.hashCode()")
     protected boolean matchesMinuteWithNER(Minute minute, JSONObject ner) {
-        if (ner == null || ner.isEmpty()) return true;
+        if (ner == null || ner.isEmpty()) {
+            return true;
+        }
+        if (!passesMentionedEntitiesGate(minute, ner) || !passesAgendaNerGate(minute, ner)) {
+            return false;
+        }
+        return evaluateMinuteNerWithLlm(minute, ner);
+    }
 
+    private boolean passesMentionedEntitiesGate(Minute minute, JSONObject ner) {
         if (ner.has("mentionedEntities") && !ner.getJSONArray("mentionedEntities").isEmpty()) {
             if (!matchesMentionedEntities(minute, ner)) {
                 log().info("Minute {} filtered out by mentionedEntities mismatch", minute.id());
                 return false;
             }
         }
+        return true;
+    }
 
+    private boolean passesAgendaNerGate(Minute minute, JSONObject ner) {
         if (ner.has("agenda") && !ner.getJSONArray("agenda").isEmpty()) {
             if (!matchesAgendaItems(minute, ner)) {
                 log().info("Minute {} filtered out by agenda items mismatch", minute.id());
                 return false;
             }
         }
+        return true;
+    }
 
+    private boolean evaluateMinuteNerWithLlm(Minute minute, JSONObject ner) {
         String prompt = String.format("""
             You are a meeting metadata matching system. Analyze if meeting metadata matches specified NER entities.
             
@@ -575,7 +598,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return true; // Avoid false negatives (consistent with EnhancedNERHandler)
         }
     }
-    
+
     /**
      * Checks if minute's agenda items match NER agenda items using LLM.
      */
@@ -1812,7 +1835,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         || (metadata.containsKey("month") && metadata.get("month") != null);
             case "numberOfAttendees":
                 return (metadata.containsKey("numberOfAttendees") && metadata.get("numberOfAttendees") != null)
-                        || (metadata.containsKey("attendeesCount") && metadata.get("attendeesCount") != null);
+                        || (metadata.containsKey(METADATA_KEY_ATTENDEES_COUNT)
+                            && metadata.get(METADATA_KEY_ATTENDEES_COUNT) != null);
             default:
                 return metadata.containsKey(field) && metadata.get(field) != null;
         }
@@ -3801,79 +3825,100 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (doc == null || doc.getMetadata() == null) {
             return null;
         }
-
         Map<String, Object> metadata = doc.getMetadata();
+        String fromIso = tryGetDateFromDateIsoMetadata(doc, metadata);
+        if (fromIso != null) {
+            return fromIso;
+        }
+        String fromPrimary = tryGetDateFromPrimaryDateField(doc, metadata);
+        if (fromPrimary != null) {
+            return fromPrimary;
+        }
+        String fromAlt = tryGetDateFromAlternateMetadataDateFields(doc, metadata);
+        if (fromAlt != null) {
+            return fromAlt;
+        }
+        return tryGetDateFromMinuteEmbedded(doc);
+    }
 
-        // PRIORITY 1: Try date_iso first (most reliable - already in ISO format)
+    private String tryGetDateFromDateIsoMetadata(Document doc, Map<String, Object> metadata) {
         Object dateIsoValue = metadata.get(METADATA_KEY_DATE_ISO);
-        if (dateIsoValue != null) {
-            String dateIsoStr = dateIsoValue.toString().trim();
-            if (!dateIsoStr.isEmpty()) {
-                // Validate it's actually ISO format
-                try {
-                    LocalDate.parse(dateIsoStr, DateTimeFormatter.ISO_LOCAL_DATE);
-                    log().debug("Using date_iso field for document {}: {}", doc.getId(), dateIsoStr);
-                    return dateIsoStr;
-                } catch (DateTimeParseException e) {
-                    log().warn("date_iso field '{}' for document {} is not valid ISO format, will try other fields", 
-                              dateIsoStr, doc.getId());
-                }
-            }
+        if (dateIsoValue == null) {
+            return null;
         }
+        String dateIsoStr = dateIsoValue.toString().trim();
+        if (dateIsoStr.isEmpty()) {
+            return null;
+        }
+        try {
+            LocalDate.parse(dateIsoStr, DateTimeFormatter.ISO_LOCAL_DATE);
+            log().debug("Using date_iso field for document {}: {}", doc.getId(), dateIsoStr);
+            return dateIsoStr;
+        } catch (DateTimeParseException ignored) {
+            log().warn("date_iso field '{}' for document {} is not valid ISO format, will try other fields",
+                    dateIsoStr, doc.getId());
+            return null;
+        }
+    }
 
-        // PRIORITY 2: Try date field (may be in Spanish format, needs parsing)
+    private String tryGetDateFromPrimaryDateField(Document doc, Map<String, Object> metadata) {
         Object dateValue = metadata.get("date");
-        if (dateValue != null) {
-            String dateStr = dateValue.toString().trim();
-            if (!dateStr.isEmpty()) {
-                // Try to parse and normalize to ISO (parseDateFlexible handles case normalization internally)
-                LocalDate parsed = parseDateFlexible(dateStr);
-                if (parsed != null) {
-                    String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
-                    log().debug("Parsed and normalized date field for document {}: '{}' -> {}", 
-                              doc.getId(), dateStr, normalized);
-                    return normalized;
-                }
-                
-                // Check if already in ISO format
-                try {
-                    LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE);
-                    log().debug("Date field for document {} is already in ISO format: {}", doc.getId(), dateStr);
-                    return dateStr;
-                } catch (DateTimeParseException ignored) {
-                }
-                // Fallback: try regex to extract year (at least) and build a date for filtering
-                LocalDate fallback = parseDateByRegexFallback(dateStr);
-                if (fallback != null) {
-                    log().warn("Parsed date '{}' from 'date' field for document {} via regex fallback -> {}. " +
-                              "Consider populating date_iso in metadata for reliability.",
-                              dateStr, doc.getId(), fallback.format(DateTimeFormatter.ISO_LOCAL_DATE));
-                    return fallback.format(DateTimeFormatter.ISO_LOCAL_DATE);
-                }
-                log().warn("Could not parse date '{}' from 'date' field for document {} (parseDateFlexible and regex fallback failed). " +
-                          "Document may be excluded from date filtering.", dateStr, doc.getId());
-            }
+        if (dateValue == null) {
+            return null;
         }
+        String dateStr = dateValue.toString().trim();
+        if (dateStr.isEmpty()) {
+            return null;
+        }
+        LocalDate parsed = parseDateFlexible(dateStr);
+        if (parsed != null) {
+            String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+            log().debug("Parsed and normalized date field for document {}: '{}' -> {}",
+                    doc.getId(), dateStr, normalized);
+            return normalized;
+        }
+        try {
+            LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE);
+            log().debug("Date field for document {} is already in ISO format: {}", doc.getId(), dateStr);
+            return dateStr;
+        } catch (DateTimeParseException ignored) {
+            // fall through to regex fallback
+        }
+        LocalDate fallback = parseDateByRegexFallback(dateStr);
+        if (fallback != null) {
+            log().warn("Parsed date '{}' from 'date' field for document {} via regex fallback -> {}. "
+                            + "Consider populating date_iso in metadata for reliability.",
+                    dateStr, doc.getId(), fallback.format(DateTimeFormatter.ISO_LOCAL_DATE));
+            return fallback.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        }
+        log().warn("Could not parse date '{}' from 'date' field for document {} (parseDateFlexible and regex fallback failed). "
+                        + "Document may be excluded from date filtering.", dateStr, doc.getId());
+        return null;
+    }
 
-        // PRIORITY 3: Try other possible field names
+    private String tryGetDateFromAlternateMetadataDateFields(Document doc, Map<String, Object> metadata) {
         String[] otherDateFields = {"fecha", "meeting_date", "document_date"};
         for (String field : otherDateFields) {
             Object fieldValue = metadata.get(field);
-            if (fieldValue != null) {
-                String dateStr = fieldValue.toString().trim();
-                if (!dateStr.isEmpty()) {
-                    LocalDate parsed = parseDateFlexible(dateStr);
-                    if (parsed != null) {
-                        String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
-                        log().debug("Parsed and normalized date from field '{}' for document {}: {} -> {}", 
-                                  field, doc.getId(), dateStr, normalized);
-                        return normalized;
-                    }
-                }
+            if (fieldValue == null) {
+                continue;
+            }
+            String dateStr = fieldValue.toString().trim();
+            if (dateStr.isEmpty()) {
+                continue;
+            }
+            LocalDate parsed = parseDateFlexible(dateStr);
+            if (parsed != null) {
+                String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                log().debug("Parsed and normalized date from field '{}' for document {}: {} -> {}",
+                        field, doc.getId(), dateStr, normalized);
+                return normalized;
             }
         }
+        return null;
+    }
 
-        // Try to get date from Minute object if available
+    private String tryGetDateFromMinuteEmbedded(Document doc) {
         try {
             Minute minute = cacheable().getMinuteFromMetadata(doc);
             if (minute != null && minute.date() != null && !minute.date().trim().isEmpty()) {
@@ -3886,7 +3931,6 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         } catch (Exception e) {
             log().debug("Could not extract date from Minute object for document: {}", doc.getId());
         }
-
         return null;
     }
 
@@ -4077,7 +4121,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         Map<String, Object> metadata = doc.getMetadata();
         
-        Integer fromAttendeesCount = parseIntegerMetadataField(metadata.get("attendeesCount"), "attendeesCount");
+        Integer fromAttendeesCount = parseIntegerMetadataField(
+                metadata.get(METADATA_KEY_ATTENDEES_COUNT), METADATA_KEY_ATTENDEES_COUNT);
         if (fromAttendeesCount != null) {
             return fromAttendeesCount;
         }

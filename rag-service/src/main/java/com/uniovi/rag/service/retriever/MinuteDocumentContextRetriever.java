@@ -7,7 +7,7 @@ import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
 public class MinuteDocumentContextRetriever extends AbstractMetadataContextRetriever {
 
-    private final static String PROMPT_TEMPLATE = """
+    private static final String PROMPT_TEMPLATE = """
         You are a content filtering system for meeting minutes. Your task is to filter document content 
         by removing ONLY information that is irrelevant to the given question.
         

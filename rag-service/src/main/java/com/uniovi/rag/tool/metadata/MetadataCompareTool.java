@@ -50,24 +50,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         // Step 1.4: When query compares two specific dates (e.g. "qué reunión fue más larga: 25 feb 2025 o 25 ago 2025"),
         // use OR of dates so both actas are included (item 53)
         List<String> dateCandidates = extractDateCandidates(query, ner);
-        if (dateCandidates != null && dateCandidates.size() >= 2 && isCompareTwoDatesQuery(query)) {
-            log().info("Query compares two specific dates; re-retrieving and filtering by any of {} dates", dateCandidates.size());
-            List<Document> allDocs = retrieveDocumentsWithFallback(query, new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"}, ner);
-            if (allDocs.isEmpty()) {
-                allDocs = retrieveDocuments(query, ner);
-            }
-            if (!allDocs.isEmpty()) {
-                List<String> requestedYears = extractYearsFromQuery(query, ner);
-                if (!requestedYears.isEmpty()) {
-                    allDocs = filterDocumentsByYears(allDocs, requestedYears);
-                }
-                List<Document> docsByAnyDate = filterDocumentsByAnyOfDates(allDocs, dateCandidates);
-                if (!docsByAnyDate.isEmpty()) {
-                    docs = docsByAnyDate;
-                    log().info("Filtered to {} documents matching any of the {} dates", docs.size(), dateCandidates.size());
-                }
-            }
-        }
+        docs = mergeDocumentsWhenComparingTwoDates(query, ner, docs, dateCandidates);
         
         // Step 1.5: Extract and validate years from query to avoid confusion (2025 vs 2026)
         List<String> requestedYears = extractYearsFromQuery(query, ner);
@@ -145,6 +128,31 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
+    private List<Document> mergeDocumentsWhenComparingTwoDates(
+            String query, JSONObject ner, List<Document> docs, List<String> dateCandidates) {
+        if (dateCandidates == null || dateCandidates.size() < 2 || !isCompareTwoDatesQuery(query)) {
+            return docs;
+        }
+        log().info("Query compares two specific dates; re-retrieving and filtering by any of {} dates", dateCandidates.size());
+        List<Document> allDocs = retrieveDocumentsWithFallback(
+                query, new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"}, ner);
+        if (allDocs.isEmpty()) {
+            allDocs = retrieveDocuments(query, ner);
+        }
+        if (allDocs.isEmpty()) {
+            return docs;
+        }
+        List<String> requestedYearsForMerge = extractYearsFromQuery(query, ner);
+        if (!requestedYearsForMerge.isEmpty()) {
+            allDocs = filterDocumentsByYears(allDocs, requestedYearsForMerge);
+        }
+        List<Document> docsByAnyDate = filterDocumentsByAnyOfDates(allDocs, dateCandidates);
+        if (docsByAnyDate.isEmpty()) {
+            return docs;
+        }
+        log().info("Filtered to {} documents matching any of the {} dates", docsByAnyDate.size(), dateCandidates.size());
+        return docsByAnyDate;
+    }
 
     /**
      * Enhanced field inference with context analysis
@@ -504,7 +512,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     private Map<String, ComparisonValue> extractComparisonDataInParallel(List<Minute> minutes, ComparisonField field, JSONObject ner, String query) {
         List<CompletableFuture<Map.Entry<String, ComparisonValue>>> futures = minutes.stream()
                 .map(minute -> supplyAsync(() -> extractComparisonValue(minute, field, ner, query)))
-                .collect(Collectors.toList());
+                .toList();
 
         boolean mergeBySum = "mentions_by_month".equals(field.fieldName)
                 || "meetings_count_by_month".equals(field.fieldName)
@@ -515,15 +523,18 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 .collect(Collectors.toMap(
                     Map.Entry::getKey,
                     Map.Entry::getValue,
-                    (existing, replacement) -> {
-                        if (mergeBySum && existing.value instanceof Number && replacement.value instanceof Number) {
-                            int sum = ((Number) existing.value).intValue() + ((Number) replacement.value).intValue();
-                            return new ComparisonValue(sum, existing.type != null ? existing.type : ComparisonType.COUNT);
-                        }
-                        return existing; // Keep first occurrence for other fields
-                    },
+                    (existing, replacement) -> mergeComparisonValues(existing, replacement, mergeBySum),
                     LinkedHashMap::new
                 ));
+    }
+
+    private static ComparisonValue mergeComparisonValues(
+            ComparisonValue existing, ComparisonValue replacement, boolean mergeBySum) {
+        if (mergeBySum && existing.value instanceof Number existingNum && replacement.value instanceof Number replacementNum) {
+            int sum = existingNum.intValue() + replacementNum.intValue();
+            return new ComparisonValue(sum, existing.type != null ? existing.type : ComparisonType.COUNT);
+        }
+        return existing;
     }
 
     /**
@@ -938,15 +949,20 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         return !label.isEmpty() ? label.toString() : minute.id();
     }
 
+    private static int attendeeCountForComparison(Minute minute) {
+        if (minute.numberOfAttendees() > 0) {
+            return minute.numberOfAttendees();
+        }
+        return minute.attendees() != null ? minute.attendees().size() : 0;
+    }
+
     /**
      * Extracts field value based on field type
      */
     private Object extractFieldValue(Minute minute, ComparisonField field) {
         switch (field.fieldName) {
             case "numberOfAttendees":
-                return minute.numberOfAttendees() > 0
-                        ? minute.numberOfAttendees()
-                        : (minute.attendees() != null ? minute.attendees().size() : 0);
+                return attendeeCountForComparison(minute);
             case "duration":
                 return calculateDurationFromMinute(minute);
             case "date":

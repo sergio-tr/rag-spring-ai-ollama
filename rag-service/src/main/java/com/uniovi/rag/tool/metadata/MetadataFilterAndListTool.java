@@ -487,7 +487,9 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     /** Extracts minimum attendees from query (e.g. Spanish "more than 18 attendees" patterns -> 18). Returns null if not found. */
     private Integer extractMinAttendeesFromQuery(String query) {
         if (query == null) return null;
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?:más de|más que)\\s+(\\d+)\\s+asistentes", java.util.regex.Pattern.CASE_INSENSITIVE);
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                "(?:más de|más que)\\s+(\\d+)\\s+asistentes",
+                java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE);
         java.util.regex.Matcher m = p.matcher(query);
         if (m.find()) {
             try {
@@ -699,7 +701,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
                     String combined = normalizePersonName(ts);
                     return terms.stream().anyMatch(combined::contains);
                 })
-                .collect(Collectors.toList());
+                .toList();
         return out;
     }
 

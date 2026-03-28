@@ -152,7 +152,7 @@ public class EnhancedNERHandler implements Loggable {
         
         return docs.stream()
                 .filter(doc -> matchesTemporalContext(doc, temporalContext))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -166,7 +166,7 @@ public class EnhancedNERHandler implements Loggable {
         
         return minutes.stream()
                 .filter(minute -> matchesMinuteTemporalContext(minute, temporalContext))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**

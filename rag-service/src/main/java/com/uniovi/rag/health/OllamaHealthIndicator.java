@@ -89,6 +89,11 @@ public class OllamaHealthIndicator implements HealthIndicator {
                     .withDetail("chatModel", chatModel)
                     .withDetail("embeddingModel", embeddingModel)
                     .build();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Health.down(e)
+                    .withDetail("url", tagsUrl)
+                    .build();
         } catch (Exception e) {
             return Health.down(e)
                     .withDetail("url", tagsUrl)

@@ -14,7 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.util.HashMap;
+import java.util.EnumMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -46,7 +46,7 @@ public class RagToolsBeanConfiguration {
             MetadataLlmResponseCacheService metadataLlmResponseCacheService,
             @Autowired(required = false) ObservabilitySupport observability
     ) {
-        Map<QueryType, Tool> tools = new HashMap<>();
+        Map<QueryType, Tool> tools = new EnumMap<>(QueryType.class);
         if (featureConfig.isMetadataEnabled()) {
             tools.putAll(Map.of(
                     QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
