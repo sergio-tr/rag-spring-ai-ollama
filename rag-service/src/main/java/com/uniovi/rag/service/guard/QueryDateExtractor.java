@@ -14,8 +14,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
 /**
  * Extracts a single normalized (ISO) date from a query and optional NER entities.
  * Used by DateExistenceGuard to check if an act exists for the requested date.
@@ -53,44 +51,46 @@ public class QueryDateExtractor implements Loggable {
 
     private List<String> extractDateCandidates(String query, JSONObject ner) {
         List<String> out = new ArrayList<>();
+        appendNerDateStrings(ner, out);
+        appendRegexDateMatches(query, out);
+        return out.stream().distinct().toList();
+    }
 
-        if (ner != null && ner.has("date")) {
-            try {
-                var arr = ner.getJSONArray("date");
-                for (int i = 0; i < arr.length(); i++) {
-                    String s = arr.optString(i, "").trim();
-                    if (!s.isBlank()) out.add(s);
+    private void appendNerDateStrings(JSONObject ner, List<String> out) {
+        if (ner == null || !ner.has("date")) {
+            return;
+        }
+        try {
+            var arr = ner.getJSONArray("date");
+            for (int i = 0; i < arr.length(); i++) {
+                String s = arr.optString(i, "").trim();
+                if (!s.isBlank()) {
+                    out.add(s);
                 }
-            } catch (Exception e) {
-                log().warn("Error extracting dates from NER: {}", e.getMessage());
             }
+        } catch (Exception e) {
+            log().warn("Error extracting dates from NER: {}", e.getMessage());
         }
+    }
 
-        if (query != null) {
-            Pattern iso = Pattern.compile("(\\d{4}-\\d{2}-\\d{2})");
-            Matcher m1 = iso.matcher(query);
-            while (m1.find()) out.add(m1.group(1));
-
-            Pattern slash = Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})");
-            Matcher m2 = slash.matcher(query);
-            while (m2.find()) out.add(m2.group(1));
-
-            Pattern dash = Pattern.compile("(\\d{1,2}-\\d{1,2}-\\d{4})");
-            Matcher m3 = dash.matcher(query);
-            while (m3.find()) out.add(m3.group(1));
-
-            Pattern spanish = Pattern.compile("(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", Pattern.CASE_INSENSITIVE);
-            Matcher m4 = spanish.matcher(query);
-            while (m4.find()) out.add(m4.group(1));
-
-            Pattern spanishNoDe = Pattern.compile(
-                    "(\\d{1,2}\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\s+\\d{4})",
-                    Pattern.CASE_INSENSITIVE);
-            Matcher m5 = spanishNoDe.matcher(query);
-            while (m5.find()) out.add(m5.group(1));
+    private void appendRegexDateMatches(String query, List<String> out) {
+        if (query == null) {
+            return;
         }
+        findAllMatches(Pattern.compile("(\\d{4}-\\d{2}-\\d{2})"), query, out);
+        findAllMatches(Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})"), query, out);
+        findAllMatches(Pattern.compile("(\\d{1,2}-\\d{1,2}-\\d{4})"), query, out);
+        findAllMatches(Pattern.compile("(\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4})", Pattern.CASE_INSENSITIVE), query, out);
+        findAllMatches(Pattern.compile(
+                "(\\d{1,2}\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)\\s+\\d{4})",
+                Pattern.CASE_INSENSITIVE), query, out);
+    }
 
-        return out.stream().distinct().collect(Collectors.toList());
+    private static void findAllMatches(Pattern pattern, String query, List<String> out) {
+        Matcher m = pattern.matcher(query);
+        while (m.find()) {
+            out.add(m.group(1));
+        }
     }
 
     private LocalDate parseDateFlexible(String dateStr) {

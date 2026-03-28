@@ -23,8 +23,9 @@ import java.util.stream.Collectors;
  */
 public class MetadataGetDurationTool extends AbstractMetadataTool {
 
-    public MetadataGetDurationTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
-        super(chatClient, retriever, extractor);
+    public MetadataGetDurationTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
+            MetadataLlmResponseCacheService llmResponseCache) {
+        super(chatClient, retriever, extractor, llmResponseCache);
     }
 
     @Override

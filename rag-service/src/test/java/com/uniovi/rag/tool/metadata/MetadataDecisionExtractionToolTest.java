@@ -3,6 +3,7 @@ package com.uniovi.rag.tool.metadata;
 import com.uniovi.rag.model.QueryType;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;
@@ -25,12 +26,15 @@ class MetadataDecisionExtractionToolTest {
 
     @BeforeEach
     void setUp() {
-        chatClient = mock(ChatClient.class);
+        chatClient = ChatClientTestSupport.mockForUserPromptChain();
+        ChatClientTestSupport.stubUserPromptReturns(chatClient, "NONE");
         retriever = mock(ContextRetriever.class);
         extractor = mock(DocumentContentExtractor.class);
         when(retriever.retrieve(anyString())).thenReturn(List.of());
         when(retriever.retrieveWithMetadataFilters(anyString(), any(JSONObject.class))).thenReturn(List.of());
-        tool = new MetadataDecisionExtractionTool(chatClient, retriever, extractor);
+        MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
+        when(llmCache.getCachedResponse(anyString())).thenReturn("");
+        tool = new MetadataDecisionExtractionTool(chatClient, retriever, extractor, llmCache);
     }
 
     @Test

@@ -43,25 +43,26 @@ public class RagToolsBeanConfiguration {
             ContextRetriever retriever,
             ChatClient chatClient,
             DocumentContentExtractor documentContentExtractor,
+            MetadataLlmResponseCacheService metadataLlmResponseCacheService,
             @Autowired(required = false) ObservabilitySupport observability
     ) {
         Map<QueryType, Tool> tools = new HashMap<>();
         if (featureConfig.isMetadataEnabled()) {
             tools.putAll(Map.of(
-                    QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, retriever, documentContentExtractor),
-                    QueryType.FIND_PARAGRAPH, new MetadataFindParagraphTool(chatClient, retriever, documentContentExtractor),
-                    QueryType.COUNT_AND_EXPLAIN, new MetadataCountAndExplainTool(chatClient, retriever, documentContentExtractor),
-                    QueryType.EXTRACT_ENTITIES, new MetadataExtractEntitiesTool(chatClient, retriever, documentContentExtractor),
-                    QueryType.SUMMARIZE_TOPIC, new MetadataSummarizeTopicTool(chatClient, retriever, documentContentExtractor),
-                    QueryType.BOOLEAN_QUERY, new MetadataBooleanQueryTool(chatClient, retriever, documentContentExtractor)
+                    QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
+                    QueryType.FIND_PARAGRAPH, new MetadataFindParagraphTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
+                    QueryType.COUNT_AND_EXPLAIN, new MetadataCountAndExplainTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
+                    QueryType.EXTRACT_ENTITIES, new MetadataExtractEntitiesTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
+                    QueryType.SUMMARIZE_TOPIC, new MetadataSummarizeTopicTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
+                    QueryType.BOOLEAN_QUERY, new MetadataBooleanQueryTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService)
             ));
             tools.putAll(Map.of(
-                    QueryType.COMPARE, new MetadataCompareTool(chatClient, retriever, documentContentExtractor),
-                    QueryType.GET_DURATION, new MetadataGetDurationTool(chatClient, retriever, documentContentExtractor),
-                    QueryType.GET_FIELD, new MetadataGetFieldTool(chatClient, retriever, documentContentExtractor),
-                    QueryType.FILTER_AND_LIST, new MetadataFilterAndListTool(chatClient, retriever, documentContentExtractor),
-                    QueryType.DECISION_EXTRACTION, new MetadataDecisionExtractionTool(chatClient, retriever, documentContentExtractor),
-                    QueryType.SUMMARIZE_MEETING, new MetadataSummarizeMeetingTool(chatClient, retriever, documentContentExtractor)
+                    QueryType.COMPARE, new MetadataCompareTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
+                    QueryType.GET_DURATION, new MetadataGetDurationTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
+                    QueryType.GET_FIELD, new MetadataGetFieldTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
+                    QueryType.FILTER_AND_LIST, new MetadataFilterAndListTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
+                    QueryType.DECISION_EXTRACTION, new MetadataDecisionExtractionTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService),
+                    QueryType.SUMMARIZE_MEETING, new MetadataSummarizeMeetingTool(chatClient, retriever, documentContentExtractor, metadataLlmResponseCacheService)
             ));
         } else {
             tools.putAll(Map.of(

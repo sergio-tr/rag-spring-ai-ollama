@@ -21,8 +21,9 @@ import java.util.Objects;
  */
 public class MetadataCompareTool extends AbstractMetadataTool {
 
-    public MetadataCompareTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
-        super(chatClient, retriever, extractor);
+    public MetadataCompareTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
+            MetadataLlmResponseCacheService llmResponseCache) {
+        super(chatClient, retriever, extractor, llmResponseCache);
     }
 
     @Override
@@ -928,7 +929,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             label.append(")");
         }
         
-        return label.length() > 0 ? label.toString() : minute.id();
+        return !label.isEmpty() ? label.toString() : minute.id();
     }
 
     /**

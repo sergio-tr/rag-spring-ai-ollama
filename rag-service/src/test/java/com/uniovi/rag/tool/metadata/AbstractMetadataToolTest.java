@@ -2,6 +2,7 @@ package com.uniovi.rag.tool.metadata;
 
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 
@@ -13,10 +14,12 @@ class AbstractMetadataToolTest {
 
     @Test
     void metadataCountDocumentsTool_isInstanceOfAbstractMetadataTool() {
-        ChatClient chatClient = mock(ChatClient.class);
+        ChatClient chatClient = ChatClientTestSupport.mockForUserPromptChain();
+        ChatClientTestSupport.stubUserPromptReturns(chatClient, "NONE");
         ContextRetriever retriever = mock(ContextRetriever.class);
         DocumentContentExtractor extractor = mock(DocumentContentExtractor.class);
-        MetadataCountDocumentsTool tool = new MetadataCountDocumentsTool(chatClient, retriever, extractor);
+        MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
+        MetadataCountDocumentsTool tool = new MetadataCountDocumentsTool(chatClient, retriever, extractor, llmCache);
         assertNotNull(tool);
         assertTrue(tool instanceof AbstractMetadataTool);
     }

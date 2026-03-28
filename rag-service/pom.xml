@@ -247,6 +247,18 @@
                 <version>3.5.7</version>
             </plugin>
 
+            <!-- Surefire: load Mockito as JVM agent (avoids self-attach / future JDK breakage with inline mock maker) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- @{argLine} merges JaCoCo's agent from jacoco:prepare-agent.
+                         Put -Xshare:off first so CDS is disabled before any javaagent appends to the bootstrap classpath
+                         (avoids HotSpot "Sharing is only supported for boot loader classes..."). -->
+                    <argLine>-Xshare:off @{argLine} -javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar"</argLine>
+                </configuration>
+            </plugin>
+
             <!-- JaCoCo: code coverage for SonarCloud -->
             <plugin>
                 <groupId>org.jacoco</groupId>

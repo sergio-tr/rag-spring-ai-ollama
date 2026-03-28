@@ -186,8 +186,7 @@ public class GetFieldTool extends AbstractTool {
             case "place":
             case "lugar":
                 return extractor.extractLiteralField("place", content);
-            case "president":
-            case "presidente":
+            case "president", "presidente":
                 return extractor.extractLiteralField("president", content);
             case "secretary":
             case "secretario":

@@ -36,6 +36,9 @@ public final class QueryInputPreparer {
         String expanded = featureConfig.isExpansionEnabled() ? expander.expand(query) : query;
         JSONObject ner = featureConfig.isNerEnabled() ? analyser.analyse(expanded) : null;
         QueryType queryType = featureConfig.isToolsEnabled() ? classifier.classify(expanded) : null;
+        if (featureConfig.isToolsEnabled()) {
+            queryType = ClassifierOverrides.apply(expanded, queryType);
+        }
         if (featureConfig.isToolsEnabled() && queryType == null) {
             log.warn(
                     "[CLASSIFIER] tools_enabled=true but QueryType is null after classification "

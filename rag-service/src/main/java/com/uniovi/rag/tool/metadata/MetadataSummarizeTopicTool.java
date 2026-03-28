@@ -20,8 +20,9 @@ import java.util.stream.Collectors;
  */
 public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
-    public MetadataSummarizeTopicTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
-        super(chatClient, retriever, extractor);
+    public MetadataSummarizeTopicTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
+            MetadataLlmResponseCacheService llmResponseCache) {
+        super(chatClient, retriever, extractor, llmResponseCache);
     }
 
     @Override
@@ -373,7 +374,14 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             }
         }
         // Fallback for estado de cuentas / presupuesto (item 8): if 0 minutes passed, include any minute with estado de cuentas/presupuesto/cuentas in topics/summary/agenda
-        String topicNormForFallback = topicLower != null ? topicLower : (topic != null ? normalizePersonName(topic) : "");
+        String topicNormForFallback;
+        if (topicLower != null) {
+            topicNormForFallback = topicLower;
+        } else if (topic != null) {
+            topicNormForFallback = normalizePersonName(topic);
+        } else {
+            topicNormForFallback = "";
+        }
         if (filtered.isEmpty() && (topicNormForFallback.contains("estado de cuentas") || topicNormForFallback.contains("presupuesto") || topicNormForFallback.contains("presupuesto anual"))) {
             List<String> cuentaTerms = List.of("estado de cuentas", "presupuesto", "presupuesto anual", "cuentas");
             filtered = minutes.stream()
@@ -622,6 +630,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     /**
      * Generates a message when topic is not found in any minutes.
      */
+    @Override
     protected String generateTopicNotFoundMessage(String query, String topic) {
         if (query == null || query.trim().isEmpty()) {
             return String.format("No se encontró información sobre el tema '%s' en las actas disponibles.", topic);

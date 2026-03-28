@@ -69,6 +69,7 @@ public class EvaluationServiceFactory {
     private final int expansionMaxQueryLengthForLlm;
     private final int expansionRetryQueryLength;
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
+    private final MetadataLlmResponseCacheService metadataLlmResponseCacheService;
 
     public EvaluationServiceFactory(
         ChatClient chatClient,
@@ -88,7 +89,8 @@ public class EvaluationServiceFactory {
         int expansionMaxQueryTotalChars,
         int expansionMaxQueryLengthForLlm,
         int expansionRetryQueryLength,
-        OllamaConnectivityChecker ollamaConnectivityChecker
+        OllamaConnectivityChecker ollamaConnectivityChecker,
+        MetadataLlmResponseCacheService metadataLlmResponseCacheService
     ) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
@@ -108,6 +110,7 @@ public class EvaluationServiceFactory {
         this.expansionMaxQueryLengthForLlm = expansionMaxQueryLengthForLlm > 0 ? expansionMaxQueryLengthForLlm : 500;
         this.expansionRetryQueryLength = expansionRetryQueryLength > 0 ? expansionRetryQueryLength : 200;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
+        this.metadataLlmResponseCacheService = metadataLlmResponseCacheService;
     }
 
     /**
@@ -215,20 +218,20 @@ public class EvaluationServiceFactory {
 
         if (featureConfig.isMetadataEnabled()) {
             tools.putAll(Map.of(
-                    QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, retriever, extractor),
-                    QueryType.FIND_PARAGRAPH, new MetadataFindParagraphTool(chatClient, retriever, extractor),
-                    QueryType.COUNT_AND_EXPLAIN, new MetadataCountAndExplainTool(chatClient, retriever, extractor),
-                    QueryType.EXTRACT_ENTITIES, new MetadataExtractEntitiesTool(chatClient, retriever, extractor),
-                    QueryType.SUMMARIZE_TOPIC, new MetadataSummarizeTopicTool(chatClient, retriever, extractor),
-                    QueryType.BOOLEAN_QUERY, new MetadataBooleanQueryTool(chatClient, retriever, extractor)
+                    QueryType.COUNT_DOCUMENTS, new MetadataCountDocumentsTool(chatClient, retriever, extractor, metadataLlmResponseCacheService),
+                    QueryType.FIND_PARAGRAPH, new MetadataFindParagraphTool(chatClient, retriever, extractor, metadataLlmResponseCacheService),
+                    QueryType.COUNT_AND_EXPLAIN, new MetadataCountAndExplainTool(chatClient, retriever, extractor, metadataLlmResponseCacheService),
+                    QueryType.EXTRACT_ENTITIES, new MetadataExtractEntitiesTool(chatClient, retriever, extractor, metadataLlmResponseCacheService),
+                    QueryType.SUMMARIZE_TOPIC, new MetadataSummarizeTopicTool(chatClient, retriever, extractor, metadataLlmResponseCacheService),
+                    QueryType.BOOLEAN_QUERY, new MetadataBooleanQueryTool(chatClient, retriever, extractor, metadataLlmResponseCacheService)
             ));
             tools.putAll(Map.of(
-                    QueryType.COMPARE, new MetadataCompareTool(chatClient, retriever, extractor),
-                    QueryType.GET_DURATION, new MetadataGetDurationTool(chatClient, retriever, extractor),
-                    QueryType.GET_FIELD, new MetadataGetFieldTool(chatClient, retriever, extractor),
-                    QueryType.FILTER_AND_LIST, new MetadataFilterAndListTool(chatClient, retriever, extractor),
-                    QueryType.DECISION_EXTRACTION, new MetadataDecisionExtractionTool(chatClient, retriever, extractor),
-                    QueryType.SUMMARIZE_MEETING, new MetadataSummarizeMeetingTool(chatClient, retriever, extractor)
+                    QueryType.COMPARE, new MetadataCompareTool(chatClient, retriever, extractor, metadataLlmResponseCacheService),
+                    QueryType.GET_DURATION, new MetadataGetDurationTool(chatClient, retriever, extractor, metadataLlmResponseCacheService),
+                    QueryType.GET_FIELD, new MetadataGetFieldTool(chatClient, retriever, extractor, metadataLlmResponseCacheService),
+                    QueryType.FILTER_AND_LIST, new MetadataFilterAndListTool(chatClient, retriever, extractor, metadataLlmResponseCacheService),
+                    QueryType.DECISION_EXTRACTION, new MetadataDecisionExtractionTool(chatClient, retriever, extractor, metadataLlmResponseCacheService),
+                    QueryType.SUMMARIZE_MEETING, new MetadataSummarizeMeetingTool(chatClient, retriever, extractor, metadataLlmResponseCacheService)
             ));
         } else {
             tools.putAll(Map.of(

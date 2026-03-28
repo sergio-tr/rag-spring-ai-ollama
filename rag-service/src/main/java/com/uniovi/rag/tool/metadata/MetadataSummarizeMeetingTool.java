@@ -22,8 +22,9 @@ import java.util.stream.Collectors;
  */
     public class MetadataSummarizeMeetingTool extends AbstractMetadataTool {
 
-    public MetadataSummarizeMeetingTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
-        super(chatClient, retriever, extractor);
+    public MetadataSummarizeMeetingTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
+            MetadataLlmResponseCacheService llmResponseCache) {
+        super(chatClient, retriever, extractor, llmResponseCache);
     }
 
     @Override

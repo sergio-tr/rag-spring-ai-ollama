@@ -20,8 +20,12 @@ import java.util.stream.Collectors;
  */
 public class MetadataGetFieldTool extends AbstractMetadataTool {
 
-    public MetadataGetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
-        super(chatClient, retriever, extractor);
+    private static final String FIELD_TOPICS = "topics";
+    private static final String FIELD_ATTENDEES = "attendees";
+
+    public MetadataGetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
+            MetadataLlmResponseCacheService llmResponseCache) {
+        super(chatClient, retriever, extractor, llmResponseCache);
     }
 
     @Override
@@ -34,7 +38,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         // Step 1: Retrieve with NER/date so a who-chaired / which-date query resolves to the correct minute (E.1)
         List<Document> docs = retrieveDocumentsWithFallback(
             query,
-            new String[] {"date", "place", "startTime", "endTime", "topics", "decisions", "summary", "president", "secretary", "attendees"},
+            new String[] {"date", "place", "startTime", "endTime", FIELD_TOPICS, "decisions", "summary", "president", "secretary", FIELD_ATTENDEES},
             ner
         );
         
@@ -259,9 +263,8 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             case "endtime":
             case "hora_fin":
                 return new String[]{"endTime", "hora_fin", "end_time"};
-            case "topics":
-            case "temas":
-                return new String[]{"topics", "temas"};
+            case "topics", "temas":
+                return new String[]{FIELD_TOPICS, "temas"};
             case "decisions":
             case "decisiones":
                 return new String[]{"decisions", "decisiones", "acuerdos"};
@@ -320,7 +323,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
         if (containsAny(q, "asistente", "attendee", "participante", "personas")) return "attendees";
         if (containsAny(q, "número de asistentes", "cuántos asistieron", "attendees count")) return "attendeesCount";
-        if (containsAny(q, "tema", "topics")) return "topics";
+        if (containsAny(q, "tema", FIELD_TOPICS)) return FIELD_TOPICS;
         if (containsAny(q, "resumen", "summary")) return "summary";
 
         // Priority 4: Date (general, after checking context)
