@@ -275,13 +275,12 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                 return new String[]{"startTime", "hora_inicio", "start_time"};
             case "endtime", "hora_fin":
                 return new String[]{FIELD_END_TIME, "hora_fin", "end_time"};
-            case "topics", "temas":
+            case FIELD_TOPICS, "temas":
                 return new String[]{FIELD_TOPICS, "temas"};
             case "decisions":
             case "decisiones":
                 return new String[]{"decisions", "decisiones", "acuerdos"};
-            case FIELD_SUMMARY:
-            case "resumen":
+            case FIELD_SUMMARY, "resumen":
                 return new String[]{FIELD_SUMMARY, "resumen"};
             case "attendees":
             case "asistentes":
