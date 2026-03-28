@@ -38,6 +38,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     private static final String NER_KEY_FILTERS = "filters";
 
+    /** JSON key in LLM responses for attendee-count threshold (see {@link #detectAttendeesCountQuery}). */
+    private static final String JSON_KEY_THRESHOLD = "threshold";
+
+    /** Generic user-facing message when retrieval returns no documents (keep in sync across fallbacks). */
+    private static final String MSG_NO_RELEVANT_MINUTES = "No relevant meeting minutes were found for this query.";
+
     private static final String METADATA_KEY_PRESIDENT = "president";
 
     private static final String METADATA_KEY_TOPICS = "topics";
@@ -2283,8 +2289,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             JSONObject json = new JSONObject(response);
             if (json.optBoolean("isAttendeesQuery", false)) {
                 String operator = json.optString("operator", null);
-                Integer threshold = json.has("threshold") && !json.isNull("threshold") 
-                    ? json.getInt("threshold") : null;
+                Integer threshold = json.has(JSON_KEY_THRESHOLD) && !json.isNull(JSON_KEY_THRESHOLD)
+                    ? json.getInt(JSON_KEY_THRESHOLD) : null;
                 
                 if (operator != null && threshold != null) {
                     log().info("Detected attendees count query: operator={}, threshold={}", operator, threshold);
@@ -2973,7 +2979,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     @Override
     protected String generateFallbackNotFoundMessage(String query) {
         if (query == null || query.trim().isEmpty()) {
-            return "No relevant meeting minutes were found for this query.";
+            return MSG_NO_RELEVANT_MINUTES;
         }
         
         String prompt = String.format("""
@@ -2994,7 +3000,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         // Ultimate fallback - generic message
-        return "No relevant meeting minutes were found for this query.";
+        return MSG_NO_RELEVANT_MINUTES;
     }
 
     /**
@@ -3068,7 +3074,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      */
     private String generateFallbackSpecificErrorMessage(String query, String field, String date) {
         if (query == null || query.trim().isEmpty()) {
-            return "No relevant meeting minutes were found for this query.";
+            return MSG_NO_RELEVANT_MINUTES;
         }
         
         StringBuilder context = new StringBuilder();
@@ -3099,7 +3105,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         // Ultimate fallback - generic message
-        return "No relevant meeting minutes were found for this query.";
+        return MSG_NO_RELEVANT_MINUTES;
     }
 
     /**

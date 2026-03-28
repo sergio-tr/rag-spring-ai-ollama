@@ -46,8 +46,8 @@ public abstract class AbstractDocumentService implements DocumentService {
             jdbcTemplate.update("DELETE FROM documents");
             log().info("Database cleared successfully");
         } catch (Exception e) {
-            log().error("Error clearing database: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to clear database", e);
+            log().error("Error clearing database", e);
+            throw new IllegalStateException("Failed to clear database", e);
         }
     }
     
@@ -90,13 +90,13 @@ public abstract class AbstractDocumentService implements DocumentService {
                 documentId, documentId
             );
             
-            log().info("Deleted {} chunks and {} document entries for document_id: {}", 
-                      deletedChunks, deletedDocs, documentId);
+            log().info("Deleted {} chunks and {} document entries (document_id length: {})",
+                      deletedChunks, deletedDocs, documentId.length());
             
             return deletedChunks;
         } catch (Exception e) {
-            log().error("Error deleting document by document_id: {}", documentId, e);
-            throw new RuntimeException("Failed to delete document: " + documentId, e);
+            log().error("Error deleting document by document_id (id length: {})", documentId.length(), e);
+            throw new IllegalStateException("Failed to delete document", e);
         }
     }
 
@@ -121,7 +121,7 @@ public abstract class AbstractDocumentService implements DocumentService {
             );
             return count != null && count > 0;
         } catch (Exception e) {
-            log().warn("Error checking document_id existence: {}", documentId, e);
+            log().warn("Error checking document_id existence (id length: {})", documentId.length(), e);
             return false;
         }
     }
@@ -160,7 +160,7 @@ public abstract class AbstractDocumentService implements DocumentService {
         throw new IllegalArgumentException("Not supported file type");
     }
 
-    protected String extractFromPdf(MultipartFile file) throws Exception {
+    protected String extractFromPdf(MultipartFile file) throws IOException {
         if (file == null) {
             throw new IllegalArgumentException("File is null");
         }
@@ -177,7 +177,7 @@ public abstract class AbstractDocumentService implements DocumentService {
                 throw new IllegalArgumentException("The PDF does not contain extractable text. It may be protected or an image.");
             }
             
-            log().info("PDF extracted {} characters from file: {}", rawText.length(), filename);
+            log().info("PDF extracted {} characters (filename length: {})", rawText.length(), filename.length());
             
             // Normalize the extracted text to improve subsequent extraction
             String normalized = normalizeExtractedText(rawText);
@@ -249,7 +249,7 @@ public abstract class AbstractDocumentService implements DocumentService {
         return content.toString();
     }
 
-    protected String extractFromCsv(MultipartFile file) throws Exception {
+    protected String extractFromCsv(MultipartFile file) throws IOException {
         return getString(file);
     }
 

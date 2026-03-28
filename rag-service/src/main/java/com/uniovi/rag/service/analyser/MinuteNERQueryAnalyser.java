@@ -44,6 +44,10 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     private static final String JSON_KEY_TEMPORAL_CONTEXT = "temporalContext";
 
+    private static final String JSON_KEY_START_TIME = "startTime";
+
+    private static final String JSON_KEY_DECISIONS = "decisions";
+
     private static final String TEMPORAL_CONTEXT_FUTURE = "future";
 
     /** Spring proxy for {@code @Cacheable} (avoid self-invocation). */
@@ -358,8 +362,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     private void validateAndNormalize(JSONObject json) {
         // List of all expected fields
         String[] fields = {
-            "date", JSON_KEY_PLACE, "startTime", "endTime", JSON_KEY_PRESIDENT, JSON_KEY_SECRETARY,
-            JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", "decisions",
+            "date", JSON_KEY_PLACE, JSON_KEY_START_TIME, "endTime", JSON_KEY_PRESIDENT, JSON_KEY_SECRETARY,
+            JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", JSON_KEY_DECISIONS,
             "mentionedEntities", JSON_KEY_TOPICS, "section", "summary", JSON_KEY_ANSWER_TYPE,
             JSON_KEY_COMPARISON_TYPE, JSON_KEY_TEMPORAL_CONTEXT
         };
@@ -493,7 +497,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
      * Normalizes time values
      */
     private void normalizeTimes(JSONObject json) {
-        normalizeTimeField(json, "startTime");
+        normalizeTimeField(json, JSON_KEY_START_TIME);
         normalizeTimeField(json, "endTime");
     }
 
@@ -670,7 +674,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
                 } else if (queryLower.contains("topic") || queryLower.contains("tema")) {
                     json.put(JSON_KEY_COMPARISON_TYPE, "topics");
                 } else if (queryLower.contains("decision") || queryLower.contains("decisión")) {
-                    json.put(JSON_KEY_COMPARISON_TYPE, "decisions");
+                    json.put(JSON_KEY_COMPARISON_TYPE, JSON_KEY_DECISIONS);
                 } else if (queryLower.contains(JSON_KEY_PLACE) || queryLower.contains("lugar")) {
                     json.put(JSON_KEY_COMPARISON_TYPE, JSON_KEY_PLACE);
                 } else {
@@ -753,8 +757,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         }
         
         // Fill remaining fields
-        String[] fields = {JSON_KEY_PLACE, "startTime", "endTime", JSON_KEY_PRESIDENT, JSON_KEY_SECRETARY,
-                          JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", "decisions", 
+        String[] fields = {JSON_KEY_PLACE, JSON_KEY_START_TIME, "endTime", JSON_KEY_PRESIDENT, JSON_KEY_SECRETARY,
+                          JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", JSON_KEY_DECISIONS, 
                           "mentionedEntities", "topics", "section", "summary"};
         
         for (String field : fields) {
