@@ -702,7 +702,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         }
         
         // Ultimate fallback
-        return String.format("Found %d relevant entities:\n%s",
+        return String.format("Found %d relevant entities:%n%s",
                           entities.size(), entitiesText);
     }
 

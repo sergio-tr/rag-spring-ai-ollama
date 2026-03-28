@@ -515,10 +515,8 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
                     log().info("Keyword 'seguridad' matched via synonym (vigilancia/videovigilancia/cámaras) in document");
                     return true;
                 }
-            }
-            if (doc.getText() != null) {
-                String contentLower = doc.getText().toLowerCase();
-                if (keyword != null && keyword.toLowerCase().contains("seguridad")) {
+                if (doc.getText() != null) {
+                    String contentLower = doc.getText().toLowerCase();
                     if (contentLower.contains("seguridad") || contentLower.contains("vigilancia") || contentLower.contains("videovigilancia")
                         || contentLower.contains("camara") || contentLower.contains("cámaras") || contentLower.contains("camaras")) {
                         log().info("Keyword 'seguridad' matched via synonym in document content");

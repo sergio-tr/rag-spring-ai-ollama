@@ -27,6 +27,8 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     protected final int defaultTopK;
     protected final double defaultSimilarityThreshold;
     protected static final int DEFAULT_MAX_PROMPT_CHARS = 6000;
+    /** Metadata key for ISO date (vector store / chunk metadata). */
+    private static final String META_DATE_ISO = "date_iso";
 
     public AbstractContextRetriever(PgVectorStore vectorStore, ChatClient chatClient, int topK, double similarityThreshold) {
         this.vectorStore = vectorStore;
@@ -112,7 +114,8 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         if (meta == null || meta.isEmpty()) {
             return content != null ? content : "";
         }
-        String date = meta.containsKey("date_iso") ? String.valueOf(meta.get("date_iso")) : (meta.containsKey("date") ? String.valueOf(meta.get("date")) : null);
+        String date = meta.containsKey(META_DATE_ISO) ? String.valueOf(meta.get(META_DATE_ISO))
+                : (meta.containsKey("date") ? String.valueOf(meta.get("date")) : null);
         String president = meta.containsKey("president") ? String.valueOf(meta.get("president")) : null;
         Object topicsObj = meta.get("topics");
         String topicsStr = null;
@@ -168,7 +171,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     private String getDocumentDateFromMetadata(Document doc) {
         if (doc == null || doc.getMetadata() == null) return null;
         Map<String, Object> m = doc.getMetadata();
-        Object dateIso = m.get("date_iso");
+        Object dateIso = m.get(META_DATE_ISO);
         if (dateIso != null && !dateIso.toString().trim().isEmpty()) return dateIso.toString().trim();
         Object date = m.get("date");
         return date != null ? date.toString().trim() : null;
@@ -579,6 +582,19 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
 
         return doc.getId();
     }
+
+    private static boolean isNonEmptyMetadataFieldValue(Object value) {
+        if (value instanceof String s) {
+            return !s.trim().isEmpty();
+        }
+        if (value instanceof java.util.List<?> list) {
+            return !list.isEmpty();
+        }
+        if (value instanceof java.util.Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        return true;
+    }
     
     /**
      * Counts non-null, non-empty metadata fields in a document.
@@ -593,16 +609,8 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         
         int count = 0;
         for (Object value : metadata.values()) {
-            if (value != null) {
-                if (value instanceof String && !((String) value).trim().isEmpty()) {
-                    count++;
-                } else if (value instanceof java.util.List && !((java.util.List<?>) value).isEmpty()) {
-                    count++;
-                } else if (value instanceof java.util.Map && !((java.util.Map<?, ?>) value).isEmpty()) {
-                    count++;
-                } else if (!(value instanceof String) && !(value instanceof java.util.List) && !(value instanceof java.util.Map)) {
-                    count++;
-                }
+            if (value != null && isNonEmptyMetadataFieldValue(value)) {
+                count++;
             }
         }
         return count;

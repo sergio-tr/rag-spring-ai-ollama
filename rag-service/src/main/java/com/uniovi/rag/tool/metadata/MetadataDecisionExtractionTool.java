@@ -134,7 +134,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                         }
                         return matches;
                     })
-                    .collect(Collectors.toList());
+                    .toList();
             
             if (dateValidatedMinutes.isEmpty()) {
                 log().debug("No minutes with matching date found after validation. Query date: '{}' (parsed: {}). " +
@@ -163,7 +163,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                 return ToolResult.from(formatResponse(noMentionMsg, query), getClass());
             }
             // Filter to only decisions that mention the topic (or synonyms) so the answer focuses on it (item 14)
-            decisions = decisions.stream().filter(d -> decisionMentionsTopic(d, topic)).collect(Collectors.toList());
+            decisions = decisions.stream().filter(d -> decisionMentionsTopic(d, topic)).toList();
         }
 
         // Step 7: Analyze and rank decisions
@@ -209,12 +209,12 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                     }
                     return null;
                 }))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -223,13 +223,13 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     private List<Decision> extractDecisionsInParallel(String query, List<Minute> minutes) {
         List<CompletableFuture<List<Decision>>> futures = minutes.stream()
                 .map(minute -> supplyAsync(() -> extractDecisionsFromMinute(query, minute)))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .flatMap(List::stream)
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -376,7 +376,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         return entities.stream()
                 .distinct()
                 .limit(10) // Limit to avoid too many entities
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -388,7 +388,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                 .sorted((a, b) -> Integer.compare(
                         b.getDecisionText() != null ? b.getDecisionText().length() : 0,
                         a.getDecisionText() != null ? a.getDecisionText().length() : 0))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**

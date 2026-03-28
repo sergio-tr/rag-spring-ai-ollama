@@ -26,6 +26,7 @@ import java.util.regex.Matcher;
 public abstract class AbstractMetadataTool extends AbstractTool {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String METADATA_KEY_END_TIME = "endTime";
 
     private final MetadataLlmResponseCacheService llmResponseCache;
 
@@ -312,7 +313,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String date = safeGetString(metadata, "date");
         String place = safeGetString(metadata, "place");
         String startTime = safeGetString(metadata, "startTime");
-        String endTime = safeGetString(metadata, "endTime");
+        String endTime = safeGetString(metadata, METADATA_KEY_END_TIME);
         String president = safeGetString(metadata, "president");
         String secretary = safeGetString(metadata, "secretary");
         
@@ -367,8 +368,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return null;
         }
         
-        if (value instanceof String) {
-            String str = (String) value;
+        if (value instanceof String str) {
             return str.isBlank() ? null : str;
         }
         
@@ -396,7 +396,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return list.stream()
                     .map(obj -> obj != null ? obj.toString() : "")
                     .filter(s -> !s.isEmpty())
-                    .collect(Collectors.toList());
+                    .toList();
         }
         
         // If String, try to parse comma-separated values
@@ -410,7 +410,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return Arrays.stream(str.split(","))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
-                    .collect(Collectors.toList());
+                    .toList();
         }
         
         log().warn("Unexpected type for key '{}': {}, expected List<String> or String. Returning empty list.", 
@@ -574,7 +574,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // Build agenda items list from minute
             List<String> minuteAgendaItems = minute.agenda().values().stream()
                     .filter(item -> item != null && !item.trim().isEmpty())
-                    .collect(Collectors.toList());
+                    .toList();
             
             if (minuteAgendaItems.isEmpty()) {
                 return true; // No agenda content to search
@@ -908,8 +908,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         Map.entry("presidente", "president"),
         Map.entry("hora_inicio", "startTime"),
         Map.entry("hora de inicio", "startTime"),
-        Map.entry("hora_fin", "endTime"),
-        Map.entry("hora de fin", "endTime"),
+        Map.entry("hora_fin", METADATA_KEY_END_TIME),
+        Map.entry("hora de fin", METADATA_KEY_END_TIME),
         Map.entry("temas", "topics"),
         Map.entry("decisiones", "decisions"),
         Map.entry("acuerdos", "decisions"),
@@ -3405,29 +3405,33 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // ISO format: yyyy-MM-dd
             Matcher m1 = Pattern.compile("(\\d{4}-\\d{2}-\\d{2})").matcher(query);
             while (m1.find()) {
-                out.add(m1.group(1));
-                log().debug("Extracted ISO date from query: {}", m1.group(1));
+                String iso = m1.group(1);
+                out.add(iso);
+                log().debug("Extracted ISO date from query: {}", iso);
             }
 
             // Slash format: dd/MM/yyyy or d/M/yyyy
             Matcher m2 = Pattern.compile("(\\d{1,2}/\\d{1,2}/\\d{4})").matcher(query);
             while (m2.find()) {
-                out.add(m2.group(1));
-                log().debug("Extracted slash date from query: {}", m2.group(1));
+                String slash = m2.group(1);
+                out.add(slash);
+                log().debug("Extracted slash date from query: {}", slash);
             }
 
             // Dash format: dd-MM-yyyy or d-M-yyyy
             Matcher m3 = Pattern.compile("(\\d{1,2}-\\d{1,2}-\\d{4})").matcher(query);
             while (m3.find()) {
-                out.add(m3.group(1));
-                log().debug("Extracted dash date from query: {}", m3.group(1));
+                String dash = m3.group(1);
+                out.add(dash);
+                log().debug("Extracted dash date from query: {}", dash);
             }
 
             // Dot format: dd.MM.yyyy or d.M.yyyy
             Matcher m4 = Pattern.compile("(\\d{1,2}\\.\\d{1,2}\\.\\d{4})").matcher(query);
             while (m4.find()) {
-                out.add(m4.group(1));
-                log().debug("Extracted dot date from query: {}", m4.group(1));
+                String dot = m4.group(1);
+                out.add(dot);
+                log().debug("Extracted dot date from query: {}", dot);
             }
 
             // Spanish format: "d de mes de yyyy" or "dd de mes de yyyy" (case insensitive)
@@ -3436,8 +3440,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 Pattern.CASE_INSENSITIVE
             ).matcher(query);
             while (m5.find()) {
-                out.add(m5.group(1));
-                log().debug("Extracted Spanish date from query: {}", m5.group(1));
+                String es = m5.group(1);
+                out.add(es);
+                log().debug("Extracted Spanish date from query: {}", es);
             }
 
             // Spanish format without "de" between day and month: "d mes yyyy"
@@ -3446,8 +3451,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 Pattern.CASE_INSENSITIVE
             ).matcher(query);
             while (m6.find()) {
-                out.add(m6.group(1));
-                log().debug("Extracted Spanish date (no 'de') from query: {}", m6.group(1));
+                String esNoDe = m6.group(1);
+                out.add(esNoDe);
+                log().debug("Extracted Spanish date (no 'de') from query: {}", esNoDe);
             }
         }
 
@@ -3461,7 +3467,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
 
-        List<String> distinct = out.stream().distinct().collect(Collectors.toList());
+        List<String> distinct = out.stream().distinct().toList();
         log().info("Extracted {} unique date candidates from query/NER: {}", distinct.size(), distinct);
         return distinct;
     }
@@ -4006,8 +4012,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         }
                     }
                 }
-            } else if (attendeesObj instanceof String) {
-                String attendeesStr = (String) attendeesObj;
+            } else if (attendeesObj instanceof String attendeesStr) {
                 // Try to parse comma-separated or newline-separated list
                 String[] parts = attendeesStr.split("[,\n•]");
                 for (String part : parts) {
@@ -4055,40 +4060,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         Map<String, Object> metadata = doc.getMetadata();
         
-        // Try attendeesCount first (derived field)
-        Object countObj = metadata.get("attendeesCount");
-        if (countObj != null) {
-            if (countObj instanceof Integer) {
-                return (Integer) countObj;
-            }
-            if (countObj instanceof Number) {
-                return ((Number) countObj).intValue();
-            }
-            if (countObj instanceof String) {
-                try {
-                    return Integer.parseInt(((String) countObj).trim());
-                } catch (NumberFormatException e) {
-                    log().warn("Could not parse attendeesCount as integer: {}", countObj);
-                }
-            }
+        Integer fromAttendeesCount = parseIntegerMetadataField(metadata.get("attendeesCount"), "attendeesCount");
+        if (fromAttendeesCount != null) {
+            return fromAttendeesCount;
         }
-        
-        // Try numberOfAttendees (alternative field name)
-        countObj = metadata.get("numberOfAttendees");
-        if (countObj != null) {
-            if (countObj instanceof Integer) {
-                return (Integer) countObj;
-            }
-            if (countObj instanceof Number) {
-                return ((Number) countObj).intValue();
-            }
-            if (countObj instanceof String) {
-                try {
-                    return Integer.parseInt(((String) countObj).trim());
-                } catch (NumberFormatException e) {
-                    log().warn("Could not parse numberOfAttendees as integer: {}", countObj);
-                }
-            }
+        Integer fromNumberOfAttendees = parseIntegerMetadataField(metadata.get("numberOfAttendees"), "numberOfAttendees");
+        if (fromNumberOfAttendees != null) {
+            return fromNumberOfAttendees;
         }
         
         // Fallback: count from attendees list
@@ -4112,6 +4090,29 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             log().debug("Could not extract attendeesCount from Minute object: {}", e.getMessage());
         }
         
+        return null;
+    }
+
+    /**
+     * Parses Integer / Number / String metadata values used for attendee counts.
+     */
+    private Integer parseIntegerMetadataField(Object countObj, String fieldName) {
+        if (countObj == null) {
+            return null;
+        }
+        if (countObj instanceof Integer i) {
+            return i;
+        }
+        if (countObj instanceof Number n) {
+            return n.intValue();
+        }
+        if (countObj instanceof String s) {
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException e) {
+                log().warn("Could not parse {} as integer: {}", fieldName, countObj.getClass().getSimpleName());
+            }
+        }
         return null;
     }
     

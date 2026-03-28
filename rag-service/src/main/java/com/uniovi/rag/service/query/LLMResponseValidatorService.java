@@ -3,6 +3,8 @@ package com.uniovi.rag.service.query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.regex.Pattern;
+
 /**
  * Validates and cleans LLM responses consistently across the query pipeline.
  */
@@ -11,6 +13,12 @@ public class LLMResponseValidatorService implements ResponseValidator {
     private static final Logger log = LoggerFactory.getLogger(LLMResponseValidatorService.class);
     private static final int MIN_RESPONSE_LENGTH = 2;
     private static final int MAX_RESPONSE_LENGTH = 10000;
+    private static final int RX_FLAGS = Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.CANON_EQ;
+    private static final Pattern NO_ERROR_PHRASE = Pattern.compile(
+            ".*\\b(no|ningún|ningun|sin)\\s+(ningún|ningun)?\\s*error\\b.*", RX_FLAGS);
+    private static final Pattern NO_HAY_ERROR = Pattern.compile(".*\\bno\\s+hay\\s+error.*", RX_FLAGS);
+    private static final Pattern NO_ERROR_ENCONTRADO = Pattern.compile(
+            ".*\\bno\\s+se\\s+encontr[oó]\\s+(ningún|ningun)?\\s*error.*", RX_FLAGS);
 
     @Override
     public boolean isValidResponse(String response, String context) {
@@ -68,9 +76,9 @@ public class LLMResponseValidatorService implements ResponseValidator {
     private static boolean isErrorResponse(String response) {
         if (response == null || response.isEmpty()) return false;
         String lower = response.toLowerCase().trim();
-        if (lower.matches("(?s).*\\b(no|ningún|ningun|sin)\\s+(ningún|ningun)?\\s*error\\b.*")) return false;
-        if (lower.matches("(?s).*\\bno\\s+hay\\s+error.*")) return false;
-        if (lower.matches("(?s).*\\bno\\s+se\\s+encontr[oó]\\s+(ningún|ningun)?\\s*error.*")) return false;
+        if (NO_ERROR_PHRASE.matcher(lower).matches()) return false;
+        if (NO_HAY_ERROR.matcher(lower).matches()) return false;
+        if (NO_ERROR_ENCONTRADO.matcher(lower).matches()) return false;
         if (lower.startsWith("error:") || lower.startsWith("exception:")) return true;
         if (lower.contains("error occurred") || lower.contains("an error occurred")) return true;
         if (lower.contains("processing error") || lower.contains("processing exception")) return true;

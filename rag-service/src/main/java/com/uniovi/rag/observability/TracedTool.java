@@ -1,6 +1,5 @@
 package com.uniovi.rag.observability;
 
-import com.uniovi.rag.model.QueryType;
 import com.uniovi.rag.tool.Tool;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;

@@ -77,7 +77,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         if (query != null && query.toLowerCase().contains("tejado")) {
             List<ParagraphResult> tejadoFiltered = results.stream()
                     .filter(r -> r.getParagraph() != null && r.getParagraph().toLowerCase().contains("tejado"))
-                    .collect(Collectors.toList());
+                    .toList();
             if (tejadoFiltered.isEmpty() && !results.isEmpty()) {
                 log().info("Query asks for 'tejado' but all paragraphs only mentioned 'portal' or other terms; returning not found");
                 String notFoundMsg = generateTopicNotFoundMessage(query, "renovación del tejado");
@@ -114,13 +114,13 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
                     Document doc = minuteIdToDoc.get(minute.id());
                     return findRelevantParagraph(query, minute, doc);
                 }))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
                 .filter(result -> result.getParagraph() != null && !result.getParagraph().isBlank())
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -279,7 +279,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
                 .sorted((a, b) -> Integer.compare(
                         b.getParagraph() != null ? b.getParagraph().length() : 0,
                         a.getParagraph() != null ? a.getParagraph().length() : 0))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -307,7 +307,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             return generateNotFoundMessage(query);
         }
         
-        String paragraphSummary = formatParagraphSummary(results, clusters);
+        String paragraphSummary = formatParagraphSummary(clusters);
         
         String prompt = String.format("""
             Given the following user query (in any language):
@@ -387,7 +387,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
     /**
      * Formats paragraph summary for LLM prompt (without technical details)
      */
-    private String formatParagraphSummary(List<ParagraphResult> results, List<Cluster<ParagraphResult>> clusters) {
+    private String formatParagraphSummary(List<Cluster<ParagraphResult>> clusters) {
         StringBuilder summary = new StringBuilder();
         
         // Format paragraphs naturally without mentioning clusters

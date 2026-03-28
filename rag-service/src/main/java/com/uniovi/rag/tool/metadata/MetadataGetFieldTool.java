@@ -150,12 +150,12 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                     }
                     return null;
                 }))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -164,13 +164,13 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
     private List<FieldResult> extractFieldValuesInParallel(List<Minute> minutes, String detectedField) {
         List<CompletableFuture<FieldResult>> futures = minutes.stream()
                 .map(minute -> supplyAsync(() -> extractFieldValue(minute, detectedField)))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
                 .filter(result -> result.getFieldValue() != null && !result.getFieldValue().isBlank())
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -364,7 +364,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                 .sorted((a, b) -> Integer.compare(
                         b.getFieldValue() != null ? b.getFieldValue().length() : 0,
                         a.getFieldValue() != null ? a.getFieldValue().length() : 0))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -377,7 +377,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
 
         // Direct answer style (no "se encontraron X...")
-        List<FieldResult> top = results.stream().limit(5).collect(Collectors.toList());
+        List<FieldResult> top = results.stream().limit(5).toList();
 
         // Build field data for prompt (format duration and other fields in natural language when applicable)
         StringBuilder fieldData = new StringBuilder();
@@ -585,7 +585,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                     
                     return matches;
                 })
-                .collect(Collectors.toList());
+                .toList();
         
         log().info("Filtered {} minutes by person '{}', {} remaining", 
                     minutes.size(), personName, filtered.size());

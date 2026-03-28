@@ -206,11 +206,10 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             topics = new ArrayList<>(merged);
         } else if ((agenda == null || agenda.isEmpty()) && topics != null && !topics.isEmpty()) {
             // Fallback: If agenda is empty but topics exist, create agenda from topics
-            log().info("Agenda is empty for document: {}. Creating agenda from {} topics as fallback.", 
-                      filename, topics != null ? topics.size() : 0);
+            log().info("Agenda is empty; creating agenda from {} topics as fallback.", topics != null ? topics.size() : 0);
             agenda = createAgendaFromTopics(topics);
             if (agenda != null) {
-                log().info("Created agenda with {} items from topics for document: {}", agenda.size(), filename);
+                log().info("Created agenda with {} items from topics.", agenda.size());
             }
         }
         
