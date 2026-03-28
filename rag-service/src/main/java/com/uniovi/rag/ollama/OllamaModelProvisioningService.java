@@ -106,7 +106,10 @@ public class OllamaModelProvisioningService {
             log.info("Ollama: aprovisionamiento de modelos completado.");
         } catch (Exception e) {
             lastError = e.getMessage();
-            log.error("Ollama: model provisioning failed; /api/** will return 503 until Ollama is fixed or the app is restarted.", e);
+            // WARN + message: degraded state (Ollama down); full stack only at DEBUG to avoid noisy CI / default logs.
+            log.warn("Ollama: model provisioning failed; /api/** will return 503 until Ollama is fixed or the app is restarted. Cause: {}",
+                    e.getMessage());
+            log.debug("Ollama model provisioning failure", e);
             state.set(State.FAILED);
         } finally {
             modelPullLock.unlock();
