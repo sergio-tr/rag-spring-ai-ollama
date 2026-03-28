@@ -30,6 +30,10 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     private static final String JSON_KEY_TOPICS = "topics";
 
+    private static final String JSON_KEY_PRESIDENT = "president";
+
+    private static final String JSON_KEY_SECRETARY = "secretary";
+
     private static final String JSON_VALUE_UNKNOWN = "unknown";
 
     // Enhanced prompt with multilingual support and better examples
@@ -315,7 +319,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     private void validateAndNormalize(JSONObject json) {
         // List of all expected fields
         String[] fields = {
-            "date", "place", "startTime", "endTime", "president", "secretary",
+            "date", "place", "startTime", "endTime", JSON_KEY_PRESIDENT, JSON_KEY_SECRETARY,
             JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", "decisions",
             "mentionedEntities", JSON_KEY_TOPICS, "section", "summary", "answerType",
             "comparisonType", "temporalContext"

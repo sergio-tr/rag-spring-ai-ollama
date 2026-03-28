@@ -10,7 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 import java.util.Map;
 
-public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumentService<T> {
+public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumentService {
 
     protected final int chunkMaxChars;
 

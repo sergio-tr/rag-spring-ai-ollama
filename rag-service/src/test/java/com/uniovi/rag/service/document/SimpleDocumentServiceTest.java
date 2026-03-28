@@ -22,7 +22,7 @@ class SimpleDocumentServiceTest {
         ChatClient chatClient = mock(ChatClient.class);
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
 
-        SimpleDocumentService<Document> service = new SimpleDocumentService<>(
+        SimpleDocumentService service = new SimpleDocumentService(
                 vectorStore, chatClient, jdbcTemplate, 500);
 
         assertNotNull(service);
@@ -34,7 +34,7 @@ class SimpleDocumentServiceTest {
         ChatClient chatClient = mock(ChatClient.class);
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
 
-        SimpleDocumentService<Document> service = new SimpleDocumentService<>(
+        SimpleDocumentService service = new SimpleDocumentService(
                 vectorStore, chatClient, jdbcTemplate, 400);
 
         MultipartFile emptyFile = new MockMultipartFile(

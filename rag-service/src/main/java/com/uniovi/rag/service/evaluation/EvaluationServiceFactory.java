@@ -194,7 +194,7 @@ public class EvaluationServiceFactory {
         if (featureConfig.isMetadataEnabled()) {
             return new MetadataMinuteDocumentService(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
         }
-        return new SimpleDocumentService<Minute>(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
+        return new SimpleDocumentService(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
     }
 
     /**

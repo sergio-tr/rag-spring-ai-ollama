@@ -18,6 +18,8 @@ import java.time.Duration;
 @Component("classifier")
 public class ClassifierHealthIndicator implements HealthIndicator {
 
+    private static final String DETAIL_MODEL = "model";
+
     private final RagHealthProperties healthProperties;
     private final String classifierBaseUrl;
     private final HttpClient httpClient;
@@ -55,24 +57,29 @@ public class ClassifierHealthIndicator implements HealthIndicator {
                         .build();
             }
             JSONObject json = new JSONObject(response.body());
-            String model = json.optString("model", "");
+            String model = json.optString(DETAIL_MODEL, "");
             if (!"loaded".equals(model)) {
                 if (healthProperties.isClassifierRequireModelLoaded()) {
                     return Health.down()
                             .withDetail("url", healthUrl)
-                            .withDetail("model", model)
+                            .withDetail(DETAIL_MODEL, model)
                             .withDetail("hint", "Classifier default model is not loaded; check MODELS_DIR and classifier logs")
                             .build();
                 }
                 return Health.up()
                         .withDetail("url", healthUrl)
-                        .withDetail("model", model)
+                        .withDetail(DETAIL_MODEL, model)
                         .withDetail("warning", "default model not loaded; set rag.health.classifier-require-model-loaded=false in Docker dev")
                         .build();
             }
             return Health.up()
                     .withDetail("url", healthUrl)
-                    .withDetail("model", model)
+                    .withDetail(DETAIL_MODEL, model)
+                    .build();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Health.down(e)
+                    .withDetail("url", healthUrl)
                     .build();
         } catch (Exception e) {
             return Health.down(e)

@@ -19,7 +19,7 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
-public abstract class AbstractDocumentService<T> implements DocumentService {
+public abstract class AbstractDocumentService implements DocumentService {
 
     protected final PgVectorStore vectorStore;
     protected final ChatClient chatClient;
@@ -287,18 +287,7 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
         List<String> chunks = new ArrayList<>();
         int start = 0;
         while (start < trimmed.length()) {
-            int end = Math.min(start + maxCharsPerChunk, trimmed.length());
-            if (end < trimmed.length()) {
-                int lastBreak = end;
-                for (int i = end - 1; i > start + (maxCharsPerChunk * 2 / 3); i--) {
-                    char c = trimmed.charAt(i);
-                    if (c == '\n' || c == '.' || c == '!' || c == '?' || c == ' ') {
-                        lastBreak = i + 1;
-                        break;
-                    }
-                }
-                end = lastBreak;
-            }
+            int end = computeChunkEndIndex(trimmed, start, maxCharsPerChunk);
             String chunk = trimmed.substring(start, end).trim();
             if (!chunk.isEmpty()) {
                 chunks.add(chunk);
@@ -308,5 +297,21 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
         log().info("Split content into {} chunks (max {} chars per chunk, total {} chars)",
                 chunks.size(), maxCharsPerChunk, trimmed.length());
         return chunks;
+    }
+
+    private static int computeChunkEndIndex(String trimmed, int start, int maxCharsPerChunk) {
+        int end = Math.min(start + maxCharsPerChunk, trimmed.length());
+        if (end >= trimmed.length()) {
+            return end;
+        }
+        int lastBreak = end;
+        for (int i = end - 1; i > start + (maxCharsPerChunk * 2 / 3); i--) {
+            char c = trimmed.charAt(i);
+            if (c == '\n' || c == '.' || c == '!' || c == '?' || c == ' ') {
+                lastBreak = i + 1;
+                break;
+            }
+        }
+        return lastBreak;
     }
 }

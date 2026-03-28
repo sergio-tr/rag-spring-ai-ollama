@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.model.Minute;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +28,18 @@ import org.springframework.cache.annotation.Cacheable;
 public class MetadataMinuteDocumentService extends AbstractMetadataDocumentService<Minute> {
 
     private static final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** Spring proxy so {@code @Cacheable} extraction methods are not self-invoked. */
+    private MetadataMinuteDocumentService extractionSelf;
+
+    @Autowired
+    public void setExtractionSelf(@Lazy MetadataMinuteDocumentService extractionSelf) {
+        this.extractionSelf = extractionSelf;
+    }
+
+    private MetadataMinuteDocumentService extraction() {
+        return extractionSelf != null ? extractionSelf : this;
+    }
 
     public static final String PROMPT_DECISIONS = """
         Extract only the explicit decisions contained in the meeting minutes, based on expressions such as "it was agreed", "it was decided", "it was approved", etc.
@@ -162,26 +176,27 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             log().info("Extracted agenda with {} items for document: {}", agenda.size(), filename);
         }
 
-        CompletableFuture<List<String>> decisionsFuture = 
-            supplyAsync(() -> extractWithPrompt(content, PROMPT_DECISIONS))
+        MetadataMinuteDocumentService ext = extraction();
+        CompletableFuture<List<String>> decisionsFuture =
+            supplyAsync(() -> ext.extractWithPrompt(content, PROMPT_DECISIONS))
                 .exceptionally(e -> {
                     log().error("Error extracting decisions for file: {}", filename, e);
                     return new ArrayList<>();
                 });
-        CompletableFuture<List<String>> entitiesFuture = 
-            supplyAsync(() -> extractWithPrompt(content, PROMPT_ENTITIES))
+        CompletableFuture<List<String>> entitiesFuture =
+            supplyAsync(() -> ext.extractWithPrompt(content, PROMPT_ENTITIES))
                 .exceptionally(e -> {
                     log().error("Error extracting entities for file: {}", filename, e);
                     return new ArrayList<>();
                 });
-        CompletableFuture<List<String>> topicsFuture = 
-            supplyAsync(() -> extractWithPrompt(content, PROMPT_TOPICS))
+        CompletableFuture<List<String>> topicsFuture =
+            supplyAsync(() -> ext.extractWithPrompt(content, PROMPT_TOPICS))
                 .exceptionally(e -> {
                     log().error("Error extracting topics for file: {}", filename, e);
                     return new ArrayList<>();
                 });
-        CompletableFuture<String> summaryFuture = 
-            supplyAsync(() -> extractSummaryWithPrompt(content, PROMPT_SUMMARY))
+        CompletableFuture<String> summaryFuture =
+            supplyAsync(() -> ext.extractSummaryWithPrompt(content, PROMPT_SUMMARY))
                 .exceptionally(e -> {
                     log().error("Error extracting summary for file: {}", filename, e);
                     return generateFallbackSummary(content);
@@ -199,7 +214,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                     .filter(Objects::nonNull)
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
-                    .collect(Collectors.toList());
+                    .toList();
             Set<String> merged = new LinkedHashSet<>();
             merged.addAll(topics != null ? topics : List.of());
             merged.addAll(agendaKeys);

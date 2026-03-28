@@ -29,7 +29,7 @@ class RagDocumentConfigurationTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         MetadataMinuteDocumentService metadataService = new MetadataMinuteDocumentService(
                 vectorStore, chatClient, jdbcTemplate, 400);
-        SimpleDocumentService<?> simpleService = new SimpleDocumentService<>(
+        SimpleDocumentService simpleService = new SimpleDocumentService(
                 vectorStore, chatClient, jdbcTemplate, 400);
 
         DocumentService result = config.documentService(
@@ -48,7 +48,7 @@ class RagDocumentConfigurationTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         MetadataMinuteDocumentService metadataService = new MetadataMinuteDocumentService(
                 vectorStore, chatClient, jdbcTemplate, 400);
-        SimpleDocumentService<?> simpleService = new SimpleDocumentService<>(
+        SimpleDocumentService simpleService = new SimpleDocumentService(
                 vectorStore, chatClient, jdbcTemplate, 400);
 
         DocumentService result = config.documentService(
@@ -67,7 +67,7 @@ class RagDocumentConfigurationTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         MetadataMinuteDocumentService metadataService = new MetadataMinuteDocumentService(
                 vectorStore, chatClient, jdbcTemplate, 400);
-        SimpleDocumentService<?> simpleService = new SimpleDocumentService<>(
+        SimpleDocumentService simpleService = new SimpleDocumentService(
                 vectorStore, chatClient, jdbcTemplate, 400);
         ObservabilitySupport observability = mock(ObservabilitySupport.class);
 

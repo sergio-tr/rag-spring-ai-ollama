@@ -25,7 +25,7 @@ public class RagDocumentConfiguration {
         ChatClient chatClient,
         JdbcTemplate jdbcTemplate,
         MetadataMinuteDocumentService metadataMinuteDocumentService,
-        SimpleDocumentService<?> simpleDocumentService,
+        SimpleDocumentService simpleDocumentService,
         @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
     ) {
         DocumentService raw = featureConfig.isMetadataEnabled()

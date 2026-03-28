@@ -11,7 +11,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @Service
-public class SimpleDocumentService<T> extends AbstractDocumentService<T> {
+public class SimpleDocumentService extends AbstractDocumentService {
 
     private final int chunkMaxChars;
 

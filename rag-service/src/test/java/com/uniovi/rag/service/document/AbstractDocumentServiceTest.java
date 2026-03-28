@@ -17,7 +17,7 @@ class AbstractDocumentServiceTest {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
         ChatClient chatClient = mock(ChatClient.class);
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        SimpleDocumentService<Document> service = new SimpleDocumentService<>(
+        SimpleDocumentService service = new SimpleDocumentService(
                 vectorStore, chatClient, jdbcTemplate, 400);
         assertNotNull(service);
         assertTrue(service instanceof AbstractDocumentService);

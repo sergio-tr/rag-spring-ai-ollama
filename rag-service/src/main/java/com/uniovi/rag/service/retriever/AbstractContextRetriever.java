@@ -265,7 +265,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         String[] components1 = extractDateComponents(date1);
         String[] components2 = extractDateComponents(date2);
         
-        if (components1 != null && components2 != null) {
+        if (components1.length >= 3 && components2.length >= 3) {
             // Compare year, month, and day
             return components1[0].equals(components2[0]) && // year
                    components1[1].equals(components2[1]) && // month
@@ -335,11 +335,11 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     
     /**
      * Extracts date components (year, month, day) from a date string.
-     * Returns array [year, month, day] or null if extraction fails.
+     * Returns a three-element array [year, month, day], or an empty array if extraction fails.
      */
     protected String[] extractDateComponents(String dateStr) {
         if (dateStr == null) {
-            return null;
+            return new String[0];
         }
         
         // Try parsing first
@@ -388,7 +388,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return new String[]{year, month, day};
         }
         
-        return null;
+        return new String[0];
     }
     
     /**
@@ -519,7 +519,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         for (Document chunk : sortedChunks) {
             String content = chunk.getText();
             if (content != null && !content.trim().isEmpty()) {
-                if (combinedContent.length() > 0) {
+                if (!combinedContent.isEmpty()) {
                     combinedContent.append("\n\n");
                 }
                 combinedContent.append(content.trim());

@@ -36,12 +36,14 @@ CREATE TABLE IF NOT EXISTS vector_store (
 
 CREATE INDEX IF NOT EXISTS idx_documents_document_name ON documents(document_name);
 CREATE INDEX IF NOT EXISTS idx_vector_store_embedding ON vector_store USING HNSW (embedding vector_cosine_ops);
-CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_date ON vector_store USING GIN ((metadata->>'date'));
-CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_president ON vector_store USING GIN ((metadata->>'president'));
-CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_document_id ON vector_store USING GIN ((metadata->>'document_id'));
-CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_id ON vector_store USING GIN ((metadata->>'id'));
-CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_filename ON vector_store USING GIN ((metadata->>'filename'));
+
+-- B-tree on text expressions (same as db/migration/V1__init_schema.sql; GIN has no default opclass for plain text).
+CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_date ON vector_store ((metadata->>'date'));
+CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_president ON vector_store ((metadata->>'president'));
+CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_document_id ON vector_store ((metadata->>'document_id'));
+CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_id ON vector_store ((metadata->>'id'));
+CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_filename ON vector_store ((metadata->>'filename'));
 
 CREATE INDEX IF NOT EXISTS idx_vector_store_metadata_date_president ON vector_store
-    USING GIN ((metadata->>'date'), (metadata->>'president'));
+    ((metadata->>'date'), (metadata->>'president'));
 

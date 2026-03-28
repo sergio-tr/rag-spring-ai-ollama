@@ -39,7 +39,7 @@ class DocumentPersistenceJdbcIntegrationTest {
 
     private JdbcTemplate jdbcTemplate;
 
-    private SimpleDocumentService<?> documentService;
+    private SimpleDocumentService documentService;
 
     private MinuteDocumentRepositoryImpl repository;
 
@@ -98,7 +98,7 @@ class DocumentPersistenceJdbcIntegrationTest {
         ChatClient chatClient = mock(ChatClient.class);
 
         // SimpleDocumentService uses vectorStore/chatClient for 'add' operations; these tests only use JDBC-backed methods.
-        documentService = new SimpleDocumentService<>(vectorStore, chatClient, jdbcTemplate, 400);
+        documentService = new SimpleDocumentService(vectorStore, chatClient, jdbcTemplate, 400);
 
         MetadataMinuteDocumentService metadataMinuteDocumentService = mock(MetadataMinuteDocumentService.class);
         repository = new MinuteDocumentRepositoryImpl(documentService, metadataMinuteDocumentService);
@@ -116,8 +116,8 @@ class DocumentPersistenceJdbcIntegrationTest {
     void deleteById_deletesVectorStoreAndDocuments_whenMetadataHasDocumentId() {
         String docId = "doc-2";
         insertDocument(docId);
-        insertVectorStoreChunk(docId, Map.of("document_id", docId), 0);
-        insertVectorStoreChunk(docId, Map.of("document_id", docId), 1);
+        insertVectorStoreChunk(Map.of("document_id", docId), 0);
+        insertVectorStoreChunk(Map.of("document_id", docId), 1);
 
         int deleted = repository.deleteById(docId);
         assertEquals(2, deleted);
@@ -132,7 +132,7 @@ class DocumentPersistenceJdbcIntegrationTest {
     void ragController_deleteDocumentById_noContent_andActuallyDeletesFromDb() {
         String docId = "doc-5";
         insertDocument(docId);
-        insertVectorStoreChunk(docId, Map.of("document_id", docId), 0);
+        insertVectorStoreChunk(Map.of("document_id", docId), 0);
 
         QueryService queryService = mock(QueryService.class);
         EvaluationService evaluationService = mock(EvaluationService.class);
@@ -167,7 +167,7 @@ class DocumentPersistenceJdbcIntegrationTest {
     void deleteById_deletesVectorStoreChunks_usingMetadataIdFallback_whenDocumentIdMissing() {
         String docId = "doc-4";
         insertDocument(docId);
-        insertVectorStoreChunk(docId, Map.of("id", docId), 0);
+        insertVectorStoreChunk(Map.of("id", docId), 0);
 
         int deleted = repository.deleteById(docId);
         assertEquals(1, deleted);
@@ -178,7 +178,7 @@ class DocumentPersistenceJdbcIntegrationTest {
 
     private void insertDocumentAndVectorStore(String docId, Map<String, String> metadata) {
         insertDocument(docId);
-        insertVectorStoreChunk(docId, metadata, 0);
+        insertVectorStoreChunk(metadata, 0);
     }
 
     private void insertDocument(String docId) {
@@ -189,7 +189,7 @@ class DocumentPersistenceJdbcIntegrationTest {
         );
     }
 
-    private void insertVectorStoreChunk(String docId, Map<String, String> metadata, int chunkIndex) {
+    private void insertVectorStoreChunk(Map<String, String> metadata, int chunkIndex) {
         // metadata JSON must include document_id or id depending on the test case.
         String metadataJson = toJson(metadata);
         jdbcTemplate.update(
