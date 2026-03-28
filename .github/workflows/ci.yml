@@ -23,6 +23,7 @@ jobs:
       - name: Build and test
         run: |
           cd rag-service
+          chmod +x mvnw
           ./mvnw -B verify
 
   classifier-service:

@@ -38,6 +38,11 @@ jobs:
           distribution: temurin
           cache: maven
 
+      # Windows checkouts often lose the executable bit on mvnw; Linux requires +x for ./mvnw
+      - name: Ensure Maven wrapper is executable
+        working-directory: rag-service
+        run: chmod +x mvnw
+
       # ─── Python ───────────────────────────────────────────────────────────
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
