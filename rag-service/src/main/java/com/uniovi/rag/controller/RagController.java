@@ -126,8 +126,9 @@ public class RagController implements Loggable {
             if (e instanceof DocumentAlreadyExistsException docEx) {
                 return ResponseEntity.status(HttpStatus.CONFLICT).body("Document already in knowledge base: " + docEx.getDocumentId());
             }
-            log().error("Error storing document " +
-                    (file != null ? file.getOriginalFilename() : UNKNOWN_FILENAME_PLACEHOLDER) + ": " + e.getMessage(), e);
+            // Mapped to HTTP 400 with body; log message only (details are in response body; avoids huge stacks in CI/tests).
+            String fn = file != null ? file.getOriginalFilename() : UNKNOWN_FILENAME_PLACEHOLDER;
+            log().warn("Error storing document {}: {}", fn, e.getMessage());
             return ResponseEntity.badRequest().body("Error storing document " +
                     (file != null ? file.getOriginalFilename() : UNKNOWN_FILENAME_PLACEHOLDER) + ": " + e.getMessage());
         }
