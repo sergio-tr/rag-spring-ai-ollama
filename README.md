@@ -4,22 +4,22 @@
      BADGES
      ═══════════════════════════════════════════════════════════════════════════ -->
 
-<!-- CI & Build -->
-[![CI](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml)
-[![Build (no tests)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml)
-[![SonarCloud](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml/badge.svg?branch=main)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml)
+<!-- GitHub Actions: native badge.svg returns 404 until the workflow exists on the default branch and has run at least once. Shields “workflow status” has the same requirement. Static badges below always render and link to the workflow. -->
+[![CI](https://img.shields.io/badge/CI-ci.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml)
+[![Build](https://img.shields.io/badge/Build-build.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml)
+[![Sonar workflow](https://img.shields.io/badge/Sonar-sonar.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml)
+[![Docker images](https://img.shields.io/badge/Images-build--images.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build-images.yml)
 
-<!-- SonarCloud quality metrics -->
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=alert_status)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=coverage)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=bugs)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=vulnerabilities)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
-[![Security Hotspots](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=security_hotspots)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
-[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=YOUR_SONAR_PROJECT_KEY&metric=sqale_rating)](https://sonarcloud.io/dashboard?id=YOUR_SONAR_PROJECT_KEY)
+<!-- SonarCloud: project key must match sonar.projectKey. Public badge API only allows certain metrics (not security_hotspots). -->
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=coverage)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=bugs)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
 
-<!-- Last release -->
+<!-- Last release (no release yet → badge may show “no releases or repo not found”) -->
 [![GitHub Release](https://img.shields.io/github/v/release/sergio-tr/rag-spring-ai-ollama?label=latest%20release&color=blue)](https://github.com/sergio-tr/rag-spring-ai-ollama/releases/latest)
-[![Build & Push Images](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build-images.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build-images.yml)
 
 ---
 
@@ -121,7 +121,9 @@ Production credentials must always come from environment / `.env` files, not fro
 
 ### Badges
 
-README badges use SonarCloud’s public badge API. Replace `YOUR_SONAR_PROJECT_KEY` in the URLs above with your real **project key** so metrics resolve.
+- **GitHub Actions:** Native `badge.svg` URLs often return **404** until the workflow exists on the **default branch** and has run. The README uses **static Shields badges** (always render) linking to each workflow. For live pass/fail, use Shields `github/actions/workflow/status` after runs exist on `main`.
+- **SonarCloud:** `sonar.projectKey` must match [`sonar-project.properties`](sonar-project.properties). The public badge API only allows specific `metric` values — **not** `security_hotspots`; use e.g. **`security_rating`**.
+- **Repo path:** Replace `sergio-tr/rag-spring-ai-ollama` if your GitHub `owner/repo` differs.
 
 ## Documentation
 
