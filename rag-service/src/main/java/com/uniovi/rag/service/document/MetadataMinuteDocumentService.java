@@ -37,10 +37,19 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             ".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*",
             UNICODE_TEXT_REGEX_FLAGS);
 
-    /** Block after "Asistentes:" up to next section; extracted to keep {@link #extractAttendees} simpler for static analysis. */
-    private static final Pattern ASISTENTES_BULLET_BLOCK_PATTERN = Pattern.compile(
-            "(?i)Asistentes:.*?\\n((?:•|[-*]|\\d+\\.)\\s*[^\\n]+(?:\\n(?!•|[-*]|\\d+\\.|Orden|Ruegos|Clausura)[^\\n]+)*)",
-            Pattern.DOTALL);
+    /** Marks start of the attendees section (line-based parsing avoids heavy alternation in one regex). */
+    private static final Pattern ASISTENTES_HEADER = Pattern.compile("(?i)Asistentes:");
+
+    /** Next-section headers that end the attendees block when scanning line by line. */
+    private static final Pattern ASISTENTES_SECTION_BOUNDARY = Pattern.compile(
+            "(?i)(Orden del día|Orden del dia|Ruegos|Clausura|No habiendo)\\b.*");
+
+    /**
+     * Capitalized words / multi-word names; possessive and bounded repetition avoids catastrophic backtracking.
+     */
+    private static final Pattern ENTITY_CAPITALIZED_WORDS_PATTERN = Pattern.compile(
+            "\\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]++(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]++){0,15})\\b",
+            Pattern.MULTILINE);
 
     private static final String SPANISH_MONTH_AGOSTO = "agosto";
 
@@ -439,13 +448,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     private List<String> extractEntitiesWithRegex(String content) {
         List<String> entities = new ArrayList<>();
         
-        // Pattern for capitalized names (potential entities)
-        Pattern entityPattern = Pattern.compile(
-            "\\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)*)\\b",
-            Pattern.MULTILINE
-        );
-        
-        Matcher matcher = entityPattern.matcher(content);
+        Matcher matcher = ENTITY_CAPITALIZED_WORDS_PATTERN.matcher(content);
         Set<String> uniqueEntities = new LinkedHashSet<>();
         
         while (matcher.find()) {
@@ -1486,12 +1489,15 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             }
         }
         
-        // Method 3: Search lines that begin with bullet after "Asistentes:" (even if there's text before)
+        // Method 3: Lines after "Asistentes:" until the next section (simple scan; avoids one complex regex)
         if (attendees.isEmpty()) {
-            Matcher matcher = ASISTENTES_BULLET_BLOCK_PATTERN.matcher(content);
-            if (matcher.find()) {
-                String attendeesBlock = matcher.group(1);
-                attendees.addAll(extractBullets(attendeesBlock));
+            Matcher header = ASISTENTES_HEADER.matcher(content);
+            if (header.find()) {
+                String afterHeader = content.substring(header.end());
+                String asistentesSlice = sliceUntilAsistentesSectionBoundary(afterHeader);
+                if (!asistentesSlice.trim().isEmpty()) {
+                    attendees.addAll(extractBullets(asistentesSlice));
+                }
             }
         }
         
@@ -1601,6 +1607,23 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         return names;
+    }
+
+    /** Text after {@code Asistentes:} until a known next-section heading (exclusive). */
+    private static String sliceUntilAsistentesSectionBoundary(String afterHeader) {
+        if (afterHeader == null || afterHeader.isEmpty()) {
+            return "";
+        }
+        String[] lines = afterHeader.split("\\R", -1);
+        StringBuilder sb = new StringBuilder();
+        for (String line : lines) {
+            String t = line.trim();
+            if (!t.isEmpty() && ASISTENTES_SECTION_BOUNDARY.matcher(t).matches()) {
+                break;
+            }
+            sb.append(line).append('\n');
+        }
+        return sb.toString();
     }
 
     /**

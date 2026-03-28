@@ -48,18 +48,15 @@ public class DatasetMinuteEvaluationService extends AbstractMinuteEvaluationServ
             for (Row row : sheet) {
                 if (isHeader) {
                     isHeader = false;
-                    continue; // skip header row
+                } else {
+                    Cell questionCell = row.getCell(0);
+                    Cell answerCell = row.getCell(1);
+                    if (questionCell != null && answerCell != null) {
+                        String question = questionCell.getStringCellValue().trim();
+                        String answer = answerCell.getStringCellValue().trim();
+                        qaList.put(question, answer);
+                    }
                 }
-
-                Cell questionCell = row.getCell(0);
-                Cell answerCell = row.getCell(1);
-
-                if (questionCell == null || answerCell == null) continue;
-
-                String question = questionCell.getStringCellValue().trim();
-                String answer = answerCell.getStringCellValue().trim();
-
-                qaList.put(question, answer);
             }
 
         } catch (Exception e) {

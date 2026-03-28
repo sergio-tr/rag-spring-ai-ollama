@@ -68,7 +68,7 @@ public class FilterAndListTool extends AbstractTool {
         if (!results.isEmpty()) {
             log().debug("Found {} results for filter and list query, limiting to 3 for conciseness", results.size());
             // Limit results to 3 maximum for conciseness
-            List<String> limitedResults = results.stream().limit(3).collect(java.util.stream.Collectors.toList());
+            List<String> limitedResults = results.stream().limit(3).toList();
             answer = generateFinalAnswer(query, limitedResults);
         } else {
             long totalTime = System.currentTimeMillis() - startTime;

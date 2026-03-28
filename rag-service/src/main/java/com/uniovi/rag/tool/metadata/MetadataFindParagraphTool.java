@@ -23,6 +23,8 @@ import java.util.stream.Collectors;
  */
 public class MetadataFindParagraphTool extends AbstractMetadataTool {
 
+    private static final String METADATA_VALUE_UNKNOWN = "unknown";
+
     public MetadataFindParagraphTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -245,14 +247,14 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             Agenda: %s
             """,
             query,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.president() != null ? minute.president() : "unknown",
-            minute.secretary() != null ? minute.secretary() : "unknown",
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
-            minute.summary() != null ? minute.summary() : "unknown",
-            minute.agenda() != null ? minute.agenda().toString() : "unknown"
+            minute.date() != null ? minute.date() : METADATA_VALUE_UNKNOWN,
+            minute.place() != null ? minute.place() : METADATA_VALUE_UNKNOWN,
+            minute.president() != null ? minute.president() : METADATA_VALUE_UNKNOWN,
+            minute.secretary() != null ? minute.secretary() : METADATA_VALUE_UNKNOWN,
+            minute.topics() != null ? String.join(", ", minute.topics()) : METADATA_VALUE_UNKNOWN,
+            minute.decisions() != null ? String.join(", ", minute.decisions()) : METADATA_VALUE_UNKNOWN,
+            minute.summary() != null ? minute.summary() : METADATA_VALUE_UNKNOWN,
+            minute.agenda() != null ? minute.agenda().toString() : METADATA_VALUE_UNKNOWN
         );
         
         try {
@@ -292,7 +294,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         return extractor.clusterItems(
             results,
             result -> result.getParagraph(),
-            result -> result.getDate() != null ? result.getDate() : "unknown",
+            result -> result.getDate() != null ? result.getDate() : METADATA_VALUE_UNKNOWN,
             0.4
         );
     }

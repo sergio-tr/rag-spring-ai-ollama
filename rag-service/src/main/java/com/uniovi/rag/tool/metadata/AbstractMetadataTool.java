@@ -46,6 +46,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     private static final String QUERY_TYPE_GENERAL = "general";
 
+    /** Spanish query cues for topic extraction (avoid duplicated literals). */
+    private static final String TOPIC_CUE_MENCION_ACCENT = "mencionó ";
+    private static final String TOPIC_CUE_MENCION_PLAIN = "menciono ";
+
     private final MetadataLlmResponseCacheService llmResponseCache;
 
     /** Spring-injected proxy so {@code @Cacheable} methods are not invoked via {@code this} (self-invocation). */
@@ -2136,10 +2140,14 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     return after;
                 }
             }
-            if (qLower.contains("mencionó ") || qLower.contains("menciono ")) {
-                int idxMen = qLower.indexOf("mencionó ");
-                if (idxMen < 0) idxMen = qLower.indexOf("menciono ");
-                String after = q.substring(idxMen + 9).trim().replaceFirst("\\.$", "").trim();
+            if (qLower.contains(TOPIC_CUE_MENCION_ACCENT) || qLower.contains(TOPIC_CUE_MENCION_PLAIN)) {
+                int idxMen = qLower.indexOf(TOPIC_CUE_MENCION_ACCENT);
+                int skipLen = TOPIC_CUE_MENCION_ACCENT.length();
+                if (idxMen < 0) {
+                    idxMen = qLower.indexOf(TOPIC_CUE_MENCION_PLAIN);
+                    skipLen = TOPIC_CUE_MENCION_PLAIN.length();
+                }
+                String after = q.substring(idxMen + skipLen).trim().replaceFirst("\\.$", "").trim();
                 if (!after.isEmpty() && after.length() < 60) {
                     String topic = after.replaceFirst("^la ", "").trim();
                     log().info("Extracted topic from query (after 'mencionó'): {}", topic);
@@ -2624,6 +2632,41 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * @param keyword Keyword to validate
      * @return true if keyword is found in at least one document, false otherwise
      */
+    private StringBuilder buildKeywordValidationContext(Document doc) {
+        StringBuilder context = new StringBuilder();
+        Map<String, Object> metadata = doc.getMetadata();
+        if (metadata != null) {
+            if (metadata.containsKey("topics")) {
+                Object topicsObj = metadata.get("topics");
+                if (topicsObj instanceof List) {
+                    context.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
+                } else if (topicsObj instanceof String) {
+                    context.append("Topics: ").append(topicsObj).append("\n");
+                }
+            }
+            if (metadata.containsKey("summary")) {
+                Object summaryObj = metadata.get("summary");
+                if (summaryObj != null) {
+                    context.append("Summary: ").append(summaryObj.toString()).append("\n");
+                }
+            }
+            if (metadata.containsKey("decisions")) {
+                Object decisionsObj = metadata.get("decisions");
+                if (decisionsObj instanceof List) {
+                    context.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
+                } else if (decisionsObj instanceof String) {
+                    context.append("Decisions: ").append(decisionsObj).append("\n");
+                }
+            }
+        }
+        String content = doc.getText();
+        if (content != null && !content.trim().isEmpty()) {
+            String truncatedContent = content.length() > 500 ? content.substring(0, 500) + "..." : content;
+            context.append("Content: ").append(truncatedContent);
+        }
+        return context;
+    }
+
     protected boolean validateKeywordExists(List<Document> docs, String keyword) {
         if (docs == null || docs.isEmpty() || keyword == null || keyword.trim().isEmpty()) {
             return false;
@@ -2636,76 +2679,40 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         List<Document> sampleDocs = docs.subList(0, sampleSize);
         
         for (Document doc : sampleDocs) {
-            if (doc == null) continue;
-            
-            // Build context from metadata and content
-            StringBuilder context = new StringBuilder();
-            
-            Map<String, Object> metadata = doc.getMetadata();
-            if (metadata != null) {
-                if (metadata.containsKey("topics")) {
-                    Object topicsObj = metadata.get("topics");
-                    if (topicsObj instanceof List) {
-                        context.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
-                    } else if (topicsObj instanceof String) {
-                        context.append("Topics: ").append(topicsObj).append("\n");
+            if (doc != null) {
+                StringBuilder context = buildKeywordValidationContext(doc);
+                if (context.length() > 0) {
+                    // Use LLM to check if keyword exists
+                    String prompt = String.format("""
+                        Task: Determine if the following document mentions or contains the keyword.
+                        
+                        Keyword to search for: "%s"
+                        
+                        Document information:
+                        %s
+                        
+                        Consider semantic meaning, synonyms, and related concepts, not just exact word matches.
+                        
+                        Respond with ONLY one word: YES if the keyword is mentioned or discussed, NO otherwise.
+                        """, keyword, context.toString());
+
+                    try {
+                        String result = chatClient
+                                .prompt()
+                                .user(prompt)
+                                .call()
+                                .content()
+                                .strip();
+
+                        Boolean validated = validateLLMFilterResponse(result, "validateKeywordExists");
+                        if (validated != null && validated) {
+                            log().info("Keyword '{}' found in document", keyword);
+                            return true;
+                        }
+                    } catch (Exception e) {
+                        log().warn("Error validating keyword '{}' in document: {}", keyword, e.getMessage());
                     }
                 }
-                if (metadata.containsKey("summary")) {
-                    Object summaryObj = metadata.get("summary");
-                    if (summaryObj != null) {
-                        context.append("Summary: ").append(summaryObj.toString()).append("\n");
-                    }
-                }
-                if (metadata.containsKey("decisions")) {
-                    Object decisionsObj = metadata.get("decisions");
-                    if (decisionsObj instanceof List) {
-                        context.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
-                    } else if (decisionsObj instanceof String) {
-                        context.append("Decisions: ").append(decisionsObj).append("\n");
-                    }
-                }
-            }
-            
-            String content = doc.getText();
-            if (content != null && !content.trim().isEmpty()) {
-                String truncatedContent = content.length() > 500 ? content.substring(0, 500) + "..." : content;
-                context.append("Content: ").append(truncatedContent);
-            }
-            
-            if (context.length() == 0) {
-                continue;
-            }
-            
-            // Use LLM to check if keyword exists
-            String prompt = String.format("""
-                Task: Determine if the following document mentions or contains the keyword.
-                
-                Keyword to search for: "%s"
-                
-                Document information:
-                %s
-                
-                Consider semantic meaning, synonyms, and related concepts, not just exact word matches.
-                
-                Respond with ONLY one word: YES if the keyword is mentioned or discussed, NO otherwise.
-                """, keyword, context.toString());
-            
-            try {
-                String result = chatClient
-                        .prompt()
-                        .user(prompt)
-                        .call()
-                        .content()
-                        .strip();
-                
-                Boolean validated = validateLLMFilterResponse(result, "validateKeywordExists");
-                if (validated != null && validated) {
-                    log().info("Keyword '{}' found in document", keyword);
-                    return true;
-                }
-            } catch (Exception e) {
-                log().warn("Error validating keyword '{}' in document: {}", keyword, e.getMessage());
             }
         }
         
@@ -2724,7 +2731,18 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (query == null || query.trim().isEmpty()) {
             return null;
         }
-        // Quick regex on query text (e.g. "seguridad en 2026" -> 2026)
+        String fromText = tryExtractYearFromQueryText(query);
+        if (fromText != null) {
+            return fromText;
+        }
+        String fromNer = tryExtractYearFromNer(ner);
+        if (fromNer != null) {
+            return fromNer;
+        }
+        return tryExtractYearFromLlm(query);
+    }
+
+    private String tryExtractYearFromQueryText(String query) {
         Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
         Matcher matcher = yearPattern.matcher(query);
         if (matcher.find()) {
@@ -2732,32 +2750,37 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             log().info("Extracted year from query text: {}", year);
             return year;
         }
-        // Try to extract from NER
-        if (ner != null && !ner.isEmpty()) {
-            try {
-                if (ner.has("filters") && !ner.isNull("filters")) {
-                    JSONObject filters = ner.getJSONObject("filters");
-                    if (filters.has("date") && !filters.isNull("date")) {
-                        org.json.JSONArray dates = filters.getJSONArray("date");
-                        for (int i = 0; i < dates.length(); i++) {
-                            String dateStr = dates.getString(i);
-                            // Try to extract year from date string
-                            yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
-                            matcher = yearPattern.matcher(dateStr);
-                            if (matcher.find()) {
-                                String year = matcher.group(1);
-                                log().info("Extracted year from NER: {}", year);
-                                return year;
-                            }
+        return null;
+    }
+
+    private String tryExtractYearFromNer(JSONObject ner) {
+        if (ner == null || ner.isEmpty()) {
+            return null;
+        }
+        try {
+            if (ner.has(NER_KEY_FILTERS) && !ner.isNull(NER_KEY_FILTERS)) {
+                JSONObject filters = ner.getJSONObject(NER_KEY_FILTERS);
+                if (filters.has("date") && !filters.isNull("date")) {
+                    org.json.JSONArray dates = filters.getJSONArray("date");
+                    Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
+                    for (int i = 0; i < dates.length(); i++) {
+                        String dateStr = dates.getString(i);
+                        Matcher matcher = yearPattern.matcher(dateStr);
+                        if (matcher.find()) {
+                            String year = matcher.group(1);
+                            log().info("Extracted year from NER: {}", year);
+                            return year;
                         }
                     }
                 }
-            } catch (Exception e) {
-                log().debug("Error extracting year from NER: {}", e.getMessage());
             }
+        } catch (Exception e) {
+            log().debug("Error extracting year from NER: {}", e.getMessage());
         }
-        
-        // Use LLM to extract year
+        return null;
+    }
+
+    private String tryExtractYearFromLlm(String query) {
         String prompt = String.format("""
             Task: Extract the year from the following question about meeting minutes.
             
@@ -2769,7 +2792,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Return ONLY the year (e.g., "2025") or "NONE".
             Do not include explanations or additional text.
             """, query);
-        
+
         try {
             String response = chatClient
                     .prompt()
@@ -2777,7 +2800,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .call()
                     .content()
                     .strip();
-            
+
             if (response != null && !response.trim().isEmpty() && !response.trim().equalsIgnoreCase("NONE")
                     && response.matches("20\\d{2}")) {
                 log().info("Extracted year from query using LLM: {}", response);
@@ -2786,7 +2809,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         } catch (Exception e) {
             log().warn("Error extracting year from query using LLM: {}", e.getMessage());
         }
-        
+
         return null;
     }
 
@@ -3363,6 +3386,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 try {
                     return LocalDate.of(year, month, Math.min(day, LocalDate.of(year, month, 1).lengthOfMonth()));
                 } catch (Exception ignored) {
+                    // Invalid day/month combination for parsed components.
                 }
             }
         }

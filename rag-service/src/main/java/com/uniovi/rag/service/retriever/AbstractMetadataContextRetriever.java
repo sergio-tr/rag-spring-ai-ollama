@@ -115,8 +115,8 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
                 boolean hasYearMatch = false;
                 
                 // Extract years and check if any match
-                String docYear = metadata.get("year") instanceof Number
-                        ? String.valueOf(((Number) metadata.get("year")).intValue())
+                String docYear = metadata.get("year") instanceof Number number
+                        ? String.valueOf(number.intValue())
                         : extractYearFromDate(docDate);
                 for (int i = 0; i < nerDates.length(); i++) {
                     String nerDate = nerDates.getString(i);

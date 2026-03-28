@@ -12,6 +12,10 @@ import java.util.Map;
 
 public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumentService {
 
+    private static int safeFilenameLength(String filename) {
+        return filename != null ? filename.length() : 0;
+    }
+
     protected final int chunkMaxChars;
 
     public AbstractMetadataDocumentService(PgVectorStore vectorStore, ChatClient chatClient, JdbcTemplate jdbcTemplate, int chunkMaxChars) {
@@ -35,29 +39,29 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
         String filename = file != null ? file.getOriginalFilename() : "unknown";
         
         try {
-            log().info("Processing document: {}", filename);
+            log().info("Processing document (filename length: {})", safeFilenameLength(filename));
             
             // Step 1: Extract content
             String content = extractContent(file);
             
             if (content == null || content.trim().isEmpty()) {
-                log().error("Extracted content is null or empty for file: {}", filename);
+                log().error("Extracted content is null or empty (filename length: {})", safeFilenameLength(filename));
                 throw new IllegalArgumentException("Extracted content is null or empty for file: " + filename);
             }
             
             // Step 2: Validate content length (minimum threshold)
             if (content.trim().length() < 20) {
-                log().warn("Content very short for file: {} (length: {}). May result in incomplete extraction.", 
-                          filename, content.length());
+                log().warn("Content very short (filename length: {}, content length: {}). May result in incomplete extraction.",
+                          safeFilenameLength(filename), content.length());
             }
             
-            log().info("Content extracted for file: {} (length: {})", filename, content.length());
+            log().info("Content extracted (filename length: {}, content length: {})", safeFilenameLength(filename), content.length());
             
             // Step 3: Extract model
             T model = extractModel(content, filename);
             
             if (model == null) {
-                log().error("Model extraction returned null for file: {}", filename);
+                log().error("Model extraction returned null (filename length: {})", safeFilenameLength(filename));
                 throw new IllegalArgumentException("Model extraction returned null for file: " + filename);
             }
             
@@ -65,7 +69,7 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
             Map<String, Object> metadata = extractMetadata(model);
             
             if (metadata == null || metadata.isEmpty()) {
-                log().error("Metadata extraction returned null or empty for file: {}", filename);
+                log().error("Metadata extraction returned null or empty (filename length: {})", safeFilenameLength(filename));
                 throw new IllegalArgumentException("Metadata extraction returned null or empty for file: " + filename);
             }
             
@@ -101,15 +105,15 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
             
             add(documents);
             
-            log().info("Successfully processed document: {} with {} chunks and {} metadata fields", 
-                      filename, documents.size(), metadata.size());
-            
-            log().info("Successfully processed document: {} with {} metadata fields", filename, metadata.size());
+            log().info("Successfully processed document (filename length: {}) with {} chunks and {} metadata fields",
+                      safeFilenameLength(filename), documents.size(), metadata.size());
+
+            log().info("Successfully processed document (filename length: {}) with {} metadata fields", safeFilenameLength(filename), metadata.size());
         } catch (IllegalArgumentException e) {
-            log().error("Validation error processing document {}: {}", filename, e.getMessage());
+            log().error("Validation error processing document (filename length: {}): {}", safeFilenameLength(filename), e.getMessage());
             throw e; // Re-throw validation errors
         } catch (Exception e) {
-            log().error("Unexpected error processing document: {}", filename, e);
+            log().error("Unexpected error processing document (filename length: {})", safeFilenameLength(filename), e);
             throw new RuntimeException("Failed to process document: " + filename, e);
         }
     }
@@ -124,18 +128,18 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
      */
     protected void validateMetadata(Map<String, Object> metadata, String filename) {
         if (metadata == null) {
-            log().error("Metadata is null for file: {}", filename);
+            log().error("Metadata is null (filename length: {})", safeFilenameLength(filename));
             throw new IllegalArgumentException("Metadata cannot be null for file: " + filename);
         }
         
         // Validate critical fields
         if (!metadata.containsKey("document_id") || metadata.get("document_id") == null) {
-            log().error("Metadata missing document_id for file: {}. This will cause issues with chunk grouping.", filename);
+            log().error("Metadata missing document_id (filename length: {}). This will cause issues with chunk grouping.", safeFilenameLength(filename));
             throw new IllegalArgumentException("Metadata missing document_id for file: " + filename);
         }
         
         if (!metadata.containsKey("filename") || metadata.get("filename") == null) {
-            log().error("Metadata missing filename for file: {}", filename);
+            log().error("Metadata missing filename field (upload filename length: {})", safeFilenameLength(filename));
             throw new IllegalArgumentException("Metadata missing filename for file: " + filename);
         }
         

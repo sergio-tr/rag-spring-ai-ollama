@@ -22,6 +22,9 @@ public class GetFieldTool extends AbstractTool {
 
     private static final String VALUE_UNKNOWN = "unknown";
 
+    private static final String LOG_FOUND_FIELD =
+            "Found field value for query: '{}' in document {} (execution time: {} ms)";
+
     public GetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
         super(chatClient, retriever, extractor);
     }
@@ -56,7 +59,7 @@ public class GetFieldTool extends AbstractTool {
                     String value = extractLiteralFieldByIntent(query, ner, doc.getText());
                     if (value != null && !value.isBlank()) {
                         long totalTime = System.currentTimeMillis() - startTime;
-                        log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
+                        log().info(LOG_FOUND_FIELD,
                                  query, doc.getId(), totalTime);
                         // Apply formatResponse to clean the extracted value
                         String formattedValue = formatResponse(value, query);
@@ -80,7 +83,7 @@ public class GetFieldTool extends AbstractTool {
                     String value = extractLiteralFieldByIntent(query, null, doc.getText());
                     if (value != null && !value.isBlank()) {
                         long totalTime = System.currentTimeMillis() - startTime;
-                        log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
+                        log().info(LOG_FOUND_FIELD,
                                  query, doc.getId(), totalTime);
                         // Apply formatResponse to clean the extracted value
                         String formattedValue = formatResponse(value, query);
@@ -101,7 +104,7 @@ public class GetFieldTool extends AbstractTool {
                     String value = extractLiteralFieldByIntent(query, null, doc.getText());
                     if (value != null && !value.isBlank()) {
                         long totalTime = System.currentTimeMillis() - startTime;
-                        log().info("Found field value for query: '{}' in document {} (execution time: {} ms)", 
+                        log().info(LOG_FOUND_FIELD,
                                  query, doc.getId(), totalTime);
                         // Apply formatResponse to clean the extracted value
                         String formattedValue = formatResponse(value, query);

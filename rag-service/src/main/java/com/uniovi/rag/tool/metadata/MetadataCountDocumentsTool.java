@@ -507,8 +507,8 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                     
                     return matches;
                 })
-                .collect(Collectors.toList());
-        
+                .toList();
+
         log().info("Filtered {} documents by attendeesCount (operator: {}, threshold: {}), {} remaining. " +
                   "This filter was applied even if it results in 0 documents.", 
                   docs.size(), operator, threshold, filtered.size());

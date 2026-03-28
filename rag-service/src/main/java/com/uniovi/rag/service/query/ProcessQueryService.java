@@ -173,7 +173,7 @@ public class ProcessQueryService implements QueryService {
                     featureConfig.isNerEnabled(),
                     featureConfig.isToolsEnabled(),
                     query, e);
-            log().error("Stack trace:", e);
+            log().error(LOG_STACK_TRACE, e);
             String errorResponse = generateErrorResponse(query, e);
             return QueryResponse.fromLLM(errorResponse);
         } catch (IllegalArgumentException e) {

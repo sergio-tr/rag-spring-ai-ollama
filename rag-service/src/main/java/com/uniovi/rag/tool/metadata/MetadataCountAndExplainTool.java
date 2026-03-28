@@ -8,8 +8,6 @@ import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.cache.annotation.Cacheable;
-
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
@@ -453,15 +451,6 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         }
         
         return summary.toString();
-    }
-
-    /**
-     * Cached LLM response with error handling and validation.
-     * Uses parent class implementation which includes error handling.
-     */
-    @Cacheable(value = "llmResponses", key = "#prompt.hashCode()")
-    public String getLLMResponseCached(String prompt) {
-        return super.getLLMResponseCached(prompt);
     }
 
 }

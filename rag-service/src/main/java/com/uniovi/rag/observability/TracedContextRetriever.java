@@ -16,6 +16,8 @@ public final class TracedContextRetriever implements ContextRetriever {
 
     private static final int MAX_ATTR = 500;
 
+    private static final String METRIC_RETRIEVER_CALLS = "rag.retriever.calls";
+
     private final ContextRetriever delegate;
     private final ObservabilitySupport observability;
 
@@ -42,7 +44,7 @@ public final class TracedContextRetriever implements ContextRetriever {
 
     @Override
     public List<Document> retrieveWithMetadataFilters(String query, JSONObject nerEntities) {
-        observability.recordCounter("rag.retriever.calls", "operation", "retrieveWithMetadataFilters");
+        observability.recordCounter(METRIC_RETRIEVER_CALLS, "operation", "retrieveWithMetadataFilters");
         return observability.recordTimer("rag.retriever.retrieveWithMetadataFilters", () ->
                 observability.runWithSpan(
                         // Domain convention: retrieval is part of document search
@@ -59,7 +61,7 @@ public final class TracedContextRetriever implements ContextRetriever {
 
     @Override
     public String createContext(List<Document> documents, String query, JSONObject entities) {
-        observability.recordCounter("rag.retriever.calls", "operation", "createContext");
+        observability.recordCounter(METRIC_RETRIEVER_CALLS, "operation", "createContext");
         return observability.recordTimer("rag.retriever.createContext", () ->
                 observability.runWithSpan(
                         // Domain convention: retrieval stage (documents -> context)

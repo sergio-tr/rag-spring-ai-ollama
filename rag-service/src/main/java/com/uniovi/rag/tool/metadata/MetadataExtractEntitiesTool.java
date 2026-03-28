@@ -513,8 +513,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                 return 3;
             case ORGANIZATION:
                 return 2;
-            case TOPIC:
-            case DECISION:
+            case TOPIC, DECISION:
                 return 1;
             default:
                 return 0;
@@ -526,8 +525,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             case PRESIDENT:
             case SECRETARY:
                 return 3;
-            case ATTENDEE:
-            case MEETING_PLACE:
+            case ATTENDEE, MEETING_PLACE:
                 return 2;
             default:
                 return 0;
