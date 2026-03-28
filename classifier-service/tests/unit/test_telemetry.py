@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import builtins
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app import telemetry as tel
+
+_real_import = builtins.__import__
+
+
+def _import_deny_opentelemetry(name, globals=None, locals=None, fromlist=(), level=0):
+    if name == "opentelemetry" or name.startswith("opentelemetry."):
+        raise ImportError("opentelemetry unavailable in test")
+    return _real_import(name, globals, locals, fromlist, level)
 
 
 def test_setup_telemetry_no_endpoint_is_noop():
@@ -67,3 +78,54 @@ def test_run_traced_with_tracer_records_span():
 def test_record_train_and_evaluate_no_meter():
     tel.record_train_complete("m")
     tel.record_evaluate_complete("m")
+
+
+def test_truncate_none_returns_empty():
+    assert tel._truncate(None) == ""
+
+
+def test_get_tracer_returns_none_when_opentelemetry_import_fails():
+    with patch("builtins.__import__", new=_import_deny_opentelemetry):
+        assert tel.get_tracer() is None
+
+
+def test_setup_telemetry_logs_and_skips_when_opentelemetry_missing():
+    app = MagicMock()
+    with patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318"}):
+        with patch("builtins.__import__", new=_import_deny_opentelemetry):
+            tel.setup_telemetry(app)
+    app.assert_not_called()
+
+
+def test_get_tracer_returns_none_when_trace_get_tracer_raises():
+    pytest.importorskip("opentelemetry")
+    from opentelemetry import trace as otel_trace
+
+    with patch.object(otel_trace, "get_tracer", side_effect=RuntimeError("no provider")):
+        assert tel.get_tracer() is None
+
+
+def test_run_traced_exception_records_error():
+    tracer = MagicMock()
+    span = MagicMock()
+    tracer.start_span.return_value = span
+
+    def inner():
+        raise ValueError("fail")
+
+    with patch.object(tel, "get_tracer", return_value=tracer):
+        with pytest.raises(ValueError, match="fail"):
+            tel.run_traced("op", inner)
+    span.set_status.assert_called()
+    span.record_exception.assert_called_once()
+    span.end.assert_called_once()
+
+
+def test_record_classifier_call_with_counter_add_failure():
+    counter = MagicMock()
+    counter.add.side_effect = RuntimeError("no export")
+    try:
+        with patch.object(tel, "_classifier_counter", counter):
+            tel.record_classifier_call("success", "m")
+    finally:
+        tel._classifier_counter = None

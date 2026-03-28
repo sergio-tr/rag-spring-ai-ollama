@@ -9,7 +9,7 @@ import pytest
 pytest.importorskip("sklearn")
 pytest.importorskip("seaborn")
 
-from app.exceptions import ModelNotFoundError, ValidationError
+from app.exceptions import ClassificationError, ModelNotFoundError, ValidationError
 from app.models.classification_result import ClassificationResult
 from app.services.classification_service import ClassificationService
 
@@ -63,6 +63,20 @@ class TestClassificationService:
         engine = _mock_engine(loaded=False, predict_result="X", loader=loader)
         svc = ClassificationService(engine)
         with pytest.raises(ModelNotFoundError):
+            svc.classify("q")
+
+    def test_classify_predict_runtime_error(self):
+        engine = _mock_engine(loaded=True, predict_result="X")
+        engine.predict.side_effect = RuntimeError("not ready")
+        svc = ClassificationService(engine)
+        with pytest.raises(ClassificationError, match="not available"):
+            svc.classify("q")
+
+    def test_classify_predict_other_exception(self):
+        engine = _mock_engine(loaded=True, predict_result="X")
+        engine.predict.side_effect = ValueError("unexpected")
+        svc = ClassificationService(engine)
+        with pytest.raises(ClassificationError, match="failed"):
             svc.classify("q")
 
 
