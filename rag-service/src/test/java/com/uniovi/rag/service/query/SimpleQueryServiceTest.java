@@ -88,7 +88,7 @@ class SimpleQueryServiceTest {
         QueryResponse response = service.generateResponse("p");
 
         assertEquals("out", response.getAnswer());
-        verify(retriever).retrieveWithMetadataFilters(eq("p"), eq(ner));
+        verify(retriever).retrieveWithMetadataFilters("p", ner);
     }
 
     @Test

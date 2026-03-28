@@ -340,9 +340,17 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     private String generateFallbackFilterAnswer(String query, List<FilterResult> results) {
         String resultsText = results.stream()
                 .limit(5)
-                .map(r -> String.format("- %s: %s", 
-                    r.getDate() != null ? r.getDate() : "unknown date",
-                    r.getSummary() != null && r.getSummary().length() > 150 ? r.getSummary().substring(0, 150) + "..." : (r.getSummary() != null ? r.getSummary() : "")))
+                .map(r -> {
+                    String datePart = r.getDate() != null ? r.getDate() : "unknown date";
+                    String sum = r.getSummary();
+                    String summaryPart;
+                    if (sum != null && sum.length() > 150) {
+                        summaryPart = sum.substring(0, 150) + "...";
+                    } else {
+                        summaryPart = sum != null ? sum : "";
+                    }
+                    return String.format("- %s: %s", datePart, summaryPart);
+                })
                 .collect(Collectors.joining("\n\n"));
         
         String prompt = String.format("""

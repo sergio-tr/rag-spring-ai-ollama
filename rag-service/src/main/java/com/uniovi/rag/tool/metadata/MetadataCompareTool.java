@@ -21,6 +21,11 @@ import java.util.Objects;
  */
 public class MetadataCompareTool extends AbstractMetadataTool {
 
+    private static final String[] SPANISH_MONTH_NAMES_ORDERED = {
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+    };
+
     public MetadataCompareTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -96,7 +101,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         }
 
         // Step 4: Infer comparison field with enhanced analysis
-        ComparisonField fieldToCompare = inferComparisonFieldEnhanced(query, ner, relevantMinutes);
+        ComparisonField fieldToCompare = inferComparisonFieldEnhanced(query, relevantMinutes);
         if (fieldToCompare == null) {
             log().info("Could not infer comparison field for query: {}", query);
             return ToolResult.from(formatResponse(generateUnknownFieldMessage(query), query), getClass());
@@ -142,7 +147,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     /**
      * Enhanced field inference with context analysis
      */
-    private ComparisonField inferComparisonFieldEnhanced(String query, JSONObject ner, List<Minute> minutes) {
+    private ComparisonField inferComparisonFieldEnhanced(String query, List<Minute> minutes) {
         // First try rule-based inference for common cases
         ComparisonField ruleBasedField = inferFieldByRules(query);
         if (ruleBasedField != null) {
@@ -321,6 +326,14 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 && (q.contains(" o ") || q.contains(" or "));
     }
 
+    /** Spanish/English month tokens or "month" / "mes" — used by rule-based comparison detection. */
+    private static boolean monthComparisonCueInQuery(String queryLower) {
+        return queryLower.contains("febrero") || queryLower.contains("february")
+                || queryLower.contains("abril") || queryLower.contains("april")
+                || queryLower.contains("agosto") || queryLower.contains("august")
+                || queryLower.contains("mes") || queryLower.contains("month");
+    }
+
     /**
      * Rule-based field inference using LLM for better accuracy.
      * Handles special cases like mentions comparison by month.
@@ -333,23 +346,20 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         String queryLower = query.toLowerCase();
         
         // More attendees in month A or B (e.g. "más asistentes en agosto o en febrero") — compare by month
-        if ((queryLower.contains("asistentes") || queryLower.contains("attendees") || queryLower.contains("asistencia")) &&
-            (queryLower.contains("febrero") || queryLower.contains("agosto") || queryLower.contains("abril") || queryLower.contains("mes") || queryLower.contains("month"))) {
+        if ((queryLower.contains("asistentes") || queryLower.contains("attendees") || queryLower.contains("asistencia"))
+                && monthComparisonCueInQuery(queryLower)) {
             log().info("Detected attendees comparison by month");
             return new ComparisonField("numberOfAttendees_by_month", ComparisonType.NUMERIC);
         }
         // Special case: Number of meetings/actas by month (e.g., "más reuniones registradas, febrero o abril")
-        if ((queryLower.contains("reuniones") || queryLower.contains("actas")) &&
-            (queryLower.contains("febrero") || queryLower.contains("february") || queryLower.contains("abril") || queryLower.contains("april") ||
-             queryLower.contains("agosto") || queryLower.contains("august") || queryLower.contains("mes") || queryLower.contains("month"))) {
+        if ((queryLower.contains("reuniones") || queryLower.contains("actas"))
+                && monthComparisonCueInQuery(queryLower)) {
             log().info("Detected meetings count by month comparison");
             return new ComparisonField("meetings_count_by_month", ComparisonType.COUNT);
         }
         // Special case: Comparison of mentions by month (e.g., "más menciones a problemas de seguridad en febrero o en agosto")
-        if ((queryLower.contains("menciones") || queryLower.contains("mentions") || queryLower.contains("menciona")) &&
-            (queryLower.contains("febrero") || queryLower.contains("february") || 
-             queryLower.contains("agosto") || queryLower.contains("august") || queryLower.contains("abril") || queryLower.contains("april") ||
-             queryLower.contains("mes") || queryLower.contains("month"))) {
+        if ((queryLower.contains("menciones") || queryLower.contains("mentions") || queryLower.contains("menciona"))
+                && monthComparisonCueInQuery(queryLower)) {
             // This is a mentions comparison query - we need to count mentions of a topic by month
             log().info("Detected mentions comparison query, will use special comparison logic");
             return new ComparisonField("mentions_by_month", ComparisonType.COUNT);
@@ -748,7 +758,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         return keyTerms.stream()
                 .distinct()
                 .sorted((a, b) -> Integer.compare(b.length(), a.length()))
-                .collect(Collectors.toList());
+                .toList();
     }
     
     /**
@@ -760,10 +770,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             return Collections.emptyList();
         }
         String q = query.toLowerCase().trim();
-        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
-                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
         List<String> found = new ArrayList<>();
-        for (String month : monthNames) {
+        for (String month : SPANISH_MONTH_NAMES_ORDERED) {
             if (q.contains(month)) {
                 found.add(month);
             }
@@ -772,8 +780,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         String[] enNames = {"january", "february", "march", "april", "may", "june",
                            "july", "august", "september", "october", "november", "december"};
         for (int i = 0; i < enNames.length; i++) {
-            if (q.contains(enNames[i]) && !found.contains(monthNames[i])) {
-                found.add(monthNames[i]);
+            if (q.contains(enNames[i]) && !found.contains(SPANISH_MONTH_NAMES_ORDERED[i])) {
+                found.add(SPANISH_MONTH_NAMES_ORDERED[i]);
             }
         }
         log().info("Extracted months from query: {}", found);
@@ -844,10 +852,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      * Gets Spanish month name from month number (1-12)
      */
     private String getMonthName(int month) {
-        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
-                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
         if (month >= 1 && month <= 12) {
-            return monthNames[month - 1];
+            return SPANISH_MONTH_NAMES_ORDERED[month - 1];
         }
         return "unknown";
     }
@@ -879,9 +885,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         
         // Convert back to ComparisonValue map, sorted by month name for consistent ordering
         Map<String, Integer> sortedMonths = new LinkedHashMap<>();
-        String[] monthOrder = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
-                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
-        for (String month : monthOrder) {
+        for (String month : SPANISH_MONTH_NAMES_ORDERED) {
             if (monthCounts.containsKey(month)) {
                 sortedMonths.put(month, monthCounts.get(month));
             }

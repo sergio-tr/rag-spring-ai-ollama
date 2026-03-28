@@ -104,10 +104,9 @@ public class MinuteDocumentContextRetriever extends AbstractMetadataContextRetri
         }
 
         try {
-            String filterPrompt = entities == null || entities.isEmpty() ?
-                    String.format(PROMPT_TEMPLATE, promptContent, query) :
-                    String.format(NER_PROMPT_TEMPLATE, promptContent, query, 
-                                 entities != null ? entities.toString(2) : "{}");
+            String filterPrompt = entities == null || entities.isEmpty()
+                    ? String.format(PROMPT_TEMPLATE, promptContent, query)
+                    : String.format(NER_PROMPT_TEMPLATE, promptContent, query, entities.toString(2));
 
             String rawContent = chatClient
                     .prompt()

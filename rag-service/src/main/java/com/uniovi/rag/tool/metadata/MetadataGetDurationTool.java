@@ -14,7 +14,6 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
-import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataGetDurationTool for analyzing meeting durations with intelligent analysis.
@@ -93,7 +92,7 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
                         .map(Minute::date)
                         .filter(Objects::nonNull)
                         .distinct()
-                        .collect(Collectors.toList());
+                        .toList();
                 log().info("Available dates in relevant minutes: {}", availableDates);
                 return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "duration", date, relevantMinutes.size(), "date_not_found"), query), getClass());
             }
@@ -141,13 +140,13 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
     private List<DurationResult> extractDurationsInParallel(List<Minute> minutes) {
         List<CompletableFuture<DurationResult>> futures = minutes.stream()
                 .map(minute -> supplyAsync(() -> extractDuration(minute)))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
                 .filter(result -> result.getDurationMinutes() > 0)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -226,12 +225,12 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
                     }
                     return null;
                 }))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**

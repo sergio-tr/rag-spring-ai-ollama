@@ -16,7 +16,7 @@ public abstract class AbstractTool implements Tool {
     protected final EnhancedNERHandler nerHandler;
     protected final DocumentContentExtractor extractor;
 
-    public AbstractTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
+    protected AbstractTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
         this.chatClient = chatClient;
         this.retriever = retriever;
         this.nerHandler = new EnhancedNERHandler(chatClient);

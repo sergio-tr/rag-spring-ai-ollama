@@ -89,9 +89,6 @@ public class MetadataLlmResponseCacheService {
                     log.error("Error in getCachedResponse (attempt {}): {}", attempt + 1, e.getMessage(), e);
                 }
 
-                if (attempt < maxRetries && (isTimeout || isNetworkError || isRetryableException(e))) {
-                    continue;
-                }
             }
         }
 
@@ -100,31 +97,5 @@ public class MetadataLlmResponseCacheService {
                     maxRetries + 1, lastException.getMessage(), lastException);
         }
         return "";
-    }
-
-    private static boolean isRetryableException(Throwable e) {
-        if (e == null) {
-            return false;
-        }
-
-        String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-        String className = e.getClass().getName().toLowerCase();
-
-        if (className.contains("timeout")
-                || className.contains("connection")
-                || className.contains("network")
-                || errorMsg.contains("timeout")
-                || errorMsg.contains("connection")
-                || errorMsg.contains("network")) {
-            return true;
-        }
-
-        if (e instanceof NullPointerException
-                || e instanceof IllegalArgumentException
-                || e instanceof IllegalStateException) {
-            return false;
-        }
-
-        return true;
     }
 }

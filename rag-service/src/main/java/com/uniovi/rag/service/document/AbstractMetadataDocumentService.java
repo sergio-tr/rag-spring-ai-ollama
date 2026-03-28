@@ -142,9 +142,8 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
         // Validate types of complex fields
         validateMetadataTypes(metadata, filename);
         
-        // Log metadata summary for debugging
         if (log().isDebugEnabled()) {
-            log().info("Metadata validation for file: {} - Fields: {}", filename, metadata.keySet());
+            log().debug("Metadata validation: {} entries", metadata.size());
         }
     }
     
@@ -165,8 +164,8 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
         if (metadata.containsKey("decisions")) {
             Object decisions = metadata.get("decisions");
             if (decisions != null && !(decisions instanceof List)) {
-                log().warn("Invalid type for 'decisions' in file {}: {}, expected List. Will be normalized during extraction.", 
-                          filename, decisions.getClass().getName());
+                log().warn("Invalid type for 'decisions': expected List, got {}. Will be normalized during extraction.",
+                          decisions.getClass().getSimpleName());
             }
         }
         
@@ -174,8 +173,8 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
         if (metadata.containsKey("topics")) {
             Object topics = metadata.get("topics");
             if (topics != null && !(topics instanceof List)) {
-                log().warn("Invalid type for 'topics' in file {}: {}, expected List. Will be normalized during extraction.", 
-                          filename, topics.getClass().getName());
+                log().warn("Invalid type for 'topics': expected List, got {}. Will be normalized during extraction.",
+                          topics.getClass().getSimpleName());
             }
         }
         
@@ -183,8 +182,8 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
         if (metadata.containsKey("mentionedEntities")) {
             Object mentionedEntities = metadata.get("mentionedEntities");
             if (mentionedEntities != null && !(mentionedEntities instanceof List)) {
-                log().warn("Invalid type for 'mentionedEntities' in file {}: {}, expected List. Will be normalized during extraction.", 
-                          filename, mentionedEntities.getClass().getName());
+                log().warn("Invalid type for 'mentionedEntities': expected List, got {}. Will be normalized during extraction.",
+                          mentionedEntities.getClass().getSimpleName());
             }
         }
         
@@ -192,8 +191,8 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
         if (metadata.containsKey("agenda")) {
             Object agenda = metadata.get("agenda");
             if (agenda != null && !(agenda instanceof Map)) {
-                log().warn("Invalid type for 'agenda' in file {}: {}, expected Map. Will be normalized during extraction.", 
-                          filename, agenda.getClass().getName());
+                log().warn("Invalid type for 'agenda': expected Map, got {}. Will be normalized during extraction.",
+                          agenda.getClass().getSimpleName());
             }
         }
         
@@ -201,8 +200,8 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
         if (metadata.containsKey("numberOfAttendees")) {
             Object numberOfAttendees = metadata.get("numberOfAttendees");
             if (numberOfAttendees != null && !(numberOfAttendees instanceof Number)) {
-                log().warn("Invalid type for 'numberOfAttendees' in file {}: {}, expected Number. Will be normalized during extraction.", 
-                          filename, numberOfAttendees.getClass().getName());
+                log().warn("Invalid type for 'numberOfAttendees': expected Number, got {}. Will be normalized during extraction.",
+                          numberOfAttendees.getClass().getSimpleName());
             }
         }
     }

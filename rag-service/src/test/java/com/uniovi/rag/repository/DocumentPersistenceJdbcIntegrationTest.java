@@ -7,6 +7,8 @@ import com.uniovi.rag.service.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.service.document.SimpleDocumentService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.query.QueryService;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -15,24 +17,22 @@ import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import javax.sql.DataSource;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
-@Testcontainers(disabledWithoutDocker = true)
+/**
+ * JDBC integration tests: Testcontainers locally; in CI use {@code INTEGRATION_JDBC_URL} (see {@code .github/workflows/ci.yml}).
+ */
 class DocumentPersistenceJdbcIntegrationTest {
 
-    @Container
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("pgvector/pgvector:pg16")
-            .withDatabaseName("testdb")
-            .withUsername("test")
-            .withPassword("test")
-            .withInitScript("test-init.sql");
+    private static PostgreSQLContainer<?> postgresContainer;
+
+    private static DataSource sharedDataSource;
 
     private JdbcTemplate jdbcTemplate;
 
@@ -42,13 +42,38 @@ class DocumentPersistenceJdbcIntegrationTest {
 
     private static final String ZERO_VECTOR_1024 = buildZeroVector(1024);
 
+    @BeforeAll
+    static void startOrBindDatabase() {
+        String externalUrl = System.getenv("INTEGRATION_JDBC_URL");
+        if (externalUrl != null && !externalUrl.isBlank()) {
+            String user = Optional.ofNullable(System.getenv("SPRING_DATASOURCE_USERNAME")).orElse("postgres");
+            String password = Optional.ofNullable(System.getenv("SPRING_DATASOURCE_PASSWORD")).orElse("postgres");
+            sharedDataSource = new DriverManagerDataSource(externalUrl, user, password);
+            return;
+        }
+        postgresContainer = new PostgreSQLContainer<>("pgvector/pgvector:pg16")
+                .withDatabaseName("testdb")
+                .withUsername("test")
+                .withPassword("test")
+                .withInitScript("test-init.sql");
+        postgresContainer.start();
+        sharedDataSource = new DriverManagerDataSource(
+                postgresContainer.getJdbcUrl(),
+                postgresContainer.getUsername(),
+                postgresContainer.getPassword()
+        );
+    }
+
+    @AfterAll
+    static void stopContainer() {
+        if (postgresContainer != null) {
+            postgresContainer.stop();
+        }
+    }
+
     @BeforeEach
     void setUp() {
-        DataSource ds = new DriverManagerDataSource(
-                POSTGRES.getJdbcUrl(),
-                POSTGRES.getUsername(),
-                POSTGRES.getPassword()
-        );
+        DataSource ds = sharedDataSource;
         jdbcTemplate = new JdbcTemplate(ds);
 
         PgVectorStore vectorStore = mock(PgVectorStore.class);

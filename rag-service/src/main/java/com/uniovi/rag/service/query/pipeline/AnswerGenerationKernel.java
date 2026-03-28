@@ -224,11 +224,11 @@ public final class AnswerGenerationKernel {
         }
         List<Document> docs;
         try {
-            if (retriever instanceof AbstractContextRetriever && nerEntities != null && !nerEntities.isEmpty()) {
+            if (retriever instanceof AbstractContextRetriever acr && nerEntities != null && !nerEntities.isEmpty()) {
                 if (isProblematicConfig) {
                     log.debug("Attempting retrieval with metadata filters and NER entities");
                 }
-                docs = ((AbstractContextRetriever) retriever).retrieveWithMetadataFilters(retrievalQuery, nerEntities);
+                docs = acr.retrieveWithMetadataFilters(retrievalQuery, nerEntities);
                 log.info("Using optimized retrieval with metadata filters, retrieved {} documents", docs.size());
             } else {
                 if (isProblematicConfig) {
@@ -308,9 +308,6 @@ public final class AnswerGenerationKernel {
                 lastException = e;
                 log.warn("Error generating response on attempt {} for query: {} - {}",
                         attempt + 1, query, e.getMessage());
-                if (attempt < MAX_RETRIES) {
-                    continue;
-                }
             }
         }
 

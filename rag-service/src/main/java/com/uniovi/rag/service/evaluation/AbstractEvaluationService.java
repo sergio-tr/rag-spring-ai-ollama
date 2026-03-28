@@ -641,13 +641,15 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         for (Map<String, Object> r : results) {
             List<String> retrieved = getStringList(r, "retrieved_document_ids");
             List<String> relevant = getStringList(r, "relevant_document_ids");
-            if (retrieved == null || retrieved.isEmpty() || relevant == null || relevant.isEmpty()) continue;
-            Set<String> relSet = new HashSet<>(relevant);
-            int atK = Math.min(k, retrieved.size());
-            if (atK == 0) continue;
-            long hits = retrieved.subList(0, atK).stream().filter(relSet::contains).count();
-            sum += (double) hits / atK;
-            count++;
+            if (retrieved != null && !retrieved.isEmpty() && relevant != null && !relevant.isEmpty()) {
+                Set<String> relSet = new HashSet<>(relevant);
+                int atK = Math.min(k, retrieved.size());
+                if (atK > 0) {
+                    long hits = retrieved.subList(0, atK).stream().filter(relSet::contains).count();
+                    sum += (double) hits / atK;
+                    count++;
+                }
+            }
         }
         return count > 0 ? sum / count : null;
     }
@@ -659,13 +661,15 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         for (Map<String, Object> r : results) {
             List<String> retrieved = getStringList(r, "retrieved_document_ids");
             List<String> relevant = getStringList(r, "relevant_document_ids");
-            if (retrieved == null || retrieved.isEmpty() || relevant == null || relevant.isEmpty()) continue;
-            Set<String> relSet = new HashSet<>(relevant);
-            int atK = Math.min(k, retrieved.size());
-            if (atK == 0) continue;
-            long hits = retrieved.subList(0, atK).stream().filter(relSet::contains).count();
-            sum += (double) hits / relSet.size();
-            count++;
+            if (retrieved != null && !retrieved.isEmpty() && relevant != null && !relevant.isEmpty()) {
+                Set<String> relSet = new HashSet<>(relevant);
+                int atK = Math.min(k, retrieved.size());
+                if (atK > 0) {
+                    long hits = retrieved.subList(0, atK).stream().filter(relSet::contains).count();
+                    sum += (double) hits / relSet.size();
+                    count++;
+                }
+            }
         }
         return count > 0 ? sum / count : null;
     }

@@ -5,7 +5,6 @@ import com.uniovi.rag.observability.ObservabilitySupport;
 import com.uniovi.rag.observability.TracedMeetingMinutesToolsAdapter;
 import com.uniovi.rag.observability.TracedTool;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.tool.Tool;

@@ -20,6 +20,8 @@ import java.util.stream.Collectors;
  */
 public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
+    private static final String PLACEHOLDER_UNKNOWN = "unknown";
+
     public MetadataSummarizeTopicTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -193,12 +195,12 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             """,
             topicFocus,
             query,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
+            minute.date() != null ? minute.date() : PLACEHOLDER_UNKNOWN,
+            minute.place() != null ? minute.place() : PLACEHOLDER_UNKNOWN,
+            minute.topics() != null ? String.join(", ", minute.topics()) : PLACEHOLDER_UNKNOWN,
+            minute.decisions() != null ? String.join(", ", minute.decisions()) : PLACEHOLDER_UNKNOWN,
             minute.summary() != null ? minute.summary() : "",
-            minute.agenda() != null ? minute.agenda().toString() : "unknown"
+            minute.agenda() != null ? minute.agenda().toString() : PLACEHOLDER_UNKNOWN
         );
 
         try {
@@ -233,7 +235,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
         // Build topic summary content (limit to 3 meetings max, 250 chars per summary)
         StringBuilder summaryContent = new StringBuilder();
-        summaryContent.append(String.format("Based on %d meetings:\n\n", results.size()));
+        summaryContent.append(String.format("Based on %d meetings:%n%n", results.size()));
 
         results.stream().limit(3).forEach(r -> {
             if (r.getDate() != null) {
@@ -241,12 +243,12 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                 if (r.getPlace() != null) {
                     summaryContent.append(", Place: ").append(r.getPlace());
                 }
-                summaryContent.append("\n");
+                summaryContent.append(String.format("%n"));
             }
             String txt = r.getTopicSummary() != null ? r.getTopicSummary() : "";
             // Limit to 250 characters per summary for conciseness
             summaryContent.append(txt.length() > 250 ? txt.substring(0, 250) + "..." : txt);
-            summaryContent.append("\n\n");
+            summaryContent.append(String.format("%n%n"));
         });
 
         String prompt = String.format("""

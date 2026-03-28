@@ -149,7 +149,7 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
                 return extractFromCsv(file);
             }
         } catch (Exception e) {
-            throw new RuntimeException("Error processing the file", e);
+            throw new IllegalStateException("Error processing the file", e);
         }
 
 
@@ -169,20 +169,20 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             
             // Validate that the text is not empty
             if (rawText == null || rawText.trim().isEmpty()) {
-                log().error("PDF extraction returned empty text for file: " + filename);
+                log().error("PDF extraction returned empty text for file: {}", filename);
                 throw new IllegalArgumentException("The PDF does not contain extractable text. It may be protected or an image.");
             }
             
-            log().info("PDF extracted " + rawText.length() + " characters from file: " + filename);
+            log().info("PDF extracted {} characters from file: {}", rawText.length(), filename);
             
             // Normalize the extracted text to improve subsequent extraction
             String normalized = normalizeExtractedText(rawText);
             
-            log().info("After normalization: " + normalized.length() + " characters for file: " + filename);
+            log().info("After normalization: {} characters for file: {}", normalized.length(), filename);
             
             // Validate minimum length
             if (normalized.length() < 20) {
-                log().warn("Normalized text is very short (" + normalized.length() + " chars) for file: " + filename);
+                log().warn("Normalized text is very short ({} chars) for file: {}", normalized.length(), filename);
             }
             
             return normalized;
@@ -190,8 +190,8 @@ public abstract class AbstractDocumentService<T> implements DocumentService {
             // Re-lanzar IllegalArgumentException tal cual
             throw e;
         } catch (Exception e) {
-            log().error("Error processing PDF file: " + filename, e);
-            throw new RuntimeException("Error processing the PDF " + filename + ": " + e.getMessage(), e);
+            log().error("Error processing PDF file: {}", filename, e);
+            throw new IllegalStateException("Error processing the PDF " + filename + ": " + e.getMessage(), e);
         }
     }
     

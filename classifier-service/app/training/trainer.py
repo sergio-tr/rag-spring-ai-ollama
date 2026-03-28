@@ -41,12 +41,13 @@ class TrainingPipeline(Loggable):
         early_stopping_patience: int = 5,
     ) -> dict:
         """
-        Trains a classifier from an Excel file with columns Question and QueryType.
+        Trains a classifier from an Excel file with columns Question and QueryType
+        (Spanish 'Pregunta' is normalized to 'Question', same as evaluation).
         If class_names is provided, only those labels are used (order preserved); otherwise derived from data.
         Saves model, labels and metadata under output_dir or MODELS_DIR/{new_id}/.
         Returns dict with model_id, name, paths, metrics.
         """
-        df = pd.read_excel(dataset_path)
+        df = normalize_excel_classification_columns(pd.read_excel(dataset_path))
         if "Question" not in df.columns or "QueryType" not in df.columns:
             raise ValueError("Dataset must have columns 'Question' and 'QueryType'")
         if class_names:
