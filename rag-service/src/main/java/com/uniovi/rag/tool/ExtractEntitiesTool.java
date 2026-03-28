@@ -161,7 +161,7 @@ public class ExtractEntitiesTool extends AbstractTool {
      * Generates entity result with proper formatting
      */
     private String generateEntityResult(String date, String entities) {
-        return String.format("Minutes from %s:\n%s", 
+        return String.format("Minutes from %s:%n%s",
                            date != null ? date : "unknown date", entities);
     }
 

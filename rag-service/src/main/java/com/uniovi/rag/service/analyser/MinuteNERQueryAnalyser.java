@@ -40,6 +40,10 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     private static final String JSON_KEY_ANSWER_TYPE = "answerType";
 
+    private static final String JSON_KEY_COMPARISON_TYPE = "comparisonType";
+
+    private static final String JSON_KEY_TEMPORAL_CONTEXT = "temporalContext";
+
     private static final String TEMPORAL_CONTEXT_FUTURE = "future";
 
     /** Spring proxy for {@code @Cacheable} (avoid self-invocation). */
@@ -67,8 +71,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         - section: Section of the minutes being asked about (e.g., "asistentes", "attendees", "acuerdos", "agreements", "ruegos y preguntas").
         - summary: If the query asks for a summary, indicate the type of summary requested (e.g., "resumen de la reunión", "meeting summary").
         - %s: Expected answer type ("person", "number", "text", "date", "decision", "topic", "boolean", "list", "comparison", "duration", "field").
-        - comparisonType: If comparing, indicate the type ("date", "duration", "attendees", "topics", "decisions", "%s").
-        - temporalContext: Temporal context ("current", "past", "future", "specific_date", "range", "latest", "oldest").
+        - %s: If comparing, indicate the type ("date", "duration", "attendees", "topics", "decisions", "%s").
+        - %s: Temporal context ("current", "past", "future", "specific_date", "range", "latest", "oldest").
 
         Examples:
         Query: "¿Quién fue el presidente en la reunión del 25 de febrero de 2026?"
@@ -102,8 +106,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         {
           "date": ["February", "March"],
           "%s": "comparison",
-          "comparisonType": "duration",
-          "temporalContext": "range"
+          "%s": "duration",
+          "%s": "range"
         }
 
         Query: "Resume la reunión del 25 de febrero de 2026"
@@ -133,11 +137,15 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     """,
             JSON_KEY_PLACE,
             JSON_KEY_ANSWER_TYPE,
+            JSON_KEY_COMPARISON_TYPE,
             JSON_KEY_PLACE,
+            JSON_KEY_TEMPORAL_CONTEXT,
             JSON_KEY_ANSWER_TYPE,
             JSON_KEY_ANSWER_TYPE,
             JSON_KEY_ANSWER_TYPE,
             JSON_KEY_ANSWER_TYPE,
+            JSON_KEY_COMPARISON_TYPE,
+            JSON_KEY_TEMPORAL_CONTEXT,
             JSON_KEY_ANSWER_TYPE,
             JSON_KEY_PLACE,
             JSON_KEY_ANSWER_TYPE,
@@ -314,7 +322,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             4. Do NOT include explanations or comments
             5. All field names must be exactly as specified (lowercase, no spaces)
             6. Array fields must be JSON arrays, even if empty: []
-            7. String fields (%s, comparisonType, temporalContext) must be strings, not arrays
+            7. String fields (%s, %s, %s) must be strings, not arrays
             
             EXTRACTION GUIDELINES:
             1. Extract entities considering semantic meaning, not just exact matches
@@ -329,7 +337,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             - Ensure all required fields are present
             - Ensure arrays are properly formatted
             - Ensure no syntax errors in JSON
-            """.formatted(JSON_KEY_ANSWER_TYPE);
+            """.formatted(JSON_KEY_ANSWER_TYPE, JSON_KEY_COMPARISON_TYPE, JSON_KEY_TEMPORAL_CONTEXT);
     }
 
     /**
@@ -353,21 +361,22 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             "date", JSON_KEY_PLACE, "startTime", "endTime", JSON_KEY_PRESIDENT, JSON_KEY_SECRETARY,
             JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", "decisions",
             "mentionedEntities", JSON_KEY_TOPICS, "section", "summary", JSON_KEY_ANSWER_TYPE,
-            "comparisonType", "temporalContext"
+            JSON_KEY_COMPARISON_TYPE, JSON_KEY_TEMPORAL_CONTEXT
         };
         
         for (String field : fields) {
             if (!json.has(field)) {
                 if (field.equals(JSON_KEY_ANSWER_TYPE)) {
                     json.put(field, JSON_VALUE_UNKNOWN);
-                } else if (field.equals("comparisonType") || field.equals("temporalContext")) {
+                } else if (field.equals(JSON_KEY_COMPARISON_TYPE) || field.equals(JSON_KEY_TEMPORAL_CONTEXT)) {
                     json.put(field, "none");
                 } else {
                     json.put(field, new JSONArray());
                 }
             } else {
                 // Special fields that must be strings
-                if (field.equals(JSON_KEY_ANSWER_TYPE) || field.equals("comparisonType") || field.equals("temporalContext")) {
+                if (field.equals(JSON_KEY_ANSWER_TYPE) || field.equals(JSON_KEY_COMPARISON_TYPE)
+                        || field.equals(JSON_KEY_TEMPORAL_CONTEXT)) {
                     Object value = json.get(field);
                     // If it's an array, take the first element or default value
                     if (value instanceof JSONArray array) {
@@ -409,7 +418,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     private String getDefaultStringValue(String field) {
         if (field.equals(JSON_KEY_ANSWER_TYPE)) {
             return JSON_VALUE_UNKNOWN;
-        } else if (field.equals("comparisonType") || field.equals("temporalContext")) {
+        } else if (field.equals(JSON_KEY_COMPARISON_TYPE) || field.equals(JSON_KEY_TEMPORAL_CONTEXT)) {
             return "none";
         }
         return "";
@@ -566,8 +575,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
      * Normalizes person names
      */
     private void normalizeNames(JSONObject json) {
-        normalizeNameField(json, "president");
-        normalizeNameField(json, "secretary");
+        normalizeNameField(json, JSON_KEY_PRESIDENT);
+        normalizeNameField(json, JSON_KEY_SECRETARY);
         normalizeNameField(json, JSON_KEY_ATTENDEES);
     }
 
@@ -651,44 +660,44 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             queryLower.contains("vs") || queryLower.contains("versus") ||
             queryLower.contains("difference") || queryLower.contains("diferencia")) {
             
-            String comparisonType = getStringSafely(json, "comparisonType", "none");
+            String comparisonType = getStringSafely(json, JSON_KEY_COMPARISON_TYPE, "none");
             if (comparisonType.equals("none")) {
                 // Try to infer comparison type
                 if (queryLower.contains("duration") || queryLower.contains("duración")) {
-                    json.put("comparisonType", "duration");
+                    json.put(JSON_KEY_COMPARISON_TYPE, "duration");
                 } else if (queryLower.contains("attendee") || queryLower.contains("asistente")) {
-                    json.put("comparisonType", JSON_KEY_ATTENDEES);
+                    json.put(JSON_KEY_COMPARISON_TYPE, JSON_KEY_ATTENDEES);
                 } else if (queryLower.contains("topic") || queryLower.contains("tema")) {
-                    json.put("comparisonType", "topics");
+                    json.put(JSON_KEY_COMPARISON_TYPE, "topics");
                 } else if (queryLower.contains("decision") || queryLower.contains("decisión")) {
-                    json.put("comparisonType", "decisions");
+                    json.put(JSON_KEY_COMPARISON_TYPE, "decisions");
                 } else if (queryLower.contains(JSON_KEY_PLACE) || queryLower.contains("lugar")) {
-                    json.put("comparisonType", JSON_KEY_PLACE);
+                    json.put(JSON_KEY_COMPARISON_TYPE, JSON_KEY_PLACE);
                 } else {
-                    json.put("comparisonType", "general");
+                    json.put(JSON_KEY_COMPARISON_TYPE, "general");
                 }
             }
         }
         
         // Detect temporal context
-        String temporalContext = getStringSafely(json, "temporalContext", "none");
+        String temporalContext = getStringSafely(json, JSON_KEY_TEMPORAL_CONTEXT, "none");
         if (temporalContext.equals("none")) {
             if (queryLower.contains("última") || queryLower.contains("last") || 
                 queryLower.contains("reciente") || queryLower.contains("recent")) {
-                json.put("temporalContext", "latest");
+                json.put(JSON_KEY_TEMPORAL_CONTEXT, "latest");
             } else if (queryLower.contains("primera") || queryLower.contains("first") ||
                       queryLower.contains("antigua") || queryLower.contains("oldest")) {
-                json.put("temporalContext", "oldest");
+                json.put(JSON_KEY_TEMPORAL_CONTEXT, "oldest");
             } else if (queryLower.contains("pasada") || queryLower.contains("past")) {
-                json.put("temporalContext", "past");
+                json.put(JSON_KEY_TEMPORAL_CONTEXT, "past");
             } else if (queryLower.contains("próxima") || queryLower.contains("next") ||
                       queryLower.contains("futura") || queryLower.contains("future")) {
-                json.put("temporalContext", TEMPORAL_CONTEXT_FUTURE);
+                json.put(JSON_KEY_TEMPORAL_CONTEXT, TEMPORAL_CONTEXT_FUTURE);
             } else if (queryLower.contains("entre") || queryLower.contains("between") ||
                       queryLower.contains("desde") || queryLower.contains("from")) {
-                json.put("temporalContext", "range");
+                json.put(JSON_KEY_TEMPORAL_CONTEXT, "range");
             } else {
-                json.put("temporalContext", "general");
+                json.put(JSON_KEY_TEMPORAL_CONTEXT, "general");
             }
         }
         
@@ -744,7 +753,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         }
         
         // Fill remaining fields
-        String[] fields = {JSON_KEY_PLACE, "startTime", "endTime", "president", "secretary",
+        String[] fields = {JSON_KEY_PLACE, "startTime", "endTime", JSON_KEY_PRESIDENT, JSON_KEY_SECRETARY,
                           JSON_KEY_ATTENDEES, "numberOfAttendees", "agenda", "decisions", 
                           "mentionedEntities", "topics", "section", "summary"};
         
@@ -754,8 +763,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             }
         }
         
-        fallback.put("comparisonType", "none");
-        fallback.put("temporalContext", "general");
+        fallback.put(JSON_KEY_COMPARISON_TYPE, "none");
+        fallback.put(JSON_KEY_TEMPORAL_CONTEXT, "general");
         
         return fallback;
     }

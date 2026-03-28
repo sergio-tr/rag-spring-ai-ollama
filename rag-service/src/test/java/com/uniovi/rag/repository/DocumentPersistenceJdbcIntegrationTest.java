@@ -11,7 +11,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -93,6 +92,9 @@ class DocumentPersistenceJdbcIntegrationTest {
     void setUp() {
         DataSource ds = sharedDataSource;
         jdbcTemplate = new JdbcTemplate(ds);
+        // Shared JDBC URL (e.g. CI Postgres) may hold rows from other test classes or earlier methods.
+        jdbcTemplate.update("DELETE FROM vector_store");
+        jdbcTemplate.update("DELETE FROM documents");
 
         PgVectorStore vectorStore = mock(PgVectorStore.class);
         ChatClient chatClient = mock(ChatClient.class);
