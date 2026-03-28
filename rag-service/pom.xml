@@ -312,7 +312,7 @@
                         <exclude>com/uniovi/rag/service/query/ProcessQueryService.class</exclude>
                         <exclude>com/uniovi/rag/service/expand/MinuteDocumentStructureExpander.class</exclude>
                     </excludes>
-                    <rules>
+                        <rules>
                         <rule>
                             <element>BUNDLE</element>
                             <limits>
