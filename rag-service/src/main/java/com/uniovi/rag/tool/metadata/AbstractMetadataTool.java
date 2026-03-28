@@ -29,6 +29,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final String METADATA_KEY_END_TIME = "endTime";
+    /** Normalized ISO date in document metadata (see ingestion / vector store). */
+    private static final String METADATA_KEY_DATE_ISO = "date_iso";
+
+    /** Case-insensitive matching for Latin extended names (Sonar: UNICODE_CASE for non-ASCII letters). */
+    private static final int UNICODE_CASE_INSENSITIVE = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
 
     private static final String QUERY_TYPE_GENERAL = "general";
 
@@ -213,7 +218,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Boolean validated = validateLLMFilterResponse(result, "semanticallyMatchesMetadata");
             
             // If validation returns null (unknown), default to true (keep document) to avoid false negatives
-            return validated != null ? validated : true;
+            return validated == null || validated;
         } catch (Exception e) {
             log().warn("Error in semantic metadata matching, defaulting to true (keep document)", e);
             return true; // Default to true on error to avoid false negatives
@@ -277,7 +282,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Boolean validated = validateLLMFilterResponse(result, "semanticallyMatchesMinute");
             
             // If validation returns null (unknown), default to true (keep document) to avoid false negatives
-            return validated != null ? validated : true;
+            return validated == null || validated;
         } catch (Exception e) {
             log().warn("Error in semantic minute matching, defaulting to true to avoid false negatives", e);
             return true; // Avoid false negatives
@@ -564,7 +569,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             
             // Use validateLLMFilterResponse for consistent validation
             Boolean validated = validateLLMFilterResponse(result, "minute matching with NER");
-            return validated != null ? validated : true; // Default to true to avoid false negatives
+            return validated == null || validated; // Default to true to avoid false negatives
         } catch (Exception e) {
             log().warn("Error matching minute with NER, defaulting to true to avoid false negatives", e);
             return true; // Avoid false negatives (consistent with EnhancedNERHandler)
@@ -1305,7 +1310,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                                 LocalDate md = parseDateFlexible(m.date());
                                 return md != null && md.format(DateTimeFormatter.ISO_LOCAL_DATE).equals(requestedIso);
                             })
-                            .collect(Collectors.toList());
+                            .toList();
                     if (!sameDate.isEmpty()) {
                         log().warn("Filtering left 0 minutes but {} minutes match requested date {}; returning them as conservative fallback", sameDate.size(), requestedIso);
                         return sameDate;
@@ -1328,7 +1333,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         return dateB.compareTo(dateA); // String comparison fallback
                     })
                     .limit(10)
-                    .collect(Collectors.toList());
+                    .toList();
         }
         
         log().info("Final filtered {} relevant minutes from {} total", filtered.size(), minutes.size());
@@ -1343,7 +1348,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      */
     private List<Minute> preFilterMinutesFast(List<Minute> minutes, JSONObject ner) {
         if (ner == null || ner.isEmpty() || !ner.has("date") || ner.getJSONArray("date").isEmpty()) {
-            return minutes.stream().limit(50).collect(Collectors.toList()); // Increased from 30 to 50
+            return minutes.stream().limit(50).toList(); // Increased from 30 to 50
         }
         
         org.json.JSONArray nerDates = ner.getJSONArray("date");
@@ -1370,7 +1375,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     return datesInSameYear(minuteDate, nerDateStrings);
                 })
                 .limit(50) // Increased from 30 to 50
-                .collect(Collectors.toList());
+                .toList();
     }
     
     /**
@@ -1571,7 +1576,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Boolean validated = validateLLMFilterResponse(result, "isRelevantToQueryByLLM");
             
             // If validation returns null (unknown), default to true (keep document) to avoid false negatives
-            return validated != null ? validated : true;
+            return validated == null || validated;
         } catch (Exception e) {
             log().warn("Error in relevance check, defaulting to true (keep document)", e);
             return true; // Default to true on error to avoid false negatives
@@ -1711,7 +1716,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
         List<Document> metadataDocs = docs.stream()
                 .filter(doc -> hasMetadataFields(doc, relevantFields))
-                .collect(Collectors.toList());
+                .toList();
 
         // FALLBACK 1: If metadata filtering removed all documents, use unfiltered documents
         if (metadataDocs.isEmpty() && !docs.isEmpty()) {
@@ -1725,7 +1730,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // Accept documents with at least basic metadata fields
             metadataDocs = docs.stream()
                     .filter(this::hasBasicMetadata)
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         // Documents are already grouped and combined by the retriever
@@ -1802,10 +1807,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
         switch (field) {
             case "date":
-                return metadata.containsKey("date") && metadata.get("date") != null
-                        || metadata.containsKey("date_iso") && metadata.get("date_iso") != null
-                        || metadata.containsKey("year") && metadata.get("year") != null
-                        || metadata.containsKey("month") && metadata.get("month") != null;
+                return (metadata.containsKey("date") && metadata.get("date") != null)
+                        || (metadata.containsKey(METADATA_KEY_DATE_ISO) && metadata.get(METADATA_KEY_DATE_ISO) != null)
+                        || (metadata.containsKey("year") && metadata.get("year") != null)
+                        || (metadata.containsKey("month") && metadata.get("month") != null);
             case "numberOfAttendees":
                 return (metadata.containsKey("numberOfAttendees") && metadata.get("numberOfAttendees") != null)
                         || (metadata.containsKey("attendeesCount") && metadata.get("attendeesCount") != null);
@@ -1836,7 +1841,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         // If we have no relevant fields, check basic fields
-        if (metadataSummary.length() == 0) {
+        if (metadataSummary.isEmpty()) {
             metadataSummary.append("date: ").append(metadata.getOrDefault("date", "")).append("; ");
             metadataSummary.append("topics: ").append(metadata.getOrDefault("topics", "")).append("; ");
         }
@@ -2428,38 +2433,38 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         Pattern[] patterns = {
             // Pattern 1: "presided by [Full Name]" (Spanish/English)
             Pattern.compile(
-                "(?i)(?:presididas?|presidió|presided)\\s+por\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
-                Pattern.CASE_INSENSITIVE
+                "(?:presididas?|presidió|presided)\\s+por\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
+                UNICODE_CASE_INSENSITIVE
             ),
             // Pattern 2: "where [Full Name] acted" (Spanish/English)
             Pattern.compile(
-                "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted|fue|was)",
-                Pattern.CASE_INSENSITIVE
+                "(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted|fue|was)",
+                UNICODE_CASE_INSENSITIVE
             ),
             // Pattern 3: "[Full Name] acted as president"
             Pattern.compile(
-                "(?i)([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted)\\s+como",
-                Pattern.CASE_INSENSITIVE
+                "([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s+(?:actuó|acted)\\s+como",
+                UNICODE_CASE_INSENSITIVE
             ),
             // Pattern 4: "where [Full Name]" (more general)
             Pattern.compile(
-                "(?i)(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
-                Pattern.CASE_INSENSITIVE
+                "(?:donde|where)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})",
+                UNICODE_CASE_INSENSITIVE
             ),
             // Pattern 5: "attended [Full Name]" (e.g. "In which meetings did X attend?")
             Pattern.compile(
-                "(?i)(?:asistió|attended|attendee?d?)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
-                Pattern.CASE_INSENSITIVE
+                "(?:asistió|attended|attendee?d?)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
+                UNICODE_CASE_INSENSITIVE
             ),
             // Pattern 6: "meetings attended [Name]" - name at end before ?
             Pattern.compile(
-                "(?i)reuniones?\\s+asistió\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*\\??",
-                Pattern.CASE_INSENSITIVE
+                "reuniones?\\s+asistió\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*\\??",
+                UNICODE_CASE_INSENSITIVE
             ),
             // Pattern 7: "When and in which meetings did [Name] attend" - capture name after "attend"
             Pattern.compile(
-                "(?i)asistió\\s+([\\p{L}]+(?:\\s+[\\p{L}]+){2,4})\\s*\\??",
-                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS
+                "asistió\\s+([\\p{L}]+(?:\\s+[\\p{L}]+){2,4})\\s*\\??",
+                UNICODE_CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS
             )
         };
         
@@ -3799,7 +3804,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         Map<String, Object> metadata = doc.getMetadata();
 
         // PRIORITY 1: Try date_iso first (most reliable - already in ISO format)
-        Object dateIsoValue = metadata.get("date_iso");
+        Object dateIsoValue = metadata.get(METADATA_KEY_DATE_ISO);
         if (dateIsoValue != null) {
             String dateIsoStr = dateIsoValue.toString().trim();
             if (!dateIsoStr.isEmpty()) {
@@ -3943,7 +3948,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     
                     return matches;
                 })
-                .collect(Collectors.toList());
+                .toList();
 
         log().info("Date validation: {} documents matched date {} (normalized: {}) out of {} total documents", 
                   filtered.size(), requestedDate, requestedNormalized, docs.size());
@@ -3954,8 +3959,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                     .limit(5)
                     .map(doc -> {
                         Map<String, Object> docMetadata = doc.getMetadata();
-                        String dateIso = docMetadata != null && docMetadata.containsKey("date_iso") ? 
-                                        docMetadata.get("date_iso").toString() : null;
+                        String dateIso = docMetadata != null && docMetadata.containsKey(METADATA_KEY_DATE_ISO) ?
+                                        docMetadata.get(METADATA_KEY_DATE_ISO).toString() : null;
                         String dateRaw = docMetadata != null && docMetadata.containsKey("date") ? 
                                         docMetadata.get("date").toString() : null;
                         
@@ -3985,7 +3990,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         
                         return info.toString();
                     })
-                    .collect(Collectors.toList());
+                    .toList();
             log().debug("Date validation failed: Requested date {} (normalized: {}) not found. " +
                       "This may indicate: 1) date_iso missing in metadata, 2) date parsing failed, or 3) dates don't match (e.g. date not in corpus). " +
                       "Sample document dates: {}",

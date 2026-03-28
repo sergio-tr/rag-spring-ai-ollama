@@ -6,6 +6,7 @@ import com.uniovi.rag.model.QueryType;
 import com.uniovi.rag.service.analyser.NERQueryEnricher;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.service.query.GeneralKnowledgeQueryDetector;
+import com.uniovi.rag.api.ConnectivityFailureDetector;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.service.retriever.AbstractContextRetriever;
 import com.uniovi.rag.service.retriever.ContextRetriever;
@@ -243,10 +244,14 @@ public final class AnswerGenerationKernel {
                     e.getMessage(), e);
             throw e;
         } catch (Exception e) {
-            log.error("Exception during document retrieval (config: metadata={}, ner={}): {}",
-                    featureConfig.isMetadataEnabled(),
-                    featureConfig.isNerEnabled(),
-                    e.getMessage(), e);
+            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
+                log.warn("Document retrieval failed (connectivity): {}", e.getMessage());
+            } else {
+                log.error("Exception during document retrieval (config: metadata={}, ner={}): {}",
+                        featureConfig.isMetadataEnabled(),
+                        featureConfig.isNerEnabled(),
+                        e.getMessage(), e);
+            }
             throw e;
         }
 

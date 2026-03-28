@@ -29,89 +29,84 @@ public class SummarizeTopicTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
-        
-        log().info("Executing summarize topic query: '{}' with NER: {}", 
-                  query, ner != null ? ner.toString() : "null");
+
+        log().info("Executing summarize topic query: '{}' with NER: {}",
+                query, ner != null ? ner.toString() : "null");
         long startTime = System.currentTimeMillis();
-        
+
         List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for summarize topic query", docs.size());
-        List<String> fragments = new ArrayList<>();
 
-        // Try with NER filtering if available
-        if (ner != null && !docs.isEmpty()) {
-            // Use EnhancedNERHandler for intelligent filtering
-            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
-            log().debug("Filtered {} documents by temporal context, {} remaining", docs.size(), filteredDocs.size());
-            
-            int matchedCount = 0;
-            for (Document doc : filteredDocs) {
-                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-                    log().debug("Skipping document {}: null or empty content", doc != null ? doc.getId() : "null");
-                    continue;
-                }
-                
-                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    matchedCount++;
-                    fragments.addAll(extractRelevantFragments(doc, query));
-                }
-                if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
-            }
-            log().debug("NER filtering: {} documents matched NER conditions, extracted {} fragments", matchedCount, fragments.size());
-        }
-        
-        if (fragments.isEmpty() && !docs.isEmpty()) {
-            // Fallback to LLM-based relevance
-            for (Document doc : docs) {
-                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-                    continue;
-                }
-                
-                if (isRelevantByLLM(doc.getText(), query)) {
-                    fragments.addAll(extractRelevantFragments(doc, query));
-                }
-                if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
-            }
-        }
-        
-        if (fragments.isEmpty()) {
-            docs = retrieveAllDocuments(query, ner);
-            if (!docs.isEmpty()) {
-                for (Document doc : docs) {
-                    if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-                        continue;
-                    }
-                    
-                    if (isRelevantByLLM(doc.getText(), query)) {
-                        fragments.addAll(extractRelevantFragments(doc, query));
-                    }
-                    if (fragments.size() >= 3) break; // Limit to 3 fragments for conciseness
-                }
-            }
-        }
+        List<String> fragments = collectFragments(query, ner, docs);
 
         if (fragments.isEmpty()) {
-            long totalTime = System.currentTimeMillis() - startTime;
-            log().info("No fragments found for summarize topic query: '{}' (execution time: {} ms)", query, totalTime);
-            String notFound = generateNotFoundMessage(query);
-            // Apply formatResponse to clean the not found message
-            String formattedNotFound = formatResponse(notFound, query);
-            return ToolResult.from(formattedNotFound, getClass());
+            return buildNotFoundResult(query, startTime);
         }
 
         log().debug("Extracted {} fragments for summarize topic query, limiting to 3 for conciseness", fragments.size());
-        // Limit fragments to 3 maximum for conciseness
-        List<String> limitedFragments = fragments.stream().limit(3).collect(java.util.stream.Collectors.toList());
-        
+        List<String> limitedFragments = fragments.stream().limit(3).toList();
+
         String summary = generateSummaryWithLLM(query, limitedFragments);
         long totalTime = System.currentTimeMillis() - startTime;
-        log().info("Generated summarize topic answer for query: '{}' (execution time: {} ms, fragments used: {})", 
-                  query, totalTime, limitedFragments.size());
-        
-        // Note: generateSummaryWithLLM already applies formatResponse, but we apply it again for consistency
-        // (formatResponse is idempotent, so it's safe)
+        log().info("Generated summarize topic answer for query: '{}' (execution time: {} ms, fragments used: {})",
+                query, totalTime, limitedFragments.size());
+
         String formattedSummary = formatResponse(summary, query);
         return ToolResult.from(formattedSummary, getClass());
+    }
+
+    private List<String> collectFragments(String query, JSONObject ner, List<Document> docs) {
+        List<String> fragments = new ArrayList<>();
+        if (ner != null && !docs.isEmpty()) {
+            collectFragmentsWithNer(query, ner, docs, fragments);
+        }
+        if (fragments.isEmpty() && !docs.isEmpty()) {
+            collectFragmentsFromDocsWithLlm(query, docs, fragments);
+        }
+        if (fragments.isEmpty()) {
+            List<Document> allDocs = retrieveAllDocuments(query, ner);
+            collectFragmentsFromDocsWithLlm(query, allDocs, fragments);
+        }
+        return fragments;
+    }
+
+    private void collectFragmentsWithNer(String query, JSONObject ner, List<Document> docs, List<String> fragments) {
+        List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+        log().debug("Filtered {} documents by temporal context, {} remaining", docs.size(), filteredDocs.size());
+
+        int matchedCount = 0;
+        for (Document doc : filteredDocs) {
+            if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
+                log().debug("Skipping document {}: null or empty content", doc != null ? doc.getId() : "null");
+            } else if (nerHandler.matchesDocumentWithNER(doc, ner)) {
+                matchedCount++;
+                fragments.addAll(extractRelevantFragments(doc, query));
+                if (fragments.size() >= 3) {
+                    break;
+                }
+            }
+        }
+        log().debug("NER filtering: {} documents matched NER conditions, extracted {} fragments", matchedCount, fragments.size());
+    }
+
+    private void collectFragmentsFromDocsWithLlm(String query, List<Document> docs, List<String> fragments) {
+        for (Document doc : docs) {
+            if (doc != null && doc.getText() != null && !doc.getText().trim().isEmpty()
+                    && isRelevantByLLM(doc.getText(), query)) {
+                fragments.addAll(extractRelevantFragments(doc, query));
+            }
+            if (fragments.size() >= 3) {
+                break;
+            }
+        }
+    }
+
+    private ToolResult buildNotFoundResult(String query, long startTime) {
+        long totalTime = System.currentTimeMillis() - startTime;
+        log().info("No fragments found for summarize topic query: '{}' (execution time: {} ms)", query, totalTime);
+        String notFound = generateNotFoundMessage(query);
+        String formattedNotFound = formatResponse(notFound, query);
+        return ToolResult.from(formattedNotFound, getClass());
     }
 
     /**
@@ -122,7 +117,7 @@ public class SummarizeTopicTool extends AbstractTool {
         if (content == null || content.trim().isEmpty() || query == null || query.trim().isEmpty()) {
             return false;
         }
-        
+
         String contentSnippet = content.substring(0, Math.min(1000, content.length()));
         String prompt = String.format("""
             Given the following user query (in any language):
@@ -136,19 +131,19 @@ public class SummarizeTopicTool extends AbstractTool {
             Respond with ONLY one word: YES or NO.
             Do not include any explanation or additional text.
             """, query, contentSnippet);
-        
+
         try {
             String result = chatClient
                     .prompt()
                     .user(prompt)
                     .call()
                     .content();
-            
+
             if (result == null || result.trim().isEmpty()) {
                 log().warn("Empty response from LLM in isRelevantByLLM, defaulting to false");
                 return false;
             }
-            
+
             // Use LLM to interpret boolean response
             return interpretBooleanResponse(result, "isRelevantByLLM");
         } catch (Exception e) {
@@ -156,12 +151,12 @@ public class SummarizeTopicTool extends AbstractTool {
             return false; // Default to false on error to avoid false positives
         }
     }
-    
+
     private List<String> extractRelevantFragments(Document doc, String query) {
         if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
             return new ArrayList<>();
         }
-        
+
         List<String> relevant = new ArrayList<>();
         String content = doc.getText();
         String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
@@ -186,7 +181,7 @@ public class SummarizeTopicTool extends AbstractTool {
         if (query == null || query.trim().isEmpty() || paragraph == null || paragraph.trim().isEmpty()) {
             return false;
         }
-        
+
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
@@ -199,19 +194,19 @@ public class SummarizeTopicTool extends AbstractTool {
             Respond with ONLY one word: YES or NO.
             Do not include any explanation or additional text.
             """, query, paragraph);
-        
+
         try {
             String result = chatClient
                     .prompt()
                     .user(prompt)
                     .call()
                     .content();
-            
+
             if (result == null || result.trim().isEmpty()) {
                 log().warn("Empty response from LLM in isParagraphRelevantByLLM, defaulting to false");
                 return false;
             }
-            
+
             // Use LLM to interpret boolean response
             return interpretBooleanResponse(result, "isParagraphRelevantByLLM");
         } catch (Exception e) {
@@ -228,15 +223,15 @@ public class SummarizeTopicTool extends AbstractTool {
         if (query == null || query.trim().isEmpty() || fragments == null || fragments.isEmpty()) {
             return generateNotFoundMessage(query);
         }
-        
+
         String joined = fragments.stream()
                 .filter(f -> f != null && !f.trim().isEmpty())
                 .collect(java.util.stream.Collectors.joining("\n\n"));
-        
+
         if (joined.trim().isEmpty()) {
             return generateNotFoundMessage(query);
         }
-        
+
         String prompt = String.format("""
             Given the following user query (in any language):
             "%s"
@@ -266,19 +261,19 @@ public class SummarizeTopicTool extends AbstractTool {
             indicating the key points mentioned about the topic. 
             Avoid literal repetition and organize the information clearly.
             """, query, joined);
-        
+
         try {
             String response = chatClient
                     .prompt()
                     .user(prompt)
                     .call()
                     .content();
-            
+
             if (response == null || response.trim().isEmpty()) {
                 log().warn("Empty response from LLM in generateSummaryWithLLM for query: '{}', using fallback", query);
                 return generateFallbackSummary(query, fragments);
             }
-            
+
             // Apply formatResponse to clean and format the response
             return formatResponse(response.strip(), query);
         } catch (Exception e) {
@@ -294,7 +289,7 @@ public class SummarizeTopicTool extends AbstractTool {
         if (response == null || response.trim().isEmpty()) {
             return false;
         }
-        
+
         String prompt = String.format("""
             Context: %s
             
@@ -308,7 +303,7 @@ public class SummarizeTopicTool extends AbstractTool {
             
             Respond with ONLY one word: YES or NO.
             """, context, response);
-        
+
         try {
             String interpretation = chatClient
                     .prompt()
@@ -317,7 +312,7 @@ public class SummarizeTopicTool extends AbstractTool {
                     .content()
                     .strip()
                     .toUpperCase();
-            
+
             return interpretation.contains("YES");
         } catch (Exception e) {
             log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
@@ -333,7 +328,7 @@ public class SummarizeTopicTool extends AbstractTool {
         String fragmentsText = fragments.stream()
                 .limit(5)
                 .collect(java.util.stream.Collectors.joining("\n\n"));
-        
+
         String prompt = String.format("""
             The user asked (in any language): "%s"
             
@@ -345,14 +340,14 @@ public class SummarizeTopicTool extends AbstractTool {
             Be concise and direct.
             Do not repeat the question.
             """, query != null ? query : "", fragmentsText);
-        
+
         try {
             String response = chatClient
                     .prompt()
                     .user(prompt)
                     .call()
                     .content();
-            
+
             if (response != null && !response.trim().isEmpty()) {
                 // Apply formatResponse to clean the response
                 return formatResponse(response.trim(), query);
@@ -360,7 +355,7 @@ public class SummarizeTopicTool extends AbstractTool {
         } catch (Exception e) {
             log().warn("Error generating fallback summary with LLM", e);
         }
-        
+
         // Ultimate fallback
         String fallback = "Summary of relevant fragments found:\n\n" + fragmentsText;
         return formatResponse(fallback, query);

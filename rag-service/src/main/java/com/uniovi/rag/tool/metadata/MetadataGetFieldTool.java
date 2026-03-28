@@ -30,6 +30,8 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
     private static final String FIELD_ATTENDEES = "attendees";
 
+    private static final String FIELD_END_TIME = "endTime";
+
     public MetadataGetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -45,7 +47,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         // Step 1: Retrieve with NER/date so a who-chaired / which-date query resolves to the correct minute (E.1)
         List<Document> docs = retrieveDocumentsWithFallback(
             query,
-            new String[] {"date", "place", "startTime", "endTime", FIELD_TOPICS, "decisions", "summary", FIELD_PRESIDENT, FIELD_SECRETARY, FIELD_ATTENDEES},
+            new String[] {"date", "place", "startTime", FIELD_END_TIME, FIELD_TOPICS, "decisions", "summary", FIELD_PRESIDENT, FIELD_SECRETARY, FIELD_ATTENDEES},
             ner
         );
         
@@ -269,7 +271,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
                 return new String[]{"startTime", "hora_inicio", "start_time"};
             case "endtime":
             case "hora_fin":
-                return new String[]{"endTime", "hora_fin", "end_time"};
+                return new String[]{FIELD_END_TIME, "hora_fin", "end_time"};
             case "topics", "temas":
                 return new String[]{FIELD_TOPICS, "temas"};
             case "decisions":
@@ -322,7 +324,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         if (containsAny(q, "mes", "month")) return "month";
         if (containsAny(q, "lugar", "sitio", "place", "ubicación")) return "place";
         if (containsAny(q, "inicio", "start time", "hora de inicio", "comienzo")) return "startTime";
-        if (containsAny(q, "fin", "final", "end time", "hora de cierre", "termin")) return "endTime";
+        if (containsAny(q, "fin", "final", "end time", "hora de cierre", "termin")) return FIELD_END_TIME;
         if (containsAny(q, "presidente", FIELD_PRESIDENT, "quién presidió", "who presided")) return FIELD_PRESIDENT;
         if (containsAny(q, "secretario", FIELD_SECRETARY, "secretaria", "quién fue la secretaria", "who was the secretary")) {
             log().debug("Classified as 'secretary' based on query: '{}'", query);

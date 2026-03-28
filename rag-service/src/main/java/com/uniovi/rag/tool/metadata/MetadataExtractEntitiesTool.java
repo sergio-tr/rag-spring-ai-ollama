@@ -151,14 +151,14 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         // Second: Extract entities from minutes in parallel
         List<CompletableFuture<List<Entity>>> futures = minutes.stream()
                 .map(minute -> supplyAsync(() -> extractEntitiesFromMinute(query, minute)))
-                .collect(Collectors.toList());
+                .toList();
 
         List<Entity> minuteEntities = futures.stream()
                 .map(CompletableFuture::join)
                 .flatMap(List::stream)
                 .filter(Objects::nonNull)
                 .filter(e -> !isGenericEntity(e.getName())) // Filter out generic entities
-                .collect(Collectors.toList());
+                .toList();
         
         entities.addAll(minuteEntities);
 
@@ -502,7 +502,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                             b.getName() != null ? b.getName().length() : 0,
                             a.getName() != null ? a.getName().length() : 0);
                 })
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private int typePriority(EntityType type) {
@@ -857,22 +857,22 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         if (minutes == null || minutes.isEmpty()) return Collections.emptyList();
         switch (type) {
             case DATES:
-                return minutes.stream().map(Minute::date).filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().collect(Collectors.toList());
+                return minutes.stream().map(Minute::date).filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().toList();
             case PLACES:
-                return minutes.stream().map(Minute::place).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().collect(Collectors.toList());
+                return minutes.stream().map(Minute::place).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().toList();
             case PRESIDENTS:
-                return minutes.stream().map(Minute::president).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().collect(Collectors.toList());
+                return minutes.stream().map(Minute::president).filter(Objects::nonNull).filter(p -> !p.isBlank()).distinct().sorted().toList();
             case SECRETARIES:
-                return minutes.stream().map(Minute::secretary).filter(Objects::nonNull).filter(s -> !s.isBlank()).distinct().sorted().collect(Collectors.toList());
+                return minutes.stream().map(Minute::secretary).filter(Objects::nonNull).filter(s -> !s.isBlank()).distinct().sorted().toList();
             case TOPICS:
                 return minutes.stream().filter(m -> m.topics() != null).flatMap(m -> m.topics().stream())
-                        .filter(Objects::nonNull).filter(t -> !t.isBlank()).distinct().sorted().collect(Collectors.toList());
+                        .filter(Objects::nonNull).filter(t -> !t.isBlank()).distinct().sorted().toList();
             case DECISIONS:
                 return minutes.stream().filter(m -> m.decisions() != null).flatMap(m -> m.decisions().stream())
-                        .filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().collect(Collectors.toList());
+                        .filter(Objects::nonNull).filter(d -> !d.isBlank()).distinct().sorted().toList();
             case ATTENDEES:
                 return minutes.stream().filter(m -> m.attendees() != null).flatMap(m -> m.attendees().stream())
-                        .filter(Objects::nonNull).filter(a -> !a.isBlank()).filter(a -> !isGenericEntity(a)).distinct().sorted().collect(Collectors.toList());
+                        .filter(Objects::nonNull).filter(a -> !a.isBlank()).filter(a -> !isGenericEntity(a)).distinct().sorted().toList();
             default:
                 return Collections.emptyList();
         }
@@ -911,7 +911,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         if (minute.agenda() != null && !minute.agenda().isEmpty()) {
             List<String> items = minute.agenda().values().stream()
                     .filter(Objects::nonNull).filter(s -> !s.isBlank())
-                    .collect(Collectors.toList());
+                    .toList();
             if (!items.isEmpty()) {
                 out.append(" Orden del día (ítems): ");
                 out.append(String.join("; ", items));

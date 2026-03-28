@@ -26,6 +26,8 @@ import com.uniovi.rag.model.QueryResponse;
 @RequestMapping("/api/v4")
 public class RagController implements Loggable {
 
+    private static final String UNKNOWN_FILENAME_PLACEHOLDER = "unknown";
+
     private final DocumentService documentService;
     private final QueryService queryService;
     private final EvaluationService evaluationService;
@@ -119,15 +121,15 @@ public class RagController implements Loggable {
             return ResponseEntity.ok("Document stored successfully: " + filename);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body("Error processing document " +
-                    (file != null ? file.getOriginalFilename() : "unknown") + ": " + e.getMessage());
+                    (file != null ? file.getOriginalFilename() : UNKNOWN_FILENAME_PLACEHOLDER) + ": " + e.getMessage());
         } catch (Exception e) {
             if (e instanceof DocumentAlreadyExistsException docEx) {
                 return ResponseEntity.status(HttpStatus.CONFLICT).body("Document already in knowledge base: " + docEx.getDocumentId());
             }
             log().error("Error storing document " +
-                    (file != null ? file.getOriginalFilename() : "unknown") + ": " + e.getMessage(), e);
+                    (file != null ? file.getOriginalFilename() : UNKNOWN_FILENAME_PLACEHOLDER) + ": " + e.getMessage(), e);
             return ResponseEntity.badRequest().body("Error storing document " +
-                    (file != null ? file.getOriginalFilename() : "unknown") + ": " + e.getMessage());
+                    (file != null ? file.getOriginalFilename() : UNKNOWN_FILENAME_PLACEHOLDER) + ": " + e.getMessage());
         }
     }
 

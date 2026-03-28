@@ -3,7 +3,6 @@ package com.uniovi.rag.service.evaluation;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
-import com.uniovi.rag.model.Minute;
 import com.uniovi.rag.model.QueryType;
 import com.uniovi.rag.service.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.service.analyser.NERQueryEnricher;

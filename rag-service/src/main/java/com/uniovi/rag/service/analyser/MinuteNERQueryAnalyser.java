@@ -34,6 +34,8 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
 
     private static final String JSON_KEY_SECRETARY = "secretary";
 
+    private static final String TEMPORAL_CONTEXT_FUTURE = "future";
+
     private static final String JSON_VALUE_UNKNOWN = "unknown";
 
     // Enhanced prompt with multilingual support and better examples
@@ -421,7 +423,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         if (lower.contains("última") || lower.contains("last")) return "latest";
         if (lower.contains("primera") || lower.contains("first")) return "oldest";
         if (lower.contains("pasada") || lower.contains("past")) return "past";
-        if (lower.contains("próxima") || lower.contains("next")) return "future";
+        if (lower.contains("próxima") || lower.contains("next")) return TEMPORAL_CONTEXT_FUTURE;
         
         // Try ISO format first (most reliable and fastest) - use original trimmed for ISO
         try {
@@ -653,7 +655,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
                 json.put("temporalContext", "past");
             } else if (queryLower.contains("próxima") || queryLower.contains("next") ||
                       queryLower.contains("futura") || queryLower.contains("future")) {
-                json.put("temporalContext", "future");
+                json.put("temporalContext", TEMPORAL_CONTEXT_FUTURE);
             } else if (queryLower.contains("entre") || queryLower.contains("between") ||
                       queryLower.contains("desde") || queryLower.contains("from")) {
                 json.put("temporalContext", "range");

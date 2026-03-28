@@ -158,36 +158,48 @@ public class ProcessQueryService implements QueryService {
 
             return core.toDirectQueryResponse(pq.queryType());
         } catch (NullPointerException e) {
+            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
+                log().warn("Inference backend unreachable (NullPointerException chain): {}", e.getMessage());
+                throw RagServiceException.llmUnavailable(e);
+            }
+            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
+                log().warn("Required Ollama model missing: {}", e.getMessage());
+                throw RagServiceException.ollamaModelNotInstalled(e);
+            }
             log().error("NullPointerException processing query (config: metadata={}, ner={}, tools={}): {}",
                     featureConfig.isMetadataEnabled(),
                     featureConfig.isNerEnabled(),
                     featureConfig.isToolsEnabled(),
                     query, e);
             log().error("Stack trace:", e);
-            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
-                throw RagServiceException.llmUnavailable(e);
-            }
-            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
-                throw RagServiceException.ollamaModelNotInstalled(e);
-            }
             String errorResponse = generateErrorResponse(query, e);
             return QueryResponse.fromLLM(errorResponse);
         } catch (IllegalArgumentException e) {
+            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
+                log().warn("Inference backend unreachable (IllegalArgumentException chain): {}", e.getMessage());
+                throw RagServiceException.llmUnavailable(e);
+            }
+            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
+                log().warn("Required Ollama model missing: {}", e.getMessage());
+                throw RagServiceException.ollamaModelNotInstalled(e);
+            }
             log().error("IllegalArgumentException processing query (config: metadata={}, ner={}, tools={}): {}",
                     featureConfig.isMetadataEnabled(),
                     featureConfig.isNerEnabled(),
                     featureConfig.isToolsEnabled(),
                     query, e);
             log().error("Stack trace:", e);
-            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
-                throw RagServiceException.llmUnavailable(e);
-            }
-            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
-                throw RagServiceException.ollamaModelNotInstalled(e);
-            }
             String errorResponse = generateErrorResponse(query, e);
             return QueryResponse.fromLLM(errorResponse);
         } catch (Exception e) {
+            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
+                log().warn("Inference backend unreachable: {}", e.getMessage());
+                throw RagServiceException.llmUnavailable(e);
+            }
+            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
+                log().warn("Required Ollama model missing: {}", e.getMessage());
+                throw RagServiceException.ollamaModelNotInstalled(e);
+            }
             log().error("Unexpected error processing query (config: metadata={}, ner={}, tools={}): {}",
                     featureConfig.isMetadataEnabled(),
                     featureConfig.isNerEnabled(),
@@ -195,12 +207,6 @@ public class ProcessQueryService implements QueryService {
                     query, e);
             log().error("Exception type: {}, Message: {}", e.getClass().getName(), e.getMessage());
             log().error("Stack trace:", e);
-            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
-                throw RagServiceException.llmUnavailable(e);
-            }
-            if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
-                throw RagServiceException.ollamaModelNotInstalled(e);
-            }
             String errorResponse = generateErrorResponse(query, e);
             return QueryResponse.fromLLM(errorResponse);
         }

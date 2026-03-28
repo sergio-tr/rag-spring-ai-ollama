@@ -404,8 +404,8 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
                 .trim()
                 .replaceAll("\\s+", " ")  // Multiple spaces to one
                 .replaceAll("de\\s+", " ")  // "de" to space (for Spanish dates)
-                .replaceAll("/", "-")  // Slash to dash
-                .replaceAll("\\.", "-");  // Dot to dash
+                .replace("/", "-")  // Slash to dash
+                .replace(".", "-");  // Dot to dash
     }
     
     /**

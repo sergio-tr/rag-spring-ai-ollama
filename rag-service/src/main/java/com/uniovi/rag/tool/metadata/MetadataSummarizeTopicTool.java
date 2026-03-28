@@ -22,6 +22,21 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
     private static final String PLACEHOLDER_UNKNOWN = "unknown";
 
+    private static final String TOPIC_CALEFACCION = "calefacción";
+    private static final String TOPIC_CALEFACCION_ASCII = "calefaccion";
+    private static final String TOPIC_VIGILANCIA = "vigilancia";
+    private static final String TOPIC_VIDEOVIGILANCIA = "videovigilancia";
+    private static final String TOPIC_PRESUPUESTO_ANUAL = "presupuesto anual";
+    private static final String TOPIC_PRESUPUESTO = "presupuesto";
+
+    private static boolean containsCalefaccion(String s) {
+        return s != null && (s.contains(TOPIC_CALEFACCION_ASCII) || s.contains(TOPIC_CALEFACCION));
+    }
+
+    private static boolean containsVigilanciaTopic(String s) {
+        return s != null && (s.contains(TOPIC_VIDEOVIGILANCIA) || s.contains(TOPIC_VIGILANCIA));
+    }
+
     public MetadataSummarizeTopicTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -178,8 +193,8 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
         String topic = extractTopicFromQuery(query, ner);
         String topicFocus = (topic != null && !topic.isBlank())
-                ? String.format(" Your answer must focus ONLY on what was said about \"%s\". Do not include other meeting topics (e.g. regulations, pests, signage, approval of minutes). If the meeting discussed this topic, summarize only that part (e.g. improvements, budget requests). Keep the answer brief (1-3 sentences). Example for topic 'calefacción': 'La calefacción se trató en la reunión del 25 de febrero de 2026. Se discutieron posibles mejoras y se acordó solicitar presupuestos.'"
-                        , topic)
+                ? String.format(" Your answer must focus ONLY on what was said about \"%s\". Do not include other meeting topics (e.g. regulations, pests, signage, approval of minutes). If the meeting discussed this topic, summarize only that part (e.g. improvements, budget requests). Keep the answer brief (1-3 sentences). Example for topic '%s': 'La %s se trató en la reunión del 25 de febrero de 2026. Se discutieron posibles mejoras y se acordó solicitar presupuestos.'"
+                        , topic, TOPIC_CALEFACCION, TOPIC_CALEFACCION)
                 : " Summarize only what is related to the topic(s) in the query. Do not include other meeting topics. Keep the answer brief (1-3 sentences).";
 
         String prompt = String.format("""
@@ -322,8 +337,8 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         
         // For video surveillance / surveillance, keyTerms are synonyms (any match counts), not compound parts (item 39)
         boolean isCompoundTopic = keyTerms.size() > 1
-                && !topicLower.contains("videovigilancia")
-                && !topicLower.contains("vigilancia");
+                && !topicLower.contains(TOPIC_VIDEOVIGILANCIA)
+                && !topicLower.contains(TOPIC_VIGILANCIA);
         
         List<Minute> filtered = minutes.stream()
                 .filter(minute -> {
@@ -331,10 +346,10 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                     boolean passes = relevanceScore >= relevanceThreshold;
                     
                     if (passes) {
-                        log().debug("Minute {} passed topic filter: topic '{}', relevance score: {:.2f}", 
-                                  minute.id(), topic, relevanceScore);
+                        log().debug("Minute {} passed topic filter: topic '{}', relevance score: {}",
+                                  minute.id(), topic, String.format("%.2f", relevanceScore));
                     } else {
-                        log().debug("Minute {} filtered out: topic '{}', relevance score: {:.2f} < threshold {:.2f}", 
+                        log().debug("Minute {} filtered out: topic '{}', relevance score: {} < threshold {}",
                                   minute.id(), topic, String.format("%.2f", relevanceScore), String.format("%.2f", relevanceThreshold));
                     }
                     
@@ -343,23 +358,23 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                 .collect(Collectors.toList());
         
         // Fallback for heating: if 0 minutes passed, include any minute where summary/topics contain heating keywords (item 39)
-        if (filtered.isEmpty() && (topicLower.contains("calefaccion") || topicLower.contains("calefacción"))) {
+        if (filtered.isEmpty() && containsCalefaccion(topicLower)) {
             filtered = minutes.stream()
                     .filter(minute -> {
                         String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
-                        boolean inSummary = sum.contains("calefaccion") || sum.contains("calefacción");
+                        boolean inSummary = containsCalefaccion(sum);
                         boolean inTopics = minute.topics() != null && minute.topics().stream()
-                                .anyMatch(t -> t != null && (normalizePersonName(t).contains("calefaccion") || normalizePersonName(t).contains("calefacción")));
+                                .anyMatch(t -> t != null && containsCalefaccion(normalizePersonName(t)));
                         return inSummary || inTopics;
                     })
                     .collect(Collectors.toList());
             if (!filtered.isEmpty()) {
-                log().info("Topic 'calefacción' matched {} minutes via literal fallback in summary/topics", filtered.size());
+                log().info("Topic '{}' matched {} minutes via literal fallback in summary/topics", TOPIC_CALEFACCION, filtered.size());
             }
         }
         // Fallback for video surveillance: if 0 minutes passed, include any minute with camera/surveillance/security wording in summary/topics/decisions (item 40)
-        if (filtered.isEmpty() && (topicLower.contains("videovigilancia") || topicLower.contains("vigilancia"))) {
-            List<String> vidTerms = List.of("camara", "camaras", "vigilancia", "videovigilancia", "security", "surveillance", "cameras");
+        if (filtered.isEmpty() && containsVigilanciaTopic(topicLower)) {
+            List<String> vidTerms = List.of("camara", "camaras", TOPIC_VIGILANCIA, TOPIC_VIDEOVIGILANCIA, "security", "surveillance", "cameras");
             filtered = minutes.stream()
                     .filter(minute -> {
                         String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
@@ -372,7 +387,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                     })
                     .collect(Collectors.toList());
             if (!filtered.isEmpty()) {
-                log().info("Topic 'videovigilancia' matched {} minutes via synonym fallback in summary/topics/decisions", filtered.size());
+                log().info("Topic '{}' matched {} minutes via synonym fallback in summary/topics/decisions", TOPIC_VIDEOVIGILANCIA, filtered.size());
             }
         }
         // Fallback for estado de cuentas / presupuesto (item 8): if 0 minutes passed, include any minute with estado de cuentas/presupuesto/cuentas in topics/summary/agenda
@@ -384,8 +399,8 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         } else {
             topicNormForFallback = "";
         }
-        if (filtered.isEmpty() && (topicNormForFallback.contains("estado de cuentas") || topicNormForFallback.contains("presupuesto") || topicNormForFallback.contains("presupuesto anual"))) {
-            List<String> cuentaTerms = List.of("estado de cuentas", "presupuesto", "presupuesto anual", "cuentas");
+        if (filtered.isEmpty() && (topicNormForFallback.contains("estado de cuentas") || topicNormForFallback.contains(TOPIC_PRESUPUESTO) || topicNormForFallback.contains(TOPIC_PRESUPUESTO_ANUAL))) {
+            List<String> cuentaTerms = List.of("estado de cuentas", TOPIC_PRESUPUESTO, TOPIC_PRESUPUESTO_ANUAL, "cuentas");
             filtered = minutes.stream()
                     .filter(minute -> {
                         String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
@@ -514,11 +529,11 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         // Calculate relevance score
         if (totalChecks == 0) {
             // Fallback for heating: if topic is heating and summary/topics contain it, return min score (item 39)
-            if (topicNormalized.contains("calefaccion") || topicNormalized.contains("calefacción")) {
+            if (containsCalefaccion(topicNormalized)) {
                 String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
-                boolean inSummary = sum.contains("calefaccion") || sum.contains("calefacción");
+                boolean inSummary = containsCalefaccion(sum);
                 boolean inTopics = minute.topics() != null && minute.topics().stream()
-                        .anyMatch(t -> t != null && (normalizePersonName(t).contains("calefaccion") || normalizePersonName(t).contains("calefacción")));
+                        .anyMatch(t -> t != null && containsCalefaccion(normalizePersonName(t)));
                 if (inSummary || inTopics) {
                     return 0.5;
                 }
@@ -533,11 +548,11 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             // For simple topics, calculate based on how many fields contain the topic
             double score = (double) foundTerms / Math.max(totalChecks, 1);
             // Fallback for heating: ensure literal match in summary/topics gives at least 0.5 (item 39)
-            if ((topicNormalized.contains("calefaccion") || topicNormalized.contains("calefacción")) && score < 0.5) {
+            if (containsCalefaccion(topicNormalized) && score < 0.5) {
                 String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
-                boolean inSummary = sum.contains("calefaccion") || sum.contains("calefacción");
+                boolean inSummary = containsCalefaccion(sum);
                 boolean inTopics = minute.topics() != null && minute.topics().stream()
-                        .anyMatch(t -> t != null && (normalizePersonName(t).contains("calefaccion") || normalizePersonName(t).contains("calefacción")));
+                        .anyMatch(t -> t != null && containsCalefaccion(normalizePersonName(t)));
                 if (inSummary || inTopics) {
                     return 0.5;
                 }
@@ -572,24 +587,24 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
         // Estado de cuentas / presupuesto anual (item 8)
         String topicNorm = topic.toLowerCase().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u");
-        if (topicNorm.contains("estado de cuentas") || topicNorm.contains("presupuesto") || topicNorm.contains("presupuesto anual") || topicNorm.contains("cuentas")) {
+        if (topicNorm.contains("estado de cuentas") || topicNorm.contains(TOPIC_PRESUPUESTO) || topicNorm.contains(TOPIC_PRESUPUESTO_ANUAL) || topicNorm.contains("cuentas")) {
             keyTerms.add("estado de cuentas");
-            keyTerms.add("presupuesto");
-            keyTerms.add("presupuesto anual");
+            keyTerms.add(TOPIC_PRESUPUESTO);
+            keyTerms.add(TOPIC_PRESUPUESTO_ANUAL);
             keyTerms.add("cuentas");
             keyTerms.add("budget");
             keyTerms.add("accounts");
         }
 
         // Add synonyms so minute wording is matched (heating ACTA 5; video surveillance ACTA 2, 5, 6 - §4)
-        if (keyTerms.stream().anyMatch(t -> t.contains("calefaccion") || t.contains("calefacción"))) {
-            keyTerms.add("calefaccion");
-            keyTerms.add("calefacción");
+        if (keyTerms.stream().anyMatch(MetadataSummarizeTopicTool::containsCalefaccion)) {
+            keyTerms.add(TOPIC_CALEFACCION_ASCII);
+            keyTerms.add(TOPIC_CALEFACCION);
         }
         // Videovigilancia: include synonyms so actas with "cámaras", "vigilancia", "security cameras" match (item 39)
-        if (keyTerms.stream().anyMatch(t -> t.contains("videovigilancia") || t.contains("vigilancia") || t.contains("camara"))) {
-            keyTerms.add("videovigilancia");
-            keyTerms.add("vigilancia");
+        if (keyTerms.stream().anyMatch(t -> containsVigilanciaTopic(t) || (t != null && t.contains("camara")))) {
+            keyTerms.add(TOPIC_VIDEOVIGILANCIA);
+            keyTerms.add(TOPIC_VIGILANCIA);
             keyTerms.add("camaras");
             keyTerms.add("cámaras");
             keyTerms.add("camara");
@@ -624,9 +639,9 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     private boolean isRelaxedTopicForFallback(String topic) {
         if (topic == null || topic.isEmpty()) return false;
         String t = topic.toLowerCase().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u").replace("ñ", "n");
-        return t.contains("calefaccion") || t.contains("calefacción")
-            || t.contains("videovigilancia") || t.contains("vigilancia") || t.contains("camara") || t.contains("camaras")
-            || t.contains("estado de cuentas") || t.contains("presupuesto") || t.contains("presupuesto anual");
+        return containsCalefaccion(t)
+            || containsVigilanciaTopic(t) || t.contains("camara") || t.contains("camaras")
+            || t.contains("estado de cuentas") || t.contains(TOPIC_PRESUPUESTO) || t.contains(TOPIC_PRESUPUESTO_ANUAL);
     }
     
     /**

@@ -428,8 +428,8 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         // Fallback: "¿Cuándo (y en qué reuniones) asistió Alejandro Torres Rojas?" (§4 Alejandro → ACTA 1, 3, 6)
         if ((personName == null || personName.trim().isEmpty()) && query != null) {
             java.util.regex.Matcher m = java.util.regex.Pattern.compile(
-                "(?i)(?:asistió|asistieron|participó|participaron)\\s+([A-Za-zÁÉÍÓÚÑáéíóúñ]+(?:\\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]+)+)\\s*\\??",
-                java.util.regex.Pattern.CASE_INSENSITIVE
+                "(?:asistió|asistieron|participó|participaron)\\s+([\\p{L}]+(?:\\s+[\\p{L}]+)+)\\s*\\??",
+                java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE
             ).matcher(query);
             if (m.find()) {
                 personName = m.group(1).trim();

@@ -205,7 +205,7 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
                 if (isRetryableOllamaError(e) && attempt == 0) {
                     log().warn("Expander LLM error (will retry with shorter query): {}", e.getMessage());
                 } else {
-                    log().error("Error calling LLM in expander", e);
+                    log().warn("LLM expansion failed, returning original query only: {}", e.getMessage());
                     return "";
                 }
             }
