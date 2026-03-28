@@ -1,5 +1,6 @@
 package com.uniovi.rag.tool.metadata;
 
+import com.uniovi.rag.util.RegexSafety;
 import com.uniovi.rag.observability.ContextPropagatingFutures;
 import com.uniovi.rag.tool.AbstractTool;
 import org.json.JSONObject;
@@ -47,6 +48,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     private static final String METADATA_KEY_PRESIDENT = "president";
 
     private static final String METADATA_KEY_TOPICS = "topics";
+
+    /** Metadata key for original filename (ingestion / chunk grouping). */
+    private static final String METADATA_KEY_FILENAME = "filename";
 
     private static final String METADATA_KEY_ATTENDEES_COUNT = "attendeesCount";
 
@@ -349,7 +353,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (id == null || id.isBlank()) {
             id = safeGetString(metadata, "id");
         }
-        String filename = safeGetString(metadata, "filename");
+        String filename = safeGetString(metadata, METADATA_KEY_FILENAME);
         String date = safeGetString(metadata, "date");
         String place = safeGetString(metadata, "place");
         String startTime = safeGetString(metadata, "startTime");
@@ -500,13 +504,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return defaultValue;
         }
         
-        if (value instanceof Number) {
-            return ((Number) value).intValue();
+        if (value instanceof Number number) {
+            return number.intValue();
         }
         
-        if (value instanceof String) {
+        if (value instanceof String str) {
             try {
-                return Integer.parseInt((String) value);
+                return Integer.parseInt(str);
             } catch (NumberFormatException e) {
                 log().warn("Could not parse integer from key '{}': {}", key, value);
                 return defaultValue;
@@ -1102,11 +1106,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
         List<String> onlyIn1 = attendees1.stream()
                 .filter(a -> !attendees2.contains(a))
-                .collect(Collectors.toList());
+                .toList();
 
         List<String> onlyIn2 = attendees2.stream()
                 .filter(a -> !attendees1.contains(a))
-                .collect(Collectors.toList());
+                .toList();
 
         return Map.of(
             "only_in_first", onlyIn1,
@@ -1567,7 +1571,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      */
     @Cacheable(value = "nerMatching", key = "#minute.id() + '_' + (#ner != null ? #ner.toString() : 'null')")
     protected boolean matchesMinuteWithNERCached(Minute minute, JSONObject ner) {
-        return matchesMinuteWithNER(minute, ner);
+        return cacheable().matchesMinuteWithNER(minute, ner);
     }
 
     /**
@@ -1808,7 +1812,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         boolean hasRelevantField = foundFields > 0;
         boolean hasBasicFields = hasFieldOrDerived(metadata, "date") ||
                                 metadata.containsKey("id") || 
-                                metadata.containsKey("filename");
+                                metadata.containsKey(METADATA_KEY_FILENAME);
         
         return hasRelevantField || hasBasicFields;
     }
@@ -1825,7 +1829,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         Map<String, Object> metadata = doc.getMetadata();
         return hasFieldOrDerived(metadata, "date") || 
                metadata.containsKey("id") || 
-               metadata.containsKey("filename") ||
+               metadata.containsKey(METADATA_KEY_FILENAME) ||
                metadata.containsKey("minute");
     }
 
@@ -1885,6 +1889,45 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     /**
+     * LEVEL 1: NER-based retrieval when NER has useful fields.
+     *
+     * @return a non-null list when documents were found and should be returned; {@code null} to continue with LEVEL 2
+     */
+    private List<Document> tryRetrieveDocumentsWithNer(String query, String[] relevantFields, JSONObject ner) {
+        if (ner == null || ner.isEmpty()) {
+            return null;
+        }
+        if (!hasUsefulNERFields(ner)) {
+            log().info("NER entities present but no useful fields, skipping NER-based retrieval");
+            return null;
+        }
+        try {
+            List<Document> docs = retriever.retrieveWithMetadataFilters(query, ner);
+            List<Document> originalDocs = new ArrayList<>(docs);
+
+            if (relevantFields != null && relevantFields.length > 0 && !docs.isEmpty()) {
+                docs = docs.stream()
+                        .filter(doc -> hasMetadataFields(doc, relevantFields))
+                        .toList();
+                if (docs.isEmpty() && !originalDocs.isEmpty()) {
+                    log().warn("Filtering by relevantFields removed all documents, using unfiltered documents as fallback");
+                    docs = originalDocs;
+                }
+            }
+
+            if (docs.isEmpty()) {
+                log().info("NER-based retrieval returned no documents after filtering, trying fallback");
+                return null;
+            }
+            log().info("Retrieved {} documents using NER-based retrieval with metadata filters", docs.size());
+            return validateDateMatchIfPresent(docs, query, ner);
+        } catch (Exception e) {
+            log().warn("Error using NER-based retrieval, falling back to basic retrieval: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Retrieves documents with intelligent fallback strategy.
      * Uses NER entities if available to filter at database level for better precision.
      * 
@@ -1894,45 +1937,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * @return List of retrieved documents
      */
     protected List<Document> retrieveDocumentsWithFallback(String query, String[] relevantFields, JSONObject ner) {
-        // LEVEL 1: Try NER-based retrieval if NER is available and retriever supports it
-        if (ner != null && !ner.isEmpty()) {
-            // Validate that NER has at least one useful field before using it
-            if (hasUsefulNERFields(ner)) {
-                try {
-                    List<Document> docs = retriever.retrieveWithMetadataFilters(query, ner);
-                    List<Document> originalDocs = new ArrayList<>(docs); // Save for fallback
-
-                    // Filter by relevantFields if necessary
-                    if (relevantFields != null && relevantFields.length > 0 && !docs.isEmpty()) {
-                        docs = docs.stream()
-                                .filter(doc -> hasMetadataFields(doc, relevantFields))
-                                .collect(Collectors.toList());
-
-                        // FALLBACK: If filtering by relevantFields removed all documents, use unfiltered
-                        if (docs.isEmpty() && !originalDocs.isEmpty()) {
-                            log().warn("Filtering by relevantFields removed all documents, using unfiltered documents as fallback");
-                            docs = originalDocs;
-                        }
-                    }
-
-                    // Documents are already grouped and combined by the retriever
-
-                    if (!docs.isEmpty()) {
-                        log().info("Retrieved {} documents using NER-based retrieval with metadata filters", docs.size());
-                        // Validate date match if date is present in query
-                        docs = validateDateMatchIfPresent(docs, query, ner);
-                        return docs;
-                    } else {
-                        log().info("NER-based retrieval returned no documents after filtering, trying fallback");
-                    }
-                } catch (Exception e) {
-                    log().warn("Error using NER-based retrieval, falling back to basic retrieval: {}", e.getMessage());
-                }
-            } else {
-                log().info("NER entities present but no useful fields, skipping NER-based retrieval");
-            }
+        List<Document> nerDocs = tryRetrieveDocumentsWithNer(query, relevantFields, ner);
+        if (nerDocs != null) {
+            return nerDocs;
         }
-        
+
         // LEVEL 2: Try metadata filtering (use NER for retrieval when available)
         List<Document> docs = retrieveDocumentsWithMetadataFilter(query, relevantFields, ner);
         
@@ -2211,10 +2220,15 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                             return after;
                         }
                     }
-                    if (qLower.contains("mencionó ") || qLower.contains("menciono ")) {
-                        int idxMen = qLower.indexOf("mencionó ");
-                        if (idxMen < 0) idxMen = qLower.indexOf("menciono ");
-                        String after = qTrim.substring(idxMen + 9).trim().replaceFirst("\\.$", "").trim();
+                    if (qLower.contains(TOPIC_CUE_MENCION_ACCENT) || qLower.contains(TOPIC_CUE_MENCION_PLAIN)) {
+                        int idxMen = qLower.indexOf(TOPIC_CUE_MENCION_ACCENT);
+                        if (idxMen < 0) {
+                            idxMen = qLower.indexOf(TOPIC_CUE_MENCION_PLAIN);
+                        }
+                        int cueLen = idxMen >= 0 && qLower.startsWith(TOPIC_CUE_MENCION_ACCENT, idxMen)
+                                ? TOPIC_CUE_MENCION_ACCENT.length()
+                                : TOPIC_CUE_MENCION_PLAIN.length();
+                        String after = qTrim.substring(idxMen + cueLen).trim().replaceFirst("\\.$", "").trim();
                         if (!after.isEmpty() && after.length() < 60) {
                             String shortTopic = after.replaceFirst("^la ", "").trim();
                             log().info("Extracted topic from query (post-process after 'mencionó'): {}", shortTopic);
@@ -2492,7 +2506,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             ),
             // Pattern 5: "attended [Full Name]" (e.g. "In which meetings did X attend?")
             Pattern.compile(
-                "(?:asistió|attended|attendee?d?)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
+                "(?:asistió|attended|attend(?:ed|ee))\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
                 UNICODE_CASE_INSENSITIVE
             ),
             // Pattern 6: "meetings attended [Name]" - name at end before ?
@@ -2507,8 +2521,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             )
         };
         
+        String queryBounded = RegexSafety.truncateString(query, RegexSafety.MAX_QUERY_TEXT_FOR_REGEX);
         for (Pattern pattern : patterns) {
-            Matcher matcher = pattern.matcher(query);
+            Matcher matcher = pattern.matcher(queryBounded);
             if (matcher.find()) {
                 String personName = matcher.group(1).trim();
                 if (!personName.isEmpty()) {
@@ -3916,10 +3931,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         LocalDate fallback = parseDateByRegexFallback(dateStr);
         if (fallback != null) {
+            String isoFromFallback = fallback.format(DateTimeFormatter.ISO_LOCAL_DATE);
             log().warn("Parsed date '{}' from 'date' field for document {} via regex fallback -> {}. "
                             + "Consider populating date_iso in metadata for reliability.",
-                    dateStr, doc.getId(), fallback.format(DateTimeFormatter.ISO_LOCAL_DATE));
-            return fallback.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                    dateStr, doc.getId(), isoFromFallback);
+            return isoFromFallback;
         }
         log().warn("Could not parse date '{}' from 'date' field for document {} (parseDateFlexible and regex fallback failed). "
                         + "Document may be excluded from date filtering.", dateStr, doc.getId());
@@ -4083,58 +4099,62 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * @return List of attendee names
      */
     protected List<String> extractAttendeesFromMetadata(Document doc) {
-        if (doc == null) {
+        if (doc == null || doc.getMetadata() == null) {
             return new ArrayList<>();
         }
-        
+
         List<String> attendees = new ArrayList<>();
-        Map<String, Object> metadata = doc.getMetadata();
-        
-        // Try to get attendees from metadata
-        Object attendeesObj = metadata.get("attendees");
-        if (attendeesObj != null) {
-            if (attendeesObj instanceof List) {
-                List<?> attendeesList = (List<?>) attendeesObj;
-                for (Object item : attendeesList) {
-                    if (item != null) {
-                        String attendee = item.toString().trim();
-                        if (!attendee.isEmpty()) {
-                            attendees.add(attendee);
-                        }
-                    }
-                }
-            } else if (attendeesObj instanceof String attendeesStr) {
-                // Try to parse comma-separated or newline-separated list
-                String[] parts = attendeesStr.split("[,\n•]");
-                for (String part : parts) {
-                    String attendee = part.trim();
+        appendAttendeesFromMetadataValue(doc.getMetadata().get("attendees"), attendees);
+        mergeAttendeesFromMinuteIfPresent(doc, attendees);
+
+        log().info("Extracted {} attendees from document metadata", attendees.size());
+        return attendees;
+    }
+
+    private void appendAttendeesFromMetadataValue(Object attendeesObj, List<String> attendees) {
+        if (attendeesObj == null) {
+            return;
+        }
+        if (attendeesObj instanceof List<?> attendeesList) {
+            for (Object item : attendeesList) {
+                if (item != null) {
+                    String attendee = item.toString().trim();
                     if (!attendee.isEmpty()) {
-                        // Remove role indicators like "(Secretario)", "(Presidente)", etc.
-                        attendee = attendee.replaceAll("\\([^)]*\\)", "").trim();
-                        if (!attendee.isEmpty()) {
-                            attendees.add(attendee);
-                        }
+                        attendees.add(attendee);
                     }
                 }
             }
+            return;
         }
-        
-        // Also try to get from minute object if available
+        if (attendeesObj instanceof String attendeesStr) {
+            String[] parts = attendeesStr.split("[,\n•]");
+            for (String part : parts) {
+                String attendee = part.trim();
+                if (attendee.isEmpty()) {
+                    continue;
+                }
+                attendee = attendee.replaceAll("\\([^)]*\\)", "").trim();
+                if (!attendee.isEmpty()) {
+                    attendees.add(attendee);
+                }
+            }
+        }
+    }
+
+    private void mergeAttendeesFromMinuteIfPresent(Document doc, List<String> attendees) {
         try {
             Minute minute = cacheable().getMinuteFromMetadata(doc);
-            if (minute != null && minute.attendees() != null) {
-                for (String attendee : minute.attendees()) {
-                    if (attendee != null && !attendee.isBlank() && !attendees.contains(attendee)) {
-                        attendees.add(attendee);
-                    }
+            if (minute == null || minute.attendees() == null) {
+                return;
+            }
+            for (String attendee : minute.attendees()) {
+                if (attendee != null && !attendee.isBlank() && !attendees.contains(attendee)) {
+                    attendees.add(attendee);
                 }
             }
         } catch (Exception e) {
             log().debug("Error extracting attendees from minute object: {}", e.getMessage());
         }
-        
-        log().info("Extracted {} attendees from document metadata", attendees.size());
-        return attendees;
     }
     
     /**

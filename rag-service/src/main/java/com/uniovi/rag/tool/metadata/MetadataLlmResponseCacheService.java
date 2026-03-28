@@ -49,13 +49,12 @@ public class MetadataLlmResponseCacheService {
 
                 if (response == null || response.trim().isEmpty()) {
                     log.warn("Empty response from LLM in getCachedResponse (attempt {})", attempt + 1);
-                    if (attempt < maxRetries) {
-                        continue;
+                    if (attempt >= maxRetries) {
+                        return "";
                     }
-                    return "";
+                } else {
+                    return response.strip();
                 }
-
-                return response.strip();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.error("Thread interrupted in getCachedResponse", e);
@@ -70,25 +69,7 @@ public class MetadataLlmResponseCacheService {
                 return "";
             } catch (Exception e) {
                 lastException = e;
-                String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-                String className = e.getClass().getName();
-
-                boolean isTimeout = errorMsg.contains("timeout")
-                        || errorMsg.contains("timed out")
-                        || className.contains("Timeout");
-
-                boolean isNetworkError = errorMsg.contains("connection")
-                        || errorMsg.contains("network")
-                        || errorMsg.contains("socket")
-                        || className.contains("Connection")
-                        || className.contains("Network");
-
-                if (isTimeout || isNetworkError) {
-                    log.warn("Timeout/network error in getCachedResponse (attempt {}): {}", attempt + 1, e.getMessage());
-                } else {
-                    log.error("Error in getCachedResponse (attempt {}): {}", attempt + 1, e.getMessage(), e);
-                }
-
+                logLlmExceptionByKind(attempt + 1, e);
             }
         }
 
@@ -97,5 +78,23 @@ public class MetadataLlmResponseCacheService {
                     maxRetries + 1, lastException.getMessage(), lastException);
         }
         return "";
+    }
+
+    private static void logLlmExceptionByKind(int attemptOneBased, Exception e) {
+        String errorMsg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+        String className = e.getClass().getName();
+        boolean transientFailure = errorMsg.contains("timeout")
+                || errorMsg.contains("timed out")
+                || className.contains("Timeout")
+                || errorMsg.contains("connection")
+                || errorMsg.contains("network")
+                || errorMsg.contains("socket")
+                || className.contains("Connection")
+                || className.contains("Network");
+        if (transientFailure) {
+            log.warn("Timeout/network error in getCachedResponse (attempt {}): {}", attemptOneBased, e.getMessage());
+        } else {
+            log.error("Error in getCachedResponse (attempt {}): {}", attemptOneBased, e.getMessage(), e);
+        }
     }
 }

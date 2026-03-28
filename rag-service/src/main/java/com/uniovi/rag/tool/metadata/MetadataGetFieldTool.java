@@ -34,6 +34,8 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
     private static final String LABEL_SECRETARIO = "secretario";
 
+    private static final String LABEL_SECRETARIA = "secretaria";
+
     private static final String FIELD_SUMMARY = "summary";
 
     public MetadataGetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
@@ -257,8 +259,8 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         switch (fieldLower) {
             case FIELD_SECRETARY:
             case LABEL_SECRETARIO:
-            case "secretaria":
-                return new String[]{FIELD_SECRETARY, LABEL_SECRETARIO, "secretaria"};
+            case LABEL_SECRETARIA:
+                return new String[]{FIELD_SECRETARY, LABEL_SECRETARIO, LABEL_SECRETARIA};
             case "agenda":
             case "orden_del_dia":
             case "orden del día":

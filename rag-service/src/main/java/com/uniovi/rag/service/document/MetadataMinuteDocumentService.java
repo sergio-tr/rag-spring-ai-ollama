@@ -2,6 +2,7 @@ package com.uniovi.rag.service.document;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.util.RegexSafety;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +33,15 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     private static final int UNICODE_TEXT_REGEX_FLAGS =
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ;
 
+    private static final String PROMPT_HINT_DECISIONS = "decisions";
+
+    private static final String PROMPT_HINT_TOPICS = "topics";
+
+    /** Fallback: bullet/numbered block after Orden|Agenda|Puntos (complexity isolated for static analysis). */
+    private static final Pattern AGENDA_LIKE_BULLET_BLOCK_PATTERN = Pattern.compile(
+            "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]+)*)",
+            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ);
+
     /** Filters descriptive attendee lines (not person names) using Unicode-aware matching. */
     private static final Pattern ATTENDEE_DESCRIPTOR_NOISE_PATTERN = Pattern.compile(
             ".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*",
@@ -42,7 +52,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     /** Next-section headers that end the attendees block when scanning line by line. */
     private static final Pattern ASISTENTES_SECTION_BOUNDARY = Pattern.compile(
-            "(?i)(Orden del día|Orden del dia|Ruegos|Clausura|No habiendo)\\b.*");
+            "(Orden del día|Orden del dia|Ruegos|Clausura|No habiendo)\\b.*",
+            UNICODE_TEXT_REGEX_FLAGS);
 
     /**
      * Capitalized words / multi-word names; possessive and bounded repetition avoids catastrophic backtracking.
@@ -402,11 +413,11 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         List<String> extracted = new ArrayList<>();
         
         // Determine extraction type based on prompt
-        if (prompt.contains("decisions") || prompt.contains("decided") || prompt.contains("agreed") || prompt.contains("approved")) {
+        if (prompt.contains(PROMPT_HINT_DECISIONS) || prompt.contains("decided") || prompt.contains("agreed") || prompt.contains("approved")) {
             extracted = extractDecisionsWithRegex(content);
         } else if (prompt.contains("entities") || prompt.contains("companies") || prompt.contains("organizations")) {
             extracted = extractEntitiesWithRegex(content);
-        } else if (prompt.contains("topics") || prompt.contains("discussed")) {
+        } else if (prompt.contains(PROMPT_HINT_TOPICS) || prompt.contains("discussed")) {
             extracted = extractTopicsWithRegex(content);
         }
         
@@ -424,14 +435,18 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
      */
     private List<String> extractDecisionsWithRegex(String content) {
         List<String> decisions = new ArrayList<>();
-        
+        if (content == null) {
+            return decisions;
+        }
+        String bounded = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
+
         // Pattern for common decision phrases in Spanish
         Pattern decisionPattern = Pattern.compile(
             "(?i)(?:se\\s+acordó|se\\s+decidió|se\\s+aprobó|se\\s+resolvió|se\\s+decide|se\\s+acuerda|se\\s+aprueba)[:.]?\\s*(.+?)(?:\\.|$|\\n)",
             Pattern.MULTILINE | Pattern.DOTALL
         );
         
-        Matcher matcher = decisionPattern.matcher(content);
+        Matcher matcher = decisionPattern.matcher(bounded);
         while (matcher.find()) {
             String decision = matcher.group(1).trim();
             if (!decision.isEmpty() && decision.length() > 10) {
@@ -447,8 +462,12 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
      */
     private List<String> extractEntitiesWithRegex(String content) {
         List<String> entities = new ArrayList<>();
-        
-        Matcher matcher = ENTITY_CAPITALIZED_WORDS_PATTERN.matcher(content);
+        if (content == null) {
+            return entities;
+        }
+        String bounded = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
+
+        Matcher matcher = ENTITY_CAPITALIZED_WORDS_PATTERN.matcher(bounded);
         Set<String> uniqueEntities = new LinkedHashSet<>();
         
         while (matcher.find()) {
@@ -469,9 +488,13 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
      */
     private List<String> extractTopicsWithRegex(String content) {
         List<String> topics = new ArrayList<>();
-        
+        if (content == null) {
+            return topics;
+        }
+        String bounded = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
+
         // Extract from agenda section
-        String agendaSection = extractBlock(content, "(?i)Orden del día:", "(?i)No habiendo más asuntos");
+        String agendaSection = extractBlock(bounded, "(?i)Orden del día:", "(?i)No habiendo más asuntos");
         if (!agendaSection.isEmpty()) {
             // Extract bullet points from agenda
             Pattern topicPattern = Pattern.compile("•\\s*([^•\\n]+)");
@@ -487,8 +510,9 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Also look for common topic keywords
         String[] commonTopics = {"limpieza", "mantenimiento", "seguridad", "iluminación", "calefacción", 
                                  "ascensor", "presupuesto", "cuotas", "reparaciones", "climatización"};
+        String lowerBounded = bounded.toLowerCase();
         for (String topic : commonTopics) {
-            if (content.toLowerCase().contains(topic)) {
+            if (lowerBounded.contains(topic)) {
                 topics.add(topic);
             }
         }
@@ -576,7 +600,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         // Extract first paragraph or first 500 characters as fallback
-        String[] sentences = content.split("[.!?]");
+        String bounded = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
+        String[] sentences = bounded.split("[.!?]");
         StringBuilder fallback = new StringBuilder();
         int charCount = 0;
         int maxChars = 500;
@@ -1445,7 +1470,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (text == null || text.isEmpty()) {
             return false;
         }
-        return ATTENDEE_DESCRIPTOR_NOISE_PATTERN.matcher(text).matches();
+        return RegexSafety.matcher(ATTENDEE_DESCRIPTOR_NOISE_PATTERN, text, 8192).matches();
     }
 
     /**
@@ -1920,13 +1945,14 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (content == null || content.trim().isEmpty()) {
             return null;
         }
+        String bounded = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
         // Ensure we have newlines (content may have been normalized with wrong regex in the past)
-        String normalized = content.contains("\n") ? content : content.replaceAll("(?<=[.!])\\s+", "\n");
+        String normalized = bounded.contains("\n") ? bounded : bounded.replaceAll("(?<=[.!])\\s+", "\n");
         
         // Pattern 1: "Agenda:" until newline + optional bullet + "Any other business" or "No further business"
         Pattern pattern = Pattern.compile(
             "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos y preguntas|No habiendo más asuntos|Clausura|$))",
-            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS
+            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ
         );
         Matcher matcher = pattern.matcher(normalized);
         if (matcher.find()) {
@@ -1980,10 +2006,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         // Pattern 5: Search for any block with numbered or bulleted items that seems to be agenda
-        pattern = Pattern.compile(
-            "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]+)*)",
-            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS
-        );
+        pattern = AGENDA_LIKE_BULLET_BLOCK_PATTERN;
         matcher = pattern.matcher(normalized);
         if (matcher.find()) {
             String block = matcher.group(1).trim();
@@ -2047,13 +2070,21 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     }
     
     private String extractSingle(String text, String regex) {
-        Matcher matcher = Pattern.compile(regex).matcher(text);
+        if (text == null) {
+            return null;
+        }
+        String bounded = RegexSafety.truncateString(text, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
+        Matcher matcher = Pattern.compile(regex).matcher(bounded);
         return matcher.find() ? matcher.group(1).trim() : null;
     }
 
     private String extractBlock(String text, String startRegex, String endRegex) {
+        if (text == null) {
+            return "";
+        }
+        String bounded = RegexSafety.truncateString(text, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
         Pattern pattern = Pattern.compile(startRegex + "(.*?)" + endRegex, Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-        Matcher matcher = pattern.matcher(text);
+        Matcher matcher = pattern.matcher(bounded);
         return matcher.find() ? matcher.group(1).trim() : "";
     }
     

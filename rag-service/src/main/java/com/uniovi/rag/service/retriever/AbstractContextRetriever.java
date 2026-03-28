@@ -16,8 +16,18 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 public abstract class AbstractContextRetriever implements ContextRetriever, Loggable {
+
+    private static final int NAME_REPLACE_FLAGS = Pattern.CANON_EQ | Pattern.UNICODE_CASE;
+    private static final Pattern ACCENT_A_CLASS = Pattern.compile("[áàäâ]", NAME_REPLACE_FLAGS);
+    private static final Pattern ACCENT_E_CLASS = Pattern.compile("[éèëê]", NAME_REPLACE_FLAGS);
+    private static final Pattern ACCENT_I_CLASS = Pattern.compile("[íìïî]", NAME_REPLACE_FLAGS);
+    private static final Pattern ACCENT_O_CLASS = Pattern.compile("[óòöô]", NAME_REPLACE_FLAGS);
+    private static final Pattern ACCENT_U_CLASS = Pattern.compile("[úùüû]", NAME_REPLACE_FLAGS);
+    private static final Pattern ACCENT_N_CLASS = Pattern.compile("ñ", NAME_REPLACE_FLAGS);
+    private static final Pattern MULTI_SPACE = Pattern.compile("\\s+");
 
     protected final PgVectorStore vectorStore;
     protected final ChatClient chatClient;
@@ -436,15 +446,14 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return "";
         }
         
-        return name.toLowerCase()
-                .replaceAll("[áàäâ]", "a")
-                .replaceAll("[éèëê]", "e")
-                .replaceAll("[íìïî]", "i")
-                .replaceAll("[óòöô]", "o")
-                .replaceAll("[úùüû]", "u")
-                .replaceAll("ñ", "n")
-                .trim()
-                .replaceAll("\\s+", " ");  // Multiple spaces to one
+        String n = name.toLowerCase();
+        n = ACCENT_A_CLASS.matcher(n).replaceAll("a");
+        n = ACCENT_E_CLASS.matcher(n).replaceAll("e");
+        n = ACCENT_I_CLASS.matcher(n).replaceAll("i");
+        n = ACCENT_O_CLASS.matcher(n).replaceAll("o");
+        n = ACCENT_U_CLASS.matcher(n).replaceAll("u");
+        n = ACCENT_N_CLASS.matcher(n).replaceAll("n");
+        return MULTI_SPACE.matcher(n.trim()).replaceAll(" ");
     }
     
     /**

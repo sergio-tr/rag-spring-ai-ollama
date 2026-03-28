@@ -12,6 +12,8 @@ import java.util.Map;
 
 public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumentService {
 
+    private static final String METADATA_KEY_DOCUMENT_ID = "document_id";
+
     private static int safeFilenameLength(String filename) {
         return filename != null ? filename.length() : 0;
     }
@@ -74,7 +76,7 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
             }
             
             // Step 4b: Never insert duplicates — if document_id already exists, do not add
-            Object docIdObj = metadata.get("document_id");
+            Object docIdObj = metadata.get(METADATA_KEY_DOCUMENT_ID);
             String documentId = docIdObj != null ? docIdObj.toString() : null;
             if (documentId != null && !documentId.isBlank() && hasDocumentWithId(documentId)) {
                 log().info("Document already exists (document_id={}), skipping insert to avoid duplicate", documentId);

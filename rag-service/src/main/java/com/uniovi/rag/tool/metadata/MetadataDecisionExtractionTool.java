@@ -96,55 +96,12 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, minutesToEvaluate.size(), "no_validated_minutes"), query), getClass());
         }
 
-        // PHASE 6: Validate that minute dates match query date (if date was specified)
         if (date != null && !date.trim().isEmpty()) {
-            List<Minute> dateValidatedMinutes = validatedMinutes.stream()
-                    .filter(minute -> {
-                        if (minute.date() == null) {
-                            log().debug("Minute {} has no date, excluding when date '{}' was requested", minute.id(), date);
-                            return false; // Skip minutes without date when date was requested
-                        }
-                        // Use flexible date matching (parseDateFlexible normalizes to lowercase internally)
-                        LocalDate queryDate = parseDateFlexible(date);
-                        LocalDate minuteDate = parseDateFlexible(minute.date());
-                        
-                        if (queryDate == null) {
-                            log().warn("Could not parse query date '{}' for date validation. Keeping minute {} to avoid false negatives.", 
-                                      date, minute.id());
-                            return true; // If we can't parse query date, keep minute (conservative)
-                        }
-                        
-                        if (minuteDate == null) {
-                            log().warn("Could not parse minute date '{}' for minute {} (ID: {}). " +
-                                      "This may indicate an unsupported date format. Excluding from results.", 
-                                      minute.date(), minute.id(), minute.id());
-                            return false; // Can't parse minute date, exclude
-                        }
-                        
-                        // Exact match or same year/month
-                        boolean matches = queryDate.equals(minuteDate) || 
-                                        (queryDate.getYear() == minuteDate.getYear() && 
-                                         queryDate.getMonth() == minuteDate.getMonth());
-                        if (!matches) {
-                            log().debug("Filtering out minute {} with date {} (parsed: {}) - requested: {} (parsed: {})", 
-                                      minute.id(), minute.date(), minuteDate, date, queryDate);
-                        } else {
-                            log().debug("Minute {} date {} (parsed: {}) matches requested date {} (parsed: {})", 
-                                      minute.id(), minute.date(), minuteDate, date, queryDate);
-                        }
-                        return matches;
-                    })
-                    .toList();
-            
-            if (dateValidatedMinutes.isEmpty()) {
-                log().debug("No minutes with matching date found after validation. Query date: '{}' (parsed: {}). " +
-                          "Validated {} minutes before date filtering. Date not in corpus is expected for some queries.", 
-                          date, parseDateFlexible(date), validatedMinutes.size());
-                return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "date_mismatch"), query), getClass());
+            DateValidationOutcome dateOutcome = filterValidatedMinutesByQueryDate(query, date, validatedMinutes);
+            if (dateOutcome.earlyExit() != null) {
+                return dateOutcome.earlyExit();
             }
-            log().info("Date validation passed: {} minutes match date '{}' out of {} validated minutes", 
-                      dateValidatedMinutes.size(), date, validatedMinutes.size());
-            validatedMinutes = dateValidatedMinutes;
+            validatedMinutes = dateOutcome.minutes();
         }
 
         // Step 6: Extract decisions in parallel (only from validated minutes)
@@ -178,6 +135,57 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                    query, decisions.size(), clusters.size());
         
         return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private DateValidationOutcome filterValidatedMinutesByQueryDate(String query, String date, List<Minute> validatedMinutes) {
+        List<Minute> dateValidatedMinutes = validatedMinutes.stream()
+                .filter(minute -> minuteMatchesRequestedDate(date, minute))
+                .toList();
+        if (dateValidatedMinutes.isEmpty()) {
+            log().debug("No minutes with matching date found after validation. Query date: '{}' (parsed: {}). "
+                            + "Validated {} minutes before date filtering. Date not in corpus is expected for some queries.",
+                    date, parseDateFlexible(date), validatedMinutes.size());
+            return new DateValidationOutcome(List.of(),
+                    ToolResult.from(formatResponse(
+                            generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "date_mismatch"), query),
+                            getClass()));
+        }
+        log().info("Date validation passed: {} minutes match date '{}' out of {} validated minutes",
+                dateValidatedMinutes.size(), date, validatedMinutes.size());
+        return new DateValidationOutcome(dateValidatedMinutes, null);
+    }
+
+    private boolean minuteMatchesRequestedDate(String date, Minute minute) {
+        if (minute.date() == null) {
+            log().debug("Minute {} has no date, excluding when date '{}' was requested", minute.id(), date);
+            return false;
+        }
+        LocalDate queryDate = parseDateFlexible(date);
+        LocalDate minuteDate = parseDateFlexible(minute.date());
+        if (queryDate == null) {
+            log().warn("Could not parse query date '{}' for date validation. Keeping minute {} to avoid false negatives.",
+                    date, minute.id());
+            return true;
+        }
+        if (minuteDate == null) {
+            log().warn("Could not parse minute date '{}' for minute {} (ID: {}). "
+                            + "This may indicate an unsupported date format. Excluding from results.",
+                    minute.date(), minute.id(), minute.id());
+            return false;
+        }
+        boolean matches = queryDate.equals(minuteDate)
+                || (queryDate.getYear() == minuteDate.getYear() && queryDate.getMonth() == minuteDate.getMonth());
+        if (!matches) {
+            log().debug("Filtering out minute {} with date {} (parsed: {}) - requested: {} (parsed: {})",
+                    minute.id(), minute.date(), minuteDate, date, queryDate);
+        } else {
+            log().debug("Minute {} date {} (parsed: {}) matches requested date {} (parsed: {})",
+                    minute.id(), minute.date(), minuteDate, date, queryDate);
+        }
+        return matches;
+    }
+
+    private record DateValidationOutcome(List<Minute> minutes, ToolResult earlyExit) {
     }
 
     /** True when the query asks what was said/commented about a specific topic (e.g. gas leak, lighting mentions). */

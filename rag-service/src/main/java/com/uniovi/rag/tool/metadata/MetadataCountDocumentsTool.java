@@ -571,7 +571,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         // Build comparison data
         StringBuilder comparisonData = new StringBuilder();
         for (Map.Entry<String, Integer> entry : meetingsByMonth.entrySet()) {
-            comparisonData.append(String.format("- %s: %d reuniones\n", entry.getKey(), entry.getValue()));
+            comparisonData.append(String.format("- %s: %d reuniones%n", entry.getKey(), entry.getValue()));
         }
         
         String prompt = String.format("""

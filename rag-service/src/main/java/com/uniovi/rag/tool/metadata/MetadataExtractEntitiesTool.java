@@ -20,6 +20,12 @@ import java.util.stream.Collectors;
  */
 public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
 
+    private static final String META_FIELD_TOPICS = "topics";
+
+    private static final String META_FIELD_PRESIDENT = "president";
+
+    private static final String META_FIELD_SECRETARY = "secretary";
+
     public MetadataExtractEntitiesTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -506,30 +512,20 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     }
 
     private int typePriority(EntityType type) {
-        switch (type) {
-            case PERSON:
-            case ROLE:
-            case LOCATION:
-                return 3;
-            case ORGANIZATION:
-                return 2;
-            case TOPIC, DECISION:
-                return 1;
-            default:
-                return 0;
-        }
+        return switch (type) {
+            case PERSON, ROLE, LOCATION -> 3;
+            case ORGANIZATION -> 2;
+            case TOPIC, DECISION -> 1;
+            default -> 0;
+        };
     }
 
     private int rolePriority(EntityRole role) {
-        switch (role) {
-            case PRESIDENT:
-            case SECRETARY:
-                return 3;
-            case ATTENDEE, MEETING_PLACE:
-                return 2;
-            default:
-                return 0;
-        }
+        return switch (role) {
+            case PRESIDENT, SECRETARY -> 3;
+            case ATTENDEE, MEETING_PLACE -> 2;
+            default -> 0;
+        };
     }
 
     /**
@@ -831,22 +827,46 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
 
     /** Detects if the query asks for a list of a specific entity type (dates, places, presidents, etc.). */
     private static ListableEntity getRequestedListableEntity(String query) {
-        if (query == null || query.isBlank()) return null;
+        if (query == null || query.isBlank()) {
+            return null;
+        }
         String q = query.toLowerCase();
-        boolean asksForList = q.contains("todas las") || q.contains("todas los") || q.contains("todos los") || q.contains("todos las")
+        if (!asksForListAll(q)) {
+            return null;
+        }
+        return inferListableEntityFromKeywords(q);
+    }
+
+    private static boolean asksForListAll(String q) {
+        return q.contains("todas las") || q.contains("todas los") || q.contains("todos los") || q.contains("todos las")
                 || q.contains("diferentes") || q.contains("list all") || q.contains("listar") || q.contains("qué ") || q.contains("que ")
                 || q.contains("dime las") || q.contains("dime los") || q.contains("dime todas") || q.contains("las fechas de")
                 || q.contains("que tienes actas") || q.contains("cuáles son") || q.contains("cuales son")
                 || q.contains("what are the") || q.contains("which ") || q.contains("name all");
-        if (!asksForList) return null;
-        if (q.contains("fecha") || q.contains("date")) return ListableEntity.DATES;
-        if (q.contains("lugar") || q.contains("lugares") || q.contains("place") || q.contains("sitio") || q.contains("ubicación") || q.contains("location")) return ListableEntity.PLACES;
-        if (q.contains("presidente") || q.contains("presidentes") || q.contains("president") || q.contains("quién presidió")) return ListableEntity.PRESIDENTS;
-        if (q.contains("secretaria") || q.contains("secretarias") || q.contains("secretary") || q.contains("secretaries")) return ListableEntity.SECRETARIES;
-        if (q.contains("tema") || q.contains("temas") || q.contains("topic") || q.contains("topics") || q.contains("asunto")) return ListableEntity.TOPICS;
-        if (q.contains("decisión") || q.contains("decisiones") || q.contains("acuerdo") || q.contains("acuerdos") || q.contains("decision")) return ListableEntity.DECISIONS;
-        if (q.contains("asistente") || q.contains("asistentes") || q.contains("attendee") || q.contains("participante") || q.contains("personas que")) return ListableEntity.ATTENDEES;
-        if (q.contains("fecha") || q.contains("date")) return ListableEntity.DATES; // fallback for "todas las fechas"
+    }
+
+    private static ListableEntity inferListableEntityFromKeywords(String q) {
+        if (q.contains("fecha") || q.contains("date")) {
+            return ListableEntity.DATES;
+        }
+        if (q.contains("lugar") || q.contains("lugares") || q.contains("place") || q.contains("sitio") || q.contains("ubicación") || q.contains("location")) {
+            return ListableEntity.PLACES;
+        }
+        if (q.contains("presidente") || q.contains("presidentes") || q.contains(META_FIELD_PRESIDENT) || q.contains("quién presidió")) {
+            return ListableEntity.PRESIDENTS;
+        }
+        if (q.contains("secretaria") || q.contains("secretarias") || q.contains(META_FIELD_SECRETARY) || q.contains("secretaries")) {
+            return ListableEntity.SECRETARIES;
+        }
+        if (q.contains("tema") || q.contains("temas") || q.contains("topic") || q.contains(META_FIELD_TOPICS) || q.contains("asunto")) {
+            return ListableEntity.TOPICS;
+        }
+        if (q.contains("decisión") || q.contains("decisiones") || q.contains("acuerdo") || q.contains("acuerdos") || q.contains("decision")) {
+            return ListableEntity.DECISIONS;
+        }
+        if (q.contains("asistente") || q.contains("asistentes") || q.contains("attendee") || q.contains("participante") || q.contains("personas que")) {
+            return ListableEntity.ATTENDEES;
+        }
         return null;
     }
 
