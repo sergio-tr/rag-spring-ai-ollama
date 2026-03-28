@@ -1,0 +1,27 @@
+package com.uniovi.rag.service.evaluation;
+
+import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
+import com.uniovi.rag.service.document.DocumentService;
+import com.uniovi.rag.service.query.QueryService;
+import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.client.ChatClient;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
+
+/** Covers {@link AbstractMinuteEvaluationService} via concrete subclass. */
+class AbstractMinuteEvaluationServiceTest {
+
+    @Test
+    void simpleMinuteEvaluationService_isInstanceOfAbstractMinuteEvaluationService() {
+        RagFeatureConfiguration featureConfig = new RagFeatureConfiguration();
+        ChatClient chatClient = mock(ChatClient.class);
+        DocumentService documentService = mock(DocumentService.class);
+        QueryService queryService = mock(QueryService.class);
+        SimpleMinuteEvaluationService service = new SimpleMinuteEvaluationService(
+                featureConfig, new RagImplementationProperties(), chatClient, documentService, queryService, false);
+        assertNotNull(service);
+        assertTrue(service instanceof AbstractMinuteEvaluationService);
+    }
+}

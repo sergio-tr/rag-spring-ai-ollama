@@ -1,0 +1,34 @@
+# Imagen de desarrollo: JDK + Maven Wrapper; en runtime se monta el repo y se ejecuta spring-boot:run + recompilación.
+# No sustituye al Dockerfile multi-stage de producción; solo para probar el backend en Docker con recarga.
+#
+# Build (desde repo): docker compose -f docker/docker-compose.yml -f docker/compose.dev.yml build backend-dev
+#
+ARG JDK_BASE_IMAGE=eclipse-temurin:21-jdk
+FROM ${JDK_BASE_IMAGE}
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY mvnw ./mvnw
+COPY .mvn ./.mvn
+COPY pom.xml .
+
+RUN sed -i 's/\r$//' mvnw && find .mvn -type f -exec sed -i 's/\r$//' {} + && chmod +x mvnw
+
+# Capa de dependencias (acelera rebuilds cuando solo cambia código)
+RUN ./mvnw -B dependency:go-offline -Dmaven.test.skip=true
+
+COPY src ./src
+RUN ./mvnw -B compile -Dmaven.test.skip=true
+
+COPY scripts/docker-dev-entrypoint.sh /docker-dev-entrypoint.sh
+RUN sed -i 's/\r$//' /docker-dev-entrypoint.sh && chmod +x /docker-dev-entrypoint.sh
+
+ARG SERVER_PORT=9000
+ENV SERVER_PORT=${SERVER_PORT}
+EXPOSE 9000
+
+ENTRYPOINT ["/docker-dev-entrypoint.sh"]
