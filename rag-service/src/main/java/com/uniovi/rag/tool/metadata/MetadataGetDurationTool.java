@@ -176,14 +176,13 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         }
 
         // Known correction: 25 feb 2026 = 19:00-20:45 (1h45). §4
-        if (isDate25Feb2026(minute) && startTimeContains(startTime, KNOWN_START_TIME_25_FEB_2026)) {
-            if (!hasEnd || calculateDurationFromMinute(minute) == 90) {
-                log().info("Applying known end time for 25/02/2026: {} (1h45)", KNOWN_END_TIME_25_FEB_2026);
-                return new DurationResult(
-                    minute.id(), minute.date(), minute.place(),
-                    startTime, KNOWN_END_TIME_25_FEB_2026, DURATION_25_FEB_2026_MIN
-                );
-            }
+        if (isDate25Feb2026(minute) && startTimeContains(startTime, KNOWN_START_TIME_25_FEB_2026)
+                && (!hasEnd || calculateDurationFromMinute(minute) == 90)) {
+            log().info("Applying known end time for 25/02/2026: {} (1h45)", KNOWN_END_TIME_25_FEB_2026);
+            return new DurationResult(
+                minute.id(), minute.date(), minute.place(),
+                startTime, KNOWN_END_TIME_25_FEB_2026, DURATION_25_FEB_2026_MIN
+            );
         }
 
         if (!hasEnd) {
@@ -315,11 +314,14 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         }
         
         // Fallback - simple format
-        String durationStr = hours > 0 && mins > 0 
-            ? String.format("%d hour%s %d min", hours, hours == 1 ? "" : "s", mins)
-            : hours > 0 
-                ? String.format("%d hour%s", hours, hours == 1 ? "" : "s")
-                : String.format("%d min", mins);
+        String durationStr;
+        if (hours > 0 && mins > 0) {
+            durationStr = String.format("%d hour%s %d min", hours, hours == 1 ? "" : "s", mins);
+        } else if (hours > 0) {
+            durationStr = String.format("%d hour%s", hours, hours == 1 ? "" : "s");
+        } else {
+            durationStr = String.format("%d min", mins);
+        }
         return String.format("The meeting on %s started at %s and ended at %s. Duration: %s.", date, start, end, durationStr);
     }
 
