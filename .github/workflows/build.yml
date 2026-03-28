@@ -23,6 +23,7 @@ jobs:
       - name: Build (skip tests)
         run: |
           cd rag-service
+          chmod +x mvnw
           ./mvnw -B -DskipTests package
 
   classifier-service:
