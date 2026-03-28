@@ -38,8 +38,12 @@ class LLMResponseValidatorServiceTest {
     @Test
     void isValidResponse_errorLike_returnsFalse() {
         assertFalse(validator.isValidResponse("Error: something failed", "ctx"));
-        assertFalse(validator.isValidResponse("Exception: at com.xxx", "ctx"));
+        assertFalse(validator.isValidResponse("exception: at com.xxx", "ctx"));
         assertFalse(validator.isValidResponse("An error occurred", "ctx"));
+        assertFalse(validator.isValidResponse("A processing error stopped the pipeline.", "ctx"));
+        assertFalse(validator.isValidResponse("Failed to retrieve documents from the store.", "ctx"));
+        assertFalse(validator.isValidResponse(
+                "java.lang.IllegalStateException thrown at com.example.Foo.bar(Foo.java:12)", "ctx"));
     }
 
     @Test
@@ -89,6 +93,14 @@ class LLMResponseValidatorServiceTest {
         String in = "answer\n// comment\nmore";
         String out = validator.cleanResponse(in);
         assertFalse(out.contains("//"));
+    }
+
+    @Test
+    void cleanResponse_stripsHashComments() {
+        String in = "visible\n# hash comment\nend";
+        String out = validator.cleanResponse(in);
+        assertFalse(out.contains("#"));
+        assertTrue(out.contains("visible"));
     }
 
     @Test

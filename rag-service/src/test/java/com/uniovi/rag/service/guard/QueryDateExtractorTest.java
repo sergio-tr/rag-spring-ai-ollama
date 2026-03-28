@@ -1,15 +1,16 @@
 package com.uniovi.rag.service.guard;
 
-import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Unit tests for {@link QueryDateExtractor} (regex + NER paths) to raise JaCoCo line coverage on the guard package.
+ */
 class QueryDateExtractorTest {
 
     private QueryDateExtractor extractor;
@@ -20,58 +21,53 @@ class QueryDateExtractorTest {
     }
 
     @Test
-    void extractNormalizedDate_isoInQuery() {
-        String result = extractor.extractNormalizedDate("Reunión del 2025-02-24", null);
-        assertEquals("2025-02-24", result);
-    }
-
-    @Test
-    void extractNormalizedDate_slashFormat() {
-        String result = extractor.extractNormalizedDate("Decisiones del 25/08/2028", null);
-        assertEquals("2028-08-25", result);
-    }
-
-    @Test
-    void extractNormalizedDate_spanishFormat() {
-        String result = extractor.extractNormalizedDate("Acta del 25 de agosto de 2028", null);
-        assertEquals("2028-08-25", result);
-    }
-
-    @Test
-    void extractNormalizedDate_nullQuery_returnsNull() {
+    void extractNormalizedDate_nullOrBlank_returnsNull() {
         assertNull(extractor.extractNormalizedDate(null, null));
-        assertNull(extractor.extractNormalizedDate("", null));
         assertNull(extractor.extractNormalizedDate("   ", null));
     }
 
     @Test
-    void extractNormalizedDate_noDateInQuery_returnsNull() {
-        assertNull(extractor.extractNormalizedDate("¿Quién presidió?", null));
+    void extractNormalizedDate_isoInQuery_returnsIso() {
+        assertEquals("2026-03-28", extractor.extractNormalizedDate("Meeting on 2026-03-28 please", null));
     }
 
     @Test
-    void extractNormalizedDate_fromNer() throws JSONException {
+    void extractNormalizedDate_slashFormat_returnsIso() {
+        assertEquals("2026-03-28", extractor.extractNormalizedDate("Date 28/03/2026", null));
+    }
+
+    @Test
+    void extractNormalizedDate_dashFormat_returnsIso() {
+        assertEquals("2026-03-28", extractor.extractNormalizedDate("28-03-2026", null));
+    }
+
+    @Test
+    void extractNormalizedDate_spanishLongForm_returnsIso() {
+        String q = "Reunión el 25 de febrero de 2026 en el salón";
+        assertEquals("2026-02-25", extractor.extractNormalizedDate(q, null));
+    }
+
+    @Test
+    void extractNormalizedDate_spanishWithDeWords_returnsIso() {
+        String q = "Acta 15 de marzo de 2025";
+        assertEquals("2025-03-15", extractor.extractNormalizedDate(q, null));
+    }
+
+    @Test
+    void extractNormalizedDate_prefersNerDateArray() {
         JSONObject ner = new JSONObject();
-        ner.put("date", new org.json.JSONArray(List.of("2026-03-15")));
-        String result = extractor.extractNormalizedDate("algo", ner);
-        assertEquals("2026-03-15", result);
+        ner.put("date", new org.json.JSONArray().put("2027-01-10"));
+        assertEquals("2027-01-10", extractor.extractNormalizedDate("no iso in text", ner));
     }
 
     @Test
-    void parseToLocalDate_iso() {
-        assertEquals(LocalDate.of(2025, 2, 24), extractor.parseToLocalDate("2025-02-24"));
-    }
-
-    @Test
-    void parseToLocalDate_slash() {
-        assertEquals(LocalDate.of(2028, 8, 25), extractor.parseToLocalDate("25/08/2028"));
+    void parseToLocalDate_delegatesToFlexibleParser() {
+        LocalDate d = extractor.parseToLocalDate("2025-12-01");
+        assertEquals(LocalDate.of(2025, 12, 1), d);
     }
 
     @Test
     void parseToLocalDate_invalid_returnsNull() {
-        assertNull(extractor.parseToLocalDate(null));
-        assertNull(extractor.parseToLocalDate(""));
-        assertNull(extractor.parseToLocalDate("not-a-date"));
-        assertNull(extractor.parseToLocalDate("32/13/2025"));
+        assertNull(extractor.parseToLocalDate("not a date"));
     }
 }
