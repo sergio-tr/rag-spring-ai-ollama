@@ -67,7 +67,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         }
 
         // Step 5: Analyze and rank explanations
-        List<Explanation> rankedExplanations = analyzeAndRankExplanations(query, explanations);
+        List<Explanation> rankedExplanations = analyzeAndRankExplanations(explanations);
 
         // Step 6: Cluster similar explanations
         List<ExplanationCluster> clusters = clusterExplanations(rankedExplanations);
@@ -86,13 +86,13 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     private List<Explanation> generateExplanationsInParallel(String query, List<Minute> minutes) {
         List<CompletableFuture<Explanation>> futures = minutes.stream()
                 .map(minute -> supplyAsync(() -> generateExplanation(query, minute)))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
                 .filter(explanation -> explanation.getContent() != null && !explanation.getContent().isBlank())
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -203,6 +203,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
      * Calculates relevance score for an explanation.
      * Uses English for internal processing, but preserves original language in query and explanation.
      */
+    @Override
     protected double calculateRelevanceScore(String query, String explanation, String context) {
         if (query == null || query.trim().isEmpty() || explanation == null || explanation.trim().isEmpty()) {
             return 0.5; // Default score
@@ -250,7 +251,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
     /**
      * Analyzes and ranks explanations by relevance and quality
      */
-    private List<Explanation> analyzeAndRankExplanations(String query, List<Explanation> explanations) {
+    private List<Explanation> analyzeAndRankExplanations(List<Explanation> explanations) {
         // Sort by relevance score (descending)
         return explanations.stream()
                 .sorted((a, b) -> Double.compare(b.getRelevanceScore(), a.getRelevanceScore()))
@@ -364,7 +365,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
                 .map(e -> String.format("- %s: %s", 
                     e.getDate() != null ? e.getDate() : "unknown date",
                     e.getContent() != null && e.getContent().length() > 200 ? e.getContent().substring(0, 200) + "..." : (e.getContent() != null ? e.getContent() : "")))
-                .collect(Collectors.joining("\n\n"));
+                .collect(Collectors.joining(System.lineSeparator() + System.lineSeparator()));
         
         String prompt = String.format("""
             The user asked (in any language): "%s"
@@ -389,7 +390,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         }
         
         // Ultimate fallback
-        return String.format("Found %d relevant minute(s).\n\nExplanations:\n%s",
+        return String.format("Found %d relevant minute(s).%n%nExplanations:%n%s",
                            explanations.size(), explanationsText);
     }
 

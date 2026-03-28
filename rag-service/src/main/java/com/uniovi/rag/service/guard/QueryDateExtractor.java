@@ -100,6 +100,7 @@ public class QueryDateExtractor implements Loggable {
         try {
             return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
         } catch (DateTimeParseException ignored) {
+            // Not ISO_LOCAL_DATE; try flexible formats below.
         }
 
         List<DateTimeFormatter> formatters = Arrays.asList(
@@ -117,6 +118,7 @@ public class QueryDateExtractor implements Loggable {
             try {
                 return LocalDate.parse(v, f);
             } catch (DateTimeParseException ignored) {
+                // Try next formatter in the list.
             }
         }
 
@@ -132,6 +134,7 @@ public class QueryDateExtractor implements Loggable {
                 try {
                     return LocalDate.of(year, month, Math.min(day, LocalDate.of(year, month, 1).lengthOfMonth()));
                 } catch (Exception ignored) {
+                    // Invalid calendar combination for parsed components.
                 }
             }
         }

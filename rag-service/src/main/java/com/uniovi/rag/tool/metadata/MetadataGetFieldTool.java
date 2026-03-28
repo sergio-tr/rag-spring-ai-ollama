@@ -34,6 +34,8 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
 
     private static final String LABEL_SECRETARIO = "secretario";
 
+    private static final String FIELD_SUMMARY = "summary";
+
     public MetadataGetFieldTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -49,7 +51,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         // Step 1: Retrieve with NER/date so a who-chaired / which-date query resolves to the correct minute (E.1)
         List<Document> docs = retrieveDocumentsWithFallback(
             query,
-            new String[] {"date", "place", "startTime", FIELD_END_TIME, FIELD_TOPICS, "decisions", "summary", FIELD_PRESIDENT, FIELD_SECRETARY, FIELD_ATTENDEES},
+            new String[] {"date", "place", "startTime", FIELD_END_TIME, FIELD_TOPICS, "decisions", FIELD_SUMMARY, FIELD_PRESIDENT, FIELD_SECRETARY, FIELD_ATTENDEES},
             ner
         );
         
@@ -270,20 +272,18 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
             case FIELD_PRESIDENT:
             case "presidente":
                 return new String[]{FIELD_PRESIDENT, "presidente"};
-            case "starttime":
-            case "hora_inicio":
+            case "starttime", "hora_inicio":
                 return new String[]{"startTime", "hora_inicio", "start_time"};
-            case "endtime":
-            case "hora_fin":
+            case "endtime", "hora_fin":
                 return new String[]{FIELD_END_TIME, "hora_fin", "end_time"};
             case "topics", "temas":
                 return new String[]{FIELD_TOPICS, "temas"};
             case "decisions":
             case "decisiones":
                 return new String[]{"decisions", "decisiones", "acuerdos"};
-            case "summary":
+            case FIELD_SUMMARY:
             case "resumen":
-                return new String[]{"summary", "resumen"};
+                return new String[]{FIELD_SUMMARY, "resumen"};
             case "attendees":
             case "asistentes":
                 return new String[]{"attendees", "asistentes", "participantes"};
@@ -337,7 +337,9 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         if (containsAny(q, "asistente", "attendee", "participante", "personas")) return "attendees";
         if (containsAny(q, "número de asistentes", "cuántos asistieron", "attendees count")) return "attendeesCount";
         if (containsAny(q, "tema", FIELD_TOPICS)) return FIELD_TOPICS;
-        if (containsAny(q, "resumen", "summary")) return "summary";
+        if (containsAny(q, "resumen", FIELD_SUMMARY)) {
+            return FIELD_SUMMARY;
+        }
 
         // Priority 4: Date (general, after checking context)
         if (containsAny(q, "fecha", "date", "día", "cuándo", "when")) {

@@ -69,7 +69,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     // For dynamic evaluation with custom configurations
     protected EvaluationServiceFactory evaluationServiceFactory;
 
-    protected final static PromptTemplate EVALUATION_PROMPT_TEMPLATE = new PromptTemplate("""
+    protected static final PromptTemplate EVALUATION_PROMPT_TEMPLATE = new PromptTemplate("""
         Act as an expert evaluator of RAG (Retrieval-Augmented Generation) systems. 
         Assess the quality of a generated answer by determining if it correctly answers the question.
         
@@ -220,7 +220,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
      * Loads specific data using a provided document service.
      * This allows loading documents with a custom configuration.
      */
-    protected void loadSpecificDataWithService(DocumentService docService) {
+    protected void loadSpecificDataWithService(@SuppressWarnings("unused") DocumentService docService) {
         loadSpecificData(); // Default implementation uses HTTP endpoint
         // Subclasses can override to use docService directly
     }

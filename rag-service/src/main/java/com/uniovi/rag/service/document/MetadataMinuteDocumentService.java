@@ -37,6 +37,11 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             ".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*",
             UNICODE_TEXT_REGEX_FLAGS);
 
+    /** Block after "Asistentes:" up to next section; extracted to keep {@link #extractAttendees} simpler for static analysis. */
+    private static final Pattern ASISTENTES_BULLET_BLOCK_PATTERN = Pattern.compile(
+            "(?i)Asistentes:.*?\\n((?:•|[-*]|\\d+\\.)\\s*[^\\n]+(?:\\n(?!•|[-*]|\\d+\\.|Orden|Ruegos|Clausura)[^\\n]+)*)",
+            Pattern.DOTALL);
+
     private static final String SPANISH_MONTH_AGOSTO = "agosto";
 
     private static final String SPANISH_MONTH_SEPTIEMBRE = "septiembre";
@@ -190,7 +195,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (agenda == null || agenda.isEmpty()) {
             log().warn("Agenda is empty for document: {}. Will try fallback from topics.", filename);
         } else {
-            log().info("Extracted agenda with {} items for document: {}", agenda.size(), filename);
+            log().info("Extracted agenda with {} items (document name length: {})", agenda.size(),
+                    filename != null ? filename.length() : 0);
         }
 
         MetadataMinuteDocumentService ext = extraction();
@@ -739,8 +745,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     private void addDerivedFields(Map<String, Object> metadata) {
         // date_iso, year, month - always set when date exists (fallback to year-only if full parse fails)
         Object dateObj = metadata.get("date");
-        if (dateObj instanceof String) {
-            String dateStr = (String) dateObj;
+        if (dateObj instanceof String dateStr) {
             LocalDate parsed = parseDateToLocalDate(dateStr);
             if (parsed == null) {
                 parsed = parseDateYearFallback(dateStr);
@@ -1408,7 +1413,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         // If it does not match the expected pattern, try to extract numbers
-        String numbersOnly = time.replaceAll("[^0-9]", "");
+        String numbersOnly = time.replaceAll("\\D", "");
         if (numbersOnly.length() >= 3 && numbersOnly.length() <= 4) {
             // Format HHMM or HMM
             try {
@@ -1483,11 +1488,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         // Method 3: Search lines that begin with bullet after "Asistentes:" (even if there's text before)
         if (attendees.isEmpty()) {
-            Pattern pattern = Pattern.compile(
-                "(?i)Asistentes:.*?\\n((?:•|[-*]|\\d+\\.)\\s*[^\\n]+(?:\\n(?!•|[-*]|\\d+\\.|Orden|Ruegos|Clausura)[^\\n]+)*)", 
-                Pattern.DOTALL
-            );
-            Matcher matcher = pattern.matcher(content);
+            Matcher matcher = ASISTENTES_BULLET_BLOCK_PATTERN.matcher(content);
             if (matcher.find()) {
                 String attendeesBlock = matcher.group(1);
                 attendees.addAll(extractBullets(attendeesBlock));

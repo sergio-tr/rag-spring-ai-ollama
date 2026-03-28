@@ -39,6 +39,8 @@ import java.util.List;
 @Service
 public class ProcessQueryService implements QueryService {
 
+    private static final String LOG_STACK_TRACE = "Stack trace:";
+
     /** Ollama model per request (lab); the servlet thread allows a ThreadLocal-safe access. */
     private static final ThreadLocal<String> REQUEST_CHAT_MODEL = new ThreadLocal<>();
 
@@ -188,7 +190,7 @@ public class ProcessQueryService implements QueryService {
                     featureConfig.isNerEnabled(),
                     featureConfig.isToolsEnabled(),
                     query, e);
-            log().error("Stack trace:", e);
+            log().error(LOG_STACK_TRACE, e);
             String errorResponse = generateErrorResponse(query, e);
             return QueryResponse.fromLLM(errorResponse);
         } catch (Exception e) {
@@ -206,7 +208,7 @@ public class ProcessQueryService implements QueryService {
                     featureConfig.isToolsEnabled(),
                     query, e);
             log().error("Exception type: {}, Message: {}", e.getClass().getName(), e.getMessage());
-            log().error("Stack trace:", e);
+            log().error(LOG_STACK_TRACE, e);
             String errorResponse = generateErrorResponse(query, e);
             return QueryResponse.fromLLM(errorResponse);
         }

@@ -13,7 +13,8 @@ public class LLMResponseValidatorService implements ResponseValidator {
     private static final Logger log = LoggerFactory.getLogger(LLMResponseValidatorService.class);
     private static final int MIN_RESPONSE_LENGTH = 2;
     private static final int MAX_RESPONSE_LENGTH = 10000;
-    private static final int RX_FLAGS = Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.CANON_EQ;
+    private static final int RX_FLAGS =
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL | Pattern.CANON_EQ;
     private static final Pattern NO_ERROR_PHRASE = Pattern.compile(
             ".*\\b(no|ningún|ningun|sin)\\s+(ningún|ningun)?\\s*error\\b.*", RX_FLAGS);
     private static final Pattern NO_HAY_ERROR = Pattern.compile(".*\\bno\\s+hay\\s+error.*", RX_FLAGS);

@@ -22,6 +22,9 @@ import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync
  */
 public class MetadataGetDurationTool extends AbstractMetadataTool {
 
+    /** Start time used for the known 25 Feb 2026 duration correction (19:00–20:45). */
+    private static final String KNOWN_START_TIME_25_FEB_2026 = "19:00";
+
     public MetadataGetDurationTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -171,7 +174,7 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
         }
 
         // Known correction: 25 feb 2026 = 19:00-20:45 (1h45). §4
-        if (isDate25Feb2026(minute) && startTimeContains(startTime, "19:00")) {
+        if (isDate25Feb2026(minute) && startTimeContains(startTime, KNOWN_START_TIME_25_FEB_2026)) {
             if (!hasEnd || calculateDurationFromMinute(minute) == 90) {
                 log().info("Applying known end time for 25/02/2026: {} (1h45)", KNOWN_END_TIME_25_FEB_2026);
                 return new DurationResult(
@@ -210,7 +213,8 @@ public class MetadataGetDurationTool extends AbstractMetadataTool {
     private boolean startTimeContains(String startTime, String prefix) {
         if (startTime == null) return false;
         String t = startTime.trim().replace(" ", "");
-        return t.startsWith("19:00") || t.startsWith("19:0") || t.contains("19:00");
+        return t.startsWith(KNOWN_START_TIME_25_FEB_2026) || t.startsWith("19:0")
+                || t.contains(KNOWN_START_TIME_25_FEB_2026);
     }
 
     /**

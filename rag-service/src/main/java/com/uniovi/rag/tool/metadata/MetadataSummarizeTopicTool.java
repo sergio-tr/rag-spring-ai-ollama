@@ -133,13 +133,13 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
     private List<TopicResult> generateTopicSummariesInParallel(String query, List<Minute> minutes, JSONObject ner) {
         List<CompletableFuture<TopicResult>> futures = minutes.stream()
                 .map(minute -> supplyAsync(() -> generateTopicSummary(query, minute, ner)))
-                .collect(Collectors.toList());
+                .toList();
 
         return futures.stream()
                 .map(CompletableFuture::join)
                 .filter(Objects::nonNull)
                 .filter(result -> result.getTopicSummary() != null && !result.getTopicSummary().isBlank())
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -242,7 +242,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                 .sorted((a, b) -> Integer.compare(
                         b.getTopicSummary() != null ? b.getTopicSummary().length() : 0,
                         a.getTopicSummary() != null ? a.getTopicSummary().length() : 0))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private String generateTopicSummaryAnswer(String query, List<TopicResult> results) {
@@ -632,7 +632,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         return keyTerms.stream()
                 .distinct()
                 .sorted((a, b) -> Integer.compare(b.length(), a.length()))
-                .collect(Collectors.toList());
+                .toList();
     }
     
     /**

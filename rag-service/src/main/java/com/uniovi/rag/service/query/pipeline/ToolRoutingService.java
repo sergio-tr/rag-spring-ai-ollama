@@ -233,9 +233,6 @@ public final class ToolRoutingService {
                 if (e instanceof IllegalArgumentException || "DECISION_EXTRACTION".equals(String.valueOf(queryType))) {
                     log.error("Full stack trace for tool {} (queryType={}):", tool.getClass().getSimpleName(), queryType, e);
                 }
-                if (attempt < MAX_RETRIES) {
-                    continue;
-                }
             }
         }
 

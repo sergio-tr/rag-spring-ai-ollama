@@ -19,6 +19,15 @@ import java.util.stream.Collectors;
  */
 public class MetadataCountDocumentsTool extends AbstractMetadataTool {
 
+    private static final String[] SPANISH_MONTH_NAMES_LOWER = {
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+    };
+    private static final String[] ENGLISH_MONTH_NAMES_LOWER = {
+            "january", "february", "march", "april", "may", "june",
+            "july", "august", "september", "october", "november", "december"
+    };
+
     public MetadataCountDocumentsTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -522,13 +531,14 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                                      queryLower.contains("menos") || queryLower.contains("less")) &&
                                     (queryLower.contains(" o ") || queryLower.contains(" or "));
         
-        // Also check for explicit month names
-        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
-                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-                              "january", "february", "march", "april", "may", "june",
-                              "july", "august", "september", "october", "november", "december"};
+        // Also check for explicit month names (Spanish + English)
         int monthCount = 0;
-        for (String month : monthNames) {
+        for (String month : SPANISH_MONTH_NAMES_LOWER) {
+            if (queryLower.contains(month)) {
+                monthCount++;
+            }
+        }
+        for (String month : ENGLISH_MONTH_NAMES_LOWER) {
             if (queryLower.contains(month)) {
                 monthCount++;
             }
@@ -607,10 +617,8 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         }
         
         String queryLower = query.toLowerCase();
-        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
-                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
-        
-        for (String month : monthNames) {
+
+        for (String month : SPANISH_MONTH_NAMES_LOWER) {
             if (queryLower.contains(month)) {
                 months.add(month);
             }
@@ -665,10 +673,8 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
      * Gets Spanish month name from month number (1-12).
      */
     private String getMonthName(int month) {
-        String[] monthNames = {"enero", "febrero", "marzo", "abril", "mayo", "junio",
-                              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"};
         if (month >= 1 && month <= 12) {
-            return monthNames[month - 1];
+            return SPANISH_MONTH_NAMES_LOWER[month - 1];
         }
         return "unknown";
     }

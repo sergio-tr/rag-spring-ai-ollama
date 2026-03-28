@@ -93,8 +93,8 @@ public class OllamaApiClient {
                     }
                 }
             } catch (Exception e) {
-                if (e instanceof IOException) {
-                    throw (IOException) e;
+                if (e instanceof IOException ioexception) {
+                    throw ioexception;
                 }
                 // Non-JSON body; Ollama sometimes returns line-oriented output; if HTTP 200, assume OK
             }
