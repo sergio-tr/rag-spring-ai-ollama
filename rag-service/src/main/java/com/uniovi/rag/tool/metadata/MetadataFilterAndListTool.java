@@ -380,7 +380,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         }
         
         // Ultimate fallback
-        return String.format("Found %d relevant meetings:\n%s",
+        return String.format("Found %d relevant meetings:%n%s",
                           results.size(), resultsText);
     }
 
@@ -489,7 +489,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         if (query == null) return null;
         java.util.regex.Pattern p = java.util.regex.Pattern.compile(
                 "(?:más de|más que)\\s+(\\d+)\\s+asistentes",
-                java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE);
+                java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE | java.util.regex.Pattern.CANON_EQ);
         java.util.regex.Matcher m = p.matcher(query);
         if (m.find()) {
             try {

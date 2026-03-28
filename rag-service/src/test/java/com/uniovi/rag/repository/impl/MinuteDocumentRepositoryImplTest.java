@@ -29,11 +29,15 @@ class MinuteDocumentRepositoryImplTest {
     }
 
     @Test
-    void addMinute_nullOrBlankId_throws() {
-        assertThrows(IllegalArgumentException.class, () ->
-                repository.addMinute(new Minute(null, null, null, null, null, null, null, null, null, 0, null, null, null, null, null)));
-        assertThrows(IllegalArgumentException.class, () ->
-                repository.addMinute(new Minute("", "f", null, null, null, null, null, null, null, 0, null, null, null, null, null)));
+    void addMinute_nullId_throws() {
+        Minute nullId = new Minute(null, null, null, null, null, null, null, null, null, 0, null, null, null, null, null);
+        assertThrows(IllegalArgumentException.class, () -> repository.addMinute(nullId));
+    }
+
+    @Test
+    void addMinute_blankId_throws() {
+        Minute blankId = new Minute("", "f", null, null, null, null, null, null, null, 0, null, null, null, null, null);
+        assertThrows(IllegalArgumentException.class, () -> repository.addMinute(blankId));
     }
 
     @Test

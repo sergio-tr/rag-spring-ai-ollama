@@ -7,6 +7,7 @@ import org.springframework.lang.Nullable;
 
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.util.RegexSafety;
 
 import java.util.List;
 
@@ -98,16 +99,18 @@ public abstract class AbstractTool implements Tool {
         if (response == null || query == null || response.trim().isEmpty() || query.trim().isEmpty()) {
             return response;
         }
-        
-        String responseLower = response.trim().toLowerCase();
-        String queryLower = query.trim().toLowerCase();
+
+        String r = RegexSafety.truncateString(response.trim(), RegexSafety.MAX_LLM_TEXT_FOR_REGEX);
+        String q = RegexSafety.truncateString(query.trim(), RegexSafety.MAX_QUERY_TEXT_FOR_REGEX);
+        String responseLower = r.toLowerCase();
+        String queryLower = q.toLowerCase();
         
         // Check if response starts with the full question
         if (responseLower.startsWith(queryLower)) {
-            String cleaned = response.substring(query.length()).trim();
+            String cleaned = r.substring(q.length()).trim();
             // Remove common separators that might follow the question (e.g. ": - ", ": ", " - ")
             cleaned = cleaned.replaceFirst("^[:\\s\\-]+", "");
-            cleaned = cleaned.replaceFirst("^[.\\n\\r\\-\\s]+", "");
+            cleaned = cleaned.replaceFirst("^[.\\s\\-]+", "");
             log().debug("Removed full question repetition from response. Original length: {}, Cleaned length: {}", 
                       response.length(), cleaned.length());
             return cleaned.isEmpty() ? response : cleaned; // Return original if cleaning removes everything
@@ -125,7 +128,7 @@ public abstract class AbstractTool implements Tool {
         for (String prefix : questionPrefixes) {
             if (responseLower.startsWith(prefix.toLowerCase())) {
                 // Check if what follows is part of the query
-                String afterPrefix = response.substring(prefix.length()).trim();
+                String afterPrefix = r.substring(prefix.length()).trim();
                 String afterPrefixLower = afterPrefix.toLowerCase();
                 
                 // If the next part matches a significant portion of the query, remove it
@@ -148,14 +151,14 @@ public abstract class AbstractTool implements Tool {
         
         // Check for common patterns where question is repeated at the start
         // Pattern: "Question text.\n\nAnswer text"
-        int newlineIndex = response.indexOf("\n\n");
-        if (newlineIndex > 0 && newlineIndex < response.length() / 2) {
-            String beforeNewline = response.substring(0, newlineIndex).trim().toLowerCase();
+        int newlineIndex = r.indexOf("\n\n");
+        if (newlineIndex > 0 && newlineIndex < r.length() / 2) {
+            String beforeNewline = r.substring(0, newlineIndex).trim().toLowerCase();
             // If the part before newline is similar to the query, it's likely a repetition
             if (beforeNewline.length() > 10 && 
                 (queryLower.contains(beforeNewline.substring(0, Math.min(30, beforeNewline.length()))) ||
                  beforeNewline.contains(queryLower.substring(0, Math.min(30, queryLower.length()))))) {
-                String cleaned = response.substring(newlineIndex + 2).trim();
+                String cleaned = r.substring(newlineIndex + 2).trim();
                 if (!cleaned.isEmpty()) {
                     log().debug("Removed question repetition before double newline");
                     return cleaned;
@@ -186,6 +189,7 @@ public abstract class AbstractTool implements Tool {
         
         // Step 1: Remove question repetition
         String cleaned = removeQuestionRepetition(response, query);
+        cleaned = RegexSafety.truncateString(cleaned, RegexSafety.MAX_LLM_TEXT_FOR_REGEX);
         
         // Step 2: Normalize whitespace (multiple spaces/newlines to single)
         cleaned = cleaned.replaceAll("\\s+", " ").trim();

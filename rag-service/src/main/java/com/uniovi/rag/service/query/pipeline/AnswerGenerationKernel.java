@@ -299,12 +299,8 @@ public final class AnswerGenerationKernel {
                 if (validatedResponse != null) {
                     log.info("Successfully generated response on attempt {}", attempt + 1);
                     return validatedResponse;
-                } else {
-                    log.warn("Invalid response from LLM on attempt {} for query: {}", attempt + 1, query);
-                    if (attempt < MAX_RETRIES) {
-                        continue;
-                    }
                 }
+                log.warn("Invalid response from LLM on attempt {} for query: {}", attempt + 1, query);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 log.error("Thread interrupted during retry for query: {}", query, e);

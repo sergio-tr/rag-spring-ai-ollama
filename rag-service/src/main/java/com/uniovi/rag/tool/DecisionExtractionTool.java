@@ -6,6 +6,7 @@ import org.springframework.ai.document.Document;
 
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.util.RegexSafety;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,64 +43,18 @@ public class DecisionExtractionTool extends AbstractTool {
         log().debug("Retrieved {} documents for decision extraction query", docs.size());
         List<String> decisions = new ArrayList<>();
 
-        // Try with NER filtering if available
         if (ner != null && !docs.isEmpty()) {
-            // Use EnhancedNERHandler for intelligent filtering
-            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
-            
-            for (Document doc : filteredDocs) {
-                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-                    continue;
-                }
-                
-                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    String content = doc.getText();
-                    String date = extractor.extractDate(content);
-                    List<String> fragments = extractDecisions(content, query);
-                    for (String fragment : fragments) {
-                        if (fragment != null && !fragment.trim().isEmpty()) {
-                            decisions.add("Meeting minutes from " + (date != null ? date : PLACEHOLDER_UNKNOWN_DATE) + ":\n" + fragment);
-                        }
-                    }
-                }
-            }
+            collectDecisionsWithNerMatching(decisions, nerHandler.filterDocumentsByTemporalContext(docs, ner), query, ner);
         }
-        
+
         if (decisions.isEmpty() && !docs.isEmpty()) {
-            // Fallback to query-based relevance
-            for (Document doc : docs) {
-                if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-                    continue;
-                }
-                
-                String content = doc.getText();
-                String date = extractor.extractDate(content);
-                List<String> fragments = extractDecisions(content, query);
-                for (String fragment : fragments) {
-                    if (fragment != null && !fragment.trim().isEmpty() && isDecisionRelevantToQuery(fragment, query)) {
-                        decisions.add("Meeting minutes from " + (date != null ? date : PLACEHOLDER_UNKNOWN_DATE) + ":\n" + fragment);
-                    }
-                }
-            }
+            collectDecisionsWithRelevanceGate(decisions, docs, query);
         }
-        
+
         if (decisions.isEmpty()) {
-            docs = retrieveAllDocuments(query, ner);
-            if (!docs.isEmpty()) {
-                for (Document doc : docs) {
-                    if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-                        continue;
-                    }
-                    
-                    String content = doc.getText();
-                    String date = extractor.extractDate(content);
-                    List<String> fragments = extractDecisions(content, query);
-                    for (String fragment : fragments) {
-                        if (fragment != null && !fragment.trim().isEmpty() && isDecisionRelevantToQuery(fragment, query)) {
-                            decisions.add("Meeting minutes from " + (date != null ? date : PLACEHOLDER_UNKNOWN_DATE) + ":\n" + fragment);
-                        }
-                    }
-                }
+            List<Document> allDocs = retrieveAllDocuments(query, ner);
+            if (!allDocs.isEmpty()) {
+                collectDecisionsWithRelevanceGate(decisions, allDocs, query);
             }
         }
 
@@ -122,12 +77,53 @@ public class DecisionExtractionTool extends AbstractTool {
         return ToolResult.from(formattedResponse, getClass());
     }
 
+    private static boolean isMissingDocText(Document doc) {
+        return doc == null || doc.getText() == null || doc.getText().trim().isEmpty();
+    }
+
+    private String formatDecisionLine(String date, String fragment) {
+        return "Meeting minutes from " + (date != null ? date : PLACEHOLDER_UNKNOWN_DATE) + ":\n" + fragment;
+    }
+
+    private void collectDecisionsWithNerMatching(List<String> decisions, List<Document> filteredDocs, String query, JSONObject ner) {
+        for (Document doc : filteredDocs) {
+            if (isMissingDocText(doc) || !nerHandler.matchesDocumentWithNER(doc, ner)) {
+                continue;
+            }
+            appendDecisionFragments(decisions, doc, query, false);
+        }
+    }
+
+    private void collectDecisionsWithRelevanceGate(List<String> decisions, List<Document> docs, String query) {
+        for (Document doc : docs) {
+            if (isMissingDocText(doc)) {
+                continue;
+            }
+            appendDecisionFragments(decisions, doc, query, true);
+        }
+    }
+
+    private void appendDecisionFragments(List<String> decisions, Document doc, String query, boolean requireExplicitRelevance) {
+        String content = doc.getText();
+        String date = extractor.extractDate(content);
+        for (String fragment : extractDecisions(content, query)) {
+            if (fragment == null || fragment.trim().isEmpty()) {
+                continue;
+            }
+            if (requireExplicitRelevance && !isDecisionRelevantToQuery(fragment, query)) {
+                continue;
+            }
+            decisions.add(formatDecisionLine(date, fragment));
+        }
+    }
+
     /**
      * Extracts decisions from content using intelligent fragment analysis
      */
     private List<String> extractDecisions(String content, String query) {
+        String bounded = content == null ? "" : RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
         // Split content into fragments and use LLM to determine if it's a relevant decision
-        return Stream.of(content.split("(?<=[.:?])\\s*([\\n\\r])+"))
+        return Stream.of(bounded.split("(?<=[.:?])\\s*([\\n\\r])+"))
                 .map(String::trim)
                 .filter(p -> !p.isBlank())
                 .filter(p -> isDecisionRelevantToQuery(p, query))

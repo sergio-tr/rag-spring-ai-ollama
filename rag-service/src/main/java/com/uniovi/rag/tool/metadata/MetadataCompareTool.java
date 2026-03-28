@@ -57,18 +57,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         docs = mergeDocumentsWhenComparingTwoDates(query, ner, docs, dateCandidates);
         
         // Step 1.5: Extract and validate years from query to avoid confusion (2025 vs 2026)
-        List<String> requestedYears = extractYearsFromQuery(query, ner);
-        if (!requestedYears.isEmpty() && !docs.isEmpty()) {
-            log().info("Filtering documents by requested years: {}", requestedYears);
-            List<Document> filteredDocs = filterDocumentsByYears(docs, requestedYears);
-            if (filteredDocs.isEmpty()) {
-                log().info("No documents found for requested years {} in query: {}", requestedYears, query);
-                String errorMessage = generateSpecificErrorMessage(query, "years", String.join(", ", requestedYears), docs.size(), "No documents found for these years");
-                return ToolResult.from(formatResponse(errorMessage, query), getClass());
-            }
-            docs = filteredDocs;
-            log().info("Filtered to {} documents for years {}", docs.size(), requestedYears);
+        YearNarrowOutcome yearNarrow = applyYearNarrowing(query, ner, docs);
+        if (yearNarrow.earlyExit() != null) {
+            return yearNarrow.earlyExit();
         }
+        docs = yearNarrow.documents();
         
         if (docs.isEmpty()) {
             log().info("No documents found for comparison query: {}", query);
@@ -130,6 +123,26 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         log().info("Generated comparison answer for query: {} with {} data points", query, comparables.size());
         
         return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private YearNarrowOutcome applyYearNarrowing(String query, JSONObject ner, List<Document> docs) {
+        List<String> requestedYears = extractYearsFromQuery(query, ner);
+        if (requestedYears.isEmpty() || docs.isEmpty()) {
+            return new YearNarrowOutcome(docs, null);
+        }
+        log().info("Filtering documents by requested years: {}", requestedYears);
+        List<Document> filteredDocs = filterDocumentsByYears(docs, requestedYears);
+        if (filteredDocs.isEmpty()) {
+            log().info("No documents found for requested years {} in query: {}", requestedYears, query);
+            String errorMessage = generateSpecificErrorMessage(query, "years", String.join(", ", requestedYears), docs.size(),
+                    "No documents found for these years");
+            return new YearNarrowOutcome(null, ToolResult.from(formatResponse(errorMessage, query), getClass()));
+        }
+        log().info("Filtered to {} documents for years {}", filteredDocs.size(), requestedYears);
+        return new YearNarrowOutcome(filteredDocs, null);
+    }
+
+    private record YearNarrowOutcome(List<Document> documents, ToolResult earlyExit) {
     }
 
     private List<Document> mergeDocumentsWhenComparingTwoDates(
@@ -997,11 +1010,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
 
         List<Double> numericValues = comparables.values().stream()
                 .map(cv -> {
-                    if (cv.value instanceof Number) {
-                        return ((Number) cv.value).doubleValue();
-                    } else if (cv.value instanceof String) {
+                    if (cv.value instanceof Number number) {
+                        return number.doubleValue();
+                    } else if (cv.value instanceof String str) {
                         try {
-                            return Double.parseDouble((String) cv.value);
+                            return Double.parseDouble(str);
                         } catch (NumberFormatException e) {
                             return null;
                         }

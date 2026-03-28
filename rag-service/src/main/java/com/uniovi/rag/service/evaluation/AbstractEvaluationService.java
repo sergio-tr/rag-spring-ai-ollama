@@ -42,6 +42,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
     private static final String JSON_KEY_CORRECT_ANSWER = "correct_answer";
 
+    private static final String KEY_MEAN_CONTEXT_SUFFICIENCY = "mean_context_sufficiency";
+
     /** Descriptor for a single feature flag: label, setter and getter on RagFeatureConfiguration. */
     private static final class FlagDescriptor {
         final String label;
@@ -147,7 +149,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             Pattern.CASE_INSENSITIVE
     );
 
-    public AbstractEvaluationService(
+    protected AbstractEvaluationService(
         RagFeatureConfiguration featureConfig,
         RagImplementationProperties implementationProperties,
         ChatClient chatClient,
@@ -424,7 +426,12 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
         for (Map<String, Object> r : results) {
             Object evalObj = r.get("llm_evaluation");
-            String evalText = evalObj instanceof String ? (String) evalObj : (evalObj != null ? evalObj.toString() : null);
+            String evalText = null;
+            if (evalObj instanceof String str) {
+                evalText = str;
+            } else if (evalObj != null) {
+                evalText = evalObj.toString();
+            }
             Map<String, Integer> scores = parseScores(evalText);
             addIfNotNull(correctness, scores.get("correctness"));
             addIfNotNull(contextSufficiency, scores.get("context_sufficiency"));
@@ -434,7 +441,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         }
 
         generation.put("mean_correctness", mean(correctness));
-        generation.put("mean_context_sufficiency", mean(contextSufficiency));
+        generation.put(KEY_MEAN_CONTEXT_SUFFICIENCY, mean(contextSufficiency));
         generation.put("mean_relevance", mean(relevance));
         generation.put("mean_independence", mean(independence));
         generation.put("mean_groundedness", mean(groundedness));
@@ -454,8 +461,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         summary.put("generation", generation);
 
         Map<String, Object> retrieval = new HashMap<>();
-        Object ctxSuff = generation.get("mean_context_sufficiency");
-        if (ctxSuff != null) retrieval.put("mean_context_sufficiency", ctxSuff);
+        Object ctxSuff = generation.get(KEY_MEAN_CONTEXT_SUFFICIENCY);
+        if (ctxSuff != null) retrieval.put(KEY_MEAN_CONTEXT_SUFFICIENCY, ctxSuff);
         Double precisionAtK = computePrecisionAtK(results, DEFAULT_K);
         if (precisionAtK != null) retrieval.put("precision_at_k", precisionAtK);
         Double recallAtK = computeRecallAtK(results, DEFAULT_K);

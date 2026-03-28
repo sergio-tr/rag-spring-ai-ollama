@@ -346,8 +346,7 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
                 return generateFallbackFinalAnswer(query, explanations);
             }
             
-            String cleaned = removeQuestionEcho(response.trim(), query);
-            return cleaned;
+            return removeQuestionEcho(response.trim(), query);
         } catch (Exception e) {
             log().error("Error generating enhanced final answer, using fallback", e);
             return generateFallbackFinalAnswer(query, explanations);
