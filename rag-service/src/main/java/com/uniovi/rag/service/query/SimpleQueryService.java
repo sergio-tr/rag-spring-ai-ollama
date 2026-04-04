@@ -1,7 +1,7 @@
 package com.uniovi.rag.service.query;
 
-import com.uniovi.rag.api.OllamaConnectivityChecker;
-import com.uniovi.rag.model.QueryResponse;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.retriever.ContextRetriever;

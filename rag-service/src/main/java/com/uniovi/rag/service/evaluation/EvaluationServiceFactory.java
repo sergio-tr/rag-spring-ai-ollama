@@ -3,13 +3,13 @@ package com.uniovi.rag.service.evaluation;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.service.analyser.NERQueryEnricher;
 import com.uniovi.rag.service.analyser.NoOpQueryAnalyser;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
-import com.uniovi.rag.service.classifier.ClassifierServiceClient;
-import com.uniovi.rag.service.classifier.QueryClassifier;
+import com.uniovi.rag.infrastructure.classifier.ClassifierServiceClient;
+import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.service.document.SimpleDocumentService;
@@ -20,7 +20,9 @@ import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.DefaultPostRetrievalProcessor;
-import com.uniovi.rag.api.OllamaConnectivityChecker;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.service.config.ConfigResolver;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -32,7 +34,8 @@ import com.uniovi.rag.service.retriever.BasicContextRetriever;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.service.retriever.FilteredContextRetriever;
 import com.uniovi.rag.service.retriever.MinuteDocumentContextRetriever;
-import com.uniovi.rag.model.ExpansionStrategy;
+import com.uniovi.rag.service.retriever.NaiveCorpusContextService;
+import com.uniovi.rag.domain.model.ExpansionStrategy;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.tool.Tool;
 import com.uniovi.rag.tool.*;
@@ -40,6 +43,7 @@ import com.uniovi.rag.tool.metadata.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -69,6 +73,8 @@ public class EvaluationServiceFactory {
     private final int expansionRetryQueryLength;
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
     private final MetadataLlmResponseCacheService metadataLlmResponseCacheService;
+    private final ConfigResolver configResolver;
+    private final ModelCatalogPort modelCatalogPort;
 
     public EvaluationServiceFactory(
         ChatClient chatClient,
@@ -89,7 +95,9 @@ public class EvaluationServiceFactory {
         int expansionMaxQueryLengthForLlm,
         int expansionRetryQueryLength,
         OllamaConnectivityChecker ollamaConnectivityChecker,
-        MetadataLlmResponseCacheService metadataLlmResponseCacheService
+        MetadataLlmResponseCacheService metadataLlmResponseCacheService,
+        ConfigResolver configResolver,
+        ModelCatalogPort modelCatalogPort
     ) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
@@ -110,6 +118,8 @@ public class EvaluationServiceFactory {
         this.expansionRetryQueryLength = expansionRetryQueryLength > 0 ? expansionRetryQueryLength : 200;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
         this.metadataLlmResponseCacheService = metadataLlmResponseCacheService;
+        this.configResolver = configResolver;
+        this.modelCatalogPort = modelCatalogPort;
     }
 
     /**
@@ -165,6 +175,8 @@ public class EvaluationServiceFactory {
             case "simple-process":
                 return new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient, ollamaConnectivityChecker);
             default:
+                NaiveCorpusContextService naiveCorpus =
+                        new NaiveCorpusContextService(new NamedParameterJdbcTemplate(jdbcTemplate));
                 return new ProcessQueryService(
                         featureConfig,
                         toolsConfig,
@@ -181,7 +193,10 @@ public class EvaluationServiceFactory {
                         postRetrievalProcessor,
                         responseValidator,
                         null,  // questionAnswerAdvisor: evaluation uses manual retrieval path
-                        ollamaConnectivityChecker
+                        ollamaConnectivityChecker,
+                        configResolver,
+                        naiveCorpus,
+                        modelCatalogPort
                 );
         }
     }

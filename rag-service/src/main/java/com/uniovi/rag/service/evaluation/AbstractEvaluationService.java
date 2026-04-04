@@ -2,7 +2,7 @@ package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
-import com.uniovi.rag.model.QueryResponse;
+import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.query.QueryService;
 
@@ -716,5 +716,10 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             return out;
         }
         return null;
+    }
+
+    @Override
+    public boolean isEvaluationDataLoaded() {
+        return dataLoaded;
     }
 }

@@ -224,7 +224,9 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         try {
             return cacheable().analyseWithCache(query);
         } catch (Exception e) {
-            log().error("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage(), e);
+            // Degraded path: return heuristic fallback; avoid ERROR + full stack on every LLM/cache glitch.
+            log().warn("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage());
+            log().debug("NER: analysis failure detail", e);
             return createFallbackResponse(query);
         }
     }

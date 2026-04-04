@@ -2,7 +2,7 @@ package com.uniovi.rag.service.guard;
 
 import org.json.JSONObject;
 
-import com.uniovi.rag.model.Loggable;
+import com.uniovi.rag.infrastructure.observability.Loggable;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;

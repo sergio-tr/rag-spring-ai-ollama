@@ -1,29 +1,33 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.model.ExpansionStrategy;
+import com.uniovi.rag.domain.model.ExpansionStrategy;
 import com.uniovi.rag.service.analyser.MinuteNERQueryAnalyser;
 import com.uniovi.rag.service.analyser.NERQueryEnricher;
 import com.uniovi.rag.service.analyser.NoOpQueryAnalyser;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
-import com.uniovi.rag.observability.ObservabilitySupport;
-import com.uniovi.rag.observability.TracedDateExistenceGuard;
-import com.uniovi.rag.observability.TracedQueryAnalyser;
-import com.uniovi.rag.observability.TracedQueryClassifier;
-import com.uniovi.rag.observability.TracedQueryExpander;
-import com.uniovi.rag.observability.TracedQueryService;
-import com.uniovi.rag.observability.TracedReasoningStrategy;
-import com.uniovi.rag.observability.TracedResponseRanker;
-import com.uniovi.rag.observability.TracedResponseValidator;
-import com.uniovi.rag.service.classifier.ClassifierServiceClient;
-import com.uniovi.rag.service.classifier.QueryClassifier;
+import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
+import com.uniovi.rag.infrastructure.observability.TracedDateExistenceGuard;
+import com.uniovi.rag.infrastructure.observability.TracedQueryAnalyser;
+import com.uniovi.rag.infrastructure.observability.TracedQueryClassifier;
+import com.uniovi.rag.infrastructure.observability.TracedQueryExpander;
+import com.uniovi.rag.infrastructure.observability.TracedQueryService;
+import com.uniovi.rag.infrastructure.observability.TracedReasoningStrategy;
+import com.uniovi.rag.infrastructure.observability.TracedResponseRanker;
+import com.uniovi.rag.infrastructure.observability.TracedResponseValidator;
+import com.uniovi.rag.infrastructure.classifier.ClassifierInferenceMetricsDecorator;
+import com.uniovi.rag.infrastructure.classifier.ClassifierServiceClient;
+import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
+import io.micrometer.core.instrument.MeterRegistry;
 import com.uniovi.rag.service.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
-import com.uniovi.rag.api.OllamaConnectivityChecker;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.service.query.LLMResponseValidatorService;
+import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.service.config.ConfigResolver;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -32,23 +36,26 @@ import com.uniovi.rag.service.query.SimpleQueryService;
 import com.uniovi.rag.service.ranker.FaithfulnessRanker;
 import com.uniovi.rag.service.ranker.LLMAsJudgeRanker;
 import com.uniovi.rag.service.ranker.ResponseRanker;
-import com.uniovi.rag.service.reasoning.COTReasoningStrategy;
-import com.uniovi.rag.service.reasoning.PlanAndVerifyReasoningStrategy;
 import com.uniovi.rag.service.reasoning.ReasoningStrategy;
-import com.uniovi.rag.service.reasoning.SimpleReasoningStrategy;
+import com.uniovi.rag.service.reasoning.SelectingReasoningStrategy;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.service.retriever.NaiveCorpusContextService;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 
 @Configuration
 public class RagQueryConfiguration {
@@ -84,19 +91,7 @@ public class RagQueryConfiguration {
             ChatClient chatClient,
             @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
     ) {
-        String strategy = reasoningProperties.getStrategy() != null ? reasoningProperties.getStrategy().toUpperCase() : "SIMPLE";
-        ReasoningStrategy raw;
-        switch (strategy) {
-            case "COT":
-                raw = new COTReasoningStrategy(chatClient);
-                break;
-            case "PLAN_AND_VERIFY":
-                raw = new PlanAndVerifyReasoningStrategy(chatClient);
-                break;
-            default:
-                raw = new SimpleReasoningStrategy();
-                break;
-        }
+        ReasoningStrategy raw = new SelectingReasoningStrategy(chatClient, reasoningProperties);
         if (observability != null) {
             return new TracedReasoningStrategy(raw, observability);
         }
@@ -151,14 +146,35 @@ public class RagQueryConfiguration {
         return raw;
     }
 
+    /**
+     * Shared {@link RestTemplate} for classifier HTTP calls. Built via {@link RestTemplateBuilder} so
+     * Micrometer tracing injects W3C propagation on outbound requests (profile {@code infra}).
+     */
+    @Bean(name = "classifierRestTemplate")
+    public RestTemplate classifierRestTemplate(
+            RestTemplateBuilder restTemplateBuilder,
+            @Value("${rag.classifier.service.timeout-ms:5000}") int timeoutMs) {
+        int t = timeoutMs > 0 ? timeoutMs : 5000;
+        return restTemplateBuilder
+                .setConnectTimeout(Duration.ofMillis(t))
+                .setReadTimeout(Duration.ofMillis(t))
+                .build();
+    }
+
     @Bean
     public QueryClassifier queryClassifier(
         @Value("${rag.classifier.service.url:http://localhost:8000}") String classifierServiceUrl,
         @Value("${rag.classifier.model-id:default}") String modelId,
         @Value("${rag.classifier.service.timeout-ms:5000}") int timeoutMs,
-        @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+        @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability,
+        @org.springframework.beans.factory.annotation.Autowired(required = false) MeterRegistry meterRegistry,
+        @Qualifier("classifierRestTemplate") RestTemplate classifierRestTemplate
     ) {
-        QueryClassifier raw = new ClassifierServiceClient(classifierServiceUrl, modelId, timeoutMs);
+        QueryClassifier raw =
+                new ClassifierServiceClient(classifierServiceUrl, modelId, timeoutMs, classifierRestTemplate);
+        if (meterRegistry != null) {
+            raw = new ClassifierInferenceMetricsDecorator(raw, meterRegistry);
+        }
         if (observability != null) {
             return new TracedQueryClassifier(raw, observability);
         }
@@ -243,6 +259,9 @@ public class RagQueryConfiguration {
             ResponseValidator responseValidator,
             QuestionAnswerAdvisor questionAnswerAdvisor,
             OllamaConnectivityChecker ollamaConnectivityChecker,
+            ConfigResolver configResolver,
+            NaiveCorpusContextService naiveCorpusContextService,
+            ModelCatalogPort modelCatalogPort,
             RagImplementationProperties implProps,
             @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
     ) {
@@ -272,7 +291,10 @@ public class RagQueryConfiguration {
                         postRetrievalProcessor,
                         responseValidator,
                         questionAnswerAdvisor,
-                        ollamaConnectivityChecker
+                        ollamaConnectivityChecker,
+                        configResolver,
+                        naiveCorpusContextService,
+                        modelCatalogPort
                 );
                 break;
         }

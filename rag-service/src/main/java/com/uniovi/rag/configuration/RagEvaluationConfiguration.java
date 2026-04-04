@@ -9,12 +9,14 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import com.uniovi.rag.observability.ObservabilitySupport;
-import com.uniovi.rag.observability.TracedEvaluationService;
-import com.uniovi.rag.api.OllamaConnectivityChecker;
+import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
+import com.uniovi.rag.infrastructure.observability.TracedEvaluationService;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.evaluation.DatasetMinuteEvaluationService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
+import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.service.config.ConfigResolver;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
@@ -50,13 +52,15 @@ public class RagEvaluationConfiguration {
         @Value("${rag.expansion.max-query-length-for-llm:500}") int expansionMaxQueryLengthForLlm,
         @Value("${rag.expansion.retry-query-length:200}") int expansionRetryQueryLength,
         OllamaConnectivityChecker ollamaConnectivityChecker,
-        MetadataLlmResponseCacheService metadataLlmResponseCacheService
+        MetadataLlmResponseCacheService metadataLlmResponseCacheService,
+        ConfigResolver configResolver,
+        ModelCatalogPort modelCatalogPort
     ) {
         return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
                 classifierServiceUrl, classifierModelId, classifierTimeoutMs, chunkMaxChars, responseValidator, documentContentExtractor,
                 expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
                 expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker,
-                metadataLlmResponseCacheService);
+                metadataLlmResponseCacheService, configResolver, modelCatalogPort);
     }
 
     @Bean

@@ -1,9 +1,9 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.model.QueryType;
-import com.uniovi.rag.observability.ObservabilitySupport;
-import com.uniovi.rag.observability.TracedMeetingMinutesToolsAdapter;
-import com.uniovi.rag.observability.TracedTool;
+import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
+import com.uniovi.rag.infrastructure.observability.TracedMeetingMinutesToolsAdapter;
+import com.uniovi.rag.infrastructure.observability.TracedTool;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;

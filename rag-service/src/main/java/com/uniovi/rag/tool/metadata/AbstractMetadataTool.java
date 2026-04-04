@@ -1,13 +1,13 @@
 package com.uniovi.rag.tool.metadata;
 
 import com.uniovi.rag.util.RegexSafety;
-import com.uniovi.rag.observability.ContextPropagatingFutures;
+import com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures;
 import com.uniovi.rag.tool.AbstractTool;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.cache.annotation.Cacheable;
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import org.springframework.beans.factory.annotation.Autowired;

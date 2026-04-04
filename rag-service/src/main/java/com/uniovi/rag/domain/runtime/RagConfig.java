@@ -1,0 +1,143 @@
+package com.uniovi.rag.domain.runtime;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.uniovi.rag.configuration.RagFeatureConfiguration;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/**
+ * Materialized RAG configuration after the 4-level cascade (system, user, project, runtime).
+ * Immutable snapshot used by the query pipeline.
+ */
+public record RagConfig(
+        boolean expansionEnabled,
+        boolean nerEnabled,
+        boolean toolsEnabled,
+        boolean metadataEnabled,
+        boolean reasoningEnabled,
+        boolean rankerEnabled,
+        boolean postRetrievalEnabled,
+        boolean functionCallingEnabled,
+        boolean useRetrieval,
+        boolean useAdvisor,
+        int topK,
+        double similarityThreshold,
+        String llmModel,
+        String embeddingModel,
+        String classifierModelId,
+        String reasoningStrategy,
+        /**
+         * When {@code true} and the request is project-scoped, prompt context is built by concatenating
+         * {@code vector_store} chunks for that project (capped by {@link #naiveFullCorpusMaxChars()}) instead of similarity search.
+         */
+        boolean naiveFullCorpusInPromptEnabled,
+        int naiveFullCorpusMaxChars
+) {
+
+    public static final int DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS = 24_000;
+
+    public static RagConfig fromFeatureConfiguration(
+            RagFeatureConfiguration features,
+            int topK,
+            double similarityThreshold,
+            String llmModel,
+            String embeddingModel,
+            String classifierModelId,
+            String reasoningStrategy) {
+        return new RagConfig(
+                features.isExpansionEnabled(),
+                features.isNerEnabled(),
+                features.isToolsEnabled(),
+                features.isMetadataEnabled(),
+                features.isReasoningEnabled(),
+                features.isRankerEnabled(),
+                features.isPostRetrievalEnabled(),
+                features.isFunctionCallingEnabled(),
+                features.isUseRetrieval(),
+                features.isUseAdvisor(),
+                topK,
+                similarityThreshold,
+                llmModel,
+                embeddingModel,
+                classifierModelId,
+                reasoningStrategy,
+                false,
+                DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS
+        );
+    }
+
+    /**
+     * Applies JSON key overrides stored in {@code rag_configuration.values} or {@code default_system_configuration.values}.
+     * Unknown keys are ignored.
+     */
+    public static RagConfig applyJsonOverrides(RagConfig base, JsonNode json) {
+        if (json == null || json.isNull() || json.isEmpty()) {
+            return base;
+        }
+        int maxChars = readInt(json, "naiveFullCorpusMaxChars", base.naiveFullCorpusMaxChars);
+        maxChars = Math.clamp(maxChars, 1024, 500_000);
+        return new RagConfig(
+                readBool(json, "expansionEnabled", base.expansionEnabled),
+                readBool(json, "nerEnabled", base.nerEnabled),
+                readBool(json, "toolsEnabled", base.toolsEnabled),
+                readBool(json, "metadataEnabled", base.metadataEnabled),
+                readBool(json, "reasoningEnabled", base.reasoningEnabled),
+                readBool(json, "rankerEnabled", base.rankerEnabled),
+                readBool(json, "postRetrievalEnabled", base.postRetrievalEnabled),
+                readBool(json, "functionCallingEnabled", base.functionCallingEnabled),
+                readBool(json, "useRetrieval", base.useRetrieval),
+                readBool(json, "useAdvisor", base.useAdvisor),
+                readInt(json, "topK", base.topK),
+                readDouble(json, "similarityThreshold", base.similarityThreshold),
+                readText(json, "llmModel", base.llmModel),
+                readText(json, "embeddingModel", base.embeddingModel),
+                readText(json, "classifierModelId", base.classifierModelId),
+                readText(json, "reasoningStrategy", base.reasoningStrategy),
+                readBool(json, "naiveFullCorpusInPromptEnabled", base.naiveFullCorpusInPromptEnabled),
+                maxChars
+        );
+    }
+
+    private static boolean readBool(JsonNode json, String field, boolean defaultValue) {
+        return json.hasNonNull(field) && json.get(field).isBoolean() ? json.get(field).asBoolean() : defaultValue;
+    }
+
+    private static int readInt(JsonNode json, String field, int defaultValue) {
+        return json.hasNonNull(field) && json.get(field).isNumber() ? json.get(field).asInt() : defaultValue;
+    }
+
+    private static double readDouble(JsonNode json, String field, double defaultValue) {
+        return json.hasNonNull(field) && json.get(field).isNumber() ? json.get(field).asDouble() : defaultValue;
+    }
+
+    private static String readText(JsonNode json, String field, String defaultValue) {
+        return json.hasNonNull(field) && json.get(field).isTextual() ? json.get(field).asText() : defaultValue;
+    }
+
+    /**
+     * Snapshot as JSON-compatible map; keys match {@link #applyJsonOverrides(RagConfig, JsonNode)}.
+     */
+    public Map<String, Object> toValueMap() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("expansionEnabled", expansionEnabled);
+        m.put("nerEnabled", nerEnabled);
+        m.put("toolsEnabled", toolsEnabled);
+        m.put("metadataEnabled", metadataEnabled);
+        m.put("reasoningEnabled", reasoningEnabled);
+        m.put("rankerEnabled", rankerEnabled);
+        m.put("postRetrievalEnabled", postRetrievalEnabled);
+        m.put("functionCallingEnabled", functionCallingEnabled);
+        m.put("useRetrieval", useRetrieval);
+        m.put("useAdvisor", useAdvisor);
+        m.put("topK", topK);
+        m.put("similarityThreshold", similarityThreshold);
+        m.put("llmModel", llmModel);
+        m.put("embeddingModel", embeddingModel);
+        m.put("classifierModelId", classifierModelId);
+        m.put("reasoningStrategy", reasoningStrategy);
+        m.put("naiveFullCorpusInPromptEnabled", naiveFullCorpusInPromptEnabled);
+        m.put("naiveFullCorpusMaxChars", naiveFullCorpusMaxChars);
+        return m;
+    }
+}

@@ -1,6 +1,6 @@
 package com.uniovi.rag.tool.metadata;
 
-import com.uniovi.rag.model.*;
+import com.uniovi.rag.domain.model.*;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;

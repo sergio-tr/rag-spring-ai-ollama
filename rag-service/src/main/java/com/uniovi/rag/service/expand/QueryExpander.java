@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.expand;
 
-import com.uniovi.rag.model.Loggable;
+import com.uniovi.rag.infrastructure.observability.Loggable;
 
 public interface QueryExpander extends Loggable {
 

@@ -1,6 +1,8 @@
 package com.uniovi.rag.service.retriever;
 
-import com.uniovi.rag.model.Loggable;
+import com.uniovi.rag.domain.runtime.RagExecutionContext;
+import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import com.uniovi.rag.infrastructure.observability.Loggable;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
@@ -12,9 +14,11 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
@@ -53,12 +57,79 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     public List<Document> retrieve(String query) {
         SearchRequest req = SearchRequest.builder()
                 .query(query)
-                .topK(topK)
-                .similarityThreshold(similarityThreshold)
+                .topK(effectiveTopK())
+                .similarityThreshold(effectiveSimilarityThreshold())
                 .build();
         List<Document> docs = vectorStore.similaritySearch(req);
+        docs = applyProjectAndDocumentFilter(docs);
         // Group and combine chunks by document_id to ensure complete content
         return groupAndCombineChunks(docs);
+    }
+
+    protected int effectiveTopK() {
+        RagExecutionContext ctx = RagExecutionContextHolder.get();
+        if (ctx != null && ctx.resolvedConfig() != null && ctx.resolvedConfig().topK() > 0) {
+            return ctx.resolvedConfig().topK();
+        }
+        return topK;
+    }
+
+    protected double effectiveSimilarityThreshold() {
+        RagExecutionContext ctx = RagExecutionContextHolder.get();
+        if (ctx != null && ctx.resolvedConfig() != null && ctx.resolvedConfig().similarityThreshold() > 0) {
+            return ctx.resolvedConfig().similarityThreshold();
+        }
+        return similarityThreshold;
+    }
+
+    /**
+     * When {@link RagExecutionContext} scopes by project or document ids, drop chunks that do not match.
+     * Legacy chunks without {@code projectId} metadata remain visible (backward compatible).
+     */
+    protected List<Document> applyProjectAndDocumentFilter(List<Document> docs) {
+        RagExecutionContext ctx = RagExecutionContextHolder.get();
+        if (ctx == null || !ctx.restrictsByProject()) {
+            return docs;
+        }
+        String pid = ctx.projectId();
+        List<Document> byProject = docs.stream()
+                .filter(d -> passesProjectMetadata(d, pid))
+                .toList();
+        if (ctx.documentFilterIsAll()) {
+            return byProject;
+        }
+        Set<String> allowed = new HashSet<>(ctx.documentFilter());
+        return byProject.stream()
+                .filter(d -> passesDocumentAllowlist(d, allowed))
+                .toList();
+    }
+
+    private static boolean passesProjectMetadata(Document d, String projectId) {
+        if (d.getMetadata() == null) {
+            return true;
+        }
+        Object p = d.getMetadata().get("projectId");
+        if (p == null) {
+            return true;
+        }
+        return projectId.equals(String.valueOf(p));
+    }
+
+    private static boolean passesDocumentAllowlist(Document d, Set<String> allowed) {
+        if (d.getMetadata() == null) {
+            return false;
+        }
+        Object id = d.getMetadata().get("document_id");
+        if (id == null) {
+            id = d.getMetadata().get("documentId");
+        }
+        if (id == null) {
+            id = d.getMetadata().get("projectDocumentId");
+        }
+        if (id == null) {
+            return false;
+        }
+        return allowed.contains(String.valueOf(id));
     }
 
     @Override

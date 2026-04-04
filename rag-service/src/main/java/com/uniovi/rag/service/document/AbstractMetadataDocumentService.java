@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.document;
 
-import com.uniovi.rag.exception.DocumentAlreadyExistsException;
+import com.uniovi.rag.domain.exception.DocumentAlreadyExistsException;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;

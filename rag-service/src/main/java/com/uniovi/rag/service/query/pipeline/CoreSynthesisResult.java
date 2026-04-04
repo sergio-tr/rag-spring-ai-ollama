@@ -1,8 +1,8 @@
 package com.uniovi.rag.service.query.pipeline;
 
-import com.uniovi.rag.model.DraftAndContext;
-import com.uniovi.rag.model.QueryResponse;
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.application.model.DraftAndContext;
+import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.domain.model.QueryType;
 
 /**
  * Output of the single synthesis core ({@link ResponseSynthesisPipeline#synthesizeCore}): always a
