@@ -57,7 +57,7 @@ if [ "$WITH_OBS" = "true" ]; then
   COMPOSE_FILES+=(-f "${DOCKER_DIR}/compose.obs.yml")
 fi
 if [ "$WITH_GPU" = "true" ]; then
-  COMPOSE_FILES+=(-f "${DOCKER_DIR}/compose.ollama-gpu.yml")
+  COMPOSE_FILES+=(-f "${DOCKER_DIR}/compose.ollama-local-gpu.yml")
 fi
 
 ENV_ARGS=(

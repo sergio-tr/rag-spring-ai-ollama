@@ -6,10 +6,12 @@ Orchestration files (`docker-compose.yml`, `compose.*.yml`) and operational docu
 
 **Images:** Every `FROM` in this monorepo targets a **Linux** userland (OpenJDK/Eclipse Temurin, official Postgres, Node, Python slim, Ollama CUDA variants, etc.). Compose is validated on **Linux** hosts and in **CI** (`ubuntu-*`); use Linux or WSL2 locally for parity.
 
-Typical start from here:
+**GHCR tags ([`build-images.yml`](../.github/workflows/build-images.yml)):** Each built service is pushed as `ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<github_sha>` and also `:latest`. For **reproducible deploy and rollback**, pin by **commit SHA** tag. Treat **`latest` as non-contractual** in runbooks and thesis evidence.
+
+Typical start from the `docker/` directory (canonical entry point: `./docker/scripts/up.sh` from the repo root):
 
 ```bash
-docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d
+docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env --env-file ../webapp/.env up -d
 ```
 
 With observability, add `-f compose.obs.yml` and `--env-file ../observability/.env` (see `observability/README.md`).
@@ -20,7 +22,7 @@ With observability, add `-f compose.obs.yml` and `--env-file ../observability/.e
 
 ## Execution modes
 
-Quick guide to run the stack with Docker Compose (no webapp).
+Quick guide to run the stack with Docker Compose. The **default** `docker-compose.yml` includes **`webapp`** (Next.js) in addition to `postgres`, `classifier-service`, and `backend`.
 
 Scripts and commands assume the repo root, with `.env` files created via:
 
@@ -30,9 +32,9 @@ Scripts and commands assume the repo root, with `.env` files created via:
 
 ### Base (main stack)
 
-Includes: `postgres`, `classifier-service`, `backend`.
+Includes: `postgres`, `classifier-service`, `backend`, **`webapp`**.
 
-Example:
+Example (aligned with `docker/scripts/docker-compose.sh` env chain):
 
 ```bash
 cd docker
@@ -40,6 +42,7 @@ docker compose \
   --env-file ../db/.env \
   --env-file ../classifier-service/.env \
   --env-file ../rag-service/.env \
+  --env-file ../webapp/.env \
   up -d
 ```
 
@@ -57,6 +60,7 @@ docker compose \
   --env-file ../db/.env \
   --env-file ../rag-service/.env \
   --env-file ../classifier-service/.env \
+  --env-file ../webapp/.env \
   --env-file ../observability/.env \
   up -d
 ```
@@ -71,10 +75,11 @@ Example:
 cd docker
 docker compose \
   -f docker-compose.yml \
-  -f compose.ollama-gpu.yml \
+  -f compose.ollama-local-gpu.yml \
   --env-file ../db/.env \
   --env-file ../rag-service/.env \
   --env-file ../classifier-service/.env \
+  --env-file ../webapp/.env \
   --env-file ../ollama/.env \
   up -d
 ```
@@ -96,7 +101,7 @@ Start / stop:
 Options:
 
 - Use `./docker/scripts/up.sh prod --obs` to include `compose.obs.yml` (OTEL, Jaeger, Prometheus, Grafana).
-- `--gpu` or `--ollama`: include `compose.ollama-gpu.yml` (requires `ollama/.env` and NVIDIA GPU / Container Toolkit)
+- `--gpu` or `--ollama`: include `compose.ollama-local-gpu.yml` (requires `ollama/.env` and NVIDIA GPU / Container Toolkit)
 - `--volumes` (only `down.sh`): also remove named volumes
 
 ## Deployment runbook

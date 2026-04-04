@@ -1,17 +1,6 @@
 #!/usr/bin/env bash
-# Start stack with docker compose. Usage: ./up.sh [gpu|obs|'']
-#   no args: docker compose up -d
-#   gpu: add compose.ollama-gpu.yml (Ollama with GPU)
-#   obs: add compose.obs.yml (Jaeger, Prometheus, Grafana)
-set -e
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$ROOT_DIR"
-COMPOSE_ARGS="-f docker-compose.yml"
-case "${1:-}" in
-  gpu)  COMPOSE_ARGS="$COMPOSE_ARGS -f compose.ollama-gpu.yml" ;;
-  obs)  COMPOSE_ARGS="$COMPOSE_ARGS -f compose.obs.yml" ;;
-  "")   ;;
-  *)    echo "Usage: $0 [gpu|obs]"; exit 1 ;;
-esac
-docker compose $COMPOSE_ARGS up -d
+# Delegates to the canonical operator entry point: docker/scripts/up.sh (repo root).
+# Do not duplicate compose -f chains here; see docker/README.md and docker/scripts/README.md.
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+exec "$REPO_ROOT/docker/scripts/up.sh" "$@"

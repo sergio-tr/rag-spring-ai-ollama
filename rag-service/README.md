@@ -35,13 +35,14 @@ This starts **`backend-dev`** (`docker/compose.dev.yml` + `Dockerfile.dev`): bin
 
 ### With Docker Compose
 
-Each component has its own `.env`: **db/.env** for the database, **rag-service/.env** for the backend, **classifier-service/.env** for the classifier, and **observability/.env** (if you use observability). Create defaults from the repo root:
+Each component has its own `.env`: **db/.env**, **rag-service/.env**, **classifier-service/.env**, **webapp/.env** (the default `docker-compose.yml` includes **webapp**), and **observability/.env** when using observability. Create defaults from the repo root:
 
 ```bash
 ./docker/scripts/create-env-all.sh
-cd docker
-docker compose --env-file ../db/.env --env-file ../rag-service/.env --env-file ../classifier-service/.env up -d
+./docker/scripts/up.sh prod
 ```
+
+Canonical compose flags live in [**docker/scripts/up.sh**](../docker/scripts/up.sh) and [**docker/scripts/docker-compose.sh**](../docker/scripts/docker-compose.sh). The file **`rag-service/scripts/up.sh`** only **delegates** to `docker/scripts/up.sh` — do not duplicate `-f` chains here.
 
 The `postgres` and `backend` services load **db/.env** for DB credentials. Port and app defaults are in the compose file. For observability, see [observability/README.md](../observability/README.md); run with `--env-file ../observability/.env` when using `compose.obs.yml`.
 
@@ -157,7 +158,7 @@ Single pipeline for product and evaluation: `QueryRuntimeComponentsFactory` buil
 
 ## Ollama requirement (Docker without GPU compose)
 
-The default backend image talks to Ollama at `SPRING_AI_OLLAMA_BASE_URL` (from `docker-compose.yml`, usually `http://host.docker.internal:11434`). **Ollama must be reachable** (host or container). On startup, the backend calls Ollama’s HTTP API (`POST /api/pull`) to **download** the chat and embedding models configured in `spring.ai.ollama.chat.model` / `spring.ai.ollama.embedding.model` if they are missing (`rag.ollama.auto-pull-enabled=true` by default). Disable auto-pull in air-gapped environments and provide models manually. Use `compose.ollama-gpu.yml` (NVIDIA GPU only; `./docker/scripts/up.sh … --gpu` or `--ollama`) so Ollama runs in Docker (`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`).
+The default backend image talks to Ollama at `SPRING_AI_OLLAMA_BASE_URL` (from `docker-compose.yml`, usually `http://host.docker.internal:11434`). **Ollama must be reachable** (host or container). On startup, the backend calls Ollama’s HTTP API (`POST /api/pull`) to **download** the chat and embedding models configured in `spring.ai.ollama.chat.model` / `spring.ai.ollama.embedding.model` if they are missing (`rag.ollama.auto-pull-enabled=true` by default). Disable auto-pull in air-gapped environments and provide models manually. Use `compose.ollama-local-gpu.yml` (NVIDIA GPU only; `./docker/scripts/up.sh … --gpu` or `--ollama`) so Ollama runs in Docker (`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`).
 
 ## Execution modes
 Quick reference and commands: [docker/README.md](../docker/README.md) (section **Execution modes**).
