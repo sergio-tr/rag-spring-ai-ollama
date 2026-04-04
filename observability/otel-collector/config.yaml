@@ -14,6 +14,11 @@ receivers:
     databases:
       - ${env:OBS_PG_DB}
     collection_interval: 10s
+    # Brief pause before first scrape (avoids races if DNS settles after Postgres is "healthy").
+    initial_delay: 5s
+    # Default is TLS on; dev Postgres images usually have no SSL.
+    tls:
+      insecure: true
 
 processors:
   memory_limiter:

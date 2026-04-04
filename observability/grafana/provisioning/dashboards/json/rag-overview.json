@@ -67,12 +67,12 @@
       "targets": [
         {
           "expr": "rate(rag_classifier_calls_total{job=\"backend\",status=\"success\"}[5m]) * 60",
-          "legendFormat": "success - {{modelId}}",
+          "legendFormat": "success",
           "refId": "A"
         },
         {
-          "expr": "rate(rag_classifier_calls_total{job=\"backend\",status=\"error\"}[5m]) * 60",
-          "legendFormat": "error - {{modelId}}",
+          "expr": "rate(rag_classifier_calls_total{job=\"backend\",status=\"null_result\"}[5m]) * 60",
+          "legendFormat": "null_result (fallback)",
           "refId": "B"
         }
       ],
@@ -104,8 +104,27 @@
       "type": "timeseries"
     },
     {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "unit": "short" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "expr": "sum by (bucket) (rate(rag_retrieval_documents_total{job=\"backend\"}[5m])) * 60",
+          "legendFormat": "bucket={{bucket}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Retrieval document count (bucketed requests/min)",
+      "type": "timeseries"
+    },
+    {
       "datasource": { "type": "jaeger", "uid": "jaeger" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 24 },
       "id": 5,
       "options": {
         "dedupStrategy": "none",
