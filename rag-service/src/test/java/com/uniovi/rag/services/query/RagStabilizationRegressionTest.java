@@ -1,7 +1,7 @@
 package com.uniovi.rag.services.query;
 
-import com.uniovi.rag.model.QueryResponse;
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.query.QueryService;
 
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
@@ -9,6 +9,7 @@ import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -25,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Import({ TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class })
 @ActiveProfiles("test")
+@EnabledIf(value = "com.uniovi.rag.testsupport.TestEnvironment#isSpringBootPostgresAvailable",
+        disabledReason = "Set SPRING_DATASOURCE_URL (e.g. CI) or start Docker for Testcontainers")
 class RagStabilizationRegressionTest {
 
     @Autowired

@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.extraction;
 
-import com.uniovi.rag.model.Cluster;
+import com.uniovi.rag.domain.model.Cluster;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

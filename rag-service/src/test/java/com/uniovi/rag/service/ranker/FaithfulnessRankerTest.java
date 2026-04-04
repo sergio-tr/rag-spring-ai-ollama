@@ -1,7 +1,7 @@
 package com.uniovi.rag.service.ranker;
 
-import com.uniovi.rag.model.CandidateResponse;
-import com.uniovi.rag.model.RankerResult;
+import com.uniovi.rag.application.model.CandidateResponse;
+import com.uniovi.rag.domain.model.RankerResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;

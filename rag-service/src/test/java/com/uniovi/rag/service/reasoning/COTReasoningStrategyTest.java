@@ -1,8 +1,8 @@
 package com.uniovi.rag.service.reasoning;
 
-import com.uniovi.rag.model.PostStepOutput;
-import com.uniovi.rag.model.QueryType;
-import com.uniovi.rag.model.ReasoningPreOutput;
+import com.uniovi.rag.application.model.PostStepOutput;
+import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.application.model.ReasoningPreOutput;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

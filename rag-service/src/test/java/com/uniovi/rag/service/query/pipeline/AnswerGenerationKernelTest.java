@@ -1,8 +1,8 @@
 package com.uniovi.rag.service.query.pipeline;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
-import com.uniovi.rag.model.DraftAndContext;
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.application.model.DraftAndContext;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.analyser.NERQueryEnricher;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.service.query.ResponseValidator;

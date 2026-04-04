@@ -1,6 +1,6 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.tool.Tool;
 import org.junit.jupiter.api.Test;
 

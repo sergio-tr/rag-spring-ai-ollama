@@ -1,23 +1,27 @@
 package com.uniovi.rag.service.query;
 
+import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
-import com.uniovi.rag.model.PostStepOutput;
-import com.uniovi.rag.model.QueryType;
-import com.uniovi.rag.model.QueryResponse;
-import com.uniovi.rag.model.RankerResult;
-import com.uniovi.rag.model.ReasoningPreOutput;
+import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.service.config.ConfigResolver;
+import com.uniovi.rag.application.model.PostStepOutput;
+import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.domain.model.RankerResult;
+import com.uniovi.rag.application.model.ReasoningPreOutput;
 import com.uniovi.rag.service.analyser.NERQueryEnricher;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
-import com.uniovi.rag.service.classifier.QueryClassifier;
+import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.service.ranker.ResponseRanker;
 import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.retriever.ContextRetriever;
-import com.uniovi.rag.api.OllamaConnectivityChecker;
-import com.uniovi.rag.exception.RagServiceException;
+import com.uniovi.rag.service.retriever.NaiveCorpusContextService;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.tool.Tool;
@@ -31,11 +35,16 @@ import org.springframework.ai.document.Document;
 import org.springframework.web.client.ResourceAccessException;
 
 import java.net.ConnectException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.*;
 
@@ -56,6 +65,8 @@ class ProcessQueryServiceTest {
     private PostRetrievalProcessor postRetrievalProcessor;
     private ResponseValidator responseValidator;
     private OllamaConnectivityChecker ollamaConnectivityChecker;
+    private ConfigResolver configResolver;
+    private ModelCatalogPort modelCatalogPort;
     private ProcessQueryService service;
 
     @BeforeEach
@@ -81,6 +92,11 @@ class ProcessQueryServiceTest {
         postRetrievalProcessor = mock(PostRetrievalProcessor.class);
         responseValidator = mock(ResponseValidator.class);
         ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
+        configResolver = mock(ConfigResolver.class);
+        modelCatalogPort = mock(ModelCatalogPort.class);
+        when(modelCatalogPort.allowedLlmNamesInGovernance()).thenReturn(Collections.emptySet());
+        when(configResolver.resolve(isNull(), isNull(), isNull())).thenAnswer(inv -> RagConfig.fromFeatureConfiguration(
+                featureConfig, 10, 0.7, "gemma3:4b", "mxbai-embed-large", "default", "SIMPLE"));
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         when(expander.expand(anyString())).thenAnswer(inv -> inv.getArgument(0));
@@ -109,7 +125,10 @@ class ProcessQueryServiceTest {
                 postRetrievalProcessor,
                 responseValidator,
                 advisor,
-                ollamaConnectivityChecker
+                ollamaConnectivityChecker,
+                configResolver,
+                mock(NaiveCorpusContextService.class),
+                modelCatalogPort
         );
     }
 

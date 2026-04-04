@@ -1,6 +1,6 @@
 package com.uniovi.rag.tool.metadata;
 
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;

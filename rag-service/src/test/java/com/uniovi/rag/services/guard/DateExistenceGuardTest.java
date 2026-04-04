@@ -1,6 +1,6 @@
 package com.uniovi.rag.services.guard;
 
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;

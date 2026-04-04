@@ -1,10 +1,12 @@
 package com.uniovi.rag.service.evaluation;
 
-import com.uniovi.rag.api.OllamaConnectivityChecker;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.query.QueryService;
+import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.service.config.ConfigResolver;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.service.query.SimpleQueryService;
 import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
@@ -33,6 +35,8 @@ class EvaluationServiceFactoryTest {
         DocumentContentExtractor documentContentExtractor = mock(DocumentContentExtractor.class);
         OllamaConnectivityChecker ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
         MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
+        ConfigResolver configResolver = mock(ConfigResolver.class);
+        ModelCatalogPort modelCatalogPort = mock(ModelCatalogPort.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         factory = new EvaluationServiceFactory(
@@ -54,7 +58,9 @@ class EvaluationServiceFactoryTest {
                 500,
                 200,
                 ollamaConnectivityChecker,
-                metadataLlmResponseCacheService
+                metadataLlmResponseCacheService,
+                configResolver,
+                modelCatalogPort
         );
         featureConfig = new RagFeatureConfiguration();
         implProps = new RagImplementationProperties();

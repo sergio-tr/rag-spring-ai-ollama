@@ -1,6 +1,8 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.api.OllamaConnectivityChecker;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.service.config.ConfigResolver;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -30,6 +32,8 @@ class RagEvaluationConfigurationTest {
         DocumentContentExtractor documentContentExtractor = mock(DocumentContentExtractor.class);
         OllamaConnectivityChecker ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
         MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
+        ConfigResolver configResolver = mock(ConfigResolver.class);
+        ModelCatalogPort modelCatalogPort = mock(ModelCatalogPort.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         EvaluationServiceFactory factory = config.evaluationServiceFactory(
@@ -51,7 +55,9 @@ class RagEvaluationConfigurationTest {
                 500,
                 200,
                 ollamaConnectivityChecker,
-                metadataLlmResponseCacheService
+                metadataLlmResponseCacheService,
+                configResolver,
+                modelCatalogPort
         );
         assertNotNull(factory);
     }

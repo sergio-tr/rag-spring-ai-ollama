@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.document;
 
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.domain.model.Minute;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;

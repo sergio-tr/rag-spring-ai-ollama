@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.expand;
 
-import com.uniovi.rag.model.ExpansionStrategy;
+import com.uniovi.rag.domain.model.ExpansionStrategy;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 
