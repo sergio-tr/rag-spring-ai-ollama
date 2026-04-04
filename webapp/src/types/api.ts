@@ -105,6 +105,60 @@ export type LabJobAcceptedDto = {
   streamPath: string;
 };
 
+/** POST `{product}/lab/benchmarks/{kind}/runs` → HTTP 202 (canonical run + async task). */
+export type BenchmarkKind =
+  | "LLM_JUDGE_QA"
+  | "EMBEDDING_RETRIEVAL"
+  | "RAG_PRESET_END_TO_END"
+  | "CLASSIFIER_METRICS";
+
+export type BenchmarkJobAcceptedDto = {
+  evaluationRunId: string;
+  asyncTaskId: string;
+  status: string;
+  pollPath: string;
+  streamPath: string;
+};
+
+export type StartBenchmarkRunRequest = {
+  datasetId: string;
+  projectId?: string | null;
+  runKind?: "SCIENCE" | "PRODUCT_EXPLORATION" | "ADMIN_BASELINE";
+  name?: string | null;
+  resolvedConfigSnapshotId?: string | null;
+  indexSnapshotId?: string | null;
+  presetId?: string | null;
+};
+
+export type EvaluationRunDetailDto = {
+  id: string;
+  name: string | null;
+  status: string;
+  benchmarkKind: string | null;
+  runKind: string | null;
+  workflowSchemaVersion: string | null;
+  datasetSha256: string | null;
+  datasetId: string | null;
+  asyncTaskId: string | null;
+  resolvedConfigSnapshotId: string | null;
+  indexSnapshotId: string | null;
+  indexSignatureHash: string | null;
+  presetId: string | null;
+  llmModelId: string | null;
+  embeddingModelId: string | null;
+  classifierModelId: string | null;
+  aggregatesJson: Record<string, unknown> | null;
+  createdAt: string;
+  completedAt: string | null;
+};
+
+export type CompareRunsResponseDto = {
+  comparable: boolean;
+  incompatibilityReasons: string[];
+  runA: string;
+  runB: string;
+};
+
 /** Optional query params for async Lab POSTs (scopes `async_task.project_id` when sent). */
 export type LabProjectScopeParams = {
   projectId?: string;
