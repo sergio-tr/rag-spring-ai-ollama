@@ -1,0 +1,7 @@
+# Default legacy GET — server global RAG features (YAML / env), not project config.
+name: baseline
+description: Legacy /api/v4/query with default query params (no chatModel override).
+transport: legacy
+legacy:
+  query_path: /api/v4/query
+  query_params: {}
