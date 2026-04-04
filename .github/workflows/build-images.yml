@@ -1,3 +1,5 @@
+# Publishes ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<github_sha> and :latest.
+# For reproducible deploy/rollback, pin images by the SHA tag; do not treat :latest as contractual.
 name: Build & push images (GHCR)
 
 on:

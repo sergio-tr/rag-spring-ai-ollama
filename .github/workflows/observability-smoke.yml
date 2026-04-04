@@ -1,9 +1,13 @@
-# Validates standalone observability compose files. Full stack (docker-compose + compose.obs) needs local env files — see observability/README.md.
-# Nightly / manual — does not block PR merges (quality plan §9.3).
+# Validates Compose overlay chains (informative; not a required branch check).
+# Schedule / manual — does not block PR merges by default.
 name: Observability smoke
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "docker/**"
+      - ".github/workflows/observability-smoke.yml"
   schedule:
     - cron: "45 6 * * *"
 
@@ -12,11 +16,66 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  compose-config:
-    name: Docker compose config (logs stack)
+  ollama-overlay-name-regression:
+    name: No legacy Ollama GPU compose filename
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - name: Fail if legacy Ollama GPU overlay filename is referenced
+        run: |
+          set -euo pipefail
+          # Search source/docs only (this workflow file mentions the old name in messages).
+          LEGACY='compose.ollama-gpu.yml'
+          PATHS="docker rag-service ollama tests docs webapp classifier-service db reverse-proxy observability"
+          if git grep -q -F "$LEGACY" -- $PATHS; then
+            git grep -nF "$LEGACY" -- $PATHS || true
+            echo "::error::Use compose.ollama-local-gpu.yml instead of the legacy overlay filename"
+            exit 1
+          fi
+          echo "OK: no legacy overlay filename in source or docs."
+
+  compose-config:
+    name: Docker compose config (logs / obs / prod-like)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Materialize .env from examples for compose validation
+        run: |
+          set -euo pipefail
+          for d in db classifier-service rag-service webapp observability; do
+            if [ ! -f "$d/.env.example" ]; then
+              echo "Missing $d/.env.example"
+              exit 1
+            fi
+            cp "$d/.env.example" "$d/.env"
+          done
+
       - name: Validate compose.logs.yml (Loki + Promtail)
-        run: docker compose -f docker/compose.logs.yml config -q
+        working-directory: docker
+        run: |
+          docker compose -f compose.logs.yml \
+            --env-file ../observability/.env \
+            config -q
+
+      - name: Validate docker-compose.yml + compose.obs.yml
+        working-directory: docker
+        run: |
+          docker compose -f docker-compose.yml -f compose.obs.yml \
+            --env-file ../db/.env \
+            --env-file ../classifier-service/.env \
+            --env-file ../rag-service/.env \
+            --env-file ../webapp/.env \
+            --env-file ../observability/.env \
+            config -q
+
+      - name: Validate docker-compose.yml + compose.prod.yml (prod-like)
+        working-directory: docker
+        run: |
+          docker compose -f docker-compose.yml -f compose.prod.yml \
+            --env-file ../db/.env \
+            --env-file ../classifier-service/.env \
+            --env-file ../rag-service/.env \
+            --env-file ../webapp/.env \
+            config -q

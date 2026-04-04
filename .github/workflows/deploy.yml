@@ -67,3 +67,16 @@ jobs:
             docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml pull || true
             docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml up -d
 
+      - name: Post-deploy HTTP health check (optional)
+        if: success()
+        env:
+          DEPLOY_HEALTH_URL: ${{ secrets.DEPLOY_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_HEALTH_URL:-}" ]; then
+            echo "DEPLOY_HEALTH_URL not set; skipping post-deploy HTTP check."
+            exit 0
+          fi
+          echo "Checking ${DEPLOY_HEALTH_URL}"
+          curl -fsS --max-time 60 "$DEPLOY_HEALTH_URL"
+
