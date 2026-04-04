@@ -1,0 +1,22 @@
+# Validates standalone observability compose files. Full stack (docker-compose + compose.obs) needs local env files — see observability/README.md.
+# Nightly / manual — does not block PR merges (quality plan §9.3).
+name: Observability smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "45 6 * * *"
+
+concurrency:
+  group: observability-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose-config:
+    name: Docker compose config (logs stack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate compose.logs.yml (Loki + Promtail)
+        run: docker compose -f docker/compose.logs.yml config -q
