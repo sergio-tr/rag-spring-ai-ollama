@@ -128,6 +128,7 @@ class ProcessQueryServiceTest {
                 mock(NaiveCorpusContextService.class),
                 modelCatalogPort,
                 chatScopedRagConfigResolver,
+                null,
                 null
         );
     }

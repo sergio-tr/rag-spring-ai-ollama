@@ -219,7 +219,8 @@ public class EvaluationServiceFactory {
                         naiveCorpus,
                         modelCatalogPort,
                         chatScopedRagConfigResolver,
-                        ragRuntimeProperties
+                        ragRuntimeProperties,
+                        null
                 );
         }
     }

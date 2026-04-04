@@ -11,6 +11,7 @@ import com.uniovi.rag.infrastructure.observability.TracedQueryAnalyser;
 import com.uniovi.rag.infrastructure.observability.TracedQueryClassifier;
 import com.uniovi.rag.infrastructure.observability.TracedQueryExpander;
 import com.uniovi.rag.infrastructure.observability.TracedQueryService;
+import io.micrometer.tracing.Tracer;
 import com.uniovi.rag.infrastructure.observability.TracedReasoningStrategy;
 import com.uniovi.rag.infrastructure.observability.TracedResponseRanker;
 import com.uniovi.rag.infrastructure.observability.TracedResponseValidator;
@@ -266,7 +267,8 @@ public class RagQueryConfiguration {
             ChatScopedRagConfigResolver chatScopedRagConfigResolver,
             @org.springframework.beans.factory.annotation.Autowired(required = false) RagRuntimeProperties ragRuntimeProperties,
             RagImplementationProperties implProps,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) Tracer tracer
     ) {
         String impl = implProps.getQueryServiceImpl() != null ? implProps.getQueryServiceImpl().trim().toLowerCase() : "process";
         QueryService raw;
@@ -298,7 +300,8 @@ public class RagQueryConfiguration {
                         naiveCorpusContextService,
                         modelCatalogPort,
                         chatScopedRagConfigResolver,
-                        ragRuntimeProperties
+                        ragRuntimeProperties,
+                        tracer
                 );
                 break;
         }

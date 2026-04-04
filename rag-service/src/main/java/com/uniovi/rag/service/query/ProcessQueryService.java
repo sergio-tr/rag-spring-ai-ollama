@@ -36,10 +36,11 @@ import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
+import io.micrometer.tracing.Tracer;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
-import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -70,6 +71,7 @@ public class ProcessQueryService implements QueryService {
     private final ResponseSynthesisPipeline responseSynthesisPipeline;
     private final ModelCatalogPort modelCatalogPort;
     private final ChatScopedRagConfigResolver chatScopedRagConfigResolver;
+    private final Tracer tracer;
 
     public ProcessQueryService(RagFeatureConfiguration featureConfig,
                                RagToolsConfiguration toolsConfig,
@@ -90,7 +92,8 @@ public class ProcessQueryService implements QueryService {
                                NaiveCorpusContextService naiveCorpusContextService,
                                ModelCatalogPort modelCatalogPort,
                                ChatScopedRagConfigResolver chatScopedRagConfigResolver,
-                               @Autowired(required = false) RagRuntimeProperties ragRuntimeProperties) {
+                               @Autowired(required = false) RagRuntimeProperties ragRuntimeProperties,
+                               @Autowired(required = false) Tracer tracer) {
         this.featureConfig = featureConfig;
         this.chatClient = chatClient;
         this.reasoningStrategy = reasoningStrategy;
@@ -118,6 +121,7 @@ public class ProcessQueryService implements QueryService {
         this.responseSynthesisPipeline = components.responseSynthesisPipeline();
         this.modelCatalogPort = modelCatalogPort;
         this.chatScopedRagConfigResolver = chatScopedRagConfigResolver;
+        this.tracer = tracer;
     }
 
     /**
@@ -184,7 +188,8 @@ public class ProcessQueryService implements QueryService {
     private QueryResponse generateResponseInternal(String query, RagExecutionContext contextOverlay) {
 
         try {
-            String traceId = Optional.ofNullable(MDC.get("traceId")).orElseGet(() -> UUID.randomUUID().toString());
+            String traceId = Optional.ofNullable(TraceMdcBridge.currentCorrelationTraceId(tracer))
+                    .orElseGet(() -> UUID.randomUUID().toString());
             RagConfig resolved = chatScopedRagConfigResolver.resolveForExecutionContext(contextOverlay);
             RagExecutionContext ctx = buildContext(contextOverlay, resolved, traceId);
             RagExecutionContextHolder.set(ctx);
