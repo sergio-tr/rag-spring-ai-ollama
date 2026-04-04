@@ -60,12 +60,26 @@ export function usePatchProject() {
   const setActiveProject = useAppStore((s) => s.setActiveProject);
 
   return useMutation({
-    mutationFn: (vars: { id: string; name?: string; description?: string | null }) =>
-      apiFetch<ProjectSummary>(apiProductPath(`/projects/${vars.id}`), {
+    mutationFn: (vars: {
+      id: string;
+      name?: string;
+      description?: string | null;
+      projectPrompt?: string | null;
+      colorHex?: string | null;
+      iconKey?: string | null;
+    }) => {
+      const body: Record<string, unknown> = {};
+      if (vars.name !== undefined) body.name = vars.name;
+      if (vars.description !== undefined) body.description = vars.description;
+      if (vars.projectPrompt !== undefined) body.projectPrompt = vars.projectPrompt;
+      if (vars.colorHex !== undefined) body.colorHex = vars.colorHex;
+      if (vars.iconKey !== undefined) body.iconKey = vars.iconKey;
+      return apiFetch<ProjectSummary>(apiProductPath(`/projects/${vars.id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: vars.name ?? null, description: vars.description ?? null }),
-      }),
+        body: JSON.stringify(body),
+      });
+    },
     onSuccess: (updated) => {
       void queryClient.invalidateQueries({ queryKey: projectsKey });
       if (active?.id === updated.id) {

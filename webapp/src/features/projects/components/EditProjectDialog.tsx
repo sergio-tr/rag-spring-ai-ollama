@@ -21,9 +21,26 @@ import { usePatchProject } from "@/features/projects/hooks/use-projects";
 import { cn } from "@/lib/utils";
 import type { ProjectSummary } from "@/types/api";
 
+const PROJECT_ICONS = [
+  "folder",
+  "briefcase",
+  "star",
+  "code",
+  "book",
+  "chat",
+  "lab",
+  "rocket",
+  "shield",
+] as const;
+
 const schema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(4000).optional(),
+  colorHex: z
+    .string()
+    .optional()
+    .refine((s) => !s || /^#([0-9A-Fa-f]{6})$/.test(s), "Invalid color"),
+  iconKey: z.string().max(64).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -42,6 +59,8 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
     defaultValues: {
       name: project.name,
       description: project.description ?? "",
+      colorHex: project.colorHex ?? "#6b7280",
+      iconKey: project.iconKey ?? "",
     },
   });
 
@@ -49,8 +68,10 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
     form.reset({
       name: project.name,
       description: project.description ?? "",
+      colorHex: project.colorHex ?? "#6b7280",
+      iconKey: project.iconKey ?? "",
     });
-  }, [project.id, project.name, project.description, form]);
+  }, [project.id, project.name, project.description, project.colorHex, project.iconKey, form]);
 
   async function onSubmit(values: FormValues) {
     try {
@@ -58,6 +79,8 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
         id: project.id,
         name: values.name,
         description: values.description || null,
+        colorHex: values.colorHex || undefined,
+        iconKey: values.iconKey?.trim() || undefined,
       });
       setOpen(false);
     } catch {
@@ -89,6 +112,38 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
             <Label htmlFor={`edit-proj-desc-${project.id}`}>{t("description")}</Label>
             <Input id={`edit-proj-desc-${project.id}`} {...form.register("description")} />
           </div>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`edit-proj-color-${project.id}`}>{t("projectColor")}</Label>
+              <Input
+                id={`edit-proj-color-${project.id}`}
+                type="color"
+                className="h-10 w-14 cursor-pointer p-1"
+                {...form.register("colorHex")}
+              />
+            </div>
+            <div className="flex min-w-[180px] flex-col gap-2">
+              <Label htmlFor={`edit-proj-icon-${project.id}`}>{t("projectIcon")}</Label>
+              <select
+                id={`edit-proj-icon-${project.id}`}
+                className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm"
+                value={form.watch("iconKey") || ""}
+                onChange={(e) => form.setValue("iconKey", e.target.value)}
+              >
+                <option value="">{t("projectIconNone")}</option>
+                {PROJECT_ICONS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {form.formState.errors.colorHex && (
+            <p className="text-destructive text-sm" role="alert">
+              {form.formState.errors.colorHex.message}
+            </p>
+          )}
           {patch.isError && (
             <p className="text-destructive text-sm" role="alert">
               {t("editError")}

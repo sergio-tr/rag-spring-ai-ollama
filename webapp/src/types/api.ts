@@ -22,6 +22,9 @@ export type ProjectSummary = {
   docCount: number;
   convCount: number;
   updatedAt: string;
+  projectPrompt?: string | null;
+  colorHex?: string | null;
+  iconKey?: string | null;
 };
 
 export type ProjectListResponse = {
@@ -103,6 +106,49 @@ export type LabJobAcceptedDto = {
   status: string;
   pollPath: string;
   streamPath: string;
+};
+
+/** POST `{product}/me/account/export|deletion` → HTTP 202 (poll via `/me/account/jobs/{id}`, not Lab). */
+export type AccountJobAcceptedDto = {
+  jobId: string;
+  status: string;
+  pollPath: string;
+};
+
+export type MePreferencesResponse = {
+  schemaVersion: number;
+  preferences: Record<string, unknown>;
+};
+
+export type MePersonalizationResponse = {
+  schemaVersion: number;
+  personalization: Record<string, unknown>;
+};
+
+export type MeSummaryResponse = {
+  projectCount: number;
+  conversationCount: number;
+  documentCount: number;
+  estimatedStorageBytes: number;
+};
+
+export type UserDocumentRow = {
+  documentId: string;
+  projectId: string;
+  conversationId: string | null;
+  corpusScope: CorpusScope;
+  fileName: string;
+  status: ProjectDocumentStatus;
+  uploadedAt: string;
+  reindexedAt: string | null;
+  indexSignatureHash: string | null;
+  chunkCount: number | null;
+  storagePresent: boolean;
+};
+
+export type MeDocumentsPageResponse = {
+  items: UserDocumentRow[];
+  total: number;
 };
 
 /** POST `{product}/lab/benchmarks/{kind}/runs` → HTTP 202 (canonical run + async task). */

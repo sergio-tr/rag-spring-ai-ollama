@@ -33,7 +33,16 @@ export function ProjectGrid({ items }: ProjectGridProps) {
         return (
           <Card key={p.id} className="flex flex-col border-border/80">
             <CardHeader className="gap-1">
-              <CardTitle className="text-lg leading-tight">{p.name}</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-lg leading-tight">
+                <span
+                  className="inline-block size-3 shrink-0 rounded-full border border-border"
+                  style={{
+                    backgroundColor: p.colorHex && /^#([0-9A-Fa-f]{6})$/.test(p.colorHex) ? p.colorHex : "#9ca3af",
+                  }}
+                  aria-hidden
+                />
+                {p.name}
+              </CardTitle>
               {p.description ? (
                 <CardDescription className="line-clamp-2">{p.description}</CardDescription>
               ) : null}

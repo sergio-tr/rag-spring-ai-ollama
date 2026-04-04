@@ -170,6 +170,61 @@ export async function apiFetch<T = unknown>(
   return (await res.text()) as T;
 }
 
+/**
+ * Authenticated GET returning a binary body (e.g. account export ZIP).
+ */
+export async function apiDownloadBlob(path: string, options: ApiClientOptions = {}): Promise<Blob> {
+  const {
+    skipTraceparent,
+    skipCredentials,
+    headers: initHeaders,
+    ...rest
+  } = options;
+
+  const url = path.startsWith("http") ? path : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+
+  const buildHeaders = () => {
+    const headers = new Headers(initHeaders);
+    if (!skipTraceparent && !headers.has("traceparent")) {
+      headers.set("traceparent", createTraceparent());
+    }
+    if (!skipCredentials) {
+      const bearer = getAccessToken();
+      if (bearer && !headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${bearer}`);
+      }
+    }
+    return headers;
+  };
+
+  const doRequest = () =>
+    fetch(url, {
+      ...rest,
+      method: "GET",
+      credentials: skipCredentials ? "omit" : "include",
+      headers: buildHeaders(),
+    });
+
+  let res = await doRequest();
+
+  if (res.status === 401 && !skipCredentials) {
+    const refreshed = await tryRefreshOnce();
+    if (refreshed) {
+      res = await doRequest();
+    }
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    if (res.status === 401 && !skipCredentials) {
+      notifyUnauthorized();
+    }
+    throw new ApiError(res.status, text || res.statusText);
+  }
+
+  return res.blob();
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,

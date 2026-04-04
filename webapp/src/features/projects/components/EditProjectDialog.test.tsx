@@ -61,6 +61,8 @@ describe("EditProjectDialog", () => {
         id: "proj-1",
         name: "Beta",
         description: "Desc",
+        colorHex: "#6b7280",
+        iconKey: undefined,
       }),
     );
   });

@@ -10,6 +10,8 @@ const tabs = [
   { href: "/settings/user", labelKey: "tabUser" as const },
   { href: "/settings/project", labelKey: "tabProject" as const },
   { href: "/settings/presets", labelKey: "tabPresets" as const },
+  { href: "/settings/data", labelKey: "tabData" as const },
+  { href: "/settings/account", labelKey: "tabAccount" as const },
 ];
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
