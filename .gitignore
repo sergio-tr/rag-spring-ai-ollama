@@ -69,7 +69,7 @@ playwright/.cache/
 
 # next.js
 .next/
-out/
+webapp/out/
 
 # production
 build/

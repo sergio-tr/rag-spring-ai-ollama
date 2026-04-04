@@ -159,8 +159,8 @@ public class RagQueryConfiguration {
             @Value("${rag.classifier.service.timeout-ms:5000}") int timeoutMs) {
         int t = timeoutMs > 0 ? timeoutMs : 5000;
         return restTemplateBuilder
-                .setConnectTimeout(Duration.ofMillis(t))
-                .setReadTimeout(Duration.ofMillis(t))
+                .connectTimeout(Duration.ofMillis(t))
+                .readTimeout(Duration.ofMillis(t))
                 .build();
     }
 
