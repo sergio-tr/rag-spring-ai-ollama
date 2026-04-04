@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Interactive: create .env files for each component from .env.example (only if missing, unless the create-* script supports --force).
-# Does not run Docker Compose — use ./scripts/up.sh dev|prod to start the stack.
-# Run from repository root: ./scripts/set-env.sh
+# Does not run Docker Compose — use ./docker/scripts/up.sh dev|prod to start the stack.
+# Run from repository root: ./docker/scripts/set-env.sh
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT_DIR"
 
 echo "=== Create environment files ==="
@@ -27,6 +27,7 @@ prompt_create "observability/.env" "create-env-observability.sh"
 prompt_create "rag-service/.env" "create-env-rag-service.sh"
 prompt_create "classifier-service/.env" "create-env-classifier-service.sh"
 prompt_create "ollama/.env" "create-env-ollama.sh"
+prompt_create "webapp/.env" "create-env-webapp.sh"
 
 echo ""
-echo "Done. Start the stack with: ./scripts/up.sh dev   or   ./scripts/up.sh prod"
+echo "Done. Start the stack with: ./docker/scripts/up.sh dev   or   ./docker/scripts/up.sh prod"

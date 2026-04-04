@@ -1,0 +1,15 @@
+# GPU overrides (NVIDIA runtime) for workloads that benefit from a GPU.
+#
+# Included when the Docker host reports the NVIDIA runtime (see docker/scripts/docker-compose.sh).
+# This file does NOT start Ollama; use compose.ollama-local-gpu.yml together with --gpu when you want
+# Ollama in Docker. With --ollama-remote, only this fragment is merged (classifier GPU, remote LLM URL).
+
+services:
+  classifier-service:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

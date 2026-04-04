@@ -3,7 +3,7 @@
 # After a pull of the repo, check .env.example for new variables or use --force.
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ENV_EXAMPLE="$ROOT_DIR/observability/.env.example"
 ENV_FILE="$ROOT_DIR/observability/.env"
 cd "$ROOT_DIR"

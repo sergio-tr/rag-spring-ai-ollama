@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DB_CONTAINER_NAME="${DB_CONTAINER_NAME:-postgres}"
-OUTPUT_DIR="${OUTPUT_DIR:-backups}"
+OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/backups}"
 TIMESTAMP="$(date +'%Y%m%d-%H%M%S')"
 FILENAME="${OUTPUT_DIR}/db-backup-${TIMESTAMP}.sql"
 

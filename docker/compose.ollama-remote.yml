@@ -1,0 +1,9 @@
+# Use an external Ollama endpoint (no local Ollama container).
+#
+# Set the base URL to the remote host. This is useful in dev/CI where GPU isn't available locally.
+services:
+  backend:
+    environment:
+      OLLAMA_BASE_URL: http://156.35.95.18:11434
+      SPRING_AI_OLLAMA_BASE_URL: http://156.35.95.18:11434
+

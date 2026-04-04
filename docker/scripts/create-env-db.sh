@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Creates rag-service/.env from rag-service/.env.example if missing. Use --force to overwrite.
+# Creates db/.env from db/.env.example if missing. Use --force to overwrite.
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_EXAMPLE="$ROOT_DIR/rag-service/.env.example"
-ENV_FILE="$ROOT_DIR/rag-service/.env"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ENV_EXAMPLE="$ROOT_DIR/db/.env.example"
+ENV_FILE="$ROOT_DIR/db/.env"
 cd "$ROOT_DIR"
 if [ ! -f "$ENV_EXAMPLE" ]; then
   echo "Error: $ENV_EXAMPLE not found." >&2

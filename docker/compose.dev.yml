@@ -1,17 +1,17 @@
 # Development: classifier with hot-reload (uvicorn) + optional Spring backend in Docker (backend-dev).
 #
-# Included in the Compose chain when you use --classifier and/or --rag (./scripts/up.sh dev …).
+# Included in the Compose chain when you use --classifier and/or --rag (./docker/scripts/up.sh dev …).
 # - --classifier only: classifier override; backend-dev does NOT start unless you name it in `up`.
 # - --rag: enables Compose profile "rag" → starts backend-dev in addition to the classifier (same Dockerfile.dev override).
 #
 # Typical hybrid (backend and classifier on the host):
-#   ./scripts/up.sh dev [--obs …]
+#   ./docker/scripts/up.sh dev [--obs …]
 #   cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 #   cd classifier-service && uvicorn …
 #
 # Full stack in Docker with reload:
-#   ./scripts/up.sh dev --rag [--obs] [--gpu|…]
-#   See rag-service/Dockerfile.dev and scripts/docker-dev-entrypoint.sh
+#   ./docker/scripts/up.sh dev --rag [--obs] [--gpu|…]
+#   See rag-service/Dockerfile.dev and rag-service/scripts/docker-dev-entrypoint.sh
 #
 # With --obs, compose.rag-dev-obs.yml fixes OTLP for backend-dev (compose.obs.yml only patches service "backend").
 #
@@ -28,6 +28,8 @@ services:
       PORT: ${PORT:-8000}
       MODELS_DIR: ${MODELS_DIR:-/app/models}
       DATA_DIR: ${DATA_DIR:-/app/data}
+      TF_CPP_MIN_LOG_LEVEL: "2"
+      GLOG_minloglevel: "2"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/health', timeout=5)\" || exit 1"]
       interval: 10s
@@ -35,7 +37,7 @@ services:
       retries: 5
       start_period: 60s
 
-  # Built/started only when profile "rag" is active (./scripts/up.sh dev --rag …).
+  # Built/started only when profile "rag" is active (./docker/scripts/up.sh dev --rag …).
   backend-dev:
     profiles:
       - rag

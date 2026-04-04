@@ -1,41 +1,45 @@
 #!/usr/bin/env bash
 # Unified Docker Compose: build | up | down for dev (hybrid infra) or prod-local stacks.
-# Same compose file chain and env files as the legacy scripts/up.sh and scripts/down.sh.
+# Same compose file chain and env files historically used by repository up/down entrypoints.
 #
-# Usage (from repo root):
-#   ./scripts/docker-compose.sh <build|up|down> <dev|prod> [env options] [stack options]
+# Usage (from repository root):
+#   ./docker/scripts/docker-compose.sh <build|up|down> <dev|prod> [env options] [stack options]
 #
 #   down: second arg defaults to prod if omitted (compat with old down.sh).
 #
 # Env (optional; runs before compose up/build — not before dev down):
-#   --env <name>     create-env-* (repeatable): db, obs, rag, classifier, ollama, all
+#   --env <name>     create-env-* (repeatable): db, obs, rag, classifier, ollama, webapp, all
 #   --no-env-prompt  skip interactive set-env.sh question
 #
 # dev:
-#   [--all] [--gpu] [--ollama] [--obs] [--classifier] [--logs] [--infra] [--rag] [--down] [--volumes]
-#   --rag: Spring backend in Docker (volume + mvn compile + DevTools), in addition to infra.
+#   [--all] [--gpu] [--ollama] [--obs] [--classifier] [--classifier-gpu] [--logs] [--infra] [--rag] [--proxy] [--ollama-remote] [--down] [--volumes]
+#   --rag: Spring backend (backend-dev) + webapp in Docker, plus infra as selected.
+#   --proxy: with --rag only. Publishes nginx (default :8080 → webapp + API); hides webapp/backend direct host ports.
 #   With command "up":   --down / --volumes tear down the dev stack (same as "down dev").
 #   With command "down": same flags as "up dev --down".
-#   --gpu and --ollama are aliases: both add compose.ollama-gpu.yml (Ollama in Docker with NVIDIA GPU only).
-#   --all  = --gpu --obs --classifier --logs --infra --rag
+#   --gpu and --ollama are aliases: both start Ollama in Docker (GPU only, if available).
+#   --classifier-gpu enables GPU access for classifier-service (if available).
+#   --ollama-remote adds compose.ollama-remote.yml (backend points to external Ollama; no Ollama container).
+#   Local Ollama (Docker + GPU) uses compose.ollama-local-gpu.yml (+ compose.ollama-local-gpu.dev.yml when --rag/--classifier).
+#   --all  = --gpu --obs --classifier --logs --infra --rag (no --proxy; add --proxy to use nginx in dev)
 #
 # prod:
-#   [--all] [--obs] [--gpu] [--ollama] [--logs] [--infra] [--volumes]
+#   [--all] [--obs] [--gpu] [--ollama] [--classifier-gpu] [--ollama-remote] [--logs] [--infra] [--volumes]
 #   --volumes only applies to "down prod".
 #   --all  = --obs --gpu --logs --infra (and for down: removes volumes)
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DOCKER_DIR="$ROOT_DIR/docker"
 
 usage() {
   echo "Usage: $0 <build|up|down> <dev|prod> [options]" >&2
   echo "  down: <dev|prod> optional (defaults to prod)" >&2
   echo "  Env: --env <db|obs|rag|classifier|ollama|all> ..., --no-env-prompt" >&2
-  echo "  dev:  [--all] [--gpu|--ollama] [--obs] [--classifier] [--logs] [--infra] [--down] [--volumes]" >&2
-  echo "  prod: [--all] [--obs] [--gpu|--ollama] [--logs] [--infra] [--volumes]" >&2
+  echo "  dev:  [--all] [--gpu|--ollama] [--ollama-remote] [--obs] [--classifier] [--classifier-gpu] [--logs] [--infra] [--rag] [--proxy] [--down] [--volumes]" >&2
+  echo "  prod: [--all] [--obs] [--gpu|--ollama] [--ollama-remote] [--classifier-gpu] [--logs] [--infra] [--volumes]" >&2
   exit 1
 }
 
@@ -98,8 +102,9 @@ run_create_env_component() {
     rag) "$SCRIPT_DIR/create-env-rag-service.sh" ;;
     classifier) "$SCRIPT_DIR/create-env-classifier-service.sh" ;;
     ollama) "$SCRIPT_DIR/create-env-ollama.sh" ;;
+    webapp) "$SCRIPT_DIR/create-env-webapp.sh" ;;
     *)
-      echo "Unknown --env component: $c (use: db, obs, rag, classifier, ollama, all)" >&2
+      echo "Unknown --env component: $c (use: db, obs, rag, classifier, ollama, webapp, all)" >&2
       exit 1
       ;;
   esac
@@ -147,9 +152,13 @@ if [ "$MODE" = dev ]; then
   WITH_GPU=false
   WITH_OBS=false
   WITH_CLASSIFIER=false
+  WITH_CLASSIFIER_GPU=false
   WITH_LOGS=false
   WITH_INFRA=false
   WITH_RAG_BACKEND=false
+  WITH_DEV_PROXY=false
+  WITH_OLLAMA_REMOTE=false
+  WITH_NVIDIA=false
   ACTION=up
   WITH_VOLUMES=false
   ALL=false
@@ -167,11 +176,14 @@ if [ "$MODE" = dev ]; then
       --all)        ALL=true ;;
       --gpu)        WITH_GPU=true ;;
       --ollama)     WITH_GPU=true ;;
+      --ollama-remote) WITH_OLLAMA_REMOTE=true ;;
       --obs)        WITH_OBS=true ;;
       --classifier) WITH_CLASSIFIER=true ;;
+      --classifier-gpu) WITH_CLASSIFIER_GPU=true ;;
       --logs)       WITH_LOGS=true ;;
       --infra)      WITH_INFRA=true ;;
       --rag)        WITH_RAG_BACKEND=true ;;
+      --proxy)      WITH_DEV_PROXY=true ;;
       --down)       ACTION=down ;;
       --volumes)    WITH_VOLUMES=true ;;
       *)
@@ -186,16 +198,38 @@ if [ "$MODE" = dev ]; then
     exit 1
   fi
 
+  if [ "$WITH_DEV_PROXY" = true ] && [ "$WITH_RAG_BACKEND" != true ]; then
+    echo "Error: --proxy requires --rag (backend-dev + webapp behind nginx)." >&2
+    exit 1
+  fi
+
   if [ "$ALL" = true ]; then
     WITH_GPU=true
     WITH_OBS=true
     WITH_CLASSIFIER=true
+    WITH_CLASSIFIER_GPU=true
     WITH_LOGS=true
     WITH_INFRA=true
     WITH_RAG_BACKEND=true
+    WITH_OLLAMA_REMOTE=false
     if [ "$ACTION" = down ]; then
       WITH_VOLUMES=true
     fi
+  fi
+
+  has_nvidia_runtime() {
+    docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'
+  }
+
+  # Always try to enable NVIDIA GPU if the host supports it, unless user explicitly didn't request it.
+  # If the host doesn't support it, fall back to CPU silently (or warn if user requested GPU).
+  if has_nvidia_runtime; then
+    WITH_NVIDIA=true
+  else
+    if [ "$WITH_GPU" = true ] || [ "$WITH_CLASSIFIER_GPU" = true ]; then
+      echo "Warning: NVIDIA runtime not available on this Docker host; falling back to CPU." >&2
+    fi
+    WITH_NVIDIA=false
   fi
 
   COMPOSE_FILES=(-f "docker-compose.yml")
@@ -203,10 +237,24 @@ if [ "$MODE" = dev ]; then
   if [ "$WITH_CLASSIFIER" = true ] || [ "$WITH_RAG_BACKEND" = true ]; then
     COMPOSE_FILES+=(-f "compose.dev.yml")
   fi
+  [ "$WITH_RAG_BACKEND" = true ] && COMPOSE_FILES+=(-f "compose.dev-webapp.yml")
+  [ "$WITH_DEV_PROXY" = true ] && [ "$WITH_RAG_BACKEND" = true ] && COMPOSE_FILES+=(-f "compose.dev-proxy.yml")
   [ "$WITH_OBS" = true ]        && COMPOSE_FILES+=(-f "compose.obs.yml")
   [ "$WITH_LOGS" = true ]       && COMPOSE_FILES+=(-f "compose.logs.yml")
   [ "$WITH_INFRA" = true ]      && COMPOSE_FILES+=(-f "compose.infra.yml")
-  [ "$WITH_GPU" = true ]        && COMPOSE_FILES+=(-f "compose.ollama-gpu.yml")
+  [ "$WITH_NVIDIA" = true ] && COMPOSE_FILES+=(-f "compose.gpu.yml")
+  if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
+    COMPOSE_FILES+=(-f "compose.ollama-local-gpu.yml")
+    if [ "$WITH_CLASSIFIER" = true ] || [ "$WITH_RAG_BACKEND" = true ]; then
+      COMPOSE_FILES+=(-f "compose.ollama-local-gpu.dev.yml")
+    fi
+  fi
+  if [ "$WITH_OLLAMA_REMOTE" = true ]; then
+    COMPOSE_FILES+=(-f "compose.ollama-remote.yml")
+    if [ "$WITH_CLASSIFIER" = true ] || [ "$WITH_RAG_BACKEND" = true ]; then
+      COMPOSE_FILES+=(-f "compose.ollama-remote.dev.yml")
+    fi
+  fi
   [ "$WITH_RAG_BACKEND" = true ] && [ "$WITH_OBS" = true ] && COMPOSE_FILES+=(-f "compose.rag-dev-obs.yml")
 
   ENV_ARGS=()
@@ -215,7 +263,7 @@ if [ "$MODE" = dev ]; then
     if [ -f "$f" ]; then
       ENV_ARGS+=(--env-file "$f")
     else
-      echo "Warning: env file not found: $f (run scripts/create-env-all.sh first)" >&2
+      echo "Warning: env file not found: $f (run ./docker/scripts/create-env-all.sh first)" >&2
     fi
   }
 
@@ -228,6 +276,7 @@ if [ "$MODE" = dev ]; then
     add_env_file "$ROOT_DIR/ollama/.env"
   fi
   [ "$WITH_RAG_BACKEND" = true ] && add_env_file "$ROOT_DIR/rag-service/.env"
+  [ "$WITH_RAG_BACKEND" = true ] && add_env_file "$ROOT_DIR/webapp/.env"
 
   cd "$DOCKER_DIR"
 
@@ -247,7 +296,7 @@ if [ "$MODE" = dev ]; then
     [ "$WITH_RAG_BACKEND" = true ] && BUILD_ARGS+=(--profile rag)
     BUILD_ARGS+=(build)
     docker compose "${BUILD_ARGS[@]}"
-    echo "Dev images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+    echo "Dev images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, dev_proxy=$WITH_DEV_PROXY, logs=$WITH_LOGS, infra=$WITH_INFRA)."
     exit 0
   fi
 
@@ -257,16 +306,21 @@ if [ "$MODE" = dev ]; then
   [ "$WITH_RAG_BACKEND" = true ] && PROFILE_ARGS+=(--profile rag)
 
   SERVICES=(postgres)
-  if [ "$WITH_GPU" = true ]; then
+  if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
     SERVICES+=(ollama)
+  elif [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = false ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
+    echo "Warning: --gpu/--ollama requested but NVIDIA runtime is not available; skipping Ollama container." >&2
   fi
   [ "$WITH_OBS" = true ]        && SERVICES+=(otel-collector jaeger prometheus grafana)
   [ "$WITH_LOGS" = true ]       && SERVICES+=(loki promtail)
-  [ "$WITH_INFRA" = true ]      && SERVICES+=(node-exporter cadvisor)
+  [ "$WITH_INFRA" = true ]      && SERVICES+=(node-exporter)
   [ "$WITH_CLASSIFIER" = true ] && SERVICES+=(classifier-service)
   if [ "$WITH_RAG_BACKEND" = true ]; then
     [ "$WITH_CLASSIFIER" = false ] && SERVICES+=(classifier-service)
-    SERVICES+=(backend-dev)
+    SERVICES+=(backend-dev webapp)
+  fi
+  if [ "$WITH_DEV_PROXY" = true ] && [ "$WITH_RAG_BACKEND" = true ]; then
+    SERVICES+=(reverse-proxy)
   fi
 
   docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" up -d "${SERVICES[@]}"
@@ -286,16 +340,25 @@ if [ "$MODE" = dev ]; then
     echo "  Classifier:  cd classifier-service && uvicorn main:app --reload --reload-dir app --port 8000"
   fi
   if [ "$WITH_RAG_BACKEND" = true ]; then
-    echo "  Backend:     in Docker (backend-dev) — changes in src/ recompile and DevTools restart. Port ${BACKEND_PORT:-9000}."
-    if [ "$WITH_GPU" = true ]; then
-      echo "               Ollama: container → set SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434 in rag-service/.env"
+    echo "  Backend:     in Docker (backend-dev) — hot reload via DevTools. Container port ${SERVER_PORT:-9000}."
+    if [ "$WITH_DEV_PROXY" = true ]; then
+      echo "               API + Actuator via nginx on host port ${REVERSE_PROXY_DEV_HTTP_PORT:-80} (same origin as webapp)."
     else
-      echo "               Ollama on HOST: run Ollama locally and use http://host.docker.internal:11434 (see docs/DEV_STACK_OBS_Y_OLLAMA_HOST.md)"
+      echo "               API on host: http://127.0.0.1:${BACKEND_PORT:-9000} — set WEBAPP_NEXT_PUBLIC_API_BASE_URL accordingly in webapp/.env for the browser."
+    fi
+    if [ "$WITH_GPU" = true ]; then
+      echo "               Ollama: container at http://ollama:11434 (compose.ollama-local-gpu*.yml)."
+    else
+      echo "               Ollama on HOST: http://host.docker.internal:11434 (or enable --gpu with NVIDIA)."
+    fi
+    echo "  Webapp:      in Docker (Next.js). Without --proxy: http://127.0.0.1:${WEBAPP_HTTP_PORT:-80}/"
+    if [ "$WITH_DEV_PROXY" = true ]; then
+      echo "               With --proxy: http://127.0.0.1:${REVERSE_PROXY_DEV_HTTP_PORT:-80}/ (leave WEBAPP_NEXT_PUBLIC_API_BASE_URL empty for same-origin /api)."
     fi
   else
     echo "  Backend:     cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
+    echo "  Webapp:      cd webapp && npm run dev"
   fi
-  echo "  Frontend:    cd frontend && npm run dev"
   echo ""
   echo "Postgres available at:  localhost:${POSTGRES_PORT:-5432}"
   if [ "$WITH_GPU" = true ]; then
@@ -304,7 +367,7 @@ if [ "$MODE" = dev ]; then
   [ "$WITH_OBS" = true ] && echo "Grafana available at:   localhost:${GRAFANA_PORT:-3000}"
   [ "$WITH_OBS" = true ] && echo "Jaeger available at:    localhost:${JAEGER_UI_PORT:-16686}"
   [ "$WITH_LOGS" = true ] && echo "Loki / Promtail:        host ports from observability/.env (LOKI_HOST_PORT, PROMTAIL_HOST_PORT)"
-  [ "$WITH_INFRA" = true ] && echo "node-exporter / cAdvisor: NODE_EXPORTER_HOST_PORT, CADVISOR_HOST_PORT in observability/.env"
+  [ "$WITH_INFRA" = true ] && echo "node-exporter: NODE_EXPORTER_HOST_PORT in observability/.env (cAdvisor: optional --profile cadvisor, see compose.infra.yml)"
   exit 0
 fi
 
@@ -315,6 +378,9 @@ WITH_LOGS=false
 WITH_INFRA=false
 WITH_VOLUMES=false
 ALL=false
+WITH_CLASSIFIER_GPU=false
+WITH_OLLAMA_REMOTE=false
+WITH_NVIDIA=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -322,6 +388,8 @@ for arg in "$@"; do
     --obs) WITH_OBS=true ;;
     --gpu) WITH_GPU=true ;;
     --ollama) WITH_GPU=true ;;
+    --ollama-remote) WITH_OLLAMA_REMOTE=true ;;
+    --classifier-gpu) WITH_CLASSIFIER_GPU=true ;;
     --logs) WITH_LOGS=true ;;
     --infra) WITH_INFRA=true ;;
     --volumes) WITH_VOLUMES=true ;;
@@ -346,8 +414,29 @@ COMPOSE_FILES=(-f "docker-compose.yml")
 [ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.obs.yml")
 [ "$WITH_LOGS" = true ]  && COMPOSE_FILES+=(-f "compose.logs.yml")
 [ "$WITH_INFRA" = true ] && COMPOSE_FILES+=(-f "compose.infra.yml")
-[ "$WITH_GPU" = true ]   && COMPOSE_FILES+=(-f "compose.ollama-gpu.yml")
+if [ "$WITH_OLLAMA_REMOTE" = true ]; then
+  COMPOSE_FILES+=(-f "compose.ollama-remote.yml")
+fi
 COMPOSE_FILES+=(-f "compose.prod.yml")
+[ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.prod-obs.yml")
+
+has_nvidia_runtime() {
+  docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'
+}
+
+if has_nvidia_runtime; then
+  WITH_NVIDIA=true
+else
+  if [ "$WITH_GPU" = true ] || [ "$WITH_CLASSIFIER_GPU" = true ]; then
+    echo "Warning: NVIDIA runtime not available on this Docker host; falling back to CPU." >&2
+  fi
+  WITH_NVIDIA=false
+fi
+
+[ "$WITH_NVIDIA" = true ] && COMPOSE_FILES+=(-f "compose.gpu.yml")
+if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
+  COMPOSE_FILES+=(-f "compose.ollama-local-gpu.yml")
+fi
 
 ENV_ARGS=()
 add_env_file() {
@@ -362,6 +451,7 @@ add_env_file() {
 add_env_file "$ROOT_DIR/db/.env"
 add_env_file "$ROOT_DIR/classifier-service/.env"
 add_env_file "$ROOT_DIR/rag-service/.env"
+add_env_file "$ROOT_DIR/webapp/.env"
 if [ "$WITH_OBS" = true ] || [ "$WITH_LOGS" = true ] || [ "$WITH_INFRA" = true ]; then
   add_env_file "$ROOT_DIR/observability/.env"
 fi
@@ -391,4 +481,5 @@ fi
 maybe_run_env_setup up
 docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" up -d
 
-echo "Prod local started (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+echo "Prod local started (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, ollama_remote=$WITH_OLLAMA_REMOTE, logs=$WITH_LOGS, infra=$WITH_INFRA)."
+echo "Reverse-proxy HTTP: http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT:-80}/ (set REVERSE_PROXY_HTTP_PORT if 80 is not free)."

@@ -1,6 +1,10 @@
 # node-exporter + cAdvisor. Host ports from observability/.env
 # Usage: docker compose ... -f compose.infra.yml --env-file ../observability/.env up -d
-# Also: ./scripts/up.sh dev|prod --infra
+# Also: ./docker/scripts/up.sh dev|prod --infra
+#
+# Docker Desktop (Windows/macOS) and WSL2: host /proc inside the VM may not expose every Linux
+# procfs file (e.g. softnet_stat, netstat), and bind mounts can duplicate tmpfs metrics. The flags
+# below silence those collectors and exclude noisy paths; on bare-metal Linux you may remove them.
 
 services:
   node-exporter:
@@ -10,6 +14,11 @@ services:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
       - "--path.rootfs=/host/root"
+      # Host VM often lacks these paths → "open /host/proc/net/...: no such file or directory"
+      - "--no-collector.softnet"
+      - "--no-collector.netstat"
+      # Avoid "collected metric ... was collected before with the same name and label values" on tmpfs/WSL bind mounts
+      - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|host|mnt)(/|$)|^/run/user(/|$)"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -18,14 +27,24 @@ services:
       - "${NODE_EXPORTER_HOST_PORT:-9100}:9100"
     restart: unless-stopped
 
+  # Opt-in only: Docker Desktop often spams overlay2/layerdb errors; node-exporter is enough for host metrics.
+  # Start when needed: docker compose ... -f compose.infra.yml --profile cadvisor up -d cadvisor
+  # Re-enable the cadvisor job in observability/prometheus/prometheus.yml.template if you scrape it.
   cadvisor:
+    profiles:
+      - cadvisor
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:rw
+      - /var/run:/var/run:ro
       - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - "${CADVISOR_HOST_PORT:-8080}:8080"
     restart: unless-stopped

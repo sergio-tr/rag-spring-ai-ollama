@@ -1,12 +1,12 @@
 # Observability: images, host ports and internals from observability/.env
-# (./scripts/create-env-observability.sh). Without .env, the default values match .env.example.
+# (./docker/scripts/create-env-observability.sh). Without .env, the default values match .env.example.
 # Usage: cd docker && docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.env ... --env-file ../observability/.env up -d
 
 services:
   backend:
     environment:
       SERVER_PORT: ${OBS_INTERNAL_BACKEND_ACTUATOR:-9000}
-      SPRING_PROFILES_ACTIVE: infra
+      SPRING_PROFILES_ACTIVE: docker,infra
       # Fix collector in Docker network (rag-service/.env usually has localhost:4318 for host development).
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: rag-backend
@@ -39,6 +39,9 @@ services:
         BASE_IMAGE: ${OTEL_COLLECTOR_BASE_IMAGE:-otel/opentelemetry-collector-contrib:0.102.0}
     container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yaml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ../observability/otel-collector/config.yaml:/etc/otel-collector-config.yaml
     environment:
@@ -98,9 +101,11 @@ services:
         BASE_IMAGE: ${GRAFANA_BASE_IMAGE:-grafana/grafana:11.2.0}
     container_name: grafana
     ports:
+      # Default host 3001: webapp uses host port 80 in docker-compose.yml.
       - "${GRAFANA_PORT:-3000}:${OBS_INTERNAL_GRAFANA:-3000}"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      # Default matches observability/.env.example; set GRAFANA_ADMIN_PASSWORD in observability/.env for production.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-CHANGE_ME}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_HTTP_PORT: ${OBS_INTERNAL_GRAFANA:-3000}
       OBS_INTERNAL_PROMETHEUS: ${OBS_INTERNAL_PROMETHEUS:-9090}

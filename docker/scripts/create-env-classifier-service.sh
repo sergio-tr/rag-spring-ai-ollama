@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Creates db/.env from db/.env.example if missing. Use --force to overwrite.
+# Creates classifier-service/.env from classifier-service/.env.example if missing. Use --force to overwrite.
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-ENV_EXAMPLE="$ROOT_DIR/db/.env.example"
-ENV_FILE="$ROOT_DIR/db/.env"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ENV_EXAMPLE="$ROOT_DIR/classifier-service/.env.example"
+ENV_FILE="$ROOT_DIR/classifier-service/.env"
 cd "$ROOT_DIR"
 if [ ! -f "$ENV_EXAMPLE" ]; then
   echo "Error: $ENV_EXAMPLE not found." >&2
