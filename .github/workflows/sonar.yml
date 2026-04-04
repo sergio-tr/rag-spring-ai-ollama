@@ -39,6 +39,8 @@ jobs:
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      # Same as ci.yml: env overrides application-test.properties; empty/short org secrets would fail JwtService during @SpringBootTest.
+      RAG_JWT_SECRET: test-secret-key-for-jwt-signing-must-be-long-enough-32
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
 
