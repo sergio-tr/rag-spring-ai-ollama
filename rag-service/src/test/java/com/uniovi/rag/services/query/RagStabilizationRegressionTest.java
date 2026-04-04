@@ -1,9 +1,11 @@
 package com.uniovi.rag.services.query;
 
+import com.uniovi.Application;
 import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.query.QueryService;
 
+import com.uniovi.rag.testsupport.SafeTestSecretsApplicationContextInitializer;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
 import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
 
@@ -14,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.ContextConfiguration;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -23,7 +26,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * and that expected tool/routing behavior is preserved.
  * Run with data loaded and Ollama for full coverage; unit-level guards are tested in DateExistenceGuardTest.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@SpringBootTest(classes = Application.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@ContextConfiguration(initializers = SafeTestSecretsApplicationContextInitializer.class)
 @Import({ TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class })
 @ActiveProfiles("test")
 @EnabledIf(value = "com.uniovi.rag.testsupport.TestEnvironment#isSpringBootPostgresAvailable",

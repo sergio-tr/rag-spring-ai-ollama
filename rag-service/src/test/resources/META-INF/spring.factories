@@ -1,0 +1,3 @@
+# Test classpath only: fix CI/org env vars that override application-test.properties and break context refresh.
+org.springframework.context.ApplicationContextInitializer=\
+com.uniovi.rag.testsupport.SafeTestSecretsApplicationContextInitializer

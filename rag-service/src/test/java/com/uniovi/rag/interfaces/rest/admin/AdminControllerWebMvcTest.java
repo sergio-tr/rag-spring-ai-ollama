@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -42,19 +42,19 @@ class AdminControllerWebMvcTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private AllowlistAdminService allowlistAdminService;
 
-    @MockBean
+    @MockitoBean
     private AdminSystemDefaultsService adminSystemDefaultsService;
 
-    @MockBean
+    @MockitoBean
     private OllamaModelProvisioningService ollamaModelProvisioningService;
 
-    @MockBean
+    @MockitoBean
     private AsyncTaskService asyncTaskService;
 
-    @MockBean
+    @MockitoBean
     private RagApiPathProperties apiPathProperties;
 
     private UUID userId;

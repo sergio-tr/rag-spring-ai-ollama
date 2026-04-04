@@ -1,6 +1,7 @@
 package com.uniovi.rag.openapi;
 
 import com.uniovi.Application;
+import com.uniovi.rag.testsupport.SafeTestSecretsApplicationContextInitializer;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
 import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.ContextConfiguration;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -27,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * (runs only when Postgres is available, same as other full-context tests).
  */
 @SpringBootTest(classes = Application.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ContextConfiguration(initializers = SafeTestSecretsApplicationContextInitializer.class)
 @Import({TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class})
 @ActiveProfiles("test")
 @EnabledIf(
