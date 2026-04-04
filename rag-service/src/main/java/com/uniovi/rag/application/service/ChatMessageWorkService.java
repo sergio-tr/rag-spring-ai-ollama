@@ -4,8 +4,10 @@ import com.uniovi.rag.domain.MessageProcessingStatus;
 import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.MessageRepository;
+import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
-import org.slf4j.MDC;
+import io.micrometer.tracing.Tracer;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,10 +26,15 @@ public class ChatMessageWorkService {
 
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
+    private final Tracer tracer;
 
-    public ChatMessageWorkService(MessageRepository messageRepository, ConversationRepository conversationRepository) {
+    public ChatMessageWorkService(
+            MessageRepository messageRepository,
+            ConversationRepository conversationRepository,
+            @Autowired(required = false) Tracer tracer) {
         this.messageRepository = messageRepository;
         this.conversationRepository = conversationRepository;
+        this.tracer = tracer;
     }
 
     @Transactional
@@ -109,8 +116,8 @@ public class ChatMessageWorkService {
                 });
     }
 
-    /** Best-effort trace id for message rows when MDC is populated. */
-    public static String currentTraceId() {
-        return MDC.get("traceId");
+    /** Best-effort trace id for message rows (Micrometer trace or MDC). */
+    public String currentTraceId() {
+        return TraceMdcBridge.currentCorrelationTraceId(tracer);
     }
 }

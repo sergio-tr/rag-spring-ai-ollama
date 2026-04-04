@@ -5,6 +5,7 @@ import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.MessageRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
+import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -173,9 +174,9 @@ class ChatMessageWorkServiceTest {
     }
 
     @Test
-    void currentTraceId_readsMdc() {
-        MDC.put("traceId", "abc");
-        assertThat(ChatMessageWorkService.currentTraceId()).isEqualTo("abc");
+    void currentTraceId_readsMdcWhenTracerAbsent() {
+        MDC.put(TraceMdcBridge.MDC_TRACE_ID, "abc");
+        assertThat(chatMessageWorkService.currentTraceId()).isEqualTo("abc");
     }
 
     @Test

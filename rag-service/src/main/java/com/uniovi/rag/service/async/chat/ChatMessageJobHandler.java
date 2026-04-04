@@ -110,7 +110,7 @@ public class ChatMessageJobHandler implements LabJobHandler {
                             userId, projectId, conversationId, docFilter, userContent);
             List<Map<String, Object>> steps = buildPipelineSteps(qr);
             String qt = qr.getQueryType() != null ? qr.getQueryType().name() : null;
-            String traceId = ChatMessageWorkService.currentTraceId();
+            String traceId = chatMessageWorkService.currentTraceId();
             Duration duration = Duration.between(start, Instant.now());
             chatMessageWorkService.applyAssistantSuccess(
                     assistantId,
