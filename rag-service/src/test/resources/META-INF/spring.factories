@@ -1,4 +1,3 @@
-# Test classpath only: fix CI/org env vars that override application-test.properties and break context refresh.
+# Test classpath only: JWT/OTLP fixes + JDBC for JPA (see SafeTestSecretsApplicationContextInitializer).
 org.springframework.context.ApplicationContextInitializer=\
-com.uniovi.rag.testsupport.SafeTestSecretsApplicationContextInitializer,\
-com.uniovi.rag.testsupport.TestJdbcEnvironmentApplicationContextInitializer
+com.uniovi.rag.testsupport.SafeTestSecretsApplicationContextInitializer

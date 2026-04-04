@@ -4,7 +4,7 @@ import com.uniovi.rag.application.service.ProjectDocumentApplicationService;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
-import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

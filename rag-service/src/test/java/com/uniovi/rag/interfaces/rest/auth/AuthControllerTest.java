@@ -3,7 +3,7 @@ package com.uniovi.rag.interfaces.rest.auth;
 import com.uniovi.rag.application.usecase.auth.AuthService;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
-import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;

@@ -3,7 +3,7 @@ package com.uniovi.rag.interfaces.rest.legacy;
 import com.uniovi.rag.domain.model.AddResult;
 import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.interfaces.rest.support.RagApiExceptionHandler;
-import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.domain.exception.DocumentAlreadyExistsException;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.model.QueryResponse;

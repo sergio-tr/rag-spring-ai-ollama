@@ -1,20 +1,22 @@
-package com.uniovi.rag.interfaces.rest.support;
+package com.uniovi.rag.testsupport.webmvc;
 
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.test.context.TestPropertySource;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration;
 import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.test.context.TestPropertySource;
 
 /**
- * Test-only bootstrap in {@code com.uniovi.rag.interfaces.rest.support} so slice tests resolve this before
- * {@link com.uniovi.Application} (avoids JPA/Flyway) while keeping web auto-configuration.
+ * Slice-test bootstrap for {@code @WebMvcTest}. Lives in {@code com.uniovi.rag.testsupport.webmvc} so the
+ * production {@link com.uniovi.Application} component scan can exclude this package: if this class stayed under
+ * {@code com.uniovi}, full {@code @SpringBootTest} runs would pick it up from the test classpath and merge its
+ * {@code @SpringBootApplication(exclude = ...)} (disabling JPA / DataSource auto-config for every test).
  */
 @SpringBootApplication(exclude = {
         DataSourceAutoConfiguration.class,

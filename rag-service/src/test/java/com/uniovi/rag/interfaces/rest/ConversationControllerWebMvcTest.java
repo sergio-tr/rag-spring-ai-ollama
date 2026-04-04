@@ -4,7 +4,7 @@ import com.uniovi.rag.application.service.ChatMessageApplicationService;
 import com.uniovi.rag.application.service.ConversationApplicationService;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.interfaces.rest.dto.MessageDto;
-import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

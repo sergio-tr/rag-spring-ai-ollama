@@ -1,7 +1,7 @@
 package com.uniovi.rag.interfaces.rest.admin;
 
 import com.uniovi.rag.configuration.RagApiPathProperties;
-import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaModelProvisioningService;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.service.admin.AdminSystemDefaultsService;

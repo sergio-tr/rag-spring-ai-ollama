@@ -1,7 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.interfaces.rest.dto.ProjectListResponseDto;
-import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.service.project.ProjectService;
 import org.junit.jupiter.api.AfterEach;

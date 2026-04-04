@@ -2,7 +2,7 @@ package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
-import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import com.uniovi.rag.infrastructure.classifier.ClassifierLabClient;

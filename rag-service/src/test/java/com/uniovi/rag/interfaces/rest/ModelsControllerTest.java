@@ -2,7 +2,7 @@ package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.interfaces.rest.dto.AllowlistModelEntryDto;
 import com.uniovi.rag.interfaces.rest.dto.ModelsCatalogResponseDto;
-import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.domain.AllowedModelType;
 import com.uniovi.rag.service.model.ModelsCatalogService;
 import org.junit.jupiter.api.Test;

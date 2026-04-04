@@ -2,7 +2,7 @@ package com.uniovi.rag.interfaces.rest.me;
 
 import com.uniovi.rag.application.service.me.UserMePreferenceService;
 import com.uniovi.rag.interfaces.rest.dto.me.MePreferencesResponse;
-import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
