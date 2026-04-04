@@ -213,11 +213,35 @@ public class AsyncTaskService {
         return e.getId();
     }
 
+    @Transactional
+    public UUID submitAccountExport(UUID userId) {
+        return enqueue(userId, null, AsyncTaskType.ACCOUNT_EXPORT, Map.of());
+    }
+
+    @Transactional
+    public UUID submitAccountDeletion(UUID userId) {
+        return enqueue(userId, null, AsyncTaskType.ACCOUNT_DELETION, Map.of());
+    }
+
     @Transactional(readOnly = true)
     public AsyncTaskStatusDto getStatus(UUID taskId, UUID userId) {
         AsyncTaskEntity e = asyncTaskRepository
                 .findByIdAndUser_Id(taskId, userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Task not found"));
+        return toDto(e);
+    }
+
+    /**
+     * Poll only {@link AsyncTaskType#ACCOUNT_EXPORT} / {@link AsyncTaskType#ACCOUNT_DELETION} tasks (not Lab jobs).
+     */
+    @Transactional(readOnly = true)
+    public AsyncTaskStatusDto getAccountJobStatus(UUID taskId, UUID userId) {
+        AsyncTaskEntity e = asyncTaskRepository
+                .findByIdAndUser_Id(taskId, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Task not found"));
+        if (e.getTaskType() != AsyncTaskType.ACCOUNT_EXPORT && e.getTaskType() != AsyncTaskType.ACCOUNT_DELETION) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Not an account job");
+        }
         return toDto(e);
     }
 

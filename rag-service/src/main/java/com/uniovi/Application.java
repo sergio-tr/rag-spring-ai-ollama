@@ -1,5 +1,6 @@
 package com.uniovi;
 
+import com.uniovi.rag.configuration.RagAccountProperties;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
@@ -14,12 +15,15 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableAsync(proxyTargetClass = true)
+@EnableScheduling
 @EntityScan(basePackages = "com.uniovi.rag.infrastructure.persistence.jpa")
 @EnableJpaRepositories(basePackages = "com.uniovi.rag.infrastructure.persistence")
 @EnableConfigurationProperties({
+    RagAccountProperties.class,
     RagApiPathProperties.class,
     RagReasoningProperties.class,
     RagRankerProperties.class,
