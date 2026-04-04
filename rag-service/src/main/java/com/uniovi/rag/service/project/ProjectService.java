@@ -13,6 +13,7 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.application.service.AuditApplicationService;
+import com.uniovi.rag.application.service.account.ProjectVisualStyleValidator;
 import com.uniovi.rag.service.preset.PresetService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -106,6 +107,16 @@ public class ProjectService {
                     projectId,
                     Map.of("hasPrompt", p.getProjectPrompt() != null));
         }
+        if (req.colorHex() != null) {
+            ProjectVisualStyleValidator.validateColorHexOrNull(
+                    req.colorHex().isBlank() ? null : req.colorHex().trim());
+            p.setColorHex(req.colorHex().isBlank() ? null : req.colorHex().trim());
+        }
+        if (req.iconKey() != null) {
+            ProjectVisualStyleValidator.validateIconKeyOrNull(
+                    req.iconKey().isBlank() ? null : req.iconKey().trim());
+            p.setIconKey(req.iconKey().isBlank() ? null : req.iconKey().trim());
+        }
         p.setUpdatedAt(Instant.now());
         p = projectRepository.save(p);
         return toSummary(p);
@@ -133,6 +144,8 @@ public class ProjectService {
                 docs,
                 convs,
                 p.getUpdatedAt(),
-                p.getProjectPrompt());
+                p.getProjectPrompt(),
+                p.getColorHex(),
+                p.getIconKey());
     }
 }

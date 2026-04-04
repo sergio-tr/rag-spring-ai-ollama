@@ -10,5 +10,7 @@ public record ProjectSummaryDto(
         long docCount,
         long convCount,
         Instant updatedAt,
-        String projectPrompt) {
+        String projectPrompt,
+        String colorHex,
+        String iconKey) {
 }
