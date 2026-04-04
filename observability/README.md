@@ -2,7 +2,7 @@
 
 Stack configuration and Dockerfiles. **Ports and credentials are defined in one place:** `observability/.env` (template: `.env.example`).
 
-**See also:** [Grafana observability guide](../docs/operations/grafana-observability-guide.md) — dashboards, traces, and operator walkthrough aligned with this stack.
+**See also:** [RUNBOOK.md](RUNBOOK.md) (traces, classifier down, readiness). [Grafana observability guide](../docs/operations/grafana-observability-guide.md) — dashboards, traces, and operator walkthrough aligned with this stack.
 
 ## Production / VM (where to read what)
 
