@@ -31,10 +31,23 @@ public class UserPreferencesEntity {
     @Column(name = "preferences_jsonb", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> preferences;
 
+    @Column(name = "schema_version", nullable = false)
+    private int schemaVersion = 1;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     protected UserPreferencesEntity() {
+    }
+
+    /** New row for the given user (same persistence unit). */
+    public static UserPreferencesEntity newForUser(UserEntity user) {
+        UserPreferencesEntity e = new UserPreferencesEntity();
+        e.setUser(user);
+        e.setPreferences(new java.util.LinkedHashMap<>());
+        e.setSchemaVersion(1);
+        e.setUpdatedAt(Instant.now());
+        return e;
     }
 
     public UUID getUserId() {
@@ -47,6 +60,14 @@ public class UserPreferencesEntity {
 
     public void setPreferences(Map<String, Object> preferences) {
         this.preferences = preferences;
+    }
+
+    public int getSchemaVersion() {
+        return schemaVersion;
+    }
+
+    public void setSchemaVersion(int schemaVersion) {
+        this.schemaVersion = schemaVersion;
     }
 
     public Instant getUpdatedAt() {

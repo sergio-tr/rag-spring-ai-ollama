@@ -33,6 +33,12 @@ public class ProjectEntity {
     @Column(name = "project_prompt", columnDefinition = "text")
     private String projectPrompt;
 
+    @Column(name = "color_hex", length = 7)
+    private String colorHex;
+
+    @Column(name = "icon_key", length = 64)
+    private String iconKey;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -80,6 +86,22 @@ public class ProjectEntity {
 
     public void setProjectPrompt(String projectPrompt) {
         this.projectPrompt = projectPrompt;
+    }
+
+    public String getColorHex() {
+        return colorHex;
+    }
+
+    public void setColorHex(String colorHex) {
+        this.colorHex = colorHex;
+    }
+
+    public String getIconKey() {
+        return iconKey;
+    }
+
+    public void setIconKey(String iconKey) {
+        this.iconKey = iconKey;
     }
 
     public Instant getCreatedAt() {

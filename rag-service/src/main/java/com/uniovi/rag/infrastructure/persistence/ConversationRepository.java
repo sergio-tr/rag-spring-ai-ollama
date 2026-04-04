@@ -11,6 +11,8 @@ import java.util.UUID;
 
 public interface ConversationRepository extends JpaRepository<ConversationEntity, UUID> {
 
+    long countByUser_Id(UUID userId);
+
     @Query(
             "SELECT c FROM ConversationEntity c "
                     + "LEFT JOIN FETCH c.config "

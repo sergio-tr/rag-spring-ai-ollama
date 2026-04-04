@@ -10,6 +10,8 @@ import java.util.UUID;
 
 public interface ProjectRepository extends JpaRepository<ProjectEntity, UUID> {
 
+    long countByOwner_Id(UUID ownerId);
+
     Page<ProjectEntity> findByOwner_IdOrderByUpdatedAtDesc(UUID ownerId, Pageable pageable);
 
     Optional<ProjectEntity> findByIdAndOwner_Id(UUID id, UUID ownerId);

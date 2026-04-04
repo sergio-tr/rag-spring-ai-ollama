@@ -31,10 +31,23 @@ public class UserPersonalizationEntity {
     @Column(name = "personalization_jsonb", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> personalization;
 
+    @Column(name = "schema_version", nullable = false)
+    private int schemaVersion = 1;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     protected UserPersonalizationEntity() {
+    }
+
+    /** New row for the given user (same persistence unit). */
+    public static UserPersonalizationEntity newForUser(UserEntity user) {
+        UserPersonalizationEntity e = new UserPersonalizationEntity();
+        e.setUser(user);
+        e.setPersonalization(new java.util.LinkedHashMap<>());
+        e.setSchemaVersion(1);
+        e.setUpdatedAt(Instant.now());
+        return e;
     }
 
     public UUID getUserId() {
@@ -47,6 +60,14 @@ public class UserPersonalizationEntity {
 
     public void setPersonalization(Map<String, Object> personalization) {
         this.personalization = personalization;
+    }
+
+    public int getSchemaVersion() {
+        return schemaVersion;
+    }
+
+    public void setSchemaVersion(int schemaVersion) {
+        this.schemaVersion = schemaVersion;
     }
 
     public Instant getUpdatedAt() {
