@@ -5,6 +5,7 @@ import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.classifier.ClassifierModelRegistryService;
+import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -22,10 +23,15 @@ class ClassifierEvalJobHandler implements LabJobHandler {
 
     private final ClassifierLabPort classifierLab;
     private final ClassifierModelRegistryService classifierModelRegistryService;
+    private final EvaluationCanonicalPersistenceService canonicalPersistence;
 
-    ClassifierEvalJobHandler(ClassifierLabPort classifierLab, ClassifierModelRegistryService classifierModelRegistryService) {
+    ClassifierEvalJobHandler(
+            ClassifierLabPort classifierLab,
+            ClassifierModelRegistryService classifierModelRegistryService,
+            EvaluationCanonicalPersistenceService canonicalPersistence) {
         this.classifierLab = classifierLab;
         this.classifierModelRegistryService = classifierModelRegistryService;
+        this.canonicalPersistence = canonicalPersistence;
     }
 
     @Override
@@ -36,6 +42,7 @@ class ClassifierEvalJobHandler implements LabJobHandler {
     @Override
     public void run(AsyncTaskEntity task, AsyncTaskMutationService mutation) {
         UUID taskId = task.getId();
+        UUID evaluationRunId = LabJobPayloads.evaluationRunId(task.getRequestPayload());
         Map<String, Object> payload = task.getRequestPayload();
         if (payload == null) {
             mutation.markFailed(taskId, "Missing payload");
@@ -70,7 +77,17 @@ class ClassifierEvalJobHandler implements LabJobHandler {
             mutation.appendProgressLine(taskId, "Calling classifier-service /evaluate…");
             Map<String, Object> res =
                     classifierLab.evaluateBytes(modelId, includeImages, evalBytes, evalFilename);
-            mutation.markSucceeded(taskId, res);
+            try {
+                if (evaluationRunId != null) {
+                    canonicalPersistence.persistClassifierMetrics(evaluationRunId, res);
+                }
+                mutation.markSucceeded(taskId, res);
+            } catch (RuntimeException e) {
+                if (evaluationRunId != null) {
+                    canonicalPersistence.markRunFailed(evaluationRunId, e.getMessage());
+                }
+                throw e;
+            }
             try {
                 String tag =
                         modelId != null && !modelId.isBlank()

@@ -210,7 +210,9 @@ class RagControllerTest {
         when(evaluationService.evaluateAllConfigurations()).thenReturn(Map.of("config1", Map.of("score", 0.8)));
 
         mockMvc.perform(get("/api/v4/evaluate/all"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.legacyEvaluationMode").value("LEGACY_COMBINATORIAL"))
+                .andExpect(jsonPath("$.configurations.config1.score").value(0.8));
         verify(evaluationService).loadData();
         verify(evaluationService).evaluateAllConfigurations();
     }

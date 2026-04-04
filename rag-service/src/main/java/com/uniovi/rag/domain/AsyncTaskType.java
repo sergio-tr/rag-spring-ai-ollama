@@ -6,6 +6,8 @@ package com.uniovi.rag.domain;
 public enum AsyncTaskType {
     EVAL_LLM,
     EVAL_RAG,
+    /** Retrieval-only vector benchmark ({@link com.uniovi.rag.domain.evaluation.BenchmarkKind#EMBEDDING_RETRIEVAL}). */
+    EVAL_EMBEDDING_RETRIEVAL,
     CLASSIFIER_TRAIN,
     CLASSIFIER_EVAL,
     OLLAMA_PULL,

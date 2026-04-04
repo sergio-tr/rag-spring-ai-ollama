@@ -5,6 +5,10 @@ import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
+import com.uniovi.rag.service.guard.QueryDateExtractor;
+import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.service.ranker.ResponseRanker;
+import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
 import org.junit.jupiter.api.Test;
@@ -34,6 +38,10 @@ class RagEvaluationConfigurationTest {
         MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
         ModelCatalogPort modelCatalogPort = mock(ModelCatalogPort.class);
         ChatScopedRagConfigResolver chatScopedRagConfigResolver = mock(ChatScopedRagConfigResolver.class);
+        ReasoningStrategy reasoningStrategy = mock(ReasoningStrategy.class);
+        ResponseRanker responseRanker = mock(ResponseRanker.class);
+        PostRetrievalProcessor postRetrievalProcessor = mock(PostRetrievalProcessor.class);
+        QueryDateExtractor queryDateExtractor = mock(QueryDateExtractor.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         EvaluationServiceFactory factory = config.evaluationServiceFactory(
@@ -58,6 +66,11 @@ class RagEvaluationConfigurationTest {
                 metadataLlmResponseCacheService,
                 modelCatalogPort,
                 chatScopedRagConfigResolver,
+                reasoningStrategy,
+                responseRanker,
+                postRetrievalProcessor,
+                queryDateExtractor,
+                false,
                 null
         );
         assertNotNull(factory);

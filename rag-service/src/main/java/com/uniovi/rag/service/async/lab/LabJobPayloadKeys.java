@@ -17,6 +17,9 @@ public final class LabJobPayloadKeys {
     public static final String EVAL_FILENAME = "evalFilename";
     public static final String OLLAMA_MODEL = "model";
 
+    /** Canonical UUID string of {@code evaluation_run} when the task writes benchmark results to SQL. */
+    public static final String EVALUATION_RUN_ID = "evaluationRunId";
+
     private LabJobPayloadKeys() {
     }
 }

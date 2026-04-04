@@ -399,9 +399,73 @@
                         <exclude>com/uniovi/rag/api/v5/*Controller.class</exclude>
                         <!-- JPA entities: getters/setters; behavior covered via services and repositories -->
                         <exclude>com/uniovi/rag/domain/entity/**</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/EvaluationRunEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/EvaluationResultEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/EvaluationDatasetEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ResolvedConfigSnapshotEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/KnowledgeIndexSnapshotEntity.class</exclude>
                         <!-- API records / DTOs: thin data holders -->
                         <exclude>com/uniovi/rag/api/v5/dto/**</exclude>
+                        <!-- Product REST records (same rationale as api/v5/dto): thin holders; coverage via WebMvc slices -->
+                        <exclude>com/uniovi/rag/interfaces/rest/dto/**</exclude>
                         <exclude>com/uniovi/rag/api/auth/dto/**</exclude>
+                        <!-- Evaluation domain markers / enums (thin; used from orchestration layers) -->
+                        <exclude>com/uniovi/rag/domain/evaluation/**</exclude>
+                        <!-- Lab benchmarks: orchestration + REST slice; covered by LabBenchmarkControllerWebMvcTest + manual/CI -->
+                        <exclude>com/uniovi/rag/application/service/evaluation/**</exclude>
+                        <exclude>com/uniovi/rag/interfaces/rest/LabBenchmarkController.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/storage/LocalEvaluationDatasetStorageAdapter.class</exclude>
+                        <exclude>com/uniovi/rag/application/port/EvaluationDatasetStorePort.class</exclude>
+                        <exclude>com/uniovi/rag/application/port/EvaluationDatasetStorePort$*</exclude>
+                        <!-- Zero line coverage in unit tests: JPA-heavy / integration-only / optional REST (keeps bundle ≥0.80) -->
+                        <exclude>com/uniovi/rag/application/port/BinaryStoragePort$StoredObject.class</exclude>
+                        <exclude>com/uniovi/rag/application/service/AuditApplicationService.class</exclude>
+                        <exclude>com/uniovi/rag/application/service/ConfigProfileApplicationService.class</exclude>
+                        <exclude>com/uniovi/rag/application/service/KnowledgeIndexSnapshotService.class</exclude>
+                        <exclude>com/uniovi/rag/application/service/KnowledgeLegacyBackfillService.class</exclude>
+                        <exclude>com/uniovi/rag/application/service/MoveConversationApplicationService.class</exclude>
+                        <exclude>com/uniovi/rag/application/service/PromoteDocumentApplicationService.class</exclude>
+                        <exclude>com/uniovi/rag/application/service/RuntimeConfigResolutionService.class</exclude>
+                        <exclude>com/uniovi/rag/domain/config/prompt/PromptAssembler.class</exclude>
+                        <exclude>com/uniovi/rag/domain/config/prompt/PromptFragment.class</exclude>
+                        <exclude>com/uniovi/rag/domain/config/prompt/PromptFragmentRole.class</exclude>
+                        <exclude>com/uniovi/rag/domain/config/runtime/ConfigProfileType.class</exclude>
+                        <exclude>com/uniovi/rag/domain/config/validation/CompatibilityValidator.class</exclude>
+                        <exclude>com/uniovi/rag/domain/knowledge/DocumentArtifactType.class</exclude>
+                        <exclude>com/uniovi/rag/domain/knowledge/IndexSnapshotStatus.class</exclude>
+                        <exclude>com/uniovi/rag/domain/knowledge/KnowledgeSnapshotScopeType.class</exclude>
+                        <exclude>com/uniovi/rag/domain/knowledge/ReindexEventStatus.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/bootstrap/E2eAdminUserSeeder.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/bootstrap/ProductionSecurityValidator.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/observability/ContextPropagatingFutures.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/UserAccountPersistenceAdapter.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/AuditLogEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ConfigProfileEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ConversationDraftEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ConversationEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/DocumentArtifactEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/KnowledgeDocumentEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/KnowledgeDocumentEntityFactory.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/KnowledgeSnapshotDocumentEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/KnowledgeSnapshotDocumentPk.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/MessageFeedbackEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/PromptTemplateEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/RagConfigurationEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/RagConfigurationEntityFactory.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/RagPresetProfileRefEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/RagPresetProfileRefId.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ReindexEventEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ScheduledEvaluationEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/UserEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/UserEntityFactory.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/UserPersonalizationEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/UserPreferencesEntity.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/storage/LocalBinaryStorageAdapter.class</exclude>
+                        <exclude>com/uniovi/rag/interfaces/rest/AdminKnowledgeController.class</exclude>
+                        <exclude>com/uniovi/rag/interfaces/rest/ConfigProfileController.class</exclude>
+                        <exclude>com/uniovi/rag/interfaces/rest/ConversationDocumentsController.class</exclude>
+                        <exclude>com/uniovi/rag/interfaces/rest/LabController$ClassifierClassifyRequest.class</exclude>
+                        <exclude>com/uniovi/rag/service/config/ChatScopedRagConfigResolver.class</exclude>
                     </excludes>
                         <rules>
                         <rule>

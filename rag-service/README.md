@@ -61,6 +61,23 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 | `rag.runtime.workflow-schema-version` | Semver of the RAG execution stage graph (Lab/eval reproducibility) | `1.0.0` |
 | `rag.runtime.legacy-advisor-with-post-retrieval` | Allow `QuestionAnswerAdvisor` when post-retrieval is on (legacy; not recommended) | `false` |
 | `rag.runtime.memory-max-turns` / `rag.runtime.memory-max-chars` | Caps for product “full” conversation memory when injected into prompts | `20` / `8000` |
+| `rag.evaluation.persistence.enabled` | Persist canonical `evaluation_run` / `evaluation_result` from Lab async handlers | `true` |
+| `rag.evaluation.storage-root` | Filesystem root for uploaded evaluation datasets (empty → temp dir) | — |
+| `rag.evaluation.max-upload-bytes` | Max size per dataset binary (v1 cap) | `26214400` (25 MB) |
+
+### Lab benchmarks
+
+Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `evaluation_run` + `evaluation_result`; `async_task` is operational (poll `/lab/jobs/{asyncTaskId}`).
+
+| Goal (TFG / product) | Use | Legacy (not primary SCIENCE evidence) |
+|----------------------|-----|----------------------------------------|
+| LLM judge QA (no retrieval) | `POST /lab/benchmarks/LLM_JUDGE_QA/runs` | — |
+| Embedding / retrieval only | `POST /lab/benchmarks/EMBEDDING_RETRIEVAL/runs` | — |
+| Full RAG (preset + snapshots) | `POST /lab/benchmarks/RAG_PRESET_END_TO_END/runs` | — |
+| Classifier metrics | `POST /lab/benchmarks/CLASSIFIER_METRICS/runs` (multipart) | — |
+| Combinatorial feature-flag matrix | — | `GET {legacy}/evaluate/all` → body includes `legacyEvaluationMode: LEGACY_COMBINATORIAL` |
+
+Export: `GET /lab/runs/{id}/export?format=csv` (first line `#META:` + JSON run header, then CSV rows) or `format=json`.
 
 ### Configuration layout (two main files + tests)
 

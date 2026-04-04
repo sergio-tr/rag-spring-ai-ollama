@@ -1,9 +1,14 @@
 package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.service.guard.QueryDateExtractor;
+import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.service.ranker.ResponseRanker;
+import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClient.Builder;
 import org.springframework.ai.evaluation.RelevancyEvaluator;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -55,13 +60,20 @@ public class RagEvaluationConfiguration {
         MetadataLlmResponseCacheService metadataLlmResponseCacheService,
         ModelCatalogPort modelCatalogPort,
         ChatScopedRagConfigResolver chatScopedRagConfigResolver,
-        @org.springframework.beans.factory.annotation.Autowired(required = false) RagRuntimeProperties ragRuntimeProperties
+        ReasoningStrategy reasoningStrategy,
+        ResponseRanker responseRanker,
+        PostRetrievalProcessor postRetrievalProcessor,
+        QueryDateExtractor queryDateExtractor,
+        @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
+        @Autowired(required = false) RagRuntimeProperties ragRuntimeProperties
     ) {
         return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
                 classifierServiceUrl, classifierModelId, classifierTimeoutMs, chunkMaxChars, responseValidator, documentContentExtractor,
                 expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
                 expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker,
-                metadataLlmResponseCacheService, modelCatalogPort, chatScopedRagConfigResolver, ragRuntimeProperties);
+                metadataLlmResponseCacheService, modelCatalogPort, chatScopedRagConfigResolver,
+                reasoningStrategy, responseRanker, postRetrievalProcessor, queryDateExtractor, knowledgeChatOverlayEnabled,
+                ragRuntimeProperties);
     }
 
     @Bean

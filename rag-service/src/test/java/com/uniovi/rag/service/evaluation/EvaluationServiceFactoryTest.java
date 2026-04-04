@@ -4,6 +4,10 @@ import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
+import com.uniovi.rag.service.guard.QueryDateExtractor;
+import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.service.ranker.ResponseRanker;
+import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
@@ -37,6 +41,10 @@ class EvaluationServiceFactoryTest {
         MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
         ModelCatalogPort modelCatalogPort = mock(ModelCatalogPort.class);
         ChatScopedRagConfigResolver chatScopedRagConfigResolver = mock(ChatScopedRagConfigResolver.class);
+        ReasoningStrategy reasoningStrategy = mock(ReasoningStrategy.class);
+        ResponseRanker responseRanker = mock(ResponseRanker.class);
+        PostRetrievalProcessor postRetrievalProcessor = mock(PostRetrievalProcessor.class);
+        QueryDateExtractor queryDateExtractor = mock(QueryDateExtractor.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         factory = new EvaluationServiceFactory(
@@ -61,6 +69,11 @@ class EvaluationServiceFactoryTest {
                 metadataLlmResponseCacheService,
                 modelCatalogPort,
                 chatScopedRagConfigResolver,
+                reasoningStrategy,
+                responseRanker,
+                postRetrievalProcessor,
+                queryDateExtractor,
+                false,
                 null
         );
         featureConfig = new RagFeatureConfiguration();

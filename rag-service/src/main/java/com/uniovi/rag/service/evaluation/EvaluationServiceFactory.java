@@ -19,6 +19,9 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
+import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.service.ranker.ResponseRanker;
+import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.postretrieval.DefaultPostRetrievalProcessor;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.port.ModelCatalogPort;
@@ -29,8 +32,6 @@ import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.service.query.SimpleProcessQueryService;
 import com.uniovi.rag.service.query.SimpleQueryService;
-import com.uniovi.rag.service.ranker.LLMAsJudgeRanker;
-import com.uniovi.rag.service.reasoning.SimpleReasoningStrategy;
 import com.uniovi.rag.service.retriever.BasicContextRetriever;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.service.retriever.FilteredContextRetriever;
@@ -44,6 +45,7 @@ import com.uniovi.rag.tool.metadata.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
@@ -78,6 +80,11 @@ public class EvaluationServiceFactory {
     private final ModelCatalogPort modelCatalogPort;
     private final ChatScopedRagConfigResolver chatScopedRagConfigResolver;
     private final RagRuntimeProperties ragRuntimeProperties;
+    private final ReasoningStrategy reasoningStrategy;
+    private final ResponseRanker responseRanker;
+    private final PostRetrievalProcessor postRetrievalProcessor;
+    private final QueryDateExtractor queryDateExtractor;
+    private final boolean knowledgeChatOverlayEnabled;
 
     public EvaluationServiceFactory(
         ChatClient chatClient,
@@ -101,6 +108,11 @@ public class EvaluationServiceFactory {
         MetadataLlmResponseCacheService metadataLlmResponseCacheService,
         ModelCatalogPort modelCatalogPort,
         ChatScopedRagConfigResolver chatScopedRagConfigResolver,
+        ReasoningStrategy reasoningStrategy,
+        ResponseRanker responseRanker,
+        PostRetrievalProcessor postRetrievalProcessor,
+        QueryDateExtractor queryDateExtractor,
+        @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
         @Autowired(required = false) RagRuntimeProperties ragRuntimeProperties
     ) {
         this.chatClient = chatClient;
@@ -124,6 +136,11 @@ public class EvaluationServiceFactory {
         this.metadataLlmResponseCacheService = metadataLlmResponseCacheService;
         this.modelCatalogPort = modelCatalogPort;
         this.chatScopedRagConfigResolver = chatScopedRagConfigResolver;
+        this.reasoningStrategy = reasoningStrategy;
+        this.responseRanker = responseRanker;
+        this.postRetrievalProcessor = postRetrievalProcessor;
+        this.queryDateExtractor = queryDateExtractor;
+        this.knowledgeChatOverlayEnabled = knowledgeChatOverlayEnabled;
         this.ragRuntimeProperties = ragRuntimeProperties;
     }
 
@@ -155,23 +172,22 @@ public class EvaluationServiceFactory {
         ContextRetriever retriever;
         switch (retrieverImpl) {
             case "filtered":
-                retriever = new FilteredContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+                retriever = new FilteredContextRetriever(
+                        vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
                 break;
             case "minute-document":
-                retriever = new MinuteDocumentContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+                retriever = new MinuteDocumentContextRetriever(
+                        vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
                 break;
             default:
-                retriever = new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+                retriever = new BasicContextRetriever(
+                        vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
                 break;
         }
         RagToolsConfiguration toolsConfig = new RagToolsConfiguration(createTools(featureConfig, retriever, documentContentExtractor));
-        QueryDateExtractor queryDateExtractor = new QueryDateExtractor();
         DateExistenceGuard dateExistenceGuard = new DefaultDateExistenceGuard(retriever, queryDateExtractor);
         NERQueryEnricher nerQueryEnricher = new NERQueryEnricher(80, 512);
         MeetingMinutesToolsAdapter meetingMinutesToolsAdapter = new MeetingMinutesToolsAdapter(toolsConfig, analyser);
-        SimpleReasoningStrategy reasoningStrategy = new SimpleReasoningStrategy();
-        LLMAsJudgeRanker responseRanker = new LLMAsJudgeRanker(chatClient);
-        DefaultPostRetrievalProcessor postRetrievalProcessor = new DefaultPostRetrievalProcessor(10);
 
         String queryServiceImpl = impl.getQueryServiceImpl() != null ? impl.getQueryServiceImpl().trim().toLowerCase() : "process";
         switch (queryServiceImpl) {
@@ -182,6 +198,7 @@ public class EvaluationServiceFactory {
             default:
                 NaiveCorpusContextService naiveCorpus =
                         new NaiveCorpusContextService(new NamedParameterJdbcTemplate(jdbcTemplate));
+                // Same ProcessQueryService constructor as product RagQueryConfiguration; pipeline from QueryRuntimeComponentsFactory.
                 return new ProcessQueryService(
                         featureConfig,
                         toolsConfig,

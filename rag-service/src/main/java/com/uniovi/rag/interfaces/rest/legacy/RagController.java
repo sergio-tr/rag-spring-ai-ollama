@@ -21,6 +21,9 @@ import com.uniovi.rag.interfaces.rest.support.dto.QuerySuccessPayload;
 import com.uniovi.rag.infrastructure.observability.Loggable;
 import java.util.Map;
 import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.domain.evaluation.RagEvaluationLegacy;
+
+import java.util.LinkedHashMap;
 
 @RestController
 @RequestMapping("${rag.api.legacy-base-path}")
@@ -203,17 +206,22 @@ public class RagController implements Loggable {
      * This may take a long time as it runs the full evaluation for each configuration.
      */
     @GetMapping("/evaluate/all")
-    public ResponseEntity<Map<String, Map<String, Object>>> evaluateAllConfigurations() {
+    public ResponseEntity<Map<String, Object>> evaluateAllConfigurations() {
         if (observability != null) {
             return observability.runWithSpan("rag.controller.evaluateAllConfigurations", Map.of(), "result", () -> {
                 evaluationService.loadData();
-                Map<String, Map<String, Object>> allResults = evaluationService.evaluateAllConfigurations();
-                return ResponseEntity.ok(allResults);
+                return ResponseEntity.ok(wrapLegacyCombinatorial(evaluationService.evaluateAllConfigurations()));
             });
         }
         evaluationService.loadData();
-        Map<String, Map<String, Object>> allResults = evaluationService.evaluateAllConfigurations();
-        return ResponseEntity.ok(allResults);
+        return ResponseEntity.ok(wrapLegacyCombinatorial(evaluationService.evaluateAllConfigurations()));
+    }
+
+    private static Map<String, Object> wrapLegacyCombinatorial(Map<String, Map<String, Object>> configurations) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put(RagEvaluationLegacy.RESPONSE_KEY_LEGACY_MODE, RagEvaluationLegacy.LEGACY_COMBINATORIAL);
+        body.put("configurations", configurations);
+        return body;
     }
     
     /**

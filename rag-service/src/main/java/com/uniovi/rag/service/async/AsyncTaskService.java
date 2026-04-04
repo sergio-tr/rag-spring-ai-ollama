@@ -49,7 +49,16 @@ public class AsyncTaskService {
 
     @Transactional
     public UUID submitEvalLlm(UUID userId, UUID projectId) {
-        return enqueue(userId, projectId, AsyncTaskType.EVAL_LLM, Map.of());
+        return submitEvalLlm(userId, projectId, null);
+    }
+
+    @Transactional
+    public UUID submitEvalLlm(UUID userId, UUID projectId, UUID evaluationRunId) {
+        return enqueue(
+                userId,
+                projectId,
+                AsyncTaskType.EVAL_LLM,
+                withEvaluationRunPayload(evaluationRunId));
     }
 
     @Transactional
@@ -59,7 +68,25 @@ public class AsyncTaskService {
 
     @Transactional
     public UUID submitEvalRag(UUID userId, UUID projectId) {
-        return enqueue(userId, projectId, AsyncTaskType.EVAL_RAG, Map.of());
+        return submitEvalRag(userId, projectId, null);
+    }
+
+    @Transactional
+    public UUID submitEvalRag(UUID userId, UUID projectId, UUID evaluationRunId) {
+        return enqueue(
+                userId,
+                projectId,
+                AsyncTaskType.EVAL_RAG,
+                withEvaluationRunPayload(evaluationRunId));
+    }
+
+    @Transactional
+    public UUID submitEvalEmbeddingRetrieval(UUID userId, UUID projectId, UUID evaluationRunId) {
+        return enqueue(
+                userId,
+                projectId,
+                AsyncTaskType.EVAL_EMBEDDING_RETRIEVAL,
+                withEvaluationRunPayload(evaluationRunId));
     }
 
     @Transactional
@@ -123,7 +150,22 @@ public class AsyncTaskService {
             boolean includeImages,
             MultipartFile datasetFile)
             throws IOException {
+        return submitClassifierEval(userId, projectId, modelId, includeImages, datasetFile, null);
+    }
+
+    @Transactional
+    public UUID submitClassifierEval(
+            UUID userId,
+            UUID projectId,
+            String modelId,
+            boolean includeImages,
+            MultipartFile datasetFile,
+            UUID evaluationRunId)
+            throws IOException {
         Map<String, Object> payload = new LinkedHashMap<>();
+        if (evaluationRunId != null) {
+            payload.put(LabJobPayloadKeys.EVALUATION_RUN_ID, evaluationRunId.toString());
+        }
         if (modelId != null && !modelId.isBlank()) {
             payload.put(LabJobPayloadKeys.MODEL_ID, modelId.trim());
         }
@@ -150,6 +192,13 @@ public class AsyncTaskService {
     public UUID submitOllamaPull(UUID userId, UUID projectId, String model) {
         Map<String, Object> payload = Map.of(LabJobPayloadKeys.OLLAMA_MODEL, model.trim());
         return enqueue(userId, projectId, AsyncTaskType.OLLAMA_PULL, payload);
+    }
+
+    private static Map<String, Object> withEvaluationRunPayload(UUID evaluationRunId) {
+        if (evaluationRunId == null) {
+            return Map.of();
+        }
+        return Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, evaluationRunId.toString());
     }
 
     private UUID enqueue(UUID userId, UUID projectIdOrNull, AsyncTaskType type, Map<String, Object> payload) {
