@@ -10,6 +10,7 @@ import com.uniovi.rag.interfaces.rest.dto.ResolvedRuntimeConfigResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigPreviewRequest;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.service.config.UserProjectConfigurationService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -91,11 +92,19 @@ public class ConfigController {
         return set;
     }
 
+    @Operation(
+            summary = "Effective user RAG config (legacy)",
+            deprecated = true,
+            description = "Prefer GET/PUT /me/preferences and /me/personalization for UI prefs; this merges rag_configuration USER_DEFAULT.")
     @GetMapping("/user")
     public Map<String, Object> getUserConfig(@AuthenticationPrincipal RagPrincipal principal) {
         return userProjectConfigurationService.getEffectiveUserConfig(principal.userId());
     }
 
+    @Operation(
+            summary = "Replace user-default RAG configuration (legacy)",
+            deprecated = true,
+            description = "Prefer /me/preferences and /me/personalization for canonical JSON stores.")
     @PutMapping("/user")
     public Map<String, Object> putUserConfig(
             @AuthenticationPrincipal RagPrincipal principal, @RequestBody Map<String, Object> body) {
