@@ -63,6 +63,11 @@ jobs:
           chmod +x mvnw
           ./mvnw -B verify
 
+      - name: Javadoc
+        run: |
+          cd rag-service
+          ./mvnw -B -q javadoc:javadoc
+
   classifier-service:
     name: Query Classifier Service (Python)
     runs-on: ubuntu-latest
@@ -79,7 +84,108 @@ jobs:
           cd classifier-service
           pip install -r requirements.txt
 
-      - name: Run tests
+      # pytest.ini + .coveragerc enforce --cov=app and fail_under=80 (plan Fase B).
+      - name: Run tests with coverage gate
         run: |
           cd classifier-service
           pytest tests/ -v
+
+  webapp:
+    name: Webapp (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    env:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:9000
+      NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run Vitest with coverage (thresholds ≥80%)
+        id: vitest_coverage
+        run: npm run test:coverage
+
+      - name: Append coverage summary to job summary
+        if: success()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "### Vitest coverage summary" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat coverage/coverage-summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload coverage report
+        if: ${{ always() && (steps.vitest_coverage.outcome == 'success' || steps.vitest_coverage.outcome == 'failure') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: webapp-coverage
+          path: webapp/coverage/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Build
+        run: npm run build
+
+      - name: Generate docs
+        run: npm run doc
+
+  # Playwright UI smoke: npm run test:e2e = --project=chromium --grep-invert @fullstack (see webapp/e2e/README.md). API tests use npm run test:api separately.
+  webapp-e2e:
+    name: Webapp E2E (Playwright smoke)
+    runs-on: ubuntu-latest
+    needs: [webapp]
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: webapp
+    env:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:9000
+      NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright (excludes @fullstack)
+        run: npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-smoke-report
+          path: webapp/playwright-report/
+          retention-days: 7

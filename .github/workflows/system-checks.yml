@@ -1,0 +1,52 @@
+# Playwright API smoke against a running Spring instance (manual). See webapp/e2e/api/README.md and docs/testing/traceability-legacy-tools.md
+name: System checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      spring_base_url:
+        description: Spring Boot base URL (Actuator + product API)
+        required: true
+        type: string
+        default: http://localhost:9000
+      classifier_base_url:
+        description: Optional classifier-service base URL (enables optional classifier /health check)
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  system-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Playwright API tests (system + domain smoke)
+        env:
+          PLAYWRIGHT_SKIP_WEBSERVER: "1"
+          API_BASE_URL: ${{ inputs.spring_base_url }}
+          CLASSIFIER_URL: ${{ inputs.classifier_base_url }}
+          INTEGRATION_LOGIN_EMAIL: dev@local.test
+          INTEGRATION_LOGIN_PASSWORD: dev
+        run: npm run test:api
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-api-report
+          path: webapp/playwright-report/
+          retention-days: 7

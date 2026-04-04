@@ -1,0 +1,115 @@
+# Stack HTTP integration tests (pytest + httpx). No browser; no observability stack by default.
+# Classifier-specific cases skip if classifier-service is not reachable (this job starts backend only).
+name: Stack integration (pytest)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "tests/integration/**"
+      - "rag-service/**"
+      - ".github/workflows/integration.yml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "tests/integration/**"
+      - "rag-service/**"
+      - ".github/workflows/integration.yml"
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stack-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      # Path A: Postgres from GHA service (not Python Testcontainers). Pytest stays HTTP-only.
+      INTEGRATION_USE_TESTCONTAINERS: "0"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
+      RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
+      INTEGRATION_CHECK_OBS: "0"
+      INTEGRATION_BACKEND_URL: http://127.0.0.1:9000
+      INTEGRATION_CLASSIFIER_URL: http://127.0.0.1:8000
+      INTEGRATION_ADMIN_EMAIL: admin@e2e.local
+      INTEGRATION_ADMIN_PASSWORD: e2e
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+
+      - name: Prepare Postgres extensions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          for i in $(seq 1 40); do
+            if pg_isready -h localhost -p 5432 -U postgres; then break; fi
+            sleep 2
+          done
+          PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c \
+            "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS hstore; CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
+
+      - name: Start Spring Boot (profile e2e)
+        run: |
+          cd rag-service
+          chmod +x mvnw
+          nohup ./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e \
+            > /tmp/spring-integration.log 2>&1 &
+          echo $! > /tmp/spring-integration.pid
+
+      - name: Wait for Actuator health
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:9000/actuator/health >/dev/null 2>&1; then
+              echo "Backend healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-integration.log || true
+          exit 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install integration test deps
+        run: pip install -r tests/integration/requirements.txt
+
+      - name: pytest (stack integration)
+        # HTTP-only: Path B (test_tc_postgres_smoke) is local Docker optional; see tests/integration/README.md
+        run: python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py
+
+      - name: Upload Spring log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spring-integration-log
+          path: /tmp/spring-integration.log
+          retention-days: 7

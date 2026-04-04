@@ -1,0 +1,115 @@
+# Gatling JVM load tests (see tests/gatling/README.md). Safe default: skip when no base URL is configured.
+name: Performance (Gatling)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Spring Boot base URL (e.g. https://api.example.com or http://host.docker.internal:9000)
+        required: true
+        type: string
+        default: http://localhost:9000
+      simulation:
+        description: Fully qualified simulation class
+        required: true
+        type: choice
+        options:
+          - simulations.ActuatorHealthSimulation
+          - simulations.ActuatorThroughputTiersSimulation
+          - simulations.LegacyQueryLoadSimulation
+          - simulations.LegacyQuerySpikeSimulation
+          - simulations.ProductAuthenticatedSimulation
+          - simulations.ProductUnauthenticatedSimulation
+          - simulations.AuthLoginNegativeSimulation
+          - simulations.AdminApiSimulation
+          - simulations.ChatSseSimulation
+          - simulations.StressRampSimulation
+          - simulations.OpenApiAndReadinessSimulation
+          - simulations.MixedRealisticSimulation
+          - simulations.MixedRealisticSmokeSimulation
+          - simulations.MixedRealisticLoadSimulation
+          - simulations.MixedRealisticStressSimulation
+          - simulations.MixedRealisticSpikeSimulation
+          - simulations.MixedRealisticSoakSimulation
+        default: simulations.ActuatorHealthSimulation
+      mixed_profile:
+        description: GATLING_PROFILE when using MixedRealisticSimulation (ignored for profile-specific classes)
+        required: false
+        type: choice
+        options:
+          - load
+          - smoke
+          - stress
+          - spike
+          - soak
+        default: load
+  schedule:
+    - cron: "30 8 * * 0"
+
+jobs:
+  gatling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve BASE_URL and SIMULATION
+        id: cfg
+        env:
+          VAR_SIM: ${{ vars.GATLING_SIMULATION }}
+          VAR_PROFILE: ${{ vars.GATLING_PROFILE }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "base=${{ inputs.base_url }}" >> "$GITHUB_OUTPUT"
+            echo "sim=${{ inputs.simulation }}" >> "$GITHUB_OUTPUT"
+            echo "profile=${{ inputs.mixed_profile }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=${{ vars.GATLING_BASE_URL }}" >> "$GITHUB_OUTPUT"
+            echo "sim=${VAR_SIM:-simulations.ActuatorHealthSimulation}" >> "$GITHUB_OUTPUT"
+            echo "profile=${VAR_PROFILE:-load}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip when BASE_URL empty
+        id: skip
+        run: |
+          if [ -z "${{ steps.cfg.outputs.base }}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Scheduled/manual run without GATLING_BASE_URL variable — skipping Gatling."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.skip.outputs.skip == 'false'
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Grant execute permission for gradlew
+        if: steps.skip.outputs.skip == 'false'
+        run: chmod +x tests/gatling/gradlew
+
+      - name: Gatling run
+        if: steps.skip.outputs.skip == 'false'
+        working-directory: tests/gatling
+        env:
+          GATLING_BASE_URL: ${{ steps.cfg.outputs.base }}
+          GATLING_LEGACY_PREFIX: ${{ vars.GATLING_LEGACY_PREFIX }}
+          GATLING_PRODUCT_PREFIX: ${{ vars.GATLING_PRODUCT_PREFIX }}
+          GATLING_LOGIN_EMAIL: ${{ vars.GATLING_LOGIN_EMAIL }}
+          GATLING_LOGIN_PASSWORD: ${{ vars.GATLING_LOGIN_PASSWORD }}
+          GATLING_ADMIN_EMAIL: ${{ vars.GATLING_ADMIN_EMAIL }}
+          GATLING_ADMIN_PASSWORD: ${{ vars.GATLING_ADMIN_PASSWORD }}
+          GATLING_HEALTH_USERS: "8"
+          GATLING_HEALTH_DURATION_SEC: "20"
+          GATLING_PROFILE: ${{ steps.cfg.outputs.profile }}
+        run: |
+          set -e
+          ./gradlew --no-daemon gatlingRun --simulation "${{ steps.cfg.outputs.sim }}"
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.skip.outputs.skip == 'false'
+        with:
+          name: gatling-reports
+          path: tests/gatling/build/reports/gatling/
+          retention-days: 14

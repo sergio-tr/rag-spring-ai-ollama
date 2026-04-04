@@ -130,6 +130,20 @@ jobs:
           MODELS_DIR: ./models
           DATA_DIR: ./data
 
+      # ─── Webapp: Vitest coverage (LCOV for Sonar; Vitest remains the frontend gate) ───
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+
+      - name: Install webapp dependencies and generate LCOV
+        working-directory: webapp
+        run: |
+          npm ci
+          npm run test:coverage
+
       # ─── SonarCloud scan ──────────────────────────────────────────────────
       # Reads sonar-project.properties from the repository root.
       # All coverage artifacts must exist before this step runs.
