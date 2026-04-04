@@ -21,7 +21,9 @@ import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.DefaultPostRetrievalProcessor;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.service.config.ConfigResolver;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
@@ -75,6 +77,8 @@ public class EvaluationServiceFactory {
     private final MetadataLlmResponseCacheService metadataLlmResponseCacheService;
     private final ConfigResolver configResolver;
     private final ModelCatalogPort modelCatalogPort;
+    private final ObjectMapper objectMapper;
+    private final ConversationRepository conversationRepository;
 
     public EvaluationServiceFactory(
         ChatClient chatClient,
@@ -97,7 +101,9 @@ public class EvaluationServiceFactory {
         OllamaConnectivityChecker ollamaConnectivityChecker,
         MetadataLlmResponseCacheService metadataLlmResponseCacheService,
         ConfigResolver configResolver,
-        ModelCatalogPort modelCatalogPort
+        ModelCatalogPort modelCatalogPort,
+        ObjectMapper objectMapper,
+        ConversationRepository conversationRepository
     ) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
@@ -120,6 +126,8 @@ public class EvaluationServiceFactory {
         this.metadataLlmResponseCacheService = metadataLlmResponseCacheService;
         this.configResolver = configResolver;
         this.modelCatalogPort = modelCatalogPort;
+        this.objectMapper = objectMapper;
+        this.conversationRepository = conversationRepository;
     }
 
     /**
@@ -196,7 +204,11 @@ public class EvaluationServiceFactory {
                         ollamaConnectivityChecker,
                         configResolver,
                         naiveCorpus,
-                        modelCatalogPort
+                        modelCatalogPort,
+                        objectMapper,
+                        conversationRepository,
+                        false,
+                        null
                 );
         }
     }

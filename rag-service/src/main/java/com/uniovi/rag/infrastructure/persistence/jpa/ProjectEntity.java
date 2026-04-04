@@ -30,6 +30,9 @@ public class ProjectEntity {
 
     private String description;
 
+    @Column(name = "project_prompt", columnDefinition = "text")
+    private String projectPrompt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -69,6 +72,14 @@ public class ProjectEntity {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getProjectPrompt() {
+        return projectPrompt;
+    }
+
+    public void setProjectPrompt(String projectPrompt) {
+        this.projectPrompt = projectPrompt;
     }
 
     public Instant getCreatedAt() {

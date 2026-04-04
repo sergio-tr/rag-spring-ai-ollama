@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
+import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
 import com.uniovi.rag.service.config.UserProjectConfigurationService;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,9 @@ class ConfigControllerTest {
 
     @MockBean
     private UserProjectConfigurationService userProjectConfigurationService;
+
+    @MockBean
+    private RuntimeConfigResolutionService runtimeConfigResolutionService;
 
     @Test
     void schema_returnsVersionAndFields() throws Exception {

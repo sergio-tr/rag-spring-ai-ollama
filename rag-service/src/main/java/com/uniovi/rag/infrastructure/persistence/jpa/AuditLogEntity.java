@@ -25,7 +25,7 @@ public class AuditLogEntity {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", nullable = true)
     private UserEntity user;
 
     @Column(nullable = false)
@@ -45,6 +45,23 @@ public class AuditLogEntity {
     private Instant createdAt;
 
     protected AuditLogEntity() {
+    }
+
+    public static AuditLogEntity create(
+            UserEntity user,
+            String action,
+            String resourceType,
+            UUID resourceId,
+            Map<String, Object> payload,
+            Instant createdAt) {
+        AuditLogEntity e = new AuditLogEntity();
+        e.user = user;
+        e.action = action;
+        e.resourceType = resourceType;
+        e.resourceId = resourceId;
+        e.payload = payload;
+        e.createdAt = createdAt;
+        return e;
     }
 
     public UUID getId() {

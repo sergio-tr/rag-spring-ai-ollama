@@ -5,7 +5,9 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.query.QueryService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.service.config.ConfigResolver;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.service.query.SimpleQueryService;
@@ -37,6 +39,8 @@ class EvaluationServiceFactoryTest {
         MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
         ConfigResolver configResolver = mock(ConfigResolver.class);
         ModelCatalogPort modelCatalogPort = mock(ModelCatalogPort.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        ConversationRepository conversationRepository = mock(ConversationRepository.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         factory = new EvaluationServiceFactory(
@@ -60,7 +64,9 @@ class EvaluationServiceFactoryTest {
                 ollamaConnectivityChecker,
                 metadataLlmResponseCacheService,
                 configResolver,
-                modelCatalogPort
+                modelCatalogPort,
+                objectMapper,
+                conversationRepository
         );
         featureConfig = new RagFeatureConfiguration();
         implProps = new RagImplementationProperties();

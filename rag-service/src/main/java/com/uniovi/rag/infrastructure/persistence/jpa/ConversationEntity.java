@@ -13,7 +13,9 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -51,6 +53,10 @@ public class ConversationEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "document_filter", nullable = false, columnDefinition = "jsonb")
     private List<String> documentFilter;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "runtime_override_jsonb", nullable = false, columnDefinition = "jsonb")
+    private Map<String, Object> runtimeOverride;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -102,6 +108,22 @@ public class ConversationEntity {
         this.preset = preset;
     }
 
+    public RagConfigurationEntity getConfig() {
+        return config;
+    }
+
+    public void setConfig(RagConfigurationEntity config) {
+        this.config = config;
+    }
+
+    public Map<String, Object> getRuntimeOverride() {
+        return runtimeOverride != null ? runtimeOverride : Map.of();
+    }
+
+    public void setRuntimeOverride(Map<String, Object> runtimeOverride) {
+        this.runtimeOverride = runtimeOverride != null ? new LinkedHashMap<>(runtimeOverride) : new LinkedHashMap<>();
+    }
+
     public void touchUpdated() {
         this.updatedAt = Instant.now();
     }
@@ -113,6 +135,7 @@ public class ConversationEntity {
         c.project = project;
         c.title = title != null ? title : "Chat";
         c.documentFilter = documentFilter != null ? documentFilter : List.of();
+        c.runtimeOverride = new LinkedHashMap<>();
         Instant now = Instant.now();
         c.createdAt = now;
         c.updatedAt = now;

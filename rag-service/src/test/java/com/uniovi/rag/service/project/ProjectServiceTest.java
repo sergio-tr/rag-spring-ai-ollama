@@ -10,6 +10,7 @@ import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.application.service.AuditApplicationService;
 import com.uniovi.rag.service.preset.PresetService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,6 +52,9 @@ class ProjectServiceTest {
 
     @Mock
     private PresetService presetService;
+
+    @Mock
+    private AuditApplicationService auditApplicationService;
 
     @InjectMocks
     private ProjectService projectService;
@@ -144,7 +148,7 @@ class ProjectServiceTest {
         when(projectDocumentRepository.countByProject_Id(pid)).thenReturn(0L);
         when(conversationRepository.countByProject_Id(pid)).thenReturn(0L);
 
-        projectService.patch(userId, pid, new PatchProjectRequest("  new  ", "  desc  "));
+        projectService.patch(userId, pid, new PatchProjectRequest("  new  ", "  desc  ", null));
 
         ArgumentCaptor<ProjectEntity> cap = ArgumentCaptor.forClass(ProjectEntity.class);
         verify(projectRepository).save(cap.capture());
@@ -162,7 +166,7 @@ class ProjectServiceTest {
         when(projectDocumentRepository.countByProject_Id(pid)).thenReturn(0L);
         when(conversationRepository.countByProject_Id(pid)).thenReturn(0L);
 
-        projectService.patch(userId, pid, new PatchProjectRequest(null, "   "));
+        projectService.patch(userId, pid, new PatchProjectRequest(null, "   ", null));
 
         ArgumentCaptor<ProjectEntity> cap = ArgumentCaptor.forClass(ProjectEntity.class);
         verify(projectRepository).save(cap.capture());

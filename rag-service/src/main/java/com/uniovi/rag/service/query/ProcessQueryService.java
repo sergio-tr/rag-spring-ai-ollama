@@ -36,16 +36,25 @@ import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.interfaces.rest.support.ConnectivityFailureDetector;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
+import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -68,6 +77,10 @@ public class ProcessQueryService implements QueryService {
     private final ResponseSynthesisPipeline responseSynthesisPipeline;
     private final ConfigResolver configResolver;
     private final ModelCatalogPort modelCatalogPort;
+    private final ObjectMapper objectMapper;
+    private final ConversationRepository conversationRepository;
+    private final boolean configV2Enabled;
+    private final RuntimeConfigResolutionService runtimeConfigResolutionService;
 
     public ProcessQueryService(RagFeatureConfiguration featureConfig,
                                RagToolsConfiguration toolsConfig,
@@ -87,7 +100,11 @@ public class ProcessQueryService implements QueryService {
                                OllamaConnectivityChecker ollamaConnectivityChecker,
                                ConfigResolver configResolver,
                                NaiveCorpusContextService naiveCorpusContextService,
-                               ModelCatalogPort modelCatalogPort) {
+                               ModelCatalogPort modelCatalogPort,
+                               ObjectMapper objectMapper,
+                               ConversationRepository conversationRepository,
+                               boolean configV2Enabled,
+                               @Autowired(required = false) RuntimeConfigResolutionService runtimeConfigResolutionService) {
         this.featureConfig = featureConfig;
         this.chatClient = chatClient;
         this.reasoningStrategy = reasoningStrategy;
@@ -111,6 +128,10 @@ public class ProcessQueryService implements QueryService {
                 featureConfig, dateExistenceGuard, toolRouting, kernel);
         this.configResolver = configResolver;
         this.modelCatalogPort = modelCatalogPort;
+        this.objectMapper = objectMapper;
+        this.conversationRepository = conversationRepository;
+        this.configV2Enabled = configV2Enabled;
+        this.runtimeConfigResolutionService = runtimeConfigResolutionService;
     }
 
     /**
@@ -139,6 +160,7 @@ public class ProcessQueryService implements QueryService {
      * RAG query scoped to a user/project/conversation (chat). Uses {@link RagExecutionContextHolder}
      * for retrieval filters and config resolution.
      */
+    @Transactional(readOnly = true)
     public QueryResponse generateResponseForChat(String query, String chatModel, UUID userId, UUID projectId,
                                                  UUID conversationId, List<String> documentFilter) {
         try {
@@ -177,7 +199,8 @@ public class ProcessQueryService implements QueryService {
 
         try {
             String traceId = Optional.ofNullable(MDC.get("traceId")).orElseGet(() -> UUID.randomUUID().toString());
-            RagConfig resolved = configResolver.resolve(userId(contextOverlay), projectId(contextOverlay), null);
+            JsonNode chatRuntime = buildRuntimeOverrideForChat(contextOverlay);
+            RagConfig resolved = resolveRagConfigForChat(contextOverlay, chatRuntime);
             RagExecutionContext ctx = buildContext(contextOverlay, resolved, traceId);
             RagExecutionContextHolder.set(ctx);
 
@@ -282,6 +305,52 @@ public class ProcessQueryService implements QueryService {
         } finally {
             RagExecutionContextHolder.clear();
         }
+    }
+
+    private JsonNode buildRuntimeOverrideForChat(RagExecutionContext overlay) {
+        if (overlay == null || overlay.conversationId() == null || overlay.conversationId().isBlank()) {
+            return null;
+        }
+        UUID convId;
+        try {
+            convId = UUID.fromString(overlay.conversationId().trim());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        return conversationRepository
+                .findByIdWithConfigAndPreset(convId)
+                .map(this::mergeConversationConfigLayers)
+                .filter(m -> !m.isEmpty())
+                .map(m -> (JsonNode) objectMapper.valueToTree(m))
+                .orElse(null);
+    }
+
+    /**
+     * When {@code rag.config.v2.enabled=true} and {@link RuntimeConfigResolutionService} is present, use the same
+     * resolution path as preview; otherwise {@link ConfigResolver} only (e.g. evaluation factory without the service bean).
+     */
+    private RagConfig resolveRagConfigForChat(RagExecutionContext overlay, JsonNode chatRuntime) {
+        UUID uid = userId(overlay);
+        UUID pid = projectId(overlay);
+        if (configV2Enabled && runtimeConfigResolutionService != null) {
+            return runtimeConfigResolutionService.resolve(uid, pid, chatRuntime).toRagConfig();
+        }
+        return configResolver.resolve(uid, pid, chatRuntime);
+    }
+
+    /**
+     * Chat-level cascade: optional pinned {@code rag_configuration}, then preset {@code values}, then {@code runtime_override_jsonb}.
+     */
+    private Map<String, Object> mergeConversationConfigLayers(ConversationEntity c) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (c.getConfig() != null && c.getConfig().getValues() != null) {
+            merged.putAll(c.getConfig().getValues());
+        }
+        if (c.getPreset() != null && c.getPreset().getValues() != null) {
+            merged.putAll(c.getPreset().getValues());
+        }
+        merged.putAll(c.getRuntimeOverride());
+        return merged;
     }
 
     private static UUID userId(RagExecutionContext overlay) {

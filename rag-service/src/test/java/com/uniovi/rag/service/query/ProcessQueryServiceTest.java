@@ -1,6 +1,8 @@
 package com.uniovi.rag.service.query;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.domain.runtime.RagConfig;
@@ -128,7 +130,11 @@ class ProcessQueryServiceTest {
                 ollamaConnectivityChecker,
                 configResolver,
                 mock(NaiveCorpusContextService.class),
-                modelCatalogPort
+                modelCatalogPort,
+                new ObjectMapper(),
+                mock(ConversationRepository.class),
+                false,
+                null
         );
     }
 

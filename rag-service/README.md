@@ -57,6 +57,7 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 | `SPRING_DATASOURCE_USERNAME`     | DB user (must match db/.env)                   | `postgres`                |
 | `SPRING_DATASOURCE_PASSWORD`     | DB password (must match db/.env)               | —                         |
 | `rag.classifier.service.url` | Classifier service URL (backend)               | `http://localhost:8000`   |
+| `RAG_CONFIG_V2_ENABLED` / `rag.config.v2.enabled` | Use `ResolvedRuntimeConfig` resolution in the chat path (aligned with `POST /config/preview`) | `false` |
 
 ### Configuration layout (two main files + tests)
 

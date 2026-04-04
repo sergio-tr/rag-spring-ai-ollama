@@ -12,6 +12,7 @@ import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.application.service.AuditApplicationService;
 import com.uniovi.rag.service.preset.PresetService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -21,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -32,6 +34,7 @@ public class ProjectService {
     private final ConversationRepository conversationRepository;
     private final ProjectAccessService projectAccessService;
     private final PresetService presetService;
+    private final AuditApplicationService auditApplicationService;
 
     public ProjectService(
             ProjectRepository projectRepository,
@@ -39,13 +42,15 @@ public class ProjectService {
             ProjectDocumentRepository projectDocumentRepository,
             ConversationRepository conversationRepository,
             ProjectAccessService projectAccessService,
-            PresetService presetService) {
+            PresetService presetService,
+            AuditApplicationService auditApplicationService) {
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
         this.projectDocumentRepository = projectDocumentRepository;
         this.conversationRepository = conversationRepository;
         this.projectAccessService = projectAccessService;
         this.presetService = presetService;
+        this.auditApplicationService = auditApplicationService;
     }
 
     @Transactional(readOnly = true)
@@ -92,6 +97,15 @@ public class ProjectService {
         if (req.description() != null) {
             p.setDescription(req.description().isBlank() ? null : req.description().trim());
         }
+        if (req.projectPrompt() != null) {
+            p.setProjectPrompt(req.projectPrompt().isBlank() ? null : req.projectPrompt());
+            auditApplicationService.record(
+                    userId,
+                    "PROJECT_PROMPT_UPDATE",
+                    "project",
+                    projectId,
+                    Map.of("hasPrompt", p.getProjectPrompt() != null));
+        }
         p.setUpdatedAt(Instant.now());
         p = projectRepository.save(p);
         return toSummary(p);
@@ -118,6 +132,7 @@ public class ProjectService {
                 p.getDescription(),
                 docs,
                 convs,
-                p.getUpdatedAt());
+                p.getUpdatedAt(),
+                p.getProjectPrompt());
     }
 }

@@ -6,6 +6,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.application.service.AuditApplicationService;
 import com.uniovi.rag.service.config.UserProjectConfigurationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +42,9 @@ class PresetServiceTest {
 
     @Mock
     private UserProjectConfigurationService userProjectConfigurationService;
+
+    @Mock
+    private AuditApplicationService auditApplicationService;
 
     @InjectMocks
     private PresetService presetService;

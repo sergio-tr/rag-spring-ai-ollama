@@ -9,5 +9,6 @@ public record ProjectSummaryDto(
         String description,
         long docCount,
         long convCount,
-        Instant updatedAt) {
+        Instant updatedAt,
+        String projectPrompt) {
 }

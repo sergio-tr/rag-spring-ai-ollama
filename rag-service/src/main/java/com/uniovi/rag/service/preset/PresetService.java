@@ -7,6 +7,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.application.service.AuditApplicationService;
 import com.uniovi.rag.service.config.RagConfigValueSanitizer;
 import com.uniovi.rag.service.config.UserProjectConfigurationService;
 import org.springframework.http.HttpStatus;
@@ -31,14 +32,17 @@ public class PresetService {
     private final RagPresetRepository ragPresetRepository;
     private final UserRepository userRepository;
     private final UserProjectConfigurationService userProjectConfigurationService;
+    private final AuditApplicationService auditApplicationService;
 
     public PresetService(
             RagPresetRepository ragPresetRepository,
             UserRepository userRepository,
-            UserProjectConfigurationService userProjectConfigurationService) {
+            UserProjectConfigurationService userProjectConfigurationService,
+            AuditApplicationService auditApplicationService) {
         this.ragPresetRepository = ragPresetRepository;
         this.userRepository = userRepository;
         this.userProjectConfigurationService = userProjectConfigurationService;
+        this.auditApplicationService = auditApplicationService;
     }
 
     @Transactional(readOnly = true)
@@ -63,7 +67,9 @@ public class PresetService {
                 RagConfigValueSanitizer.sanitize(req.values() != null ? req.values() : Map.of()),
                 now,
                 now);
-        return toDto(ragPresetRepository.save(e));
+        e = ragPresetRepository.save(e);
+        auditApplicationService.record(userId, "RAG_PRESET_CREATE", "rag_preset", e.getId(), Map.of("name", e.getName()));
+        return toDto(e);
     }
 
     @Transactional
@@ -86,7 +92,9 @@ public class PresetService {
             e.setValues(RagConfigValueSanitizer.sanitize(req.values()));
         }
         e.setUpdatedAt(Instant.now());
-        return toDto(ragPresetRepository.save(e));
+        e = ragPresetRepository.save(e);
+        auditApplicationService.record(userId, "RAG_PRESET_UPDATE", "rag_preset", e.getId(), Map.of("name", e.getName()));
+        return toDto(e);
     }
 
     @Transactional
@@ -96,7 +104,9 @@ public class PresetService {
         if (e.isSystem()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "System presets cannot be deleted");
         }
+        UUID id = e.getId();
         ragPresetRepository.delete(e);
+        auditApplicationService.record(userId, "RAG_PRESET_DELETE", "rag_preset", id, Map.of());
     }
 
     /**

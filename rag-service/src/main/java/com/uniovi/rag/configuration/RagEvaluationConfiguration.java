@@ -1,5 +1,7 @@
 package com.uniovi.rag.configuration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClient.Builder;
 import org.springframework.ai.evaluation.RelevancyEvaluator;
@@ -54,13 +56,15 @@ public class RagEvaluationConfiguration {
         OllamaConnectivityChecker ollamaConnectivityChecker,
         MetadataLlmResponseCacheService metadataLlmResponseCacheService,
         ConfigResolver configResolver,
-        ModelCatalogPort modelCatalogPort
+        ModelCatalogPort modelCatalogPort,
+        ObjectMapper objectMapper,
+        ConversationRepository conversationRepository
     ) {
         return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
                 classifierServiceUrl, classifierModelId, classifierTimeoutMs, chunkMaxChars, responseValidator, documentContentExtractor,
                 expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
                 expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker,
-                metadataLlmResponseCacheService, configResolver, modelCatalogPort);
+                metadataLlmResponseCacheService, configResolver, modelCatalogPort, objectMapper, conversationRepository);
     }
 
     @Bean

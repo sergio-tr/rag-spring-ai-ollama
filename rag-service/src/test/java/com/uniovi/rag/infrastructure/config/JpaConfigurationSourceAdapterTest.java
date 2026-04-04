@@ -3,6 +3,8 @@ package com.uniovi.rag.infrastructure.config;
 import com.uniovi.rag.domain.RagConfigurationLevel;
 import com.uniovi.rag.infrastructure.persistence.DefaultSystemConfigurationRepository;
 import com.uniovi.rag.infrastructure.persistence.RagConfigurationRepository;
+import com.uniovi.rag.infrastructure.persistence.UserPersonalizationRepository;
+import com.uniovi.rag.infrastructure.persistence.UserPreferencesRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.DefaultSystemConfigurationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagConfigurationEntity;
 import org.junit.jupiter.api.Test;
@@ -27,6 +29,12 @@ class JpaConfigurationSourceAdapterTest {
 
     @Mock
     private RagConfigurationRepository ragConfigurationRepository;
+
+    @Mock
+    private UserPreferencesRepository userPreferencesRepository;
+
+    @Mock
+    private UserPersonalizationRepository userPersonalizationRepository;
 
     @InjectMocks
     private JpaConfigurationSourceAdapter adapter;
@@ -66,6 +74,8 @@ class JpaConfigurationSourceAdapterTest {
         when(ragConfigurationRepository.findFirstByUser_IdAndLevelAndProjectIsNullAndActiveIsTrue(
                         userId, RagConfigurationLevel.USER_DEFAULT))
                 .thenReturn(Optional.of(cfg));
+        when(userPreferencesRepository.findById(userId)).thenReturn(Optional.empty());
+        when(userPersonalizationRepository.findById(userId)).thenReturn(Optional.empty());
 
         assertThat(adapter.loadUserDefault(userId)).hasValue(values);
     }
