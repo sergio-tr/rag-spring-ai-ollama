@@ -1,7 +1,6 @@
 package com.uniovi.rag.configuration;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
+import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClient.Builder;
 import org.springframework.ai.evaluation.RelevancyEvaluator;
@@ -18,7 +17,6 @@ import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.evaluation.DatasetMinuteEvaluationService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.application.port.ModelCatalogPort;
-import com.uniovi.rag.service.config.ConfigResolver;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
@@ -55,16 +53,15 @@ public class RagEvaluationConfiguration {
         @Value("${rag.expansion.retry-query-length:200}") int expansionRetryQueryLength,
         OllamaConnectivityChecker ollamaConnectivityChecker,
         MetadataLlmResponseCacheService metadataLlmResponseCacheService,
-        ConfigResolver configResolver,
         ModelCatalogPort modelCatalogPort,
-        ObjectMapper objectMapper,
-        ConversationRepository conversationRepository
+        ChatScopedRagConfigResolver chatScopedRagConfigResolver,
+        @org.springframework.beans.factory.annotation.Autowired(required = false) RagRuntimeProperties ragRuntimeProperties
     ) {
         return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
                 classifierServiceUrl, classifierModelId, classifierTimeoutMs, chunkMaxChars, responseValidator, documentContentExtractor,
                 expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
                 expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker,
-                metadataLlmResponseCacheService, configResolver, modelCatalogPort, objectMapper, conversationRepository);
+                metadataLlmResponseCacheService, modelCatalogPort, chatScopedRagConfigResolver, ragRuntimeProperties);
     }
 
     @Bean

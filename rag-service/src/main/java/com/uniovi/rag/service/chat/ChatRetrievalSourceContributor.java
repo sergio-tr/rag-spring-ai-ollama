@@ -3,7 +3,7 @@ package com.uniovi.rag.service.chat;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
-import com.uniovi.rag.service.config.ConfigResolver;
+import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,11 +28,13 @@ public class ChatRetrievalSourceContributor {
     private static final int MAX_SOURCES = 8;
     private static final int SNIPPET_MAX = 240;
 
-    private final ConfigResolver configResolver;
+    private final ChatScopedRagConfigResolver chatScopedRagConfigResolver;
     private final ContextRetriever contextRetriever;
 
-    public ChatRetrievalSourceContributor(ConfigResolver configResolver, ContextRetriever contextRetriever) {
-        this.configResolver = configResolver;
+    public ChatRetrievalSourceContributor(
+            ChatScopedRagConfigResolver chatScopedRagConfigResolver,
+            ContextRetriever contextRetriever) {
+        this.chatScopedRagConfigResolver = chatScopedRagConfigResolver;
         this.contextRetriever = contextRetriever;
     }
 
@@ -49,7 +51,7 @@ public class ChatRetrievalSourceContributor {
             return List.of();
         }
         try {
-            RagConfig resolved = configResolver.resolve(userId, projectId, null);
+            RagConfig resolved = chatScopedRagConfigResolver.resolveForChat(userId, projectId, conversationId);
             List<String> filter = (docFilter == null || docFilter.isEmpty())
                     ? List.of(RagExecutionContext.ALL_DOCUMENTS)
                     : docFilter;

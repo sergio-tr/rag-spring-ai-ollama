@@ -5,6 +5,7 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.configuration.RagRankerProperties;
 import com.uniovi.rag.configuration.RagReasoningProperties;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.infrastructure.health.RagHealthProperties;
 import com.uniovi.rag.infrastructure.llm.ollama.RagOllamaProperties;
 import org.springframework.boot.SpringApplication;
@@ -25,7 +26,8 @@ import org.springframework.scheduling.annotation.EnableAsync;
     RagFeatureConfiguration.class,
     RagImplementationProperties.class,
     RagHealthProperties.class,
-    RagOllamaProperties.class
+    RagOllamaProperties.class,
+    RagRuntimeProperties.class
 })
 public class Application {
 

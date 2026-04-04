@@ -26,10 +26,9 @@ import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.service.query.LLMResponseValidatorService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ModelCatalogPort;
-import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
-import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
+import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.config.ConfigResolver;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
@@ -262,14 +261,10 @@ public class RagQueryConfiguration {
             ResponseValidator responseValidator,
             QuestionAnswerAdvisor questionAnswerAdvisor,
             OllamaConnectivityChecker ollamaConnectivityChecker,
-            ConfigResolver configResolver,
             NaiveCorpusContextService naiveCorpusContextService,
             ModelCatalogPort modelCatalogPort,
-            ObjectMapper objectMapper,
-            ConversationRepository conversationRepository,
-            @org.springframework.beans.factory.annotation.Autowired(required = false)
-                    RuntimeConfigResolutionService runtimeConfigResolutionService,
-            @Value("${rag.config.v2.enabled:false}") boolean configV2Enabled,
+            ChatScopedRagConfigResolver chatScopedRagConfigResolver,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) RagRuntimeProperties ragRuntimeProperties,
             RagImplementationProperties implProps,
             @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
     ) {
@@ -300,13 +295,10 @@ public class RagQueryConfiguration {
                         responseValidator,
                         questionAnswerAdvisor,
                         ollamaConnectivityChecker,
-                        configResolver,
                         naiveCorpusContextService,
                         modelCatalogPort,
-                        objectMapper,
-                        conversationRepository,
-                        configV2Enabled,
-                        runtimeConfigResolutionService
+                        chatScopedRagConfigResolver,
+                        ragRuntimeProperties
                 );
                 break;
         }

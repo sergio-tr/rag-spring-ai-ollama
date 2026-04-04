@@ -58,6 +58,9 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 | `SPRING_DATASOURCE_PASSWORD`     | DB password (must match db/.env)               | —                         |
 | `rag.classifier.service.url` | Classifier service URL (backend)               | `http://localhost:8000`   |
 | `RAG_CONFIG_V2_ENABLED` / `rag.config.v2.enabled` | Use `ResolvedRuntimeConfig` resolution in the chat path (aligned with `POST /config/preview`) | `false` |
+| `rag.runtime.workflow-schema-version` | Semver of the RAG execution stage graph (Lab/eval reproducibility) | `1.0.0` |
+| `rag.runtime.legacy-advisor-with-post-retrieval` | Allow `QuestionAnswerAdvisor` when post-retrieval is on (legacy; not recommended) | `false` |
+| `rag.runtime.memory-max-turns` / `rag.runtime.memory-max-chars` | Caps for product “full” conversation memory when injected into prompts | `20` / `8000` |
 
 ### Configuration layout (two main files + tests)
 
@@ -111,6 +114,24 @@ With `docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.
 **OTLP in Docker:** the base Compose file sets `SPRING_PROFILES_ACTIVE=docker` so the backend does **not** send OTLP to `localhost:4318` (inside the container that points at the JVM, not the collector). `compose.obs.yml` adds **`docker,infra`** and `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` so traces/metrics export to the collector and appear in Jaeger. **`backend-dev`** with `--obs` uses **`dev,infra`** (see `compose.rag-dev-obs.yml`).
 
 **Trace context (async / parallel):** use `com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures` instead of raw `CompletableFuture.supplyAsync` / `runAsync` on the default pool. For `parallelStream()`, call `captureContext()` once, then `withSnapshot(snapshot, () -> …)` in each worker (see `AbstractMetadataTool`). This avoids orphan spans (“missing parent”) in Jaeger.
+
+## RAG runtime execution
+
+Single pipeline for product and evaluation: `QueryRuntimeComponentsFactory` builds `QueryInputPreparer` + `ResponseSynthesisPipeline` (including `AnswerGenerationKernel`). Chat-scoped config resolution is centralized in `ChatScopedRagConfigResolver` so the main turn and SSE “sources” use the same cascade as `ResolvedRuntimeConfig` when `rag.config.v2.enabled=true`.
+
+**Stage order (high level):** `config_resolve` → `context_arm` → `query_prepare` (expand → NER → classify) → `reasoning_pre` (optional) → `synthesis` → `reasoning_post` / `ranker` (optional). Span names for observability: `rag.runtime.stage.config_resolve`, … `rag.runtime.stage.synthesis`, etc. (add in application code as needed).
+
+**Internal order inside `ResponseSynthesisPipeline.synthesizeCore`:** metadata/date guard → `tryPreferToolForDate` → `tryMainToolsBlock` → `tryToolRoute` → LLM branch (`AnswerGenerationKernel`). Function-calling, when enabled, takes precedence over the deterministic tools adapter for those steps (see `ToolRoutingService`).
+
+**Retrieval policy (`RetrievalPolicyResolver`):** if `postRetrievalEnabled` is true for the effective `RagConfig`, the stock `QuestionAnswerAdvisor` path is **not** used (manual retrieval + post-processing only), unless `rag.runtime.legacy-advisor-with-post-retrieval=true`. Evaluation continues to pass a `null` advisor bean when only manual retrieval is desired.
+
+**Selection table (after `useRetrieval`; naive full-corpus handled first in the kernel):**
+
+| Condition (evaluated in order) | Path |
+|--------------------------------|------|
+| `postRetrievalEnabled` | Manual only |
+| `useAdvisor` and advisor bean present, post off | `QuestionAnswerAdvisor` fast path when applicable |
+| Default | Manual `ContextRetriever` |
 
 ## Ollama requirement (Docker without GPU compose)
 

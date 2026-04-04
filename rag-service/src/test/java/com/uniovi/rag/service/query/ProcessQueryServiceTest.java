@@ -1,12 +1,10 @@
 package com.uniovi.rag.service.query;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ModelCatalogPort;
-import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.domain.runtime.RagConfig;
-import com.uniovi.rag.service.config.ConfigResolver;
+import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.application.model.PostStepOutput;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.application.model.QueryResponse;
@@ -46,7 +44,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.*;
 
@@ -67,7 +64,7 @@ class ProcessQueryServiceTest {
     private PostRetrievalProcessor postRetrievalProcessor;
     private ResponseValidator responseValidator;
     private OllamaConnectivityChecker ollamaConnectivityChecker;
-    private ConfigResolver configResolver;
+    private ChatScopedRagConfigResolver chatScopedRagConfigResolver;
     private ModelCatalogPort modelCatalogPort;
     private ProcessQueryService service;
 
@@ -94,10 +91,10 @@ class ProcessQueryServiceTest {
         postRetrievalProcessor = mock(PostRetrievalProcessor.class);
         responseValidator = mock(ResponseValidator.class);
         ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
-        configResolver = mock(ConfigResolver.class);
+        chatScopedRagConfigResolver = mock(ChatScopedRagConfigResolver.class);
         modelCatalogPort = mock(ModelCatalogPort.class);
         when(modelCatalogPort.allowedLlmNamesInGovernance()).thenReturn(Collections.emptySet());
-        when(configResolver.resolve(isNull(), isNull(), isNull())).thenAnswer(inv -> RagConfig.fromFeatureConfiguration(
+        when(chatScopedRagConfigResolver.resolveForExecutionContext(any())).thenAnswer(inv -> RagConfig.fromFeatureConfiguration(
                 featureConfig, 10, 0.7, "gemma3:4b", "mxbai-embed-large", "default", "SIMPLE"));
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
@@ -128,12 +125,9 @@ class ProcessQueryServiceTest {
                 responseValidator,
                 advisor,
                 ollamaConnectivityChecker,
-                configResolver,
                 mock(NaiveCorpusContextService.class),
                 modelCatalogPort,
-                new ObjectMapper(),
-                mock(ConversationRepository.class),
-                false,
+                chatScopedRagConfigResolver,
                 null
         );
     }

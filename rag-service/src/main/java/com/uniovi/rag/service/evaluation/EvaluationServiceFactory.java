@@ -21,10 +21,9 @@ import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.DefaultPostRetrievalProcessor;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ModelCatalogPort;
-import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
-import com.uniovi.rag.service.config.ConfigResolver;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
+import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -44,6 +43,7 @@ import com.uniovi.rag.tool.*;
 import com.uniovi.rag.tool.metadata.*;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
@@ -75,10 +75,9 @@ public class EvaluationServiceFactory {
     private final int expansionRetryQueryLength;
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
     private final MetadataLlmResponseCacheService metadataLlmResponseCacheService;
-    private final ConfigResolver configResolver;
     private final ModelCatalogPort modelCatalogPort;
-    private final ObjectMapper objectMapper;
-    private final ConversationRepository conversationRepository;
+    private final ChatScopedRagConfigResolver chatScopedRagConfigResolver;
+    private final RagRuntimeProperties ragRuntimeProperties;
 
     public EvaluationServiceFactory(
         ChatClient chatClient,
@@ -100,10 +99,9 @@ public class EvaluationServiceFactory {
         int expansionRetryQueryLength,
         OllamaConnectivityChecker ollamaConnectivityChecker,
         MetadataLlmResponseCacheService metadataLlmResponseCacheService,
-        ConfigResolver configResolver,
         ModelCatalogPort modelCatalogPort,
-        ObjectMapper objectMapper,
-        ConversationRepository conversationRepository
+        ChatScopedRagConfigResolver chatScopedRagConfigResolver,
+        @Autowired(required = false) RagRuntimeProperties ragRuntimeProperties
     ) {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
@@ -124,10 +122,9 @@ public class EvaluationServiceFactory {
         this.expansionRetryQueryLength = expansionRetryQueryLength > 0 ? expansionRetryQueryLength : 200;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
         this.metadataLlmResponseCacheService = metadataLlmResponseCacheService;
-        this.configResolver = configResolver;
         this.modelCatalogPort = modelCatalogPort;
-        this.objectMapper = objectMapper;
-        this.conversationRepository = conversationRepository;
+        this.chatScopedRagConfigResolver = chatScopedRagConfigResolver;
+        this.ragRuntimeProperties = ragRuntimeProperties;
     }
 
     /**
@@ -202,13 +199,10 @@ public class EvaluationServiceFactory {
                         responseValidator,
                         null,  // questionAnswerAdvisor: evaluation uses manual retrieval path
                         ollamaConnectivityChecker,
-                        configResolver,
                         naiveCorpus,
                         modelCatalogPort,
-                        objectMapper,
-                        conversationRepository,
-                        false,
-                        null
+                        chatScopedRagConfigResolver,
+                        ragRuntimeProperties
                 );
         }
     }

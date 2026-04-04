@@ -2,7 +2,7 @@ package com.uniovi.rag.service.chat;
 
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
-import com.uniovi.rag.service.config.ConfigResolver;
+import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +19,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -47,7 +48,7 @@ class ChatRetrievalSourceContributorTest {
                     RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS);
 
     @Mock
-    private ConfigResolver configResolver;
+    private ChatScopedRagConfigResolver chatScopedRagConfigResolver;
 
     @Mock
     private ContextRetriever contextRetriever;
@@ -76,10 +77,11 @@ class ChatRetrievalSourceContributorTest {
     void buildSources_invokesRetrieverWhenFilterEmpty() {
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
-        when(configResolver.resolve(eq(userId), eq(projectId), eq(null))).thenReturn(SAMPLE_CONFIG);
+        UUID convId = UUID.randomUUID();
+        when(chatScopedRagConfigResolver.resolveForChat(eq(userId), eq(projectId), eq(convId))).thenReturn(SAMPLE_CONFIG);
         when(contextRetriever.retrieve("q")).thenReturn(List.of());
 
-        contributor.buildSources(userId, projectId, UUID.randomUUID(), List.of(), " q ");
+        contributor.buildSources(userId, projectId, convId, List.of(), " q ");
 
         verify(contextRetriever).retrieve("q");
     }
@@ -88,7 +90,7 @@ class ChatRetrievalSourceContributorTest {
     void buildSources_mapsSnippetAndTruncates() {
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
-        when(configResolver.resolve(userId, projectId, null)).thenReturn(SAMPLE_CONFIG);
+        when(chatScopedRagConfigResolver.resolveForChat(eq(userId), eq(projectId), isNull())).thenReturn(SAMPLE_CONFIG);
         String longText = "x".repeat(300);
         Document d =
                 new Document(
@@ -116,18 +118,18 @@ class ChatRetrievalSourceContributorTest {
     void buildSources_returnsEmptyOnRetrieverFailure() {
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
-        when(configResolver.resolve(userId, projectId, null)).thenReturn(SAMPLE_CONFIG);
+        when(chatScopedRagConfigResolver.resolveForChat(eq(userId), eq(projectId), isNull())).thenReturn(SAMPLE_CONFIG);
         when(contextRetriever.retrieve(anyString())).thenThrow(new RuntimeException("boom"));
 
         assertThat(contributor.buildSources(userId, projectId, null, List.of(), "q")).isEmpty();
-        verify(configResolver).resolve(userId, projectId, null);
+        verify(chatScopedRagConfigResolver).resolveForChat(userId, projectId, null);
     }
 
     @Test
     void buildSources_skipsBlankMetadataStrings() {
         UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
-        when(configResolver.resolve(userId, projectId, null)).thenReturn(SAMPLE_CONFIG);
+        when(chatScopedRagConfigResolver.resolveForChat(eq(userId), eq(projectId), isNull())).thenReturn(SAMPLE_CONFIG);
         Document d = new Document("short", Map.of("filename", "   ", "chunk_index", 0));
         when(contextRetriever.retrieve("q")).thenReturn(List.of(d));
 

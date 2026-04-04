@@ -2,6 +2,7 @@ package com.uniovi.rag.service.query.pipeline;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.runtime.RagEffectiveFeatures;
+import com.uniovi.rag.domain.runtime.RetrievalPolicyResolver;
 import com.uniovi.rag.application.model.DraftAndContext;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.analyser.NERQueryEnricher;
@@ -30,9 +31,9 @@ import java.util.List;
  * When NER is active, we pass the same enriched query to {@code .user(...)} that in the manual path
  * ({@link NERQueryEnricher#buildEnrichedQueryForRetrieval}) so that the advisor's embedding search
  * benefits from the entities. The advisor <em>does not</em> apply {@link AbstractContextRetriever#retrieveWithMetadataFilters}
- * or {@link PostRetrievalProcessor}; if post-retrieval is globally active, the advisor path simply does not run
- * (the manual fallback does). Tools are resolved in {@link com.uniovi.rag.service.query.pipeline.ResponseSynthesisPipeline}
- * before this kernel.</p>
+ * or {@link PostRetrievalProcessor}. When post-retrieval is enabled for the request, the advisor path does not run
+ * (manual path only when post-retrieval is on) unless {@code legacyAdvisorWithPostRetrieval} is true. Tools are resolved in
+ * {@link com.uniovi.rag.service.query.pipeline.ResponseSynthesisPipeline} before this kernel.</p>
  */
 public final class AnswerGenerationKernel {
 
@@ -83,6 +84,11 @@ public final class AnswerGenerationKernel {
     @Nullable
     private final NaiveCorpusContextService naiveCorpusContextService;
 
+    /**
+     * When {@code true}, restores behaviour where advisor could run alongside post-retrieval (legacy). Default {@code false}.
+     */
+    private final boolean legacyAdvisorWithPostRetrieval;
+
     public AnswerGenerationKernel(
             RagFeatureConfiguration featureConfig,
             NERQueryEnricher nerQueryEnricher,
@@ -91,7 +97,8 @@ public final class AnswerGenerationKernel {
             ResponseValidator responseValidator,
             QuestionAnswerAdvisor questionAnswerAdvisor,
             ChatRequestSpecFactory chatRequestSpecFactory,
-            @Nullable NaiveCorpusContextService naiveCorpusContextService) {
+            @Nullable NaiveCorpusContextService naiveCorpusContextService,
+            boolean legacyAdvisorWithPostRetrieval) {
         this.featureConfig = featureConfig;
         this.nerQueryEnricher = nerQueryEnricher;
         this.retriever = retriever;
@@ -100,6 +107,7 @@ public final class AnswerGenerationKernel {
         this.questionAnswerAdvisor = questionAnswerAdvisor;
         this.chatRequestSpecFactory = chatRequestSpecFactory;
         this.naiveCorpusContextService = naiveCorpusContextService;
+        this.legacyAdvisorWithPostRetrieval = legacyAdvisorWithPostRetrieval;
     }
 
     /** Test / legacy construction without naive corpus service. */
@@ -119,7 +127,30 @@ public final class AnswerGenerationKernel {
                 responseValidator,
                 questionAnswerAdvisor,
                 chatRequestSpecFactory,
-                null);
+                null,
+                false);
+    }
+
+    /** Test / legacy construction with naive corpus, default retrieval policy. */
+    public AnswerGenerationKernel(
+            RagFeatureConfiguration featureConfig,
+            NERQueryEnricher nerQueryEnricher,
+            ContextRetriever retriever,
+            PostRetrievalProcessor postRetrievalProcessor,
+            ResponseValidator responseValidator,
+            QuestionAnswerAdvisor questionAnswerAdvisor,
+            ChatRequestSpecFactory chatRequestSpecFactory,
+            @Nullable NaiveCorpusContextService naiveCorpusContextService) {
+        this(
+                featureConfig,
+                nerQueryEnricher,
+                retriever,
+                postRetrievalProcessor,
+                responseValidator,
+                questionAnswerAdvisor,
+                chatRequestSpecFactory,
+                naiveCorpusContextService,
+                false);
     }
 
     public DraftAndContext askModelWithPreStep(String query, JSONObject nerEntities, QueryType queryType, String preStepThought) {
@@ -430,13 +461,12 @@ public final class AnswerGenerationKernel {
     }
 
     /**
-     * Fast path with the stock {@link QuestionAnswerAdvisor}: requires bean and flag
-     * {@code rag.features.use-advisor}. Post-retrieval does not block this path; if it is active,
-     * the advisor path does not apply (advisor limitation). If the advisor fails or returns empty,
-     * the manual retrieve + post-retrieval path is continued if applicable.
+     * Fast path with the stock {@link QuestionAnswerAdvisor}: requires bean, {@code useAdvisor}, and
+     * {@link RetrievalPolicyResolver#allowQuestionAnswerAdvisor} (post-retrieval forces manual unless legacy flag).
      */
     private boolean canUseStockQuestionAnswerAdvisorFastPath() {
-        return RagEffectiveFeatures.useAdvisor(featureConfig) && questionAnswerAdvisor != null;
+        return RetrievalPolicyResolver.allowQuestionAnswerAdvisor(
+                featureConfig, questionAnswerAdvisor != null, legacyAdvisorWithPostRetrieval);
     }
 
     /**

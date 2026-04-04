@@ -1,10 +1,8 @@
 package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ModelCatalogPort;
-import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
-import com.uniovi.rag.service.config.ConfigResolver;
+import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -34,10 +32,8 @@ class RagEvaluationConfigurationTest {
         DocumentContentExtractor documentContentExtractor = mock(DocumentContentExtractor.class);
         OllamaConnectivityChecker ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
         MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
-        ConfigResolver configResolver = mock(ConfigResolver.class);
         ModelCatalogPort modelCatalogPort = mock(ModelCatalogPort.class);
-        ObjectMapper objectMapper = new ObjectMapper();
-        ConversationRepository conversationRepository = mock(ConversationRepository.class);
+        ChatScopedRagConfigResolver chatScopedRagConfigResolver = mock(ChatScopedRagConfigResolver.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         EvaluationServiceFactory factory = config.evaluationServiceFactory(
@@ -60,10 +56,9 @@ class RagEvaluationConfigurationTest {
                 200,
                 ollamaConnectivityChecker,
                 metadataLlmResponseCacheService,
-                configResolver,
                 modelCatalogPort,
-                objectMapper,
-                conversationRepository
+                chatScopedRagConfigResolver,
+                null
         );
         assertNotNull(factory);
     }
