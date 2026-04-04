@@ -8,6 +8,7 @@ import com.uniovi.rag.interfaces.rest.dto.LabJobAcceptedDto;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaModelProvisioningService;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.service.admin.AdminSystemDefaultsService;
 import com.uniovi.rag.service.admin.AllowlistAdminService;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import jakarta.validation.Valid;
@@ -39,16 +40,19 @@ import java.util.UUID;
 public class AdminController {
 
     private final AllowlistAdminService allowlistAdminService;
+    private final AdminSystemDefaultsService adminSystemDefaultsService;
     private final OllamaModelProvisioningService ollamaModelProvisioningService;
     private final AsyncTaskService asyncTaskService;
     private final RagApiPathProperties apiPathProperties;
 
     public AdminController(
             AllowlistAdminService allowlistAdminService,
+            AdminSystemDefaultsService adminSystemDefaultsService,
             OllamaModelProvisioningService ollamaModelProvisioningService,
             AsyncTaskService asyncTaskService,
             RagApiPathProperties apiPathProperties) {
         this.allowlistAdminService = allowlistAdminService;
+        this.adminSystemDefaultsService = adminSystemDefaultsService;
         this.ollamaModelProvisioningService = ollamaModelProvisioningService;
         this.asyncTaskService = asyncTaskService;
         this.apiPathProperties = apiPathProperties;
@@ -57,6 +61,16 @@ public class AdminController {
     @GetMapping("/health")
     public Map<String, String> health() {
         return Map.of("status", "UP", "scope", "admin");
+    }
+
+    @GetMapping("/system-defaults")
+    public Map<String, Object> getSystemDefaults() {
+        return adminSystemDefaultsService.getDefaults();
+    }
+
+    @PutMapping("/system-defaults")
+    public Map<String, Object> putSystemDefaults(@RequestBody Map<String, Object> body) {
+        return adminSystemDefaultsService.putDefaults(body);
     }
 
     @GetMapping("/allowlist")
