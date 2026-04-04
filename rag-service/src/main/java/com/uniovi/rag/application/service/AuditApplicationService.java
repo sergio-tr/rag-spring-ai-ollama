@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Minimal audit trail for configuration changes (Block 1).
+ * Minimal audit trail for configuration changes.
  */
 @Service
 public class AuditApplicationService {

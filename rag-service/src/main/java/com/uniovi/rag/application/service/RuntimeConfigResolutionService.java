@@ -27,7 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Builds {@link ResolvedRuntimeConfig} from the existing cascade plus prompt layers (Block 1).
+ * Builds {@link ResolvedRuntimeConfig} from the existing cascade plus prompt layers.
  */
 @Service
 public class RuntimeConfigResolutionService {
