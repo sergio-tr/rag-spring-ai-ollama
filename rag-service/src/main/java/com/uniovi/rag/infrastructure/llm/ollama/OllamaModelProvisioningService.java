@@ -54,8 +54,8 @@ public class OllamaModelProvisioningService {
             RagHealthProperties healthProperties,
             RagOllamaProperties ollamaProperties,
             OllamaApiClient ollamaApiClient,
-            @Value("${spring.ai.ollama.chat.model}") String chatModel,
-            @Value("${spring.ai.ollama.embedding.model}") String embeddingModel) {
+            @Value("${spring.ai.ollama.chat.model:gemma3:4b}") String chatModel,
+            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large}") String embeddingModel) {
         this.healthProperties = healthProperties;
         this.ollamaProperties = ollamaProperties;
         this.ollamaApiClient = ollamaApiClient;

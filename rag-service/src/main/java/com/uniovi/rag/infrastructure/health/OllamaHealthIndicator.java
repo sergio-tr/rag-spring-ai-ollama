@@ -29,9 +29,9 @@ public class OllamaHealthIndicator implements HealthIndicator {
 
     public OllamaHealthIndicator(
             RagHealthProperties healthProperties,
-            @Value("${spring.ai.ollama.base-url}") String baseUrl,
-            @Value("${spring.ai.ollama.chat.model}") String chatModel,
-            @Value("${spring.ai.ollama.embedding.model}") String embeddingModel) {
+            @Value("${spring.ai.ollama.base-url:http://localhost:11434}") String baseUrl,
+            @Value("${spring.ai.ollama.chat.model:gemma3:4b}") String chatModel,
+            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large}") String embeddingModel) {
         this.healthProperties = healthProperties;
         this.baseUrl = OllamaUrlUtils.stripTrailingSlash(baseUrl);
         this.chatModel = chatModel;
