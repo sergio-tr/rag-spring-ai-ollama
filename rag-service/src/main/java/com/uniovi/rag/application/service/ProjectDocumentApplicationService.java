@@ -2,9 +2,10 @@ package com.uniovi.rag.application.service;
 
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
-import com.uniovi.rag.infrastructure.persistence.ProjectDocumentRepository;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectDocumentEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectDocumentEntityFactory;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntityFactory;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
 import com.uniovi.rag.service.project.ProjectAccessService;
@@ -25,24 +26,44 @@ import java.util.UUID;
 @Service
 public class ProjectDocumentApplicationService {
 
-    private final ProjectDocumentRepository projectDocumentRepository;
+    private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final ProjectDocumentIngestionService ingestionService;
     private final ProjectAccessService projectAccessService;
 
     public ProjectDocumentApplicationService(
-            ProjectDocumentRepository projectDocumentRepository,
+            KnowledgeDocumentRepository knowledgeDocumentRepository,
             ProjectDocumentIngestionService ingestionService,
             ProjectAccessService projectAccessService) {
-        this.projectDocumentRepository = projectDocumentRepository;
+        this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.ingestionService = ingestionService;
         this.projectAccessService = projectAccessService;
     }
 
     public List<ProjectDocumentDto> listDocuments(UUID userId, UUID projectId) {
         projectAccessService.requireOwnedProject(userId, projectId);
-        return projectDocumentRepository.findByProject_IdOrderByUploadedAtDesc(projectId).stream()
+        return knowledgeDocumentRepository.findByProject_IdOrderByUploadedAtDesc(projectId).stream()
                 .map(ProjectDocumentApplicationService::toDto)
                 .toList();
+    }
+
+    public ProjectDocumentDto uploadConversationOverlay(
+            UUID userId, UUID projectId, UUID conversationId, MultipartFile file) throws IOException {
+        projectAccessService.requireOwnedProject(userId, projectId);
+        ConversationEntity conv = projectAccessService.requireConversationForUser(userId, conversationId);
+        if (!conv.getProject().getId().equals(projectId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        }
+        String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+        String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+        KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newChatLocalIngesting(conv.getProject(), conv, original);
+        row = knowledgeDocumentRepository.save(row);
+        Path temp = Files.createTempFile("rag-doc-overlay-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
+        file.transferTo(temp.toFile());
+        ingestionService.ingestFromTempFile(projectId, row.getId(), temp, original, ct);
+        return toDto(row);
     }
 
     public ProjectDocumentDto uploadDocument(UUID userId, UUID projectId, MultipartFile file) throws IOException {
@@ -53,8 +74,8 @@ public class ProjectDocumentApplicationService {
         String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
         String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
 
-        ProjectDocumentEntity row = ProjectDocumentEntityFactory.newIngesting(project, original);
-        row = projectDocumentRepository.save(row);
+        KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newIngesting(project, original);
+        row = knowledgeDocumentRepository.save(row);
 
         Path temp = Files.createTempFile("rag-doc-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
         file.transferTo(temp.toFile());
@@ -65,16 +86,16 @@ public class ProjectDocumentApplicationService {
 
     public void deleteDocument(UUID userId, UUID projectId, UUID documentId) {
         projectAccessService.requireOwnedProject(userId, projectId);
-        var doc = projectDocumentRepository.findByIdAndProject_Id(documentId, projectId);
+        var doc = knowledgeDocumentRepository.findByIdAndProject_Id(documentId, projectId);
         if (doc.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         ingestionService.deleteVectorChunksForProjectDocument(documentId);
-        projectDocumentRepository.delete(doc.get());
+        knowledgeDocumentRepository.delete(doc.get());
     }
 
     public ProjectDocumentDto documentStatus(UUID userId, UUID documentId) {
-        ProjectDocumentEntity e = projectAccessService.requireDocumentForUser(userId, documentId);
+        KnowledgeDocumentEntity e = projectAccessService.requireDocumentForUser(userId, documentId);
         return toDto(e);
     }
 
@@ -82,11 +103,11 @@ public class ProjectDocumentApplicationService {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         }
-        ProjectDocumentEntity row = projectAccessService.requireDocumentForUser(userId, documentId);
+        KnowledgeDocumentEntity row = projectAccessService.requireDocumentForUser(userId, documentId);
         UUID projectId = row.getProject().getId();
         row.setStatus(ProjectDocumentStatus.INGESTING);
         row.setErrorMessage(null);
-        projectDocumentRepository.save(row);
+        knowledgeDocumentRepository.save(row);
 
         String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
         String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
@@ -96,7 +117,7 @@ public class ProjectDocumentApplicationService {
         return toDto(row);
     }
 
-    private static ProjectDocumentDto toDto(ProjectDocumentEntity e) {
+    private static ProjectDocumentDto toDto(KnowledgeDocumentEntity e) {
         return new ProjectDocumentDto(
                 e.getId(),
                 e.getFileName(),
@@ -104,6 +125,11 @@ public class ProjectDocumentApplicationService {
                 e.getChunkCount(),
                 e.getErrorMessage(),
                 e.getUploadedAt(),
-                e.getReindexedAt());
+                e.getReindexedAt(),
+                e.getCorpusScope(),
+                e.getConversation() != null ? e.getConversation().getId() : null,
+                e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getId() : null,
+                e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getSignatureHash() : null,
+                e.getStorageUri() != null && !e.getStorageUri().isBlank());
     }
 }

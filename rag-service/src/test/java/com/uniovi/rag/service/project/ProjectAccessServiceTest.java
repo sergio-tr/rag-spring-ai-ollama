@@ -2,10 +2,10 @@ package com.uniovi.rag.service.project;
 
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectDocumentEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
-import com.uniovi.rag.infrastructure.persistence.ProjectDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,7 +31,7 @@ class ProjectAccessServiceTest {
     private ConversationRepository conversationRepository;
 
     @Mock
-    private ProjectDocumentRepository projectDocumentRepository;
+    private KnowledgeDocumentRepository knowledgeDocumentRepository;
 
     @InjectMocks
     private ProjectAccessService projectAccessService;
@@ -73,9 +73,9 @@ class ProjectAccessServiceTest {
         UUID pid = UUID.randomUUID();
         ProjectEntity proj = mock(ProjectEntity.class);
         when(proj.getId()).thenReturn(pid);
-        ProjectDocumentEntity doc = mock(ProjectDocumentEntity.class);
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
         when(doc.getProject()).thenReturn(proj);
-        when(projectDocumentRepository.findById(did)).thenReturn(Optional.of(doc));
+        when(knowledgeDocumentRepository.findById(did)).thenReturn(Optional.of(doc));
         when(projectRepository.findByIdAndOwner_Id(pid, uid)).thenReturn(Optional.of(mock(ProjectEntity.class)));
 
         assertThat(projectAccessService.requireDocumentForUser(uid, did)).isSameAs(doc);

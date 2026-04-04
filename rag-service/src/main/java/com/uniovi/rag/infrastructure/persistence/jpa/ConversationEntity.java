@@ -79,6 +79,10 @@ public class ConversationEntity {
         return project;
     }
 
+    public void setProject(ProjectEntity project) {
+        this.project = project;
+    }
+
     public String getTitle() {
         return title;
     }

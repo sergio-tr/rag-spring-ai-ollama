@@ -1,5 +1,6 @@
 package com.uniovi.rag.interfaces.rest;
 
+import com.uniovi.rag.application.service.PromoteDocumentApplicationService;
 import com.uniovi.rag.application.service.ProjectDocumentApplicationService;
 import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
@@ -37,6 +38,9 @@ class ProjectDocumentsControllerWebMvcTest {
 
     @MockBean
     private ProjectDocumentApplicationService projectDocumentApplicationService;
+
+    @MockBean
+    private PromoteDocumentApplicationService promoteDocumentApplicationService;
 
     private UUID userId;
     private UUID projectId;

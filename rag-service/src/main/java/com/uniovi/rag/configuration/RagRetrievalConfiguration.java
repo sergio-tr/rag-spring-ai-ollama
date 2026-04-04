@@ -61,19 +61,20 @@ public class RagRetrievalConfiguration {
         RagImplementationProperties implProps,
         @Value("${spring.ai.ollama.top-k}") int topK,
         @Value("${spring.ai.ollama.similarity-threshold}") double similarityThreshold,
+        @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
         @Autowired(required = false) ObservabilitySupport observability
     ) {
         String impl = implProps.getRetrieverImpl() != null ? implProps.getRetrieverImpl().trim().toLowerCase() : "basic";
         ContextRetriever retriever;
         switch (impl) {
             case "filtered":
-                retriever = new FilteredContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+                retriever = new FilteredContextRetriever(vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
                 break;
             case "minute-document":
-                retriever = new MinuteDocumentContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+                retriever = new MinuteDocumentContextRetriever(vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
                 break;
             default:
-                retriever = new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold);
+                retriever = new BasicContextRetriever(vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
         }
         if (observability != null) {
             return new TracedContextRetriever(retriever, observability);

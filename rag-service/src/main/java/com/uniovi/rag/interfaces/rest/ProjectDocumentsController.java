@@ -1,5 +1,6 @@
 package com.uniovi.rag.interfaces.rest;
 
+import com.uniovi.rag.application.service.PromoteDocumentApplicationService;
 import com.uniovi.rag.application.service.ProjectDocumentApplicationService;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.security.RagPrincipal;
@@ -20,14 +21,20 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.web.bind.annotation.ResponseStatus;
+
 @RestController
 @RequestMapping("${rag.api.product-base-path}/projects/{projectId}/documents")
 public class ProjectDocumentsController {
 
     private final ProjectDocumentApplicationService projectDocumentApplicationService;
+    private final PromoteDocumentApplicationService promoteDocumentApplicationService;
 
-    public ProjectDocumentsController(ProjectDocumentApplicationService projectDocumentApplicationService) {
+    public ProjectDocumentsController(
+            ProjectDocumentApplicationService projectDocumentApplicationService,
+            PromoteDocumentApplicationService promoteDocumentApplicationService) {
         this.projectDocumentApplicationService = projectDocumentApplicationService;
+        this.promoteDocumentApplicationService = promoteDocumentApplicationService;
     }
 
     @GetMapping
@@ -46,6 +53,15 @@ public class ProjectDocumentsController {
         }
         ProjectDocumentDto dto = projectDocumentApplicationService.uploadDocument(principal.userId(), projectId, file);
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+
+    @PostMapping("/{documentId}/promote")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void promote(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable UUID projectId,
+            @PathVariable UUID documentId) throws IOException {
+        promoteDocumentApplicationService.promote(principal.userId(), projectId, documentId);
     }
 
     @DeleteMapping("/{documentId}")

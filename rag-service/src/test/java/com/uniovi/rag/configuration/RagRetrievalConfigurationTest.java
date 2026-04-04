@@ -41,7 +41,7 @@ class RagRetrievalConfigurationTest {
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setRetrieverImpl(null);
 
-        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, null);
+        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, false, null);
         assertNotNull(retriever);
         assertTrue(retriever instanceof BasicContextRetriever);
     }
@@ -54,7 +54,7 @@ class RagRetrievalConfigurationTest {
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setRetrieverImpl("filtered");
 
-        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, null);
+        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, false, null);
         assertNotNull(retriever);
         assertTrue(retriever instanceof FilteredContextRetriever);
     }
@@ -67,7 +67,7 @@ class RagRetrievalConfigurationTest {
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setRetrieverImpl("minute-document");
 
-        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, null);
+        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, false, null);
         assertNotNull(retriever);
         assertTrue(retriever instanceof MinuteDocumentContextRetriever);
     }

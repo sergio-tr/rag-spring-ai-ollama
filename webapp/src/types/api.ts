@@ -41,6 +41,8 @@ export type ActivateProjectResponse = {
 
 export type ProjectDocumentStatus = "INGESTING" | "READY" | "ERROR";
 
+export type CorpusScope = "PROJECT_SHARED" | "CHAT_LOCAL";
+
 export type ProjectDocumentDto = {
   id: string;
   fileName: string;
@@ -49,6 +51,11 @@ export type ProjectDocumentDto = {
   errorMessage: string | null;
   uploadedAt: string;
   reindexedAt: string | null;
+  corpusScope: CorpusScope;
+  conversationId: string | null;
+  currentIndexSnapshotId: string | null;
+  indexSignatureHash: string | null;
+  storagePresent: boolean;
 };
 
 export type ConversationDto = {

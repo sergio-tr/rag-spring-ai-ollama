@@ -6,7 +6,7 @@ import com.uniovi.rag.interfaces.rest.dto.MessageDto;
 import com.uniovi.rag.interfaces.rest.dto.PatchConversationRequest;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.MessageRepository;
-import com.uniovi.rag.infrastructure.persistence.ProjectDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
@@ -31,19 +31,19 @@ public class ConversationApplicationService {
     private final ProjectAccessService projectAccessService;
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
-    private final ProjectDocumentRepository projectDocumentRepository;
+    private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final PresetService presetService;
 
     public ConversationApplicationService(
             ProjectAccessService projectAccessService,
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
-            ProjectDocumentRepository projectDocumentRepository,
+            KnowledgeDocumentRepository knowledgeDocumentRepository,
             PresetService presetService) {
         this.projectAccessService = projectAccessService;
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
-        this.projectDocumentRepository = projectDocumentRepository;
+        this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.presetService = presetService;
     }
 
@@ -139,7 +139,7 @@ public class ConversationApplicationService {
             } catch (IllegalArgumentException e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document id in documentFilter");
             }
-            if (projectDocumentRepository.findByIdAndProject_Id(docId, projectId).isEmpty()) {
+            if (knowledgeDocumentRepository.findByIdAndProject_Id(docId, projectId).isEmpty()) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "documentFilter contains id not in project: " + docId);
             }

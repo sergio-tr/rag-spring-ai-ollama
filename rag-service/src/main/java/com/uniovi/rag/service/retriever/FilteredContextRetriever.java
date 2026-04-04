@@ -57,6 +57,15 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
         super(vectorStore, chatClient, topK, similarityThreshold);
     }
 
+    public FilteredContextRetriever(
+            PgVectorStore vectorStore,
+            ChatClient chatClient,
+            int topK,
+            double similarityThreshold,
+            boolean knowledgeChatOverlayEnabled) {
+        super(vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
+    }
+
     @Override
     public String filterDocumentContent(Document doc, String query, JSONObject entities) {
         if (doc == null) {

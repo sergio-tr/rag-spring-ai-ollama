@@ -2,6 +2,7 @@ package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.service.ProjectDocumentApplicationService;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
@@ -68,7 +69,12 @@ class DocumentStatusControllerWebMvcTest {
                 3,
                 null,
                 Instant.parse("2025-01-01T12:00:00Z"),
-                null);
+                null,
+                CorpusScope.PROJECT_SHARED,
+                null,
+                null,
+                null,
+                false);
         when(projectDocumentApplicationService.documentStatus(eq(userId), eq(docId))).thenReturn(dto);
 
         mockMvc.perform(get("/api/v5/documents/{documentId}/status", docId))

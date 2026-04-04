@@ -3,7 +3,7 @@ package com.uniovi.rag.application.service;
 import com.uniovi.rag.interfaces.rest.dto.MessageDto;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.MessageRepository;
-import com.uniovi.rag.infrastructure.persistence.ProjectDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.service.preset.PresetService;
 import com.uniovi.rag.service.project.ProjectAccessService;
@@ -33,7 +33,7 @@ class ConversationApplicationServiceTest {
     private MessageRepository messageRepository;
 
     @Mock
-    private ProjectDocumentRepository projectDocumentRepository;
+    private KnowledgeDocumentRepository knowledgeDocumentRepository;
 
     @Mock
     private PresetService presetService;

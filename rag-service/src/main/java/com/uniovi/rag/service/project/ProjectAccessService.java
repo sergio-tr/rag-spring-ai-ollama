@@ -2,10 +2,10 @@ package com.uniovi.rag.service.project;
 
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectDocumentEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
-import com.uniovi.rag.infrastructure.persistence.ProjectDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import org.springframework.stereotype.Service;
 
@@ -19,15 +19,15 @@ public class ProjectAccessService {
 
     private final ProjectRepository projectRepository;
     private final ConversationRepository conversationRepository;
-    private final ProjectDocumentRepository projectDocumentRepository;
+    private final KnowledgeDocumentRepository knowledgeDocumentRepository;
 
     public ProjectAccessService(
             ProjectRepository projectRepository,
             ConversationRepository conversationRepository,
-            ProjectDocumentRepository projectDocumentRepository) {
+            KnowledgeDocumentRepository knowledgeDocumentRepository) {
         this.projectRepository = projectRepository;
         this.conversationRepository = conversationRepository;
-        this.projectDocumentRepository = projectDocumentRepository;
+        this.knowledgeDocumentRepository = knowledgeDocumentRepository;
     }
 
     public ProjectEntity requireOwnedProject(UUID userId, UUID projectId) {
@@ -40,8 +40,8 @@ public class ProjectAccessService {
                 .orElseThrow(() -> new NotFoundException("conversation not found"));
     }
 
-    public ProjectDocumentEntity requireDocumentForUser(UUID userId, UUID documentId) {
-        ProjectDocumentEntity doc = projectDocumentRepository.findById(documentId)
+    public KnowledgeDocumentEntity requireDocumentForUser(UUID userId, UUID documentId) {
+        KnowledgeDocumentEntity doc = knowledgeDocumentRepository.findById(documentId)
                 .orElseThrow(() -> new NotFoundException("document not found"));
         requireOwnedProject(userId, doc.getProject().getId());
         return doc;

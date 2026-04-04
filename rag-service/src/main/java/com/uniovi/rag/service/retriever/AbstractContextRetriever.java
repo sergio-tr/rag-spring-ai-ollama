@@ -40,17 +40,29 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
 
     protected final int defaultTopK;
     protected final double defaultSimilarityThreshold;
+    /** When true, {@code CHAT_LOCAL} chunks match by {@code conversationId} (chat overlay). */
+    protected final boolean knowledgeChatOverlayEnabled;
     protected static final int DEFAULT_MAX_PROMPT_CHARS = 6000;
     /** Metadata key for ISO date (vector store / chunk metadata). */
     private static final String META_DATE_ISO = "date_iso";
 
     public AbstractContextRetriever(PgVectorStore vectorStore, ChatClient chatClient, int topK, double similarityThreshold) {
+        this(vectorStore, chatClient, topK, similarityThreshold, false);
+    }
+
+    public AbstractContextRetriever(
+            PgVectorStore vectorStore,
+            ChatClient chatClient,
+            int topK,
+            double similarityThreshold,
+            boolean knowledgeChatOverlayEnabled) {
         this.vectorStore = vectorStore;
         this.chatClient = chatClient;
         this.defaultTopK = topK;
         this.defaultSimilarityThreshold = similarityThreshold;
         this.topK = topK;
         this.similarityThreshold = similarityThreshold;
+        this.knowledgeChatOverlayEnabled = knowledgeChatOverlayEnabled;
     }
 
     @Override
@@ -93,7 +105,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         }
         String pid = ctx.projectId();
         List<Document> byProject = docs.stream()
-                .filter(d -> passesProjectMetadata(d, pid))
+                .filter(d -> passesProjectMetadata(d, pid, ctx))
                 .toList();
         if (ctx.documentFilterIsAll()) {
             return byProject;
@@ -104,11 +116,20 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
                 .toList();
     }
 
-    private static boolean passesProjectMetadata(Document d, String projectId) {
+    private boolean passesProjectMetadata(Document d, String projectId, RagExecutionContext ctx) {
         if (d.getMetadata() == null) {
             return true;
         }
-        Object p = d.getMetadata().get("projectId");
+        Map<String, Object> meta = d.getMetadata();
+        Object cs = meta.get("corpusScope");
+        if ("CHAT_LOCAL".equalsIgnoreCase(String.valueOf(cs))) {
+            if (!knowledgeChatOverlayEnabled || ctx == null || ctx.conversationId() == null) {
+                return false;
+            }
+            Object conv = meta.get("conversationId");
+            return ctx.conversationId().equals(String.valueOf(conv));
+        }
+        Object p = meta.get("projectId");
         if (p == null) {
             return true;
         }

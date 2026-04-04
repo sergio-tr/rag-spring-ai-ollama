@@ -126,7 +126,7 @@ public abstract class AbstractDocumentService implements DocumentService {
         }
     }
 
-    protected String extractContent(MultipartFile file) {
+    public String extractContent(MultipartFile file) {
         String contentType = file.getContentType();
         String fileName = file.getOriginalFilename();
 
@@ -280,7 +280,7 @@ public abstract class AbstractDocumentService implements DocumentService {
      * @param maxCharsPerChunk Maximum characters per chunk
      * @return List of content chunks
      */
-    protected List<String> splitContentIntoChunks(String content, int maxCharsPerChunk) {
+    public List<String> splitContentIntoChunks(String content, int maxCharsPerChunk) {
         if (content == null || content.trim().isEmpty()) {
             return List.of("");
         }

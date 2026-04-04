@@ -18,6 +18,15 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
     public AbstractMetadataContextRetriever(PgVectorStore vectorStore, ChatClient chatClient, int topK, double similarityThreshold) {
         super(vectorStore, chatClient, topK, similarityThreshold);
     }
+
+    public AbstractMetadataContextRetriever(
+            PgVectorStore vectorStore,
+            ChatClient chatClient,
+            int topK,
+            double similarityThreshold,
+            boolean knowledgeChatOverlayEnabled) {
+        super(vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
+    }
     
     /**
      * Retrieves documents with metadata filters when NER entities are available.

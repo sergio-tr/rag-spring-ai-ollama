@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.service.ConversationApplicationService;
+import com.uniovi.rag.application.service.MoveConversationApplicationService;
 import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import org.junit.jupiter.api.AfterEach;
@@ -37,6 +38,9 @@ class ProjectConversationsControllerWebMvcTest {
 
     @MockBean
     private ConversationApplicationService conversationApplicationService;
+
+    @MockBean
+    private MoveConversationApplicationService moveConversationApplicationService;
 
     private UUID userId;
     private UUID projectId;

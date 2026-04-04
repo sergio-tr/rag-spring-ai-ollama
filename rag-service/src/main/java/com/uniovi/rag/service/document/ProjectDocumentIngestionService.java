@@ -1,8 +1,8 @@
 package com.uniovi.rag.service.document;
 
 import com.uniovi.rag.domain.ProjectDocumentStatus;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectDocumentEntity;
-import com.uniovi.rag.infrastructure.persistence.ProjectDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,16 +24,22 @@ import java.util.UUID;
 @Service
 public class ProjectDocumentIngestionService extends AbstractDocumentService {
 
-    private final ProjectDocumentRepository projectDocumentRepository;
+    private final KnowledgeDocumentRepository knowledgeDocumentRepository;
+    private final KnowledgeIngestionOrchestrator knowledgeIngestionOrchestrator;
+    private final boolean knowledgeV2PipelineEnabled;
     private final int chunkMaxChars;
 
     public ProjectDocumentIngestionService(PgVectorStore vectorStore,
                                            org.springframework.ai.chat.client.ChatClient chatClient,
                                            JdbcTemplate jdbcTemplate,
-                                           ProjectDocumentRepository projectDocumentRepository,
+                                           KnowledgeDocumentRepository knowledgeDocumentRepository,
+                                           KnowledgeIngestionOrchestrator knowledgeIngestionOrchestrator,
+                                           @Value("${knowledge.v2.pipeline.enabled:false}") boolean knowledgeV2PipelineEnabled,
                                            @Value("${rag.chunk.max-chars:400}") int chunkMaxChars) {
         super(vectorStore, chatClient, jdbcTemplate);
-        this.projectDocumentRepository = projectDocumentRepository;
+        this.knowledgeDocumentRepository = knowledgeDocumentRepository;
+        this.knowledgeIngestionOrchestrator = knowledgeIngestionOrchestrator;
+        this.knowledgeV2PipelineEnabled = knowledgeV2PipelineEnabled;
         this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
     }
 
@@ -48,13 +54,18 @@ public class ProjectDocumentIngestionService extends AbstractDocumentService {
     @Async
     public void ingestFromTempFile(UUID projectId, UUID projectDocumentId, Path tempFile, String originalFilename,
                                    String contentType) {
-        ProjectDocumentEntity row = projectDocumentRepository.findById(projectDocumentId).orElse(null);
+        KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
         if (row == null) {
             log().warn("Project document {} not found, skipping ingest", projectDocumentId);
             deleteTempQuietlyInstance(tempFile);
             return;
         }
         try {
+            if (knowledgeV2PipelineEnabled) {
+                knowledgeIngestionOrchestrator.ingestFromTempFile(
+                        projectId, projectDocumentId, tempFile, originalFilename, contentType);
+                return;
+            }
             deleteVectorChunksForProjectDocument(projectDocumentId);
             byte[] bytes = Files.readAllBytes(tempFile);
             ByteArrayMultipartFile mf = new ByteArrayMultipartFile(
@@ -64,7 +75,7 @@ public class ProjectDocumentIngestionService extends AbstractDocumentService {
                 throw new IllegalArgumentException("empty content");
             }
             List<String> chunks = splitContentIntoChunks(content, chunkMaxChars);
-            String documentId = generateDocumentId(originalFilename, content, projectDocumentId);
+            String documentId = KnowledgeChunkMetadataFactory.legacyContentHashId(originalFilename, content, projectDocumentId);
             if (hasDocumentWithId(documentId)) {
                 deleteDocumentByDocumentId(documentId);
             }
@@ -84,13 +95,13 @@ public class ProjectDocumentIngestionService extends AbstractDocumentService {
             row.setChunkCount(chunks.size());
             row.setErrorMessage(null);
             row.setReindexedAt(java.time.Instant.now());
-            projectDocumentRepository.save(row);
+            knowledgeDocumentRepository.save(row);
             log().info("Ingested project document {} ({} chunks)", projectDocumentId, chunks.size());
         } catch (Exception e) {
             log().error("Ingest failed for project document {}: {}", projectDocumentId, e.getMessage());
             row.setStatus(ProjectDocumentStatus.ERROR);
             row.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-            projectDocumentRepository.save(row);
+            knowledgeDocumentRepository.save(row);
         } finally {
             deleteTempQuietlyInstance(tempFile);
         }
@@ -109,13 +120,12 @@ public class ProjectDocumentIngestionService extends AbstractDocumentService {
 
     public void deleteVectorChunksForProjectDocument(UUID projectDocumentId) {
         jdbcTemplate.update(
-                "DELETE FROM vector_store WHERE metadata->>'projectDocumentId' = ?",
+                """
+                        DELETE FROM vector_store
+                        WHERE metadata->>'projectDocumentId' = ?
+                           OR metadata->>'documentId' = ?
+                        """,
+                projectDocumentId.toString(),
                 projectDocumentId.toString());
-    }
-
-    private static String generateDocumentId(String filename, String content, UUID projectDocumentId) {
-        String base = (filename != null ? filename : "unknown") + "_" + projectDocumentId + "_"
-                + (content != null ? String.valueOf(content.hashCode()) : "0");
-        return String.valueOf(Math.abs(base.hashCode()));
     }
 }

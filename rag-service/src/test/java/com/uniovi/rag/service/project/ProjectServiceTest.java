@@ -7,7 +7,7 @@ import com.uniovi.rag.interfaces.rest.dto.ProjectSummaryDto;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntityTestFactory;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
-import com.uniovi.rag.infrastructure.persistence.ProjectDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.application.service.AuditApplicationService;
@@ -42,7 +42,7 @@ class ProjectServiceTest {
     private UserRepository userRepository;
 
     @Mock
-    private ProjectDocumentRepository projectDocumentRepository;
+    private KnowledgeDocumentRepository knowledgeDocumentRepository;
 
     @Mock
     private ConversationRepository conversationRepository;
@@ -92,7 +92,7 @@ class ProjectServiceTest {
             p.setId(newId);
             return p;
         });
-        when(projectDocumentRepository.countByProject_Id(any())).thenReturn(0L);
+        when(knowledgeDocumentRepository.countByProject_Id(any())).thenReturn(0L);
         when(conversationRepository.countByProject_Id(any())).thenReturn(0L);
 
         ProjectSummaryDto dto =
@@ -114,7 +114,7 @@ class ProjectServiceTest {
             p.setId(newId);
             return p;
         });
-        when(projectDocumentRepository.countByProject_Id(any())).thenReturn(0L);
+        when(knowledgeDocumentRepository.countByProject_Id(any())).thenReturn(0L);
         when(conversationRepository.countByProject_Id(any())).thenReturn(0L);
 
         projectService.create(userId, new CreateProjectRequest("P", null, presetId.toString()));
@@ -128,7 +128,7 @@ class ProjectServiceTest {
         UUID pid = UUID.randomUUID();
         ProjectEntity p = ProjectEntityTestFactory.project(pid, "x", "d");
         when(projectAccessService.requireOwnedProject(userId, pid)).thenReturn(p);
-        when(projectDocumentRepository.countByProject_Id(pid)).thenReturn(2L);
+        when(knowledgeDocumentRepository.countByProject_Id(pid)).thenReturn(2L);
         when(conversationRepository.countByProject_Id(pid)).thenReturn(1L);
 
         ProjectSummaryDto dto = projectService.get(userId, pid);
@@ -145,7 +145,7 @@ class ProjectServiceTest {
         ProjectEntity p = ProjectEntityTestFactory.project(pid, "old", null);
         when(projectAccessService.requireOwnedProject(userId, pid)).thenReturn(p);
         when(projectRepository.save(any(ProjectEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(projectDocumentRepository.countByProject_Id(pid)).thenReturn(0L);
+        when(knowledgeDocumentRepository.countByProject_Id(pid)).thenReturn(0L);
         when(conversationRepository.countByProject_Id(pid)).thenReturn(0L);
 
         projectService.patch(userId, pid, new PatchProjectRequest("  new  ", "  desc  ", null));
@@ -163,7 +163,7 @@ class ProjectServiceTest {
         ProjectEntity p = ProjectEntityTestFactory.project(pid, "n", null);
         when(projectAccessService.requireOwnedProject(userId, pid)).thenReturn(p);
         when(projectRepository.save(any(ProjectEntity.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(projectDocumentRepository.countByProject_Id(pid)).thenReturn(0L);
+        when(knowledgeDocumentRepository.countByProject_Id(pid)).thenReturn(0L);
         when(conversationRepository.countByProject_Id(pid)).thenReturn(0L);
 
         projectService.patch(userId, pid, new PatchProjectRequest(null, "   ", null));

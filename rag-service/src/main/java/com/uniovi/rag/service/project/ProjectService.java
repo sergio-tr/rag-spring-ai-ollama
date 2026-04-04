@@ -9,7 +9,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntityFactory;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
-import com.uniovi.rag.infrastructure.persistence.ProjectDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.application.service.AuditApplicationService;
@@ -30,7 +30,7 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
-    private final ProjectDocumentRepository projectDocumentRepository;
+    private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final ConversationRepository conversationRepository;
     private final ProjectAccessService projectAccessService;
     private final PresetService presetService;
@@ -39,14 +39,14 @@ public class ProjectService {
     public ProjectService(
             ProjectRepository projectRepository,
             UserRepository userRepository,
-            ProjectDocumentRepository projectDocumentRepository,
+            KnowledgeDocumentRepository knowledgeDocumentRepository,
             ConversationRepository conversationRepository,
             ProjectAccessService projectAccessService,
             PresetService presetService,
             AuditApplicationService auditApplicationService) {
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
-        this.projectDocumentRepository = projectDocumentRepository;
+        this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.conversationRepository = conversationRepository;
         this.projectAccessService = projectAccessService;
         this.presetService = presetService;
@@ -124,7 +124,7 @@ public class ProjectService {
     }
 
     private ProjectSummaryDto toSummary(ProjectEntity p) {
-        long docs = projectDocumentRepository.countByProject_Id(p.getId());
+        long docs = knowledgeDocumentRepository.countByProject_Id(p.getId());
         long convs = conversationRepository.countByProject_Id(p.getId());
         return new ProjectSummaryDto(
                 p.getId(),
