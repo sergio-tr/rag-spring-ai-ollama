@@ -29,7 +29,7 @@ All code comments are in English.
 
 - **Use classifier by tag:** send `modelId` in `POST /classify` (query param or body); use **camelCase** in all request/response JSON for interoperability with Java/JavaScript.
 - **Train with fixed labels:** send `labels` as a JSON string array (e.g. `["COUNT_DOCUMENTS","SUMMARIZE_MEETING"]`) or upload a `labels_file` (one label per line, like `query_type_labels.txt`). Class order is preserved.
-- **Evaluation:** `POST /evaluate` returns full metrics (classification_report, accuracy, macro_avg, confusion_matrix, class_names) and optionally `classificationReportImageBase64` and `confusionMatrixImageBase64` for the frontend (display or download). The GET image endpoints return the PNGs directly for use in `<img src="...">` or download links.
+- **Evaluation:** `POST /evaluate` returns full metrics (classification_report, accuracy, macro_avg, confusion_matrix, class_names) and optionally `classificationReportImageBase64` and `confusionMatrixImageBase64` for the webapp (display or download). The GET image endpoints return the PNGs directly for use in `<img src="...">` or download links.
 
 Error responses use a consistent shape: `{"code": "...", "message": "...", "details": {...}}` (optional).
 

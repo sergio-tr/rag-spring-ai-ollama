@@ -17,6 +17,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Application (app/ + entrypoint)
 COPY main.py ./
 COPY app/ ./app/
+# Runtime fix-ups for legacy model artifacts
+COPY scripts/ ./scripts/
 # Default model and trained models (models/default/ + trained)
 COPY models/ ./models/
 # Default datasets (optional; used for training or reference)
@@ -24,4 +26,4 @@ COPY data/ ./data/
 
 EXPOSE ${PORT}
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "python ./scripts/fix-keras-vocab-utf8.py \"${MODEL_PATH:-${MODELS_DIR}/default/model.keras}\" || true; uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
