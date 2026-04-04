@@ -99,6 +99,29 @@ You can use environment variables with placeholders `${VAR_NAME:default}`. Overr
 
 ## Tests and JaCoCo (`target/site/jacoco/index.html`)
 
+### Replicate CI locally (backend `mvn verify`)
+
+The **Backend (Java)** job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) uses:
+
+- Service image **`pgvector/pgvector:pg16`**, database **`vectordb`**, user/password **`postgres`**
+- JDBC from the job to **`localhost:5432`** (`SPRING_DATASOURCE_*`)
+- A **prepare** step implemented by the reusable action [`.github/actions/prepare-postgres-for-rag-tests`](../.github/actions/prepare-postgres-for-rag-tests/action.yml): extensions `vector`, `hstore`, `uuid-ossp` on `vectordb`; database **`testdb`** + [`src/test/resources/test-init.sql`](src/test/resources/test-init.sql) (for JDBC integration tests). The same action is used by Sonar, stack integration, and E2E fullstack jobs so Postgres state matches `mvn verify` locally.
+- Env: `RAG_JWT_SECRET` (≥32 chars), `RAG_TEST_USE_TESTCONTAINERS_DATASOURCE=false`, `INTEGRATION_JDBC_URL=jdbc:postgresql://localhost:5432/testdb`
+- Command: `./mvnw -B clean verify` from **`rag-service/`** (`clean` avoids stale `target/classes/db/migration` files after renamed Flyway scripts)
+
+**Easiest:** run the helper script (Docker required; uses the same image and SQL as CI):
+
+| Shell | From repository root |
+|-------|----------------------|
+| **PowerShell (Windows)** | `.\rag-service\scripts\ci-like-verify.ps1` |
+| **Bash** (Linux, macOS, WSL, Git Bash) | `./rag-service/scripts/ci-like-verify.sh` |
+
+Options: `ci-like-verify.sh --stop-after` removes the container after verify; `--prepare-only` only starts Postgres and applies SQL (then set the env vars yourself and run `./mvnw -B verify`). PowerShell: `-StopAfter`, `-PrepareOnly`.
+
+Default container name: **`rag-ci-postgres`** (override with env `RAG_CI_POSTGRES_CONTAINER`). If **port 5432 is already in use**, stop the other Postgres or change the host port in the script for local experiments.
+
+**Closest to the runner OS:** use **WSL2 Ubuntu** + the `.sh` script; behaviour matches `ubuntu-latest` more closely than Windows alone (line endings, `mvnw` execute bit).
+
 - **CI / GitHub Actions:** environment variables override `src/test/resources/application-test.properties`. If **`RAG_JWT_SECRET`** is set (repo or org) to an empty or **too short** value (JWT signing requires at least **32** characters), `JwtService` fails at startup and `@SpringBootTest` classes error with `Failed to load ApplicationContext`. The repo workflows set a dedicated test secret for `mvn verify`. **`SafeTestSecretsApplicationContextInitializer`** (`META-INF/spring.factories` and `META-INF/spring/org.springframework.context.ApplicationContextInitializer.imports` on the test classpath) patches invalid secrets and OTLP URLs and sets `spring.datasource.*` early (GitHub service Postgres vs Testcontainers) so JPA can create `entityManagerFactory`. **`application-test.properties`** also pins JDBC literals as a fallback when org env clears datasource variables. Full-stack smoke tests (`SpringIntoAiApplicationTests`, OpenAPI export, Rag stabilization) also set **`@SpringBootTest(properties = …)`** so `rag.jwt.secret` and OTLP endpoints win over process env even when org defaults set **`SPRING_PROFILES_ACTIVE=prod`** (which used to skip the initializer before the `test` profile was applied).
 - **`mvn verify`** runs unit/integration tests and **JaCoCo**; the build fails if the **global** bundle (classes included in the report) is below **80% line** coverage (`pom.xml`).
 - **`index.html` does not list test classes** — it shows **coverage of production code** (classes/packages). Surefire XML reports under `target/surefire-reports/` are the test execution results; JaCoCo is a separate report.

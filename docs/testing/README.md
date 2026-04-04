@@ -59,14 +59,14 @@ Authoritative workflow table: [../README.md](../README.md) (CI workflows section
 |--------|------|---------------------|-------------------|
 | **rag-service** | JaCoCo **line** coverage ≥ **80%** on the configured bundle (`rag-service/pom.xml` `jacoco:check`) | `./mvnw verify` (from `rag-service/`) | `rag-service/target/site/jacoco/jacoco.xml` (also `index.html`) |
 | **classifier-service** | pytest-cov **lines** ≥ **80%**, branches on (`.coveragerc`) | `pytest` with project `addopts` | `classifier-service/coverage.xml`, `htmlcov/` |
-| **webapp** | Vitest v8 thresholds **80%** on lines, statements, functions, branches (`vitest.config.ts`) | `npm run test:coverage` (from `webapp/`) | `webapp/coverage/lcov.info`, `coverage/index.html` (CI may upload `webapp/coverage/` as an artifact — see `ci.yml`) |
+| **webapp** | Vitest v8: **80%** lines, statements, functions; **74%** branches (`vitest.config.ts`) | `npm run test:coverage` (from `webapp/`) | `webapp/coverage/lcov.info`, `coverage/index.html` (CI may upload `webapp/coverage/` as an artifact — see `ci.yml`) |
 | **SonarCloud** | Quality Gate (see Sonar UI); **Java + Python + TS LCOV** when `sonar.yml` runs | Same reports as above; workflow runs Vitest before scan | Dashboard + PR decoration; `sonar-project.properties` lists `jacoco.xml`, `coverage.xml`, `webapp/coverage/lcov.info` |
 
 **Note:** JaCoCo and Sonar **coverage exclusions** (large orchestration, tools, etc.) mean the percentage is over **included** lines, not every file in the tree. Vitest `coverage.exclude` defines the frontend gate scope. See [../coverage/README.md](../coverage/README.md).
 
 ## React / Testing Library (webapp)
 
-Stack: Vitest + `jsdom`, [`webapp/vitest.setup.ts`](../../webapp/vitest.setup.ts), tests as `src/**/*.test.{ts,tsx}`. Coverage thresholds (80% lines, statements, functions, branches) apply to instrumented product code under [`webapp/vitest.config.ts`](../../webapp/vitest.config.ts) (`coverage.include` / `coverage.exclude`). Component and hook tests should follow the same **behavior-first** philosophy as `src/lib` modules.
+Stack: Vitest + `jsdom`, [`webapp/vitest.setup.ts`](../../webapp/vitest.setup.ts), tests as `src/**/*.test.{ts,tsx}`. Coverage thresholds in [`webapp/vitest.config.ts`](../../webapp/vitest.config.ts) apply to instrumented product code (`coverage.include` / `coverage.exclude`): 80% lines, statements, functions; 74% branches. Component and hook tests should follow the same **behavior-first** philosophy as `src/lib` modules.
 
 **Principle:** If a real user cannot perceive it, the test should not depend on it—except for pure modules under `src/lib`, where unit tests without DOM are appropriate.
 

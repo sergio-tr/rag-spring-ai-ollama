@@ -3,6 +3,7 @@ package com.uniovi.rag.configuration;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -28,6 +29,7 @@ import java.util.stream.Collectors;
 public class SecurityConfiguration {
 
     @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             JwtAuthenticationFilter jwtFilter,
@@ -53,6 +55,7 @@ public class SecurityConfiguration {
     }
 
     @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     public CorsConfigurationSource corsConfigurationSource(
             @Value("${rag.cors.allowed-origins:http://localhost:3000}") String allowedOrigins) {
         return buildCors(allowedOrigins);

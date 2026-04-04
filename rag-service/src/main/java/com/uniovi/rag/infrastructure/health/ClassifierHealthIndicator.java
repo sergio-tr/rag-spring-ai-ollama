@@ -26,7 +26,7 @@ public class ClassifierHealthIndicator implements HealthIndicator {
 
     public ClassifierHealthIndicator(
             RagHealthProperties healthProperties,
-            @Value("${rag.classifier.service.url}") String classifierBaseUrl) {
+            @Value("${rag.classifier.service.url:http://localhost:8000}") String classifierBaseUrl) {
         this.healthProperties = healthProperties;
         this.classifierBaseUrl = stripTrailingSlash(classifierBaseUrl);
         this.httpClient = HttpClient.newBuilder()

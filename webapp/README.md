@@ -35,7 +35,7 @@ npm run dev          # http://localhost:3000 — set NEXT_PUBLIC_API_BASE_URL to
 npm run typecheck
 npm run build
 npm run test         # Vitest (unit)
-npm run test:coverage # Vitest + v8 coverage gate (80% lines/branches/functions/statements on instrumented `src/**`; see vitest.config.ts excludes)
+npm run test:coverage # Vitest + v8 coverage gate (80% lines/statements/functions, 74% branches on instrumented `src/**`; see vitest.config.ts)
 npm run test:e2e          # Playwright UI smoke: chromium only, excludes @fullstack
 npm run test:e2e:fullstack # Playwright UI @fullstack — Spring e2e + DB (see e2e/README.md)
 npm run test:api          # Playwright API (HTTP only, Spring API_BASE_URL) — see e2e/api/README.md

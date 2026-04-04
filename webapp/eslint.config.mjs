@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vitest/coverage output (local runs; absent on fresh CI checkout until tests run).
+    "coverage/**",
+    // Typedoc output committed for docs hosting; not hand-maintained TS/TSX.
+    "docs/api/**",
   ]),
 ]);
 

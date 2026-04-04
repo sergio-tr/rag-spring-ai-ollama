@@ -27,6 +27,8 @@ export default async function LocaleLayout({ children, params }: LocaleLayoutPro
   // Sync zone aligned with `getRequestConfig` / NEXT_PUBLIC_TIMEZONE; client provider must receive a
   // concrete string on the first SSR pass (async server NextIntlClientProvider can race in Next 16).
   const timeZone = getAppTimeZone();
+  // Wall-clock anchor for IntlProvider `now` (one snapshot per RSC render; see intl-provider.tsx).
+  // eslint-disable-next-line react-hooks/purity -- not a client re-render; Date.now is request-scoped SSR input
   const nowMs = Date.now();
 
   return (
