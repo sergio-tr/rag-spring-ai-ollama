@@ -146,6 +146,9 @@ public class KnowledgeIngestionOrchestrator {
             }
         } catch (Exception e) {
             log.error("V2 ingest failed for project document {}: {}", projectDocumentId, e.getMessage());
+            if (meterRegistry != null) {
+                meterRegistry.counter("rag.knowledge.ingest.failed").increment();
+            }
             row.setStatus(ProjectDocumentStatus.ERROR);
             row.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
             knowledgeDocumentRepository.save(row);

@@ -5,12 +5,14 @@ import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.async.lab.LabJobHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-
-import java.security.NoSuchAlgorithmException;
 
 @Component
 class AccountExportJobHandler implements LabJobHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(AccountExportJobHandler.class);
 
     private final AccountExportApplicationService accountExportApplicationService;
 
@@ -25,6 +27,10 @@ class AccountExportJobHandler implements LabJobHandler {
 
     @Override
     public void run(AsyncTaskEntity task, AsyncTaskMutationService mutation) {
+        log.info(
+                "account_export_job_start taskId={} userId={}",
+                task.getId(),
+                task.getUser() != null ? task.getUser().getId() : null);
         try {
             accountExportApplicationService.runExport(task, mutation);
         } catch (Exception e) {
