@@ -5,7 +5,6 @@ import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.query.QueryService;
 
-import com.uniovi.rag.testsupport.SafeTestSecretsApplicationContextInitializer;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
 import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
 
@@ -16,8 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.ContextConfiguration;
-
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -26,8 +23,14 @@ import static org.junit.jupiter.api.Assertions.*;
  * and that expected tool/routing behavior is preserved.
  * Run with data loaded and Ollama for full coverage; unit-level guards are tested in DateExistenceGuardTest.
  */
-@SpringBootTest(classes = Application.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@ContextConfiguration(initializers = SafeTestSecretsApplicationContextInitializer.class)
+@SpringBootTest(
+        classes = Application.class,
+        webEnvironment = SpringBootTest.WebEnvironment.NONE,
+        properties = {
+                "rag.jwt.secret=test-secret-key-for-jwt-signing-must-be-long-enough-32",
+                "management.otlp.tracing.endpoint=http://127.0.0.1:4318/v1/traces",
+                "management.otlp.metrics.export.url=http://127.0.0.1:4318/v1/metrics"
+        })
 @Import({ TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class })
 @ActiveProfiles("test")
 @EnabledIf(value = "com.uniovi.rag.testsupport.TestEnvironment#isSpringBootPostgresAvailable",

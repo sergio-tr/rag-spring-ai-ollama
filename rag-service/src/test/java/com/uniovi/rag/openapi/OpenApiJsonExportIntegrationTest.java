@@ -1,7 +1,6 @@
 package com.uniovi.rag.openapi;
 
 import com.uniovi.Application;
-import com.uniovi.rag.testsupport.SafeTestSecretsApplicationContextInitializer;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
 import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
 import org.junit.jupiter.api.Test;
@@ -14,8 +13,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.ContextConfiguration;
-
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,8 +25,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * Fetches springdoc /v3/api-docs from a running app and writes target/openapi.json for annexes or codegen
  * (runs only when Postgres is available, same as other full-context tests).
  */
-@SpringBootTest(classes = Application.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@ContextConfiguration(initializers = SafeTestSecretsApplicationContextInitializer.class)
+@SpringBootTest(
+        classes = Application.class,
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {
+                "rag.jwt.secret=test-secret-key-for-jwt-signing-must-be-long-enough-32",
+                "management.otlp.tracing.endpoint=http://127.0.0.1:4318/v1/traces",
+                "management.otlp.metrics.export.url=http://127.0.0.1:4318/v1/metrics"
+        })
 @Import({TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class})
 @ActiveProfiles("test")
 @EnabledIf(

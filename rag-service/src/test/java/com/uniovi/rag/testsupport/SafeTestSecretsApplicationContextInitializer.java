@@ -6,7 +6,6 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.MutablePropertySources;
 
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -15,20 +14,18 @@ import java.util.Map;
  * may set {@code RAG_JWT_SECRET} to an empty or short value, which makes {@code JwtService} fail during
  * context refresh. Empty {@code OTEL_EXPORTER_OTLP_ENDPOINT} yields invalid OTLP URLs like {@code /v1/traces}.
  * <p>
- * This initializer runs only for non-{@code prod} Spring test contexts and patches those properties when
- * they would break the context. It is registered from {@code META-INF/spring.factories} (test classpath only).
+ * This initializer is test-classpath only ({@code META-INF/spring.factories}). It does not consult {@code prod}:
+ * org-wide {@code SPRING_PROFILES_ACTIVE=prod} would otherwise skip the patch before {@code @ActiveProfiles("test")}
+ * is visible on the environment, leaving broken {@code RAG_JWT_SECRET} from the process env.
  */
 public final class SafeTestSecretsApplicationContextInitializer
         implements ApplicationContextInitializer<ConfigurableApplicationContext> {
 
-    static final String TEST_JWT_SECRET = "test-secret-key-for-jwt-signing-must-be-long-enough-32";
+    public static final String TEST_JWT_SECRET = "test-secret-key-for-jwt-signing-must-be-long-enough-32";
 
     @Override
     public void initialize(ConfigurableApplicationContext context) {
         ConfigurableEnvironment env = context.getEnvironment();
-        if (isProdProfile(env)) {
-            return;
-        }
         Map<String, Object> map = new LinkedHashMap<>();
         String jwt = env.getProperty("rag.jwt.secret");
         if (jwt == null || jwt.length() < 32) {
@@ -43,21 +40,5 @@ public final class SafeTestSecretsApplicationContextInitializer
             MutablePropertySources sources = env.getPropertySources();
             sources.addFirst(new MapPropertySource("ragSafeTestSecretsOverride", map));
         }
-    }
-
-    private static boolean isProdProfile(ConfigurableEnvironment env) {
-        if (Arrays.asList(env.getActiveProfiles()).contains("prod")) {
-            return true;
-        }
-        return profileCsvContains(env.getProperty("spring.profiles.active"), "prod");
-    }
-
-    private static boolean profileCsvContains(String raw, String profile) {
-        if (raw == null || raw.isBlank()) {
-            return false;
-        }
-        return Arrays.stream(raw.split(","))
-                .map(String::trim)
-                .anyMatch(profile::equals);
     }
 }
