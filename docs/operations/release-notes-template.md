@@ -23,6 +23,16 @@ Use for annotated tags (e.g. `v0.x.y`). Paste into GitHub **Release** descriptio
 
 - Target: Linux VM + `docker-compose.yml` + `compose.prod.yml` (see [runbook-docker-vm.md](runbook-docker-vm.md)).
 - Deploy workflow gate: [deploy-workflow-audit.md](deploy-workflow-audit.md).
+- Optional: repository secret `DEPLOY_HEALTH_URL` triggers a post-deploy HTTP check on manual deploy ([deploy-workflow-audit.md](deploy-workflow-audit.md)).
+
+### Academic / thesis freeze (optional block)
+
+Use when handing in a reproducible snapshot:
+
+- **Annotated Git tag** (this release).
+- **Commit SHA** repeated here; **GHCR image tags** pinned to the same SHA (not `latest`).
+- **Evidence:** links or paths to CI run(s), `docker compose config -q` logs/obs/prod-like (see [observability-smoke workflow](../../.github/workflows/observability-smoke.yml)), smoke output, and health/readiness capture.
+- **Topology:** primary reproducible path = Ollama on host or remote URL; GPU-in-Docker is optional (see [docker/README.md](../../docker/README.md)).
 
 ### Breaking changes
 

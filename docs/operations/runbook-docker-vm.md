@@ -26,7 +26,7 @@ Application configuration is **not** fully defined in `deploy.yml`; the VM must 
 | `classifier-service/.env` | Classifier API keys and model paths. |
 | `webapp/` | Next.js runtime env if not only build-time (see [webapp/README.md](../../webapp/README.md)). |
 
-**Rule:** Never commit secrets; use the VM filesystem or a secret manager; align variable names with [docker/README.md](../../docker/README.md).
+**Rule:** Never commit secrets; use the VM filesystem or a secret manager; align variable names with [docker/README.md](../../docker/README.md). Bootstrap from each module’s **`.env.example`** (placeholders such as `CHANGE_ME`); replace with strong values before production — do not ship default passwords from examples.
 
 ---
 
@@ -38,6 +38,8 @@ From `VM_DEPLOY_DIR`:
 docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml pull || true
 docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml up -d
 ```
+
+**Image tags:** Prebuilt GHCR images use the **commit SHA** as the primary tag (see [release-and-deploy.md](release-and-deploy.md)). For reproducible deploys, pin Compose `image:` references or `docker pull` to `ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<SHA>` — do **not** rely on `latest` as the rollback contract.
 
 Use `docker compose ps` and service logs for troubleshooting: `docker compose logs -f <service>`.
 

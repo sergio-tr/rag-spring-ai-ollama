@@ -23,3 +23,7 @@ Spring must point `SPRING_AI_OLLAMA_BASE_URL` at a reachable Ollama HTTP API —
 When enabled, collectors and UIs are configured via `observability/.env` and Compose overrides.
 
 **Detail:** [../../observability/README.md](../../observability/README.md)
+
+## Canonical commands and scenario matrix
+
+Operational scenarios (stack base includes **webapp** by default), compose chains, env files, and health evidence are maintained in **[../../docker/README.md](../../docker/README.md)** and **[../../docker/scripts/README.md](../../docker/scripts/README.md)**. The canonical operator entry points are **`./docker/scripts/up.sh`** and **`./docker/scripts/docker-compose.sh`** — documented examples must match those scripts.

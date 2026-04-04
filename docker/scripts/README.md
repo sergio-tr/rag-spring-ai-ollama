@@ -195,6 +195,16 @@ curl -sf -o /dev/null -w "%{http_code}" "http://localhost:9000${RAG_API_LEGACY_B
 
 If the DB is empty or Ollama is down, the backend may still return 200 with an error message in the body; the minimum smoke check is HTTP 200.
 
+## Pre-release validation pack (operator)
+
+Before tagging a release or thesis snapshot, capture evidence for:
+
+1. **Compose syntax:** `docker compose … config -q` for `compose.logs.yml`, for `docker-compose.yml` + `compose.obs.yml`, and for `docker-compose.yml` + `compose.prod.yml` (same env-file pattern as CI — see [`.github/workflows/observability-smoke.yml`](../../.github/workflows/observability-smoke.yml)).
+2. **Runtime:** [`rag-service/scripts/smoke-test.sh`](../../rag-service/scripts/smoke-test.sh) against the running backend; Actuator health/readiness.
+3. **Deep stack (optional / nightly):** [`tests/full-stack-verify.sh`](../../tests/full-stack-verify.sh) — heavy; run manually or on a scheduled runner if not part of PR CI.
+
+Canonical orchestration remains **`./docker/scripts/up.sh`** and **`./docker/scripts/docker-compose.sh`**; do not maintain one-off compose examples that diverge from those scripts ([`../README.md`](../README.md)).
+
 ## Repo layout note (`scripts/` at root)
 
-The top-level [`../../scripts/README.md`](../../scripts/README.md) indexes automation entry points; use paths under `docker/scripts/`, `db/scripts/`, `rag-service/scripts/`, and `tests/` as listed there.
+The top-level [`../../scripts/README.md`](../../scripts/README.md) indexes automation entry points. Prefer **`docker/scripts/`** for Compose. The file [`../../rag-service/scripts/up.sh`](../../rag-service/scripts/up.sh) **delegates** to `docker/scripts/up.sh` — it is not a second source of compose flags.

@@ -6,7 +6,12 @@ Application source lives in this monorepo; **behavioural truth** is code + migra
 
 ## Images
 
-Backend, classifier, webapp, and infra images are **Linux OCI** images. Build and publish steps are in `.github/workflows/` (e.g. `build-images.yml`). Exact tags and promotion rules belong in workflow comments or team runbooks on the module side if extended.
+Backend, classifier, webapp, and infra images are **Linux OCI** images. [`.github/workflows/build-images.yml`](../../.github/workflows/build-images.yml) pushes each service to GHCR with:
+
+- **`<github_sha>`** (full commit SHA) — **canonical tag** for reproducible deploy and rollback documentation. Prefer `docker pull …:<SHA>` / Compose `image: …:<SHA>` when operating from a known commit.
+- **`latest`** — updated on each successful build; **not** a contract for production rollback; use only for ad-hoc convenience.
+
+Digest may be recorded in release notes as extra evidence; the **primary** operational reference is the SHA tag.
 
 **Operator view:** [../../docker/README.md](../../docker/README.md) deployment section.
 

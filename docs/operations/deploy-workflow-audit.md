@@ -13,7 +13,9 @@ The workflow runs on `ubuntu-latest`, **gates** on **two** required workflows fo
 
 **Strengths:** Clear gate list; uses GitHub API to require **success** at the same `head_sha`; minimal permissions (`contents: read`).
 
-**Gaps:** No automated post-deploy health check; no image tag pinning in the script beyond `pull`; secrets are assumed pre-configured on the VM side for app config (see runbook).
+**Post-deploy (implemented):** If repository secret `DEPLOY_HEALTH_URL` is set to an HTTP(S) URL reachable from GitHub Actions (e.g. public health endpoint behind the reverse proxy), the workflow runs `curl -fsS` after SSH deploy and **fails the job** on non-success. If the secret is **unset**, the step is skipped (documented skip).
+
+**Remaining gaps:** Image references in Compose may still use `build:` locally; pinning prebuilt GHCR images by **commit SHA** tag is documented in [../../docker/README.md](../../docker/README.md) and [release-and-deploy.md](release-and-deploy.md). VM `.env` secrets are assumed pre-configured (see runbook).
 
 ---
 
@@ -41,6 +43,7 @@ Implemented in the first step (`actions/github-script@v7`):
 | `VM_SSH_KEY` | Private key | Protect key rotation via GitHub **environments** if staging/prod split later. |
 | `VM_DEPLOY_DIR` | `cd` before compose | Path to cloned repo on the VM (single string). |
 | `GHCR_TOKEN` | `docker login ghcr.io` | Passed to stdin; actor is `${{ github.actor }}`. |
+| `DEPLOY_HEALTH_URL` | Optional post-deploy HTTP check | If set, must be reachable from `ubuntu-latest`; job fails on curl error. Omit if no public URL yet. |
 
 **Security notes:**
 
@@ -50,27 +53,12 @@ Implemented in the first step (`actions/github-script@v7`):
 
 ---
 
-## Proposed diff **after** deploy approval (optional improvements)
+## Follow-up improvements (optional)
 
-These are **optional** improvements; paste into a PR when agreed.
-
-1. **Post-deploy smoke** (after SSH `up -d`): `curl -fsS` against the public health URL (from env, e.g. `DEPLOY_BASE_URL` secret) or `docker compose ps` + one internal check. Fail the job if unhealthy.
-2. **Record metadata:** `echo` image digests or `docker compose images` to the step summary for audit trails.
-3. **Concurrency:** `concurrency: { group: deploy-vm, cancel-in-progress: false }` to avoid overlapping SSH deploys.
-4. **Checkout on runner (optional):** `actions/checkout@v4` to pass `git rev-parse HEAD` into the remote script and verify `VM_DEPLOY_DIR` matches the same SHA (guards stale clones).
-5. **Wider gate (policy):** add `integration.yml` to `required` if stack HTTP tests must block production deploys.
-
-Example **snippet** for (1) only — **not** applied in-repo until `HEALTH_URL` exists:
-
-```yaml
-      - name: Post-deploy HTTP smoke
-        if: success()
-        env:
-          HEALTH_URL: ${{ secrets.DEPLOY_HEALTH_URL }}
-        run: |
-          test -n "$HEALTH_URL"
-          curl -fsS -o /dev/null --max-time 30 "$HEALTH_URL"
-```
+1. **Record metadata:** echo image digests or `docker compose images` to the step summary.
+2. **Concurrency:** `concurrency: { group: deploy-vm, cancel-in-progress: false }` to avoid overlapping SSH deploys.
+3. **Checkout on runner:** pass `git rev-parse HEAD` into the remote script and verify `VM_DEPLOY_DIR` matches the same SHA.
+4. **Wider gate (policy):** add `integration.yml` to `required` if stack HTTP tests must block production deploys.
 
 ---
 
