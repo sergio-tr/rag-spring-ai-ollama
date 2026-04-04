@@ -1,0 +1,38 @@
+%% Ollama wiring matrix — choose ONE primary path per environment composite URL wins over defaults in env files
+flowchart TB
+  subgraph hostpath [Host Ollama default backend container]
+    H2["docker-compose.yml when no ollama service"]
+    H1["SPRING_AI_OLLAMA_BASE_URL http://host.docker.internal:11434"]
+    H2 --> H1
+  end
+
+  subgraph localgpu [Ollama in Compose GPU]
+    L1[compose.ollama-local-gpu.yml]
+    L2["service ollama NVIDIA volume ollama_data"]
+    L3["backend SPRING_AI_OLLAMA_BASE_URL http://ollama:11434"]
+    L1 --> L2 --> L3
+  end
+
+  subgraph localgpu_dev [Dev JVM targeting container Ollama]
+    LD1[compose.ollama-local-gpu.dev.yml]
+    LD2["backend-dev http://ollama:11434 depends_on ollama"]
+    LD1 --> LD2
+  end
+
+  subgraph remote [Remote Ollama endpoint]
+    R1[compose.ollama-remote.yml]
+    R2["backend env override to external base URL"]
+    R1 --> R2
+  end
+
+  subgraph remote_dev [Dev JVM remote]
+    RD1[compose.ollama-remote.dev.yml]
+    RD2["backend-dev external base URL"]
+    RD1 --> RD2
+  end
+
+  subgraph gpuonly [GPU without local Ollama container]
+    G1[compose.gpu.yml]
+    G2["classifier NVIDIA only LLM stays host or remote per other overlays"]
+    G1 --> G2
+  end

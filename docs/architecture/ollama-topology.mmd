@@ -1,0 +1,20 @@
+%% Three exclusive Ollama deployment patterns — one per environment
+%% Wiring SPRING_AI_OLLAMA_BASE_URL: see rag-service README docker README ollama README
+flowchart TB
+  RAG[Spring Boot Ollama HTTP client]
+
+  subgraph host [Host-bound]
+    H[Ollama on workstation typical for dev]
+  end
+
+  subgraph container [Container on Compose network]
+    C[ollama service GPU optional]
+  end
+
+  subgraph remote [Remote]
+    R[External Ollama URL]
+  end
+
+  RAG -.->|path A| H
+  RAG -.->|path B| C
+  RAG -.->|path C| R
