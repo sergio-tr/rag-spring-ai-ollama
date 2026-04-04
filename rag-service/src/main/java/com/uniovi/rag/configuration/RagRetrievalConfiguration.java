@@ -59,8 +59,8 @@ public class RagRetrievalConfiguration {
         PgVectorStore vectorStore,
         ChatClient chatClient,
         RagImplementationProperties implProps,
-        @Value("${spring.ai.ollama.top-k}") int topK,
-        @Value("${spring.ai.ollama.similarity-threshold}") double similarityThreshold,
+        @Value("${spring.ai.ollama.top-k:80}") int topK,
+        @Value("${spring.ai.ollama.similarity-threshold:0.25}") double similarityThreshold,
         @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
         @Autowired(required = false) ObservabilitySupport observability
     ) {
