@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
                 "management.otlp.tracing.endpoint=http://127.0.0.1:4318/v1/traces",
                 "management.otlp.metrics.export.url=http://127.0.0.1:4318/v1/metrics"
         })
-@Import({TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class})
+@Import({ TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class })
 @ActiveProfiles("test")
 @EnabledIf(
         value = "com.uniovi.rag.testsupport.TestEnvironment#isSpringBootPostgresAvailable",

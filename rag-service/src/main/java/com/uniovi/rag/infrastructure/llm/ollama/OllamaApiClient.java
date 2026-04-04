@@ -25,6 +25,20 @@ public class OllamaApiClient {
     private final RagHealthProperties healthProperties;
     private final HttpClient httpClient;
 
+    /** Selector for {@link #noHttpStub(RagHealthProperties)}; avoids a second (String, RagHealthProperties) constructor. */
+    private enum InternalNoHttpStub {
+        INSTANCE
+    }
+
+    /**
+     * Subclasses used only by {@link #noHttpStub(RagHealthProperties)}; {@code httpClient} stays null (overrides do not use it).
+     */
+    private OllamaApiClient(InternalNoHttpStub ignored, RagHealthProperties healthProperties) {
+        this.baseUrl = OllamaUrlUtils.stripTrailingSlash("http://127.0.0.1:1");
+        this.healthProperties = healthProperties;
+        this.httpClient = null;
+    }
+
     public OllamaApiClient(
             @Value("${spring.ai.ollama.base-url}") String baseUrl,
             RagHealthProperties healthProperties) {
@@ -33,6 +47,28 @@ public class OllamaApiClient {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(Math.max(500, healthProperties.getConnectTimeoutMs())))
                 .build();
+    }
+
+    /**
+     * Stub for Spring tests (profile {@code test}): no HTTP; avoids Mockito concrete-class mocking on CI JDKs.
+     */
+    public static OllamaApiClient noHttpStub(RagHealthProperties healthProperties) {
+        return new OllamaApiClient(InternalNoHttpStub.INSTANCE, healthProperties) {
+            @Override
+            public Set<String> listModelNames() {
+                return Set.of();
+            }
+
+            @Override
+            public boolean ping() {
+                return true;
+            }
+
+            @Override
+            public void pullModel(String modelName, long pullReadTimeoutMs) {
+                // no-op
+            }
+        };
     }
 
     public Set<String> listModelNames() throws IOException, InterruptedException {
