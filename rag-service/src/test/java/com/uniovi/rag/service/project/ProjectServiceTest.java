@@ -148,7 +148,7 @@ class ProjectServiceTest {
         when(knowledgeDocumentRepository.countByProject_Id(pid)).thenReturn(0L);
         when(conversationRepository.countByProject_Id(pid)).thenReturn(0L);
 
-        projectService.patch(userId, pid, new PatchProjectRequest("  new  ", "  desc  ", null));
+        projectService.patch(userId, pid, new PatchProjectRequest("  new  ", "  desc  ", null, null, null));
 
         ArgumentCaptor<ProjectEntity> cap = ArgumentCaptor.forClass(ProjectEntity.class);
         verify(projectRepository).save(cap.capture());
@@ -166,7 +166,7 @@ class ProjectServiceTest {
         when(knowledgeDocumentRepository.countByProject_Id(pid)).thenReturn(0L);
         when(conversationRepository.countByProject_Id(pid)).thenReturn(0L);
 
-        projectService.patch(userId, pid, new PatchProjectRequest(null, "   ", null));
+        projectService.patch(userId, pid, new PatchProjectRequest(null, "   ", null, null, null));
 
         ArgumentCaptor<ProjectEntity> cap = ArgumentCaptor.forClass(ProjectEntity.class);
         verify(projectRepository).save(cap.capture());

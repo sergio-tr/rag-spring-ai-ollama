@@ -4,6 +4,7 @@ import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.interfaces.rest.support.RagWebMvcTestApplication;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaModelProvisioningService;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.service.admin.AdminSystemDefaultsService;
 import com.uniovi.rag.service.admin.AllowlistAdminService;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import org.junit.jupiter.api.AfterEach;
@@ -43,6 +44,9 @@ class AdminControllerWebMvcTest {
 
     @MockBean
     private AllowlistAdminService allowlistAdminService;
+
+    @MockBean
+    private AdminSystemDefaultsService adminSystemDefaultsService;
 
     @MockBean
     private OllamaModelProvisioningService ollamaModelProvisioningService;

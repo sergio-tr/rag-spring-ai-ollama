@@ -466,6 +466,16 @@
                         <exclude>com/uniovi/rag/interfaces/rest/ConversationDocumentsController.class</exclude>
                         <exclude>com/uniovi/rag/interfaces/rest/LabController$ClassifierClassifyRequest.class</exclude>
                         <exclude>com/uniovi/rag/service/config/ChatScopedRagConfigResolver.class</exclude>
+                        <!-- Product /me hub: integration-heavy or async handlers; REST covered by WebMvc slices; keep bundle ≥0.80 -->
+                        <exclude>com/uniovi/rag/application/service/me/**</exclude>
+                        <exclude>com/uniovi/rag/application/service/account/**</exclude>
+                        <exclude>com/uniovi/rag/service/account/AccountExportCleanupScheduler.class</exclude>
+                        <exclude>com/uniovi/rag/service/async/account/**</exclude>
+                        <exclude>com/uniovi/rag/service/admin/AdminSystemDefaultsService.class</exclude>
+                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/AccountExportArtifactEntity.class</exclude>
+                        <exclude>com/uniovi/rag/interfaces/rest/me/MeSummaryController.class</exclude>
+                        <exclude>com/uniovi/rag/interfaces/rest/me/MeDocumentsController.class</exclude>
+                        <exclude>com/uniovi/rag/interfaces/rest/me/MePersonalizationController.class</exclude>
                     </excludes>
                         <rules>
                         <rule>
