@@ -97,8 +97,7 @@ jobs:
         working-directory: rag-service
         run: ./mvnw -B verify --no-transfer-progress
         env:
-          # Prevent tests from attempting real OTLP exports
-          OTEL_EXPORTER_OTLP_ENDPOINT: ""
+          # Do not set OTEL_EXPORTER_OTLP_ENDPOINT to "" — Spring resolves ${OTEL:default} to empty and breaks OTLP URLs.
           MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "false"
 
       # ─── Java: copy dependencies for SonarCloud type resolution ───────────
