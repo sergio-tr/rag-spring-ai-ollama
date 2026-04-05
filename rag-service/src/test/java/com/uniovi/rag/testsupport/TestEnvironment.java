@@ -1,25 +1,50 @@
 package com.uniovi.rag.testsupport;
 
+import com.github.dockerjava.api.DockerClient;
 import org.testcontainers.DockerClientFactory;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
 
 /**
  * Shared predicates for JUnit {@link org.junit.jupiter.api.condition.EnabledIf} on integration tests.
  */
 public final class TestEnvironment {
 
+    private static final String DEFAULT_SPRING_BOOT_PG_URL = "jdbc:postgresql://localhost:5432/vectordb";
+
+    private static final String CI_DEFAULT_INTEGRATION_JDBC_URL = "jdbc:postgresql://localhost:5432/testdb";
+
     private TestEnvironment() {
     }
 
     /**
-     * True when {@code SPRING_DATASOURCE_URL} is set (e.g. CI Postgres service) or Docker is available
-     * for Testcontainers-backed {@code @SpringBootTest}.
+     * True when full {@code @SpringBootTest} Postgres requirements are satisfied:
+     * <ul>
+     *     <li>{@code SPRING_DATASOURCE_URL} set and reachable (local scripts), or</li>
+     *     <li>Postgres already listening on {@code localhost:5432/vectordb} (initializer fallback after TC), or</li>
+     *     <li>Docker responds to a real ping (Testcontainers can start Postgres).</li>
+     * </ul>
+     * On GitHub Actions, an explicit {@code SPRING_DATASOURCE_URL} is trusted without a TCP probe so a slow
+     * service start does not skip tests.
      */
     @SuppressWarnings("unused") // referenced from @EnabledIf string
     public static boolean isSpringBootPostgresAvailable() {
+        String user = firstNonBlankEnv("SPRING_DATASOURCE_USERNAME", "postgres");
+        String pass = firstNonBlankEnv("SPRING_DATASOURCE_PASSWORD", "postgres");
+
         if (hasNonBlankEnv("SPRING_DATASOURCE_URL")) {
+            if (isGitHubActions()) {
+                return true;
+            }
+            return canOpenPostgresJdbc(System.getenv("SPRING_DATASOURCE_URL"), user, pass);
+        }
+
+        if (canOpenPostgresJdbc(DEFAULT_SPRING_BOOT_PG_URL, user, pass)) {
             return true;
         }
-        return isDockerAvailable();
+
+        return canPingDockerDaemon();
     }
 
     /**
@@ -28,29 +53,71 @@ public final class TestEnvironment {
      */
     @SuppressWarnings("unused")
     public static boolean isJdbcIntegrationTestAvailable() {
+        if (isGitHubActions()) {
+            return true;
+        }
+        String user = firstNonBlankEnv("SPRING_DATASOURCE_USERNAME", "postgres");
+        String pass = firstNonBlankEnv("SPRING_DATASOURCE_PASSWORD", "postgres");
+
         if (hasNonBlankEnv("INTEGRATION_JDBC_URL")) {
+            return canOpenPostgresJdbc(System.getenv("INTEGRATION_JDBC_URL"), user, pass);
+        }
+
+        if (canOpenPostgresJdbc(CI_DEFAULT_INTEGRATION_JDBC_URL, user, pass)) {
             return true;
         }
-        if ("true".equalsIgnoreCase(System.getenv("GITHUB_ACTIONS"))) {
-            return true;
-        }
-        return isDockerAvailable();
+
+        return canPingDockerDaemon();
     }
 
     /**
-     * True when the Testcontainers Docker environment is usable (local Docker Desktop, CI Docker, etc.).
+     * True when the Docker API accepts a ping (stricter than {@link DockerClientFactory#isDockerAvailable()}
+     * alone — avoids WSL / Docker Desktop half-configured states where strategies report success but
+     * Testcontainers cannot run).
      */
     @SuppressWarnings("unused")
     public static boolean isDockerAvailable() {
+        return canPingDockerDaemon();
+    }
+
+    private static boolean canPingDockerDaemon() {
         try {
-            return DockerClientFactory.instance().isDockerAvailable();
+            if (!DockerClientFactory.instance().isDockerAvailable()) {
+                return false;
+            }
+            DockerClient client = DockerClientFactory.instance().client();
+            client.pingCmd().exec();
+            return true;
         } catch (Throwable t) {
             return false;
         }
     }
 
+    private static boolean canOpenPostgresJdbc(String url, String user, String pass) {
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        try {
+            DriverManager.setLoginTimeout(5);
+            try (Connection c = DriverManager.getConnection(url, user, pass)) {
+                return c.isValid(3);
+            }
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static boolean isGitHubActions() {
+        return "true".equalsIgnoreCase(System.getenv("GITHUB_ACTIONS"));
+    }
+
     private static boolean hasNonBlankEnv(String name) {
         String v = System.getenv(name);
         return v != null && !v.isBlank();
+    }
+
+    private static String firstNonBlankEnv(String name, String defaultValue) {
+        String v = System.getenv(name);
+        return (v == null || v.isBlank()) ? defaultValue : v;
     }
 }

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,13 +24,17 @@ import javax.sql.DataSource;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 /**
  * JDBC integration tests: Testcontainers locally; in CI use the Postgres service (see {@code .github/workflows/ci.yml}
  * and {@code sonar.yml}) via {@code INTEGRATION_JDBC_URL} or automatic URL when {@code GITHUB_ACTIONS=true}.
  */
+@EnabledIf(
+        value = "com.uniovi.rag.testsupport.TestEnvironment#isJdbcIntegrationTestAvailable",
+        disabledReason = "Start Postgres (e.g. .github/local/ci-like-verify.sh) or set INTEGRATION_JDBC_URL")
 class DocumentPersistenceJdbcIntegrationTest {
 
     private static final String CI_DEFAULT_INTEGRATION_JDBC_URL = "jdbc:postgresql://localhost:5432/testdb";

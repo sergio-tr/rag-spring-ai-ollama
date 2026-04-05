@@ -48,16 +48,16 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 
 ## Key variables
 
-| Variable / property              | Description                                    | Example / default        |
-|----------------------------------|------------------------------------------------|---------------------------|
-| `OLLAMA_BASE_URL`                | Ollama URL                                     | `http://localhost:11434` |
+| Variable / property | Description | Example / default |
+| --- | --- | --- |
+| `OLLAMA_BASE_URL` | Ollama URL | `http://localhost:11434` |
 | `SPRING_AI_OLLAMA_CHAT_MODEL` / `SPRING_AI_OLLAMA_EMBEDDING_MODEL` | Models used by Spring AI | e.g. `gemma3:4b`, `mxbai-embed-large` |
-| `rag.ollama.auto-pull-enabled`   | Pull missing models via Ollama HTTP API on startup | `true` (set `false` offline / air-gapped) |
-| `rag.ollama.pull-read-timeout-ms`| Per-`pull` timeout (large models) | `1800000` (30 min) |
-| `SPRING_DATASOURCE_URL`          | PostgreSQL JDBC URL (same DB as in db/.env)    | `jdbc:postgresql://localhost:5432/vectordb` or `postgres:5432` in Compose |
-| `SPRING_DATASOURCE_USERNAME`     | DB user (must match db/.env)                   | `postgres`                |
-| `SPRING_DATASOURCE_PASSWORD`     | DB password (must match db/.env)               | —                         |
-| `rag.classifier.service.url` | Classifier service URL (backend)               | `http://localhost:8000`   |
+| `rag.ollama.auto-pull-enabled` | Pull missing models via Ollama HTTP API on startup | `true` (set `false` offline / air-gapped) |
+| `rag.ollama.pull-read-timeout-ms` | Per-`pull` timeout (large models) | `1800000` (30 min) |
+| `SPRING_DATASOURCE_URL` | PostgreSQL JDBC URL (same DB as in db/.env) | `jdbc:postgresql://localhost:5432/vectordb` or `postgres:5432` in Compose |
+| `SPRING_DATASOURCE_USERNAME` | DB user (must match db/.env) | `postgres` |
+| `SPRING_DATASOURCE_PASSWORD` | DB password (must match db/.env) | — |
+| `rag.classifier.service.url` | Classifier service URL (backend) | `http://localhost:8000` |
 | `RAG_CONFIG_V2_ENABLED` / `rag.config.v2.enabled` | Use `ResolvedRuntimeConfig` resolution in the chat path (aligned with `POST /config/preview`) | `false` |
 | `rag.runtime.workflow-schema-version` | Semver of the RAG execution stage graph (Lab/eval reproducibility) | `1.0.0` |
 | `rag.runtime.legacy-advisor-with-post-retrieval` | Allow `QuestionAnswerAdvisor` when post-retrieval is on (legacy; not recommended) | `false` |
@@ -76,7 +76,7 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `evaluation_run` + `evaluation_result`; `async_task` is operational (poll `/lab/jobs/{asyncTaskId}`).
 
 | Goal (TFG / product) | Use | Legacy (not primary SCIENCE evidence) |
-|----------------------|-----|----------------------------------------|
+| --- | --- | --- |
 | LLM judge QA (no retrieval) | `POST /lab/benchmarks/LLM_JUDGE_QA/runs` | — |
 | Embedding / retrieval only | `POST /lab/benchmarks/EMBEDDING_RETRIEVAL/runs` | — |
 | Full RAG (preset + snapshots) | `POST /lab/benchmarks/RAG_PRESET_END_TO_END/runs` | — |
@@ -88,7 +88,7 @@ Export: `GET /lab/runs/{id}/export?format=csv` (first line `#META:` + JSON run h
 ### Configuration layout (two main files + tests)
 
 | File | Role |
-|------|------|
+| --- | --- |
 | `application.properties` | **Application:** RAG/AI/features, DB, actuator defaults, OTLP off by default; profile **`dev`** (DevTools, logs, CORS, JPA `update`) |
 | `application-infra.properties` | **Environment / infra:** profile **`docker`** (no OTLP inside container by default), profile **`infra`** (OTLP on, collector URLs, relaxed container health, probes) |
 | `application-test.properties` | Test profile only (no real Ollama/OTLP) |
@@ -112,12 +112,14 @@ The **Backend (Java)** job in [`.github/workflows/ci.yml`](../.github/workflows/
 **Easiest:** run the helper script (Docker required; uses the same image and SQL as CI):
 
 | Shell | From repository root |
-|-------|----------------------|
+| --- | --- |
 | **Bash** (Linux, macOS, WSL, Git Bash) | `./.github/local/ci-like-verify.sh` |
 
 Options: `ci-like-verify.sh --stop-after` removes the container after verify; `--prepare-only` only starts Postgres and applies SQL (then set the env vars yourself and run `./mvnw -B verify`). PowerShell: `-StopAfter`, `-PrepareOnly`.
 
 Default container name: **`rag-ci-postgres`** (override with env `RAG_CI_POSTGRES_CONTAINER`). If **port 5432 is already in use**, stop the other Postgres or change the host port in the script for local experiments.
+
+**Postgres unreachable / Docker half-broken (common on WSL):** full-stack `@SpringBootTest` classes and `DocumentPersistenceJdbcIntegrationTest` use `@EnabledIf` via `TestEnvironment`. They are **skipped** (not failed) when `SPRING_DATASOURCE_URL` is unset, nothing listens on `localhost:5432/vectordb`, and the Docker daemon does not respond to a client ping — so plain `./mvnw verify` without a running CI-style Postgres no longer produces `ApplicationContext` errors. Run `./.github/local/ci-like-verify.sh` or `./.github/local/ci-like-sonar.sh` first so the container and env vars match CI.
 
 - **CI / GitHub Actions:** environment variables override `src/test/resources/application-test.properties`. If **`RAG_JWT_SECRET`** is set (repo or org) to an empty or **too short** value (JWT signing requires at least **32** characters), `JwtService` fails at startup and `@SpringBootTest` classes error with `Failed to load ApplicationContext`. The repo workflows set a dedicated test secret for `mvn verify`. **`SafeTestSecretsApplicationContextInitializer`** (`META-INF/spring.factories` and `META-INF/spring/org.springframework.context.ApplicationContextInitializer.imports` on the test classpath) patches invalid secrets and OTLP URLs and sets `spring.datasource.*` early (GitHub service Postgres vs Testcontainers) so JPA can create `entityManagerFactory`. **`application-test.properties`** also pins JDBC literals as a fallback when org env clears datasource variables. Full-stack smoke tests (`SpringIntoAiApplicationTests`, OpenAPI export, Rag stabilization) also set **`@SpringBootTest(properties = …)`** so `rag.jwt.secret` and OTLP endpoints win over process env even when org defaults set **`SPRING_PROFILES_ACTIVE=prod`** (which used to skip the initializer before the `test` profile was applied).
 - **`mvn verify`** runs unit/integration tests and **JaCoCo**; the build fails if the **global** bundle (classes included in the report) is below **80% line** coverage (`pom.xml`).
@@ -170,7 +172,7 @@ Single pipeline for product and evaluation: `QueryRuntimeComponentsFactory` buil
 **Selection table (after `useRetrieval`; naive full-corpus handled first in the kernel):**
 
 | Condition (evaluated in order) | Path |
-|--------------------------------|------|
+| --- | --- |
 | `postRetrievalEnabled` | Manual only |
 | `useAdvisor` and advisor bean present, post off | `QuestionAnswerAdvisor` fast path when applicable |
 | Default | Manual `ContextRetriever` |
