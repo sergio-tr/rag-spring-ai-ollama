@@ -34,13 +34,18 @@ import com.uniovi.rag.interfaces.rest.support.ConnectivityFailureDetector;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
+import com.uniovi.rag.application.config.ConfigResolverService;
+import com.uniovi.rag.application.config.RuntimeConfigResolutionInput;
+import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import io.micrometer.tracing.Tracer;
+import org.slf4j.MDC;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.ollama.api.OllamaOptions;
 import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,12 +54,14 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 public class ProcessQueryService implements QueryService {
 
     private static final String LOG_STACK_TRACE = "Stack trace:";
+    private static final String MDC_COMPATIBILITY = "rag.config.compatibility";
 
     /** Ollama model per request (lab); the servlet thread allows a ThreadLocal-safe access. */
     private static final ThreadLocal<String> REQUEST_CHAT_MODEL = new ThreadLocal<>();
@@ -71,6 +78,8 @@ public class ProcessQueryService implements QueryService {
     private final ModelCatalogPort modelCatalogPort;
     private final ChatScopedRagConfigResolver chatScopedRagConfigResolver;
     private final Tracer tracer;
+    private final ConfigResolverService configResolverService;
+    private final boolean ragConfigV2Enabled;
 
     public ProcessQueryService(RagFeatureConfiguration featureConfig,
                                RagToolsConfiguration toolsConfig,
@@ -92,7 +101,9 @@ public class ProcessQueryService implements QueryService {
                                ModelCatalogPort modelCatalogPort,
                                ChatScopedRagConfigResolver chatScopedRagConfigResolver,
                                @Autowired(required = false) RagRuntimeProperties ragRuntimeProperties,
-                               @Autowired(required = false) Tracer tracer) {
+                               @Autowired(required = false) Tracer tracer,
+                               @Autowired(required = false) ConfigResolverService configResolverService,
+                               @Value("${rag.config.v2.enabled:false}") boolean ragConfigV2Enabled) {
         this.featureConfig = featureConfig;
         this.chatClient = chatClient;
         this.reasoningStrategy = reasoningStrategy;
@@ -121,6 +132,8 @@ public class ProcessQueryService implements QueryService {
         this.modelCatalogPort = modelCatalogPort;
         this.chatScopedRagConfigResolver = chatScopedRagConfigResolver;
         this.tracer = tracer;
+        this.configResolverService = configResolverService;
+        this.ragConfigV2Enabled = ragConfigV2Enabled;
     }
 
     /**
@@ -192,6 +205,8 @@ public class ProcessQueryService implements QueryService {
             RagConfig resolved = chatScopedRagConfigResolver.resolveForExecutionContext(contextOverlay);
             RagExecutionContext ctx = buildContext(contextOverlay, resolved, traceId);
             RagExecutionContextHolder.set(ctx);
+
+            enrichDiagnosticRuntimeConfig(contextOverlay, traceId);
 
             if (query == null || query.trim().isEmpty()) {
                 log().warn("Empty query received");
@@ -267,7 +282,49 @@ public class ProcessQueryService implements QueryService {
             String errorResponse = generateErrorResponse(query, e);
             return QueryResponse.fromLLM(errorResponse);
         } finally {
+            MDC.remove(MDC_COMPATIBILITY);
             RagExecutionContextHolder.clear();
+        }
+    }
+
+    /**
+     * Non-invasive diagnostic resolution, logging, and trace enrichment only (no observable behavior change).
+     */
+    private void enrichDiagnosticRuntimeConfig(RagExecutionContext contextOverlay, String traceId) {
+        if (!ragConfigV2Enabled || configResolverService == null || contextOverlay == null) {
+            return;
+        }
+        try {
+            String uidStr = contextOverlay.userId();
+            String pidStr = contextOverlay.projectId();
+            if (uidStr == null || uidStr.isBlank() || pidStr == null || pidStr.isBlank()) {
+                return;
+            }
+            UUID uid = UUID.fromString(uidStr.trim());
+            UUID pid = UUID.fromString(pidStr.trim());
+            Optional<String> conv =
+                    Optional.ofNullable(contextOverlay.conversationId()).filter(s -> !s.isBlank());
+            RuntimeConfigResolutionInput input =
+                    new RuntimeConfigResolutionInput(
+                            uid,
+                            pid,
+                            conv,
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Set.of(),
+                            Optional.empty(),
+                            Optional.empty(),
+                            Optional.ofNullable(traceId));
+            ResolvedRuntimeConfig diag = configResolverService.preview(input);
+            MDC.put(MDC_COMPATIBILITY, diag.compatibility().severity().name());
+            log()
+                    .debug(
+                            "Runtime config diagnostic: compatibility={} reindex={}",
+                            diag.compatibility().severity(),
+                            diag.reindexImpact().level());
+        } catch (Exception e) {
+            log().trace("Runtime config diagnostic skipped", e);
         }
     }
 

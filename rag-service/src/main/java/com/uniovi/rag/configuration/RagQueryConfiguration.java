@@ -299,8 +299,9 @@ public class RagQueryConfiguration {
                         modelCatalogPort,
                         chatScopedRagConfigResolver,
                         ragRuntimeProperties,
-                        tracer
-                );
+                        tracer,
+                        null,
+                        false);
                 break;
         }
         if (observability != null) {

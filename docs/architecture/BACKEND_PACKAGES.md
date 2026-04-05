@@ -5,6 +5,7 @@
 | Package / area | Role |
 |----------------|------|
 | `application.port.out` | Outbound ports (interfaces) for use cases |
+| `application.config` | Runtime configuration resolution: `ConfigResolverService`, `RuntimeConfigResolutionInput`, `CompatibilityValidator`, `ReindexImpactAnalyzer`, `SystemPromptComposer` |
 | `application.usecase` | Application services / use cases (e.g. auth) |
 | `api.auth` | REST auth controllers, DTOs, exceptions (not application logic) |
 | `api.admin` | `ROLE_ADMIN`: allowlist, Ollama pull orchestration |
@@ -14,6 +15,11 @@
 | `security` | JWT filter, `JwtService`, `RagPrincipal` |
 | `bootstrap` | Startup seeders (e.g. e2e admin), safety validators |
 | `domain` | Domain enums and types (framework-free top-level package) |
+| `domain.config.capability` | `Capability`, `CapabilitySet`, `CapabilityGroup` (activation / presence for resolution) |
+| `domain.config.rules` | Declarative `CompatibilityRule` implementations (evaluated by `CompatibilityValidator`) |
+| `domain.config.runtime` | `ResolvedRuntimeConfig`, `ResolvedConfigSnapshot`, provenance / profile types for resolution |
+| `domain.config.indexing` | `ReindexImpact` / `ReindexImpactLevel` (semantic reindex preview) |
+| `domain.config.prompt` | `SystemPromptLayers` and related prompt-layer types (composition in `SystemPromptComposer`) |
 | `domain.runtime` | Effective RAG config / feature snapshots used during a query |
 | `infrastructure.persistence` | Spring Data JPA repositories, custom persistence adapters |
 | `infrastructure.persistence.jpa` | JPA entities and entity factories |

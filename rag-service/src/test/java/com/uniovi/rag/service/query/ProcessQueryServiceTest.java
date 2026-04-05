@@ -128,8 +128,9 @@ class ProcessQueryServiceTest {
                 modelCatalogPort,
                 chatScopedRagConfigResolver,
                 null,
-                null
-        );
+                null,
+                null,
+                false);
     }
 
     @Test

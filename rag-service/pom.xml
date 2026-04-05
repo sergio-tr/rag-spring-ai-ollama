@@ -428,7 +428,7 @@
                         <exclude>com/uniovi/rag/domain/config/prompt/PromptFragment.class</exclude>
                         <exclude>com/uniovi/rag/domain/config/prompt/PromptFragmentRole.class</exclude>
                         <exclude>com/uniovi/rag/domain/config/runtime/ConfigProfileType.class</exclude>
-                        <exclude>com/uniovi/rag/domain/config/validation/CompatibilityValidator.class</exclude>
+                        <exclude>com/uniovi/rag/domain/config/validation/LegacyCompatibilityValidatorBridge.class</exclude>
                         <exclude>com/uniovi/rag/domain/knowledge/DocumentArtifactType.class</exclude>
                         <exclude>com/uniovi/rag/domain/knowledge/IndexSnapshotStatus.class</exclude>
                         <exclude>com/uniovi/rag/domain/knowledge/KnowledgeSnapshotScopeType.class</exclude>

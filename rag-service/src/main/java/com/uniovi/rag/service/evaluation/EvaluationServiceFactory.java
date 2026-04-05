@@ -219,8 +219,9 @@ public class EvaluationServiceFactory {
                         modelCatalogPort,
                         chatScopedRagConfigResolver,
                         ragRuntimeProperties,
-                        null
-                );
+                        null,
+                        null,
+                        false);
         }
     }
 

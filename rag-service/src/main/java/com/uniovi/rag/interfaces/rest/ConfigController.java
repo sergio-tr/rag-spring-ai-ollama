@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
+import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.runtime.ConfigProfileType;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedRuntimeConfigResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigPreviewRequest;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.EnumSet;
 import java.util.List;
@@ -73,9 +75,16 @@ public class ConfigController {
                 body.baselineCapabilitySnapshot() != null
                         ? body.baselineCapabilitySnapshot().toCapabilitySet()
                         : null;
-        return ResolvedRuntimeConfigResponseDto.fromDomain(
+        ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.preview(
-                        principal.userId(), body.projectId(), override, touched, baseline));
+                        principal.userId(), body.projectId(), override, touched, baseline);
+        if (!resolved.compatibility().valid()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Configuration preview failed compatibility: "
+                            + resolved.compatibility().errors().getFirst().message());
+        }
+        return ResolvedRuntimeConfigResponseDto.fromDomain(resolved);
     }
 
     private static Set<ConfigProfileType> parseTouchedProfileTypes(List<String> raw) {

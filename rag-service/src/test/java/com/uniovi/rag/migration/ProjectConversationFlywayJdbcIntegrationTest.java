@@ -27,7 +27,7 @@ class ProjectConversationFlywayJdbcIntegrationTest {
 
     @BeforeAll
     static void startPostgres() {
-        postgres = new PostgreSQLContainer<>("pgvector/pgvector:pg16")
+        postgres = new PostgreSQLContainer<>("pgvector/pgvector:0.8.2-pg16-bookworm")
                 .withDatabaseName("api_v5_jdbc")
                 .withUsername("test")
                 .withPassword("test")

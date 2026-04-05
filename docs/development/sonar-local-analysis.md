@@ -12,7 +12,7 @@ Configuration lives in the repo root [`sonar-project.properties`](../../sonar-pr
 | **Full git history** | Sonar uses blame for new code. If the clone is shallow: `git fetch --unshallow`. |
 | **JDK 21** | Same as CI (`setup-java` in `sonar.yml`). `sonar-local.sh` tries to prepend `/usr/lib/jvm/java-21-*` (and Temurin 21 paths) to `PATH` when the default `java` is older but JDK 21 is installed. Set `SKIP_AUTO_JDK21=1` to disable. If Maven still reports `release version 21 not supported`, see [Troubleshooting](#jdk-21-release-version-21-not-supported). |
 | **PostgreSQL 16 + pgvector** | On `localhost:5432`, database `vectordb`, user/password `postgres` (or override env vars below). |
-| **Client tools** | `psql` / `pg_isready` on `PATH`, **or** Docker: `sonar-local.sh` uses `pgvector/pgvector:pg16` with `--network host`. Override host with `SONAR_PG_DOCKER_HOST`. |
+| **Client tools** | `psql` / `pg_isready` on `PATH`, **or** Docker: `sonar-local.sh` uses `pgvector/pgvector:0.8.2-pg16-bookworm` with `--network host`. Override host with `SONAR_PG_DOCKER_HOST`. |
 | **Python 3.11** | For `classifier-service` tests. |
 | **Node.js** | Version per `webapp/package.json` / `.nvmrc` if present. |
 | **Docker** | Used to run `sonarsource/sonar-scanner-cli` (same stack family as `SonarSource/sonarqube-scan-action` in CI). |
@@ -37,7 +37,7 @@ docker run -d --name sonar-ci-pg -p 5432:5432 \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=vectordb \
-  pgvector/pgvector:pg16
+  pgvector/pgvector:0.8.2-pg16-bookworm
 ```
 
 Wait until the instance accepts connections, then run the scripts (the `sonar-local` scripts wait for `pg_isready` and apply extensions + `testdb`).

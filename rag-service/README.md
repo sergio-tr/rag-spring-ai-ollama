@@ -105,7 +105,7 @@ You can use environment variables with placeholders `${VAR_NAME:default}`. Overr
 
 The **Backend (Java)** job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) uses:
 
-- Service image **`pgvector/pgvector:pg16`**, database **`vectordb`**, user/password **`postgres`**
+- Service image **`pgvector/pgvector:0.8.2-pg16-bookworm`**, database **`vectordb`**, user/password **`postgres`**
 - JDBC from the job to **`localhost:5432`** (`SPRING_DATASOURCE_*`)
 - A **prepare** step implemented by the reusable action [`.github/actions/prepare-postgres-for-rag-tests`](../.github/actions/prepare-postgres-for-rag-tests/action.yml): extensions `vector`, `hstore`, `uuid-ossp` on `vectordb`; database **`testdb`** + [`src/test/resources/test-init.sql`](src/test/resources/test-init.sql) (for JDBC integration tests). The same action is used by Sonar, stack integration, and E2E fullstack jobs so Postgres state matches `mvn verify` locally.
 - Env: `RAG_JWT_SECRET` (≥32 chars), `RAG_TEST_USE_TESTCONTAINERS_DATASOURCE=false`, `INTEGRATION_JDBC_URL=jdbc:postgresql://localhost:5432/testdb`

@@ -7,11 +7,11 @@
 
 ## Summary
 
-The workflow runs on `ubuntu-latest`, **gates** on **two** required workflows for the **current commit SHA**, then **SSH**s to the VM and runs **Docker Compose** (`docker-compose.yml` + `compose.prod.yml`) with `pull` and `up -d`.
+The workflow runs on `ubuntu-latest`, **gates** on a successful **`ci.yml`** run for the **current commit SHA** (that workflow runs the full DAG including stack integration, Playwright fullstack, and Sonar), then **SSH**s to the VM and runs **Docker Compose** (`docker-compose.yml` + `compose.prod.yml`) with `pull` and `up -d`.
 
 **Selenium:** There is **no** `selenium.yml` in this repository and **no** Selenium step in `deploy.yml`. If a future policy reintroduces a browser gate, add it explicitly to `deploy.yml` and this audit.
 
-**Strengths:** Clear gate list; uses GitHub API to require **success** at the same `head_sha`; minimal permissions (`contents: read`).
+**Strengths:** Single required workflow keeps the gate aligned with the full PR DAG; uses GitHub API to require **success** at the same `head_sha`; minimal permissions (`contents: read`).
 
 **Post-deploy (implemented):** If repository secret `DEPLOY_HEALTH_URL` is set to an HTTP(S) URL reachable from GitHub Actions (e.g. public health endpoint behind the reverse proxy), the workflow runs `curl -fsS` after SSH deploy and **fails the job** on non-success. If the secret is **unset**, the step is skipped (documented skip).
 
@@ -25,12 +25,11 @@ Implemented in the first step (`actions/github-script@v7`):
 
 | Required workflow file | Role in quality model |
 |------------------------|------------------------|
-| `.github/workflows/ci.yml` | Primary unit/integration/webapp gate (incl. Playwright smoke). |
-| `.github/workflows/e2e-fullstack.yml` | Full-stack browser E2E (`@fullstack`) and Playwright API coverage in that job’s scope. |
+| `.github/workflows/ci.yml` | Full PR pipeline via `reusable-ci-core.yml`: backend, classifier, webapp, Playwright smoke, stack integration, fullstack E2E, Sonar, and performance on PRs to **main/master**. |
 
 **Mechanics:** For each path, the script resolves the workflow id, lists runs for `head_sha: context.sha`, picks a run whose `head_sha` matches, and requires `status === 'completed'` and `conclusion === 'success'`.
 
-**Not gated by deploy (by design today):** `integration.yml`, `sonar.yml`, `build-images.yml`, `gatling.yml`, `micro-benchmark.yml`, `system-checks.yml`, `e2e.yml`. Promote any of these to **required** only if product policy demands it (adds friction to manual deploys).
+**Not gated by deploy (by design today):** `integration.yml`, `e2e-fullstack.yml`, `sonar.yml` (manual), `build-images.yml`, `gatling.yml`, `micro-benchmark.yml`, `system-checks.yml`, `e2e.yml`. Promote any of these to **required** only if product policy demands it (adds friction to manual deploys).
 
 ---
 
