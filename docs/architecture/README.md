@@ -59,6 +59,11 @@
 
 | File | Role |
 | --- | --- |
+| [target-architecture.md](target-architecture.md) | Target subsystems, global rules, thesis domain pointer |
+| [rag-runtime-architecture.md](rag-runtime-architecture.md) | Canonical RAG runtime vocabulary (orchestration, pipelines, judges) |
+| [configuration-resolution-model.md](configuration-resolution-model.md) | Capabilities, resolution, snapshots, prompt composition |
+| [knowledge-system-model.md](knowledge-system-model.md) | Workspace documents, artefacts, snapshots, materialization |
+| [implementation-roadmap.md](implementation-roadmap.md) | Canonical implementation blocks (1–13) after freeze |
 | [system-context.md](system-context.md) | Text wrapper around context diagrams |
 | [deployment-model.md](deployment-model.md) | Deployment concepts + links to `docker/` |
 | [integration-flows.md](integration-flows.md) | Auth, RAG, SSE at integration level |

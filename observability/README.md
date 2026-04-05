@@ -4,6 +4,8 @@ Stack configuration and Dockerfiles. **Ports and credentials are defined in one 
 
 **See also:** [RUNBOOK.md](RUNBOOK.md) (traces, classifier down, readiness). [Grafana observability guide](../docs/operations/grafana-observability-guide.md) — dashboards, traces, and operator walkthrough aligned with this stack.
 
+**Target architecture (frozen model):** [Platform & Ops](../docs/architecture/target-architecture.md).
+
 ## Production / VM (where to read what)
 
 **Rule:** Observability **procedures, ports, and dashboards** stay in **this file** and the linked Grafana/Jaeger/Loki guide. **Deploy, SSH, GitHub Actions gates, and VM env layout** belong under **`docs/operations/`** — do not duplicate them here.

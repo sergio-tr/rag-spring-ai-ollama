@@ -2,6 +2,8 @@
 
 Product UI for the RAG platform: projects, documents, settings (user/project RAG config, presets), Lab, and admin views. Uses **TanStack Query**, **Zustand** (`src/store/app.store.ts`), and **next-intl**.
 
+**Target architecture (frozen model):** [Platform subsystems — Workspace / Product](../docs/architecture/target-architecture.md).
+
 ## Environment
 
 Copy `.env.example` to `.env` (or use `./scripts/create-env-webapp.sh` from the repo root). Key variables:
