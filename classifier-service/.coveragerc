@@ -1,8 +1,9 @@
 [run]
-# Source directories to measure
+# Source directories to measure (package lives under ./app when cwd is classifier-service/)
 source = app
 
-relative_files = true
+# Do not use relative_files=true here: it flattens Cobertura filenames (__init__.py at root) and SonarCloud
+# (project base = repo root, sonar.sources=classifier-service/app) cannot match coverage entries.
 
 # Omit files that don't need coverage measurement
 omit =

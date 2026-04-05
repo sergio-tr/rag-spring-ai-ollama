@@ -113,6 +113,7 @@ jobs:
           pytest tests/unit tests/regression/test_baseline_lib.py \
             -m "not integration and not slow" \
             -v
+          python scripts/patch_coverage_xml_for_sonar.py
         env:
           MODELS_DIR: ./models
           DATA_DIR: ./data

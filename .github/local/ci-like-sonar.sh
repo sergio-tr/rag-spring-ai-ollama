@@ -29,7 +29,8 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Script lives in .github/local/ — repo root is two levels up.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 if [[ -z "${SONAR_TOKEN:-}" ]]; then
@@ -149,9 +150,9 @@ prepare_postgres() {
   local CONTAINER_NAME="${RAG_CI_POSTGRES_CONTAINER:-rag-ci-postgres}"
   local IMAGE="pgvector/pgvector:pg16"
 
-  local SCRIPT_DIR="${ROOT}/local"
+  local SCRIPT_DIR="${ROOT}/.github/local"
   local CI_EXT="${SCRIPT_DIR}/ci-postgres-extensions.sql"
-  local TEST_INIT="${ROOT}/../rag-service/src/test/resources/test-init.sql"
+  local TEST_INIT="${ROOT}/rag-service/src/test/resources/test-init.sql"
 
   if [[ ! -f "${CI_EXT}" ]]; then
     echo "ERROR: Missing ${CI_EXT}" >&2
@@ -218,30 +219,31 @@ echo "==> Backend: mvn verify (JaCoCo)"
 prefer_installed_jdk21
 require_jdk21
 prepare_postgres
-chmod +x ../rag-service/mvnw
+chmod +x rag-service/mvnw
 (
-  cd ../rag-service
+  cd rag-service
   ./mvnw -B clean verify --no-transfer-progress
 )
 (
-  cd ../rag-service
+  cd rag-service
   ./mvnw -B dependency:copy-dependencies -DoutputDirectory=target/dependency --no-transfer-progress
 )
 
 echo "==> Classifier: pytest + coverage.xml"
 (
-  cd ../classifier-service
+  cd classifier-service
   python -m pip install -r requirements.txt
   export MODELS_DIR=./models
   export DATA_DIR=./data
   python -m pytest tests/unit tests/regression/test_baseline_lib.py \
     -m "not integration and not slow" \
     -v
+  python scripts/patch_coverage_xml_for_sonar.py
 )
 
 echo "==> Webapp: Vitest coverage (lcov.info)"
 (
-  cd ../webapp
+  cd webapp
   npm install --no-audit --no-fund
   npm run test:coverage
 )
