@@ -1,6 +1,8 @@
 package com.uniovi.rag.tool.metadata;
 
-import com.uniovi.rag.model.*;
+import com.uniovi.rag.domain.model.Decision;
+import com.uniovi.rag.domain.model.DecisionCluster;
+import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
@@ -13,7 +15,7 @@ import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
+import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**

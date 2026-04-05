@@ -11,6 +11,15 @@ public class BasicContextRetriever extends AbstractContextRetriever {
         super(vectorStore, chatClient, topK, similarityThreshold);
     }
 
+    public BasicContextRetriever(
+            PgVectorStore vectorStore,
+            ChatClient chatClient,
+            int topK,
+            double similarityThreshold,
+            boolean knowledgeChatOverlayEnabled) {
+        super(vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
+    }
+
     @Override
     public String filterDocumentContent(Document doc, String query, JSONObject entities) {
         String content = doc.getText() != null ? doc.getText() : "";

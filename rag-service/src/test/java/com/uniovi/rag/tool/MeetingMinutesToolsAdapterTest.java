@@ -1,11 +1,10 @@
 package com.uniovi.rag.tool;
 
 import com.uniovi.rag.configuration.RagToolsConfiguration;
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.json.JSONObject;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;

@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.document;
 
-import com.uniovi.rag.model.Loggable;
+import com.uniovi.rag.infrastructure.observability.Loggable;
 import org.springframework.ai.document.Document;
 import org.springframework.web.multipart.MultipartFile;
 

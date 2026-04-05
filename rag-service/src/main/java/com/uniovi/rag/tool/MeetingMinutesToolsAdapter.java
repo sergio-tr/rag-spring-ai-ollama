@@ -1,7 +1,7 @@
 package com.uniovi.rag.tool;
 
 import com.uniovi.rag.configuration.RagToolsConfiguration;
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
 
 import org.json.JSONObject;

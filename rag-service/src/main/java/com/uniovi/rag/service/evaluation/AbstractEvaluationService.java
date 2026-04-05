@@ -2,7 +2,7 @@ package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
-import com.uniovi.rag.model.QueryResponse;
+import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.query.QueryService;
 
@@ -312,6 +312,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         if (evaluationServiceFactory == null) {
             throw new IllegalStateException("EvaluationServiceFactory must be set to evaluate all configurations");
         }
+        log().warn(
+                "LEGACY_COMBINATORIAL: full feature-flag matrix (evaluateAllConfigurations) — not primary scientific benchmark evidence");
         Map<String, Map<String, Object>> allResults = new HashMap<>();
         int totalConfigs = 1 << FEATURE_FLAG_DESCRIPTORS.length;
 
@@ -716,5 +718,10 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             return out;
         }
         return null;
+    }
+
+    @Override
+    public boolean isEvaluationDataLoaded() {
+        return dataLoaded;
     }
 }

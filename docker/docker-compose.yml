@@ -1,4 +1,4 @@
-# Main stack: DB, classifier, backend. Uses db/.env, classifier-service/.env, rag-service/.env (create with scripts in scripts/).
+# Main stack: DB, classifier, backend. Uses db/.env, classifier-service/.env, rag-service/.env (create with docker/scripts/create-env-*.sh).
 # Run: cd docker && docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d
 services:
   postgres:
@@ -44,6 +44,9 @@ services:
       PORT: ${PORT:-8000}
       MODELS_DIR: ${MODELS_DIR:-/app/models}
       DATA_DIR: ${DATA_DIR:-/app/data}
+      # Quieter TensorFlow / CUDA INFO logs when no GPU (still may print one absl line at startup).
+      TF_CPP_MIN_LOG_LEVEL: "2"
+      GLOG_minloglevel: "2"
     restart: unless-stopped
     healthcheck:
       # Process up and /health returns 200. Stricter checks (model loaded, classify OK) are in the backend Actuator readiness.
@@ -70,6 +73,7 @@ services:
     environment:
       SERVER_PORT: ${SERVER_PORT:-9000}
       # Disables OTLP to localhost inside the JVM; compose.obs.yml adds profile "infra" and sets OTEL_* to the collector.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
       # DB connection (same user/password as in db/.env)
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-vectordb}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
@@ -78,20 +82,41 @@ services:
       SPRING_AI_OLLAMA_CHAT_MODEL: ${SPRING_AI_OLLAMA_CHAT_MODEL:-gemma3:4b}
       SPRING_AI_OLLAMA_EMBEDDING_MODEL: ${SPRING_AI_OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large}
       RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${PORT:-8000}
+      # Keep container health independent from "model loaded" gates.
+      RAG_HEALTH_CLASSIFIER_REQUIRE_MODEL_LOADED: "false"
     depends_on:
       postgres:
         condition: service_healthy
       classifier-service:
         condition: service_healthy
     healthcheck:
-      # Liveness = JVM up (management.endpoint.health.probes.enabled in application-infra.properties when profile infra is active).
-      # Readiness (/actuator/health/readiness) is 503 while Ollama is pulling models — do not use it for Docker.
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${SERVER_PORT:-9000}/actuator/health/liveness >/dev/null || exit 1"]
+      # Container liveness: avoid readiness groups (they include ollama/classifier model loaded).
+      # We treat "UP" or "DOWN" health as liveness; JVM being reachable is enough for Docker orchestration.
+      test: ["CMD-SHELL", "curl -sS --max-time 8 http://127.0.0.1:${SERVER_PORT:-9000}/actuator/health >/dev/null || exit 1"]
       interval: 20s
       timeout: 12s
       retries: 6
       start_period: 90s
     restart: unless-stopped
+
+  webapp:
+    build:
+      context: ../webapp
+      dockerfile: Dockerfile
+      args:
+        # CI can set WEBAPP_NEXT_PUBLIC_*; otherwise values come from ../webapp/.env (NEXT_PUBLIC_*).
+        NEXT_PUBLIC_API_BASE_URL: ${WEBAPP_NEXT_PUBLIC_API_BASE_URL:-${NEXT_PUBLIC_API_BASE_URL:-}}
+        NEXT_PUBLIC_RAG_API_PREFIX: ${WEBAPP_NEXT_PUBLIC_RAG_API_PREFIX:-${NEXT_PUBLIC_RAG_API_PREFIX:-/api/v5}}
+        NEXT_PUBLIC_TIMEZONE: ${WEBAPP_NEXT_PUBLIC_TIMEZONE:-${NEXT_PUBLIC_TIMEZONE:-UTC}}
+    container_name: webapp
+    ports:
+      # Host:container — ports come from ../webapp/.env (WEBAPP_HTTP_PORT, WEBAPP_CONTAINER_PORT).
+      - "${WEBAPP_HTTP_PORT:-80}:${WEBAPP_CONTAINER_PORT:-3000}"
+    env_file:
+      - ../webapp/.env
+    environment:
+      # PORT must match WEBAPP_CONTAINER_PORT / nginx WEBAPP_INTERNAL_PORT. Other keys come from env_file.
+      PORT: ${WEBAPP_CONTAINER_PORT:-3000}
 
 volumes:
   postgres_data:

@@ -2,33 +2,39 @@
 
 Orchestration files (`docker-compose.yml`, `compose.*.yml`) and operational documentation for the stack.
 
-Typical start from here:
+**See also:** [Deployment model](../docs/architecture/deployment-model.md), [runbook — Docker VM](../docs/operations/runbook-docker-vm.md).
+
+**Images:** Every `FROM` in this monorepo targets a **Linux** userland (OpenJDK/Eclipse Temurin, official Postgres, Node, Python slim, Ollama CUDA variants, etc.). Compose is validated on **Linux** hosts and in **CI** (`ubuntu-*`); use Linux or WSL2 locally for parity.
+
+**GHCR tags ([`build-images.yml`](../.github/workflows/build-images.yml)):** Each built service is pushed as `ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<github_sha>` and also `:latest`. For **reproducible deploy and rollback**, pin by **commit SHA** tag. Treat **`latest` as non-contractual** in runbooks and thesis evidence.
+
+Typical start from the `docker/` directory (canonical entry point: `./docker/scripts/up.sh` from the repo root):
 
 ```bash
-docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d
+docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env --env-file ../webapp/.env up -d
 ```
 
 With observability, add `-f compose.obs.yml` and `--env-file ../observability/.env` (see `observability/README.md`).
 
-**Ollama (required for RAG):** the default backend URL is `http://host.docker.internal:11434` (Ollama on the **host**). If Ollama is **not** running on the host, the API will return errors and logs will show `ResourceAccessException` on `/api/embed` and `/api/chat`. To run Ollama **in Docker**, this repo only ships **`compose.ollama-gpu.yml`** (NVIDIA GPU + build from `ollama/`). Point the backend at `http://ollama:11434` and pull models on startup or manually (`docker exec -it ollama ollama pull <model>`).
+**Ollama (required for RAG):** the default backend URL is `http://host.docker.internal:11434` (Ollama on the **host**). If Ollama is **not** running on the host, the API will return errors and logs will show `ResourceAccessException` on `/api/embed` and `/api/chat`. To run Ollama **in Docker** with NVIDIA GPU, use **`compose.ollama-local-gpu.yml`** (and **`compose.ollama-local-gpu.dev.yml`** with `compose.dev.yml` when using `backend-dev`). Scripts add these when you pass `--gpu` / `--ollama` and the host has the NVIDIA runtime. For an **external** Ollama URL, use **`compose.ollama-remote.yml`** (`--ollama-remote`). Classifier GPU is in **`compose.gpu.yml`** (merged automatically when NVIDIA is available). Pull models via `docker exec -it ollama ollama pull <model>` when Ollama runs in Docker.
 
 **Health checks (strict):** the backend container probes **`/actuator/health/readiness`** (HTTP **503** until ready). That group includes PostgreSQL, disk space, **Ollama** (`GET /api/tags` and both configured models present), and the **classifier** (`GET /health` with `model: loaded`). The classifier service only becomes healthy when its default model is loaded. Tune or relax checks via `rag.health.*` in `rag-service` (see `application.properties`).
 
 ## Execution modes
 
-Quick guide to run the stack with Docker Compose (no frontend).
+Quick guide to run the stack with Docker Compose. The **default** `docker-compose.yml` includes **`webapp`** (Next.js) in addition to `postgres`, `classifier-service`, and `backend`.
 
 Scripts and commands assume the repo root, with `.env` files created via:
 
 ```bash
-./scripts/create-env-all.sh
+./docker/scripts/create-env-all.sh
 ```
 
 ### Base (main stack)
 
-Includes: `postgres`, `classifier-service`, `backend`.
+Includes: `postgres`, `classifier-service`, `backend`, **`webapp`**.
 
-Example:
+Example (aligned with `docker/scripts/docker-compose.sh` env chain):
 
 ```bash
 cd docker
@@ -36,6 +42,7 @@ docker compose \
   --env-file ../db/.env \
   --env-file ../classifier-service/.env \
   --env-file ../rag-service/.env \
+  --env-file ../webapp/.env \
   up -d
 ```
 
@@ -53,6 +60,7 @@ docker compose \
   --env-file ../db/.env \
   --env-file ../rag-service/.env \
   --env-file ../classifier-service/.env \
+  --env-file ../webapp/.env \
   --env-file ../observability/.env \
   up -d
 ```
@@ -67,10 +75,11 @@ Example:
 cd docker
 docker compose \
   -f docker-compose.yml \
-  -f compose.ollama-gpu.yml \
+  -f compose.ollama-local-gpu.yml \
   --env-file ../db/.env \
   --env-file ../rag-service/.env \
   --env-file ../classifier-service/.env \
+  --env-file ../webapp/.env \
   --env-file ../ollama/.env \
   up -d
 ```
@@ -83,16 +92,16 @@ By default it also includes internal observability (no Jaeger/Prometheus/Grafana
 Start / stop:
 
 ```bash
-./scripts/up.sh prod
-./scripts/build.sh prod   # optional: build images with same -f chain as up
-./scripts/down.sh         # o: ./scripts/down.sh prod [--all] ...
-# Dev (incl. backend-dev): ./scripts/down.sh dev [--all|...] — mismos flags que up dev
+./docker/scripts/up.sh prod
+./docker/scripts/build.sh prod   # optional: build images with same -f chain as up
+./docker/scripts/down.sh         # o: ./docker/scripts/down.sh prod [--all] ...
+# Dev (incl. backend-dev): ./docker/scripts/down.sh dev [--all|...] — mismos flags que up dev
 ```
 
 Options:
 
-- Use `./scripts/up.sh prod --obs` to include `compose.obs.yml` (OTEL, Jaeger, Prometheus, Grafana).
-- `--gpu` or `--ollama`: include `compose.ollama-gpu.yml` (requires `ollama/.env` and NVIDIA GPU / Container Toolkit)
+- Use `./docker/scripts/up.sh prod --obs` to include `compose.obs.yml` (OTEL, Jaeger, Prometheus, Grafana).
+- `--gpu` or `--ollama`: include `compose.ollama-local-gpu.yml` (requires `ollama/.env` and NVIDIA GPU / Container Toolkit)
 - `--volumes` (only `down.sh`): also remove named volumes
 
 ## Deployment runbook
@@ -132,12 +141,12 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
    - `docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml pull`
    - `docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml up -d`
 3. Verification (smoke test):
-   - See [`../scripts/README.md`](../scripts/README.md) (section **Smoke test**) and run the main checks:
+   - See [`../docker/scripts/README.md`](../docker/scripts/README.md) (section **Smoke test**) and [`../scripts/README.md`](../scripts/README.md) (layout index), then run the main checks:
      - `curl -s http://<host>:9000/actuator/health`
      - `curl -s http://<host>:8000/health` (if the classifier port is reachable)
-     - `curl -s "http://<host>:<port>/api/v4/query?question=..."` (backend endpoint)
+     - `curl -s "http://<host>:<port><legacy-prefix>/query?question=..."` (legacy RAG query path; `<legacy-prefix>` = backend `RAG_API_LEGACY_BASE_PATH`)
 
-> Note: if the backend is not exposed directly (only via reverse proxy), use the reverse-proxy published port (e.g. `REVERSE_PROXY_HTTP_PORT` / `REVERSE_PROXY_HTTPS_PORT`).
+> Note: if the backend is not exposed directly (only via reverse proxy), use the reverse-proxy published port (`REVERSE_PROXY_HTTP_PORT` defaults to **80** in `compose.prod.yml`; HTTPS uses `REVERSE_PROXY_HTTPS_PORT`, default **8443** until TLS on **443** is wired).
 
 ### Log rotation and volumes
 
@@ -149,7 +158,7 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
    - `grafana_data`
    - `ollama_data`
 3. Backups:
-   - Use `scripts/backup-db.sh` / `scripts/restore-db.sh` for PostgreSQL.
+   - Use `db/scripts/backup-db.sh` / `db/scripts/restore-db.sh` for PostgreSQL.
 
 ### Rollback
 

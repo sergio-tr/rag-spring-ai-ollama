@@ -1,7 +1,7 @@
 package com.uniovi.rag.tool;
 
-import com.uniovi.rag.model.Loggable;
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.infrastructure.observability.Loggable;
+import com.uniovi.rag.domain.model.Minute;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;

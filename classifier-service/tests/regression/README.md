@@ -3,7 +3,7 @@
 This folder contains **manual regression harnesses and data** against a running HTTP instance. It does not replace **unit tests** (`tests/unit/`) or API tests (`tests/test_api.py`).
 
 | File | Role |
-|------|------|
+| --- | --- |
 | `questions.txt` | Fixed questions to capture/compare baseline. |
 | `baseline_lib.py` | Shared utilities (read questions, compare); covered by pytest in `test_baseline_lib.py`. |
 | `capture_baseline.py` | Writes `classifier_regression_baseline.json` in this folder via `POST /classify` (and optionally `/evaluate`). |

@@ -1,0 +1,8 @@
+name: tools_on
+description: toolsEnabled=true — requires product_chat + BENCHMARK_* env.
+transport: product_chat
+product_chat:
+  product_base_path: /api/v5
+  rag_config:
+    toolsEnabled: true
+  post_message: {}

@@ -1,0 +1,19 @@
+%% Indicative matchers — actual order and paths depend on Spring Security config
+%% See rag-service README and application properties
+flowchart TB
+  subgraph public_paths [PermitAll examples]
+    A1["/api/auth/*"]
+    A2["/actuator/health /actuator/health/*"]
+    A3["/actuator/prometheus"]
+    A4["/v3/api-docs/* /swagger-ui/*"]
+    A5["Legacy prefix /** when security enables public legacy"]
+  end
+  subgraph jwt_paths [Authenticated JWT]
+    P1["Product API prefix /** default /api/v5"]
+  end
+  subgraph admin_paths [JWT plus ROLE_ADMIN]
+    P2["/api/admin/**"]
+  end
+  Client[Browser or API client] --> public_paths
+  Client -->|Bearer JWT| jwt_paths
+  Client -->|Bearer JWT admin| admin_paths

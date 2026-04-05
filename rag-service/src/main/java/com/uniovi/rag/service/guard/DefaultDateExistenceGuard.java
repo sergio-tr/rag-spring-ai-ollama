@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.guard;
 
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;

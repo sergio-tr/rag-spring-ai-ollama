@@ -8,10 +8,10 @@ import com.uniovi.rag.service.retriever.FilteredContextRetriever;
 import com.uniovi.rag.service.retriever.MinuteDocumentContextRetriever;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -41,7 +41,7 @@ class RagRetrievalConfigurationTest {
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setRetrieverImpl(null);
 
-        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, null);
+        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, false, null);
         assertNotNull(retriever);
         assertTrue(retriever instanceof BasicContextRetriever);
     }
@@ -54,7 +54,7 @@ class RagRetrievalConfigurationTest {
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setRetrieverImpl("filtered");
 
-        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, null);
+        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, false, null);
         assertNotNull(retriever);
         assertTrue(retriever instanceof FilteredContextRetriever);
     }
@@ -67,7 +67,7 @@ class RagRetrievalConfigurationTest {
         RagImplementationProperties implProps = new RagImplementationProperties();
         implProps.setRetrieverImpl("minute-document");
 
-        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, null);
+        ContextRetriever retriever = config.retriever(vectorStore, chatClient, implProps, 10, 0.7, false, null);
         assertNotNull(retriever);
         assertTrue(retriever instanceof MinuteDocumentContextRetriever);
     }

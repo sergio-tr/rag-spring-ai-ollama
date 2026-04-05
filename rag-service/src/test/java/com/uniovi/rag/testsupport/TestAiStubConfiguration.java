@@ -1,5 +1,7 @@
 package com.uniovi.rag.testsupport;
 
+import com.uniovi.rag.infrastructure.health.RagHealthProperties;
+import com.uniovi.rag.infrastructure.llm.ollama.OllamaApiClient;
 import org.mockito.Mockito;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -25,6 +27,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 
 /**
  * In-memory stubs for Spring AI beans so {@code @SpringBootTest} does not call a real Ollama server.
+ * Also provides {@link OllamaApiClient#noHttpStub(RagHealthProperties)} because the real client is
+ * {@code @Profile("!test")}.
  * Activated only with profile {@code test} (see {@code @Import} + {@code @ActiveProfiles("test")} on tests).
  */
 @TestConfiguration
@@ -33,6 +37,11 @@ public class TestAiStubConfiguration {
 
     /** Matches pgvector / app config (mxbai-embed-large dimension). */
     public static final int EMBEDDING_DIM = 1024;
+
+    @Bean
+    public OllamaApiClient ollamaApiClientStub(RagHealthProperties healthProperties) {
+        return OllamaApiClient.noHttpStub(healthProperties);
+    }
 
     @Bean
     @Primary

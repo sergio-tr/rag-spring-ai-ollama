@@ -12,7 +12,9 @@ import org.springframework.context.annotation.Lazy;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 /**
@@ -224,7 +226,9 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         try {
             return cacheable().analyseWithCache(query);
         } catch (Exception e) {
-            log().error("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage(), e);
+            // Degraded path: return heuristic fallback; avoid ERROR + full stack on every LLM/cache glitch.
+            log().warn("NER: Unexpected error analyzing query '{}': {}", query, e.getMessage());
+            log().debug("NER: analysis failure detail", e);
             return createFallbackResponse(query);
         }
     }

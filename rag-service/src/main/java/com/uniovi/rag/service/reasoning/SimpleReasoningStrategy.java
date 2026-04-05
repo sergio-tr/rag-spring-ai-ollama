@@ -1,7 +1,7 @@
 package com.uniovi.rag.service.reasoning;
 
-import com.uniovi.rag.model.ReasoningPreOutput;
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.application.model.ReasoningPreOutput;
+import com.uniovi.rag.domain.model.QueryType;
 import org.json.JSONObject;
 
 /**

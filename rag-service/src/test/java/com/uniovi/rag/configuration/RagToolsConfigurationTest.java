@@ -1,13 +1,14 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.tool.Tool;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.Mockito.mock;
 
 class RagToolsConfigurationTest {
 

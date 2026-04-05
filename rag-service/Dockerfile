@@ -10,7 +10,6 @@ WORKDIR /app
 # Wrapper lives only under rag-service/ (single copy in the repo).
 COPY mvnw ./mvnw
 COPY .mvn ./.mvn
-# Windows CRLF checkouts break the shell shebang and wrapper URLs (e.g. jar%0D → 404).
 RUN sed -i 's/\r$//' mvnw && find .mvn -type f -exec sed -i 's/\r$//' {} + && chmod +x mvnw
 
 COPY pom.xml .

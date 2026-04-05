@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.extraction;
 
-import com.uniovi.rag.model.Cluster;
+import com.uniovi.rag.domain.model.Cluster;
 
 import java.util.List;
 import java.util.function.Function;

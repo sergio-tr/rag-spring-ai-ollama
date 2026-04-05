@@ -20,6 +20,16 @@ services:
     networks:
       - private
 
+  webapp:
+    ports: []
+    networks:
+      - public
+    depends_on:
+      backend:
+        condition: service_started
+
+  # Web entrypoint: terminate HTTP/TLS and route / -> webapp, /api/* -> backend.
+
   reverse-proxy:
     build:
       context: ../reverse-proxy
@@ -27,37 +37,19 @@ services:
     container_name: reverse-proxy
     depends_on:
       - backend
+      - webapp
     ports:
-      - "${REVERSE_PROXY_HTTP_PORT:-8080}:80"
+      # HTTP entrypoint for the webapp + API (TLS on 443 can be wired later).
+      - "${REVERSE_PROXY_HTTP_PORT:-80}:80"
       - "${REVERSE_PROXY_HTTPS_PORT:-8443}:443"
     environment:
-      # Must match SERVER_PORT of the backend container (default 9000).
-      # envsubst in the Dockerfile CMD substitutes this into nginx.conf at startup.
+      # envsubst substitutes these into nginx.conf (see reverse-proxy/Dockerfile).
+      BACKEND_HOST: backend
       BACKEND_INTERNAL_PORT: ${SERVER_PORT:-9000}
+      WEBAPP_INTERNAL_PORT: ${WEBAPP_CONTAINER_PORT:-3000}
     networks:
       - public
     restart: unless-stopped
-
-  # Hardening for observability UIs in prod local: keep Jaeger/Prometheus internal
-  jaeger:
-    ports: []
-    networks:
-      - private
-
-  prometheus:
-    ports: []
-    networks:
-      - private
-
-  grafana:
-    ports: []
-    networks:
-      - private
-
-  otel-collector:
-    ports: []
-    networks:
-      - private
 
 networks:
   public:

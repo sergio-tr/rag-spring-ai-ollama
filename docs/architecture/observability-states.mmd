@@ -1,0 +1,24 @@
+%% How telemetry gets enabled —Spring profiles and OTLP endpoints observability/README.md compose.obs.yml compose.rag-dev-obs.yml
+flowchart TB
+  subgraph default_docker [backend container default stack]
+    D1["SPRING_PROFILES_ACTIVE docker"]
+    D2["OTLP to localhost disabled inside JVM no collector on loopback"]
+    D1 --> D2
+  end
+
+  subgraph obs_merge [compose.obs.yml merged]
+    O1["otel-collector on compose network"]
+    O2["profile infra or env overrides route OTLP to collector"]
+    O3["Spring Actuator OTLP and optional classifier OTLP"]
+    O1 --> O2 --> O3
+  end
+
+  subgraph dev_obs [Dev backend in container with traces]
+    R1[compose.rag-dev-obs.yml]
+    R2["backend-dev dev infra OTLP http://otel-collector:4318"]
+    R1 --> R2
+  end
+
+  subgraph logs_opt [compose.logs.yml optional]
+    L1["Promtail to Loki Grafana datasource"]
+  end

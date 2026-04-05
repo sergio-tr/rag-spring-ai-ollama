@@ -1,10 +1,10 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.observability.ObservabilitySupport;
-import com.uniovi.rag.observability.TracedDocumentService;
-import com.uniovi.rag.observability.TracedMinuteDocumentRepository;
-import com.uniovi.rag.repository.MinuteDocumentRepository;
-import com.uniovi.rag.repository.impl.MinuteDocumentRepositoryImpl;
+import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
+import com.uniovi.rag.infrastructure.observability.TracedDocumentService;
+import com.uniovi.rag.infrastructure.observability.TracedMinuteDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.MinuteDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.impl.MinuteDocumentRepositoryImpl;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.service.document.SimpleDocumentService;

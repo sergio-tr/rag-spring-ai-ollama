@@ -2,8 +2,9 @@ package com.uniovi.rag.service.query.pipeline;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
-import com.uniovi.rag.model.QueryType;
-import com.uniovi.rag.model.QueryResponse;
+import com.uniovi.rag.domain.runtime.RagEffectiveFeatures;
+import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.tool.Tool;
 import com.uniovi.rag.tool.ToolExecutionContext;
@@ -49,7 +50,7 @@ public final class ToolRoutingService {
     }
 
     private boolean adapterPathEnabled() {
-        return featureConfig.isFunctionCallingEnabled() || featureConfig.isToolsEnabled();
+        return RagEffectiveFeatures.functionCallingEnabled(featureConfig) || RagEffectiveFeatures.toolsEnabled(featureConfig);
     }
 
     /**
@@ -62,13 +63,13 @@ public final class ToolRoutingService {
         }
         QueryType toolQueryType = queryType;
         try {
-            if (featureConfig.isFunctionCallingEnabled()) {
+            if (RagEffectiveFeatures.functionCallingEnabled(featureConfig)) {
                 Optional<QueryResponse> fc = tryFunctionCallingResponse(expandedQuery, toolQueryType, "prefer-tool");
                 if (fc.isPresent()) {
                     return fc;
                 }
             }
-            if (featureConfig.isToolsEnabled() && toolQueryType != null) {
+            if (RagEffectiveFeatures.toolsEnabled(featureConfig) && toolQueryType != null) {
                 ToolResult adapterResult = meetingMinutesToolsAdapter.execute(toolQueryType, expandedQuery);
                 if (adapterResult != null && adapterResult.result() != null && !adapterResult.result().trim().isEmpty()) {
                     String validated = responseValidator.validateAndClean(adapterResult.result(), "Tool-" + queryType);
@@ -93,7 +94,7 @@ public final class ToolRoutingService {
             return Optional.empty();
         }
         QueryType toolQueryType = queryType;
-        if (featureConfig.isFunctionCallingEnabled()) {
+        if (RagEffectiveFeatures.functionCallingEnabled(featureConfig)) {
             Optional<QueryResponse> fc = tryFunctionCallingResponse(expandedQuery, toolQueryType, "main-tools");
             if (fc.isPresent()) {
                 return fc;
@@ -101,7 +102,7 @@ public final class ToolRoutingService {
         }
         // Without QueryType the adapter cannot choose a tool; execute(null) only returns an error message
         // and blocks the fallback to LLM+RAG (see evaluation: "No tool available for query type: null").
-        if (featureConfig.isToolsEnabled() && toolQueryType != null) {
+        if (RagEffectiveFeatures.toolsEnabled(featureConfig) && toolQueryType != null) {
             try {
                 ToolResult adapterResult = meetingMinutesToolsAdapter.execute(toolQueryType, expandedQuery);
                 if (adapterResult != null && adapterResult.result() != null && !adapterResult.result().trim().isEmpty()) {
@@ -164,7 +165,7 @@ public final class ToolRoutingService {
     }
 
     public ToolResult tryToolRoute(String query, JSONObject nerEntities, QueryType queryType) {
-        if (!featureConfig.isToolsEnabled()) {
+        if (!RagEffectiveFeatures.toolsEnabled(featureConfig)) {
             log.debug("Tools (manual registry) disabled, skipping tool routing");
             return null;
         }
@@ -191,7 +192,7 @@ public final class ToolRoutingService {
                 log.info("Executing tool: {} (attempt {} of {}) for query type: {}",
                         queryType, attempt + 1, MAX_RETRIES + 1, queryType);
                 long startTime = System.currentTimeMillis();
-                ToolResult result = featureConfig.isNerEnabled()
+                ToolResult result = RagEffectiveFeatures.nerEnabled(featureConfig)
                         ? tool.execute(ToolExecutionContext.of(query, queryType, nerEntities))
                         : tool.execute(ToolExecutionContext.of(query, queryType));
                 long executionTime = System.currentTimeMillis() - startTime;

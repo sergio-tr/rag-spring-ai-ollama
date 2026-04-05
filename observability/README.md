@@ -2,12 +2,26 @@
 
 Stack configuration and Dockerfiles. **Ports and credentials are defined in one place:** `observability/.env` (template: `.env.example`).
 
+**See also:** [RUNBOOK.md](RUNBOOK.md) (traces, classifier down, readiness). [Grafana observability guide](../docs/operations/grafana-observability-guide.md) — dashboards, traces, and operator walkthrough aligned with this stack.
+
+## Production / VM (where to read what)
+
+**Rule:** Observability **procedures, ports, and dashboards** stay in **this file** and the linked Grafana/Jaeger/Loki guide. **Deploy, SSH, GitHub Actions gates, and VM env layout** belong under **`docs/operations/`** — do not duplicate them here.
+
+| Topic | Canonical doc |
+| --- | --- |
+| VM deploy, `compose.prod.yml`, rollback, `deploy.yml` secrets | [Runbook — Docker VM](../docs/operations/runbook-docker-vm.md), [Deploy workflow audit](../docs/operations/deploy-workflow-audit.md) |
+| Optional observability on the same host | This README (Compose overlays: `compose.obs.yml`, `compose.prod-obs.yml` if used) + [docker/README.md](../docker/README.md) |
+| Operator walkthrough (metrics → traces → logs) | [Grafana / Jaeger / Loki operator guide](../docs/operations/grafana-observability-guide.md) |
+
+**Minimum post-deploy check (obs):** With `docker,infra` and collector reachable, issue a RAG request and confirm a trace in Jaeger and movement on the RAG Overview dashboard — see **Telemetry validation checklist** below.
+
 ## Create `observability/.env`
 
 From the repo root:
 
 ```bash
-./scripts/create-env-observability.sh
+./docker/scripts/create-env-observability.sh
 ```
 
 After pulling updates, if `.env.example` gains new variables, copy them manually into `.env` or regenerate with `--force` (overwrites).
@@ -15,7 +29,7 @@ After pulling updates, if `.env.example` gains new variables, copy them manually
 ## Variables (summary)
 
 | Group | Variables | Purpose |
-|-------|-----------|---------|
+| --- | --- | --- |
 | Images | `OTEL_COLLECTOR_BASE_IMAGE`, `JAEGER_BASE_IMAGE`, `PROMETHEUS_BASE_IMAGE`, `GRAFANA_BASE_IMAGE` | Docker build-args |
 | Grafana | `GRAFANA_ADMIN_PASSWORD` | Admin UI |
 | Collector | `OTEL_COLLECTOR_LOG_LEVEL` | Verbosity of the `logging` exporter |
@@ -44,12 +58,12 @@ docker compose -f docker-compose.yml -f compose.obs.yml \
   up -d
 ```
 
-Optional: `./scripts/set-env.sh` or `./scripts/up.sh dev --env obs` / `./scripts/up.sh prod --obs` to create `observability/.env` and start the observability stack.
+Optional: `./docker/scripts/set-env.sh` or `./docker/scripts/up.sh dev --env obs` / `./docker/scripts/up.sh prod --obs` to create `observability/.env` and start the observability stack.
 
 ## URLs on the host (replace with your `.env` ports)
 
 | Component | Typical URL |
-|-----------|-------------|
+| --- | --- |
 | Grafana | `http://localhost:${GRAFANA_PORT}` |
 | Jaeger | `http://localhost:${JAEGER_UI_PORT}` |
 | Prometheus | `http://localhost:${PROMETHEUS_PORT}` |
@@ -65,7 +79,7 @@ Optional: `./scripts/set-env.sh` or `./scripts/up.sh dev --env obs` / `./scripts
 ## Layout
 
 | Folder | Contents |
-|--------|----------|
+| --- | --- |
 | `grafana/` | Dockerfile + entrypoint; `provisioning/` (JSON dashboards + `datasources.yml.template`) |
 | `jaeger/` | Dockerfile |
 | `otel-collector/` | Dockerfile; `config.yaml` |
@@ -115,15 +129,22 @@ With `compose.obs.yml`, backend and classifier receive `OTEL_EXPORTER_OTLP_ENDPO
       - `rate(rag_query_generate_seconds_count{job="backend"}[5m])`
       - `histogram_quantile(0.95, rate(rag_query_generate_seconds_bucket{job="backend"}[5m]))`
   - `rag_classifier_calls_total` (counter):
-    - labels: `status` (`success`/`error`), `modelId`
+    - labels: `status` (`success` when a query type string is returned, `null_result` when the client yields null/blank — bounded cardinality, **no per-model UUID label**)
+  - `rag_retrieval_documents_total` (counter):
+    - labels: `operation` (`retrieve` / `retrieveWithMetadataFilters` / `createContext`), `bucket` (`0`, `1_4`, `5_19`, `20_plus`) — document count **bands**, not raw counts as label values
   - Generic HTTP metrics:
     - `http_server_requests_seconds_*` (Spring Boot)
+
+- **Label cardinality (do / do not)**
+  - **Do** use bounded enums: `operation`, `bucket`, `status`, `method`, coarse `status` codes.
+  - **Do not** use raw user text, per-request UUIDs, `queryId`, or project/document IDs as Prometheus label values on application counters/histograms.
 
 - **Dashboard relationship**
   - `RAG Overview` dashboard:
     - "RAG query rate": `rag_query_generate_seconds_*`
     - "RAG query duration": `histogram_quantile` on `rag_query_generate_seconds_bucket`
     - "Classifier calls": `rag_classifier_calls_total`
+    - "Retrieval document count (bucketed)": `rag_retrieval_documents_total`
     - "HTTP request rate": `http_server_requests_seconds_count`
 
 ### 3. Collector and Prometheus
@@ -150,7 +171,7 @@ With `compose.obs.yml`, backend and classifier receive `OTEL_EXPORTER_OTLP_ENDPO
 
 ### 4. Quick manual checklist
 
-After issuing a RAG request (e.g. `GET /api/v4/query`):
+After issuing a RAG request to the legacy query path (e.g. `GET {legacy}/query` with `{legacy}` = `RAG_API_LEGACY_BASE_PATH`):
 
 1. **Traces**
    - In Grafana (Jaeger datasource) or Jaeger UI:
@@ -160,7 +181,7 @@ After issuing a RAG request (e.g. `GET /api/v4/query`):
    - In Grafana (Prometheus):
      - "RAG query rate" series move with traffic.
      - "RAG query duration" p50/p99 update.
-     - "Classifier calls" success/error counters move.
+     - "Classifier calls" success/null_result counters move; retrieval bucket counters move when retrieval runs.
 3. **DB / collector**
    - Postgres dashboard: metrics from the `postgresql` receiver for `vectordb`.
 
@@ -172,8 +193,8 @@ After issuing a RAG request (e.g. `GET /api/v4/query`):
 
 1. Start the stack with observability:
    - `./tests/e2e/e2e-technical-compose.sh --obs --keep`
-2. Run a RAG query to generate traces/metrics, e.g.:
-   - `curl -sf "http://localhost:${BACKEND_PORT:-9000}/api/v4/query?question=How%20many%20documents%20are%20in%20the%20corpus%3F"`
+2. Run a RAG query to generate traces/metrics, e.g. (export `RAG_API_LEGACY_BASE_PATH` to match `rag.api.legacy-base-path` on the backend):
+   - `curl -sf "http://localhost:${BACKEND_PORT:-9000}${RAG_API_LEGACY_BASE_PATH}/query?question=How%20many%20documents%20are%20in%20the%20corpus%3F"`
 
 > Note: the response may not be a "perfect" RAG answer if Ollama/data are missing; the point is to generate telemetry for the pipeline.
 
@@ -200,7 +221,7 @@ After issuing a RAG request (e.g. `GET /api/v4/query`):
    - Panels for RAG query duration/rate and classifier calls.
 3. Run 2–3 RAG queries and verify:
    - Panel "RAG query duration (backend)" updates (p50/p95/p99).
-   - Panel "Classifier calls (backend)" shows traffic after the `curl`.
+   - Panel "Classifier calls (backend)" and "Retrieval document count" show traffic after the `curl`.
 4. Cross-check Prometheus (optional):
    - `rate(rag_classifier_calls_total{job="backend"}[5m])`
    - `rate(rag_query_generate_seconds_count{job="backend"}[5m])`

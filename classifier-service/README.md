@@ -18,7 +18,7 @@ All code comments are in English.
 ## API
 
 | Method | Path | Description |
-|--------|------|-------------|
+| --- | --- | --- |
 | GET | `/health` | Service status; includes whether default model is loaded. |
 | GET | `/models` | List available models (default first, then trained). |
 | POST | `/classify` | Body `{"query": "...", "modelId": "default"}` (modelId optional). Returns `{"queryType": "COUNT_DOCUMENTS"}` etc. All JSON in **camelCase**. |
@@ -29,7 +29,7 @@ All code comments are in English.
 
 - **Use classifier by tag:** send `modelId` in `POST /classify` (query param or body); use **camelCase** in all request/response JSON for interoperability with Java/JavaScript.
 - **Train with fixed labels:** send `labels` as a JSON string array (e.g. `["COUNT_DOCUMENTS","SUMMARIZE_MEETING"]`) or upload a `labels_file` (one label per line, like `query_type_labels.txt`). Class order is preserved.
-- **Evaluation:** `POST /evaluate` returns full metrics (classification_report, accuracy, macro_avg, confusion_matrix, class_names) and optionally `classificationReportImageBase64` and `confusionMatrixImageBase64` for the frontend (display or download). The GET image endpoints return the PNGs directly for use in `<img src="...">` or download links.
+- **Evaluation:** `POST /evaluate` returns full metrics (classification_report, accuracy, macro_avg, confusion_matrix, class_names) and optionally `classificationReportImageBase64` and `confusionMatrixImageBase64` for the webapp (display or download). The GET image endpoints return the PNGs directly for use in `<img src="...">` or download links.
 
 Error responses use a consistent shape: `{"code": "...", "message": "...", "details": {...}}` (optional).
 
@@ -61,7 +61,7 @@ The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://
 ## Environment
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| --- | --- | --- |
 | `PORT` | 8000 | Server port. |
 | `MODELS_DIR` | models | Directory for default and trained models. |
 | `DATA_DIR` | data | Directory for default datasets. |
@@ -78,6 +78,8 @@ The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://
 ```bash
 pytest tests/ -v
 ```
+
+SonarCloud reads `coverage.xml` from the repository root perspective (`sonar-project.properties`). After pytest generates the report, run `python scripts/patch_coverage_xml_for_sonar.py` so Cobertura `<source>` is `classifier-service/app` (CI and `.github/local/ci-like-sonar.sh` do this automatically).
 
 ## Manual regression testing
 

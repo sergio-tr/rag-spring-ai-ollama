@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2E technical (without frontend) to validate backend<->classifier<->DB.
+# E2E technical (without webapp) to validate backend<->classifier<->DB.
 # Starts the stack with docker compose, executes the extended smoke test and validates (optional) observability.
 #
 # Usage (from repo root):
@@ -57,7 +57,7 @@ if [ "$WITH_OBS" = "true" ]; then
   COMPOSE_FILES+=(-f "${DOCKER_DIR}/compose.obs.yml")
 fi
 if [ "$WITH_GPU" = "true" ]; then
-  COMPOSE_FILES+=(-f "${DOCKER_DIR}/compose.ollama-gpu.yml")
+  COMPOSE_FILES+=(-f "${DOCKER_DIR}/compose.ollama-local-gpu.yml")
 fi
 
 ENV_ARGS=(
@@ -79,6 +79,18 @@ wait_for_http "http://localhost:${BACKEND_HOST_PORT}/actuator/health" "backend /
 
 echo "Ejecutando smoke test..."
 "${ROOT_DIR}/rag-service/scripts/smoke-test.sh" "http://localhost:${BACKEND_HOST_PORT}" "http://localhost:${CLASSIFIER_HOST_PORT}"
+
+# Product API should reject unauthenticated GET /presets (Spring Security JWT).
+PRODUCT_PATH="${RAG_API_PRODUCT_BASE_PATH:-/api/v5}"
+presets_url="http://localhost:${BACKEND_HOST_PORT}${PRODUCT_PATH}/presets"
+pre_code=$(curl -s -o /dev/null -w "%{http_code}" "$presets_url" || true)
+if [ -n "$pre_code" ] && [ "$pre_code" != "000" ]; then
+  if [ "$pre_code" != "401" ] && [ "$pre_code" != "403" ]; then
+    echo "AVISO: GET ${presets_url} esperaba 401 o 403, obtuvo HTTP ${pre_code}"
+  else
+    echo "Check producto sin JWT OK (${pre_code})"
+  fi
+fi
 
 if [ "$WITH_OBS" = "true" ]; then
   PROMETHEUS_PORT="${PROMETHEUS_PORT:-9090}"

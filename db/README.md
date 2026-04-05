@@ -8,16 +8,16 @@ The **db/init/** directory contains the SQL scripts that run when the container 
 
 - **init.sql**: creates extensions (vector, hstore, uuid-ossp), `documents` and `vector_store` tables, and indexes for RAG.
 
-**db/legacy/** holds the previous minimal schema version (prev_init.sql) for reference only; it is not run by Docker.
+**db/legacy/** holds an alternate reference schema (`prev_init.sql`) for comparison; it is not run by Docker.
 
 ## Variables (db/.env)
 
-| Variable           | Description   | Default  |
-|--------------------|---------------|----------|
-| `POSTGRES_PORT`    | Exposed port  | `5432`   |
-| `POSTGRES_USER`    | User          | `postgres` |
-| `POSTGRES_PASSWORD`| Password      | `postgres` |
-| `POSTGRES_DB`      | Database name | `vectordb` |
+| Variable | Description | Default |
+| --- | --- | --- |
+| `POSTGRES_PORT` | Exposed port | `5432` |
+| `POSTGRES_USER` | User | `postgres` |
+| `POSTGRES_PASSWORD` | Password | `postgres` |
+| `POSTGRES_DB` | Database name | `vectordb` |
 | `POSTGRES_MONITOR_USER` | Read-only monitoring user (metrics) | `postgres_exporter` |
 | `POSTGRES_MONITOR_PASSWORD` | Password for monitoring user | `postgres_exporter` |
 | `POSTGRES_BASE_IMAGE` | Base image for db/Dockerfile | `postgres:16` |
@@ -27,7 +27,7 @@ Ollama (GPU stack) has its own folder **ollama/** with Dockerfile and `.env`; se
 Create `db/.env` from defaults (from repo root):
 
 ```bash
-./scripts/create-env-db.sh
+./docker/scripts/create-env-db.sh
 ```
 
 Use `--force` to overwrite. The template is **db/.env.example**.
@@ -39,14 +39,14 @@ The main stack uses **db/.env**, **classifier-service/.env** and **rag-service/.
 From the repo root:
 
 ```bash
-./scripts/create-env-db.sh
-./scripts/create-env-classifier-service.sh
-./scripts/create-env-rag-service.sh
+./docker/scripts/create-env-db.sh
+./docker/scripts/create-env-classifier-service.sh
+./docker/scripts/create-env-rag-service.sh
 cd docker
 docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d
 ```
 
-Or use `./scripts/set-env.sh` to create `.env` files interactively, then `./scripts/up.sh dev|prod` to start the stack. Ports and base images are in the respective `.env` files; override them there or when running `docker compose`.
+Or use `./docker/scripts/set-env.sh` to create `.env` files interactively, then `./docker/scripts/up.sh dev|prod` to start the stack. Ports and base images are in the respective `.env` files; override them there or when running `docker compose`.
 
 ## Running only the database (local development)
 
@@ -60,6 +60,14 @@ docker run -d --name postgres -p 5432:5432 \
 ```
 
 Then in the backend (rag-service) use in `.env` or in the environment: `SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/vectordb`, with the same user and password as in db/.env.
+
+## Flyway migrations (rag-service)
+
+The **authoritative schema** for the application stack is applied by **Flyway** from `rag-service/src/main/resources/db/migration/` when the Spring Boot app starts (not from `db/init` alone, which bootstraps extensions and legacy tables in the Docker image).
+
+**Before upgrading a shared or production database:** take a **backup** (`pg_dump` or your snapshot process), then deploy a build that includes the new migration(s). Example: **V19** adds nullable `project_id` on `evaluation_run` and `async_task` (see [ADR 0003](../docs/adr/0003-evaluation-async-project-scope-and-dataset-dedup.md) and [DATA_MODEL.md](../docs/architecture/DATA_MODEL.md)).
+
+Local check after pulling: start `rag-service` against your DB (or run `mvn -pl rag-service flyway:validate` if configured) so migrations apply in order.
 
 ## PostgreSQL observability (metrics via OpenTelemetry Collector)
 

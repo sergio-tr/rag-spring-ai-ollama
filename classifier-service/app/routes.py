@@ -196,7 +196,7 @@ async def train_endpoint(
             Path(tmp_path).unlink(missing_ok=True)
 
 
-# --- Evaluation (metrics + images for frontend) ---
+# --- Evaluation (metrics + images for webapp) ---
 
 @router.post("/evaluate", response_model=dict)
 async def evaluate_endpoint(
@@ -208,7 +208,7 @@ async def evaluate_endpoint(
     """
     Evaluates a model by tag on an evaluation dataset. Returns classification report, confusion matrix,
     and optionally base64-encoded PNG images (classification report table + confusion matrix) for
-    frontend display or download.
+    webapp display or download.
     """
     tmp_path = None
     eval_path = None

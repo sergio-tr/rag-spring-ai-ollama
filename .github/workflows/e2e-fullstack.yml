@@ -1,0 +1,119 @@
+# E2E-01 / E2E-02: Next.js + Spring Boot + Postgres (Flyway seed user). Heavier than e2e.yml — not on every webapp-only PR.
+name: E2E fullstack (Playwright + API)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - "webapp/**"
+      - "rag-service/**"
+      - ".github/workflows/e2e-fullstack.yml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "webapp/**"
+      - "rag-service/**"
+      - ".github/workflows/e2e-fullstack.yml"
+
+concurrency:
+  group: e2e-fullstack-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright-fullstack:
+    name: Playwright @fullstack
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
+      RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+
+      - name: Prepare Postgres for tests (extensions, integration DB)
+        uses: ./.github/actions/prepare-postgres-for-rag-tests
+
+      - name: Start Spring Boot (profile e2e)
+        run: |
+          cd rag-service
+          chmod +x mvnw
+          nohup ./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e \
+            > /tmp/spring-e2e.log 2>&1 &
+          echo $! > /tmp/spring-e2e.pid
+
+      - name: Wait for Actuator health
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:9000/actuator/health >/dev/null 2>&1; then
+              echo "Backend healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-e2e.log || true
+          exit 1
+
+      - name: Cache npm (webapp)
+        uses: ./.github/actions/cache-npm-webapp
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: webapp/package.json
+
+      - name: Install, build Next.js, run @fullstack Playwright
+        working-directory: webapp
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:9000
+          NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
+          E2E_ALLOW_INSECURE_COOKIES: "true"
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          npx playwright install --with-deps chromium
+          npm run test:e2e:fullstack
+
+      - name: Upload Spring log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spring-e2e-log
+          path: /tmp/spring-e2e.log
+          retention-days: 7
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-fullstack-report
+          path: webapp/playwright-report/
+          retention-days: 7

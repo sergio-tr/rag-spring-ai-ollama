@@ -1,0 +1,14 @@
+# Caches the npm user cache (~/.npm) keyed by webapp/package.json.
+# For repos that do not commit package-lock.json; pair with `npm install` in CI (not `npm ci`).
+name: Cache npm (webapp)
+description: Restore/save ~/.npm keyed by hash of webapp/package.json.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-webapp-npm-${{ hashFiles('webapp/package.json') }}
+        restore-keys: |
+          ${{ runner.os }}-webapp-npm-

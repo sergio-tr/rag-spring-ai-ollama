@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.query.pipeline;
 
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

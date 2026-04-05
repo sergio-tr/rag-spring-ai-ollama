@@ -1,7 +1,7 @@
 package com.uniovi.rag.service.ranker;
 
-import com.uniovi.rag.model.CandidateResponse;
-import com.uniovi.rag.model.RankerResult;
+import com.uniovi.rag.application.model.CandidateResponse;
+import com.uniovi.rag.domain.model.RankerResult;
 
 import java.util.List;
 

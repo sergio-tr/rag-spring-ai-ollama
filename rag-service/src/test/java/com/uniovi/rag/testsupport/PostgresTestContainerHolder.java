@@ -4,7 +4,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
  * Lazily starts a single {@code pgvector} Postgres for local tests when
- * {@link TestcontainersDatasourceConfiguration} is active.
+ * {@link SafeTestSecretsApplicationContextInitializer} chooses Testcontainers for JDBC (see {@code spring.factories}).
  */
 public final class PostgresTestContainerHolder {
 

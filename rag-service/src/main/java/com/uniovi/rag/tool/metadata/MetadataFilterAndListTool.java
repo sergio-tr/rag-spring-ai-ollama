@@ -1,9 +1,11 @@
 package com.uniovi.rag.tool.metadata;
 
-import com.uniovi.rag.model.*;
+import com.uniovi.rag.domain.model.Cluster;
+import com.uniovi.rag.domain.model.FilterResult;
+import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
-import com.uniovi.rag.model.Cluster;
+import com.uniovi.rag.domain.model.Cluster;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 
@@ -14,7 +16,7 @@ import org.springframework.ai.document.Document;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
+import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.stream.Collectors;
 
 /**

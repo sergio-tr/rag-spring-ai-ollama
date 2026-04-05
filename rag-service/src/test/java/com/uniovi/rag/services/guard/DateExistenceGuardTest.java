@@ -1,6 +1,6 @@
 package com.uniovi.rag.services.guard;
 
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
@@ -14,7 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;

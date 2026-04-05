@@ -1,0 +1,35 @@
+%% Grouping of mergeable files under docker/ — actual merge order: docker/scripts/docker-compose.sh
+flowchart TB
+  BASE[docker-compose.yml core DB classifier backend]
+
+  subgraph devfam [Developer overlays]
+    D1[compose.dev.yml backend-dev hot reload]
+    D2[compose.dev-webapp.yml webapp waits for backend-dev]
+    D3[compose.dev-web.yml reverse-proxy plus webapp plus backend-dev]
+    D4[compose.dev-proxy.yml nginx behind rag profile]
+    D5[compose.rag-dev-obs.yml OTLP targets for backend-dev]
+  end
+
+  subgraph ollfam [Ollama and GPU]
+    G0[compose.gpu.yml NVIDIA for classifier optional]
+    G1[compose.ollama-local-gpu.yml ollama service plus backend URL]
+    G2[compose.ollama-local-gpu.dev.yml same for backend-dev]
+    G3[compose.ollama-remote.yml remote LLM URL backend]
+    G4[compose.ollama-remote.dev.yml remote LLM URL backend-dev]
+  end
+
+  subgraph tel [Telemetry and logs]
+    T1[compose.obs.yml collector jaeger prometheus grafana]
+    T2[compose.logs.yml loki promtail]
+    T3[compose.infra.yml node-exporter cadvisor]
+    T4[compose.prod-obs.yml prod wiring for obs]
+  end
+
+  subgraph prodfam [Production style]
+    P1[compose.prod.yml hardened proxy and networks]
+  end
+
+  BASE --- devfam
+  BASE --- ollfam
+  BASE --- tel
+  BASE --- prodfam

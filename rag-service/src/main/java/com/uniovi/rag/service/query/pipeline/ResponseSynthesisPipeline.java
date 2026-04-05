@@ -1,10 +1,11 @@
 package com.uniovi.rag.service.query.pipeline;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
-import com.uniovi.rag.model.DraftAndContext;
-import com.uniovi.rag.model.QueryResponse;
-import com.uniovi.rag.model.QueryType;
-import com.uniovi.rag.model.ReasoningPreOutput;
+import com.uniovi.rag.domain.runtime.RagEffectiveFeatures;
+import com.uniovi.rag.application.model.DraftAndContext;
+import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.application.model.ReasoningPreOutput;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;
@@ -113,7 +114,7 @@ public final class ResponseSynthesisPipeline {
             String expandedQuery,
             QueryType queryType,
             JSONObject nerEntities) {
-        if (!featureConfig.isMetadataEnabled() || queryType == null) {
+        if (!RagEffectiveFeatures.metadataEnabled(featureConfig) || queryType == null) {
             return Optional.empty();
         }
         var guardResult = dateExistenceGuard.checkNoActaForDate(expandedQuery, queryType, nerEntities);

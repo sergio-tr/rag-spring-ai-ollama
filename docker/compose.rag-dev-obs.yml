@@ -1,5 +1,5 @@
 # Optional: merge with compose.dev.yml (backend-dev) when also using compose.obs.yml
-# (e.g. ./scripts/up.sh dev --rag --obs or --all).
+# (e.g. ./docker/scripts/up.sh dev --rag --obs or --all).
 # Activate dev,infra profiles in backend-dev and point OTLP to the otel-collector in the compose network.
 #
 # Important: rag-service/.env usually has OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 (for Maven on the host).

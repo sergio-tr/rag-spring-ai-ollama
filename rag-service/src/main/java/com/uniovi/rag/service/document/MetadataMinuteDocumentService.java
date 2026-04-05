@@ -1,7 +1,7 @@
 package com.uniovi.rag.service.document;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.uniovi.rag.model.Minute;
+import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.util.RegexSafety;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
@@ -18,7 +18,7 @@ import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
-import static com.uniovi.rag.observability.ContextPropagatingFutures.supplyAsync;
+import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;

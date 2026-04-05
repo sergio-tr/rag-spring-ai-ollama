@@ -20,7 +20,7 @@ class EvaluationResult:
     confusion_matrix_image_bytes: bytes | None = None
 
     def to_response_dict(self, include_images_base64: bool = True) -> dict:
-        """API response (camelCase): metrics plus optional base64 images for frontend display/download."""
+        """API response (camelCase): metrics plus optional base64 images for webapp display/download."""
         out: dict[str, Any] = {
             "modelId": self.model_id,
             "metrics": {

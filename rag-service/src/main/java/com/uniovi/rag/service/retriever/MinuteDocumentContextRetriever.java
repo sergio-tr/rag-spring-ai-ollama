@@ -79,6 +79,15 @@ public class MinuteDocumentContextRetriever extends AbstractMetadataContextRetri
         super(vectorStore, chatClient, topK, similarityThreshold);
     }
 
+    public MinuteDocumentContextRetriever(
+            PgVectorStore vectorStore,
+            ChatClient chatClient,
+            int topK,
+            double similarityThreshold,
+            boolean knowledgeChatOverlayEnabled) {
+        super(vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
+    }
+
     @Override
     public String filterDocumentContent(Document doc, String query, JSONObject entities) {
         if (doc == null) {

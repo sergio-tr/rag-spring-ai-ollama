@@ -39,6 +39,8 @@ jobs:
       SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      # Same as ci.yml: env overrides application-test.properties; empty/short org secrets would fail JwtService during @SpringBootTest.
+      RAG_JWT_SECRET: test-secret-key-for-jwt-signing-must-be-long-enough-32
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
 
@@ -59,7 +61,6 @@ jobs:
           distribution: temurin
           cache: maven
 
-      # Windows checkouts often lose the executable bit on mvnw; Linux requires +x for ./mvnw
       - name: Ensure Maven wrapper is executable
         working-directory: rag-service
         run: chmod +x mvnw
@@ -77,28 +78,14 @@ jobs:
       # Output: rag-service/target/classes/  (binaries for Sonar)
       #         rag-service/target/site/jacoco/jacoco.xml  (coverage for Sonar)
       - name: Prepare Postgres for tests (extensions, integration DB)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-          for i in $(seq 1 40); do
-            if pg_isready -h localhost -p 5432 -U postgres; then break; fi
-            sleep 2
-          done
-          PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c \
-            "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS hstore; CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
-          if ! PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -tAc \
-            "SELECT 1 FROM pg_database WHERE datname = 'testdb'" | grep -q 1; then
-            PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE testdb;"
-          fi
-          PGPASSWORD=postgres psql -h localhost -U postgres -d testdb -v ON_ERROR_STOP=1 -f rag-service/src/test/resources/test-init.sql
+        uses: ./.github/actions/prepare-postgres-for-rag-tests
 
       # Note: With the service + env above, tests use the runner Postgres; Testcontainers is not required in CI.
       - name: Build backend and generate Java coverage (mvn verify)
         working-directory: rag-service
-        run: ./mvnw -B verify --no-transfer-progress
+        run: ./mvnw -B clean verify --no-transfer-progress
         env:
-          # Prevent tests from attempting real OTLP exports
-          OTEL_EXPORTER_OTLP_ENDPOINT: ""
+          # Do not set OTEL_EXPORTER_OTLP_ENDPOINT to "" — Spring resolves ${OTEL:default} to empty and breaks OTLP URLs.
           MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "false"
 
       # ─── Java: copy dependencies for SonarCloud type resolution ───────────
@@ -126,11 +113,28 @@ jobs:
           pytest tests/unit tests/regression/test_baseline_lib.py \
             -m "not integration and not slow" \
             -v
+          python scripts/patch_coverage_xml_for_sonar.py
         env:
           MODELS_DIR: ./models
           DATA_DIR: ./data
 
+      # ─── Webapp: Vitest coverage (LCOV for Sonar; Vitest remains the frontend gate) ───
+      - name: Cache npm (webapp)
+        uses: ./.github/actions/cache-npm-webapp
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: webapp/package.json
+
+      - name: Install webapp dependencies and generate LCOV
+        working-directory: webapp
+        run: |
+          npm install --no-audit --no-fund
+          npm run test:coverage
+
       # ─── SonarCloud scan ──────────────────────────────────────────────────
+      # Local parity: docs/development/sonar-local-analysis.md + .github/local/sonar-local.sh
       # Reads sonar-project.properties from the repository root.
       # All coverage artifacts must exist before this step runs.
       #

@@ -1,9 +1,10 @@
 package com.uniovi.rag.service.query.pipeline;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.runtime.RagEffectiveFeatures;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
-import com.uniovi.rag.service.classifier.QueryClassifier;
+import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.service.expand.QueryExpander;
 import org.json.JSONObject;
 import org.slf4j.Logger;
@@ -33,13 +34,13 @@ public final class QueryInputPreparer {
     }
 
     public PreparedQuery prepare(String query) {
-        String expanded = featureConfig.isExpansionEnabled() ? expander.expand(query) : query;
-        JSONObject ner = featureConfig.isNerEnabled() ? analyser.analyse(expanded) : null;
-        QueryType queryType = featureConfig.isToolsEnabled() ? classifier.classify(expanded) : null;
-        if (featureConfig.isToolsEnabled()) {
+        String expanded = RagEffectiveFeatures.expansionEnabled(featureConfig) ? expander.expand(query) : query;
+        JSONObject ner = RagEffectiveFeatures.nerEnabled(featureConfig) ? analyser.analyse(expanded) : null;
+        QueryType queryType = RagEffectiveFeatures.toolsEnabled(featureConfig) ? classifier.classify(expanded) : null;
+        if (RagEffectiveFeatures.toolsEnabled(featureConfig)) {
             queryType = ClassifierOverrides.apply(expanded, queryType);
         }
-        if (featureConfig.isToolsEnabled() && queryType == null) {
+        if (RagEffectiveFeatures.toolsEnabled(featureConfig) && queryType == null) {
             log.warn(
                     "[CLASSIFIER] tools_enabled=true but QueryType is null after classification "
                             + "(classifier URL empty, HTTP failure, unknown label, or empty response). "

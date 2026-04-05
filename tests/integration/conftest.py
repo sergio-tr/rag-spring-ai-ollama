@@ -13,6 +13,10 @@ def _url(name: str, default: str) -> str:
     return os.environ.get(name, default).rstrip("/")
 
 
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def observability_reachable(http_client: httpx.Client, obs_urls: dict[str, str]) -> bool:
     """True if the OTEL collector Prometheus self-metrics endpoint responds (compose.obs.yml up)."""
     try:
@@ -47,6 +51,39 @@ def classifier_base() -> str:
 @pytest.fixture(scope="session")
 def backend_base() -> str:
     return _url("INTEGRATION_BACKEND_URL", "http://127.0.0.1:9000")
+
+
+@pytest.fixture(scope="session")
+def legacy_api_base() -> str:
+    """Legacy HTTP prefix only (e.g. /api/v4), aligned with RAG_API_LEGACY_BASE_PATH."""
+    return os.environ.get("INTEGRATION_RAG_LEGACY_BASE_PATH", "/api/v4").strip().rstrip("/") or "/api/v4"
+
+
+@pytest.fixture(scope="session")
+def product_api_base() -> str:
+    """Product API prefix (e.g. /api/v5), aligned with RAG_API_PRODUCT_BASE_PATH."""
+    return os.environ.get("INTEGRATION_RAG_PRODUCT_BASE_PATH", "/api/v5").strip().rstrip("/") or "/api/v5"
+
+
+@pytest.fixture(scope="session")
+def integration_seed_credentials() -> tuple[str, str]:
+    """Email/password for stack integration JWT flows (V16 seed or CI user)."""
+    email = os.environ.get("INTEGRATION_LOGIN_EMAIL", "dev@local.test").strip()
+    password = os.environ.get("INTEGRATION_LOGIN_PASSWORD", "dev")
+    return (email, password)
+
+
+@pytest.fixture(scope="session")
+def integration_admin_credentials() -> tuple[str, str] | None:
+    """
+    When INTEGRATION_ADMIN_EMAIL is set, enables tests that require ROLE_ADMIN (e.g. e2e profile:
+    admin@e2e.local / e2e from E2eAdminUserSeeder).
+    """
+    email = os.environ.get("INTEGRATION_ADMIN_EMAIL", "").strip()
+    if not email:
+        return None
+    password = os.environ.get("INTEGRATION_ADMIN_PASSWORD", "e2e").strip()
+    return (email, password)
 
 
 @pytest.fixture(scope="session")
@@ -99,3 +136,28 @@ def require_obs_stack(obs_context: dict[str, Any], obs_urls: dict[str, str]) -> 
             "Observability stack not reachable (OTEL collector metrics). "
             "Start: docker compose -f docker-compose.yml -f compose.obs.yml ... up -d"
         )
+
+
+@pytest.fixture(scope="session")
+def tc_postgres_container() -> object:
+    """
+    Optional local Postgres (Testcontainers) with init SQL aligned with Java Testcontainers.
+
+    Enable with INTEGRATION_USE_TESTCONTAINERS=1 (Docker required). CI keeps this unset and uses
+    the GitHub Actions Postgres service for Spring; pytest there stays HTTP-only.
+
+    Set INTEGRATION_TC_PRINT_JDBC=1 to print SPRING_DATASOURCE_URL for pointing a local Spring
+    process at the same database (Path B advanced).
+    """
+    if not _truthy_env("INTEGRATION_USE_TESTCONTAINERS"):
+        pytest.skip("INTEGRATION_USE_TESTCONTAINERS is not set (Testcontainers Postgres disabled)")
+    import tc_postgres
+
+    container = tc_postgres.start_pgvector_container()
+    if _truthy_env("INTEGRATION_TC_PRINT_JDBC"):
+        jdbc = tc_postgres.jdbc_url_from_container(container)
+        print(f"\nINTEGRATION_TC_PRINT_JDBC: export SPRING_DATASOURCE_URL={jdbc!r}\n")
+    try:
+        yield container
+    finally:
+        container.stop()

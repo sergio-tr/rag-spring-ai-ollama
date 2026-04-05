@@ -12,10 +12,23 @@ Observability (Jaeger, Prometheus, OTEL collector, Grafana):
   - INTEGRATION_CHECK_OBS=1: fail if the observability stack is not reachable (CI with obs).
   - INTEGRATION_CHECK_OBS=0: skip all observability tests.
 
+API path drift (aligned with Spring `rag.api.*`):
+  - INTEGRATION_RAG_LEGACY_BASE_PATH (default `/api/v4`) for legacy `GET …/query`.
+  - INTEGRATION_RAG_PRODUCT_BASE_PATH (default `/api/v5`) for JWT product tests.
+  - INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD — seed user for `POST /api/auth/login` flows
+    (default matches Flyway V16: dev@local.test / dev).
+  - INTEGRATION_ADMIN_EMAIL / INTEGRATION_ADMIN_PASSWORD — optional; enables admin API **200** tests when an
+    ADMIN user exists (profile e2e: admin@e2e.local / e2e via E2eAdminUserSeeder).
+
 Usage:
   cd docker && docker compose ... up -d
   pip install -r tests/integration/requirements.txt
   pytest tests/integration -v
+
+Lab async jobs (api-map §7.4):
+  - After HTTP **202** from `POST {product}/lab/...` (no `sync=true`), the body includes `jobId` and paths for
+    **polling** `GET {product}/lab/jobs/{jobId}` or **SSE** `GET {product}/lab/jobs/{jobId}/events`.
+  - Prefer polling in integration tests (simple assert on JSON); SSE is optional and stream-based.
 """
 
 from __future__ import annotations
@@ -82,6 +95,33 @@ def _poll_until(
             return True
         time.sleep(interval_s)
     return False
+
+
+def _assert_requires_auth(r: httpx.Response) -> None:
+    """Spring Security may answer 401 or 403 for unauthenticated /api/** (JWT filter + authorize)."""
+    assert r.status_code in (401, 403), r.text
+
+
+def _login_access_token(
+    http_client: httpx.Client,
+    backend_base: str,
+    email: str,
+    password: str,
+) -> str | None:
+    r = http_client.post(
+        f"{backend_base}/api/auth/login",
+        json={"email": email, "password": password},
+        headers={"Content-Type": "application/json"},
+        timeout=30.0,
+    )
+    if r.status_code != 200:
+        return None
+    try:
+        data = r.json()
+    except ValueError:
+        return None
+    token = data.get("accessToken")
+    return str(token) if token else None
 
 
 class TestClassifierService:
@@ -180,10 +220,15 @@ class TestBackend:
             "Expected typical Micrometer/JVM metrics on /actuator/prometheus"
         )
 
-    def test_query_returns_200(self, http_client: httpx.Client, backend_base: str) -> None:
+    def test_query_returns_200(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        legacy_api_base: str,
+    ) -> None:
         """Query endpoint: 200 even if body reflects missing LLM/data."""
         try:
-            r = http_client.get(f"{backend_base}/api/v4/query", params={"question": "test"})
+            r = http_client.get(f"{backend_base}{legacy_api_base}/query", params={"question": "test"})
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)
             raise
@@ -191,16 +236,374 @@ class TestBackend:
         body = (r.text or "").strip()
         assert len(body) > 0
 
-    def test_query_response_is_json(self, http_client: httpx.Client, backend_base: str) -> None:
-        """v4 query returns JSON (success/data or error envelope)."""
+    def test_query_response_is_json(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        legacy_api_base: str,
+    ) -> None:
+        """Legacy query returns JSON (success/data or error envelope)."""
         try:
-            r = http_client.get(f"{backend_base}/api/v4/query", params={"question": "How many documents are there?"})
+            r = http_client.get(
+                f"{backend_base}{legacy_api_base}/query",
+                params={"question": "How many documents are there?"},
+            )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)
             raise
         assert r.status_code == 200, r.text
         ct = (r.headers.get("content-type") or "").lower()
         assert "application/json" in ct, f"expected JSON content-type, got {ct!r}"
+
+
+class TestBackendAuthApi:
+    """POST /api/auth/* validation and negative paths (permitAll in security chain)."""
+
+    def test_login_wrong_password_401(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        email, _ = integration_seed_credentials
+        try:
+            r = http_client.post(
+                f"{backend_base}/api/auth/login",
+                json={"email": email, "password": "definitely-wrong-password-for-integration"},
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 401, r.text
+
+    def test_login_unknown_user_401(self, http_client: httpx.Client, backend_base: str) -> None:
+        try:
+            r = http_client.post(
+                f"{backend_base}/api/auth/login",
+                json={"email": "no-such-user-for-integration@local.invalid", "password": "irrelevant-pass-12345"},
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 401, r.text
+
+    def test_login_invalid_email_400(self, http_client: httpx.Client, backend_base: str) -> None:
+        try:
+            r = http_client.post(
+                f"{backend_base}/api/auth/login",
+                json={"email": "not-an-email", "password": "somepassword"},
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 400, r.text
+
+    def test_refresh_invalid_token_401(self, http_client: httpx.Client, backend_base: str) -> None:
+        try:
+            r = http_client.post(
+                f"{backend_base}/api/auth/refresh",
+                json={"refreshToken": "invalid-token-not-a-jwt"},
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 401, r.text
+
+    def test_register_duplicate_seed_email_409(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        email, _ = integration_seed_credentials
+        try:
+            r = http_client.post(
+                f"{backend_base}/api/auth/register",
+                json={
+                    "name": "Integration Duplicate",
+                    "email": email,
+                    "password": "longenough1",
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 409, r.text
+
+
+class TestBackendAdminApi:
+    """GET /api/admin/* requires ROLE_ADMIN (see SecurityConfiguration)."""
+
+    def test_admin_health_unauthenticated_requires_auth(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+    ) -> None:
+        try:
+            r = http_client.get(f"{backend_base}/api/admin/health")
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        _assert_requires_auth(r)
+
+    def test_admin_health_forbidden_for_user_jwt(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("USER login failed; cannot assert 403 on /api/admin (check INTEGRATION_LOGIN_*).")
+        try:
+            r = http_client.get(
+                f"{backend_base}/api/admin/health",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 403, r.text
+
+    def test_admin_allowlist_forbidden_for_user_jwt(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("USER login failed; cannot assert 403 on /api/admin (check INTEGRATION_LOGIN_*).")
+        try:
+            r = http_client.get(
+                f"{backend_base}/api/admin/allowlist",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 403, r.text
+
+    def test_admin_health_and_allowlist_ok_for_admin_jwt(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        integration_admin_credentials: tuple[str, str] | None,
+    ) -> None:
+        if integration_admin_credentials is None:
+            pytest.skip(
+                "Set INTEGRATION_ADMIN_EMAIL (+ INTEGRATION_ADMIN_PASSWORD, default e2e) when the backend "
+                "has an ADMIN user (e.g. SPRING_PROFILES_ACTIVE includes e2e → admin@e2e.local)."
+            )
+        a_email, a_password = integration_admin_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, a_email, a_password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.fail(
+                "ADMIN login failed with INTEGRATION_ADMIN_EMAIL; check password or that E2eAdminUserSeeder ran."
+            )
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            h = http_client.get(f"{backend_base}/api/admin/health", headers=headers, timeout=30.0)
+            lst = http_client.get(f"{backend_base}/api/admin/allowlist", headers=headers, timeout=30.0)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert h.status_code == 200, h.text
+        body = h.json()
+        assert body.get("status") == "UP" and body.get("scope") == "admin"
+        assert lst.status_code == 200, lst.text
+        assert isinstance(lst.json(), list)
+
+
+class TestBackendProductApi:
+    """JWT-protected product prefix (same paths as RAG_API_PRODUCT_BASE_PATH)."""
+
+    def test_presets_without_token_requires_auth(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+    ) -> None:
+        try:
+            r = http_client.get(f"{backend_base}{product_api_base}/presets")
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        _assert_requires_auth(r)
+
+    def test_config_schema_without_token_requires_auth(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+    ) -> None:
+        try:
+            r = http_client.get(f"{backend_base}{product_api_base}/config/schema")
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        _assert_requires_auth(r)
+
+    def test_login_then_presets_and_schema_ok(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip(
+                "Login did not return a token (seed user missing or wrong INTEGRATION_LOGIN_*). "
+                "Ensure Flyway V16 seed or set INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD."
+            )
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            presets = http_client.get(f"{backend_base}{product_api_base}/presets", headers=headers, timeout=30.0)
+            schema = http_client.get(
+                f"{backend_base}{product_api_base}/config/schema",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert presets.status_code == 200, presets.text
+        assert schema.status_code == 200, schema.text
+        plist = presets.json()
+        assert isinstance(plist, list)
+        sbody = schema.json()
+        assert isinstance(sbody, dict)
+        fv = sbody.get("fields")
+        assert isinstance(fv, list) and len(fv) >= 1
+
+
+class TestBackendOpenApi:
+    """springdoc OpenAPI JSON at /v3/api-docs (permitAll — no JWT)."""
+
+    def test_v3_api_docs_lists_product_auth_and_admin_paths(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+    ) -> None:
+        try:
+            r = http_client.get(f"{backend_base}/v3/api-docs", timeout=30.0)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if r.status_code == 404:
+            pytest.skip("OpenAPI not exposed (springdoc disabled for this profile)")
+        assert r.status_code == 200, r.text
+        doc = r.json()
+        assert doc.get("openapi") is not None or doc.get("swagger") is not None
+        paths = doc.get("paths") or {}
+        assert isinstance(paths, dict)
+        # Spot-check: product, auth, admin prefixes appear in paths
+        path_keys = " ".join(paths.keys())
+        assert product_api_base in path_keys or "/api/v5" in path_keys
+        assert "/api/auth/login" in path_keys
+        assert "/api/admin/health" in path_keys
+
+
+class TestBackendLabJobs:
+    """
+    Lab async flow: 202 + job body, then GET job status (polling).
+    See module docstring and docs/adr/0003-evaluation-async-project-scope-and-dataset-dedup.md (Lab async jobs).
+    """
+
+    def test_lab_status_requires_auth(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+    ) -> None:
+        try:
+            r = http_client.get(f"{backend_base}{product_api_base}/lab/status", timeout=30.0)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        _assert_requires_auth(r)
+
+    def test_lab_eval_rag_async_returns_202_and_pollable_job(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token (seed user missing or wrong INTEGRATION_LOGIN_*).")
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            post = http_client.post(
+                f"{backend_base}{product_api_base}/lab/evaluations/rag",
+                headers=headers,
+                timeout=120.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert post.status_code == 202, post.text
+        body = post.json()
+        job_id = body.get("jobId")
+        assert job_id is not None and len(str(job_id)) > 0
+        assert body.get("status") == "ACCEPTED"
+        try:
+            st = http_client.get(
+                f"{backend_base}{product_api_base}/lab/jobs/{job_id}",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert st.status_code == 200, st.text
+        job = st.json()
+        assert str(job.get("id")) == str(job_id)
+        assert job.get("status") in (
+            "QUEUED",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED",
+        ), job
 
 
 class TestCrossService:
@@ -214,14 +617,19 @@ class TestCrossService:
             raise
         assert h.status_code == 200 and b.status_code == 200
 
-    def test_backend_query_triggers_internal_classifier_path(self, http_client: httpx.Client, backend_base: str) -> None:
+    def test_backend_query_triggers_internal_classifier_path(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        legacy_api_base: str,
+    ) -> None:
         """
         RAG query should exercise backend → classifier-service HTTP (classifier reachable from backend network).
         Does not assert answer quality; only HTTP 200 from the API.
         """
         try:
             r = http_client.get(
-                f"{backend_base}/api/v4/query",
+                f"{backend_base}{legacy_api_base}/query",
                 params={"question": "integration cross-service ping"},
                 timeout=120.0,
             )
@@ -314,12 +722,13 @@ class TestObservabilityStack:
         http_client: httpx.Client,
         obs_urls: dict[str, str],
         backend_base: str,
+        legacy_api_base: str,
     ) -> None:
         """Backend Micrometer metrics should appear in Prometheus (RAG timers or HTTP server metrics)."""
         prom = obs_urls["prometheus"]
         try:
             http_client.get(
-                f"{backend_base}/api/v4/query",
+                f"{backend_base}{legacy_api_base}/query",
                 params={"question": "prometheus metrics warm-up"},
                 timeout=90.0,
             )
@@ -348,13 +757,18 @@ class TestObservabilityStack:
         http_client: httpx.Client,
         obs_urls: dict[str, str],
         backend_base: str,
+        legacy_api_base: str,
     ) -> None:
         """
         Regression: Spring OTLP HTTP exporter must use /v1/traces; profiles docker+infra must point to otel-collector.
         """
         expected = os.environ.get("INTEGRATION_EXPECT_RAG_SERVICE_NAME", "rag-backend").strip() or "rag-backend"
         try:
-            r = http_client.get(f"{backend_base}/api/v4/query", params={"question": "otel trace smoke"}, timeout=120.0)
+            r = http_client.get(
+                f"{backend_base}{legacy_api_base}/query",
+                params={"question": "otel trace smoke"},
+                timeout=120.0,
+            )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)
             raise

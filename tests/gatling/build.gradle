@@ -1,0 +1,27 @@
+plugins {
+    id 'scala'
+    id 'io.gatling.gradle' version '3.13.5'
+}
+
+group = 'com.uniovi.rag.tests'
+version = '0.0.1-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+scala {
+    version = '2.13.14'
+}
+
+dependencies {
+    gatling 'io.gatling.highcharts:gatling-charts-highcharts:3.13.5'
+}
+
+gatling {
+    // All simulations under simulations.* are picked up by gatlingRun
+}
+
+tasks.withType(Test).configureEach {
+    enabled = false
+}

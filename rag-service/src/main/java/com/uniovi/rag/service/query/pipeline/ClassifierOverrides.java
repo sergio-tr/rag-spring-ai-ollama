@@ -1,6 +1,6 @@
 package com.uniovi.rag.service.query.pipeline;
 
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 
 import java.util.Locale;
 
@@ -13,7 +13,7 @@ public final class ClassifierOverrides {
 
     /**
      * @param query       user text (typically expanded)
-     * @param classified  label from {@link com.uniovi.rag.service.classifier.QueryClassifier}, may be null
+     * @param classified  label from {@link com.uniovi.rag.infrastructure.classifier.QueryClassifier}, may be null
      * @return overridden {@link QueryType}, or {@code classified} when no rule matches
      */
     public static QueryType apply(String query, QueryType classified) {

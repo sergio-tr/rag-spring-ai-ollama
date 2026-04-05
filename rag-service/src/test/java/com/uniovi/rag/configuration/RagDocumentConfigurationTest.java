@@ -1,11 +1,11 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.observability.ObservabilitySupport;
-import com.uniovi.rag.observability.TracedMinuteDocumentRepository;
+import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
+import com.uniovi.rag.infrastructure.observability.TracedMinuteDocumentRepository;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.service.document.SimpleDocumentService;
-import com.uniovi.rag.repository.MinuteDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.MinuteDocumentRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
@@ -74,7 +74,7 @@ class RagDocumentConfigurationTest {
         DocumentService result = config.documentService(
                 featureConfig, vectorStore, chatClient, jdbcTemplate, metadataService, simpleService, observability);
         assertNotNull(result);
-        assertInstanceOf(com.uniovi.rag.observability.TracedDocumentService.class, result);
+        assertInstanceOf(com.uniovi.rag.infrastructure.observability.TracedDocumentService.class, result);
     }
 
     @Test
@@ -86,7 +86,7 @@ class RagDocumentConfigurationTest {
         MinuteDocumentRepository repo = config.minuteDocumentRepository(
                 documentService, metadataMinuteDocumentService, null);
         assertNotNull(repo);
-        assertInstanceOf(com.uniovi.rag.repository.impl.MinuteDocumentRepositoryImpl.class, repo);
+        assertInstanceOf(com.uniovi.rag.infrastructure.persistence.impl.MinuteDocumentRepositoryImpl.class, repo);
     }
 
     @Test

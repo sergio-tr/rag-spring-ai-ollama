@@ -5,7 +5,9 @@
      ═══════════════════════════════════════════════════════════════════════════ -->
 
 <!-- GitHub Actions: native badge.svg returns 404 until the workflow exists on the default branch and has run at least once. Shields “workflow status” has the same requirement. Static badges below always render and link to the workflow. -->
-[![CI](https://img.shields.io/badge/CI-ci.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml)
+[![CI](https://img.shields.io/badge/CI-%2B%20E2E%20smoke-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml)
+[![E2E manual](https://img.shields.io/badge/E2E-smoke%20only%20%28manual%29-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/e2e.yml)
+[![E2E fullstack](https://img.shields.io/badge/E2E-fullstack-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/e2e-fullstack.yml)
 [![Build](https://img.shields.io/badge/Build-build.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml)
 [![Sonar workflow](https://img.shields.io/badge/Sonar-sonar.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml)
 [![Docker images](https://img.shields.io/badge/Images-build--images.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build-images.yml)
@@ -25,14 +27,18 @@
 
 RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring AI**, **Ollama**, and **PostgreSQL + pgvector**. Includes a trainable query-type classifier exposed as an HTTP microservice (FastAPI + TensorFlow).
 
+**Documentation:** global architecture, domain, and governance live in **[`docs/README.md`](docs/README.md)**. Per-module setup and commands live in each folder’s **README** (see table below).
+
+**Where it runs:** Repository automation (`docker/scripts/*.sh`, `tests/**/*.sh`, Compose, Gatling via `./gradlew`) and **CI/CD** are designed for **Linux** (local shell or `ubuntu-*` runners). **Docker images** for backend, classifier, databases, and observability are **Linux-based**. For day-to-day parity with CI, develop on Linux or **WSL2**, not raw Windows shells.
+
 ## Quick start (development)
 
 ```bash
 # 1. Create env files for each component
-./scripts/create-env-all.sh
+./docker/scripts/create-env-all.sh
 
 # 2. Start infrastructure (Postgres) in Docker
-./scripts/up.sh dev
+./docker/scripts/up.sh dev
 
 # 3. Backend with hot-reload (terminal 2)
 cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
@@ -40,9 +46,21 @@ cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 # 4. Classifier with hot-reload (terminal 3)
 cd classifier-service && uvicorn main:app --reload --reload-dir app
 
-# API available at http://localhost:9000/api/v4
+# Default HTTP API bases: legacy RAG path + product path (see rag-service application properties).
+# Override with RAG_API_LEGACY_BASE_PATH, RAG_API_PRODUCT_BASE_PATH (Spring) and NEXT_PUBLIC_RAG_API_PREFIX (Next.js).
 ```
 
+## Test pyramid & CI/CD
+
+| Layer | Command / workflow | Gate |
+| --- | --- | --- |
+| Backend unit + integration | `cd rag-service && ./mvnw verify` | JaCoCo bundle **≥ 80%** (`jacoco-check`) |
+| Classifier | `cd classifier-service && pytest tests/` | **≥ 80%** via `.coveragerc` `fail_under` + `pytest.ini` |
+| Webapp unit | `cd webapp && npm test` | Vitest (expand coverage over time) |
+| E2E smoke (Playwright) | `cd webapp && npm run build && npm run test:e2e` (excludes `@fullstack`) | **[`.github/workflows/ci.yml`](.github/workflows/ci.yml)** job `webapp-e2e`; optional re-run via [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml) (`workflow_dispatch`) |
+| E2E + API (E2E-01–10 smoke) | `make webapp-e2e-fullstack` (Spring `e2e`: stubs AI + Postgres; SSE `done.sources`) | [`.github/workflows/e2e-fullstack.yml`](.github/workflows/e2e-fullstack.yml) when `webapp/**` or `rag-service/**` change |
+| System / API smoke (canonical) | `cd webapp && npm run test:api` (`API_BASE_URL` = Spring); `make system-checks` | [`.github/workflows/system-checks.yml`](.github/workflows/system-checks.yml) **manual** |
+| Load / stress (Gatling) | `cd tests/gatling && ./gradlew gatlingRun --simulation …`; details: [tests/gatling/README.md](tests/gatling/README.md), overview: [docs/performance/README.md](docs/performance/README.md) | [`.github/workflows/gatling.yml`](.github/workflows/gatling.yml) dispatch / schedule; set `GATLING_BASE_URL` |
 ## Full stack with Docker Compose
 
 ```bash
@@ -58,32 +76,48 @@ docker compose \
 ## Execution modes
 
 | Mode | Command | Description |
-|---|---|---|
-| Dev (hybrid) | `./scripts/up.sh dev` | Only infra in Docker; services run locally |
-| Dev (max infra) | `./scripts/up.sh dev --all` | `--gpu --obs --classifier --logs --infra` (GPU Ollama, obs, Loki/Promtail, node-exporter/cAdvisor) |
+| --- | --- | --- |
+| Dev (hybrid) | `./docker/scripts/up.sh dev` | Only infra in Docker; services run locally |
+| Dev (max infra) | `./docker/scripts/up.sh dev --all` | `--gpu --obs --classifier --logs --infra` (GPU Ollama, obs, Loki/Promtail, node-exporter/cAdvisor) |
 | Full compose | `cd docker && docker compose ... up -d` | Everything in Docker |
 | With observability | add `-f compose.obs.yml --env-file ../observability/.env` | + OTEL/Jaeger/Prometheus/Grafana |
-| With GPU (Ollama) | add `-f compose.ollama-gpu.yml --env-file ../ollama/.env` | + Ollama with NVIDIA GPU |
-| Prod local | `./scripts/up.sh prod [--obs]` | Hardened: nginx reverse proxy; add `--obs` for OTEL/Jaeger/Prometheus/Grafana |
+| With GPU | `-f compose.gpu.yml` (+ `-f compose.ollama-local-gpu.yml` for Ollama in Docker) | Classifier on GPU; optional local Ollama on GPU via `docker/scripts` `--gpu` |
+| Prod local | `./docker/scripts/up.sh prod [--obs]` | Hardened: nginx reverse proxy; add `--obs` for OTEL/Jaeger/Prometheus/Grafana |
 
 ## Key API endpoints
 
+Prefixes are **configurable**. Spring: `rag.api.legacy-base-path` (`RAG_API_LEGACY_BASE_PATH`) and `rag.api.product-base-path` (`RAG_API_PRODUCT_BASE_PATH`). Webapp: `NEXT_PUBLIC_RAG_API_PREFIX` must match the product base path (see `webapp/.env.example`). Below, `{legacy}` and `{product}` stand for those configured prefixes.
+
 | Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/api/v4/query?question=...` | RAG query (JSON: `success` + `data` or `error`; HTTP **503** + `LLM_UNAVAILABLE` if Ollama unreachable) |
-| `POST` | `/api/v4/documents` | Upload document (multipart) |
-| `POST` | `/api/v4/documents/minute` | Add meeting minute (JSON) |
-| `DELETE` | `/api/v4/documents/{id}` | Delete document |
-| `GET` | `/api/v4/evaluate` | Run RAG evaluation |
-| `POST` | `/api/v4/evaluate/custom` | Evaluate with custom config |
+| --- | --- | --- |
+| `GET` | `{legacy}/query?question=...` | RAG query (JSON: `success` + `data` or `error`; HTTP **503** + `LLM_UNAVAILABLE` if Ollama unreachable) |
+| `POST` | `{legacy}/documents` | Upload document (multipart) |
+| `POST` | `{legacy}/documents/minute` | Add meeting minute (JSON) |
+| `DELETE` | `{legacy}/documents/{id}` | Delete document |
+| `GET` | `{legacy}/evaluate` | Run RAG evaluation |
+| `POST` | `{legacy}/evaluate/custom` | Evaluate with custom config |
 | `GET` | `/actuator/health` | Health check |
 | `GET` | `/actuator/prometheus` | Prometheus metrics |
+| `GET` | `/v3/api-docs` | OpenAPI 3 JSON (springdoc) |
+| `GET` | `/swagger-ui.html` | Swagger UI (interactive API docs) |
+| `GET` \ | `PUT` | `{product}/config/user` | Effective user RAG config (JSON); authenticated |
+| `GET` \ | `PUT` \ | `DELETE` | `{product}/config/project/{projectId}` | Project overrides; authenticated, project ownership |
+| `GET` | `{product}/lab/status` | Lab capability stub (authenticated) |
+| `GET` | `/api/admin/health` | Admin health (`403` unless JWT role `ADMIN`) |
+
+**Ollama URL:** set `SPRING_AI_OLLAMA_BASE_URL` (alias `OLLAMA_BASE_URL`) to the Ollama HTTP API — for example `http://127.0.0.1:11434` on the host. See [docs/operations/environments.md](docs/operations/environments.md) and [rag-service/README.md](rag-service/README.md) for more details.
+
+**Generated docs:** Javadoc: `cd rag-service && ./mvnw javadoc:javadoc` → `rag-service/target/site/apidocs`. OpenAPI: `/v3/api-docs` when springdoc is enabled; export with [`rag-service/scripts/export-openapi.sh`](rag-service/scripts/export-openapi.sh). CI may write `openapi.json` during `verify` when a Postgres datasource is available. TypeDoc: `cd webapp && npm run doc` → `webapp/docs/api`. See [docs/README.md](docs/README.md) (auto-generated API docs).
+
+**Types:** OpenAPI is served at `/v3/api-docs`. TypeScript types in `webapp/src/types/api.ts` may be maintained manually until an `openapi-generator` job is added in CI; keep field names aligned with Spring DTOs and JSON keys from `RagConfig.toValueMap()`.
 
 Classifier endpoints: `POST /classify`, `GET /models`, `POST /train`, `POST /evaluate`
 
 ## SonarCloud (quality gate and static analysis)
 
 Analysis is driven by [`sonar-project.properties`](sonar-project.properties) and [`.github/workflows/sonar.yml`](.github/workflows/sonar.yml). Set `sonar.projectKey` and `sonar.organization` to match your SonarCloud project, and add a **`SONAR_TOKEN`** repository secret (SonarCloud → *My Account → Security*).
+
+**Local scan (same steps as CI):** [`docs/development/sonar-local-analysis.md`](docs/development/sonar-local-analysis.md) — scripts [`.github/local/sonar-local.sh`](scripts/sonar-local.sh). Requires Postgres + Docker for the scanner image; set `SONAR_TOKEN` in the environment.
 
 **Branches:** pushes and PRs to `main` / `dev` trigger analysis. In SonarCloud, set the main branch to `main` (*Project → Administration → Branches and Pull Requests*) so **New Code** is computed correctly.
 
@@ -94,7 +128,7 @@ Create an organization-level gate (*Organization → Quality Gates → Create*) 
 **Conditions on New Code**
 
 | Metric | Operator | Threshold |
-|---|---|---|
+| --- | --- | --- |
 | Coverage on New Code | `<` | `80%` |
 | Duplicated Lines on New Code | `>` | `3%` |
 | Maintainability / Reliability / Security Rating | worse than | `A` |
@@ -103,7 +137,7 @@ Create an organization-level gate (*Organization → Quality Gates → Create*) 
 **Conditions on Overall Code**
 
 | Metric | Operator | Threshold |
-|---|---|---|
+| --- | --- | --- |
 | Coverage | `<` | `70%` |
 | Duplicated Lines | `>` | `5%` |
 | Maintainability / Reliability Rating | worse than | `B` |
@@ -127,20 +161,20 @@ Production credentials must always come from environment / `.env` files, not fro
 ## Documentation
 
 | Document | Description |
-|---|---|
+| --- | --- |
+| [docs/README.md](docs/README.md) | **Hub:** architecture, domain, operations (conceptual), testing/performance overview, ADR index |
+| [docs/development/documentation-guidelines.md](docs/development/documentation-guidelines.md) | Where to document what; `docs/` vs module READMEs |
 | [rag-service/README.md](rag-service/README.md) | Backend build, variables, Compose, smoke test link |
 | [classifier-service/README.md](classifier-service/README.md) | Classifier API, run locally, regression testing |
 | [docker/README.md](docker/README.md) | Compose usage, execution modes, deployment runbook |
-| [scripts/README.md](scripts/README.md) | Env scripts, prod-local, backup/restore, smoke test |
+| [scripts/README.md](scripts/README.md) | Index of shell automation (no duplicate `.sh` here); canonical paths in `docker/scripts/`, `db/scripts/`, etc. |
 | [db/README.md](db/README.md) | Database setup |
 | [ollama/README.md](ollama/README.md) | Ollama / GPU stack |
 | [observability/README.md](observability/README.md) | Observability stack (OTEL, Jaeger, Prometheus, Grafana) |
-| [docs/DEV_STACK_OBS_Y_OLLAMA_HOST.md](docs/DEV_STACK_OBS_Y_OLLAMA_HOST.md) | Dev + observabilidad + Ollama en el host (sin contenedor Ollama) |
+| [tests/README.md](tests/README.md) | Test automation index: Gatling, stack integration (pytest), technical e2e compose, Python micro-benchmarks |
 | [tests/integration/README.md](tests/integration/README.md) | Integration tests (pytest): classifier, backend, cross-service, and observability (OTEL/Jaeger/Prometheus when `compose.obs.yml` is up) |
 
 **SonarCloud:** quality gate, CI setup, and hotspot policy are documented in the [SonarCloud](#sonarcloud-quality-gate-and-static-analysis) section above (extended notes may exist only in a local `docs/` copy).
-
-The root `docs/` folder is listed in `.gitignore`: local-only drafts, analysis, planning, and long guides (e.g. `DEVELOPMENT_ENVIRONMENT.md`, evaluation notes) are not versioned.
 
 ## Tech stack
 

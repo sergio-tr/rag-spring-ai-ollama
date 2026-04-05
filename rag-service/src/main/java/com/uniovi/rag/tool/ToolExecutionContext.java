@@ -1,6 +1,6 @@
 package com.uniovi.rag.tool;
 
-import com.uniovi.rag.model.QueryType;
+import com.uniovi.rag.domain.model.QueryType;
 import org.json.JSONObject;
 
 public record ToolExecutionContext(String query, QueryType queryType, JSONObject nerEntities) {

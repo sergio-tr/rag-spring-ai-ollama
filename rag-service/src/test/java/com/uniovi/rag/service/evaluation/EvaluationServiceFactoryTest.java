@@ -1,10 +1,16 @@
 package com.uniovi.rag.service.evaluation;
 
-import com.uniovi.rag.api.OllamaConnectivityChecker;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
+import com.uniovi.rag.service.guard.QueryDateExtractor;
+import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.service.ranker.ResponseRanker;
+import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.query.QueryService;
+import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.service.query.SimpleQueryService;
 import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
@@ -16,7 +22,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
 
 class EvaluationServiceFactoryTest {
 
@@ -33,6 +40,12 @@ class EvaluationServiceFactoryTest {
         DocumentContentExtractor documentContentExtractor = mock(DocumentContentExtractor.class);
         OllamaConnectivityChecker ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
         MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
+        ModelCatalogPort modelCatalogPort = mock(ModelCatalogPort.class);
+        ChatScopedRagConfigResolver chatScopedRagConfigResolver = mock(ChatScopedRagConfigResolver.class);
+        ReasoningStrategy reasoningStrategy = mock(ReasoningStrategy.class);
+        ResponseRanker responseRanker = mock(ResponseRanker.class);
+        PostRetrievalProcessor postRetrievalProcessor = mock(PostRetrievalProcessor.class);
+        QueryDateExtractor queryDateExtractor = mock(QueryDateExtractor.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         factory = new EvaluationServiceFactory(
@@ -54,7 +67,15 @@ class EvaluationServiceFactoryTest {
                 500,
                 200,
                 ollamaConnectivityChecker,
-                metadataLlmResponseCacheService
+                metadataLlmResponseCacheService,
+                modelCatalogPort,
+                chatScopedRagConfigResolver,
+                reasoningStrategy,
+                responseRanker,
+                postRetrievalProcessor,
+                queryDateExtractor,
+                false,
+                null
         );
         featureConfig = new RagFeatureConfiguration();
         implProps = new RagImplementationProperties();

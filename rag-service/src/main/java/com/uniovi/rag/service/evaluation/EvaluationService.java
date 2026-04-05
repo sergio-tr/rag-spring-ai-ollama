@@ -2,7 +2,7 @@ package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
-import com.uniovi.rag.model.Loggable;
+import com.uniovi.rag.infrastructure.observability.Loggable;
 
 import java.util.Map;
 
@@ -24,4 +24,7 @@ public interface EvaluationService extends Loggable {
     void loadData();
 
     Map<String, String> getQuestionsAndAnswers();
+
+    /** Whether the in-memory evaluation dataset has been loaded for this service instance. */
+    boolean isEvaluationDataLoaded();
 }

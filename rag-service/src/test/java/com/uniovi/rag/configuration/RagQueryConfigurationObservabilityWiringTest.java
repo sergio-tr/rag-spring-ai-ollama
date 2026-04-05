@@ -1,16 +1,16 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.observability.ObservabilitySupport;
-import com.uniovi.rag.observability.TracedDateExistenceGuard;
-import com.uniovi.rag.observability.TracedQueryAnalyser;
-import com.uniovi.rag.observability.TracedQueryClassifier;
-import com.uniovi.rag.observability.TracedQueryExpander;
-import com.uniovi.rag.observability.TracedReasoningStrategy;
-import com.uniovi.rag.observability.TracedResponseRanker;
-import com.uniovi.rag.observability.TracedResponseValidator;
+import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
+import com.uniovi.rag.infrastructure.observability.TracedDateExistenceGuard;
+import com.uniovi.rag.infrastructure.observability.TracedQueryAnalyser;
+import com.uniovi.rag.infrastructure.observability.TracedQueryClassifier;
+import com.uniovi.rag.infrastructure.observability.TracedQueryExpander;
+import com.uniovi.rag.infrastructure.observability.TracedReasoningStrategy;
+import com.uniovi.rag.infrastructure.observability.TracedResponseRanker;
+import com.uniovi.rag.infrastructure.observability.TracedResponseValidator;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
-import com.uniovi.rag.service.classifier.QueryClassifier;
+import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -20,8 +20,9 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.web.client.RestTemplate;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.Mockito.mock;
 
 class RagQueryConfigurationObservabilityWiringTest {
@@ -56,7 +57,9 @@ class RagQueryConfigurationObservabilityWiringTest {
         );
         assertInstanceOf(TracedQueryExpander.class, queryExpander);
 
-        QueryClassifier classifier = config.queryClassifier("http://localhost:8000", "default", 5000, observability);
+        QueryClassifier classifier =
+                config.queryClassifier(
+                        "http://localhost:8000", "default", 5000, observability, new SimpleMeterRegistry(), new RestTemplate());
         assertInstanceOf(TracedQueryClassifier.class, classifier);
 
         RagImplementationProperties implProps = new RagImplementationProperties();

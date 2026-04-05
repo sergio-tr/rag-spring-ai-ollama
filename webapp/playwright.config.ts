@@ -1,0 +1,48 @@
+import { defineConfig, devices } from "@playwright/test";
+
+const uiBaseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
+const apiBaseURL =
+  process.env.API_BASE_URL ?? process.env.INTEGRATION_BACKEND_URL ?? "http://127.0.0.1:9000";
+
+export default defineConfig({
+  testDir: "./e2e",
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 1 : 0,
+  reporter: process.env.CI
+    ? [
+        ["github"],
+        ["html", { outputFolder: "playwright-report", open: "never" }],
+        ["list"],
+      ]
+    : [["list"]],
+  use: {
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
+  },
+  projects: [
+    {
+      name: "chromium",
+      testIgnore: ["**/api/**"],
+      use: {
+        baseURL: uiBaseURL,
+        ...devices["Desktop Chrome"],
+      },
+    },
+    {
+      name: "api",
+      testMatch: ["**/api/**/*.spec.ts"],
+      use: {
+        baseURL: apiBaseURL,
+      },
+    },
+  ],
+  webServer: process.env.PLAYWRIGHT_SKIP_WEBSERVER
+    ? undefined
+    : {
+        command: "npm run start",
+        url: uiBaseURL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
+});

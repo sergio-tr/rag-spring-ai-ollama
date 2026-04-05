@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
 
 from app.base import BaseService, TracedService
 from app.container import ServiceContainer
