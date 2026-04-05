@@ -28,6 +28,8 @@ export default defineConfig({
         // Next.js App Router pages/layouts: large, async, and integration-heavy; covered by Playwright E2E. API route handlers under `src/app/api/**` remain in the gate.
         "src/app/**/page.tsx",
         "src/app/**/layout.tsx",
+        // Lab classifier train/eval/classify panels (extracted from page for Sonar); E2E/manual validation.
+        "src/app/**/lab-classifier-panels.tsx",
         // shadcn/Radix UI primitives (thin presentation); behavior is covered indirectly via feature tests.
         "src/components/ui/**",
         // App chrome (sidebar, shell, theme/i18n wiring): covered by E2E; thin composition only.

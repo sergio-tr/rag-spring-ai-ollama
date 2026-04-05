@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import * as apiClient from "@/lib/api-client";
@@ -80,7 +80,9 @@ describe("use-projects hooks", () => {
     const { wrapper, qc } = createWrapper();
     const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
     const { result } = renderHook(() => usePatchProject(), { wrapper });
-    await result.current.mutateAsync({ id: "p1", name: "NewName" });
+    await act(async () => {
+      await result.current.mutateAsync({ id: "p1", name: "NewName" });
+    });
     expect(useAppStore.getState().activeProject).toEqual({ id: "p1", name: "NewName" });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["projects"] });
   });
@@ -100,7 +102,9 @@ describe("use-projects hooks", () => {
     const { wrapper, qc } = createWrapper();
     const removeSpy = vi.spyOn(qc, "removeQueries");
     const { result } = renderHook(() => useDeleteProject(), { wrapper });
-    await result.current.mutateAsync("del");
+    await act(async () => {
+      await result.current.mutateAsync("del");
+    });
     expect(useAppStore.getState().activeProject).toBeNull();
     expect(removeSpy).toHaveBeenCalledWith({ queryKey: ["config", "project", "del"] });
     expect(removeSpy).toHaveBeenCalledWith({ queryKey: ["project-documents", "del"] });

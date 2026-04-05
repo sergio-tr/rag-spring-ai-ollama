@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { createTestQueryClient } from "@/test-utils/query-client";
@@ -61,7 +61,9 @@ describe("use-projects hooks", () => {
       updatedAt: "",
     });
     const { result } = renderHook(() => usePatchProject(), { wrapper: wrapper(qc) });
-    await result.current.mutateAsync({ id: "p1", name: "New" });
+    await act(async () => {
+      await result.current.mutateAsync({ id: "p1", name: "New" });
+    });
     expect(useAppStore.getState().activeProject?.name).toBe("New");
   });
 
@@ -69,7 +71,9 @@ describe("use-projects hooks", () => {
     useAppStore.setState({ activeProject: { id: "p1", name: "A" } });
     vi.mocked(apiFetch).mockResolvedValueOnce(undefined);
     const { result } = renderHook(() => useDeleteProject(), { wrapper: wrapper(qc) });
-    await result.current.mutateAsync("p1");
+    await act(async () => {
+      await result.current.mutateAsync("p1");
+    });
     expect(useAppStore.getState().activeProject).toBeNull();
   });
 
