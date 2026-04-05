@@ -382,7 +382,6 @@
                         <exclude>com/uniovi/rag/service/expand/MinuteDocumentStructureExpander.class</exclude>
                         <!-- Async lab worker: long I/O + LLM/classifier branches; covered via async service tests + E2E -->
                         <exclude>com/uniovi/rag/service/async/AsyncLabTaskRunner.class</exclude>
-                        <exclude>com/uniovi/rag/service/async/lab/**</exclude>
                         <!-- Chat message orchestration: transactional enqueue + afterCommit; covered by WebMvc slices + stack/E2E -->
                         <exclude>com/uniovi/rag/application/service/ChatMessageApplicationService.class</exclude>
                         <exclude>com/uniovi/rag/application/service/ChatMessageApplicationService$*.class</exclude>
@@ -392,7 +391,6 @@
                         <exclude>com/uniovi/rag/service/chat/ChatStreamChunks.class</exclude>
                         <!-- Query pipeline kernel + tool routing: very large branch surface; covered by dedicated test classes -->
                         <exclude>com/uniovi/rag/service/query/pipeline/AnswerGenerationKernel.class</exclude>
-                        <exclude>com/uniovi/rag/service/query/pipeline/ToolRoutingService.class</exclude>
                         <!-- SSE chat stream: covered by MessageStreamControllerTest + E2E; large branch surface -->
                         <exclude>com/uniovi/rag/interfaces/rest/MessageStreamController.class</exclude>
                         <!-- v5 REST controllers: covered by WebMvc slices + integration; full branch surface is large -->
@@ -468,11 +466,6 @@
                         <exclude>com/uniovi/rag/service/config/ChatScopedRagConfigResolver.class</exclude>
                         <!-- Product /me hub: integration-heavy or async handlers; REST covered by WebMvc slices; keep bundle ≥0.80 -->
                         <exclude>com/uniovi/rag/application/service/me/**</exclude>
-                        <exclude>com/uniovi/rag/application/service/account/**</exclude>
-                        <exclude>com/uniovi/rag/service/account/AccountExportCleanupScheduler.class</exclude>
-                        <exclude>com/uniovi/rag/service/async/account/**</exclude>
-                        <exclude>com/uniovi/rag/service/admin/AdminSystemDefaultsService.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/AccountExportArtifactEntity.class</exclude>
                         <exclude>com/uniovi/rag/interfaces/rest/me/MeSummaryController.class</exclude>
                         <exclude>com/uniovi/rag/interfaces/rest/me/MeDocumentsController.class</exclude>
                         <exclude>com/uniovi/rag/interfaces/rest/me/MePersonalizationController.class</exclude>
