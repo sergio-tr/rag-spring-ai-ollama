@@ -30,6 +30,10 @@ export default defineConfig({
         "src/app/**/layout.tsx",
         // Lab classifier train/eval/classify panels (extracted from page for Sonar); E2E/manual validation.
         "src/app/**/lab-classifier-panels.tsx",
+        // Shared lab LLM/RAG evaluation runner (logic lifted from App Router pages); E2E + manual.
+        "src/features/lab/components/lab-evaluation-run-card.tsx",
+        // Shared Lab/Settings tab shell; thin layout glue covered by E2E navigation.
+        "src/components/layout/app-subnav-section-layout.tsx",
         // shadcn/Radix UI primitives (thin presentation); behavior is covered indirectly via feature tests.
         "src/components/ui/**",
         // Shell + dropdown menu: Radix-heavy; sidebar/panel/settings covered by focused tests and E2E.
