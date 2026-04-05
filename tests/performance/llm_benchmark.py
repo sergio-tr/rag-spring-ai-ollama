@@ -7,7 +7,6 @@ Emphasizes token/cost lines in the report; HTTP paths are identical for a given 
 
 from __future__ import annotations
 
-import sys
 
 from retrieval_benchmark import main
 

@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 from unittest import mock
 
 from app.config import Config

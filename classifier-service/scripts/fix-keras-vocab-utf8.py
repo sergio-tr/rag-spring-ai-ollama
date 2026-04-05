@@ -7,7 +7,6 @@ TensorFlow/Keras expects TextVectorization vocab files to be UTF-8.
 
 from __future__ import annotations
 
-import io
 import sys
 import zipfile
 from pathlib import Path

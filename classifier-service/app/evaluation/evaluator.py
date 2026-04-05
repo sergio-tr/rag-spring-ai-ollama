@@ -3,11 +3,9 @@ Evaluation pipeline: load model, run predictions on eval dataset, compute metric
 Matches the behaviour of the legacy trainer (classification report table + confusion matrix heatmaps).
 """
 import io
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt

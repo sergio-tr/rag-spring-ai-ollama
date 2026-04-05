@@ -11,12 +11,10 @@ import argparse
 import json
 import os
 import socket
-import sys
 import time
 import urllib.request
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timezone
 
 import math
 
