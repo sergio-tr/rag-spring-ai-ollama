@@ -1,5 +1,5 @@
 # Shared Postgres bootstrap for Java tests and Spring Boot jobs that use the CI database.
-# Matches rag-service/scripts/ci-like-verify.* and the Backend job in .github/workflows/ci.yml:
+# Matches .github/local/ci-like-verify.sh and the Backend job in .github/workflows/ci.yml:
 # - extensions on vectordb (vector, hstore, uuid-ossp)
 # - database testdb + src/test/resources/test-init.sql
 #
@@ -36,7 +36,7 @@ runs:
           exit 1
         fi
         PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 \
-          -f rag-service/scripts/ci-postgres-extensions.sql
+          -f .ggithub/local/ci-postgres-extensions.sql
         if ! PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -tAc \
           "SELECT 1 FROM pg_database WHERE datname = 'testdb'" | grep -q 1; then
           PGPASSWORD=postgres psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \

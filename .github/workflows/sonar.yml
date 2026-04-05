@@ -61,7 +61,6 @@ jobs:
           distribution: temurin
           cache: maven
 
-      # Windows checkouts often lose the executable bit on mvnw; Linux requires +x for ./mvnw
       - name: Ensure Maven wrapper is executable
         working-directory: rag-service
         run: chmod +x mvnw
@@ -134,6 +133,7 @@ jobs:
           npm run test:coverage
 
       # ─── SonarCloud scan ──────────────────────────────────────────────────
+      # Local parity: docs/development/sonar-local-analysis.md + .github/local/sonar-local.sh
       # Reads sonar-project.properties from the repository root.
       # All coverage artifacts must exist before this step runs.
       #

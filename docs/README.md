@@ -18,6 +18,7 @@
 | Data model (ER) | [architecture/DATA_MODEL.md](architecture/DATA_MODEL.md) |
 | Testing strategy (overview) | [testing/README.md](testing/README.md), [development/e2e-testing-strategy.md](development/e2e-testing-strategy.md) (workflows vs gates), [testing/traceability-legacy-tools.md](testing/traceability-legacy-tools.md) (load-tool mapping) |
 | Coverage reports (paths, Sonar) | [coverage/README.md](coverage/README.md) |
+| SonarCloud scan locally (match `sonar.yml`) | [development/sonar-local-analysis.md](development/sonar-local-analysis.md), [scripts/README.md](../scripts/README.md) |
 | Classifier registry (train → activate) | [development/classifier-registry-demo.md](development/classifier-registry-demo.md) |
 | Performance / load (overview) | [performance/README.md](performance/README.md) |
 | ADRs | [adr/README.md](adr/README.md) |

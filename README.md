@@ -105,7 +105,7 @@ Prefixes are **configurable**. Spring: `rag.api.legacy-base-path` (`RAG_API_LEGA
 | `GET` | `{product}/lab/status` | Lab capability stub (authenticated) |
 | `GET` | `/api/admin/health` | Admin health (`403` unless JWT role `ADMIN`) |
 
-**Ollama URL:** set `SPRING_AI_OLLAMA_BASE_URL` (alias `OLLAMA_BASE_URL`) to the Ollama HTTP API — for example `http://127.0.0.1:11434` on the host. From a Spring app running **inside Docker** while Ollama runs on the host, use `http://host.docker.internal:11434` on Windows/macOS Docker Desktop, or the host’s LAN IP on Linux; see [docs/operations/environments.md](docs/operations/environments.md) and [rag-service/README.md](rag-service/README.md).
+**Ollama URL:** set `SPRING_AI_OLLAMA_BASE_URL` (alias `OLLAMA_BASE_URL`) to the Ollama HTTP API — for example `http://127.0.0.1:11434` on the host. See [docs/operations/environments.md](docs/operations/environments.md) and [rag-service/README.md](rag-service/README.md) for more details.
 
 **Generated docs:** Javadoc: `cd rag-service && ./mvnw javadoc:javadoc` → `rag-service/target/site/apidocs`. OpenAPI: `/v3/api-docs` when springdoc is enabled; export with [`rag-service/scripts/export-openapi.sh`](rag-service/scripts/export-openapi.sh). CI may write `openapi.json` during `verify` when a Postgres datasource is available. TypeDoc: `cd webapp && npm run doc` → `webapp/docs/api`. See [docs/README.md](docs/README.md) (auto-generated API docs).
 
@@ -116,6 +116,8 @@ Classifier endpoints: `POST /classify`, `GET /models`, `POST /train`, `POST /eva
 ## SonarCloud (quality gate and static analysis)
 
 Analysis is driven by [`sonar-project.properties`](sonar-project.properties) and [`.github/workflows/sonar.yml`](.github/workflows/sonar.yml). Set `sonar.projectKey` and `sonar.organization` to match your SonarCloud project, and add a **`SONAR_TOKEN`** repository secret (SonarCloud → *My Account → Security*).
+
+**Local scan (same steps as CI):** [`docs/development/sonar-local-analysis.md`](docs/development/sonar-local-analysis.md) — scripts [`.github/local/sonar-local.sh`](scripts/sonar-local.sh). Requires Postgres + Docker for the scanner image; set `SONAR_TOKEN` in the environment.
 
 **Branches:** pushes and PRs to `main` / `dev` trigger analysis. In SonarCloud, set the main branch to `main` (*Project → Administration → Branches and Pull Requests*) so **New Code** is computed correctly.
 

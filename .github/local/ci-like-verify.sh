@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RAG_SERVICE="$(cd "${SCRIPT_DIR}/.." && pwd)"
+RAG_SERVICE="$(cd "${SCRIPT_DIR}/../../rag-service" && pwd)"
 REPO_ROOT="$(cd "${RAG_SERVICE}/.." && pwd)"
 TEST_INIT="${RAG_SERVICE}/src/test/resources/test-init.sql"
 CI_EXT="${SCRIPT_DIR}/ci-postgres-extensions.sql"

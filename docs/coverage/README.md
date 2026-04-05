@@ -22,6 +22,7 @@ Figures change with every run; use the HTML reports for the current numbers.
 
 - **Java + Python:** `sonar.yml` runs `mvn verify`, classifier pytest, then **Vitest** `npm run test:coverage` so `webapp/coverage/lcov.info` exists before the scan.
 - **TypeScript:** Sources under `webapp/src`; **Vitest/LCOV** is the primary frontend coverage input for Sonar; Sonar adds a dashboard view of the same LCOV data.
+- **Local run (same pipeline):** [development/sonar-local-analysis.md](../development/sonar-local-analysis.md).
 
 ## Related
 

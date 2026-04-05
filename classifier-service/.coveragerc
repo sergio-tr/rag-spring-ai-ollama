@@ -2,6 +2,8 @@
 # Source directories to measure
 source = app
 
+relative_files = true
+
 # Omit files that don't need coverage measurement
 omit =
     tests/*

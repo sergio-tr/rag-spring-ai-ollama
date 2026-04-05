@@ -2,9 +2,7 @@
 """
 Fix legacy Keras v3 (.keras) vocabulary assets encoded in latin-1.
 
-TensorFlow/Keras expects TextVectorization vocab files to be UTF-8. Older models were
-saved on Windows with latin-1 bytes (e.g. "¿qué", "reunión"), which makes load_model()
-fail with UnicodeDecodeError.
+TensorFlow/Keras expects TextVectorization vocab files to be UTF-8. 
 """
 
 from __future__ import annotations

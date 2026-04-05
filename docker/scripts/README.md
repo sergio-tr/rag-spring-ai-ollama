@@ -18,7 +18,6 @@ Runs **all** automated checks in order:
 | Script | Platform |
 |--------|----------|
 | [`tests/full-stack-verify.sh`](../../tests/full-stack-verify.sh) | **Linux / WSL2** (canonical) |
-| `full-stack-verify.ps1` | Windows PowerShell only if you cannot use WSL2; not used in CI |
 
 Examples:
 

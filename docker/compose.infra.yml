@@ -1,10 +1,6 @@
 # node-exporter + cAdvisor. Host ports from observability/.env
 # Usage: docker compose ... -f compose.infra.yml --env-file ../observability/.env up -d
 # Also: ./docker/scripts/up.sh dev|prod --infra
-#
-# Docker Desktop (Windows/macOS) and WSL2: host /proc inside the VM may not expose every Linux
-# procfs file (e.g. softnet_stat, netstat), and bind mounts can duplicate tmpfs metrics. The flags
-# below silence those collectors and exclude noisy paths; on bare-metal Linux you may remove them.
 
 services:
   node-exporter:
