@@ -249,4 +249,80 @@ describe("postSseJson", () => {
 
     expect(onAbort).toHaveBeenCalledTimes(1);
   });
+
+  it("uses absolute URL when path is http(s)", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input) => {
+      expect(input).toBe("https://upstream.example/stream");
+      return Promise.resolve(streamResponse([]));
+    });
+
+    await postSseJson("https://upstream.example/stream", {}, undefined, {});
+  });
+
+  it("normalizes path without leading slash", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input) => {
+      expect(String(input)).toMatch(/\/api\/no-lead$/);
+      return Promise.resolve(streamResponse([]));
+    });
+
+    await postSseJson("api/no-lead", {}, undefined, {});
+  });
+
+  it("uses default error message when error event JSON has no message", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      streamResponse(["event: error", "data: {}", ""]),
+    );
+
+    const onError = vi.fn();
+    await postSseJson("/api/x", {}, undefined, { onError });
+
+    expect(onError).toHaveBeenCalledWith("error", undefined);
+  });
+
+  it("does not call onDelta when delta JSON has no text field", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      streamResponse(["event: delta", "data: {}", ""]),
+    );
+
+    const onDelta = vi.fn();
+    await postSseJson("/api/x", {}, undefined, { onDelta });
+
+    expect(onDelta).not.toHaveBeenCalled();
+  });
+
+  it("parses implicit delta when event name is empty but data is JSON", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      streamResponse(['data: {"text":"implicit"}', ""]),
+    );
+
+    const onDelta = vi.fn();
+    await postSseJson("/api/x", {}, undefined, { onDelta });
+
+    expect(onDelta).toHaveBeenCalledWith("implicit");
+  });
+
+  it("ignores non-data lines that are not events", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      streamResponse([": comment line", 'data: {"text":"ok"}', ""]),
+    );
+
+    const onDelta = vi.fn();
+    await postSseJson("/api/x", {}, undefined, { onDelta });
+
+    expect(onDelta).toHaveBeenCalledWith("ok");
+  });
+
+  it("uses empty string fallback when not-ok and body text fails", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      statusText: "Service Unavailable",
+      text: () => Promise.reject(new Error("read fail")),
+    } as Response);
+
+    const onError = vi.fn();
+    await postSseJson("/api/x", {}, undefined, { onError });
+
+    expect(onError).toHaveBeenCalledWith("Service Unavailable", "503");
+  });
 });

@@ -72,6 +72,22 @@ describe("streamLabJob", () => {
     await streamLabJob("/api/v5/lab/jobs/e/events", () => {});
   });
 
+  it("adds leading slash when streamPath has no slash prefix", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: RequestInfo) => {
+        expect(String(url)).toBe("http://localhost:9000/lab/stream");
+        return Promise.resolve(
+          mockFetchWithStream([
+            encodeLines(['event: task', 'data: {"terminal":true,"status":"SUCCEEDED"}', ""]),
+          ]),
+        );
+      }),
+    );
+
+    await streamLabJob("lab/stream", () => {});
+  });
+
   it("adds Bearer when access token exists", async () => {
     vi.spyOn(accessToken, "getAccessToken").mockReturnValue("tok");
     const fetchMock = vi.fn().mockResolvedValue(
@@ -145,6 +161,19 @@ describe("streamLabJob", () => {
     );
 
     await expect(streamLabJob("/e", () => {})).rejects.toThrow("boom");
+  });
+
+  it("throws Job failed when FAILED has no errorMessage", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        mockFetchWithStream([
+          encodeLines(['event: task', 'data: {"terminal":true,"status":"FAILED"}', ""]),
+        ]),
+      ),
+    );
+
+    await expect(streamLabJob("/e", () => {})).rejects.toThrow("Job failed");
   });
 
   it("ignores non-JSON data lines with SyntaxError", async () => {

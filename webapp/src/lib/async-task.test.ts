@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pollLabJob, sleep } from "./async-task";
+import { pollAccountJob, pollLabJob, sleep } from "./async-task";
 import * as apiClient from "./api-client";
 
 describe("sleep", () => {
@@ -59,5 +59,64 @@ describe("pollLabJob", () => {
 
     expect(apiClient.apiFetch).toHaveBeenCalledTimes(2);
     expect(ticks).toEqual(["RUNNING", "SUCCEEDED"]);
+  });
+
+  it("does not throw on FAILED when throwOnFailed is false", async () => {
+    const failed = {
+      terminal: true,
+      status: "FAILED",
+      errorMessage: "soft fail",
+    };
+    vi.mocked(apiClient.apiFetch).mockResolvedValue(failed as never);
+
+    const out = await pollLabJob("j", () => {}, { throwOnFailed: false });
+    expect(out.status).toBe("FAILED");
+    expect(out.errorMessage).toBe("soft fail");
+  });
+});
+
+describe("pollAccountJob", () => {
+  beforeEach(() => {
+    vi.spyOn(apiClient, "apiFetch").mockRejectedValue(new Error("unmocked"));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("polls me account jobs path until terminal", async () => {
+    vi.mocked(apiClient.apiFetch)
+      .mockResolvedValueOnce({ terminal: false, status: "RUNNING" } as never)
+      .mockResolvedValueOnce({ terminal: true, status: "SUCCEEDED" } as never);
+
+    await pollAccountJob("acc-1", () => {}, { intervalMs: 1 });
+
+    expect(apiClient.apiFetch).toHaveBeenLastCalledWith(
+      apiClient.apiProductPath("/me/account/jobs/acc-1"),
+    );
+  });
+
+  it("throws on FAILED by default", async () => {
+    vi.mocked(apiClient.apiFetch).mockResolvedValue({
+      terminal: true,
+      status: "FAILED",
+      errorMessage: "export failed",
+    } as never);
+
+    await expect(pollAccountJob("x", () => {})).rejects.toThrow("export failed");
+  });
+
+  it("respects throwOnFailed false", async () => {
+    const st = { terminal: true, status: "FAILED", errorMessage: null };
+    vi.mocked(apiClient.apiFetch).mockResolvedValue(st as never);
+
+    const out = await pollAccountJob("y", () => {}, { throwOnFailed: false });
+    expect(out.status).toBe("FAILED");
+  });
+
+  it("throws AbortError when signal aborted", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    await expect(pollAccountJob("z", () => {}, { signal: ac.signal })).rejects.toThrow();
   });
 });

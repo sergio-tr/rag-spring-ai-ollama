@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  apiDownloadBlob,
   apiFetch,
   apiProductPath,
   getApiBaseUrl,
@@ -295,5 +296,184 @@ describe("apiFetch", () => {
     const body = await apiFetch<{ data: boolean }>(apiProductPath("/y"));
     expect(body.data).toBe(true);
     expect(main).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses statusText when error response body read fails", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      statusText: "Bad Gateway",
+      headers: new Headers(),
+      text: () => Promise.reject(new Error("read failed")),
+    } as Response);
+
+    await expect(apiFetch("/z", { skipCredentials: true })).rejects.toMatchObject({
+      status: 502,
+      message: "Bad Gateway",
+    });
+  });
+
+  it("prefixes path without leading slash onto API base", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input) => {
+      expect(String(input)).toContain("/relative/path");
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        text: () => Promise.resolve(""),
+        json: () => Promise.resolve({}),
+      } as Response);
+    });
+
+    await apiFetch("relative/path", { skipCredentials: true });
+  });
+
+  it("does not override existing Authorization header", async () => {
+    vi.spyOn(accessToken, "getAccessToken").mockReturnValue("from-store");
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      const headers = new Headers(init?.headers as HeadersInit | undefined);
+      expect(headers.get("Authorization")).toBe("Bearer preset");
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        text: () => Promise.resolve(""),
+        json: () => Promise.resolve({}),
+      } as Response);
+    });
+
+    await apiFetch("/x", {
+      headers: new Headers({ Authorization: "Bearer preset" }),
+    });
+  });
+});
+
+describe("apiDownloadBlob", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("unmocked fetch"))),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("returns blob on 200", async () => {
+    const blob = new Blob(["zip"], { type: "application/zip" });
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      blob: () => Promise.resolve(blob),
+    } as Response);
+
+    const out = await apiDownloadBlob("/export.zip", { skipCredentials: true });
+    expect(out).toBe(blob);
+  });
+
+  it("retries after 401 when refresh succeeds", async () => {
+    vi.spyOn(accessToken, "getAccessToken").mockReturnValue("t");
+    const b = new Blob(["a"]);
+    const main = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        text: () => Promise.resolve(""),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        blob: () => Promise.resolve(b),
+      } as Response);
+
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (String(input).includes("/api/auth/refresh")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers({ "content-type": "application/json" }),
+          text: () => Promise.resolve(""),
+          json: () => Promise.resolve({ accessToken: "n" }),
+        } as Response);
+      }
+      return main();
+    });
+
+    const out = await apiDownloadBlob(apiProductPath("/me/export"));
+    expect(out).toBe(b);
+    expect(main).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws ApiError and notifies on 401 when refresh fails", async () => {
+    vi.spyOn(accessToken, "getAccessToken").mockReturnValue("t");
+    const listener = vi.fn();
+    onApiUnauthorized(listener);
+
+    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (String(input).includes("/api/auth/refresh")) {
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          headers: new Headers(),
+          text: () => Promise.resolve(""),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        text: () => Promise.resolve("denied"),
+      } as Response);
+    });
+
+    await expect(apiDownloadBlob(apiProductPath("/blob"))).rejects.toThrow(ApiError);
+    expect(listener).toHaveBeenCalled();
+  });
+
+  it("skips refresh when skipCredentials", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      headers: new Headers(),
+      text: () => Promise.resolve("x"),
+    } as Response);
+
+    await expect(apiDownloadBlob("/f", { skipCredentials: true })).rejects.toThrow(ApiError);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits traceparent when skipTraceparent", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      const headers = new Headers(init?.headers as HeadersInit | undefined);
+      expect(headers.has("traceparent")).toBe(false);
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        blob: () => Promise.resolve(new Blob()),
+      } as Response);
+    });
+
+    await apiDownloadBlob("/z", { skipCredentials: true, skipTraceparent: true });
+  });
+
+  it("uses GET method", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      expect(init?.method).toBe("GET");
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        blob: () => Promise.resolve(new Blob()),
+      } as Response);
+    });
+
+    await apiDownloadBlob("/a", { skipCredentials: true });
   });
 });

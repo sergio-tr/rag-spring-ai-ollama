@@ -32,22 +32,19 @@ export default defineConfig({
         "src/app/**/lab-classifier-panels.tsx",
         // shadcn/Radix UI primitives (thin presentation); behavior is covered indirectly via feature tests.
         "src/components/ui/**",
-        // App chrome (sidebar, shell, theme/i18n wiring): covered by E2E; thin composition only.
-        "src/components/layout/**",
-        "src/components/providers/**",
-        "src/components/settings/**",
-        // Large RAG settings form and lab classifier UI: manual/E2E validation; hooks remain gated.
+        // Shell + dropdown menu: Radix-heavy; sidebar/panel/settings covered by focused tests and E2E.
+        "src/components/layout/AppShell.tsx",
+        "src/components/layout/ThemeLanguageMenu.tsx",
+        // Large RAG settings form: manual/E2E validation; hooks remain gated.
         "src/features/settings/components/RagConfigForm.tsx",
         "src/features/settings/components/MeCanonicalJsonPanels.tsx",
-        "src/features/lab/components/classifier-registry-section.tsx",
       ],
-      // Gate: lines/statements/functions at 80% (backend/classifier parity). Branch aggregate stays
-      // lower due to error-path branching in src/lib (api-client, async-task) and excluded E2E-heavy UI.
+      // Gate: align with backend JaCoCo bundle (≥80% lines); branches covered via api-client, SSE, and polling tests.
       thresholds: {
         lines: 80,
         statements: 80,
         functions: 80,
-        branches: 74,
+        branches: 80,
       },
     },
   },

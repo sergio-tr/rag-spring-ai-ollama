@@ -23,6 +23,13 @@ describe("access-token", () => {
     expect(() => setAccessToken(null)).not.toThrow();
   });
 
+  it("ignores setItem failure when storing token", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    expect(() => setAccessToken("tok")).not.toThrow();
+  });
+
   it("returns null when empty", () => {
     expect(getAccessToken()).toBeNull();
   });
