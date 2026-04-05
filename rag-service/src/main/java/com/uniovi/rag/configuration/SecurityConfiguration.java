@@ -1,6 +1,5 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.security.JwtAuthenticationFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;

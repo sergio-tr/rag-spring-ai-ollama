@@ -2,7 +2,6 @@ package com.uniovi.rag.infrastructure.observability;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import io.micrometer.tracing.Span;
 import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.test.simple.SimpleTracer;
 import org.junit.jupiter.api.BeforeEach;

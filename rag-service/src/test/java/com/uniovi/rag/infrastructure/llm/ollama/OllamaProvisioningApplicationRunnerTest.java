@@ -3,7 +3,8 @@ package com.uniovi.rag.infrastructure.llm.ollama;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.DefaultApplicationArguments;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class OllamaProvisioningApplicationRunnerTest {
 

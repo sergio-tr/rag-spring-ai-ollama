@@ -3,16 +3,10 @@ package com.uniovi.rag.application.service.account;
 import com.uniovi.rag.domain.AccountExportArtifactStatus;
 import com.uniovi.rag.infrastructure.persistence.AccountExportArtifactRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AccountExportArtifactEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
-import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.file.Path;
-import java.time.Instant;
 import java.util.Map;
-import java.util.UUID;
 
 @Service
 public class AccountExportArtifactRegistrar {

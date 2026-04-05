@@ -1,6 +1,8 @@
 package com.uniovi.rag.tool.metadata;
 
-import com.uniovi.rag.domain.model.*;
+import com.uniovi.rag.domain.model.Cluster;
+import com.uniovi.rag.domain.model.FilterResult;
+import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
 import com.uniovi.rag.domain.model.Cluster;

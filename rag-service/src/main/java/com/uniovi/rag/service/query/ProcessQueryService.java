@@ -21,7 +21,6 @@ import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
-import com.uniovi.rag.service.query.pipeline.AnswerGenerationKernel;
 import com.uniovi.rag.service.query.pipeline.ChatRequestSpecFactory;
 import com.uniovi.rag.service.query.pipeline.CoreSynthesisResult;
 import com.uniovi.rag.service.query.pipeline.PreparedQuery;

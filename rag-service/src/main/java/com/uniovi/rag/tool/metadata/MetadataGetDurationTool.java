@@ -1,6 +1,7 @@
 package com.uniovi.rag.tool.metadata;
 
-import com.uniovi.rag.domain.model.*;
+import com.uniovi.rag.domain.model.DurationResult;
+import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
@@ -10,7 +11,8 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
 import java.time.LocalDate;
-import java.util.*;
+import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;

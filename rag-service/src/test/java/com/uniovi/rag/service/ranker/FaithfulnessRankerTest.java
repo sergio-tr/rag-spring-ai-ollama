@@ -9,7 +9,8 @@ import org.springframework.ai.chat.client.ChatClient;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class FaithfulnessRankerTest {
 

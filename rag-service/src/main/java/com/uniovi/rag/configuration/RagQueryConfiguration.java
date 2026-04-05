@@ -28,7 +28,6 @@ import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.service.query.LLMResponseValidatorService;
 import com.uniovi.rag.application.port.ModelCatalogPort;
-import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;

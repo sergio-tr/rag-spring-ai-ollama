@@ -16,7 +16,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;

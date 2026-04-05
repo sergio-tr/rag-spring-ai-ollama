@@ -8,10 +8,10 @@ import com.uniovi.rag.service.retriever.FilteredContextRetriever;
 import com.uniovi.rag.service.retriever.MinuteDocumentContextRetriever;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 /**

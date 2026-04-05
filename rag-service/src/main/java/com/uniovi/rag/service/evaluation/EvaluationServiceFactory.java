@@ -22,7 +22,6 @@ import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.service.ranker.ResponseRanker;
 import com.uniovi.rag.service.reasoning.ReasoningStrategy;
-import com.uniovi.rag.service.postretrieval.DefaultPostRetrievalProcessor;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.configuration.RagRuntimeProperties;

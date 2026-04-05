@@ -1,6 +1,8 @@
 package com.uniovi.rag.tool.metadata;
 
-import com.uniovi.rag.domain.model.*;
+import com.uniovi.rag.domain.model.Decision;
+import com.uniovi.rag.domain.model.DecisionCluster;
+import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;

@@ -7,7 +7,8 @@ import com.uniovi.rag.service.query.QueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 /** Covers {@link AbstractEvaluationService} via concrete subclass. */

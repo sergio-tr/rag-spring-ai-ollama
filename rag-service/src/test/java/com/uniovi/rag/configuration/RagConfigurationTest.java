@@ -2,7 +2,8 @@ package com.uniovi.rag.configuration;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Additional tests for {@link RagConfiguration} ({@link RagFeatureConfiguration} is registered via {@code @EnableConfigurationProperties}). */
 class RagConfigurationTest {
