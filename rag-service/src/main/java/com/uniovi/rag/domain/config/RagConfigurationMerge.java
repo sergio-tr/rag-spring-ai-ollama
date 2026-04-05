@@ -8,8 +8,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Pure cascade merge for {@link RagConfig}: system, user, project JSON layers, then runtime override.
- * No I/O; safe for unit tests without Spring.
+ * Pure cascade merge for {@link RagConfig}: system, user, project, optional preset/profile map, conversation
+ * JSON, then request terminal JSON. No I/O; safe for unit tests without Spring.
  */
 public final class RagConfigurationMerge {
 
@@ -26,14 +26,48 @@ public final class RagConfigurationMerge {
             Optional<Map<String, Object>> projectJson,
             JsonNode runtimeOverride,
             ObjectMapper objectMapper) {
+        return mergeCascade(
+                base,
+                systemJson,
+                userJson,
+                projectJson,
+                Optional.empty(),
+                null,
+                runtimeOverride,
+                objectMapper);
+    }
+
+    /**
+     * Full cascade: system, user, project, optional preset/profile merged map, conversation override, then
+     * terminal request override (wins on key conflicts over conversation).
+     */
+    public static RagConfig mergeCascade(
+            RagConfig base,
+            Optional<Map<String, Object>> systemJson,
+            Optional<Map<String, Object>> userJson,
+            Optional<Map<String, Object>> projectJson,
+            Optional<Map<String, Object>> presetProfileLayer,
+            JsonNode conversationRuntimeOverride,
+            JsonNode requestRuntimeOverride,
+            ObjectMapper objectMapper) {
         RagConfig c = base;
         c = applyOptionalMap(c, systemJson, objectMapper);
         c = applyOptionalMap(c, userJson, objectMapper);
         c = applyOptionalMap(c, projectJson, objectMapper);
-        if (runtimeOverride != null && !runtimeOverride.isNull()) {
-            c = RagConfig.applyJsonOverrides(c, runtimeOverride);
-        }
+        c = applyOptionalMap(c, presetProfileLayer, objectMapper);
+        c = applyJsonNodeIfPresent(c, conversationRuntimeOverride, objectMapper);
+        c = applyJsonNodeIfPresent(c, requestRuntimeOverride, objectMapper);
         return c;
+    }
+
+    private static RagConfig applyJsonNodeIfPresent(RagConfig base, JsonNode node, ObjectMapper objectMapper) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return base;
+        }
+        if (node.isObject() && node.isEmpty()) {
+            return base;
+        }
+        return RagConfig.applyJsonOverrides(base, node);
     }
 
     private static RagConfig applyOptionalMap(

@@ -74,7 +74,8 @@ class PresetControllerWebMvcTest {
                                 Map.of("topK", 5),
                                 false,
                                 Instant.parse("2025-01-01T00:00:00Z"),
-                                Instant.parse("2025-01-01T00:00:00Z"))));
+                                Instant.parse("2025-01-01T00:00:00Z"),
+                                List.of())));
 
         mockMvc.perform(get("/api/v5/presets"))
                 .andExpect(status().isOk())
@@ -95,7 +96,8 @@ class PresetControllerWebMvcTest {
                                 Map.of(),
                                 false,
                                 Instant.parse("2025-01-01T00:00:00Z"),
-                                Instant.parse("2025-01-01T00:00:00Z")));
+                                Instant.parse("2025-01-01T00:00:00Z"),
+                                List.of()));
 
         mockMvc.perform(
                         post("/api/v5/presets")

@@ -32,6 +32,11 @@ public class RuntimeConfigResolutionService {
     }
 
     @Transactional(readOnly = true)
+    public ResolvedRuntimeConfig preview(RuntimeConfigResolutionInput input) {
+        return configResolverService.preview(input);
+    }
+
+    @Transactional(readOnly = true)
     public ResolvedRuntimeConfig preview(
             UUID userId,
             UUID projectId,
@@ -40,7 +45,7 @@ public class RuntimeConfigResolutionService {
             CapabilitySet baselineCapability) {
         Set<ConfigProfileType> touched =
                 touchedProfileTypes == null ? Set.of() : Set.copyOf(touchedProfileTypes);
-        return configResolverService.preview(
+        return preview(
                 new RuntimeConfigResolutionInput(
                         userId,
                         projectId,

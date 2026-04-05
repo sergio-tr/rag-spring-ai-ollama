@@ -73,6 +73,8 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 
 **Product hub (`{product}/me/*`):** canonical JSON stores `GET/PUT …/me/preferences` and `…/me/personalization` (with `schema_version` in DB), `GET …/me/summary`, `GET …/me/documents`, `POST …/me/account/export` and `…/deletion` (HTTP **202** + `async_task`), poll `GET …/me/account/jobs/{id}`, download `GET …/me/account/export/{exportId}/download`. **Admin** defaults for new users: `GET/PUT /api/admin/system-defaults`. Legacy `GET/PUT {product}/config/user` remains but is marked **deprecated** in OpenAPI in favor of `/me/*` where overlaps exist.
 
+**Runtime configuration (`{product}/config/*`, JWT):** `GET …/config/schema`, `POST …/config/preview` (optional `presetId`, `conversationId`, `runtimeOverride`, reindex preview fields), `POST …/config/resolved-snapshots` (persist a resolved snapshot row for Lab reproducibility; returns `id` + `configHash`), `GET …/config/resolved-snapshots/{id}` (owner-only). Canonical persistence layout: [../docs/architecture/DATA_MODEL.md](../docs/architecture/DATA_MODEL.md) §6.1. Presets: `{product}/presets` includes optional `profileRefs` on create/update/list/get.
+
 ### Lab benchmarks
 
 Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `evaluation_run` + `evaluation_result`; `async_task` is operational (poll `/lab/jobs/{asyncTaskId}`).

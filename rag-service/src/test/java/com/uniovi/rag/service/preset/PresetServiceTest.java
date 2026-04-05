@@ -4,6 +4,7 @@ import com.uniovi.rag.interfaces.rest.dto.CreateRagPresetRequest;
 import com.uniovi.rag.interfaces.rest.dto.UpdateRagPresetRequest;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.infrastructure.persistence.ConfigProfileRepository;
 import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.application.service.AuditApplicationService;
@@ -28,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -46,6 +48,9 @@ class PresetServiceTest {
     @Mock
     private AuditApplicationService auditApplicationService;
 
+    @Mock
+    private ConfigProfileRepository configProfileRepository;
+
     @InjectMocks
     private PresetService presetService;
 
@@ -57,7 +62,7 @@ class PresetServiceTest {
         UserEntity owner = mock(UserEntity.class);
         RagPresetEntity e = RagPresetEntity.newUserOwned(owner, "p1", null, List.of(), Map.of("topK", 3), T0, T0);
         ReflectionTestUtils.setField(e, "id", UUID.randomUUID());
-        when(ragPresetRepository.findVisibleForUser(userId)).thenReturn(List.of(e));
+        when(ragPresetRepository.findVisibleForUserWithProfileRefs(userId)).thenReturn(List.of(e));
 
         var out = presetService.list(userId);
 
@@ -71,21 +76,27 @@ class PresetServiceTest {
         UUID userId = UUID.randomUUID();
         UserEntity owner = mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        RagPresetEntity[] lastSaved = {null};
         when(ragPresetRepository.save(any(RagPresetEntity.class)))
                 .thenAnswer(
                         inv -> {
                             RagPresetEntity saved = inv.getArgument(0);
-                            ReflectionTestUtils.setField(saved, "id", UUID.randomUUID());
+                            if (ReflectionTestUtils.getField(saved, "id") == null) {
+                                ReflectionTestUtils.setField(saved, "id", UUID.randomUUID());
+                            }
+                            lastSaved[0] = saved;
                             return saved;
                         });
+        when(ragPresetRepository.findByIdWithProfileRefs(any(UUID.class)))
+                .thenAnswer(inv -> Optional.ofNullable(lastSaved[0]));
 
-        var req = new CreateRagPresetRequest("  my preset  ", null, List.of("t"), Map.of("topK", 5));
+        var req = new CreateRagPresetRequest("  my preset  ", null, List.of("t"), Map.of("topK", 5), List.of());
         var dto = presetService.create(userId, req);
 
         assertThat(dto.name()).isEqualTo("my preset");
         assertThat(dto.tags()).containsExactly("t");
         ArgumentCaptor<RagPresetEntity> cap = ArgumentCaptor.forClass(RagPresetEntity.class);
-        verify(ragPresetRepository).save(cap.capture());
+        verify(ragPresetRepository, times(2)).save(cap.capture());
         assertThat(cap.getValue().getName()).isEqualTo("my preset");
         assertThat(cap.getValue().isSystem()).isFalse();
     }
@@ -99,7 +110,10 @@ class PresetServiceTest {
         e.setSystem(true);
         when(ragPresetRepository.findByIdAndOwner_Id(e.getId(), userId)).thenReturn(Optional.of(e));
 
-        assertThatThrownBy(() -> presetService.update(userId, e.getId(), new UpdateRagPresetRequest("x", null, null, null)))
+        assertThatThrownBy(
+                        () ->
+                                presetService.update(
+                                        userId, e.getId(), new UpdateRagPresetRequest("x", null, null, null, null)))
                 .isInstanceOf(ResponseStatusException.class);
     }
 
@@ -169,6 +183,7 @@ class PresetServiceTest {
         RagPresetEntity e = RagPresetEntity.newUserOwned(owner, "n", "d", List.of("x"), Map.of("k", 1), T0, T0);
         ReflectionTestUtils.setField(e, "id", presetId);
         when(ragPresetRepository.findById(presetId)).thenReturn(Optional.of(e));
+        when(ragPresetRepository.findByIdWithProfileRefs(presetId)).thenReturn(Optional.of(e));
 
         var dto = presetService.get(userId, presetId);
 
@@ -185,11 +200,12 @@ class PresetServiceTest {
         ReflectionTestUtils.setField(e, "id", UUID.randomUUID());
         when(ragPresetRepository.findByIdAndOwner_Id(e.getId(), userId)).thenReturn(Optional.of(e));
         when(ragPresetRepository.save(any(RagPresetEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(ragPresetRepository.findByIdWithProfileRefs(e.getId())).thenReturn(Optional.of(e));
 
         presetService.update(
                 userId,
                 e.getId(),
-                new UpdateRagPresetRequest(null, "  ", List.of("t"), Map.of("topK", 2)));
+                new UpdateRagPresetRequest(null, "  ", List.of("t"), Map.of("topK", 2), null));
 
         assertThat(e.getDescription()).isNull();
         assertThat(e.getTags()).containsExactly("t");

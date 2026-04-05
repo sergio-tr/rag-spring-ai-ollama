@@ -164,6 +164,7 @@ erDiagram
 | `evaluation_result` | optional scalar metrics | `config_snapshot`, `sources` |
 | `classifier_model` | metrics, `is_active`, `passes_gate`, `artifact_path`, status | `hyperparams` |
 | `async_task` | `task_type`, `status`, progress text | `request_payload`, `result_json` |
+| `resolved_config_snapshot` | `created_at`, `effective_system_prompt`, `config_hash` | `payload_jsonb`, `capability_set_jsonb`, `compatibility_result_jsonb`, `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `provenance_jsonb` (see §6.1) |
 
 **Trade-off:** JSON stays flexible for TFG iteration; heavy reporting may need GIN indexes or extracted columns later.
 
@@ -171,17 +172,40 @@ erDiagram
 
 ## 6. Active configuration resolution
 
-There is **no** single global “active_config” row. **Effective** RAG parameters are **computed at read time** (merge order):
+There is **no** single global “active_config” row. **Effective** RAG parameters are **computed at read time** (merge order; see `ConfigResolver` + `RagConfigurationMerge` in `rag-service`):
 
 1. Deployment defaults + latest `default_system_configuration` (by `updated_at`).
-2. `rag_configuration` with `level = USER_DEFAULT` and `project_id` IS NULL, active.
-3. `rag_configuration` with `level = PROJECT` for `(user_id, project_id)`, active.
-4. Optional request/chat JSON overrides (often not persisted).
-5. **Preset:** `conversations.preset_id` → apply preset snapshot semantics in application (see preset service), not only SQL.
+2. **User layer:** `rag_configuration` (`level = USER_DEFAULT`, `project_id` IS NULL, active), merged in the adapter with `user_preferences.preferences_jsonb` and `user_personalization.personalization_jsonb` (later maps win on key conflicts).
+3. **Project layer:** `rag_configuration` (`level = PROJECT` for `(user_id, project_id)`, active) and `projects.project_prompt` (feeds prompt composition separately from JSON merge).
+4. **Preset + profiles (when `preset_id` is supplied):** `rag_preset.values` plus ordered `config_profile.payload` rows linked by `rag_preset_profile_ref` (`ordinal`). Raw rows are loaded via `ConfigurationSourcePort.loadPresetProfileCompositionSources`; **merge** is only in `ConfigResolver` (`PresetProfilePayloadMerge` then `RagConfigurationMerge`).
+5. **Conversation runtime JSON:** `conversations.runtime_override_jsonb` when a `conversation_id` is supplied (load-only port); merged **before** the terminal request override.
+6. **Terminal request JSON:** HTTP request body override map; wins over the conversation runtime map on key conflicts when both are present.
 
-Implementation reference: `ConfigResolver` / `RagConfigurationMerge` in `rag-service` (`com.uniovi.rag.service.config`, `com.uniovi.rag.domain.config`).
+Chat execution paths that pass a **single** merged JSON node (e.g. legacy chat overlay) still delegate to the same resolver entrypoints; they do not reimplement merge.
 
 **ADR:** [0002-multitenancy-assumption.md](../adr/0002-multitenancy-assumption.md).
+
+### 6.1 `resolved_config_snapshot` (configuration artefact, not a run)
+
+**Migrations:** baseline [V21](../../rag-service/src/main/resources/db/migration/V21__config_profiles_and_presets.sql); semantic columns [V25](../../rag-service/src/main/resources/db/migration/V25__resolved_config_snapshot_semantic_columns.sql).
+
+This table stores a **reproducible, insert-only** snapshot of **resolved** runtime configuration. It is **not** `evaluation_run`, **not** `knowledge_index_snapshot`, **not** an execution trace. `evaluation_run.resolved_config_snapshot_id` references this table when a lab run pins configuration.
+
+| Column | Required on product insert | Purpose |
+|--------|----------------------------|---------|
+| `id`, `created_at` | yes (DB-generated) | Primary key and timestamp. |
+| `payload_jsonb` | yes | Versioned **projection** of transitional `RagConfig` (`toValueMap()` at write time); audit/replay, not the canonical domain model. |
+| `capability_set_jsonb` | yes | `CapabilitySet` JSON (mapper-owned shape). |
+| `compatibility_result_jsonb` | yes | Compatibility rule engine output. |
+| `reindex_impact_jsonb` | yes | `ReindexImpact` (V25). |
+| `system_prompt_layers_jsonb` | yes | Four-layer prompt inputs before composition (V25). |
+| `effective_system_prompt` | yes, non-blank | Output of `SystemPromptComposer` (V25). |
+| `provenance_jsonb` | yes | Domain provenance plus **`schema_version`** (int), **`creatingUserId`** (UUID string), optional **`correlationId`**. |
+| `config_hash` | yes | `ResolvedRuntimeConfigHasher` SHA-256 over canonical `ResolvedRuntimeConfig` JSON. |
+| `conversation_id`, `message_id`, `job_id` | optional | Optional linkage when the client supplies them. |
+| `prompt_stack_preview_jsonb` | omit (null) | Legacy; not written for new rows in microphase 2.2. |
+
+**Forward compatibility:** new snapshot JSON keys and new nullable columns should be **additive** only; readers ignore unknown keys where possible.
 
 ---
 
@@ -208,7 +232,7 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 
 ---
 
-## 9. Physical tables (baseline, Flyway V1–V19)
+## 9. Physical tables (baseline, Flyway V1–V25)
 
 | Table | Migration | Notes |
 |-------|-----------|--------|
@@ -230,8 +254,10 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 | seed / demo | V16, V18 | |
 | `async_task` | V17 | |
 | `evaluation_run.project_id`, `async_task.project_id` | V19 | Nullable FK to `projects`, `ON DELETE SET NULL`; see ADR 0003 |
+| `config_profile`, `rag_preset_profile_ref`, `resolved_config_snapshot`, `user_preferences`, `user_personalization`; `rag_preset.composition_version`; `projects.project_prompt`; `conversations.runtime_override_jsonb` | V21 | Config profiles, preset–profile composition, resolved snapshot baseline, prefs/personalization |
+| `resolved_config_snapshot` (semantic columns) | V25 | `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `effective_system_prompt` |
 
-**JPA:** `EvaluationRunEntity`, `AsyncTaskEntity` optional `@ManyToOne` to `ProjectEntity` (`project_id`).
+**JPA:** `EvaluationRunEntity`, `AsyncTaskEntity` optional `@ManyToOne` to `ProjectEntity` (`project_id`). **`ResolvedConfigSnapshotEntity`** maps `resolved_config_snapshot` (§6.1).
 
 ---
 

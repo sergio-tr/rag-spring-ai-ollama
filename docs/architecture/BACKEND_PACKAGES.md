@@ -4,8 +4,10 @@
 
 | Package / area | Role |
 |----------------|------|
+| `application.port` | Hexagonal ports: `ConfigurationSourcePort` (layer loads + raw preset/profile sources), `ConversationRuntimeOverrideLoader`, `RagConfigurationResolver` |
 | `application.port.out` | Outbound ports (interfaces) for use cases |
 | `application.config` | Runtime configuration resolution: `ConfigResolverService`, `RuntimeConfigResolutionInput`, `CompatibilityValidator`, `ReindexImpactAnalyzer`, `SystemPromptComposer` |
+| `application.service` | Use cases including `ResolvedConfigSnapshotApplicationService` (persist resolved snapshots after `ConfigResolverService.resolve`) |
 | `application.usecase` | Application services / use cases (e.g. auth) |
 | `api.auth` | REST auth controllers, DTOs, exceptions (not application logic) |
 | `api.admin` | `ROLE_ADMIN`: allowlist, Ollama pull orchestration |
@@ -18,16 +20,18 @@
 | `domain.config.capability` | `Capability`, `CapabilitySet`, `CapabilityGroup` (activation / presence for resolution) |
 | `domain.config.rules` | Declarative `CompatibilityRule` implementations (evaluated by `CompatibilityValidator`) |
 | `domain.config.runtime` | `ResolvedRuntimeConfig`, `ResolvedConfigSnapshot`, provenance / profile types for resolution |
+| `domain.config` (merge helpers) | `RagConfigurationMerge`, `PresetProfilePayloadMerge` (pure JSON/map merge; **invoked only from** `ConfigResolver` in production) |
 | `domain.config.indexing` | `ReindexImpact` / `ReindexImpactLevel` (semantic reindex preview) |
 | `domain.config.prompt` | `SystemPromptLayers` and related prompt-layer types (composition in `SystemPromptComposer`) |
 | `domain.runtime` | Effective RAG config / feature snapshots used during a query |
-| `infrastructure.persistence` | Spring Data JPA repositories, custom persistence adapters |
+| `infrastructure.persistence` | Spring Data JPA repositories, `ConversationRuntimeOverrideLoaderImpl`, custom persistence adapters |
 | `infrastructure.persistence.jpa` | JPA entities and entity factories |
+| `infrastructure.persistence.mapper` | `ResolvedConfigSnapshotEntityMapper` (sole read/write shape for `resolved_config_snapshot` JSON columns) |
 | `infrastructure.classifier` | HTTP clients to **classifier-service** (`ClassifierLabClient`, `QueryClassifier`, etc.) |
 | `service.query` | `ProcessQueryService` orchestration |
 | `service.query.pipeline` | Preparation, synthesis, tools routing, answer kernel |
 | `service.retriever` | Vector / corpus retrieval implementations |
-| `service.config` | User/project configuration resolution and sanitization |
+| `service.config` | `ConfigResolver` (cascade merge owner), user/project configuration, sanitization; `JpaConfigurationSourceAdapter` implements `ConfigurationSourcePort` |
 | `service.chat` | Chat-oriented orchestration helpers (if present) |
 | `service.document` | Ingestion pipeline for project documents |
 | `service.evaluation` | Minute evaluation and related services |

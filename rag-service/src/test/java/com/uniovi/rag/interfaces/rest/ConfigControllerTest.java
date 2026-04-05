@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
+import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.service.config.UserProjectConfigurationService;
@@ -31,6 +32,9 @@ class ConfigControllerTest {
 
     @MockitoBean
     private RuntimeConfigResolutionService runtimeConfigResolutionService;
+
+    @MockitoBean
+    private ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
 
     @Test
     void schema_returnsVersionAndFields() throws Exception {

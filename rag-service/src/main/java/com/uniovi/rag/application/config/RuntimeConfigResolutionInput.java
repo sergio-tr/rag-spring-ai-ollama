@@ -10,14 +10,15 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Single canonical input for {@link ConfigResolverService}. At most one of preset payload and standalone
- * runtime override should carry preset JSON; {@link #effectiveRuntimeOverride()} defines precedence.
+ * Single canonical input for {@link ConfigResolverService}. When {@code presetId} is empty, {@code presetPayload}
+ * may still supply terminal JSON (same role as legacy preview). When {@code presetId} is present, preset/profile
+ * layers load from persistence; terminal JSON is only {@code runtimeOverride}.
  */
 public record RuntimeConfigResolutionInput(
         UUID userId,
         UUID projectId,
-        Optional<String> conversationId,
-        Optional<String> presetId,
+        Optional<UUID> conversationId,
+        Optional<UUID> presetId,
         Optional<JsonNode> presetPayload,
         Optional<JsonNode> runtimeOverride,
         Set<ConfigProfileType> touchedProfileTypes,
@@ -27,16 +28,6 @@ public record RuntimeConfigResolutionInput(
 
     public RuntimeConfigResolutionInput {
         touchedProfileTypes = touchedProfileTypes == null ? Set.of() : Set.copyOf(touchedProfileTypes);
-    }
-
-    /**
-     * Precedence: explicit {@code runtimeOverride} if present, otherwise {@code presetPayload}.
-     */
-    public JsonNode effectiveRuntimeOverride() {
-        if (runtimeOverride.isPresent()) {
-            return runtimeOverride.get();
-        }
-        return presetPayload.orElse(null);
     }
 
     public static RuntimeConfigResolutionInput forResolve(UUID userId, UUID projectId, JsonNode runtimeOverride) {

@@ -6,11 +6,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public record RuntimeConfigPreviewRequest(
+/**
+ * Same shape as {@link RuntimeConfigPreviewRequest} plus optional correlation and snapshot linkage IDs.
+ */
+public record CreateResolvedConfigSnapshotRequest(
         @NotNull UUID projectId,
         UUID presetId,
         UUID conversationId,
+        UUID messageId,
+        UUID jobId,
         Map<String, Object> runtimeOverride,
         List<String> touchedProfileTypes,
-        CapabilitySetDto baselineCapabilitySnapshot) {
-}
+        CapabilitySetDto baselineCapabilitySnapshot,
+        String correlationId) {}

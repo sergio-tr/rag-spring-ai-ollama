@@ -1,12 +1,16 @@
 package com.uniovi.rag.service.preset;
 
 import com.uniovi.rag.interfaces.rest.dto.CreateRagPresetRequest;
+import com.uniovi.rag.interfaces.rest.dto.PresetProfileRefDto;
 import com.uniovi.rag.interfaces.rest.dto.RagPresetDto;
 import com.uniovi.rag.interfaces.rest.dto.UpdateRagPresetRequest;
-import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.infrastructure.persistence.ConfigProfileRepository;
 import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.ConfigProfileEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetProfileRefEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.application.service.AuditApplicationService;
 import com.uniovi.rag.service.config.RagConfigValueSanitizer;
 import com.uniovi.rag.service.config.UserProjectConfigurationService;
@@ -17,8 +21,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -33,26 +40,37 @@ public class PresetService {
     private final UserRepository userRepository;
     private final UserProjectConfigurationService userProjectConfigurationService;
     private final AuditApplicationService auditApplicationService;
+    private final ConfigProfileRepository configProfileRepository;
 
     public PresetService(
             RagPresetRepository ragPresetRepository,
             UserRepository userRepository,
             UserProjectConfigurationService userProjectConfigurationService,
-            AuditApplicationService auditApplicationService) {
+            AuditApplicationService auditApplicationService,
+            ConfigProfileRepository configProfileRepository) {
         this.ragPresetRepository = ragPresetRepository;
         this.userRepository = userRepository;
         this.userProjectConfigurationService = userProjectConfigurationService;
         this.auditApplicationService = auditApplicationService;
+        this.configProfileRepository = configProfileRepository;
     }
 
     @Transactional(readOnly = true)
     public List<RagPresetDto> list(UUID userId) {
-        return ragPresetRepository.findVisibleForUser(userId).stream().map(PresetService::toDto).toList();
+        List<RagPresetEntity> rows = new ArrayList<>(ragPresetRepository.findVisibleForUserWithProfileRefs(userId));
+        rows.sort(
+                Comparator.comparing(RagPresetEntity::isSystem)
+                        .thenComparing(RagPresetEntity::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+        return rows.stream().map(PresetService::toDto).toList();
     }
 
     @Transactional(readOnly = true)
     public RagPresetDto get(UUID userId, UUID presetId) {
-        return toDto(requireVisiblePreset(userId, presetId));
+        requireVisiblePreset(userId, presetId);
+        RagPresetEntity e =
+                ragPresetRepository.findByIdWithProfileRefs(presetId).orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "Preset not found"));
+        return toDto(e);
     }
 
     @Transactional
@@ -68,8 +86,14 @@ public class PresetService {
                 now,
                 now);
         e = ragPresetRepository.save(e);
+        List<PresetProfileRefDto> refs = req.profileRefs() != null ? req.profileRefs() : List.of();
+        validateAndReplaceProfileRefs(userId, e, refs);
+        if (!refs.isEmpty()) {
+            e.setCompositionVersion(1);
+        }
+        e = ragPresetRepository.save(e);
         auditApplicationService.record(userId, "RAG_PRESET_CREATE", "rag_preset", e.getId(), Map.of("name", e.getName()));
-        return toDto(e);
+        return toDto(refreshWithRefs(e.getId()));
     }
 
     @Transactional
@@ -91,10 +115,14 @@ public class PresetService {
         if (req.values() != null) {
             e.setValues(RagConfigValueSanitizer.sanitize(req.values()));
         }
+        if (req.profileRefs() != null) {
+            validateAndReplaceProfileRefs(userId, e, req.profileRefs());
+            e.setCompositionVersion(e.getCompositionVersion() + 1);
+        }
         e.setUpdatedAt(Instant.now());
         e = ragPresetRepository.save(e);
         auditApplicationService.record(userId, "RAG_PRESET_UPDATE", "rag_preset", e.getId(), Map.of("name", e.getName()));
-        return toDto(e);
+        return toDto(refreshWithRefs(e.getId()));
     }
 
     @Transactional
@@ -136,7 +164,56 @@ public class PresetService {
         return entity;
     }
 
+    private RagPresetEntity refreshWithRefs(UUID presetId) {
+        return ragPresetRepository.findByIdWithProfileRefs(presetId).orElseThrow();
+    }
+
+    private void validateAndReplaceProfileRefs(UUID userId, RagPresetEntity preset, List<PresetProfileRefDto> refs) {
+        if (refs == null || refs.isEmpty()) {
+            if (preset.getProfileRefs() != null) {
+                preset.getProfileRefs().clear();
+            }
+            return;
+        }
+        Set<Integer> ordinals = new HashSet<>();
+        for (PresetProfileRefDto r : refs) {
+            if (!ordinals.add(r.ordinal())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate profile ref ordinal");
+            }
+        }
+        List<PresetProfileRefDto> sorted = new ArrayList<>(refs);
+        sorted.sort(Comparator.comparingInt(PresetProfileRefDto::ordinal));
+        if (preset.getProfileRefs() == null) {
+            preset.setProfileRefs(new ArrayList<>());
+        } else {
+            preset.getProfileRefs().clear();
+        }
+        for (PresetProfileRefDto r : sorted) {
+            ConfigProfileEntity profile =
+                    configProfileRepository
+                            .findById(r.profileId())
+                            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown profile"));
+            if (profile.getOwner() != null && !profile.getOwner().getId().equals(userId)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Profile not visible");
+            }
+            // System-scoped profiles (owner null) are visible to all users for preset composition.
+            preset.getProfileRefs().add(RagPresetProfileRefEntity.link(preset, profile, r.ordinal(), r.role()));
+        }
+    }
+
     private static RagPresetDto toDto(RagPresetEntity e) {
+        List<PresetProfileRefDto> profileRefs =
+                e.getProfileRefs() == null || e.getProfileRefs().isEmpty()
+                        ? List.of()
+                        : e.getProfileRefs().stream()
+                                .sorted(Comparator.comparingInt(RagPresetProfileRefEntity::getOrdinal))
+                                .map(
+                                        r ->
+                                                new PresetProfileRefDto(
+                                                        r.getOrdinal(),
+                                                        r.getProfile().getId(),
+                                                        r.getRole()))
+                                .toList();
         return new RagPresetDto(
                 e.getId(),
                 e.getName(),
@@ -145,6 +222,7 @@ public class PresetService {
                 e.getValues() != null ? Map.copyOf(e.getValues()) : Map.of(),
                 e.isSystem(),
                 e.getCreatedAt(),
-                e.getUpdatedAt());
+                e.getUpdatedAt(),
+                profileRefs);
     }
 }

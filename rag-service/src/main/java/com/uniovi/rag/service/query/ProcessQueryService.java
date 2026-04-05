@@ -302,8 +302,17 @@ public class ProcessQueryService implements QueryService {
             }
             UUID uid = UUID.fromString(uidStr.trim());
             UUID pid = UUID.fromString(pidStr.trim());
-            Optional<String> conv =
-                    Optional.ofNullable(contextOverlay.conversationId()).filter(s -> !s.isBlank());
+            Optional<java.util.UUID> conv =
+                    Optional.ofNullable(contextOverlay.conversationId())
+                            .filter(s -> !s.isBlank())
+                            .flatMap(
+                                    s -> {
+                                        try {
+                                            return Optional.of(java.util.UUID.fromString(s.trim()));
+                                        } catch (IllegalArgumentException e) {
+                                            return Optional.empty();
+                                        }
+                                    });
             RuntimeConfigResolutionInput input =
                     new RuntimeConfigResolutionInput(
                             uid,

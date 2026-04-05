@@ -18,10 +18,12 @@
 
 ## Resolution flow (conceptual)
 
-1. **Inputs:** system defaults, user-level settings, project-level settings, selected preset/profile, optional **flags** as raw inputs, workflow selection hints.
+Production resolution follows a single **ResolutionPipeline** orchestrated by `ConfigResolverService` and `ConfigResolver`: load persisted layers (system, user including prefs/personalization, project, optional preset+profiles from DB, optional conversation `runtime_override_jsonb`), apply terminal request JSON, then validate (`CompatibilityValidator`), reindex preview (`ReindexImpactAnalyzer`), and compose prompts (`SystemPromptComposer`). **JSON merge** for configuration layers is owned by `ConfigResolver` / `RagConfigurationMerge` (+ `PresetProfilePayloadMerge` for preset+profile maps); adapters **load only**.
+
+1. **Inputs:** system defaults, user-level settings (including `user_preferences` / `user_personalization`), project-level settings, optional persisted preset + linked profiles, optional conversation runtime JSON, optional request JSON, optional **flags** as raw inputs.
 2. **Normalization:** map raw inputs to **capabilities** and preset identifiers.
 3. **Validation:** apply `CompatibilityRule` set; fail fast or degrade with explicit trace.
-4. **Output:** materialize `ResolvedRuntimeConfig` and optionally persist `ResolvedConfigSnapshot` for the run.
+4. **Output:** materialize `ResolvedRuntimeConfig`; optional **persisted** row in `resolved_config_snapshot` via `ResolvedConfigSnapshotApplicationService` (insert-only, `config_hash`, §6.1 in [DATA_MODEL.md](DATA_MODEL.md)).
 5. **Prompts:** `SystemPromptComposer` produces the **effective system prompt** as part of resolved semantics (not “just UX copy”).
 6. **Index impact:** if change affects chunking, embedding model, or indexed fields, `ReindexImpactAnalyzer` flags required knowledge operations.
 
@@ -54,14 +56,10 @@ The **UI** may edit underlying fields, but **canonical semantics** live under **
 
 ### What is partial
 
-- **CapabilityGroup** / **Capability** / **CompatibilityRule** naming and explicit rule engine may not exist as such; validation may be ad hoc.
-- **`ResolvedConfigSnapshot`** as an explicit persisted artefact for every lab run may be partial or implicit.
-- **`ReindexImpactAnalyzer`** may be implicit (operator knowledge) rather than a named component.
-- **`SystemPromptComposer`** may be spread across builders/templates without a single documented seam.
+- **`ResolvedConfigSnapshot` (domain)** exists; **persisted** snapshots are written from product `POST …/config/resolved-snapshots` (see [DATA_MODEL.md](DATA_MODEL.md) §6.1). Lab runs continue to reference `resolved_config_snapshot.id` where the evaluation model already supports it.
+- Documented mapping from **every** governance-relevant flag to **capabilities** may still evolve (future microphase).
 
 ### What is still missing
 
-- Explicit compatibility matrix and user-visible errors when combinations are invalid.
-- Uniform **snapshot** of resolved config attached to **ExecutionTrace** / lab results.
-- Documented mapping from **every** governance-relevant flag to **capabilities** (future microphase).
-- Single place in code identified as `SystemPromptComposer` matching this document.
+- Uniform **snapshot** row attached to **ExecutionTrace** for all execution paths (runtime engine follow-up).
+- Broader user-visible compatibility matrix surfacing beyond current rule engine output.

@@ -2,6 +2,8 @@ package com.uniovi.rag.application.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.uniovi.rag.application.port.ConfigurationSourcePort;
+import com.uniovi.rag.application.port.ConversationRuntimeOverrideLoader;
 import com.uniovi.rag.application.port.RagConfigurationResolver;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.indexing.ReindexImpactLevel;
@@ -28,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -39,6 +42,8 @@ class ConfigResolverServiceTest {
     private RagConfigurationResolver ragConfigurationResolver;
     private ProjectRepository projectRepository;
     private UserPersonalizationRepository userPersonalizationRepository;
+    private ConversationRuntimeOverrideLoader conversationRuntimeOverrideLoader;
+    private ConfigurationSourcePort configurationSourcePort;
     private ConfigResolverService service;
 
     private static RagConfig validCore() {
@@ -56,6 +61,8 @@ class ConfigResolverServiceTest {
         ragConfigurationResolver = mock(RagConfigurationResolver.class);
         projectRepository = mock(ProjectRepository.class);
         userPersonalizationRepository = mock(UserPersonalizationRepository.class);
+        conversationRuntimeOverrideLoader = mock(ConversationRuntimeOverrideLoader.class);
+        configurationSourcePort = mock(ConfigurationSourcePort.class);
         CompatibilityValidator compatibilityValidator =
                 new CompatibilityValidator(new CompatibilityRulesConfiguration().compatibilityRules());
         service =
@@ -65,7 +72,9 @@ class ConfigResolverServiceTest {
                         userPersonalizationRepository,
                         compatibilityValidator,
                         new ReindexImpactAnalyzer(),
-                        new SystemPromptComposer());
+                        new SystemPromptComposer(),
+                        conversationRuntimeOverrideLoader,
+                        configurationSourcePort);
     }
 
     @Test
@@ -86,12 +95,12 @@ class ConfigResolverServiceTest {
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty());
-        when(ragConfigurationResolver.resolve(eq(user), eq(project), eq(runtime)))
+        when(ragConfigurationResolver.resolve(eq(user), eq(project), isNull(), isNull(), eq(runtime)))
                 .thenReturn(validCore());
 
         ResolvedRuntimeConfig resolved = service.resolve(input);
 
-        verify(ragConfigurationResolver).resolve(user, project, runtime);
+        verify(ragConfigurationResolver).resolve(user, project, null, null, runtime);
         assertEquals(10, resolved.resolvedCoreConfig().topK());
         assertSame(resolved.toRagConfig(), resolved.legacyProjection());
     }
@@ -103,7 +112,7 @@ class ConfigResolverServiceTest {
                         validCore(),
                         MAPPER.readTree(
                                 "{\"functionCallingEnabled\": true, \"naiveFullCorpusInPromptEnabled\": true}"));
-        when(ragConfigurationResolver.resolve(any(), any(), any())).thenReturn(bad);
+        when(ragConfigurationResolver.resolve(any(), any(), any(), any(), any())).thenReturn(bad);
 
         RuntimeConfigResolutionInput input =
                 RuntimeConfigResolutionInput.forResolve(UUID.randomUUID(), UUID.randomUUID(), null);
@@ -118,7 +127,7 @@ class ConfigResolverServiceTest {
                         validCore(),
                         MAPPER.readTree(
                                 "{\"functionCallingEnabled\": true, \"naiveFullCorpusInPromptEnabled\": true}"));
-        when(ragConfigurationResolver.resolve(any(), any(), any())).thenReturn(bad);
+        when(ragConfigurationResolver.resolve(any(), any(), any(), any(), any())).thenReturn(bad);
 
         RuntimeConfigResolutionInput input =
                 RuntimeConfigResolutionInput.forResolve(UUID.randomUUID(), UUID.randomUUID(), null);
@@ -129,7 +138,7 @@ class ConfigResolverServiceTest {
 
     @Test
     void previewComputesReindexWhenTouchedProfilesPresent() {
-        when(ragConfigurationResolver.resolve(any(), any(), any())).thenReturn(validCore());
+        when(ragConfigurationResolver.resolve(any(), any(), any(), any(), any())).thenReturn(validCore());
 
         RuntimeConfigResolutionInput input =
                 new RuntimeConfigResolutionInput(
@@ -150,7 +159,7 @@ class ConfigResolverServiceTest {
 
     @Test
     void resolveUsesNoReindexWhenNotPreviewStyleSignals() {
-        when(ragConfigurationResolver.resolve(any(), any(), any())).thenReturn(validCore());
+        when(ragConfigurationResolver.resolve(any(), any(), any(), any(), any())).thenReturn(validCore());
 
         RuntimeConfigResolutionInput input =
                 RuntimeConfigResolutionInput.forResolve(UUID.randomUUID(), UUID.randomUUID(), null);
@@ -162,7 +171,7 @@ class ConfigResolverServiceTest {
     @Test
     void snapshotEqualityStableForSameFields() {
         RagConfig core = validCore();
-        when(ragConfigurationResolver.resolve(any(), any(), any())).thenReturn(core);
+        when(ragConfigurationResolver.resolve(any(), any(), any(), any(), any())).thenReturn(core);
 
         ResolvedRuntimeConfig r =
                 service.resolve(RuntimeConfigResolutionInput.forResolve(null, null, null));

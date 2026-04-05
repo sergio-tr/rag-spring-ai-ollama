@@ -1,5 +1,9 @@
 package com.uniovi.rag.application.config;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.uniovi.rag.application.port.ConfigurationSourcePort;
+import com.uniovi.rag.application.port.ConversationRuntimeOverrideLoader;
+import com.uniovi.rag.application.port.PresetProfileCompositionSources;
 import com.uniovi.rag.application.port.RagConfigurationResolver;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -35,6 +39,8 @@ public class ConfigResolverService {
     private final CompatibilityValidator compatibilityValidator;
     private final ReindexImpactAnalyzer reindexImpactAnalyzer;
     private final SystemPromptComposer systemPromptComposer;
+    private final ConversationRuntimeOverrideLoader conversationRuntimeOverrideLoader;
+    private final ConfigurationSourcePort configurationSourcePort;
 
     public ConfigResolverService(
             RagConfigurationResolver ragConfigurationResolver,
@@ -42,13 +48,17 @@ public class ConfigResolverService {
             UserPersonalizationRepository userPersonalizationRepository,
             CompatibilityValidator compatibilityValidator,
             ReindexImpactAnalyzer reindexImpactAnalyzer,
-            SystemPromptComposer systemPromptComposer) {
+            SystemPromptComposer systemPromptComposer,
+            ConversationRuntimeOverrideLoader conversationRuntimeOverrideLoader,
+            ConfigurationSourcePort configurationSourcePort) {
         this.ragConfigurationResolver = ragConfigurationResolver;
         this.projectRepository = projectRepository;
         this.userPersonalizationRepository = userPersonalizationRepository;
         this.compatibilityValidator = compatibilityValidator;
         this.reindexImpactAnalyzer = reindexImpactAnalyzer;
         this.systemPromptComposer = systemPromptComposer;
+        this.conversationRuntimeOverrideLoader = conversationRuntimeOverrideLoader;
+        this.configurationSourcePort = configurationSourcePort;
     }
 
     @Transactional(readOnly = true)
@@ -88,9 +98,15 @@ public class ConfigResolverService {
     }
 
     private ResolvedRuntimeConfig buildResolved(RuntimeConfigResolutionInput input, boolean previewMode) {
+        JsonNode conversationNode = loadConversationRuntimeOverride(input);
+        JsonNode requestNode = resolveRequestRuntimeOverrideNode(input);
         RagConfig core =
                 ragConfigurationResolver.resolve(
-                        input.userId(), input.projectId(), input.effectiveRuntimeOverride());
+                        input.userId(),
+                        input.projectId(),
+                        input.presetId().orElse(null),
+                        conversationNode,
+                        requestNode);
         CapabilitySet capabilitySet = CapabilitySet.fromRagConfig(core);
         CompatibilityResult compatibility = compatibilityValidator.validate(capabilitySet, core);
 
@@ -116,18 +132,42 @@ public class ConfigResolverService {
     }
 
     private ConfigProvenance buildProvenance(RuntimeConfigResolutionInput input) {
-        UUID presetUuid =
-                input.presetId()
-                        .map(
-                                s -> {
-                                    try {
-                                        return UUID.fromString(s);
-                                    } catch (IllegalArgumentException e) {
-                                        return null;
-                                    }
-                                })
-                        .orElse(null);
-        return new ConfigProvenance(null, null, null, List.of(), presetUuid, null);
+        UUID presetUuid = input.presetId().orElse(null);
+        List<UUID> profileIds = resolveProfileIdsForProvenance(input);
+        return new ConfigProvenance(null, null, null, profileIds, presetUuid, null);
+    }
+
+    private JsonNode loadConversationRuntimeOverride(RuntimeConfigResolutionInput input) {
+        if (input.userId() == null || input.conversationId().isEmpty()) {
+            return null;
+        }
+        return conversationRuntimeOverrideLoader
+                .loadRuntimeOverride(input.userId(), input.conversationId().get())
+                .orElse(null);
+    }
+
+    /**
+     * Terminal JSON: explicit runtime override wins; otherwise when no persisted {@code presetId}, fall back to
+     * {@code presetPayload} (legacy preview).
+     */
+    private static JsonNode resolveRequestRuntimeOverrideNode(RuntimeConfigResolutionInput input) {
+        if (input.runtimeOverride().isPresent()) {
+            return input.runtimeOverride().get();
+        }
+        if (input.presetId().isEmpty()) {
+            return input.presetPayload().orElse(null);
+        }
+        return null;
+    }
+
+    private List<UUID> resolveProfileIdsForProvenance(RuntimeConfigResolutionInput input) {
+        if (input.userId() == null || input.presetId().isEmpty()) {
+            return List.of();
+        }
+        return configurationSourcePort
+                .loadPresetProfileCompositionSources(input.userId(), input.presetId().get())
+                .map(PresetProfileCompositionSources::profileIds)
+                .orElse(List.of());
     }
 
     private SystemPromptLayers loadSystemPromptLayers(UUID userId, UUID projectId) {

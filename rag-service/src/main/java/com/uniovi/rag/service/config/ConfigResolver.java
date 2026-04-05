@@ -6,11 +6,14 @@ import com.uniovi.rag.application.port.ConfigurationSourcePort;
 import com.uniovi.rag.application.port.RagConfigurationResolver;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagReasoningProperties;
+import com.uniovi.rag.domain.config.PresetProfilePayloadMerge;
 import com.uniovi.rag.domain.config.RagConfigurationMerge;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,6 +59,16 @@ public class ConfigResolver implements RagConfigurationResolver {
      */
     @Override
     public RagConfig resolve(UUID userId, UUID projectId, JsonNode runtimeOverride) {
+        return resolve(userId, projectId, null, null, runtimeOverride);
+    }
+
+    @Override
+    public RagConfig resolve(
+            UUID userId,
+            UUID projectId,
+            UUID presetId,
+            JsonNode conversationRuntimeOverride,
+            JsonNode requestRuntimeOverride) {
         RagConfig base =
                 RagConfig.fromFeatureConfiguration(
                         featureConfig,
@@ -74,6 +87,28 @@ public class ConfigResolver implements RagConfigurationResolver {
                         ? configurationSource.loadProject(userId, projectId)
                         : Optional.empty();
 
-        return RagConfigurationMerge.mergeCascade(base, system, user, project, runtimeOverride, objectMapper);
+        Optional<java.util.Map<String, Object>> presetProfileLayer = Optional.empty();
+        if (userId != null && presetId != null) {
+            presetProfileLayer =
+                    configurationSource
+                            .loadPresetProfileCompositionSources(userId, presetId)
+                            .map(
+                                    src -> {
+                                        List<java.util.Map<String, Object>> payloads =
+                                                new ArrayList<>(src.orderedProfilePayloads());
+                                        return PresetProfilePayloadMerge.merge(src.presetValues(), payloads);
+                                    })
+                            .filter(m -> !m.isEmpty());
+        }
+
+        return RagConfigurationMerge.mergeCascade(
+                base,
+                system,
+                user,
+                project,
+                presetProfileLayer,
+                conversationRuntimeOverride,
+                requestRuntimeOverride,
+                objectMapper);
     }
 }

@@ -143,6 +143,10 @@ public class RagPresetEntity {
         return profileRefs;
     }
 
+    public void setProfileRefs(List<RagPresetProfileRefEntity> profileRefs) {
+        this.profileRefs = profileRefs != null ? profileRefs : new ArrayList<>();
+    }
+
     public static RagPresetEntity newUserOwned(
             UserEntity owner,
             String name,
