@@ -11,11 +11,11 @@ This directory provides scripts to **replicate GitHub Actions workflows locally*
 
 ## Available Scripts
 
-| Script                       | Purpose                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------- |
-| `ci-like-sonar.sh`           | Full pipeline: build + tests + coverage + SonarCloud scan (mirrors `sonar.yml`) |
-| `ci-like-verify.sh`          | Backend-only CI replication with PostgreSQL + `mvn verify` (mirrors `ci.yml`)   |
-| `ci-postgres-extensions.sql` | Required PostgreSQL extensions setup (`vector`, `hstore`, `uuid-ossp`)          |
+| Script | Purpose |
+| --- | --- |
+| `ci-like-sonar.sh` | Full pipeline: build + tests + coverage + SonarCloud scan (mirrors `sonar.yml`) |
+| `ci-like-verify.sh` | Backend-only CI replication with PostgreSQL + `mvn verify` (mirrors `ci.yml`) |
+| `ci-postgres-extensions.sql` | Required PostgreSQL extensions setup (`vector`, `hstore`, `uuid-ossp`) |
 
 ---
 
@@ -46,12 +46,12 @@ export SONAR_TOKEN=your_token
 
 ### Optional Environment Variables
 
-| Variable                 | Description                            |
-| ------------------------ | -------------------------------------- |
-| `SONAR_BRANCH_NAME`      | Publish analysis for a specific branch |
-| `SKIP_POSTGRES_PREP=1`   | Skip DB initialization                 |
-| `USE_DOCKER_PG_CLIENT=0` | Force native `psql` usage              |
-| `SKIP_AUTO_JDK21=1`      | Disable automatic JDK 21 detection     |
+| Variable | Description |
+| --- | --- |
+| `SONAR_BRANCH_NAME` | Publish analysis for a specific branch |
+| `SKIP_POSTGRES_PREP=1` | Skip DB initialization |
+| `USE_DOCKER_PG_CLIENT=0` | Force native `psql` usage |
+| `SKIP_AUTO_JDK21=1` | Disable automatic JDK 21 detection |
 
 ---
 
@@ -78,10 +78,10 @@ Replicates the backend portion of CI:
 
 ### Environment Variables
 
-| Variable                    | Description           |
-| --------------------------- | --------------------- |
+| Variable | Description |
+| --- | --- |
 | `RAG_CI_POSTGRES_CONTAINER` | Custom container name |
-| `RAG_CI_STOP_CONTAINER=1`   | Auto-remove container |
+| `RAG_CI_STOP_CONTAINER=1` | Auto-remove container |
 
 ---
 

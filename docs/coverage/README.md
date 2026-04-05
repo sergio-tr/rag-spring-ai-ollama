@@ -5,7 +5,7 @@ This document records **where** each module writes coverage output after the can
 ## Commands and outputs
 
 | Module | Command (from module root) | Primary reports |
-|--------|----------------------------|-----------------|
+| --- | --- | --- |
 | **rag-service** | `./mvnw verify` | `rag-service/target/site/jacoco/index.html`, `rag-service/target/site/jacoco/jacoco.xml` |
 | **classifier-service** | `pytest` (uses `pytest.ini` / `.coveragerc`) | `classifier-service/htmlcov/index.html`, `classifier-service/coverage.xml` |
 | **webapp** | `npm run test:coverage` | `webapp/coverage/index.html`, `webapp/coverage/lcov.info` |
@@ -16,7 +16,7 @@ Figures change with every run; use the HTML reports for the current numbers.
 
 - **rag-service (JaCoCo bundle, after `pom.xml` excludes):** The configured check is **line coverage ≥ 80%** on the instrumented bundle. Large orchestration/async surfaces (`ChatMessageApplicationService`, chat job handler, etc.) are **excluded** from the JaCoCo bundle (and mirrored in Sonar coverage exclusions) with rationale aligned to WebMvc/E2E coverage. Adapter classes (`JpaModelCatalogAdapter`, `JpaConfigurationSourceAdapter`) have **unit tests**.
 - **classifier-service:** `fail_under = 80` (lines, branches on). Typical low files in reports: `app/inference/model_loader.py` (Keras/zip edge paths), `app/telemetry.py` (OTLP optional paths).
-- **webapp (Vitest):** Thresholds **80%** lines/statements/functions and **74%** branches on included globs (`vitest.config.ts`). Branch gaps often appear in `src/proxy.ts`, `src/lib/api-client.ts`, `src/lib/async-task.ts`, and auth forms; see `webapp/coverage/index.html`.
+- **webapp (Vitest):** Thresholds **80%** lines/statements/functions/branches on included globs (`vitest.config.ts`). See `webapp/coverage/index.html` for per-file gaps.
 
 ## SonarCloud
 

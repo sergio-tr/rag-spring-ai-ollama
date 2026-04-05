@@ -7,7 +7,7 @@ Product UI for the RAG platform: projects, documents, settings (user/project RAG
 Copy `.env.example` to `.env` (or use `./scripts/create-env-webapp.sh` from the repo root). Key variables:
 
 | Variable | Role |
-|----------|------|
+| --- | --- |
 | `NEXT_PUBLIC_API_BASE_URL` | Spring Boot backend origin (e.g. `http://localhost:9000`). Empty when the UI is served behind the same origin as the API (reverse proxy). |
 | `NEXT_PUBLIC_RAG_API_PREFIX` | Must match Spring `rag.api.product-base-path` (see `.env.example`). |
 | `NEXT_PUBLIC_TIMEZONE` | IANA timezone for next-intl (e.g. `UTC`). |
@@ -37,7 +37,7 @@ npm run dev          # http://localhost:3000 — set NEXT_PUBLIC_API_BASE_URL to
 npm run typecheck
 npm run build
 npm run test         # Vitest (unit)
-npm run test:coverage # Vitest + v8 coverage gate (80% lines/statements/functions, 74% branches on instrumented `src/**`; see vitest.config.ts)
+npm run test:coverage # Vitest + v8 coverage gate (80% lines/statements/functions/branches on instrumented `src/**`; see vitest.config.ts)
 npm run test:e2e          # Playwright UI smoke: chromium only, excludes @fullstack
 npm run test:e2e:fullstack # Playwright UI @fullstack — Spring e2e + DB (see e2e/README.md)
 npm run test:api          # Playwright API (HTTP only, Spring API_BASE_URL) — see e2e/api/README.md

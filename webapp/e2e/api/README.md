@@ -5,7 +5,7 @@
 ## Policy (coexistence)
 
 | Runner | Scope |
-|--------|--------|
+| --- | --- |
 | **`webapp/e2e/api/**` (this tree)** | Canonical **API + system-style** smoke: auth, product paths, optional classifier/OpenAPI/readiness. |
 | **`tests/integration/` (pytest)** | **Backend integration** depth: full HTTP matrices, lab jobs, observability, classifier contracts — **not** duplicated line-for-line in Playwright. |
 
@@ -14,7 +14,7 @@
 ## Environment
 
 | Variable | Default | Purpose |
-|----------|---------|---------|
+| --- | --- | --- |
 | `API_BASE_URL` | `http://127.0.0.1:9000` | Spring Boot base (also accepts `INTEGRATION_BACKEND_URL`). |
 | `RAG_API_PRODUCT_BASE_PATH` | *(match backend `rag.api.product-base-path`)* | Product API prefix (also `INTEGRATION_RAG_PRODUCT_BASE_PATH`). |
 | `RAG_API_LEGACY_BASE_PATH` | *(match backend `rag.api.legacy-base-path`)* | Legacy prefix for lightweight query checks. |

@@ -5,7 +5,7 @@
 ## Scripts
 
 | Script | Role |
-|--------|------|
+| --- | --- |
 | `retrieval_benchmark.py` | Main runner: legacy `GET …/query` or `product_chat` (JWT + project + conversation). Schema `benchmark-report-v1` (see `schema/`). |
 | `llm_benchmark.py` | Wrapper with `--family llm` default (same HTTP behaviour; report emphasizes token/cost lines). |
 | `infra_probe.py` | Simple GET probe (default `/actuator/health`) — infra cold/warm, not RAG. |

@@ -12,7 +12,7 @@ ADRs capture **significant, stable** structural decisions (API surface, observab
 Add new rows when you add files.
 
 | ID | Title | Status |
-|----|-------|--------|
+| --- | --- | --- |
 | [0001](0001-lab-promotion-modes.md) | Research Lab promotion modes (A / B / C) | Accepted |
 | [0002](0002-multitenancy-assumption.md) | Multi-tenancy and data isolation assumption | Accepted |
 | [0003](0003-evaluation-async-project-scope-and-dataset-dedup.md) | Project scope for evaluation/async_task; dataset dedup by owner+sha256 | Accepted |

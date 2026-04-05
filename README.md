@@ -53,7 +53,7 @@ cd classifier-service && uvicorn main:app --reload --reload-dir app
 ## Test pyramid & CI/CD
 
 | Layer | Command / workflow | Gate |
-|--------|-------------------|------|
+| --- | --- | --- |
 | Backend unit + integration | `cd rag-service && ./mvnw verify` | JaCoCo bundle **≥ 80%** (`jacoco-check`) |
 | Classifier | `cd classifier-service && pytest tests/` | **≥ 80%** via `.coveragerc` `fail_under` + `pytest.ini` |
 | Webapp unit | `cd webapp && npm test` | Vitest (expand coverage over time) |
@@ -76,7 +76,7 @@ docker compose \
 ## Execution modes
 
 | Mode | Command | Description |
-|---|---|---|
+| --- | --- | --- |
 | Dev (hybrid) | `./docker/scripts/up.sh dev` | Only infra in Docker; services run locally |
 | Dev (max infra) | `./docker/scripts/up.sh dev --all` | `--gpu --obs --classifier --logs --infra` (GPU Ollama, obs, Loki/Promtail, node-exporter/cAdvisor) |
 | Full compose | `cd docker && docker compose ... up -d` | Everything in Docker |
@@ -89,7 +89,7 @@ docker compose \
 Prefixes are **configurable**. Spring: `rag.api.legacy-base-path` (`RAG_API_LEGACY_BASE_PATH`) and `rag.api.product-base-path` (`RAG_API_PRODUCT_BASE_PATH`). Webapp: `NEXT_PUBLIC_RAG_API_PREFIX` must match the product base path (see `webapp/.env.example`). Below, `{legacy}` and `{product}` stand for those configured prefixes.
 
 | Method | Endpoint | Description |
-|---|---|---|
+| --- | --- | --- |
 | `GET` | `{legacy}/query?question=...` | RAG query (JSON: `success` + `data` or `error`; HTTP **503** + `LLM_UNAVAILABLE` if Ollama unreachable) |
 | `POST` | `{legacy}/documents` | Upload document (multipart) |
 | `POST` | `{legacy}/documents/minute` | Add meeting minute (JSON) |
@@ -100,8 +100,8 @@ Prefixes are **configurable**. Spring: `rag.api.legacy-base-path` (`RAG_API_LEGA
 | `GET` | `/actuator/prometheus` | Prometheus metrics |
 | `GET` | `/v3/api-docs` | OpenAPI 3 JSON (springdoc) |
 | `GET` | `/swagger-ui.html` | Swagger UI (interactive API docs) |
-| `GET` \| `PUT` | `{product}/config/user` | Effective user RAG config (JSON); authenticated |
-| `GET` \| `PUT` \| `DELETE` | `{product}/config/project/{projectId}` | Project overrides; authenticated, project ownership |
+| `GET` \ | `PUT` | `{product}/config/user` | Effective user RAG config (JSON); authenticated |
+| `GET` \ | `PUT` \ | `DELETE` | `{product}/config/project/{projectId}` | Project overrides; authenticated, project ownership |
 | `GET` | `{product}/lab/status` | Lab capability stub (authenticated) |
 | `GET` | `/api/admin/health` | Admin health (`403` unless JWT role `ADMIN`) |
 
@@ -128,7 +128,7 @@ Create an organization-level gate (*Organization → Quality Gates → Create*) 
 **Conditions on New Code**
 
 | Metric | Operator | Threshold |
-|---|---|---|
+| --- | --- | --- |
 | Coverage on New Code | `<` | `80%` |
 | Duplicated Lines on New Code | `>` | `3%` |
 | Maintainability / Reliability / Security Rating | worse than | `A` |
@@ -137,7 +137,7 @@ Create an organization-level gate (*Organization → Quality Gates → Create*) 
 **Conditions on Overall Code**
 
 | Metric | Operator | Threshold |
-|---|---|---|
+| --- | --- | --- |
 | Coverage | `<` | `70%` |
 | Duplicated Lines | `>` | `5%` |
 | Maintainability / Reliability Rating | worse than | `B` |
@@ -161,7 +161,7 @@ Production credentials must always come from environment / `.env` files, not fro
 ## Documentation
 
 | Document | Description |
-|---|---|
+| --- | --- |
 | [docs/README.md](docs/README.md) | **Hub:** architecture, domain, operations (conceptual), testing/performance overview, ADR index |
 | [docs/development/documentation-guidelines.md](docs/development/documentation-guidelines.md) | Where to document what; `docs/` vs module READMEs |
 | [rag-service/README.md](rag-service/README.md) | Backend build, variables, Compose, smoke test link |

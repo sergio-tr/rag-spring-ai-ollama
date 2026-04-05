@@ -11,7 +11,7 @@ This document states **goals and entry points**. Tool-specific commands, environ
 ## Tools (canonical locations)
 
 | Tool | Purpose | Documentation |
-|------|---------|---------------|
+| --- | --- | --- |
 | **Gatling** | JVM scenarios, HTML reports, smoke / load / stress, **mixed realistic** workloads | [../../tests/gatling/README.md](../../tests/gatling/README.md) |
 | **Python micro-benchmarks** | Low-concurrency latency + **estimated** tokens (schema v1 JSON); **not** load | [../../tests/performance/README.md](../../tests/performance/README.md) |
 | **Python infra probe** | Simple GET KPIs (e.g. `/actuator/health`) — cold/warm infra | `tests/performance/infra_probe.py` |
@@ -21,7 +21,7 @@ Gatling coverage and related pointers: [../testing/traceability-legacy-tools.md]
 ### Gatling vs Python helpers
 
 | Concern | Prefer |
-|---------|--------|
+| --- | --- |
 | RPS ramps, HTML reports, mixed traffic, authenticated flows | **Gatling** — `gatling.yml` when `GATLING_BASE_URL` is set |
 | Single-host latency samples, thesis baselines, **estimated** tokens | **Python** — `micro-benchmark.yml` (optional; no PR gates) |
 
@@ -37,7 +37,7 @@ The Gatling workflow **skips** when `GATLING_BASE_URL` is unset.
 ### Gatling: profiles vs LLM cost
 
 | Profile | Ollama / LLM | Typical execution |
-|---------|----------------|-------------------|
+| --- | --- | --- |
 | **smoke**, **load** | Real Ollama allowed — use a **small model** and **conservative** backend settings in CI. | CI / dispatch with low VUs when `GATLING_BASE_URL` is configured. |
 | **stress**, **spike** | Real Ollama — expect saturation; assertions are **more lenient** on failures/latency. | **Manual** (or dedicated perf env). |
 | **soak** | High cumulative cost | **Manual only**, long runner timeout, not default in GitHub Actions `timeout-minutes`. |

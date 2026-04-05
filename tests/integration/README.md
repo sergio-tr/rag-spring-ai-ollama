@@ -7,7 +7,7 @@ These tests validate **HTTP integration** between components while services are 
 ## Path A vs Path B (database supply)
 
 | Path | Where | Postgres | pytest |
-|------|--------|----------|--------|
+| --- | --- | --- | --- |
 | **A (default, CI)** | GitHub Actions + local Compose | **GHA service** or Compose `postgres` | **HTTP only** (`httpx`). Spring uses `SPRING_DATASOURCE_*` against that DB. |
 | **B (optional local)** | Developer machine with Docker | **Testcontainers** (`pgvector/pgvector:pg16`) via `INTEGRATION_USE_TESTCONTAINERS=1` | Optional **DB smoke** in `test_tc_postgres_smoke.py` (extensions aligned with Java init SQL). Does **not** replace Path A in CI. |
 
@@ -16,7 +16,7 @@ Do **not** mix Path A and Path B in the same CI job (no Python Testcontainers al
 ## Layer ownership (avoid triple assertion)
 
 | Concern | Canonical layer |
-|---------|-----------------|
+| --- | --- |
 | JDBC, Flyway, `@SpringBootTest` persistence | **Java** (`rag-service` tests with Testcontainers or CI Postgres) |
 | HTTP contracts, status codes, JSON shapes, lab job polling | **pytest** (`tests/integration`) |
 | Auth + product smoke, `GET /projects`, SYS chains | **Playwright API** (`webapp/e2e/api/`) |
@@ -96,7 +96,7 @@ To point a **local** Spring process at the same container after extensions are c
 Observability checks (OTEL collector, Jaeger, Prometheus, Grafana, OTLP HTTP port, trace exports) live in **`TestObservabilityStack`**.
 
 | Mode | Behaviour |
-|------|-----------|
+| --- | --- |
 | **`auto` (default)** | If the OTEL collector metrics URL (`INTEGRATION_OTEL_METRICS_URL`, default `http://127.0.0.1:8889/metrics`) responds, observability tests **run**. If the stack is not up, those tests are **skipped** (not failed). |
 | **`1` / `true` / `require`** | Observability tests **must** run; if the stack is unreachable, the run **fails** (use in CI when Compose with `compose.obs.yml` is guaranteed). |
 | **`0` / `false` / `skip`** | Observability tests are **always skipped** (only core classifier/backend checks run). |
@@ -117,7 +117,7 @@ INTEGRATION_CHECK_OBS=0 pytest tests/integration -v
 ## Environment variables (URLs)
 
 | Variable | Default host URL |
-|----------|-------------------|
+| --- | --- |
 | `INTEGRATION_CLASSIFIER_URL` | `http://127.0.0.1:8000` |
 | `INTEGRATION_BACKEND_URL` | `http://127.0.0.1:9000` |
 | `INTEGRATION_PROMETHEUS_URL` | `http://127.0.0.1:9090` |
@@ -127,7 +127,7 @@ INTEGRATION_CHECK_OBS=0 pytest tests/integration -v
 | `INTEGRATION_OTLP_HTTP_URL` | `http://127.0.0.1:4318` |
 
 | Variable | Purpose |
-|----------|---------|
+| --- | --- |
 | `INTEGRATION_RAG_LEGACY_BASE_PATH` | Legacy API prefix; same role as `RAG_API_LEGACY_BASE_PATH` (must match backend). |
 | `INTEGRATION_RAG_PRODUCT_BASE_PATH` | Product API prefix; same role as `RAG_API_PRODUCT_BASE_PATH` (must match backend). |
 | `INTEGRATION_LOGIN_EMAIL` | Email for `POST /api/auth/login` in product API tests (default `dev@local.test`). |

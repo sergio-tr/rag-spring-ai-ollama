@@ -12,12 +12,12 @@ The **db/init/** directory contains the SQL scripts that run when the container 
 
 ## Variables (db/.env)
 
-| Variable           | Description   | Default  |
-|--------------------|---------------|----------|
-| `POSTGRES_PORT`    | Exposed port  | `5432`   |
-| `POSTGRES_USER`    | User          | `postgres` |
-| `POSTGRES_PASSWORD`| Password      | `postgres` |
-| `POSTGRES_DB`      | Database name | `vectordb` |
+| Variable | Description | Default |
+| --- | --- | --- |
+| `POSTGRES_PORT` | Exposed port | `5432` |
+| `POSTGRES_USER` | User | `postgres` |
+| `POSTGRES_PASSWORD` | Password | `postgres` |
+| `POSTGRES_DB` | Database name | `vectordb` |
 | `POSTGRES_MONITOR_USER` | Read-only monitoring user (metrics) | `postgres_exporter` |
 | `POSTGRES_MONITOR_PASSWORD` | Password for monitoring user | `postgres_exporter` |
 | `POSTGRES_BASE_IMAGE` | Base image for db/Dockerfile | `postgres:16` |

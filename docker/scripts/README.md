@@ -16,7 +16,7 @@ Runs **all** automated checks in order:
 **JaCoCo:** `rag-service/target/site/jacoco/index.html` shows **code coverage**, not a test list. Packages excluded in `rag-service/pom.xml` (e.g. `tool/**`) do not appear in that report. Use the HTML report for **≥80% lines per package**.
 
 | Script | Platform |
-|--------|----------|
+| --- | --- |
 | [`tests/full-stack-verify.sh`](../../tests/full-stack-verify.sh) | **Linux / WSL2** (canonical) |
 
 Examples:
@@ -35,7 +35,7 @@ MAVEN_ON_HOST=1 ./tests/full-stack-verify.sh   # host mvnw (JDK 21)
 Scripts in **this directory** (`create-env-*.sh`, `create-env-all.sh`).
 
 | Script | Creates | Purpose |
-|--------|---------|---------|
+| --- | --- | --- |
 | `create-env-db.sh` | `db/.env` | Postgres (port, user, password, DB), base image (POSTGRES_BASE_IMAGE). Used by main compose. |
 | `create-env-observability.sh` | `observability/.env` | Base images (OTEL, Jaeger, Prometheus, Grafana), Grafana password, ports. Used by `compose.obs.yml`. |
 | `create-env-rag-service.sh` | `rag-service/.env` | Backend: base images (RAG_JAVA_*), SERVER_PORT, BACKEND_PORT, DB URL, Ollama, classifier URL. For build and local runs. |

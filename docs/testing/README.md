@@ -7,7 +7,7 @@
 [`deploy.yml`](../../.github/workflows/deploy.yml) runs only on **`workflow_dispatch`** and **requires** successful runs of the following workflows on the **same commit SHA** as the deploy job (see [../operations/deploy-workflow-audit.md](../operations/deploy-workflow-audit.md)):
 
 | Required before deploy | Workflow file | Role |
-|------------------------|---------------|------|
+| --- | --- | --- |
 | **CI** | [`ci.yml`](../../.github/workflows/ci.yml) | Backend `mvn verify`, classifier pytest, webapp lint/coverage/build, Playwright **smoke** (excludes `@fullstack`). |
 | **E2E fullstack** | [`e2e-fullstack.yml`](../../.github/workflows/e2e-fullstack.yml) | Spring `e2e` profile + Postgres + Playwright **`@fullstack`** (browser). |
 
@@ -25,7 +25,7 @@
 ## Testing matrix (what runs where)
 
 | Layer | Purpose | Location | Typical CI |
-|-------|---------|----------|------------|
+| --- | --- | --- | --- |
 | Unit | Fast, isolated | JUnit, classifier pytest, Vitest | [`ci.yml`](../../.github/workflows/ci.yml) |
 | Integration (service) | Spring `@WebMvcTest`, JDBC | `rag-service/src/test` | `ci.yml` (`mvn verify`) |
 | Stack integration (HTTP) | Auth, product API, lab jobs, optional classifier/obs | `tests/integration` | [`integration.yml`](../../.github/workflows/integration.yml) |
@@ -39,7 +39,7 @@
 ## Entry points
 
 | Layer | Canonical doc |
-|-------|----------------|
+| --- | --- |
 | Backend verify (Surefire + JaCoCo) | [../../rag-service/README.md](../../rag-service/README.md) |
 | Classifier pytest + coverage | [../../classifier-service/README.md](../../classifier-service/README.md) |
 | Webapp unit / Playwright UI + API | [../../webapp/README.md](../../webapp/README.md), [../../webapp/e2e/api/README.md](../../webapp/e2e/api/README.md) |
@@ -56,24 +56,24 @@ Authoritative workflow table: [../README.md](../README.md) (CI workflows section
 ### Coverage gates (commands, thresholds, CI artifacts)
 
 | Module | Gate | Command (typical) | Report / artifact |
-|--------|------|---------------------|-------------------|
+| --- | --- | --- | --- |
 | **rag-service** | JaCoCo **line** coverage ≥ **80%** on the configured bundle (`rag-service/pom.xml` `jacoco:check`) | `./mvnw verify` (from `rag-service/`) | `rag-service/target/site/jacoco/jacoco.xml` (also `index.html`) |
 | **classifier-service** | pytest-cov **lines** ≥ **80%**, branches on (`.coveragerc`) | `pytest` with project `addopts` | `classifier-service/coverage.xml`, `htmlcov/` |
-| **webapp** | Vitest v8: **80%** lines, statements, functions; **74%** branches (`vitest.config.ts`) | `npm run test:coverage` (from `webapp/`) | `webapp/coverage/lcov.info`, `coverage/index.html` (CI may upload `webapp/coverage/` as an artifact — see `ci.yml`) |
+| **webapp** | Vitest v8: **80%** lines, statements, functions, branches (`vitest.config.ts`) | `npm run test:coverage` (from `webapp/`) | `webapp/coverage/lcov.info`, `coverage/index.html` (CI may upload `webapp/coverage/` as an artifact — see `ci.yml`) |
 | **SonarCloud** | Quality Gate (see Sonar UI); **Java + Python + TS LCOV** when `sonar.yml` runs | Same reports as above; workflow runs Vitest before scan | Dashboard + PR decoration; `sonar-project.properties` lists `jacoco.xml`, `coverage.xml`, `webapp/coverage/lcov.info` |
 
 **Note:** JaCoCo and Sonar **coverage exclusions** (large orchestration, tools, etc.) mean the percentage is over **included** lines, not every file in the tree. Vitest `coverage.exclude` defines the frontend gate scope. See [../coverage/README.md](../coverage/README.md).
 
 ## React / Testing Library (webapp)
 
-Stack: Vitest + `jsdom`, [`webapp/vitest.setup.ts`](../../webapp/vitest.setup.ts), tests as `src/**/*.test.{ts,tsx}`. Coverage thresholds in [`webapp/vitest.config.ts`](../../webapp/vitest.config.ts) apply to instrumented product code (`coverage.include` / `coverage.exclude`): 80% lines, statements, functions; 74% branches. Component and hook tests should follow the same **behavior-first** philosophy as `src/lib` modules.
+Stack: Vitest + `jsdom`, [`webapp/vitest.setup.ts`](../../webapp/vitest.setup.ts), tests as `src/**/*.test.{ts,tsx}`. Coverage thresholds in [`webapp/vitest.config.ts`](../../webapp/vitest.config.ts) apply to instrumented product code (`coverage.include` / `coverage.exclude`): **80%** lines, statements, functions, and branches. Component and hook tests should follow the same **behavior-first** philosophy as `src/lib` modules.
 
 **Principle:** If a real user cannot perceive it, the test should not depend on it—except for pure modules under `src/lib`, where unit tests without DOM are appropriate.
 
 ### What to test (observable)
 
 | Area | Focus |
-|------|--------|
+| --- | --- |
 | **Render** | Roles, accessible names, visible text, initial disabled/enabled state. Use `screen` and queries that mirror assistive tech. |
 | **Interaction** | `userEvent.setup()` then `await user.click` / `type`. Assert **outcomes** (error message, navigation side effects visible in UI), not internal state. |
 | **State** | Assert via DOM (`aria-*`, text), not by importing hooks or setters. |
@@ -94,7 +94,7 @@ Stack: Vitest + `jsdom`, [`webapp/vitest.setup.ts`](../../webapp/vitest.setup.ts
 ### Mock strategy (boundaries)
 
 | Boundary | Approach |
-|----------|----------|
+| --- | --- |
 | API | `vi.mock` of modules that call [`api-client`](../../webapp/src/lib/api-client.ts) or TanStack Query hooks; or MSW if the team standardizes on one HTTP layer. Minimal JSON shapes that satisfy types. |
 | TanStack Query | `QueryClient` + `QueryClientProvider` with `retry: false` and short cache in tests. |
 | React context | Real providers with controlled values, or a future shared `renderWithProviders` (see below). |
@@ -106,7 +106,7 @@ Stack: Vitest + `jsdom`, [`webapp/vitest.setup.ts`](../../webapp/vitest.setup.ts
 ### Where to put tests
 
 | Style | Use when |
-|-------|----------|
+| --- | --- |
 | **Per component** | Reusable UI primitives; co-locate `*.test.tsx` next to the component or under `__tests__/`. |
 | **Per feature** | User scenarios spanning multiple components under `features/<area>/`. |
 

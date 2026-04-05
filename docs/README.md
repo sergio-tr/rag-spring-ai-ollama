@@ -7,7 +7,7 @@
 ## Start here
 
 | Topic | Document |
-|-------|----------|
+| --- | --- |
 | Product scope and boundaries | [overview/README.md](overview/README.md) — [product-context.md](overview/product-context.md), [thesis-scope.md](overview/thesis-scope.md) |
 | System context and diagrams | [architecture/README.md](architecture/README.md), [architecture/system-context.md](architecture/system-context.md) |
 | Deployment (conceptual) | [architecture/deployment-model.md](architecture/deployment-model.md), [operations/README.md](operations/README.md) |
@@ -32,7 +32,7 @@
 ## Repository map (canonical README per area)
 
 | Area | Path | README |
-|------|------|--------|
+| --- | --- | --- |
 | Backend | `rag-service/` | [rag-service/README.md](../rag-service/README.md) |
 | Webapp | `webapp/` | [webapp/README.md](../webapp/README.md) |
 | Classifier | `classifier-service/` | [classifier-service/README.md](../classifier-service/README.md) |
@@ -48,7 +48,7 @@
 ## Architecture artifacts
 
 | Kind | Location |
-|------|----------|
+| --- | --- |
 | Diagram index and export guide | [architecture/README.md](architecture/README.md), [architecture/thesis-diagrams.md](architecture/thesis-diagrams.md) |
 | Mermaid sources | [architecture/](architecture/) (`*.mmd`) |
 | Backend package map (navigation) | [architecture/BACKEND_PACKAGES.md](architecture/BACKEND_PACKAGES.md) |
@@ -57,7 +57,7 @@
 ## Auto-generated API artifacts
 
 | Stack | Command | Output |
-|-------|---------|--------|
+| --- | --- | --- |
 | Java | `cd rag-service && ./mvnw javadoc:javadoc` | `rag-service/target/site/apidocs` |
 | OpenAPI | `/v3/api-docs` when enabled; or `rag-service/scripts/export-openapi.sh` | JSON |
 | TypeScript | `cd webapp && npm run doc` | `webapp/docs/api` |
@@ -65,7 +65,7 @@
 ## CI workflows (summary)
 
 | Workflow | When it runs | Role |
-|----------|----------------|------|
+| --- | --- | --- |
 | [`ci.yml`](../.github/workflows/ci.yml) | PR/push `main`/`master` | **Primary gate**: `mvn verify` (JUnit), classifier `pytest`, webapp lint/typecheck/coverage/build, Playwright **smoke** (excludes `@fullstack`) |
 | [`build.yml`](../.github/workflows/build.yml) | PR/push | Fast compile-only (`mvn package -DskipTests`, classifier build) — no tests |
 | [`integration.yml`](../.github/workflows/integration.yml) | PR/push path filter + `workflow_dispatch` | **Stack HTTP integration**: `pytest tests/integration` against Spring **`e2e`** + Postgres (`INTEGRATION_CHECK_OBS=0`; classifier tests skip if no classifier) |

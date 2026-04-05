@@ -3,7 +3,7 @@
 Automation and verification assets for the monorepo. Each major area has its own README with commands and environment variables.
 
 | Folder | Role |
-|--------|------|
+| --- | --- |
 | [e2e/](e2e/) | Compose/shell **technical** smoke (not the Playwright browser suite; that lives under `webapp/e2e/`). |
 | [gatling/](gatling/) | JVM **load and stress** (Gatling Gradle module). |
 | [integration/](integration/) | **Stack HTTP integration** (pytest + httpx) against a running backend. |

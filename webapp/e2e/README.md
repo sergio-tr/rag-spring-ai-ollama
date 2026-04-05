@@ -11,7 +11,7 @@
 ## Layout
 
 | Folder | Role |
-|--------|------|
+| --- | --- |
 | `fixtures/` | Test data factories and committed small files (`fixtures/files/`). |
 | `support/` | Shared helpers (`helpers.ts`) — login, API URLs, project creation. |
 | `public/` | No session — auth/register shells and client validation. |

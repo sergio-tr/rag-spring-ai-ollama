@@ -9,7 +9,7 @@ Gradle module (Scala 2.13 + Gatling 3.13) aligned with Spring path properties (`
 Answers below are **canonical for this repo** (do not duplicate long rationale in code comments).
 
 | Topic | Decision |
-|-------|----------|
+| --- | --- |
 | **LLM target** | **Real Ollama** for **load / stress / spike** profiles. **CI / smoke:** controlled settings (small model, low top-k) as set on the backend. **Soak:** optional, **manual only** (cost). |
 | **Users** | **Feeder CSV** [`src/gatling/resources/users.csv`](src/gatling/resources/users.csv) with **multiple rows** — default uses repeated seed user; **replace with distinct accounts** for realistic isolation. |
 | **API mix** | Default **70%** legacy RAG (`GET {legacy}/query`), **20%** auth (`POST /api/auth/login`), **10%** admin (`GET /api/admin/*` when `GATLING_ADMIN_EMAIL` is set, else `GET` product `/projects`). Override with `GATLING_MIX_*_PCT`. |
@@ -61,7 +61,7 @@ HTML reports are written under `build/reports/gatling/<runId>/index.html`.
 ## Mixed simulations (`MixedRealistic*`)
 
 | Class | Profile | Typical use |
-|-------|---------|----------------|
+| --- | --- | --- |
 | `MixedRealisticSimulation` | `GATLING_PROFILE` env (default `load`) | Single entry with env-driven profile |
 | `MixedRealisticSmokeSimulation` | `smoke` | Short, few VUs — **CI / post-deploy** |
 | `MixedRealisticLoadSimulation` | `load` | Sustained nominal mix |
@@ -72,7 +72,7 @@ HTML reports are written under `build/reports/gatling/<runId>/index.html`.
 ### Mix and SLA env (selected)
 
 | Variable | Default | Purpose |
-|----------|---------|---------|
+| --- | --- | --- |
 | `GATLING_MIX_RAG_PCT` | `70` | Weight for legacy `/query` branch |
 | `GATLING_MIX_AUTH_PCT` | `20` | Weight for `POST /api/auth/login` |
 | `GATLING_MIX_ADMIN_PCT` | `10` | Weight for admin (or product fallback) |
@@ -92,7 +92,7 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 ## Environment variables (global)
 
 | Variable | Default | Purpose |
-|----------|---------|---------|
+| --- | --- | --- |
 | `GATLING_BASE_URL` | `http://localhost:9000` | Spring base URL (no trailing slash). |
 | `GATLING_LEGACY_PREFIX` | *(match `rag.api.legacy-base-path`)* | Legacy API prefix (`RAG_API_LEGACY_BASE_PATH`). |
 | `GATLING_PRODUCT_PREFIX` | *(match `rag.api.product-base-path`)* | Product API prefix (`RAG_API_PRODUCT_BASE_PATH`). |
@@ -130,7 +130,7 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 ## Simulations (summary)
 
 | Class | Purpose |
-|-------|---------|
+| --- | --- |
 | `ActuatorHealthSimulation` | Short actuator check / warmup. |
 | `LegacyQueryLoadSimulation` | `GET {legacy}/query` with feeder; optional RPS-style injection. |
 | `ProductAuthenticatedSimulation` | `POST /api/auth/login` then `GET` projects and config schema. |

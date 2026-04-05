@@ -9,7 +9,7 @@ Stack configuration and Dockerfiles. **Ports and credentials are defined in one 
 **Rule:** Observability **procedures, ports, and dashboards** stay in **this file** and the linked Grafana/Jaeger/Loki guide. **Deploy, SSH, GitHub Actions gates, and VM env layout** belong under **`docs/operations/`** — do not duplicate them here.
 
 | Topic | Canonical doc |
-|-------|-----------------|
+| --- | --- |
 | VM deploy, `compose.prod.yml`, rollback, `deploy.yml` secrets | [Runbook — Docker VM](../docs/operations/runbook-docker-vm.md), [Deploy workflow audit](../docs/operations/deploy-workflow-audit.md) |
 | Optional observability on the same host | This README (Compose overlays: `compose.obs.yml`, `compose.prod-obs.yml` if used) + [docker/README.md](../docker/README.md) |
 | Operator walkthrough (metrics → traces → logs) | [Grafana / Jaeger / Loki operator guide](../docs/operations/grafana-observability-guide.md) |
@@ -29,7 +29,7 @@ After pulling updates, if `.env.example` gains new variables, copy them manually
 ## Variables (summary)
 
 | Group | Variables | Purpose |
-|-------|-----------|---------|
+| --- | --- | --- |
 | Images | `OTEL_COLLECTOR_BASE_IMAGE`, `JAEGER_BASE_IMAGE`, `PROMETHEUS_BASE_IMAGE`, `GRAFANA_BASE_IMAGE` | Docker build-args |
 | Grafana | `GRAFANA_ADMIN_PASSWORD` | Admin UI |
 | Collector | `OTEL_COLLECTOR_LOG_LEVEL` | Verbosity of the `logging` exporter |
@@ -63,7 +63,7 @@ Optional: `./docker/scripts/set-env.sh` or `./docker/scripts/up.sh dev --env obs
 ## URLs on the host (replace with your `.env` ports)
 
 | Component | Typical URL |
-|-----------|-------------|
+| --- | --- |
 | Grafana | `http://localhost:${GRAFANA_PORT}` |
 | Jaeger | `http://localhost:${JAEGER_UI_PORT}` |
 | Prometheus | `http://localhost:${PROMETHEUS_PORT}` |
@@ -79,7 +79,7 @@ Optional: `./docker/scripts/set-env.sh` or `./docker/scripts/up.sh dev --env obs
 ## Layout
 
 | Folder | Contents |
-|--------|----------|
+| --- | --- |
 | `grafana/` | Dockerfile + entrypoint; `provisioning/` (JSON dashboards + `datasources.yml.template`) |
 | `jaeger/` | Dockerfile |
 | `otel-collector/` | Dockerfile; `config.yaml` |
