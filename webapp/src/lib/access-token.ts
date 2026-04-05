@@ -5,7 +5,7 @@
 const STORAGE_KEY = "rag_access_token";
 
 export function getAccessToken(): string | null {
-  if (typeof window === "undefined") {
+  if (typeof globalThis.window === "undefined") {
     return null;
   }
   try {
@@ -16,7 +16,7 @@ export function getAccessToken(): string | null {
 }
 
 export function setAccessToken(token: string | null): void {
-  if (typeof window === "undefined") {
+  if (typeof globalThis.window === "undefined") {
     return;
   }
   try {

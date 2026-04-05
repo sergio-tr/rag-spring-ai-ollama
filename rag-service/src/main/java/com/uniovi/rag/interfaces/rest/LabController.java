@@ -88,7 +88,7 @@ public class LabController {
     }
 
     @PostMapping("/evaluations/llm")
-    public ResponseEntity<?> evaluateLlm(
+    public ResponseEntity<Object> evaluateLlm(
             @AuthenticationPrincipal RagPrincipal principal,
             @RequestParam(name = "sync", defaultValue = "false") boolean sync,
             @RequestParam(name = "projectId", required = false) UUID projectId) {
@@ -103,7 +103,7 @@ public class LabController {
     }
 
     @PostMapping("/evaluations/rag")
-    public ResponseEntity<?> evaluateRag(
+    public ResponseEntity<Object> evaluateRag(
             @AuthenticationPrincipal RagPrincipal principal,
             @RequestParam(name = "sync", defaultValue = "false") boolean sync,
             @RequestParam(name = "projectId", required = false) UUID projectId) {
@@ -136,7 +136,7 @@ public class LabController {
     }
 
     @PostMapping(value = "/classifier/evaluate")
-    public ResponseEntity<?> classifierEvaluate(
+    public ResponseEntity<Object> classifierEvaluate(
             @AuthenticationPrincipal RagPrincipal principal,
             @RequestParam(name = "projectId", required = false) UUID projectId,
             @RequestParam(name = "sync", defaultValue = "false") boolean sync,

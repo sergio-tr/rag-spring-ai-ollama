@@ -30,8 +30,8 @@ export function ExplainabilityPanel() {
             {t("pipeline")}
           </h3>
           <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">
-            {last.pipelineSteps.map((step, i) => (
-              <li key={i}>
+            {last.pipelineSteps.map((step) => (
+              <li key={JSON.stringify(step)}>
                 <span className="text-foreground">
                   {String(
                     (step as { name?: string }).name ??

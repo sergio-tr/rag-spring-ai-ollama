@@ -20,7 +20,7 @@ type DeleteProjectDialogProps = {
   project: ProjectSummary;
 };
 
-export function DeleteProjectDialog({ project }: DeleteProjectDialogProps) {
+export function DeleteProjectDialog({ project }: Readonly<DeleteProjectDialogProps>) {
   const t = useTranslations("Projects");
   const [open, setOpen] = useState(false);
   const del = useDeleteProject();

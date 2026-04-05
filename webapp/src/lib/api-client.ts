@@ -12,6 +12,14 @@ import { createTraceparent } from "@/lib/traceparent";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:9000";
 
+function resolveApiUrl(path: string): string {
+  if (path.startsWith("http")) {
+    return path;
+  }
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE}${normalizedPath}`;
+}
+
 function normalizeProductApiPrefix(raw: string | undefined, fallback: string): string {
   const s = (raw ?? fallback).trim();
   if (!s) {
@@ -115,7 +123,7 @@ export async function apiFetch<T = unknown>(
     ...rest
   } = options;
 
-  const url = path.startsWith("http") ? path : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  const url = resolveApiUrl(path);
 
   const buildHeaders = () => {
     const headers = new Headers(initHeaders);
@@ -181,7 +189,7 @@ export async function apiDownloadBlob(path: string, options: ApiClientOptions = 
     ...rest
   } = options;
 
-  const url = path.startsWith("http") ? path : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  const url = resolveApiUrl(path);
 
   const buildHeaders = () => {
     const headers = new Headers(initHeaders);

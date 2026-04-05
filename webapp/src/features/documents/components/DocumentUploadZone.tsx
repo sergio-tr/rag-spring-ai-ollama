@@ -10,7 +10,7 @@ type DocumentUploadZoneProps = {
   projectId: string | undefined;
 };
 
-export function DocumentUploadZone({ projectId }: DocumentUploadZoneProps) {
+export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZoneProps>) {
   const t = useTranslations("Documents");
   const upload = useUploadProjectDocument(projectId);
   const inputRef = useRef<HTMLInputElement>(null);

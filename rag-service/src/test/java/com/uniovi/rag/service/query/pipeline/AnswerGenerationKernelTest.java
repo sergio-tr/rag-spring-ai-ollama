@@ -59,14 +59,18 @@ class AnswerGenerationKernelTest {
     void askModel_withoutRetrieval_returnsValidatedLlmOutput() {
         when(featureConfig.isUseRetrieval()).thenReturn(false);
 
-        AnswerGenerationKernel kernel = new AnswerGenerationKernel(
-                featureConfig,
-                mock(NERQueryEnricher.class),
-                mock(ContextRetriever.class),
-                mock(PostRetrievalProcessor.class),
-                responseValidator,
-                mock(QuestionAnswerAdvisor.class),
-                chatRequestSpecFactory);
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                mock(ContextRetriever.class),
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
 
         String out = kernel.askModel("What is 2+2?", new JSONObject(), QueryType.BOOLEAN_QUERY);
         assertEquals("This is a valid synthetic answer for testing.", out);
@@ -76,14 +80,18 @@ class AnswerGenerationKernelTest {
     void askModelWithPreStep_withoutRetrieval_returnsDraft() {
         when(featureConfig.isUseRetrieval()).thenReturn(false);
 
-        AnswerGenerationKernel kernel = new AnswerGenerationKernel(
-                featureConfig,
-                mock(NERQueryEnricher.class),
-                mock(ContextRetriever.class),
-                mock(PostRetrievalProcessor.class),
-                responseValidator,
-                mock(QuestionAnswerAdvisor.class),
-                chatRequestSpecFactory);
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                mock(ContextRetriever.class),
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
 
         DraftAndContext draft = kernel.askModelWithPreStep("q", new JSONObject(), QueryType.GET_FIELD, null);
         assertNotNull(draft);
@@ -97,14 +105,18 @@ class AnswerGenerationKernelTest {
         when(callResponseSpec.content()).thenReturn("Ha ha.");
         when(responseValidator.validateAndClean("Ha ha.", "ProcessQueryService-DirectGeneral")).thenReturn("Ha ha.");
 
-        AnswerGenerationKernel kernel = new AnswerGenerationKernel(
-                featureConfig,
-                mock(NERQueryEnricher.class),
-                retriever,
-                mock(PostRetrievalProcessor.class),
-                responseValidator,
-                mock(QuestionAnswerAdvisor.class),
-                chatRequestSpecFactory);
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                retriever,
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
 
         assertEquals("Ha ha.", kernel.askModel("tell me a joke", new JSONObject(), QueryType.BOOLEAN_QUERY));
         verify(retriever, never()).retrieve(any());
@@ -120,14 +132,18 @@ class AnswerGenerationKernelTest {
                 "Why did the chicken cross the road?",
                 "ProcessQueryService-ReasoningDirect")).thenReturn("Why did the chicken cross the road?");
 
-        AnswerGenerationKernel kernel = new AnswerGenerationKernel(
-                featureConfig,
-                mock(NERQueryEnricher.class),
-                retriever,
-                mock(PostRetrievalProcessor.class),
-                responseValidator,
-                mock(QuestionAnswerAdvisor.class),
-                chatRequestSpecFactory);
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                retriever,
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
 
         DraftAndContext draft = kernel.askModelWithPreStep(
                 "tell me a joke", new JSONObject(), QueryType.BOOLEAN_QUERY, null);
@@ -142,14 +158,18 @@ class AnswerGenerationKernelTest {
         ContextRetriever retriever = mock(ContextRetriever.class);
         when(retriever.retrieve(any())).thenThrow(new RuntimeException("vector store down"));
 
-        AnswerGenerationKernel kernel = new AnswerGenerationKernel(
-                featureConfig,
-                mock(NERQueryEnricher.class),
-                retriever,
-                mock(PostRetrievalProcessor.class),
-                responseValidator,
-                mock(QuestionAnswerAdvisor.class),
-                chatRequestSpecFactory);
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                retriever,
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
 
         assertNull(kernel.askModelWithPreStep(
                 "acta del pleno municipal", new JSONObject(), QueryType.GET_FIELD, null));
@@ -166,14 +186,18 @@ class AnswerGenerationKernelTest {
         when(callResponseSpec.content()).thenReturn("Synthesized answer.");
         when(responseValidator.validateAndClean("Synthesized answer.", "ProcessQueryService")).thenReturn("Synthesized answer.");
 
-        AnswerGenerationKernel kernel = new AnswerGenerationKernel(
-                featureConfig,
-                mock(NERQueryEnricher.class),
-                retriever,
-                mock(PostRetrievalProcessor.class),
-                responseValidator,
-                mock(QuestionAnswerAdvisor.class),
-                chatRequestSpecFactory);
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                retriever,
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
 
         DraftAndContext draft = kernel.askModelWithPreStep(
                 "acta del pleno", new JSONObject(), QueryType.GET_FIELD, "reasoning step");
@@ -192,14 +216,18 @@ class AnswerGenerationKernelTest {
 
         when(callResponseSpec.content()).thenReturn("Answer without real context.");
 
-        AnswerGenerationKernel kernel = new AnswerGenerationKernel(
-                featureConfig,
-                mock(NERQueryEnricher.class),
-                retriever,
-                mock(PostRetrievalProcessor.class),
-                responseValidator,
-                mock(QuestionAnswerAdvisor.class),
-                chatRequestSpecFactory);
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                retriever,
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
 
         DraftAndContext draft = kernel.askModelWithPreStep(
                 "acta del pleno", new JSONObject(), QueryType.GET_FIELD, null);
@@ -211,14 +239,18 @@ class AnswerGenerationKernelTest {
     void generateNoContextResponse_whenLlmReturnsContent_returnsTrimmed() {
         when(featureConfig.isUseRetrieval()).thenReturn(true);
 
-        AnswerGenerationKernel kernel = new AnswerGenerationKernel(
-                featureConfig,
-                mock(NERQueryEnricher.class),
-                mock(ContextRetriever.class),
-                mock(PostRetrievalProcessor.class),
-                responseValidator,
-                mock(QuestionAnswerAdvisor.class),
-                chatRequestSpecFactory);
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                mock(ContextRetriever.class),
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
 
         when(callResponseSpec.content()).thenReturn("  trimmed body  ");
 

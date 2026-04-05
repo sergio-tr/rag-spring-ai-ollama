@@ -103,7 +103,10 @@ export default function LabOverviewPage() {
   );
 }
 
-function ButtonLikeRefetch({ onClick, label }: { onClick: () => void; label: string }) {
+function ButtonLikeRefetch({
+  onClick,
+  label,
+}: Readonly<{ onClick: () => void; label: string }>) {
   return (
     <button
       type="button"

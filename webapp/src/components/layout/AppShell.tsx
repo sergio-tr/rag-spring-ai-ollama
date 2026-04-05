@@ -18,7 +18,7 @@ type AppShellProps = {
   panelBody: React.ReactNode;
 };
 
-export function AppShell({ children, panelBody }: AppShellProps) {
+export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
   const tNav = useTranslations("Nav");
   const router = useRouter();
   const pathname = usePathname();

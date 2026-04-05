@@ -51,16 +51,18 @@ public final class QueryRuntimeComponentsFactory {
         ToolRoutingService toolRouting = new ToolRoutingService(
                 featureConfig, toolsConfig, meetingMinutesToolsAdapter, responseValidator, chatRequestSpecFactory);
         boolean legacyAdvisor = runtimeProperties != null && runtimeProperties.isLegacyAdvisorWithPostRetrieval();
-        AnswerGenerationKernel kernel = new AnswerGenerationKernel(
-                featureConfig,
-                nerQueryEnricher,
-                retriever,
-                postRetrievalProcessor,
-                responseValidator,
-                questionAnswerAdvisor,
-                chatRequestSpecFactory,
-                naiveCorpusContextService,
-                legacyAdvisor);
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                nerQueryEnricher,
+                                retriever,
+                                postRetrievalProcessor,
+                                responseValidator,
+                                questionAnswerAdvisor,
+                                chatRequestSpecFactory,
+                                naiveCorpusContextService,
+                                legacyAdvisor));
         ResponseSynthesisPipeline pipeline = new ResponseSynthesisPipeline(
                 featureConfig, dateExistenceGuard, toolRouting, kernel);
         return new QueryRuntimeComponents(preparer, pipeline);

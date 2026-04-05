@@ -2,6 +2,7 @@ package com.uniovi.rag.infrastructure.llm.ollama;
 
 import com.uniovi.rag.infrastructure.health.RagHealthProperties;
 import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -39,6 +40,7 @@ public class OllamaApiClient {
         this.httpClient = null;
     }
 
+    @Autowired
     public OllamaApiClient(
             @Value("${spring.ai.ollama.base-url}") String baseUrl,
             RagHealthProperties healthProperties) {

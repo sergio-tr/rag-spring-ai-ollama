@@ -76,8 +76,7 @@ public final class TracedDocumentService implements DocumentService {
                 "rag.documents.load",
                 Map.of(),
                 "result",
-                () -> delegate.hasDocuments()
-        );
+                delegate::hasDocuments);
     }
 
     @Override

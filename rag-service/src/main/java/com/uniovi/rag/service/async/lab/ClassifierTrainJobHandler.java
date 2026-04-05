@@ -42,26 +42,98 @@ class ClassifierTrainJobHandler implements LabJobHandler {
             return;
         }
         Path trainPath = Path.of(String.valueOf(payload.get(LabJobPayloadKeys.TRAIN_PATH)));
-        Path labelsPath = payload.get(LabJobPayloadKeys.LABELS_PATH) != null
-                ? Path.of(String.valueOf(payload.get(LabJobPayloadKeys.LABELS_PATH)))
-                : null;
+        Path labelsPath =
+                payload.get(LabJobPayloadKeys.LABELS_PATH) != null
+                        ? Path.of(String.valueOf(payload.get(LabJobPayloadKeys.LABELS_PATH)))
+                        : null;
         try {
-            byte[] train;
-            try {
-                train = Files.readAllBytes(trainPath);
-            } catch (IOException e) {
-                mutation.markFailed(taskId, "Could not read training file: " + e.getMessage());
+            byte[] train = readTrainBytes(taskId, trainPath, mutation);
+            if (train == null) {
                 return;
             }
-            byte[] labelsBytes = null;
-            if (labelsPath != null && Files.exists(labelsPath)) {
-                try {
-                    labelsBytes = Files.readAllBytes(labelsPath);
-                } catch (IOException e) {
-                    mutation.markFailed(taskId, "Could not read labels file: " + e.getMessage());
-                    return;
-                }
+            LabelsRead labelsRead = readLabelsBytesWhenPresent(taskId, labelsPath, mutation);
+            if (!labelsRead.ok()) {
+                return;
             }
+            byte[] labelsBytes = labelsRead.bytes();
+            TrainPayload parsed = TrainPayload.fromMap(payload);
+            mutation.appendProgressLine(taskId, "Calling classifier-service /train…");
+            Map<String, Object> res =
+                    classifierLab.trainBytes(
+                            train,
+                            trainPath.getFileName().toString(),
+                            parsed.modelName(),
+                            parsed.labelsJson(),
+                            labelsBytes,
+                            labelsBytes != null ? labelsPath.getFileName().toString() : null,
+                            parsed.epochs(),
+                            parsed.batchSize());
+            mutation.markSucceeded(taskId, res);
+            registerModelAfterTrain(task, taskId, parsed.modelName(), res, parsed.epochs(), parsed.batchSize());
+        } finally {
+            deleteQuietly(trainPath, "train");
+            if (labelsPath != null) {
+                deleteQuietly(labelsPath, "labels");
+            }
+        }
+    }
+
+    private byte[] readTrainBytes(UUID taskId, Path trainPath, AsyncTaskMutationService mutation) {
+        try {
+            return Files.readAllBytes(trainPath);
+        } catch (IOException e) {
+            mutation.markFailed(taskId, "Could not read training file: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private LabelsRead readLabelsBytesWhenPresent(UUID taskId, Path labelsPath, AsyncTaskMutationService mutation) {
+        if (labelsPath == null || !Files.exists(labelsPath)) {
+            return LabelsRead.ok(null);
+        }
+        try {
+            return LabelsRead.ok(Files.readAllBytes(labelsPath));
+        } catch (IOException e) {
+            mutation.markFailed(taskId, "Could not read labels file: " + e.getMessage());
+            return LabelsRead.failed();
+        }
+    }
+
+    private record LabelsRead(boolean ok, byte[] bytes) {
+        static LabelsRead ok(byte[] b) {
+            return new LabelsRead(true, b);
+        }
+
+        static LabelsRead failed() {
+            return new LabelsRead(false, null);
+        }
+    }
+
+    private void registerModelAfterTrain(
+            AsyncTaskEntity task,
+            UUID taskId,
+            String modelName,
+            Map<String, Object> res,
+            int epochs,
+            int batchSize) {
+        try {
+            classifierModelRegistryService.registerAfterSuccessfulTrain(
+                    task.getUser().getId(), taskId, modelName, res, epochs, batchSize);
+        } catch (Exception ex) {
+            log.warn("Could not persist classifier_model row: {}", ex.getMessage());
+        }
+    }
+
+    private static void deleteQuietly(Path path, String kind) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+            log.debug("Could not delete temp {} file {}", kind, path);
+        }
+    }
+
+    private record TrainPayload(String modelName, String labelsJson, int epochs, int batchSize) {
+        static TrainPayload fromMap(Map<String, Object> payload) {
             String modelName =
                     payload.get(LabJobPayloadKeys.MODEL_NAME) != null
                             ? String.valueOf(payload.get(LabJobPayloadKeys.MODEL_NAME))
@@ -70,42 +142,10 @@ class ClassifierTrainJobHandler implements LabJobHandler {
                     payload.get(LabJobPayloadKeys.LABELS_JSON) != null
                             ? String.valueOf(payload.get(LabJobPayloadKeys.LABELS_JSON))
                             : null;
-            if ("null".equals(labelsJson)) {
-                labelsJson = null;
-            }
+            String lj = "null".equals(labelsJson) ? null : labelsJson;
             int epochs = payload.get(LabJobPayloadKeys.EPOCHS) instanceof Number n ? n.intValue() : 50;
             int batchSize = payload.get(LabJobPayloadKeys.BATCH_SIZE) instanceof Number n ? n.intValue() : 8;
-            mutation.appendProgressLine(taskId, "Calling classifier-service /train…");
-            Map<String, Object> res =
-                    classifierLab.trainBytes(
-                            train,
-                            trainPath.getFileName().toString(),
-                            modelName,
-                            labelsJson,
-                            labelsBytes,
-                            labelsBytes != null ? labelsPath.getFileName().toString() : null,
-                            epochs,
-                            batchSize);
-            mutation.markSucceeded(taskId, res);
-            try {
-                classifierModelRegistryService.registerAfterSuccessfulTrain(
-                        task.getUser().getId(), taskId, modelName, res, epochs, batchSize);
-            } catch (Exception ex) {
-                log.warn("Could not persist classifier_model row: {}", ex.getMessage());
-            }
-        } finally {
-            try {
-                Files.deleteIfExists(trainPath);
-            } catch (IOException ignored) {
-                log.debug("Could not delete temp train file {}", trainPath);
-            }
-            if (labelsPath != null) {
-                try {
-                    Files.deleteIfExists(labelsPath);
-                } catch (IOException ignored) {
-                    log.debug("Could not delete temp labels file {}", labelsPath);
-                }
-            }
+            return new TrainPayload(modelName, lj, epochs, batchSize);
         }
     }
 }

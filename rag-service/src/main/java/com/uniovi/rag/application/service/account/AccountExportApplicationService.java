@@ -74,7 +74,8 @@ public class AccountExportApplicationService {
         Instant expiresAt = now.plusSeconds((long) accountProperties.getExportTtlHours() * 3600);
 
         artifactRegistrar.saveAndCompleteTask(
-                task, taskId, artifactId, snap.user(), zipPath, sha256, byteSize, now, expiresAt, mutation);
+                new AccountExportCompletion(
+                        task, taskId, artifactId, snap.user(), zipPath, sha256, byteSize, now, expiresAt, mutation));
     }
 
     private void writeZip(

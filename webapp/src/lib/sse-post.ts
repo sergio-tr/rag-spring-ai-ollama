@@ -27,7 +27,8 @@ export async function postSseJson(
   handlers: SsePostHandlersExtended,
 ): Promise<void> {
   const base = getApiBaseUrl();
-  const url = path.startsWith("http") ? path : `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = path.startsWith("http") ? path : `${base}${normalizedPath}`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -84,77 +85,105 @@ export async function postSseJson(
     }
 
     const decoder = new TextDecoder();
-    let buffer = "";
-    let currentEvent = "";
-
     try {
-      while (true) {
-        let readResult: ReadableStreamReadResult<Uint8Array>;
-        try {
-          readResult = await reader.read();
-        } catch (e) {
-          if (signal?.aborted || isAbortError(e)) {
-            handlers.onAbort?.();
-            return;
-          }
-          handlers.onError?.(e instanceof Error ? e.message : String(e), "STREAM");
-          return;
-        }
-        const { done, value } = readResult;
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (line.trim() === "") {
-            currentEvent = "";
-            continue;
-          }
-          if (line.startsWith("event:")) {
-            currentEvent = line.slice(6).trim();
-            continue;
-          }
-          if (line.startsWith("data:")) {
-            const raw = line.slice(5).trim();
-            if (raw === "[DONE]") {
-              currentEvent = "";
-              continue;
-            }
-            if (currentEvent === "delta" || (!currentEvent && raw.startsWith("{"))) {
-              try {
-                const j = JSON.parse(raw) as { text?: string };
-                if (j.text) handlers.onDelta?.(j.text);
-              } catch {
-                /* ignore malformed chunk */
-              }
-            } else if (currentEvent === "done") {
-              try {
-                const payload = JSON.parse(raw) as StreamDonePayload;
-                handlers.onDone?.(payload);
-              } catch {
-                handlers.onError?.("Invalid done payload");
-              }
-            } else if (currentEvent === "error") {
-              try {
-                const j = JSON.parse(raw) as { code?: string; message?: string };
-                handlers.onError?.(j.message ?? "error", j.code);
-              } catch {
-                handlers.onError?.(raw);
-              }
-            }
-            currentEvent = "";
-          }
-        }
-      }
+      await readSseEventStream(reader, decoder, signal, handlers);
     } finally {
-      if (reader) {
-        await reader.cancel().catch(() => {});
-      }
+      await reader.cancel().catch(() => {});
     }
   } finally {
     if (signal) {
       signal.removeEventListener("abort", onAbort);
+    }
+  }
+}
+
+type SseLineCtx = { currentEvent: string };
+
+function handleSseLine(line: string, ctx: SseLineCtx, handlers: SsePostHandlersExtended): void {
+  if (line.trim() === "") {
+    ctx.currentEvent = "";
+    return;
+  }
+  if (line.startsWith("event:")) {
+    ctx.currentEvent = line.slice(6).trim();
+    return;
+  }
+  if (!line.startsWith("data:")) {
+    return;
+  }
+  const raw = line.slice(5).trim();
+  if (raw === "[DONE]") {
+    ctx.currentEvent = "";
+    return;
+  }
+  dispatchSsePayload(raw, ctx.currentEvent, handlers);
+  ctx.currentEvent = "";
+}
+
+function dispatchSsePayload(
+  raw: string,
+  currentEvent: string,
+  handlers: SsePostHandlersExtended,
+): void {
+  if (currentEvent === "delta" || (!currentEvent && raw.startsWith("{"))) {
+    try {
+      const j = JSON.parse(raw) as { text?: string };
+      if (j.text) {
+        handlers.onDelta?.(j.text);
+      }
+    } catch {
+      /* ignore malformed chunk */
+    }
+    return;
+  }
+  if (currentEvent === "done") {
+    try {
+      const payload = JSON.parse(raw) as StreamDonePayload;
+      handlers.onDone?.(payload);
+    } catch {
+      handlers.onError?.("Invalid done payload");
+    }
+    return;
+  }
+  if (currentEvent === "error") {
+    try {
+      const j = JSON.parse(raw) as { code?: string; message?: string };
+      handlers.onError?.(j.message ?? "error", j.code);
+    } catch {
+      handlers.onError?.(raw);
+    }
+  }
+}
+
+async function readSseEventStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  decoder: TextDecoder,
+  signal: AbortSignal | undefined,
+  handlers: SsePostHandlersExtended,
+): Promise<void> {
+  const ctx: SseLineCtx = { currentEvent: "" };
+  let buffer = "";
+  while (true) {
+    let readResult: ReadableStreamReadResult<Uint8Array>;
+    try {
+      readResult = await reader.read();
+    } catch (e) {
+      if (signal?.aborted || isAbortError(e)) {
+        handlers.onAbort?.();
+        return;
+      }
+      handlers.onError?.(e instanceof Error ? e.message : String(e), "STREAM");
+      return;
+    }
+    const { done, value } = readResult;
+    if (done) {
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      handleSseLine(line, ctx, handlers);
     }
   }
 }

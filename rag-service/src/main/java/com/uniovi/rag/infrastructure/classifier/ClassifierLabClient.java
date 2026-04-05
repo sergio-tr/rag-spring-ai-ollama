@@ -270,5 +270,21 @@ public class ClassifierLabClient implements ClassifierLabPort {
         public String getFilename() {
             return filename;
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof NamedByteArrayResource that)) {
+                return false;
+            }
+            return super.equals(o) && java.util.Objects.equals(filename, that.filename);
+        }
+
+        @Override
+        public int hashCode() {
+            return java.util.Objects.hash(super.hashCode(), filename);
+        }
     }
 }

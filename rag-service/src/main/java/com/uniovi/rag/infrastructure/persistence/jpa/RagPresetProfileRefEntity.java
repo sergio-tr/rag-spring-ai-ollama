@@ -9,8 +9,6 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.Table;
 
-import java.util.UUID;
-
 @Entity
 @Table(name = "rag_preset_profile_ref")
 public class RagPresetProfileRefEntity {

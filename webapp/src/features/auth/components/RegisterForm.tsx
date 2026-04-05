@@ -2,14 +2,13 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
-import { useRouter } from "@/navigation";
+import { Link, useRouter } from "@/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, apiFetch } from "@/lib/api-client";
-import { Link } from "@/navigation";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
 import {
   registerSchema,

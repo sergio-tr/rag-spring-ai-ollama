@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Link, usePathname } from "@/navigation";
 import { useTranslations } from "next-intl";
 
@@ -14,7 +15,9 @@ const tabs = [
   { href: "/settings/account", labelKey: "tabAccount" as const },
 ];
 
-export default function SettingsLayout({ children }: { children: React.ReactNode }) {
+export default function SettingsLayout({
+  children,
+}: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
   const t = useTranslations("Settings");
 

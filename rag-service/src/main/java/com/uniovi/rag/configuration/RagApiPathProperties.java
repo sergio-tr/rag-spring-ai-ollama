@@ -11,22 +11,25 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 public class RagApiPathProperties {
 
+    private static final String DEFAULT_PRODUCT_BASE_PATH = "/api/v5";
+    private static final String DEFAULT_LEGACY_BASE_PATH = "/api/v4";
+
     /**
      * Prefix for authenticated product API (e.g. {@code /api/v5}).
      */
-    private String productBasePath = "/api/v5";
+    private String productBasePath = DEFAULT_PRODUCT_BASE_PATH;
 
     /**
      * Prefix for legacy tooling API (e.g. {@code /api/v4}); not registered when {@code prod} profile is active.
      */
-    private String legacyBasePath = "/api/v4";
+    private String legacyBasePath = DEFAULT_LEGACY_BASE_PATH;
 
     public String getProductBasePath() {
         return productBasePath;
     }
 
     public void setProductBasePath(String productBasePath) {
-        this.productBasePath = normalizePrefix(productBasePath, "/api/v5");
+        this.productBasePath = normalizePrefix(productBasePath, DEFAULT_PRODUCT_BASE_PATH);
     }
 
     public String getLegacyBasePath() {
@@ -34,7 +37,7 @@ public class RagApiPathProperties {
     }
 
     public void setLegacyBasePath(String legacyBasePath) {
-        this.legacyBasePath = normalizePrefix(legacyBasePath, "/api/v4");
+        this.legacyBasePath = normalizePrefix(legacyBasePath, DEFAULT_LEGACY_BASE_PATH);
     }
 
     private static String normalizePrefix(String raw, String defaultPrefix) {

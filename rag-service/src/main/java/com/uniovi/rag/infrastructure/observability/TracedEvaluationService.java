@@ -21,6 +21,9 @@ public final class TracedEvaluationService implements EvaluationService {
     /** Counter name for evaluation-layer calls (aligned with other {@code rag.*.calls} metrics). */
     private static final String METRIC_EVALUATION_CALLS = "rag.evaluation.calls";
 
+    /** Span name for evaluation execution (single constant for Sonar duplicate-literal rule). */
+    private static final String SPAN_EVALUATION_RUN = "rag.evaluation.run";
+
     private final EvaluationService delegate;
     private final ObservabilitySupport observability;
 
@@ -35,11 +38,10 @@ public final class TracedEvaluationService implements EvaluationService {
         return observability.recordTimer("rag.evaluation.evaluate", () ->
                 observability.runWithSpan(
                         // Domain convention: evaluation execution
-                        "rag.evaluation.run",
+                        SPAN_EVALUATION_RUN,
                         Map.of(),
                         SPAN_RESULT_KEY,
-                        () -> delegate.evaluate()
-                ));
+                        delegate::evaluate));
     }
 
     @Override
@@ -50,11 +52,10 @@ public final class TracedEvaluationService implements EvaluationService {
         String configLabel = customConfig != null ? "custom" : "null";
         return observability.recordTimer("rag.evaluation.evaluateWithConfiguration", () ->
                 observability.runWithSpan(
-                        "rag.evaluation.run",
+                        SPAN_EVALUATION_RUN,
                         Map.of("rag.evaluation.id", configLabel),
                         SPAN_RESULT_KEY,
-                        () -> delegate.evaluateWithConfiguration(customConfig, implementationProperties)
-                ));
+                        () -> delegate.evaluateWithConfiguration(customConfig, implementationProperties)));
     }
 
     @Override
@@ -62,11 +63,10 @@ public final class TracedEvaluationService implements EvaluationService {
         observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "evaluateAllConfigurations");
         return observability.recordTimer("rag.evaluation.evaluateAllConfigurations", () ->
                 observability.runWithSpan(
-                        "rag.evaluation.run",
+                        SPAN_EVALUATION_RUN,
                         Map.of("rag.evaluation.id", "all"),
                         SPAN_RESULT_KEY,
-                        () -> delegate.evaluateAllConfigurations()
-                ));
+                        delegate::evaluateAllConfigurations));
     }
 
     @Override
@@ -74,10 +74,7 @@ public final class TracedEvaluationService implements EvaluationService {
         observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "loadData");
         observability.recordTimer("rag.evaluation.loadData", () -> {
             observability.runWithSpan(
-                    "rag.evaluation.run",
-                    Map.of(TAG_OPERATION, "loadData"),
-                    () -> delegate.loadData()
-            );
+                    SPAN_EVALUATION_RUN, Map.of(TAG_OPERATION, "loadData"), delegate::loadData);
             return null;
         });
     }
@@ -86,11 +83,7 @@ public final class TracedEvaluationService implements EvaluationService {
     public Map<String, String> getQuestionsAndAnswers() {
         observability.recordCounter(METRIC_EVALUATION_CALLS, TAG_OPERATION, "getQuestionsAndAnswers");
         return observability.runWithSpan(
-                "rag.evaluation.run",
-                Map.of(),
-                SPAN_RESULT_KEY,
-                () -> delegate.getQuestionsAndAnswers()
-        );
+                SPAN_EVALUATION_RUN, Map.of(), SPAN_RESULT_KEY, delegate::getQuestionsAndAnswers);
     }
 
     @Override

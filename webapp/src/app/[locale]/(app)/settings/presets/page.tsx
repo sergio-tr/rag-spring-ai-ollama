@@ -91,7 +91,7 @@ export default function SettingsPresetsPage() {
                     {JSON.stringify(p.values, null, 2)}
                   </pre>
                 </div>
-                {!p.system ? (
+                {p.system ? null : (
                   <Button
                     type="button"
                     variant="outline"
@@ -101,7 +101,7 @@ export default function SettingsPresetsPage() {
                   >
                     {t("presetsDelete")}
                   </Button>
-                ) : null}
+                )}
               </li>
             ))}
           </ul>

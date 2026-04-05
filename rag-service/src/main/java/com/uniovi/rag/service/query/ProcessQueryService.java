@@ -214,32 +214,7 @@ public class ProcessQueryService implements QueryService {
             }
 
             CoreSynthesisResult core = responseSynthesisPipeline.synthesizeCore(pq, preOutput);
-
-            if (RagEffectiveFeatures.reasoningEnabled(featureConfig) && reasoningStrategy != null) {
-                DraftAndContext dac = core.draftAndContext();
-                if (dac.draft() != null && !dac.draft().trim().isEmpty()) {
-                    if (!isDraftAcceptable(dac)) {
-                        log().info("Draft not acceptable (A.5 fallback), using plain LLM");
-                        String answer = responseSynthesisPipeline.fallbackPlainLlm(pq);
-                        return QueryResponse.fromLLM(answer != null ? answer : dac.draft(), pq.queryType());
-                    }
-                    PostStepOutput postOutput = reasoningStrategy.runPostStep(query, dac.context(), dac.draft());
-                    String candidate = (postOutput != null && postOutput.verifiedOrRefinedText() != null)
-                            ? postOutput.verifiedOrRefinedText()
-                            : dac.draft();
-                    List<CandidateResponse> candidates = new ArrayList<>();
-                    candidates.add(CandidateResponse.of(candidate, "reasoning"));
-                    if (RagEffectiveFeatures.rankerEnabled(featureConfig) && responseRanker != null) {
-                        RankerResult rankerResult = responseRanker.selectBest(query, dac.context(), candidates);
-                        if (rankerResult != null && rankerResult.chosenText() != null) {
-                            return QueryResponse.fromTool(rankerResult.chosenText(), "reasoning+ranker", pq.queryType());
-                        }
-                    }
-                    return QueryResponse.fromTool(candidate, "reasoning", pq.queryType());
-                }
-            }
-
-            return core.toDirectQueryResponse(pq.queryType());
+            return finalizeResponseWithOptionalReasoning(query, pq, core);
         } catch (NullPointerException e) {
             if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
                 log().warn("Inference backend unreachable (NullPointerException chain): {}", e.getMessage());
@@ -295,6 +270,36 @@ public class ProcessQueryService implements QueryService {
         } finally {
             RagExecutionContextHolder.clear();
         }
+    }
+
+    private QueryResponse finalizeResponseWithOptionalReasoning(
+            String query, PreparedQuery pq, CoreSynthesisResult core) {
+        if (!RagEffectiveFeatures.reasoningEnabled(featureConfig) || reasoningStrategy == null) {
+            return core.toDirectQueryResponse(pq.queryType());
+        }
+        DraftAndContext dac = core.draftAndContext();
+        if (dac.draft() == null || dac.draft().trim().isEmpty()) {
+            return core.toDirectQueryResponse(pq.queryType());
+        }
+        if (!isDraftAcceptable(dac)) {
+            log().info("Draft not acceptable (A.5 fallback), using plain LLM");
+            String answer = responseSynthesisPipeline.fallbackPlainLlm(pq);
+            return QueryResponse.fromLLM(answer != null ? answer : dac.draft(), pq.queryType());
+        }
+        PostStepOutput postOutput = reasoningStrategy.runPostStep(query, dac.context(), dac.draft());
+        String candidate =
+                (postOutput != null && postOutput.verifiedOrRefinedText() != null)
+                        ? postOutput.verifiedOrRefinedText()
+                        : dac.draft();
+        List<CandidateResponse> candidates = new ArrayList<>();
+        candidates.add(CandidateResponse.of(candidate, "reasoning"));
+        if (RagEffectiveFeatures.rankerEnabled(featureConfig) && responseRanker != null) {
+            RankerResult rankerResult = responseRanker.selectBest(query, dac.context(), candidates);
+            if (rankerResult != null && rankerResult.chosenText() != null) {
+                return QueryResponse.fromTool(rankerResult.chosenText(), "reasoning+ranker", pq.queryType());
+            }
+        }
+        return QueryResponse.fromTool(candidate, "reasoning", pq.queryType());
     }
 
     private static RagExecutionContext buildContext(RagExecutionContext overlay, RagConfig resolved, String traceId) {

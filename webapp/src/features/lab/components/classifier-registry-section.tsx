@@ -46,7 +46,7 @@ export function ClassifierRegistrySection() {
             </p>
           )}
           {isLoading && <p className="text-muted-foreground text-sm">{t("registryLoading")}</p>}
-          {!isLoading && !error && models && models.length === 0 && (
+          {!isLoading && !error && models?.length === 0 && (
             <p className="text-muted-foreground text-sm">{t("registryEmpty")}</p>
           )}
           {models && models.length > 0 && (

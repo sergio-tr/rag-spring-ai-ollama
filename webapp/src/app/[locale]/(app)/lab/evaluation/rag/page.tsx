@@ -47,7 +47,8 @@ export default function LabRagEvalPage() {
         params.set("projectId", activeProject.id);
       }
       const qs = params.toString();
-      const url = apiProductPath(`/lab/evaluations/rag${qs ? `?${qs}` : ""}`);
+      const ragEvalPath = qs ? `/lab/evaluations/rag?${qs}` : "/lab/evaluations/rag";
+      const url = apiProductPath(ragEvalPath);
 
       if (syncMode) {
         const data = await apiFetch<unknown>(url, { method: "POST", signal });
@@ -95,7 +96,7 @@ export default function LabRagEvalPage() {
               />
               {t("syncModeLabel")}
             </label>
-            {!syncMode ? (
+            {syncMode ? null : (
               <div className="flex flex-col gap-1">
                 <span className="text-muted-foreground text-xs">{t("followModeLabel")}</span>
                 <div className="flex gap-3 text-sm">
@@ -121,7 +122,7 @@ export default function LabRagEvalPage() {
                   </label>
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
 
           {activeProject ? (
@@ -132,10 +133,10 @@ export default function LabRagEvalPage() {
             <p className="text-muted-foreground text-xs">{t("projectScopeNone")}</p>
           )}
 
-          {!datasetsReady && (
-            <p className="text-amber-600 text-sm dark:text-amber-500" role="status">
+          {datasetsReady ? null : (
+            <output className="block text-amber-600 text-sm dark:text-amber-500">
               {t("datasetsDisabledWarn")}
-            </p>
+            </output>
           )}
 
           <div className="flex flex-wrap gap-2">
@@ -160,9 +161,9 @@ export default function LabRagEvalPage() {
             </p>
           ) : null}
 
-          {!syncMode && (accepted || taskStatus) ? (
+          {syncMode || (!accepted && !taskStatus) ? null : (
             <LabJobPanel accepted={accepted} taskStatus={taskStatus} queuedHint={!!accepted && !taskStatus} />
-          ) : null}
+          )}
 
           {result != null ? (
             <>

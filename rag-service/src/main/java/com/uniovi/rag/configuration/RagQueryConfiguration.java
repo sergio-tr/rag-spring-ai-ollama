@@ -30,7 +30,6 @@ import com.uniovi.rag.service.query.LLMResponseValidatorService;
 import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
-import com.uniovi.rag.service.config.ConfigResolver;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;

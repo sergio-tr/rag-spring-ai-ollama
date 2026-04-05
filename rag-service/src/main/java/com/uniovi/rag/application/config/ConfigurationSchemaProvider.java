@@ -12,6 +12,8 @@ import java.util.Map;
 @Component
 public class ConfigurationSchemaProvider {
 
+    private static final String TYPE_BOOLEAN = "boolean";
+
     public Map<String, Object> buildSchema() {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("version", 1);
@@ -22,10 +24,10 @@ public class ConfigurationSchemaProvider {
                         field("similarityThreshold", "number", 0.0, 1.0, true),
                         field("llmModel", "string", null, null, true),
                         field("embeddingModel", "string", null, null, false),
-                        field("expansionEnabled", "boolean", null, null, true),
-                        field("nerEnabled", "boolean", null, null, true),
-                        field("toolsEnabled", "boolean", null, null, true),
-                        field("metadataEnabled", "boolean", null, null, true)));
+                        field("expansionEnabled", TYPE_BOOLEAN, null, null, true),
+                        field("nerEnabled", TYPE_BOOLEAN, null, null, true),
+                        field("toolsEnabled", TYPE_BOOLEAN, null, null, true),
+                        field("metadataEnabled", TYPE_BOOLEAN, null, null, true)));
         return root;
     }
 

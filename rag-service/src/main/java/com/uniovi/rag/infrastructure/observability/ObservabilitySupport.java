@@ -46,7 +46,7 @@ public class ObservabilitySupport {
             }
             span.end();
             return result;
-        } catch (Throwable t) {
+        } catch (Exception t) {
             span.tag("error", "true");
             span.tag("error.type", t.getClass().getSimpleName());
             span.tag("error.message", truncate(t.getMessage() != null ? t.getMessage() : t.toString()));

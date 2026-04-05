@@ -8,6 +8,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.service.async.lab.LabJobPayloadKeys;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -113,7 +114,7 @@ class AsyncTaskServiceTest {
         ArgumentCaptor<AsyncTaskEntity> cap = ArgumentCaptor.forClass(AsyncTaskEntity.class);
         verify(asyncTaskRepository).save(cap.capture());
         assertThat(cap.getValue().getRequestPayload())
-                .containsEntry(AsyncLabTaskRunner.P_OLLAMA_MODEL, "llama3");
+                .containsEntry(LabJobPayloadKeys.OLLAMA_MODEL, "llama3");
     }
 
     @Test
@@ -165,7 +166,7 @@ class AsyncTaskServiceTest {
 
         ArgumentCaptor<AsyncTaskEntity> cap = ArgumentCaptor.forClass(AsyncTaskEntity.class);
         verify(asyncTaskRepository).save(cap.capture());
-        assertThat(cap.getValue().getRequestPayload()).containsKeys(AsyncLabTaskRunner.P_LABELS_PATH);
+        assertThat(cap.getValue().getRequestPayload()).containsKeys(LabJobPayloadKeys.LABELS_PATH);
     }
 
     @Test
@@ -187,9 +188,9 @@ class AsyncTaskServiceTest {
         ArgumentCaptor<AsyncTaskEntity> cap = ArgumentCaptor.forClass(AsyncTaskEntity.class);
         verify(asyncTaskRepository).save(cap.capture());
         assertThat(cap.getValue().getRequestPayload())
-                .containsEntry(AsyncLabTaskRunner.P_INCLUDE_IMAGES, true)
-                .containsEntry(AsyncLabTaskRunner.P_MODEL_ID, "mid");
-        assertThat(cap.getValue().getRequestPayload()).containsKeys(AsyncLabTaskRunner.P_EVAL_PATH);
+                .containsEntry(LabJobPayloadKeys.INCLUDE_IMAGES, true)
+                .containsEntry(LabJobPayloadKeys.MODEL_ID, "mid");
+        assertThat(cap.getValue().getRequestPayload()).containsKeys(LabJobPayloadKeys.EVAL_PATH);
     }
 
     @Test

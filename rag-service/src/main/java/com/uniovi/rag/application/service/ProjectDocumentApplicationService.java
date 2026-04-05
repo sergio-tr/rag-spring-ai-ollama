@@ -26,6 +26,8 @@ import java.util.UUID;
 @Service
 public class ProjectDocumentApplicationService {
 
+    private static final String DEFAULT_ORIGINAL_FILENAME = "upload";
+
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final ProjectDocumentIngestionService ingestionService;
     private final ProjectAccessService projectAccessService;
@@ -56,7 +58,8 @@ public class ProjectDocumentApplicationService {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         }
-        String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+        String original =
+                file.getOriginalFilename() != null ? file.getOriginalFilename() : DEFAULT_ORIGINAL_FILENAME;
         String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newChatLocalIngesting(conv.getProject(), conv, original);
         row = knowledgeDocumentRepository.save(row);
@@ -71,7 +74,8 @@ public class ProjectDocumentApplicationService {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         }
-        String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+        String original =
+                file.getOriginalFilename() != null ? file.getOriginalFilename() : DEFAULT_ORIGINAL_FILENAME;
         String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
 
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newIngesting(project, original);
@@ -109,7 +113,8 @@ public class ProjectDocumentApplicationService {
         row.setErrorMessage(null);
         knowledgeDocumentRepository.save(row);
 
-        String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "upload";
+        String original =
+                file.getOriginalFilename() != null ? file.getOriginalFilename() : DEFAULT_ORIGINAL_FILENAME;
         String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
         Path temp = Files.createTempFile("rag-reindex-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
         file.transferTo(temp.toFile());

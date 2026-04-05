@@ -89,7 +89,8 @@ public final class AnswerGenerationKernel {
      */
     private final boolean legacyAdvisorWithPostRetrieval;
 
-    public AnswerGenerationKernel(
+    /** Bundles constructor dependencies (Sonar parameter-count rule). */
+    public record Dependencies(
             RagFeatureConfiguration featureConfig,
             NERQueryEnricher nerQueryEnricher,
             ContextRetriever retriever,
@@ -98,59 +99,18 @@ public final class AnswerGenerationKernel {
             QuestionAnswerAdvisor questionAnswerAdvisor,
             ChatRequestSpecFactory chatRequestSpecFactory,
             @Nullable NaiveCorpusContextService naiveCorpusContextService,
-            boolean legacyAdvisorWithPostRetrieval) {
-        this.featureConfig = featureConfig;
-        this.nerQueryEnricher = nerQueryEnricher;
-        this.retriever = retriever;
-        this.postRetrievalProcessor = postRetrievalProcessor;
-        this.responseValidator = responseValidator;
-        this.questionAnswerAdvisor = questionAnswerAdvisor;
-        this.chatRequestSpecFactory = chatRequestSpecFactory;
-        this.naiveCorpusContextService = naiveCorpusContextService;
-        this.legacyAdvisorWithPostRetrieval = legacyAdvisorWithPostRetrieval;
-    }
+            boolean legacyAdvisorWithPostRetrieval) {}
 
-    /** Test / legacy construction without naive corpus service. */
-    public AnswerGenerationKernel(
-            RagFeatureConfiguration featureConfig,
-            NERQueryEnricher nerQueryEnricher,
-            ContextRetriever retriever,
-            PostRetrievalProcessor postRetrievalProcessor,
-            ResponseValidator responseValidator,
-            QuestionAnswerAdvisor questionAnswerAdvisor,
-            ChatRequestSpecFactory chatRequestSpecFactory) {
-        this(
-                featureConfig,
-                nerQueryEnricher,
-                retriever,
-                postRetrievalProcessor,
-                responseValidator,
-                questionAnswerAdvisor,
-                chatRequestSpecFactory,
-                null,
-                false);
-    }
-
-    /** Test / legacy construction with naive corpus, default retrieval policy. */
-    public AnswerGenerationKernel(
-            RagFeatureConfiguration featureConfig,
-            NERQueryEnricher nerQueryEnricher,
-            ContextRetriever retriever,
-            PostRetrievalProcessor postRetrievalProcessor,
-            ResponseValidator responseValidator,
-            QuestionAnswerAdvisor questionAnswerAdvisor,
-            ChatRequestSpecFactory chatRequestSpecFactory,
-            @Nullable NaiveCorpusContextService naiveCorpusContextService) {
-        this(
-                featureConfig,
-                nerQueryEnricher,
-                retriever,
-                postRetrievalProcessor,
-                responseValidator,
-                questionAnswerAdvisor,
-                chatRequestSpecFactory,
-                naiveCorpusContextService,
-                false);
+    public AnswerGenerationKernel(Dependencies deps) {
+        this.featureConfig = deps.featureConfig();
+        this.nerQueryEnricher = deps.nerQueryEnricher();
+        this.retriever = deps.retriever();
+        this.postRetrievalProcessor = deps.postRetrievalProcessor();
+        this.responseValidator = deps.responseValidator();
+        this.questionAnswerAdvisor = deps.questionAnswerAdvisor();
+        this.chatRequestSpecFactory = deps.chatRequestSpecFactory();
+        this.naiveCorpusContextService = deps.naiveCorpusContextService();
+        this.legacyAdvisorWithPostRetrieval = deps.legacyAdvisorWithPostRetrieval();
     }
 
     public DraftAndContext askModelWithPreStep(String query, JSONObject nerEntities, QueryType queryType, String preStepThought) {

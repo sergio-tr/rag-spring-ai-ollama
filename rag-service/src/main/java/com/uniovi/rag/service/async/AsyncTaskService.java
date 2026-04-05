@@ -99,7 +99,8 @@ public class AsyncTaskService {
             int epochs,
             int batchSize)
             throws IOException {
-        return submitClassifierTrain(userId, null, file, modelName, labelsJson, labelsFile, epochs, batchSize);
+        return enqueueClassifierTrain(
+                new ClassifierTrainSubmission(userId, null, file, modelName, labelsJson, labelsFile, epochs, batchSize));
     }
 
     @Transactional
@@ -113,27 +114,36 @@ public class AsyncTaskService {
             int epochs,
             int batchSize)
             throws IOException {
+        return enqueueClassifierTrain(
+                new ClassifierTrainSubmission(
+                        userId, projectId, file, modelName, labelsJson, labelsFile, epochs, batchSize));
+    }
+
+    private UUID enqueueClassifierTrain(ClassifierTrainSubmission sub) throws IOException {
         Path train = Files.createTempFile("async-train-", ".xlsx");
-        Files.write(train, file.getBytes());
+        Files.write(train, sub.file().getBytes());
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(LabJobPayloadKeys.TRAIN_PATH, train.toAbsolutePath().toString());
-        payload.put(LabJobPayloadKeys.MODEL_NAME, modelName != null ? modelName : "model");
-        if (labelsJson != null && !labelsJson.isBlank()) {
-            payload.put(LabJobPayloadKeys.LABELS_JSON, labelsJson);
+        payload.put(LabJobPayloadKeys.MODEL_NAME, sub.modelName() != null ? sub.modelName() : "model");
+        if (sub.labelsJson() != null && !sub.labelsJson().isBlank()) {
+            payload.put(LabJobPayloadKeys.LABELS_JSON, sub.labelsJson());
         }
-        payload.put(LabJobPayloadKeys.EPOCHS, epochs);
-        payload.put(LabJobPayloadKeys.BATCH_SIZE, batchSize);
+        payload.put(LabJobPayloadKeys.EPOCHS, sub.epochs());
+        payload.put(LabJobPayloadKeys.BATCH_SIZE, sub.batchSize());
+        MultipartFile labelsFile = sub.labelsFile();
         if (labelsFile != null && !labelsFile.isEmpty()) {
             String suffix =
                     labelsFile.getOriginalFilename() != null
                                     && labelsFile.getOriginalFilename().contains(".")
-                            ? labelsFile.getOriginalFilename().substring(labelsFile.getOriginalFilename().lastIndexOf('.'))
+                            ? labelsFile
+                                    .getOriginalFilename()
+                                    .substring(labelsFile.getOriginalFilename().lastIndexOf('.'))
                             : ".txt";
             Path labels = Files.createTempFile("async-labels-", suffix);
             Files.write(labels, labelsFile.getBytes());
             payload.put(LabJobPayloadKeys.LABELS_PATH, labels.toAbsolutePath().toString());
         }
-        return enqueue(userId, projectId, AsyncTaskType.CLASSIFIER_TRAIN, payload);
+        return enqueue(sub.userId(), sub.projectId(), AsyncTaskType.CLASSIFIER_TRAIN, payload);
     }
 
     @Transactional
@@ -150,11 +160,22 @@ public class AsyncTaskService {
             boolean includeImages,
             MultipartFile datasetFile)
             throws IOException {
-        return submitClassifierEval(userId, projectId, modelId, includeImages, datasetFile, null);
+        return enqueueClassifierEval(userId, projectId, modelId, includeImages, datasetFile, null);
     }
 
     @Transactional
     public UUID submitClassifierEval(
+            UUID userId,
+            UUID projectId,
+            String modelId,
+            boolean includeImages,
+            MultipartFile datasetFile,
+            UUID evaluationRunId)
+            throws IOException {
+        return enqueueClassifierEval(userId, projectId, modelId, includeImages, datasetFile, evaluationRunId);
+    }
+
+    private UUID enqueueClassifierEval(
             UUID userId,
             UUID projectId,
             String modelId,
@@ -259,4 +280,15 @@ public class AsyncTaskService {
                 e.getStartedAt(),
                 e.getCompletedAt());
     }
+
+    /** Bundles classifier train multipart fields for a single enqueue path (keeps API overloads thin). */
+    private record ClassifierTrainSubmission(
+            UUID userId,
+            UUID projectId,
+            MultipartFile file,
+            String modelName,
+            String labelsJson,
+            MultipartFile labelsFile,
+            int epochs,
+            int batchSize) {}
 }

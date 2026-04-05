@@ -44,7 +44,7 @@ function mergePayload(
   values: ConfigFormValues,
   keys: string[],
 ): Record<string, unknown> {
-  const next: Record<string, unknown> = { ...(base ?? {}) };
+  const next: Record<string, unknown> = base ? { ...base } : {};
   for (const k of keys) {
     const v = values[k];
     if (v === undefined) {
