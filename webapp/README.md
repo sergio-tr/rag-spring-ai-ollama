@@ -29,6 +29,8 @@ Playwright specs under `e2e/research/` (Lab) may skip or time out if the classif
 
 ## Commands
 
+The repository **does not commit** `package-lock.json` (ignored at repo root). Use **`npm install`** locally, in CI, and in the `webapp/Dockerfile` (no `npm ci`). Node **22** is set in `package.json` `engines` and in GitHub Actions via `node-version-file: webapp/package.json`. CI caches `~/.npm` with [`.github/actions/cache-npm-webapp`](../.github/actions/cache-npm-webapp/action.yml) keyed by `webapp/package.json`.
+
 ```bash
 npm install
 npm run dev          # http://localhost:3000 — set NEXT_PUBLIC_API_BASE_URL to your rag-service

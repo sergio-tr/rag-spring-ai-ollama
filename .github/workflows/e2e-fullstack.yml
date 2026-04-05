@@ -81,12 +81,13 @@ jobs:
           tail -n 200 /tmp/spring-e2e.log || true
           exit 1
 
+      - name: Cache npm (webapp)
+        uses: ./.github/actions/cache-npm-webapp
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          node-version-file: webapp/package.json
 
       - name: Install, build Next.js, run @fullstack Playwright
         working-directory: webapp
@@ -96,7 +97,7 @@ jobs:
           E2E_ALLOW_INSECURE_COOKIES: "true"
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
           npx playwright install --with-deps chromium
           npm run test:e2e:fullstack

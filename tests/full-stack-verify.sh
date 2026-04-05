@@ -116,11 +116,11 @@ ensure_node_toolchain() {
 }
 
 run_webapp_static_checks() {
-  echo "=== 3) Webapp: npm ci, lint, typecheck, Vitest coverage, build, typedoc ==="
+  echo "=== 3) Webapp: npm install, lint, typecheck, Vitest coverage, build, typedoc ==="
   ensure_node_toolchain
   ensure_env "$ROOT_DIR/webapp/.env.example" "$ROOT_DIR/webapp/.env"
   cd "$ROOT_DIR/webapp"
-  npm ci
+  npm install --no-audit --no-fund
   npm run lint
   npm run typecheck
   npm run test:coverage

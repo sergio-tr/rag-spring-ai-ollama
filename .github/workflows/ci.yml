@@ -91,15 +91,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache npm (webapp)
+        uses: ./.github/actions/cache-npm-webapp
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          node-version-file: webapp/package.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Lint
         run: npm run lint
@@ -151,16 +152,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache npm (webapp)
+        uses: ./.github/actions/cache-npm-webapp
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: webapp/package-lock.json
+          node-version-file: webapp/package.json
 
       - name: Install and build
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
 
       - name: Install Playwright Chromium
