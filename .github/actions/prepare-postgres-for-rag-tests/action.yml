@@ -3,7 +3,7 @@
 # - extensions on vectordb (vector, hstore, uuid-ossp)
 # - database testdb + src/test/resources/test-init.sql
 #
-# Jobs must still set service postgres (pgvector/pgvector:pg16) and job env, e.g.:
+# Jobs must still set service postgres (pgvector/pgvector:0.8.2-pg16-bookworm) and job env, e.g.:
 #   SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD
 #   RAG_TEST_USE_TESTCONTAINERS_DATASOURCE=false, INTEGRATION_JDBC_URL (for mvn verify)
 name: Prepare Postgres for RAG tests
@@ -24,7 +24,8 @@ runs:
       run: |
         set -euo pipefail
         ready=0
-        for _ in $(seq 1 40); do
+        # Max wall-clock ~60s (30 * 2s) per CI execution contract
+        for _ in $(seq 1 30); do
           if pg_isready -h localhost -p 5432 -U postgres; then
             ready=1
             break

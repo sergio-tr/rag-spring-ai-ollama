@@ -33,7 +33,7 @@ def start_pgvector_container() -> Any:
     from testcontainers.postgres import PostgresContainer
 
     container = PostgresContainer(
-        "pgvector/pgvector:pg16",
+        "pgvector/pgvector:0.8.2-pg16-bookworm",
         username="postgres",
         password="postgres",
         dbname="vectordb",

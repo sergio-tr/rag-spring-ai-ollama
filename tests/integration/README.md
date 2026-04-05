@@ -9,7 +9,7 @@ These tests validate **HTTP integration** between components while services are 
 | Path | Where | Postgres | pytest |
 | --- | --- | --- | --- |
 | **A (default, CI)** | GitHub Actions + local Compose | **GHA service** or Compose `postgres` | **HTTP only** (`httpx`). Spring uses `SPRING_DATASOURCE_*` against that DB. |
-| **B (optional local)** | Developer machine with Docker | **Testcontainers** (`pgvector/pgvector:pg16`) via `INTEGRATION_USE_TESTCONTAINERS=1` | Optional **DB smoke** in `test_tc_postgres_smoke.py` (extensions aligned with Java init SQL). Does **not** replace Path A in CI. |
+| **B (optional local)** | Developer machine with Docker | **Testcontainers** (`pgvector/pgvector:0.8.2-pg16-bookworm`) via `INTEGRATION_USE_TESTCONTAINERS=1` | Optional **DB smoke** in `test_tc_postgres_smoke.py` (extensions aligned with Java init SQL). Does **not** replace Path A in CI. |
 
 Do **not** mix Path A and Path B in the same CI job (no Python Testcontainers alongside the GHA Postgres service).
 
@@ -75,7 +75,7 @@ The workflow [`.github/workflows/integration.yml`](../../.github/workflows/integ
 
 ### Optional local DB smoke (Path B)
 
-Requires Docker. Validates that `testcontainers-vectordb-init.sql` applies cleanly on `pgvector/pgvector:pg16` (same extensions as Java Testcontainers). Does **not** start Spring.
+Requires Docker. Validates that `testcontainers-vectordb-init.sql` applies cleanly on `pgvector/pgvector:0.8.2-pg16-bookworm` (same extensions as Java Testcontainers). Does **not** start Spring.
 
 ```bash
 ./tests/integration/run-integration-local.sh

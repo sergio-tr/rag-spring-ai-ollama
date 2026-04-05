@@ -1,12 +1,12 @@
 # Database (PostgreSQL + pgvector)
 
-PostgreSQL 16 with the pgvector extension. Used by the backend (rag-service) for vectors and RAG data.
+PostgreSQL 16 with the pgvector extension. The stack uses the **pinned** image `pgvector/pgvector:0.8.2-pg16-bookworm` (same as CI and [.github/local/lib/common.sh](../.github/local/lib/common.sh)). The backend (rag-service) uses this database for vectors and RAG data.
 
-## Schema initialization (db/init)
+## Schema bootstrap (db/init)
 
-The **db/init/** directory contains the SQL scripts that run when the container is created for the first time (mounted at `/docker-entrypoint-initdb.d`):
+The **db/init/** directory contains SQL run on **first container init** (mounted at `/docker-entrypoint-initdb.d`):
 
-- **init.sql**: creates extensions (vector, hstore, uuid-ossp), `documents` and `vector_store` tables, and indexes for RAG.
+- **init.sql**: creates extensions (`vector`, `hstore`, `uuid-ossp`) and the read-only **monitoring user** (`postgres_exporter` + `pg_monitor`) for OpenTelemetry. It does **not** create application tables.
 
 **db/legacy/** holds an alternate reference schema (`prev_init.sql`) for comparison; it is not run by Docker.
 
@@ -20,7 +20,6 @@ The **db/init/** directory contains the SQL scripts that run when the container 
 | `POSTGRES_DB` | Database name | `vectordb` |
 | `POSTGRES_MONITOR_USER` | Read-only monitoring user (metrics) | `postgres_exporter` |
 | `POSTGRES_MONITOR_PASSWORD` | Password for monitoring user | `postgres_exporter` |
-| `POSTGRES_BASE_IMAGE` | Base image for db/Dockerfile | `postgres:16` |
 
 Ollama (GPU stack) has its own folder **ollama/** with Dockerfile and `.env`; see `ollama/README.md`.
 
@@ -34,7 +33,7 @@ Use `--force` to overwrite. The template is **db/.env.example**.
 
 ## Using Docker Compose
 
-The main stack uses **db/.env**, **classifier-service/.env** and **rag-service/.env** for build-args and runtime variables. The `postgres` service is built from **db/Dockerfile** (base image from `POSTGRES_BASE_IMAGE`); the backend and classifier are built from their own Dockerfiles with args from their `.env` files.
+The main stack uses **db/.env**, **classifier-service/.env** and **rag-service/.env**. The `postgres` service uses **`image: pgvector/pgvector:0.8.2-pg16-bookworm`** in [docker/docker-compose.yml](../docker/docker-compose.yml) (no custom DB image build). The backend and classifier are still built from their own Dockerfiles.
 
 From the repo root:
 
@@ -46,24 +45,24 @@ cd docker
 docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d
 ```
 
-Or use `./docker/scripts/set-env.sh` to create `.env` files interactively, then `./docker/scripts/up.sh dev|prod` to start the stack. Ports and base images are in the respective `.env` files; override them there or when running `docker compose`.
+Or use `./docker/scripts/set-env.sh` to create `.env` files interactively, then `./docker/scripts/up.sh dev|prod` to start the stack.
 
 ## Running only the database (local development)
 
 ```bash
-docker build -t rag-db ./db
 docker run -d --name postgres -p 5432:5432 \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=vectordb \
-  rag-db
+  -v "$(pwd)/db/init:/docker-entrypoint-initdb.d:ro" \
+  pgvector/pgvector:0.8.2-pg16-bookworm
 ```
 
-Then in the backend (rag-service) use in `.env` or in the environment: `SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/vectordb`, with the same user and password as in db/.env.
+Then in the backend (rag-service) use: `SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/vectordb`, with the same user and password as in db/.env.
 
 ## Flyway migrations (rag-service)
 
-The **authoritative schema** for the application stack is applied by **Flyway** from `rag-service/src/main/resources/db/migration/` when the Spring Boot app starts (not from `db/init` alone, which bootstraps extensions and legacy tables in the Docker image).
+The **authoritative application schema** is applied by **Flyway** from `rag-service/src/main/resources/db/migration/` when the Spring Boot app starts. **`db/init` does not own application tables** — only extensions and the monitoring user.
 
 **Before upgrading a shared or production database:** take a **backup** (`pg_dump` or your snapshot process), then deploy a build that includes the new migration(s). Example: **V19** adds nullable `project_id` on `evaluation_run` and `async_task` (see [ADR 0003](../docs/adr/0003-evaluation-async-project-scope-and-dataset-dedup.md) and [DATA_MODEL.md](../docs/architecture/DATA_MODEL.md)).
 
@@ -71,8 +70,7 @@ Local check after pulling: start `rag-service` against your DB (or run `mvn -pl 
 
 ## PostgreSQL observability (metrics via OpenTelemetry Collector)
 
-The observability stack includes an OpenTelemetry Collector that already exposes Prometheus metrics on `:8889` and is configured to scrape PostgreSQL using the **postgresql receiver**, following the guide\
-“How to Use OpenTelemetry with Postgres” from Last9 ([link](https://last9.io/blog/how-to-use-opentelemetry-with-postgres/)).
+The observability stack includes an OpenTelemetry Collector that exposes Prometheus metrics on `:8889` and is configured to scrape PostgreSQL using the **postgresql receiver**, following the guide “How to Use OpenTelemetry with Postgres” from Last9 ([link](https://last9.io/blog/how-to-use-opentelemetry-with-postgres/)).
 
 The `db/init/init.sql` script:
 
@@ -86,8 +84,7 @@ The collector configuration in `observability/otel-collector/config.yaml` adds:
 - A `postgresql` receiver that connects to the `postgres` service on port 5432 using the `postgres_exporter` user.
 - A metrics pipeline that includes both `otlp` (application metrics) and `postgresql` as receivers, and exports everything via the existing Prometheus exporter.
 
-Grafana (under `observability/grafana`) is provisioned with a dashboard\
-`postgres-metrics.json` that uses the `prometheus` datasource and shows:
+Grafana (under `observability/grafana`) is provisioned with a dashboard `postgres-metrics.json` that uses the `prometheus` datasource and shows:
 
 - Active connections (`postgresql.backends`)
 - Transaction rate (commits / rollbacks)

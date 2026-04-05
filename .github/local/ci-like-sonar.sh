@@ -32,6 +32,8 @@ set -euo pipefail
 # Script lives in .github/local/ — repo root is two levels up.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
+# shellcheck source=lib/common.sh
+source "${ROOT}/.github/local/lib/common.sh"
 
 if [[ -z "${SONAR_TOKEN:-}" ]]; then
   echo "ERROR: Set SONAR_TOKEN (SonarCloud → Account → Security → Generate token)." >&2
@@ -148,7 +150,7 @@ prepare_postgres() {
   }
 
   local CONTAINER_NAME="${RAG_CI_POSTGRES_CONTAINER:-rag-ci-postgres}"
-  local IMAGE="pgvector/pgvector:pg16"
+  local IMAGE="${RAG_PLATFORM_POSTGRES_IMAGE}"
 
   local SCRIPT_DIR="${ROOT}/.github/local"
   local CI_EXT="${SCRIPT_DIR}/ci-postgres-extensions.sql"

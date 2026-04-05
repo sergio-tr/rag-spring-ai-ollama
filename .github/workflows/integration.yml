@@ -10,13 +10,6 @@ on:
       - "tests/integration/**"
       - "rag-service/**"
       - ".github/workflows/integration.yml"
-  pull_request:
-    branches: [main, master]
-    paths:
-      - "tests/integration/**"
-      - "rag-service/**"
-      - ".github/workflows/integration.yml"
-
 concurrency:
   group: integration-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -27,7 +20,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:0.8.2-pg16-bookworm
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -100,6 +93,11 @@ jobs:
       - name: pytest (stack integration)
         # HTTP-only: Path B (test_tc_postgres_smoke) is local Docker optional; see tests/integration/README.md
         run: python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py
+
+      - name: Stop Spring Boot
+        if: always()
+        run: |
+          if [ -f /tmp/spring-integration.pid ]; then kill "$(cat /tmp/spring-integration.pid)" 2>/dev/null || true; fi
 
       - name: Upload Spring log on failure
         if: failure()

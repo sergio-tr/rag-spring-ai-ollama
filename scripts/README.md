@@ -42,7 +42,7 @@ MAVEN_ON_HOST=1 ./scripts/full-stack-verify.sh   # host mvnw (JDK 21)
 
 | Script | Creates | Purpose |
 |--------|---------|---------|
-| `create-env-db.sh` | `db/.env` | Postgres (port, user, password, DB), base image (POSTGRES_BASE_IMAGE). Used by main compose. |
+| `create-env-db.sh` | `db/.env` | Postgres (port, user, password, DB). Used by main compose. |
 | `create-env-observability.sh` | `observability/.env` | Base images (OTEL, Jaeger, Prometheus, Grafana), Grafana password, ports. Used by `compose.obs.yml`. |
 | `create-env-rag-service.sh` | `rag-service/.env` | Backend: base images (RAG_JAVA_*), SERVER_PORT, BACKEND_PORT, DB URL, Ollama, classifier URL. For build and local runs. |
 | `create-env-classifier-service.sh` | `classifier-service/.env` | Classifier: base image, PORT, MODELS_DIR, DATA_DIR, CLASSIFIER_SERVICE_PORT. For build and local runs. |
