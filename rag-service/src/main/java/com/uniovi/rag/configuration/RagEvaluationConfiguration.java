@@ -28,6 +28,9 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
 
+import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+
 
 @Configuration
 public class RagEvaluationConfiguration {
@@ -60,6 +63,8 @@ public class RagEvaluationConfiguration {
         MetadataLlmResponseCacheService metadataLlmResponseCacheService,
         ModelCatalogPort modelCatalogPort,
         ChatScopedRagConfigResolver chatScopedRagConfigResolver,
+        ExecutionContextFactory executionContextFactory,
+        RagExecutionOrchestrator ragExecutionOrchestrator,
         ReasoningStrategy reasoningStrategy,
         ResponseRanker responseRanker,
         PostRetrievalProcessor postRetrievalProcessor,
@@ -72,6 +77,7 @@ public class RagEvaluationConfiguration {
                 expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
                 expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker,
                 metadataLlmResponseCacheService, modelCatalogPort, chatScopedRagConfigResolver,
+                executionContextFactory, ragExecutionOrchestrator,
                 reasoningStrategy, responseRanker, postRetrievalProcessor, queryDateExtractor, knowledgeChatOverlayEnabled,
                 ragRuntimeProperties);
     }

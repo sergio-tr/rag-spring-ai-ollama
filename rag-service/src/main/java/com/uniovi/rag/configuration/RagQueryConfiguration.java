@@ -28,7 +28,8 @@ import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.service.query.LLMResponseValidatorService;
 import com.uniovi.rag.application.port.ModelCatalogPort;
-import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -244,29 +245,15 @@ public class RagQueryConfiguration {
 
     @Bean
     public QueryService queryService(
-            RagFeatureConfiguration featureConfig,
-            RagToolsConfiguration toolsConfig,
             QueryExpander expander,
             QueryAnalyser analyser,
-            NERQueryEnricher nerQueryEnricher,
-            QueryClassifier classifier,
             ContextRetriever retriever,
             ChatClient chatClient,
-            DateExistenceGuard dateExistenceGuard,
-            MeetingMinutesToolsAdapter meetingMinutesToolsAdapter,
-            ReasoningStrategy reasoningStrategy,
-            ResponseRanker responseRanker,
-            PostRetrievalProcessor postRetrievalProcessor,
-            ResponseValidator responseValidator,
-            QuestionAnswerAdvisor questionAnswerAdvisor,
             OllamaConnectivityChecker ollamaConnectivityChecker,
-            NaiveCorpusContextService naiveCorpusContextService,
-            ModelCatalogPort modelCatalogPort,
-            ChatScopedRagConfigResolver chatScopedRagConfigResolver,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) RagRuntimeProperties ragRuntimeProperties,
+            ExecutionContextFactory executionContextFactory,
+            RagExecutionOrchestrator ragExecutionOrchestrator,
             RagImplementationProperties implProps,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) Tracer tracer
+            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
     ) {
         String impl = implProps.getQueryServiceImpl() != null ? implProps.getQueryServiceImpl().trim().toLowerCase() : "process";
         QueryService raw;
@@ -275,33 +262,11 @@ public class RagQueryConfiguration {
                 raw = new SimpleQueryService(expander, analyser, retriever, chatClient, ollamaConnectivityChecker);
                 break;
             case "simple-process":
-                raw = new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient, ollamaConnectivityChecker);
+                raw = new SimpleProcessQueryService(executionContextFactory, ragExecutionOrchestrator, ollamaConnectivityChecker);
                 break;
             default:
                 raw = new ProcessQueryService(
-                        featureConfig,
-                        toolsConfig,
-                        expander,
-                        analyser,
-                        nerQueryEnricher,
-                        classifier,
-                        retriever,
-                        chatClient,
-                        dateExistenceGuard,
-                        meetingMinutesToolsAdapter,
-                        reasoningStrategy,
-                        responseRanker,
-                        postRetrievalProcessor,
-                        responseValidator,
-                        questionAnswerAdvisor,
-                        ollamaConnectivityChecker,
-                        naiveCorpusContextService,
-                        modelCatalogPort,
-                        chatScopedRagConfigResolver,
-                        ragRuntimeProperties,
-                        tracer,
-                        null,
-                        false);
+                        executionContextFactory, ragExecutionOrchestrator, chatClient, ollamaConnectivityChecker);
                 break;
         }
         if (observability != null) {

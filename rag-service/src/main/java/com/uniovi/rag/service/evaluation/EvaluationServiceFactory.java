@@ -5,7 +5,6 @@ import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.analyser.MinuteNERQueryAnalyser;
-import com.uniovi.rag.service.analyser.NERQueryEnricher;
 import com.uniovi.rag.service.analyser.NoOpQueryAnalyser;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.infrastructure.classifier.ClassifierServiceClient;
@@ -16,8 +15,6 @@ import com.uniovi.rag.service.document.SimpleDocumentService;
 import com.uniovi.rag.service.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.guard.DateExistenceGuard;
-import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.service.ranker.ResponseRanker;
@@ -25,6 +22,8 @@ import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
+import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
@@ -35,9 +34,7 @@ import com.uniovi.rag.service.retriever.BasicContextRetriever;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.service.retriever.FilteredContextRetriever;
 import com.uniovi.rag.service.retriever.MinuteDocumentContextRetriever;
-import com.uniovi.rag.service.retriever.NaiveCorpusContextService;
 import com.uniovi.rag.domain.model.ExpansionStrategy;
-import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.tool.Tool;
 import com.uniovi.rag.tool.*;
 import com.uniovi.rag.tool.metadata.*;
@@ -46,8 +43,6 @@ import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -84,6 +79,8 @@ public class EvaluationServiceFactory {
     private final PostRetrievalProcessor postRetrievalProcessor;
     private final QueryDateExtractor queryDateExtractor;
     private final boolean knowledgeChatOverlayEnabled;
+    private final ExecutionContextFactory executionContextFactory;
+    private final RagExecutionOrchestrator ragExecutionOrchestrator;
 
     public EvaluationServiceFactory(
         ChatClient chatClient,
@@ -107,6 +104,8 @@ public class EvaluationServiceFactory {
         MetadataLlmResponseCacheService metadataLlmResponseCacheService,
         ModelCatalogPort modelCatalogPort,
         ChatScopedRagConfigResolver chatScopedRagConfigResolver,
+        ExecutionContextFactory executionContextFactory,
+        RagExecutionOrchestrator ragExecutionOrchestrator,
         ReasoningStrategy reasoningStrategy,
         ResponseRanker responseRanker,
         PostRetrievalProcessor postRetrievalProcessor,
@@ -141,6 +140,8 @@ public class EvaluationServiceFactory {
         this.queryDateExtractor = queryDateExtractor;
         this.knowledgeChatOverlayEnabled = knowledgeChatOverlayEnabled;
         this.ragRuntimeProperties = ragRuntimeProperties;
+        this.executionContextFactory = executionContextFactory;
+        this.ragExecutionOrchestrator = ragExecutionOrchestrator;
     }
 
     /**
@@ -183,46 +184,16 @@ public class EvaluationServiceFactory {
                         vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
                 break;
         }
-        RagToolsConfiguration toolsConfig = new RagToolsConfiguration(createTools(featureConfig, retriever, documentContentExtractor));
-        DateExistenceGuard dateExistenceGuard = new DefaultDateExistenceGuard(retriever, queryDateExtractor);
-        NERQueryEnricher nerQueryEnricher = new NERQueryEnricher(80, 512);
-        MeetingMinutesToolsAdapter meetingMinutesToolsAdapter = new MeetingMinutesToolsAdapter(toolsConfig, analyser);
-
         String queryServiceImpl = impl.getQueryServiceImpl() != null ? impl.getQueryServiceImpl().trim().toLowerCase() : "process";
-        switch (queryServiceImpl) {
-            case "simple":
-                return new SimpleQueryService(expander, analyser, retriever, chatClient, ollamaConnectivityChecker);
-            case "simple-process":
-                return new SimpleProcessQueryService(featureConfig, toolsConfig, expander, analyser, classifier, retriever, chatClient, ollamaConnectivityChecker);
-            default:
-                NaiveCorpusContextService naiveCorpus =
-                        new NaiveCorpusContextService(new NamedParameterJdbcTemplate(jdbcTemplate));
-                // Same ProcessQueryService constructor as product RagQueryConfiguration; pipeline from QueryRuntimeComponentsFactory.
-                return new ProcessQueryService(
-                        featureConfig,
-                        toolsConfig,
-                        expander,
-                        analyser,
-                        nerQueryEnricher,
-                        classifier,
-                        retriever,
-                        chatClient,
-                        dateExistenceGuard,
-                        meetingMinutesToolsAdapter,
-                        reasoningStrategy,
-                        responseRanker,
-                        postRetrievalProcessor,
-                        responseValidator,
-                        null,  // questionAnswerAdvisor: evaluation uses manual retrieval path
-                        ollamaConnectivityChecker,
-                        naiveCorpus,
-                        modelCatalogPort,
-                        chatScopedRagConfigResolver,
-                        ragRuntimeProperties,
-                        null,
-                        null,
-                        false);
+        if ("simple".equals(queryServiceImpl)) {
+            return new SimpleQueryService(expander, analyser, retriever, chatClient, ollamaConnectivityChecker);
         }
+        if ("simple-process".equals(queryServiceImpl)) {
+            return new SimpleProcessQueryService(
+                    executionContextFactory, ragExecutionOrchestrator, ollamaConnectivityChecker);
+        }
+        return new ProcessQueryService(
+                executionContextFactory, ragExecutionOrchestrator, chatClient, ollamaConnectivityChecker);
     }
 
     /**

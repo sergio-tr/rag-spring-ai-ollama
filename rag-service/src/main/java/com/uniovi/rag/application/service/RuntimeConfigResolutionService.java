@@ -36,6 +36,17 @@ public class RuntimeConfigResolutionService {
         return configResolverService.preview(input);
     }
 
+    /**
+     * Single live resolution path for the runtime engine (merged conversation JSON as terminal override when present).
+     */
+    @Transactional(readOnly = true)
+    public ResolvedRuntimeConfig resolveForOrchestratedExecute(
+            UUID userId, UUID projectId, JsonNode terminalConversationMergedOverride, String correlationId) {
+        return configResolverService.resolve(
+                RuntimeConfigResolutionInput.forOrchestratedResolve(
+                        userId, projectId, terminalConversationMergedOverride, correlationId));
+    }
+
     @Transactional(readOnly = true)
     public ResolvedRuntimeConfig preview(
             UUID userId,

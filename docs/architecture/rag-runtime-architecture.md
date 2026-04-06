@@ -74,9 +74,15 @@
 - **Workflow** selection may be spread across flags, presets, and services rather than one `WorkflowSelector` abstraction.
 - **S0–S4** scenario ladder not uniformly encoded as `ExecutionRoute` values.
 
+### Microphase 4.1 (S0–S1 runtime engine base)
+
+- **Implemented in code:** `com.uniovi.rag.domain.runtime.engine.ExecutionContext` (factory-built only via `ExecutionContextFactory`), `RagExecutionOrchestrator`, `WorkflowSelector` (deterministic matrix from `RagConfig` + `MaterializationStrategy`), five `ExecutionWorkflow` beans (`DirectLlmWorkflow`, `FullCorpusWorkflow`, `DocumentDenseRagWorkflow`, `ChunkDenseRagWorkflow`, `ChunkDenseMetadataWorkflow`), `KnowledgeRuntimeSnapshotSelector`, `SnapshotCorpusAssembler`, `SnapshotBoundRetrievalService`, `RagExecutionResult` / `ExecutionTrace`.
+- **Product path:** `ProcessQueryService` is a façade: `ExecutionContextFactory` → `RagExecutionOrchestrator` → map to `QueryResponse`. Live resolution uses `ConfigResolverService.resolve` via `RuntimeConfigResolutionService.resolveForOrchestratedExecute` with the same merged conversation JSON as `ChatScopedRagConfigResolver`.
+- **Errors:** `unsupported-runtime-configuration` and `knowledge-snapshot-unavailable` surface as `RagServiceException` with HTTP **422** (see `ErrorCode`).
+
 ### What is still missing
 
-- Explicit **single** `RagExecutionOrchestrator` and **one** `ExecutionTrace` model covering product and lab parity.
+- **Persisted** `ExecutionTrace` / full lab–product parity for trace export beyond in-memory + logs; HYBRID / STRUCTURED_SEARCH / tools / advisors on the orchestrated path.
 - Full **ToolPolicy** surface matching target semantics.
 - All **four judges** as discrete, traceable stages if the target requires them for S4.
 - Documentation-to-code traceability matrix (optional future table) without changing this canonical vocabulary.

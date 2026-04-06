@@ -72,6 +72,14 @@ public class ChatScopedRagConfigResolver {
         return configResolver.resolve(userId, projectId, chatRuntime);
     }
 
+    /**
+     * Merged conversation configuration (conversation config + preset + runtime override), same map as used for
+     * v2 {@link #resolveForChat(UUID, UUID, UUID)} terminal JSON.
+     */
+    public JsonNode mergedConversationConfigAsJson(UUID conversationId) {
+        return buildRuntimeOverrideForChat(conversationId);
+    }
+
     private JsonNode buildRuntimeOverrideForChat(UUID conversationId) {
         if (conversationId == null) {
             return null;

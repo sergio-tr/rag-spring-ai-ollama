@@ -2,6 +2,8 @@ package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
@@ -38,6 +40,8 @@ class RagEvaluationConfigurationTest {
         MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
         ModelCatalogPort modelCatalogPort = mock(ModelCatalogPort.class);
         ChatScopedRagConfigResolver chatScopedRagConfigResolver = mock(ChatScopedRagConfigResolver.class);
+        ExecutionContextFactory executionContextFactory = mock(ExecutionContextFactory.class);
+        RagExecutionOrchestrator ragExecutionOrchestrator = mock(RagExecutionOrchestrator.class);
         ReasoningStrategy reasoningStrategy = mock(ReasoningStrategy.class);
         ResponseRanker responseRanker = mock(ResponseRanker.class);
         PostRetrievalProcessor postRetrievalProcessor = mock(PostRetrievalProcessor.class);
@@ -66,6 +70,8 @@ class RagEvaluationConfigurationTest {
                 metadataLlmResponseCacheService,
                 modelCatalogPort,
                 chatScopedRagConfigResolver,
+                executionContextFactory,
+                ragExecutionOrchestrator,
                 reasoningStrategy,
                 responseRanker,
                 postRetrievalProcessor,

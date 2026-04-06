@@ -195,7 +195,7 @@ This table stores a **reproducible, insert-only** snapshot of **resolved** runti
 | Column | Required on product insert | Purpose |
 |--------|----------------------------|---------|
 | `id`, `created_at` | yes (DB-generated) | Primary key and timestamp. |
-| `payload_jsonb` | yes | Versioned **projection** of transitional `RagConfig` (`toValueMap()` at write time); audit/replay, not the canonical domain model. May include fixed key **`knowledgeBuildProjection`** (nested JSON from `KnowledgeBuildProjectionMapper`, `projectionVersion` ≥ 1) when the row is created for knowledge execute-without-pin (Microphase 3.2). |
+| `payload_jsonb` | yes | Versioned **projection** of transitional `RagConfig` (`toValueMap()` at write time); audit/replay, not the canonical domain model. May include fixed key **`knowledgeBuildProjection`** (nested JSON from `KnowledgeBuildProjectionMapper`, `projectionVersion` ≥ 1) when the row is created for knowledge execute-without-pin. |
 | `capability_set_jsonb` | yes | `CapabilitySet` JSON (mapper-owned shape). |
 | `compatibility_result_jsonb` | yes | Compatibility rule engine output. |
 | `reindex_impact_jsonb` | yes | `ReindexImpact` (V25). |

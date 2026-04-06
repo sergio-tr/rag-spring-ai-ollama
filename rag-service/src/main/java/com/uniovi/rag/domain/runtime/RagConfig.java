@@ -2,6 +2,7 @@ package com.uniovi.rag.domain.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,7 +33,8 @@ public record RagConfig(
          * {@code vector_store} chunks for that project (capped by {@link #naiveFullCorpusMaxChars()}) instead of similarity search.
          */
         boolean naiveFullCorpusInPromptEnabled,
-        int naiveFullCorpusMaxChars
+        int naiveFullCorpusMaxChars,
+        MaterializationStrategy materializationStrategy
 ) {
 
     public static final int DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS = 24_000;
@@ -63,7 +65,8 @@ public record RagConfig(
                 classifierModelId,
                 reasoningStrategy,
                 false,
-                DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS
+                DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL
         );
     }
 
@@ -95,8 +98,20 @@ public record RagConfig(
                 readText(json, "classifierModelId", base.classifierModelId),
                 readText(json, "reasoningStrategy", base.reasoningStrategy),
                 readBool(json, "naiveFullCorpusInPromptEnabled", base.naiveFullCorpusInPromptEnabled),
-                maxChars
+                maxChars,
+                readMaterializationStrategy(json, base.materializationStrategy)
         );
+    }
+
+    private static MaterializationStrategy readMaterializationStrategy(JsonNode json, MaterializationStrategy base) {
+        if (json == null || !json.hasNonNull("materializationStrategy") || !json.get("materializationStrategy").isTextual()) {
+            return base;
+        }
+        try {
+            return MaterializationStrategy.valueOf(json.get("materializationStrategy").asText().trim());
+        } catch (IllegalArgumentException e) {
+            return base;
+        }
     }
 
     private static boolean readBool(JsonNode json, String field, boolean defaultValue) {
@@ -138,6 +153,7 @@ public record RagConfig(
         m.put("reasoningStrategy", reasoningStrategy);
         m.put("naiveFullCorpusInPromptEnabled", naiveFullCorpusInPromptEnabled);
         m.put("naiveFullCorpusMaxChars", naiveFullCorpusMaxChars);
+        m.put("materializationStrategy", materializationStrategy.name());
         return m;
     }
 }

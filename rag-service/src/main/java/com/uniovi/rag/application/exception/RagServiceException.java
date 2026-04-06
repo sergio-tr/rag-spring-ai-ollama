@@ -50,6 +50,24 @@ public class RagServiceException extends RuntimeException {
         );
     }
 
+    public static RagServiceException unsupportedRuntimeConfiguration(String detail) {
+        return new RagServiceException(
+                ErrorCode.UNSUPPORTED_RUNTIME_CONFIGURATION,
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "unsupported-runtime-configuration: " + (detail != null ? detail : "configuration not supported in runtime 4.1"),
+                detail,
+                null);
+    }
+
+    public static RagServiceException knowledgeSnapshotUnavailable() {
+        return new RagServiceException(
+                ErrorCode.KNOWLEDGE_SNAPSHOT_UNAVAILABLE,
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "knowledge-snapshot-unavailable: no ACTIVE knowledge index snapshot for this request scope",
+                null,
+                null);
+    }
+
     public ErrorCode getErrorCode() {
         return errorCode;
     }

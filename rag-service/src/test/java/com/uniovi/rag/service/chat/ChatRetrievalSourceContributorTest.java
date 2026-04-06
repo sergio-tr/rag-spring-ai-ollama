@@ -1,5 +1,6 @@
 package com.uniovi.rag.service.chat;
 
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
@@ -45,7 +46,8 @@ class ChatRetrievalSourceContributorTest {
                     "cls",
                     "reason",
                     false,
-                    RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS);
+                    RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                    MaterializationStrategy.CHUNK_LEVEL);
 
     @Mock
     private ChatScopedRagConfigResolver chatScopedRagConfigResolver;

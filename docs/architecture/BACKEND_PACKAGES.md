@@ -31,7 +31,9 @@
 | `infrastructure.persistence.jpa` | JPA entities and entity factories |
 | `infrastructure.persistence.mapper` | `ResolvedConfigSnapshotEntityMapper` (sole read/write shape for `resolved_config_snapshot` JSON columns); `KnowledgeIndexSnapshotMapper`, `ReindexEventMapper` (knowledge domain ↔ JPA) |
 | `infrastructure.classifier` | HTTP clients to **classifier-service** (`ClassifierLabClient`, `QueryClassifier`, etc.) |
-| `service.query` | `ProcessQueryService` orchestration |
+| `service.query` | `ProcessQueryService` / `SimpleProcessQueryService` façade → `application.service.runtime` (`ExecutionContextFactory`, `RagExecutionOrchestrator`, workflows) |
+| `application.service.runtime` | Runtime engine 4.1: orchestrator, workflow selector, snapshot-bound retrieval/corpus |
+| `domain.runtime.engine` | `ExecutionContext`, `RagExecutionResult`, `ExecutionTrace`, snapshot selection records |
 | `service.query.pipeline` | Preparation, synthesis, tools routing, answer kernel |
 | `service.retriever` | Vector / corpus retrieval implementations |
 | `service.config` | `ConfigResolver` (cascade merge owner), user/project configuration, sanitization; `JpaConfigurationSourceAdapter` implements `ConfigurationSourcePort` |

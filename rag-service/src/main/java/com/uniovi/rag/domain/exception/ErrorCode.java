@@ -5,5 +5,7 @@ package com.uniovi.rag.domain.exception;
  */
 public enum ErrorCode {
     LLM_UNAVAILABLE,
+    UNSUPPORTED_RUNTIME_CONFIGURATION,
+    KNOWLEDGE_SNAPSHOT_UNAVAILABLE,
     INTERNAL_ERROR
 }

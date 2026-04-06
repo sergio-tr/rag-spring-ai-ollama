@@ -2,6 +2,7 @@ package com.uniovi.rag.domain.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,7 +30,8 @@ class RagConfigApplyJsonOverridesTest {
                 "cls-main",
                 "cot",
                 false,
-                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS);
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
     }
 
     @Test
@@ -100,6 +102,14 @@ class RagConfigApplyJsonOverridesTest {
         RagConfig out = RagConfig.applyJsonOverrides(base, node);
         assertThat(out.llmModel()).isEqualTo("llm-main");
         assertThat(out.classifierModelId()).isEqualTo("cls-main");
+    }
+
+    @Test
+    void applyJsonOverrides_updatesMaterializationStrategy() throws Exception {
+        RagConfig base = sampleBase();
+        JsonNode node = MAPPER.readTree("{\"materializationStrategy\": \"DOCUMENT_LEVEL\"}");
+        RagConfig out = RagConfig.applyJsonOverrides(base, node);
+        assertThat(out.materializationStrategy()).isEqualTo(MaterializationStrategy.DOCUMENT_LEVEL);
     }
 
     @Test

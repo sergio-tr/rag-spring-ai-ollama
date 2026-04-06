@@ -4,6 +4,8 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 
 **Target architecture (frozen model):** [RAG runtime](../docs/architecture/rag-runtime-architecture.md), [configuration & resolution](../docs/architecture/configuration-resolution-model.md).
 
+**Query execution (4.1):** chat and legacy query entry points use `ProcessQueryService` / `SimpleProcessQueryService` as a thin façade over `ExecutionContextFactory` → `RagExecutionOrchestrator` → a single `ExecutionWorkflow`. Unsupported combinations return **422** with `UNSUPPORTED_RUNTIME_CONFIGURATION`; missing ACTIVE knowledge snapshots for knowledge workflows return `KNOWLEDGE_SNAPSHOT_UNAVAILABLE`. Successful runs log `workflow`, snapshot ids, and `correlationId` at INFO.
+
 **Layering:** Product REST controllers live under `com.uniovi.rag.interfaces.rest` and delegate to **application services** (`com.uniovi.rag.application..`) for persistence; JPA and repositories stay in `infrastructure.persistence`. Legacy RAG adapters (`interfaces.rest.legacy`, base path `rag.api.legacy-base-path`) are excluded from ArchUnit rules until refactored. See `src/test/java/com/uniovi/rag/architecture/LayeredArchitectureTest.java`.
 
 ## Build and run
