@@ -8,15 +8,18 @@
 | `application.port.out` | Outbound ports (interfaces) for use cases |
 | `application.config` | Runtime configuration resolution: `ConfigResolverService`, `RuntimeConfigResolutionInput`, `CompatibilityValidator`, `ReindexImpactAnalyzer`, `SystemPromptComposer` |
 | `application.service` | Use cases including `ResolvedConfigSnapshotApplicationService` (persist resolved snapshots after `ConfigResolverService.resolve`) |
+| `application.service.knowledge` | Knowledge System: `KnowledgePipelineOrchestrator` (sole corpus `document_artifact` + `vector_store` writes), `KnowledgeIndexingService`, `KnowledgeIngestionService`, `KnowledgeSnapshotService`, `ReindexService`, `ProjectKnowledgeApplicationService` |
 | `application.usecase` | Application services / use cases (e.g. auth) |
 | `api.auth` | REST auth controllers, DTOs, exceptions (not application logic) |
 | `api.admin` | `ROLE_ADMIN`: allowlist, Ollama pull orchestration |
-| `interfaces.rest` | Product REST: projects, documents, conversations, SSE messages, presets, lab jobs, config schema (base path `rag.api.product-base-path`) |
+| `interfaces.rest` | Product REST: projects, documents, conversations, knowledge (`ProjectKnowledgeController`: ingest, reindex, snapshots), SSE messages, presets, lab jobs, config schema (base path `rag.api.product-base-path`) |
+| `interfaces.rest.dto.knowledge` | Snapshot responses; `KnowledgeIngestRequest` / `KnowledgeReindexRequest` (query-parameter shapes for knowledge routes) |
 | `controller` | Legacy RAG HTTP surface (`RagController`, Ollama helpers) — prefix from `rag.api.legacy-base-path` |
 | `configuration` | Spring Security, CORS, feature flags, path properties (`RagApiPathProperties`), beans wiring |
 | `security` | JWT filter, `JwtService`, `RagPrincipal` |
 | `bootstrap` | Startup seeders (e.g. e2e admin), safety validators |
 | `domain` | Domain enums and types (framework-free top-level package) |
+| `domain.knowledge` | Knowledge System domain: `WorkspaceDocument`, `MaterializationStrategy`, artifact types, snapshot scope, snapshot/reindex hashes (no JPA in this package) |
 | `domain.config.capability` | `Capability`, `CapabilitySet`, `CapabilityGroup` (activation / presence for resolution) |
 | `domain.config.rules` | Declarative `CompatibilityRule` implementations (evaluated by `CompatibilityValidator`) |
 | `domain.config.runtime` | `ResolvedRuntimeConfig`, `ResolvedConfigSnapshot`, provenance / profile types for resolution |
@@ -26,7 +29,7 @@
 | `domain.runtime` | Effective RAG config / feature snapshots used during a query |
 | `infrastructure.persistence` | Spring Data JPA repositories, `ConversationRuntimeOverrideLoaderImpl`, custom persistence adapters |
 | `infrastructure.persistence.jpa` | JPA entities and entity factories |
-| `infrastructure.persistence.mapper` | `ResolvedConfigSnapshotEntityMapper` (sole read/write shape for `resolved_config_snapshot` JSON columns) |
+| `infrastructure.persistence.mapper` | `ResolvedConfigSnapshotEntityMapper` (sole read/write shape for `resolved_config_snapshot` JSON columns); `KnowledgeIndexSnapshotMapper`, `ReindexEventMapper` (knowledge domain ↔ JPA) |
 | `infrastructure.classifier` | HTTP clients to **classifier-service** (`ClassifierLabClient`, `QueryClassifier`, etc.) |
 | `service.query` | `ProcessQueryService` orchestration |
 | `service.query.pipeline` | Preparation, synthesis, tools routing, answer kernel |

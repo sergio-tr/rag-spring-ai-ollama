@@ -42,22 +42,17 @@ A **reindex event** records that (re)building indices or embeddings was required
 - **Runtime Configuration** may change chunking, embedding model, or tool visibility → triggers `ReindexImpactAnalyzer`.
 - **RAG Runtime Engine** consumes read-only knowledge views during `RetrievalPipeline`.
 
-## Alignment with the repository (current state)
+## Alignment with the repository (implementation)
 
-### What already exists
+### Microphase 3.1 (product backend)
 
-- Document ingestion (`ProjectDocumentIngestionService`, extractors), chunk and vector storage per [DATA_MODEL.md](DATA_MODEL.md).
-- Metadata-heavy tools and retrievers (`MetadataMinuteDocumentService`, metadata retrievers, meeting-minutes adapters).
-- pgvector-backed retrieval paths.
+- **Canonical write path:** `KnowledgePipelineOrchestrator` (with `KnowledgeIndexingService` as stage helper) is the only production path for `document_artifact` inserts and corpus `vector_store` writes; `KnowledgeSnapshotService` owns snapshot rows, membership on activation, and vector deletes by `indexSnapshotId`.
+- **REST:** `${rag.api.product-base-path}/projects/{projectId}/knowledge/*` — ingest, reindex, list/detail snapshots with `corpusScope` and optional `conversationId` per scope rules ([rag-service README](../../rag-service/README.md)).
+- **Persistence:** Tables and JSONB rules are summarized in [DATA_MODEL.md](DATA_MODEL.md) §6.2; `reindex_event` rows are created/updated through `ReindexService` (including async operator reindex completion).
+- **Domain:** `com.uniovi.rag.domain.knowledge` holds records and enums (no JPA); entity mapping uses `WorkspaceDocumentMapper` and `KnowledgeIndexSnapshotMapper` / `ReindexEventMapper` at the infrastructure boundary.
 
-### What is partial
+### Still out of scope (later phases)
 
-- **Index snapshot** as an explicit versioned concept for lab reproducibility may be partial or implicit.
-- **Reindex events** may not be logged as first-class audit records.
-- **Materialization strategy** may be implicit in code paths rather than explicitly selected per project/preset.
-
-### What is still missing
-
-- Uniform API for **structured search** vs **vector** retrieval with clear contracts to `RetrievalPipeline`.
-- Automated **reindex** orchestration tied to config changes per target model.
-- Explicit **hybrid** materialization path documented in code and operator runbooks (module READMEs).
+- Request-time **snapshot selection** for retrieval and wiring **RetrievalPipeline** to snapshot-filtered reads.
+- **Structured search execution** over stored projections (METADATA JSONB is persisted in 3.1; query execution is not).
+- Full **automated reindex** from every config-resolution path until callers invoke `ReindexService.handleConfigReindexImpact` where appropriate.

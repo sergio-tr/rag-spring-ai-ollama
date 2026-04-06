@@ -9,4 +9,6 @@ import java.util.UUID;
 public interface KnowledgeSnapshotDocumentRepository extends JpaRepository<KnowledgeSnapshotDocumentEntity, KnowledgeSnapshotDocumentPk> {
 
     void deleteByDocument_Id(UUID documentId);
+
+    long countBySnapshot_Id(UUID snapshotId);
 }

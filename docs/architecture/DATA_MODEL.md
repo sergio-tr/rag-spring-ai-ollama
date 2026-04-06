@@ -165,6 +165,7 @@ erDiagram
 | `classifier_model` | metrics, `is_active`, `passes_gate`, `artifact_path`, status | `hyperparams` |
 | `async_task` | `task_type`, `status`, progress text | `request_payload`, `result_json` |
 | `resolved_config_snapshot` | `created_at`, `effective_system_prompt`, `config_hash` | `payload_jsonb`, `capability_set_jsonb`, `compatibility_result_jsonb`, `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `provenance_jsonb` (see §6.1) |
+| `knowledge_index_snapshot`, `knowledge_snapshot_document`, `document_artifact`, `reindex_event`; extended `project_documents` | scope, snapshot FK, storage columns, `requires_reindex` | Artifact payloads (`schemaVersion`); METADATA holds structured-search projection when applicable (§6.2) |
 
 **Trade-off:** JSON stays flexible for TFG iteration; heavy reporting may need GIN indexes or extracted columns later.
 
@@ -207,6 +208,53 @@ This table stores a **reproducible, insert-only** snapshot of **resolved** runti
 
 **Forward compatibility:** new snapshot JSON keys and new nullable columns should be **additive** only; readers ignore unknown keys where possible.
 
+### 6.2 Knowledge system (snapshots, artifacts, reindex) — §13a field rules
+
+**Migrations:** [V22](../../rag-service/src/main/resources/db/migration/V22__knowledge_snapshots_and_documents.sql); optional FK [V26](../../rag-service/src/main/resources/db/migration/V26__knowledge_index_snapshot_resolved_config_fk.sql) on `knowledge_index_snapshot.resolved_config_snapshot_id` → `resolved_config_snapshot(id)`.
+
+**Scope (corpus):** `project_documents.corpus_scope` is `PROJECT_SHARED` (conversation null) or `CHAT_LOCAL` (conversation set). `knowledge_index_snapshot.scope_type` is `PROJECT` or `CONVERSATION` with matching `project_id` / `conversation_id` (see [knowledge-system-model.md](knowledge-system-model.md)).
+
+**`knowledge_index_snapshot`**
+
+| Column | Required on insert | Notes |
+|--------|-------------------|--------|
+| `id` | yes (generated) | PK |
+| `signature_hash` | yes | Immutable after insert; deterministic over index inputs + document ids/checksums |
+| `scope_type` | yes | `PROJECT` \| `CONVERSATION` |
+| `project_id` | yes for product builds | FK `projects` |
+| `conversation_id` | optional | Required when `scope_type = CONVERSATION` |
+| `status` | yes | `BUILDING` \| `ACTIVE` \| `SUPERSEDED` \| `FAILED` |
+| `resolved_config_snapshot_id` | optional | FK after V26 |
+| `resolved_config_hash` | optional | |
+| `created_at`, `updated_at` | yes | Immutable vs lifecycle-only per service rules |
+
+**`document_artifact`**
+
+| Column | Required on insert | Notes |
+|--------|-------------------|--------|
+| `id` | yes (generated) | PK |
+| `document_id` | yes | FK `project_documents` |
+| `artifact_type` | yes | `PARSED` \| `METADATA` \| `CHUNK` \| `INDEX` |
+| `payload_jsonb` | yes | Must include top-level **`schemaVersion`** (int); deterministic key order in serializers used for hashing |
+| `content_hash` | required in application logic | SHA-256 hex over canonical JSON for new rows |
+| `created_at` | yes | Insert-only rows (no semantic UPDATE) |
+
+**`reindex_event`**
+
+| Column | Required on insert | Notes |
+|--------|-------------------|--------|
+| `id` | yes (generated) | PK |
+| `document_id`, `project_id`, `conversation_id` | optional | Nullable per V22 |
+| `reason` | yes | Short code (e.g. config soft/hard, operator) |
+| `target_signature_hash` | yes | Target snapshot signature for the run |
+| `status` | yes | `PENDING` \| `RUNNING` \| … |
+| `async_task_id` | optional | |
+| `created_at`, `updated_at` | yes | |
+
+**STRUCTURED_SEARCH:** structured projection for search is stored **only** in the **METADATA** artifact `payload_jsonb` (e.g. under `structuredSearchProjection`); no extra columns for structured search in 3.1.
+
+**JSONB:** All `document_artifact.payload_jsonb` values must contain `"schemaVersion"`; serializers used for `content_hash` use a fixed key order.
+
 ---
 
 ## 7. Storage patterns (datasets, results, ML artifacts)
@@ -232,7 +280,7 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 
 ---
 
-## 9. Physical tables (baseline, Flyway V1–V25)
+## 9. Physical tables (baseline, Flyway V1–V26)
 
 | Table | Migration | Notes |
 |-------|-----------|--------|
@@ -256,8 +304,10 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 | `evaluation_run.project_id`, `async_task.project_id` | V19 | Nullable FK to `projects`, `ON DELETE SET NULL`; see ADR 0003 |
 | `config_profile`, `rag_preset_profile_ref`, `resolved_config_snapshot`, `user_preferences`, `user_personalization`; `rag_preset.composition_version`; `projects.project_prompt`; `conversations.runtime_override_jsonb` | V21 | Config profiles, preset–profile composition, resolved snapshot baseline, prefs/personalization |
 | `resolved_config_snapshot` (semantic columns) | V25 | `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `effective_system_prompt` |
+| Knowledge snapshots, artifacts, reindex; `project_documents` corpus columns | V22 | See §6.2 |
+| `knowledge_index_snapshot.resolved_config_snapshot_id` FK | V26 | Additive FK when missing |
 
-**JPA:** `EvaluationRunEntity`, `AsyncTaskEntity` optional `@ManyToOne` to `ProjectEntity` (`project_id`). **`ResolvedConfigSnapshotEntity`** maps `resolved_config_snapshot` (§6.1).
+**JPA:** `EvaluationRunEntity`, `AsyncTaskEntity` optional `@ManyToOne` to `ProjectEntity` (`project_id`). **`ResolvedConfigSnapshotEntity`** maps `resolved_config_snapshot` (§6.1). Knowledge tables: `KnowledgeIndexSnapshotEntity`, `KnowledgeSnapshotDocumentEntity`, `DocumentArtifactEntity`, `ReindexEventEntity`; workspace documents remain `KnowledgeDocumentEntity` → `project_documents`.
 
 ---
 

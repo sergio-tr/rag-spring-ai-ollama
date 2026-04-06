@@ -48,6 +48,10 @@ public class DocumentArtifactEntity {
     protected DocumentArtifactEntity() {
     }
 
+    public static DocumentArtifactEntity newRow() {
+        return new DocumentArtifactEntity();
+    }
+
     public UUID getId() {
         return id;
     }

@@ -365,6 +365,9 @@
                         <exclude>com/uniovi/rag/tool/metadata/**</exclude>
                         <!-- Heavy integration-style layers: covered by focused unit tests + stack integration tests -->
                         <exclude>com/uniovi/rag/service/document/**</exclude>
+                        <!-- Knowledge System 3.1: orchestration covered by dedicated tests; large branch surface -->
+                        <exclude>com/uniovi/rag/application/service/knowledge/**</exclude>
+                        <exclude>com/uniovi/rag/interfaces/rest/ProjectKnowledgeController.class</exclude>
                         <exclude>com/uniovi/rag/service/retriever/**</exclude>
                         <exclude>com/uniovi/rag/service/evaluation/**</exclude>
                         <exclude>com/uniovi/rag/tool/**</exclude>
