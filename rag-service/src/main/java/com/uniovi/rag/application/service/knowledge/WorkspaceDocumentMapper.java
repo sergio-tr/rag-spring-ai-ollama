@@ -4,7 +4,7 @@ import com.uniovi.rag.domain.knowledge.WorkspaceDocument;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 
 /**
- * Single mapping location: entity to domain record (Microphase 3.1).
+ * Single mapping location: entity to domain record.
  */
 public final class WorkspaceDocumentMapper {
 

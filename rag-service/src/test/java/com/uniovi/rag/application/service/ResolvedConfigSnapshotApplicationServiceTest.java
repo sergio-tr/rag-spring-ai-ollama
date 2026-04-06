@@ -34,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -86,7 +87,16 @@ class ResolvedConfigSnapshotApplicationServiceTest {
         when(configResolverService.resolve(any())).thenReturn(resolved);
         when(configResolverService.snapshot(resolved)).thenReturn(snap);
         when(resolvedConfigSnapshotEntityMapper.toNewEntity(
-                        eq(resolved), eq(snap), eq(userId), any(), any(), any(), any(), any()))
+                        eq(resolved),
+                        eq(snap),
+                        eq(userId),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(Optional.of(projectId)),
+                        isNull()))
                 .thenReturn(entity);
         when(resolvedConfigSnapshotRepository.save(entity)).thenReturn(entity);
 
@@ -102,7 +112,17 @@ class ResolvedConfigSnapshotApplicationServiceTest {
 
         ArgumentCaptor<String> hashCap = ArgumentCaptor.forClass(String.class);
         verify(resolvedConfigSnapshotEntityMapper)
-                .toNewEntity(eq(resolved), eq(snap), eq(userId), hashCap.capture(), any(), any(), any(), any());
+                .toNewEntity(
+                        eq(resolved),
+                        eq(snap),
+                        eq(userId),
+                        hashCap.capture(),
+                        any(),
+                        any(),
+                        any(),
+                        any(),
+                        eq(Optional.of(projectId)),
+                        isNull());
         assertThat(hashCap.getValue()).isNotBlank();
     }
 

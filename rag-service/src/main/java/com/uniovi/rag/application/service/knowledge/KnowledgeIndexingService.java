@@ -62,7 +62,8 @@ public class KnowledgeIndexingService {
             String contentType,
             KnowledgeIndexSnapshotEntity snapshot,
             String indexSigHex,
-            MaterializationStrategy strategy)
+            MaterializationStrategy strategy,
+            int effectiveChunkMaxChars)
             throws IOException {
         byte[] bytes =
                 tempFileOverride != null
@@ -96,7 +97,7 @@ public class KnowledgeIndexingService {
         if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
             chunks = List.of(content);
         } else {
-            chunks = projectDocumentIngestionService.splitContentIntoChunks(content, chunkMaxChars);
+            chunks = projectDocumentIngestionService.splitContentIntoChunks(content, effectiveChunkMaxChars);
         }
 
         if (strategy != MaterializationStrategy.DOCUMENT_LEVEL) {
@@ -149,7 +150,10 @@ public class KnowledgeIndexingService {
         }
 
         if (strategy == MaterializationStrategy.HYBRID) {
-            String docSlice = content.length() > chunkMaxChars * 4 ? content.substring(0, chunkMaxChars * 4) : content;
+            String docSlice =
+                    content.length() > effectiveChunkMaxChars * 4
+                            ? content.substring(0, effectiveChunkMaxChars * 4)
+                            : content;
             Map<String, Object> vmDoc =
                     KnowledgeChunkMetadataFactory.buildV2(
                             doc.getCorpusScope(),

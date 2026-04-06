@@ -43,15 +43,21 @@ public class ProjectDocumentIngestionService extends AbstractDocumentService {
      * Deletes existing vector rows for this project document, then ingests from a temp file (deleted after read).
      */
     @Async
-    public void ingestFromTempFile(UUID projectId, UUID projectDocumentId, Path tempFile, String originalFilename,
-                                   String contentType) {
+    public void ingestFromTempFile(
+            UUID userId,
+            UUID projectId,
+            UUID projectDocumentId,
+            Path tempFile,
+            String originalFilename,
+            String contentType) {
         KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
         if (row == null) {
             log().warn("Project document {} not found, skipping ingest", projectDocumentId);
             deleteTempQuietlyInstance(tempFile);
             return;
         }
-        knowledgeIngestionService.ingestFromTempFile(projectId, projectDocumentId, tempFile, originalFilename, contentType);
+        knowledgeIngestionService.ingestFromTempFile(
+                userId, projectId, projectDocumentId, tempFile, originalFilename, contentType);
     }
 
     private void deleteTempQuietlyInstance(Path tempFile) {

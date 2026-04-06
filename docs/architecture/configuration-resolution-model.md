@@ -23,7 +23,7 @@ Production resolution follows a single **ResolutionPipeline** orchestrated by `C
 1. **Inputs:** system defaults, user-level settings (including `user_preferences` / `user_personalization`), project-level settings, optional persisted preset + linked profiles, optional conversation runtime JSON, optional request JSON, optional **flags** as raw inputs.
 2. **Normalization:** map raw inputs to **capabilities** and preset identifiers.
 3. **Validation:** apply `CompatibilityRule` set; fail fast or degrade with explicit trace.
-4. **Output:** materialize `ResolvedRuntimeConfig`; optional **persisted** row in `resolved_config_snapshot` via `ResolvedConfigSnapshotApplicationService` (insert-only, `config_hash`, §6.1 in [DATA_MODEL.md](DATA_MODEL.md)).
+4. **Output:** materialize `ResolvedRuntimeConfig`; optional **persisted** row in `resolved_config_snapshot` via `ResolvedConfigSnapshotApplicationService` (insert-only, `config_hash`, §6.1 in [DATA_MODEL.md](DATA_MODEL.md)). Knowledge execute-without-pin persists the same row shape plus **`knowledgeBuildProjection`** under `payload_jsonb` and a `config_hash` that includes that nested map ([DATA_MODEL.md](DATA_MODEL.md) §6.1).
 5. **Prompts:** `SystemPromptComposer` produces the **effective system prompt** as part of resolved semantics (not “just UX copy”).
 6. **Index impact:** if change affects chunking, embedding model, or indexed fields, `ReindexImpactAnalyzer` flags required knowledge operations.
 
@@ -56,7 +56,7 @@ The **UI** may edit underlying fields, but **canonical semantics** live under **
 
 ### What is partial
 
-- **`ResolvedConfigSnapshot` (domain)** exists; **persisted** snapshots are written from product `POST …/config/resolved-snapshots` (see [DATA_MODEL.md](DATA_MODEL.md) §6.1). Lab runs continue to reference `resolved_config_snapshot.id` where the evaluation model already supports it.
+- **`ResolvedConfigSnapshot` (domain)** exists; **persisted** snapshots are written from product `POST …/config/resolved-snapshots` and from knowledge flows (`KnowledgeConfigurationIntegrationService` / ingestion default snapshot) (see [DATA_MODEL.md](DATA_MODEL.md) §6.1). Lab runs continue to reference `resolved_config_snapshot.id` where the evaluation model already supports it.
 - Documented mapping from **every** governance-relevant flag to **capabilities** may still evolve (future microphase).
 
 ### What is still missing

@@ -48,7 +48,12 @@ public class KnowledgeSnapshotService {
             ProjectEntity project,
             ConversationEntity conversation,
             KnowledgeSnapshotScopeType scopeType,
-            String signatureHash) {
+            String signatureHash,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        if (resolvedConfigSnapshotId == null || resolvedConfigHash == null || resolvedConfigHash.isBlank()) {
+            throw new IllegalArgumentException("resolved_config_snapshot linkage required for knowledge_index_snapshot");
+        }
         Instant now = Instant.now();
         KnowledgeIndexSnapshotEntity e = new KnowledgeIndexSnapshotEntity();
         e.setSignatureHash(signatureHash);
@@ -56,6 +61,8 @@ public class KnowledgeSnapshotService {
         e.setProject(project);
         e.setConversation(conversation);
         e.setStatus(IndexSnapshotStatus.BUILDING);
+        e.setResolvedConfigSnapshotId(resolvedConfigSnapshotId);
+        e.setResolvedConfigHash(resolvedConfigHash);
         e.setCreatedAt(now);
         e.setUpdatedAt(now);
         return snapshotRepository.save(e);

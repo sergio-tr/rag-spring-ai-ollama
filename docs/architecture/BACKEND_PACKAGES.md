@@ -8,11 +8,11 @@
 | `application.port.out` | Outbound ports (interfaces) for use cases |
 | `application.config` | Runtime configuration resolution: `ConfigResolverService`, `RuntimeConfigResolutionInput`, `CompatibilityValidator`, `ReindexImpactAnalyzer`, `SystemPromptComposer` |
 | `application.service` | Use cases including `ResolvedConfigSnapshotApplicationService` (persist resolved snapshots after `ConfigResolverService.resolve`) |
-| `application.service.knowledge` | Knowledge System: `KnowledgePipelineOrchestrator` (sole corpus `document_artifact` + `vector_store` writes), `KnowledgeIndexingService`, `KnowledgeIngestionService`, `KnowledgeSnapshotService`, `ReindexService`, `ProjectKnowledgeApplicationService` |
+| `application.service.knowledge` | Knowledge System: `KnowledgeConfigurationIntegrationService` (config-aware preview/execute orchestration), `KnowledgeBuildProjectionMapper` (sole builder of `KnowledgeBuildProjection`), `KnowledgePipelineOrchestrator` (sole corpus `document_artifact` + `vector_store` writes; config-aware rebuild takes `KnowledgeBuildProjection`), `KnowledgeIndexingService`, `KnowledgeIngestionService` (persists default `resolved_config_snapshot` per ingest for linkage), `KnowledgeSnapshotService`, `ReindexService` (executes precomputed `KnowledgeReindexDecision` only), `ProjectKnowledgeApplicationService` (REST façade → integration service; no direct resolver/orchestrator) |
 | `application.usecase` | Application services / use cases (e.g. auth) |
 | `api.auth` | REST auth controllers, DTOs, exceptions (not application logic) |
 | `api.admin` | `ROLE_ADMIN`: allowlist, Ollama pull orchestration |
-| `interfaces.rest` | Product REST: projects, documents, conversations, knowledge (`ProjectKnowledgeController`: ingest, reindex, snapshots), SSE messages, presets, lab jobs, config schema (base path `rag.api.product-base-path`) |
+| `interfaces.rest` | Product REST: projects, documents, conversations, knowledge (`ProjectKnowledgeController`: ingest, rebuild preview/execute, legacy reindex alias, snapshots), SSE messages, presets, lab jobs, config schema (base path `rag.api.product-base-path`) |
 | `interfaces.rest.dto.knowledge` | Snapshot responses; `KnowledgeIngestRequest` / `KnowledgeReindexRequest` (query-parameter shapes for knowledge routes) |
 | `controller` | Legacy RAG HTTP surface (`RagController`, Ollama helpers) — prefix from `rag.api.legacy-base-path` |
 | `configuration` | Spring Security, CORS, feature flags, path properties (`RagApiPathProperties`), beans wiring |

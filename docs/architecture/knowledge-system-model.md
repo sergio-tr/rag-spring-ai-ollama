@@ -47,12 +47,17 @@ A **reindex event** records that (re)building indices or embeddings was required
 ### Microphase 3.1 (product backend)
 
 - **Canonical write path:** `KnowledgePipelineOrchestrator` (with `KnowledgeIndexingService` as stage helper) is the only production path for `document_artifact` inserts and corpus `vector_store` writes; `KnowledgeSnapshotService` owns snapshot rows, membership on activation, and vector deletes by `indexSnapshotId`.
-- **REST:** `${rag.api.product-base-path}/projects/{projectId}/knowledge/*` — ingest, reindex, list/detail snapshots with `corpusScope` and optional `conversationId` per scope rules ([rag-service README](../../rag-service/README.md)).
-- **Persistence:** Tables and JSONB rules are summarized in [DATA_MODEL.md](DATA_MODEL.md) §6.2; `reindex_event` rows are created/updated through `ReindexService` (including async operator reindex completion).
+- **REST:** `${rag.api.product-base-path}/projects/{projectId}/knowledge/*` — ingest, `POST …/rebuild/preview`, `POST …/rebuild/execute`, legacy `POST …/reindex` (thin alias to execute-with-defaults), list/detail snapshots with `corpusScope` and optional `conversationId` per scope rules ([rag-service README](../../rag-service/README.md)).
+- **Persistence:** Tables and JSONB rules are summarized in [DATA_MODEL.md](DATA_MODEL.md) §6.2; `reindex_event` rows are created/updated through `ReindexService` with mandatory `resolved_config_snapshot_id` (V27). Every `knowledge_index_snapshot` row carries `resolved_config_snapshot_id` + `resolved_config_hash` (V28). Corpus ingestion persists a default `resolved_config_snapshot` row (without `knowledgeBuildProjection`) so first-time indexing satisfies linkage.
+
+### Microphase 3.2 (configuration integration)
+
+- **Single projection path:** `KnowledgeBuildProjection` is built only via `KnowledgeBuildProjectionMapper` from `ResolvedRuntimeConfig` (`ConfigResolverService.preview` / `resolve`) or from persisted `resolved_config_snapshot.payload_jsonb.knowledgeBuildProjection` on pin-by-id execute (no `ResolvedRuntimeConfig` deserialized from the DB for that path).
+- **Single reindex decision:** `KnowledgeConfigurationIntegrationService.computeReindexDecision` is shared by preview and execute; `ReindexService` does not re-derive `ReindexImpact` from raw JSON.
 - **Domain:** `com.uniovi.rag.domain.knowledge` holds records and enums (no JPA); entity mapping uses `WorkspaceDocumentMapper` and `KnowledgeIndexSnapshotMapper` / `ReindexEventMapper` at the infrastructure boundary.
 
 ### Still out of scope (later phases)
 
 - Request-time **snapshot selection** for retrieval and wiring **RetrievalPipeline** to snapshot-filtered reads.
 - **Structured search execution** over stored projections (METADATA JSONB is persisted in 3.1; query execution is not).
-- Full **automated reindex** from every config-resolution path until callers invoke `ReindexService.handleConfigReindexImpact` where appropriate.
+- Broader **automated reindex** from arbitrary non-knowledge callers (use `KnowledgeConfigurationIntegrationService` / product knowledge routes where config-aware behaviour is required).

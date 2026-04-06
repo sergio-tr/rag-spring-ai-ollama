@@ -1,8 +1,9 @@
 package com.uniovi.rag.application.service.knowledge;
 
-import com.uniovi.rag.domain.config.indexing.ReindexImpact;
-import com.uniovi.rag.domain.config.indexing.ReindexImpactLevel;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
+import com.uniovi.rag.domain.knowledge.KnowledgeBuildProjection;
+import com.uniovi.rag.domain.knowledge.KnowledgeReindexDecision;
+import com.uniovi.rag.domain.knowledge.KnowledgeReindexKind;
 import com.uniovi.rag.domain.knowledge.ReindexEventReason;
 import com.uniovi.rag.domain.knowledge.ReindexEventStatus;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
@@ -18,7 +19,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Sole application entry for interpreting {@link ReindexImpact} and operator reindex (Microphase 3.1).
+ * Owns {@code reindex_event} rows; executes precomputed {@link KnowledgeReindexDecision} only.
  */
 @Service
 public class ReindexService {
@@ -27,85 +28,67 @@ public class ReindexService {
     private final ProjectRepository projectRepository;
     private final ConversationRepository conversationRepository;
     private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
-    private final ReindexAsyncRunner reindexAsyncRunner;
 
     public ReindexService(
             ReindexEventRepository reindexEventRepository,
             ProjectRepository projectRepository,
             ConversationRepository conversationRepository,
-            KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
-            ReindexAsyncRunner reindexAsyncRunner) {
+            KnowledgePipelineOrchestrator knowledgePipelineOrchestrator) {
         this.reindexEventRepository = reindexEventRepository;
         this.projectRepository = projectRepository;
         this.conversationRepository = conversationRepository;
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
-        this.reindexAsyncRunner = reindexAsyncRunner;
     }
 
     /**
-     * NO_REINDEX: no {@code reindex_event} row. SOFT with no READY docs or no {@code requires_reindex}: no row.
-     * HARD/SOFT with work: one row and synchronous {@link KnowledgePipelineOrchestrator#rebuildScope}.
+     * Runs synchronous scope rebuild when {@code decision} requests pipeline work; otherwise no-op.
      */
     @Transactional
-    public void handleConfigReindexImpact(
-            ReindexImpact impact, UUID projectId, CorpusScope corpusScope, UUID conversationId) {
-        if (impact == null || impact.level() == ReindexImpactLevel.NO_REINDEX) {
-            return;
+    public KnowledgeReindexExecutionResult executeKnowledgeReindexDecision(
+            KnowledgeReindexDecision decision,
+            KnowledgeBuildProjection projection,
+            UUID projectId,
+            CorpusScope corpusScope,
+            UUID conversationId,
+            UUID resolvedConfigSnapshotId) {
+        if (decision == null || decision.kind() == KnowledgeReindexKind.NO_OP) {
+            return KnowledgeReindexExecutionResult.NONE;
         }
         if (!knowledgePipelineOrchestrator.hasReadyDocumentsInScope(projectId, corpusScope, conversationId)) {
-            return;
-        }
-        if (impact.level() == ReindexImpactLevel.SOFT_REINDEX
-                && !knowledgePipelineOrchestrator.scopeHasRequiresReindex(projectId, corpusScope, conversationId)) {
-            return;
+            return KnowledgeReindexExecutionResult.NONE;
         }
         ProjectEntity project = projectRepository.getReferenceById(projectId);
         ConversationEntity conversation = resolveConversation(corpusScope, conversationId);
         String targetSig =
-                knowledgePipelineOrchestrator.previewSnapshotSignatureHex(projectId, corpusScope, conversationId);
+                knowledgePipelineOrchestrator.previewSnapshotSignatureHex(
+                        projectId, corpusScope, conversationId, projection);
         String reason =
-                impact.level() == ReindexImpactLevel.HARD_REINDEX
+                decision.kind() == KnowledgeReindexKind.HARD_REBUILD
                         ? ReindexEventReason.CONFIG_HARD
                         : ReindexEventReason.CONFIG_SOFT;
         ReindexEventEntity ev =
-                ReindexEventEntity.newPending(project, conversation, null, reason, targetSig, ReindexEventStatus.PENDING);
+                ReindexEventEntity.newPending(
+                        project,
+                        conversation,
+                        null,
+                        reason,
+                        targetSig,
+                        ReindexEventStatus.PENDING,
+                        resolvedConfigSnapshotId);
         ev = reindexEventRepository.save(ev);
         try {
             updateReindexEventStatus(ev.getId(), ReindexEventStatus.RUNNING);
-            knowledgePipelineOrchestrator.rebuildScope(projectId, corpusScope, conversationId);
+            UUID knowledgeSnapshotId =
+                    knowledgePipelineOrchestrator.rebuildScope(
+                            projectId, corpusScope, conversationId, projection, resolvedConfigSnapshotId);
             updateReindexEventStatus(ev.getId(), ReindexEventStatus.COMPLETED);
+            return new KnowledgeReindexExecutionResult(ev.getId(), knowledgeSnapshotId);
         } catch (RuntimeException e) {
             updateReindexEventStatus(ev.getId(), ReindexEventStatus.FAILED);
             throw e;
         }
     }
 
-    /**
-     * Operator API: persists {@code reindex_event} and runs rebuild asynchronously when scope has READY documents.
-     */
-    public void enqueueOperatorReindex(UUID projectId, CorpusScope corpusScope, UUID conversationId) {
-        if (!knowledgePipelineOrchestrator.hasReadyDocumentsInScope(projectId, corpusScope, conversationId)) {
-            return;
-        }
-        ProjectEntity project = projectRepository.getReferenceById(projectId);
-        ConversationEntity conversation = resolveConversation(corpusScope, conversationId);
-        String targetSig =
-                knowledgePipelineOrchestrator.previewSnapshotSignatureHex(projectId, corpusScope, conversationId);
-        ReindexEventEntity ev =
-                ReindexEventEntity.newPending(
-                        project,
-                        conversation,
-                        null,
-                        ReindexEventReason.OPERATOR_REQUEST,
-                        targetSig,
-                        ReindexEventStatus.PENDING);
-        ev = reindexEventRepository.save(ev);
-        reindexAsyncRunner.runOperatorReindex(ev.getId(), projectId, corpusScope, conversationId);
-    }
-
-    /**
-     * Sole writer for {@code reindex_event} status transitions (including async operator runs).
-     */
     @Transactional
     public void updateReindexEventStatus(UUID eventId, ReindexEventStatus status) {
         reindexEventRepository

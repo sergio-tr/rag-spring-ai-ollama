@@ -84,7 +84,7 @@ public class ProjectDocumentApplicationService {
         String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
         Path temp = Files.createTempFile("rag-reindex-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
         file.transferTo(temp.toFile());
-        knowledgeIngestionService.ingestFromTempFile(projectId, documentId, temp, original, ct);
+        knowledgeIngestionService.ingestFromTempFile(userId, projectId, documentId, temp, original, ct);
         return toDto(row);
     }
 

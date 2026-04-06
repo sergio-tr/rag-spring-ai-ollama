@@ -29,8 +29,20 @@ public final class ResolvedRuntimeConfigHasher {
     private ResolvedRuntimeConfigHasher() {}
 
     public static String sha256Hex(ResolvedRuntimeConfig r) {
+        return sha256Hex(r, null);
+    }
+
+    /**
+     * When {@code knowledgeBuildProjection} is non-empty, it is appended to the ordered map so {@code config_hash}
+     * covers the persisted knowledge slice.
+     */
+    public static String sha256Hex(ResolvedRuntimeConfig r, Map<String, Object> knowledgeBuildProjection) {
         try {
-            byte[] utf8 = CANONICAL_JSON.writeValueAsString(toOrderedMap(r)).getBytes(StandardCharsets.UTF_8);
+            Map<String, Object> body = toOrderedMap(r);
+            if (knowledgeBuildProjection != null && !knowledgeBuildProjection.isEmpty()) {
+                body.put("knowledgeBuildProjection", knowledgeBuildProjection);
+            }
+            byte[] utf8 = CANONICAL_JSON.writeValueAsString(body).getBytes(StandardCharsets.UTF_8);
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] digest = md.digest(utf8);
             return HexFormat.of().formatHex(digest);

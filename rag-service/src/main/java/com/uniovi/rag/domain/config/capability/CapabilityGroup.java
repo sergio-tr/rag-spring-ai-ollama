@@ -1,7 +1,7 @@
 package com.uniovi.rag.domain.config.capability;
 
 /**
- * Closed taxonomy grouping capabilities for validation and UX (microphase 2.1).
+ * Closed taxonomy grouping capabilities for validation and UX.
  */
 public enum CapabilityGroup {
     WORKFLOW_FAMILY,

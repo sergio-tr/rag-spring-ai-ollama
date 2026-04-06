@@ -4,6 +4,10 @@ import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.application.service.knowledge.ProjectKnowledgeApplicationService;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
+import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildExecuteRequest;
+import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildExecuteResponse;
+import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildPreviewRequest;
+import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildPreviewResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeSnapshotDetailResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeSnapshotSummaryResponse;
 import com.uniovi.rag.security.RagPrincipal;
@@ -14,6 +18,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -65,6 +70,22 @@ public class ProjectKnowledgeController {
             dto = knowledgeIngestionService.uploadProjectDocument(principal.userId(), projectId, file);
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+
+    @PostMapping("/rebuild/preview")
+    public KnowledgeRebuildPreviewResponse rebuildPreview(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable UUID projectId,
+            @RequestBody KnowledgeRebuildPreviewRequest request) {
+        return projectKnowledgeApplicationService.previewRebuild(principal.userId(), projectId, request);
+    }
+
+    @PostMapping("/rebuild/execute")
+    public KnowledgeRebuildExecuteResponse rebuildExecute(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable UUID projectId,
+            @RequestBody KnowledgeRebuildExecuteRequest request) {
+        return projectKnowledgeApplicationService.executeRebuild(principal.userId(), projectId, request);
     }
 
     @PostMapping("/reindex")

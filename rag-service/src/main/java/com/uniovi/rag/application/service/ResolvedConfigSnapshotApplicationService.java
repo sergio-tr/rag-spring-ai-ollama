@@ -22,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -63,9 +64,93 @@ public class ResolvedConfigSnapshotApplicationService {
                         Optional.ofNullable(req.conversationId()),
                         Optional.ofNullable(req.messageId()),
                         Optional.ofNullable(req.jobId()),
-                        Optional.ofNullable(req.correlationId()).filter(s -> !s.isBlank()));
+                        Optional.ofNullable(req.correlationId()).filter(s -> !s.isBlank()),
+                        Optional.of(req.projectId()),
+                        null);
         entity = resolvedConfigSnapshotRepository.save(entity);
         return new ResolvedConfigSnapshotCreatedResponse(entity.getId(), entity.getConfigHash(), entity.getCreatedAt());
+    }
+
+    /**
+     * Default resolved configuration row for corpus ingestion (no {@code knowledgeBuildProjection} payload key).
+     */
+    @Transactional
+    public ResolvedConfigSnapshotEntity persistIngestionDefaultSnapshot(
+            UUID userId, UUID projectId, Optional<UUID> conversationId) {
+        RuntimeConfigResolutionInput input =
+                new RuntimeConfigResolutionInput(
+                        userId,
+                        projectId,
+                        conversationId,
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Set.of(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty());
+        ResolvedRuntimeConfig resolved = configResolverService.resolve(input);
+        ResolvedConfigSnapshot domainSnapshot = configResolverService.snapshot(resolved);
+        String hash = ResolvedRuntimeConfigHasher.sha256Hex(resolved, null);
+        ResolvedConfigSnapshotEntity entity =
+                resolvedConfigSnapshotEntityMapper.toNewEntity(
+                        resolved,
+                        domainSnapshot,
+                        userId,
+                        hash,
+                        conversationId,
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.of(projectId),
+                        null);
+        return resolvedConfigSnapshotRepository.save(entity);
+    }
+
+    /**
+     * Persists a resolved snapshot for knowledge execute-without-pin; {@code knowledgeNested} is merged under
+     * {@link com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper#PAYLOAD_KEY}.
+     */
+    @Transactional
+    public ResolvedConfigSnapshotEntity persistForKnowledgeExecute(
+            ResolvedRuntimeConfig resolved,
+            UUID userId,
+            UUID projectId,
+            Optional<UUID> conversationId,
+            Optional<String> correlationId,
+            Map<String, Object> knowledgeNested) {
+        ResolvedConfigSnapshot domainSnapshot = configResolverService.snapshot(resolved);
+        String hash = ResolvedRuntimeConfigHasher.sha256Hex(resolved, knowledgeNested);
+        ResolvedConfigSnapshotEntity entity =
+                resolvedConfigSnapshotEntityMapper.toNewEntity(
+                        resolved,
+                        domainSnapshot,
+                        userId,
+                        hash,
+                        conversationId,
+                        Optional.empty(),
+                        Optional.empty(),
+                        correlationId,
+                        Optional.of(projectId),
+                        knowledgeNested);
+        return resolvedConfigSnapshotRepository.save(entity);
+    }
+
+    @Transactional(readOnly = true)
+    public ResolvedConfigSnapshotEntity getValidatedSnapshotForKnowledgePin(UUID projectId, UUID userId, UUID snapshotId) {
+        ResolvedConfigSnapshotEntity entity =
+                resolvedConfigSnapshotRepository
+                        .findById(snapshotId)
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        UUID owner = readCreatingUserId(entity);
+        if (owner == null || !owner.equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        UUID provProject = readProjectId(entity);
+        if (provProject == null || !provProject.equals(projectId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+        return entity;
     }
 
     @Transactional(readOnly = true)
@@ -123,6 +208,21 @@ public class ResolvedConfigSnapshotApplicationService {
             return null;
         }
         Object raw = entity.getProvenanceJsonb().get(ResolvedConfigSnapshotEntityMapper.PROVENANCE_CREATING_USER_ID);
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw.toString());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static UUID readProjectId(ResolvedConfigSnapshotEntity entity) {
+        if (entity.getProvenanceJsonb() == null) {
+            return null;
+        }
+        Object raw = entity.getProvenanceJsonb().get(ResolvedConfigSnapshotEntityMapper.PROVENANCE_PROJECT_ID);
         if (raw == null) {
             return null;
         }

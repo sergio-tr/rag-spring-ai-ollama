@@ -195,14 +195,14 @@ This table stores a **reproducible, insert-only** snapshot of **resolved** runti
 | Column | Required on product insert | Purpose |
 |--------|----------------------------|---------|
 | `id`, `created_at` | yes (DB-generated) | Primary key and timestamp. |
-| `payload_jsonb` | yes | Versioned **projection** of transitional `RagConfig` (`toValueMap()` at write time); audit/replay, not the canonical domain model. |
+| `payload_jsonb` | yes | Versioned **projection** of transitional `RagConfig` (`toValueMap()` at write time); audit/replay, not the canonical domain model. May include fixed key **`knowledgeBuildProjection`** (nested JSON from `KnowledgeBuildProjectionMapper`, `projectionVersion` ≥ 1) when the row is created for knowledge execute-without-pin (Microphase 3.2). |
 | `capability_set_jsonb` | yes | `CapabilitySet` JSON (mapper-owned shape). |
 | `compatibility_result_jsonb` | yes | Compatibility rule engine output. |
 | `reindex_impact_jsonb` | yes | `ReindexImpact` (V25). |
 | `system_prompt_layers_jsonb` | yes | Four-layer prompt inputs before composition (V25). |
 | `effective_system_prompt` | yes, non-blank | Output of `SystemPromptComposer` (V25). |
-| `provenance_jsonb` | yes | Domain provenance plus **`schema_version`** (int), **`creatingUserId`** (UUID string), optional **`correlationId`**. |
-| `config_hash` | yes | `ResolvedRuntimeConfigHasher` SHA-256 over canonical `ResolvedRuntimeConfig` JSON. |
+| `provenance_jsonb` | yes | Domain provenance plus **`schema_version`** (int), **`creatingUserId`** (UUID string), optional **`correlationId`**, optional **`projectId`** (UUID string) for knowledge pin validation. |
+| `config_hash` | yes | `ResolvedRuntimeConfigHasher` SHA-256 over canonical `ResolvedRuntimeConfig` JSON; when `payload_jsonb` carries **`knowledgeBuildProjection`**, the same hasher appends that nested map so the digest covers the knowledge slice. |
 | `conversation_id`, `message_id`, `job_id` | optional | Optional linkage when the client supplies them. |
 | `prompt_stack_preview_jsonb` | omit (null) | Legacy; not written for new rows in microphase 2.2. |
 
@@ -210,7 +210,7 @@ This table stores a **reproducible, insert-only** snapshot of **resolved** runti
 
 ### 6.2 Knowledge system (snapshots, artifacts, reindex) — §13a field rules
 
-**Migrations:** [V22](../../rag-service/src/main/resources/db/migration/V22__knowledge_snapshots_and_documents.sql); optional FK [V26](../../rag-service/src/main/resources/db/migration/V26__knowledge_index_snapshot_resolved_config_fk.sql) on `knowledge_index_snapshot.resolved_config_snapshot_id` → `resolved_config_snapshot(id)`.
+**Migrations:** [V22](../../rag-service/src/main/resources/db/migration/V22__knowledge_snapshots_and_documents.sql); optional FK [V26](../../rag-service/src/main/resources/db/migration/V26__knowledge_index_snapshot_resolved_config_fk.sql) on `knowledge_index_snapshot.resolved_config_snapshot_id` → `resolved_config_snapshot(id)`; **`reindex_event.resolved_config_snapshot_id` NOT NULL** [V27](../../rag-service/src/main/resources/db/migration/V27__reindex_event_resolved_config_snapshot.sql); **`knowledge_index_snapshot` config linkage NOT NULL** [V28](../../rag-service/src/main/resources/db/migration/V28__knowledge_index_snapshot_config_linkage_not_null.sql).
 
 **Scope (corpus):** `project_documents.corpus_scope` is `PROJECT_SHARED` (conversation null) or `CHAT_LOCAL` (conversation set). `knowledge_index_snapshot.scope_type` is `PROJECT` or `CONVERSATION` with matching `project_id` / `conversation_id` (see [knowledge-system-model.md](knowledge-system-model.md)).
 
@@ -224,8 +224,8 @@ This table stores a **reproducible, insert-only** snapshot of **resolved** runti
 | `project_id` | yes for product builds | FK `projects` |
 | `conversation_id` | optional | Required when `scope_type = CONVERSATION` |
 | `status` | yes | `BUILDING` \| `ACTIVE` \| `SUPERSEDED` \| `FAILED` |
-| `resolved_config_snapshot_id` | optional | FK after V26 |
-| `resolved_config_hash` | optional | |
+| `resolved_config_snapshot_id` | yes (V28) | FK → `resolved_config_snapshot(id)`; required on every row |
+| `resolved_config_hash` | yes (V28) | Hex digest matching `resolved_config_snapshot.config_hash` for that id |
 | `created_at`, `updated_at` | yes | Immutable vs lifecycle-only per service rules |
 
 **`document_artifact`**
@@ -249,6 +249,7 @@ This table stores a **reproducible, insert-only** snapshot of **resolved** runti
 | `target_signature_hash` | yes | Target snapshot signature for the run |
 | `status` | yes | `PENDING` \| `RUNNING` \| … |
 | `async_task_id` | optional | |
+| `resolved_config_snapshot_id` | yes (V27) | FK → `resolved_config_snapshot(id)` ON DELETE RESTRICT |
 | `created_at`, `updated_at` | yes | |
 
 **STRUCTURED_SEARCH:** structured projection for search is stored **only** in the **METADATA** artifact `payload_jsonb` (e.g. under `structuredSearchProjection`); no extra columns for structured search in 3.1.
@@ -306,6 +307,8 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 | `resolved_config_snapshot` (semantic columns) | V25 | `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `effective_system_prompt` |
 | Knowledge snapshots, artifacts, reindex; `project_documents` corpus columns | V22 | See §6.2 |
 | `knowledge_index_snapshot.resolved_config_snapshot_id` FK | V26 | Additive FK when missing |
+| `reindex_event.resolved_config_snapshot_id` NOT NULL + index | V27 | Mandatory config provenance for reindex rows |
+| `knowledge_index_snapshot` resolved linkage NOT NULL | V28 | Drops orphan snapshots without config id/hash |
 
 **JPA:** `EvaluationRunEntity`, `AsyncTaskEntity` optional `@ManyToOne` to `ProjectEntity` (`project_id`). **`ResolvedConfigSnapshotEntity`** maps `resolved_config_snapshot` (§6.1). Knowledge tables: `KnowledgeIndexSnapshotEntity`, `KnowledgeSnapshotDocumentEntity`, `DocumentArtifactEntity`, `ReindexEventEntity`; workspace documents remain `KnowledgeDocumentEntity` → `project_documents`.
 

@@ -1,5 +1,7 @@
 package com.uniovi.rag.application.service.knowledge;
 
+import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
@@ -14,9 +16,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -31,26 +36,48 @@ public class KnowledgeIngestionService {
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final ProjectDocumentIngestionService projectDocumentIngestionService;
     private final ProjectAccessService projectAccessService;
+    private final ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
 
     public KnowledgeIngestionService(
             KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
             @Lazy ProjectDocumentIngestionService projectDocumentIngestionService,
-            ProjectAccessService projectAccessService) {
+            ProjectAccessService projectAccessService,
+            ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService) {
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.projectAccessService = projectAccessService;
+        this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
     }
 
+    @Transactional
     public void ingestFromTempFile(
+            UUID userId,
             UUID projectId,
             UUID projectDocumentId,
             Path tempFile,
             String originalFilename,
             String contentType) {
+        KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+        if (row == null) {
+            return;
+        }
+        Optional<UUID> conversationId =
+                row.getCorpusScope() == CorpusScope.CHAT_LOCAL && row.getConversation() != null
+                        ? Optional.of(row.getConversation().getId())
+                        : Optional.empty();
+        var snap =
+                resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
+                        userId, projectId, conversationId);
         knowledgePipelineOrchestrator.ingestFromTempFile(
-                projectId, projectDocumentId, tempFile, originalFilename, contentType);
+                projectId,
+                projectDocumentId,
+                tempFile,
+                originalFilename,
+                contentType,
+                snap.getId(),
+                snap.getConfigHash());
     }
 
     public void deleteVectorChunksForDocument(UUID projectDocumentId) {
@@ -72,7 +99,7 @@ public class KnowledgeIngestionService {
         Path temp = Files.createTempFile("rag-doc-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
         file.transferTo(temp.toFile());
 
-        projectDocumentIngestionService.ingestFromTempFile(projectId, row.getId(), temp, original, ct);
+        projectDocumentIngestionService.ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
         return toDto(row);
     }
 
@@ -93,7 +120,7 @@ public class KnowledgeIngestionService {
         row = knowledgeDocumentRepository.save(row);
         Path temp = Files.createTempFile("rag-doc-overlay-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
         file.transferTo(temp.toFile());
-        projectDocumentIngestionService.ingestFromTempFile(projectId, row.getId(), temp, original, ct);
+        projectDocumentIngestionService.ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
         return toDto(row);
     }
 

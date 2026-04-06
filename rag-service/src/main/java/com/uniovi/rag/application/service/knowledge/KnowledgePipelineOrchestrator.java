@@ -4,6 +4,7 @@ import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.domain.knowledge.IndexSignature;
+import com.uniovi.rag.domain.knowledge.KnowledgeBuildProjection;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.knowledge.SnapshotSignatureHasher;
@@ -32,7 +33,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Sole write path for corpus {@code document_artifact} rows and {@code vector_store} inserts (Microphase 3.1).
+ * Sole write path for corpus {@code document_artifact} rows and {@code vector_store} inserts.
  */
 @Service
 public class KnowledgePipelineOrchestrator {
@@ -87,7 +88,9 @@ public class KnowledgePipelineOrchestrator {
             UUID projectDocumentId,
             Path tempFile,
             String originalFilename,
-            String contentType) {
+            String contentType,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
         KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
         if (row == null) {
             log.warn("Project document {} not found, skipping ingest", projectDocumentId);
@@ -115,7 +118,7 @@ public class KnowledgePipelineOrchestrator {
                 scopeDocs.add(rowReloaded);
                 scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
             }
-            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs);
+            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null);
             String indexSigHex = sig.indexSigHex();
             String snapshotSigHex = sig.snapshotSigHex();
 
@@ -135,7 +138,9 @@ public class KnowledgePipelineOrchestrator {
                             rowReloaded.getProject(),
                             rowReloaded.getConversation(),
                             snapScope,
-                            snapshotSigHex);
+                            snapshotSigHex,
+                            resolvedConfigSnapshotId,
+                            resolvedConfigHash);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             for (KnowledgeDocumentEntity d : scopeDocs) {
@@ -151,7 +156,8 @@ public class KnowledgePipelineOrchestrator {
                         contentType,
                         building,
                         indexSigHex,
-                        strategy);
+                        strategy,
+                        chunkMaxChars);
             }
 
             knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
@@ -199,14 +205,24 @@ public class KnowledgePipelineOrchestrator {
      */
     public String previewSnapshotSignatureHex(UUID projectId, CorpusScope corpusScope, UUID conversationId) {
         List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
-        return computeSignaturePair(scopeDocs).snapshotSigHex();
+        return computeSignaturePair(scopeDocs, null).snapshotSigHex();
+    }
+
+    public String previewSnapshotSignatureHex(
+            UUID projectId, CorpusScope corpusScope, UUID conversationId, KnowledgeBuildProjection projection) {
+        List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
+        return computeSignaturePair(scopeDocs, projection).snapshotSigHex();
     }
 
     private record IndexAndSnapshotSig(String indexSigHex, String snapshotSigHex) {}
 
-    private IndexAndSnapshotSig computeSignaturePair(List<KnowledgeDocumentEntity> scopeDocs) {
-        IndexSignature indexSignature =
-                IndexSignature.forStrategy(embeddingModelId, chunkMaxChars, materializationStrategy);
+    private IndexAndSnapshotSig computeSignaturePair(
+            List<KnowledgeDocumentEntity> scopeDocs, KnowledgeBuildProjection projectionOrNull) {
+        String embed = projectionOrNull != null ? projectionOrNull.embeddingModelId() : embeddingModelId;
+        int chunk = projectionOrNull != null ? projectionOrNull.chunkMaxChars() : chunkMaxChars;
+        MaterializationStrategy strat =
+                projectionOrNull != null ? projectionOrNull.materializationStrategy() : materializationStrategy;
+        IndexSignature indexSignature = IndexSignature.forStrategy(embed, chunk, strat);
         String indexSigHex = indexSignature.toHashHex();
         List<UUID> docIds = scopeDocs.stream().map(KnowledgeDocumentEntity::getId).sorted().toList();
         List<String> checksums =
@@ -215,16 +231,26 @@ public class KnowledgePipelineOrchestrator {
         return new IndexAndSnapshotSig(indexSigHex, snapshotSigHex);
     }
 
+    /**
+     * Full-scope rebuild using {@link KnowledgeBuildProjection} (config-aware path, Microphase 3.2).
+     *
+     * @return new knowledge snapshot id, or {@code null} when no READY documents (no snapshot created)
+     */
     @Transactional
-    public void rebuildScope(UUID projectId, CorpusScope corpusScope, UUID conversationId) {
+    public UUID rebuildScope(
+            UUID projectId,
+            CorpusScope corpusScope,
+            UUID conversationId,
+            KnowledgeBuildProjection projection,
+            UUID resolvedConfigSnapshotId) {
         List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
         if (scopeDocs.isEmpty()) {
             log.info("rebuildScope: no READY documents in scope project={}, corpusScope={}", projectId, corpusScope);
-            return;
+            return null;
         }
         KnowledgeIndexSnapshotEntity building = null;
         try {
-            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs);
+            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, projection);
             String indexSigHex = sig.indexSigHex();
             String snapshotSigHex = sig.snapshotSigHex();
 
@@ -241,14 +267,19 @@ public class KnowledgePipelineOrchestrator {
             KnowledgeDocumentEntity first = scopeDocs.getFirst();
             building =
                     knowledgeSnapshotService.createBuildingSnapshot(
-                            first.getProject(), first.getConversation(), snapScope, snapshotSigHex);
+                            first.getProject(),
+                            first.getConversation(),
+                            snapScope,
+                            snapshotSigHex,
+                            resolvedConfigSnapshotId,
+                            projection.configHash());
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             for (KnowledgeDocumentEntity d : scopeDocs) {
                 deleteVectorChunksForDocument(d.getId());
             }
 
-            MaterializationStrategy strategy = materializationStrategy;
+            MaterializationStrategy strategy = projection.materializationStrategy();
             for (KnowledgeDocumentEntity doc : scopeDocs) {
                 knowledgeIndexingService.processDocument(
                         doc,
@@ -257,7 +288,8 @@ public class KnowledgePipelineOrchestrator {
                         doc.getMimeType(),
                         building,
                         indexSigHex,
-                        strategy);
+                        strategy,
+                        projection.chunkMaxChars());
             }
 
             knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
@@ -270,6 +302,7 @@ public class KnowledgePipelineOrchestrator {
                 knowledgeDocumentRepository.save(d);
             }
             log.info("rebuildScope completed snapshot {} for project {}", building.getId(), projectId);
+            return building.getId();
         } catch (Exception e) {
             log.error("rebuildScope failed: {}", e.getMessage(), e);
             if (building != null) {

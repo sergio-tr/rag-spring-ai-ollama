@@ -28,7 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Canonical runtime configuration resolution (microphase 2.1).
+ * Canonical runtime configuration resolution.
  */
 @Service
 public class ConfigResolverService {

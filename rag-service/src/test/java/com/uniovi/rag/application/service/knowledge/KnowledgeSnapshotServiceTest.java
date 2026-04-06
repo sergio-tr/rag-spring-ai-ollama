@@ -69,9 +69,10 @@ class KnowledgeSnapshotServiceTest {
         ProjectEntity project = mock(ProjectEntity.class);
         when(snapshotRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
+        UUID cfgId = UUID.randomUUID();
         KnowledgeIndexSnapshotEntity out =
                 knowledgeSnapshotService.createBuildingSnapshot(
-                        project, null, KnowledgeSnapshotScopeType.PROJECT, "sighex");
+                        project, null, KnowledgeSnapshotScopeType.PROJECT, "sighex", cfgId, "a".repeat(64));
 
         assertThat(out.getStatus()).isEqualTo(IndexSnapshotStatus.BUILDING);
         assertThat(out.getSignatureHash()).isEqualTo("sighex");

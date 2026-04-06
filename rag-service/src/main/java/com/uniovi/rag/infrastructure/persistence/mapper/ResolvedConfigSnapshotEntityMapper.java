@@ -15,7 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Single owner of {@code resolved_config_snapshot} JSON column shapes (microphase 2.2). Embeds {@code schema_version}
+ * Single owner of {@code resolved_config_snapshot} JSON column shapes. Embeds {@code schema_version}
  * and {@code creatingUserId} under {@code provenance_jsonb} for forward-compatible readers.
  */
 @Component
@@ -27,6 +27,7 @@ public class ResolvedConfigSnapshotEntityMapper {
     public static final String PROVENANCE_SCHEMA_VERSION = "schema_version";
     public static final String PROVENANCE_CREATING_USER_ID = "creatingUserId";
     public static final String PROVENANCE_CORRELATION_ID = "correlationId";
+    public static final String PROVENANCE_PROJECT_ID = "projectId";
 
     private static final TypeReference<Map<String, Object>> MAP_STRING_OBJECT = new TypeReference<>() {};
 
@@ -45,9 +46,42 @@ public class ResolvedConfigSnapshotEntityMapper {
             Optional<UUID> messageId,
             Optional<UUID> jobId,
             Optional<String> correlationId) {
+        return toNewEntity(
+                resolved,
+                domainSnapshot,
+                creatingUserId,
+                configHash,
+                conversationId,
+                messageId,
+                jobId,
+                correlationId,
+                Optional.empty(),
+                null);
+    }
+
+    /**
+     * @param knowledgeBuildProjectionNested merged under {@link com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper#PAYLOAD_KEY}
+     */
+    public ResolvedConfigSnapshotEntity toNewEntity(
+            ResolvedRuntimeConfig resolved,
+            ResolvedConfigSnapshot domainSnapshot,
+            UUID creatingUserId,
+            String configHash,
+            Optional<UUID> conversationId,
+            Optional<UUID> messageId,
+            Optional<UUID> jobId,
+            Optional<String> correlationId,
+            Optional<UUID> projectId,
+            Map<String, Object> knowledgeBuildProjectionNested) {
         ResolvedConfigSnapshotEntity e = ResolvedConfigSnapshotEntity.newForInsert();
         e.setCreatedAt(Instant.now());
-        e.setPayloadJsonb(new LinkedHashMap<>(resolved.resolvedCoreConfig().toValueMap()));
+        Map<String, Object> payload = new LinkedHashMap<>(resolved.resolvedCoreConfig().toValueMap());
+        if (knowledgeBuildProjectionNested != null && !knowledgeBuildProjectionNested.isEmpty()) {
+            payload.put(
+                    com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper.PAYLOAD_KEY,
+                    knowledgeBuildProjectionNested);
+        }
+        e.setPayloadJsonb(payload);
         e.setCapabilitySetJsonb(toJsonMap(resolved.capabilitySet()));
         e.setCompatibilityResultJsonb(toJsonMap(resolved.compatibility()));
         e.setReindexImpactJsonb(toJsonMap(resolved.reindexImpact()));
@@ -60,7 +94,7 @@ public class ResolvedConfigSnapshotEntityMapper {
         conversationId.ifPresent(e::setConversationId);
         messageId.ifPresent(e::setMessageId);
         jobId.ifPresent(e::setJobId);
-        e.setProvenanceJsonb(buildProvenanceJson(domainSnapshot, creatingUserId, correlationId));
+        e.setProvenanceJsonb(buildProvenanceJson(domainSnapshot, creatingUserId, correlationId, projectId));
         return e;
     }
 
@@ -82,7 +116,10 @@ public class ResolvedConfigSnapshotEntityMapper {
     }
 
     private Map<String, Object> buildProvenanceJson(
-            ResolvedConfigSnapshot domainSnapshot, UUID creatingUserId, Optional<String> correlationId) {
+            ResolvedConfigSnapshot domainSnapshot,
+            UUID creatingUserId,
+            Optional<String> correlationId,
+            Optional<UUID> projectId) {
         Map<String, Object> prov = new LinkedHashMap<>();
         if (domainSnapshot.provenance() != null) {
             Map<String, Object> fromDomain = toJsonMap(domainSnapshot.provenance());
@@ -93,6 +130,7 @@ public class ResolvedConfigSnapshotEntityMapper {
         prov.put(PROVENANCE_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION);
         prov.put(PROVENANCE_CREATING_USER_ID, creatingUserId.toString());
         correlationId.filter(s -> !s.isBlank()).ifPresent(c -> prov.put(PROVENANCE_CORRELATION_ID, c));
+        projectId.ifPresent(pid -> prov.put(PROVENANCE_PROJECT_ID, pid.toString()));
         return prov;
     }
 
