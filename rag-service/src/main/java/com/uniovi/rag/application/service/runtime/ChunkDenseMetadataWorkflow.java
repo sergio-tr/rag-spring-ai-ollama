@@ -25,14 +25,15 @@ public class ChunkDenseMetadataWorkflow extends AbstractExecutionWorkflow {
     public RagExecutionResult execute(ExecutionContext ctx) {
         long t0 = System.nanoTime();
         List<ExecutionStageTrace> stages = new ArrayList<>();
+        String q = canonicalGenerationQuery(ctx);
         String context =
                 snapshotBoundRetrievalService.buildRetrievalContext(
                         ctx,
-                        ctx.userQuery(),
+                        q,
                         SnapshotBoundRetrievalService.DenseLayout.CHUNK_SEPARATE_WITH_DB_METADATA);
         stages.add(stage("dense_retrieval_metadata", t0, ExecutionStageOutcome.SUCCESS, ""));
         long t1 = System.nanoTime();
-        String user = RuntimeAnswerPrompts.ragUserTurn(ctx.userQuery(), context);
+        String user = RuntimeAnswerPrompts.ragUserTurn(q, context);
         String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
         stages.add(stage("llm", t1, ExecutionStageOutcome.SUCCESS, ""));
         return RagExecutionResult.withPlaceholderTrace(

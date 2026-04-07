@@ -21,7 +21,7 @@ public class DirectLlmWorkflow extends AbstractExecutionWorkflow {
     public RagExecutionResult execute(ExecutionContext ctx) {
         long t0 = System.nanoTime();
         List<ExecutionStageTrace> stages = new ArrayList<>();
-        String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), ctx.userQuery());
+        String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), canonicalGenerationQuery(ctx));
         stages.add(stage("llm", t0, ExecutionStageOutcome.SUCCESS, ""));
         return RagExecutionResult.withPlaceholderTrace(
                 answer,

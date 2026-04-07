@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
+import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.ollama.api.OllamaOptions;
 
@@ -33,6 +34,16 @@ public abstract class AbstractExecutionWorkflow implements ExecutionWorkflow {
         }
         String out = spec.call().content();
         return out != null ? out : "";
+    }
+
+    protected static String canonicalGenerationQuery(ExecutionContext ctx) {
+        QueryPlan qp = ctx.queryPlan()
+                .orElseThrow(() -> new IllegalStateException("QueryPlan missing on orchestrated workflow execution"));
+        String q = qp.rewrittenQueryText();
+        if (q == null || q.isBlank()) {
+            throw new IllegalStateException("rewrittenQueryText must be non-blank");
+        }
+        return q;
     }
 
     protected static ExecutionStageTrace stage(

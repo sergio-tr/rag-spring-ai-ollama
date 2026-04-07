@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import io.micrometer.tracing.Tracer;
@@ -79,7 +80,8 @@ public class ExecutionContextFactory {
                 Optional.empty(),
                 correlationId,
                 filter,
-                model);
+                model,
+                Optional.empty());
     }
 
     public ExecutionContext buildForLegacyHttp(String rawUserQuery, String chatModelOverride) {
@@ -104,7 +106,8 @@ public class ExecutionContextFactory {
                 Optional.empty(),
                 correlationId,
                 List.of(RagExecutionContext.ALL_DOCUMENTS),
-                model);
+                model,
+                Optional.empty());
     }
 
     public ExecutionContext buildForLabProcess(
@@ -140,7 +143,36 @@ public class ExecutionContextFactory {
                 Optional.empty(),
                 correlationId,
                 copyDocumentFilter(documentFilter),
-                model);
+                model,
+                Optional.empty());
+    }
+
+    public ExecutionContext attachQueryPlan(ExecutionContext ctx, QueryPlan plan) {
+        if (ctx == null) {
+            throw new IllegalArgumentException("ctx must not be null");
+        }
+        if (plan == null) {
+            throw new IllegalArgumentException("plan must not be null");
+        }
+        if (ctx.queryPlan().isPresent()) {
+            throw new IllegalStateException("ExecutionContext already contains a QueryPlan");
+        }
+        return new ExecutionContext(
+                ctx.userId(),
+                ctx.projectId(),
+                ctx.conversationId(),
+                ctx.userQuery(),
+                ctx.operationKind(),
+                ctx.resolved(),
+                ctx.effectiveSystemPrompt(),
+                ctx.knowledgeSnapshotSelection(),
+                ctx.configHash(),
+                ctx.pinnedResolvedConfigSnapshotId(),
+                ctx.correlationId(),
+                ctx.documentFilter(),
+                ctx.chatModelOverride(),
+                Optional.of(plan)
+        );
     }
 
     private Optional<String> validateAndNormalizeChatModel(String chatModelOverride) {

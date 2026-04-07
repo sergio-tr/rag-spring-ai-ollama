@@ -75,6 +75,7 @@ class WorkflowSelectorTest {
                 Optional.empty(),
                 "t",
                 List.of("all"),
+                Optional.empty(),
                 Optional.empty());
     }
 

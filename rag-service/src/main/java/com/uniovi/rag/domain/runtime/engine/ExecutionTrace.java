@@ -15,6 +15,11 @@ public record ExecutionTrace(
         List<UUID> usedKnowledgeSnapshotIds,
         Optional<UUID> usedResolvedConfigSnapshotId,
         Optional<String> usedConfigHash,
+        String queryPlanVersion,
+        String classifierStatus,
+        String classifierLabel,
+        String expectedAnswerShape,
+        String ambiguityStatus,
         String compatibilitySeverity) {
 
     public ExecutionTrace {
@@ -23,6 +28,11 @@ public record ExecutionTrace(
         usedResolvedConfigSnapshotId =
                 usedResolvedConfigSnapshotId == null ? Optional.empty() : usedResolvedConfigSnapshotId;
         usedConfigHash = usedConfigHash == null ? Optional.empty() : usedConfigHash;
+        queryPlanVersion = queryPlanVersion == null ? "" : queryPlanVersion;
+        classifierStatus = classifierStatus == null ? "" : classifierStatus;
+        classifierLabel = classifierLabel == null ? "" : classifierLabel;
+        expectedAnswerShape = expectedAnswerShape == null ? "" : expectedAnswerShape;
+        ambiguityStatus = ambiguityStatus == null ? "" : ambiguityStatus;
         compatibilitySeverity = compatibilitySeverity == null ? "" : compatibilitySeverity;
     }
 
@@ -35,6 +45,11 @@ public record ExecutionTrace(
                 List.of(),
                 Optional.empty(),
                 Optional.empty(),
+                "",
+                "",
+                "",
+                "",
+                "",
                 "");
     }
 }

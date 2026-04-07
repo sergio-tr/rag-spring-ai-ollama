@@ -33,7 +33,9 @@
 | `infrastructure.classifier` | HTTP clients to **classifier-service** (`ClassifierLabClient`, `QueryClassifier`, etc.) |
 | `service.query` | `ProcessQueryService` / `SimpleProcessQueryService` façade → `application.service.runtime` (`ExecutionContextFactory`, `RagExecutionOrchestrator`, workflows) |
 | `application.service.runtime` | Runtime engine 4.1: orchestrator, workflow selector, snapshot-bound retrieval/corpus |
+| `application.service.runtime.query` | Runtime query understanding 4.2: `QueryUnderstandingPipeline` and adapters/resolvers producing `QueryPlan` |
 | `domain.runtime.engine` | `ExecutionContext`, `RagExecutionResult`, `ExecutionTrace`, snapshot selection records |
+| `domain.runtime.query` | Query understanding domain: `QueryPlan`, normalization/entities/rewrite results, intent/shape/ambiguity enums |
 | `service.query.pipeline` | Preparation, synthesis, tools routing, answer kernel |
 | `service.retriever` | Vector / corpus retrieval implementations |
 | `service.config` | `ConfigResolver` (cascade merge owner), user/project configuration, sanitization; `JpaConfigurationSourceAdapter` implements `ConfigurationSourcePort` |

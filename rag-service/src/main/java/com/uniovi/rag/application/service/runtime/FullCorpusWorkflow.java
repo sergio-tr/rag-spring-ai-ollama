@@ -27,7 +27,8 @@ public class FullCorpusWorkflow extends AbstractExecutionWorkflow {
         String corpus = snapshotCorpusAssembler.assembleFullCorpusText(ctx);
         stages.add(stage("full_corpus_assembly", t0, ExecutionStageOutcome.SUCCESS, ""));
         long t1 = System.nanoTime();
-        String user = RuntimeAnswerPrompts.ragUserTurn(ctx.userQuery(), corpus);
+        String q = canonicalGenerationQuery(ctx);
+        String user = RuntimeAnswerPrompts.ragUserTurn(q, corpus);
         String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
         stages.add(stage("llm", t1, ExecutionStageOutcome.SUCCESS, ""));
         return RagExecutionResult.withPlaceholderTrace(

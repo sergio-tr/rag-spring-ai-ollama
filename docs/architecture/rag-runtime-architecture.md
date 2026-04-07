@@ -12,14 +12,14 @@
 | `PromptStack` | Ordered logical layers of messages/prompts feeding the LLM; aligns with `SystemPromptComposer` and ADR 0008. | Composed prompt layers, history slices | Normalized stack for model call |
 | `RagExecutionOrchestrator` | Top-level coordinator for one RAG execution (product or lab). | `ExecutionContext`, user query | Final answer stream or structured result + `ExecutionTrace` |
 | `ExecutionWorkflow` | Declared graph or sequence of steps for one execution kind (preset/route). | Selected workflow id, context | Ordered stages (understanding → retrieval → …) |
-| `WorkflowSelector` | Chooses `ExecutionWorkflow` from **resolved config** plus query-understanding signals. | `ResolvedRuntimeConfig`, classifier/QU signals | Workflow binding |
+| `WorkflowSelector` | Chooses `ExecutionWorkflow` from **resolved config** using a deterministic matrix. | `ResolvedRuntimeConfig` | Workflow binding |
 | `ExecutionTrace` | Structured record of decisions, stages, and timings for observability and lab reproducibility. | Events from orchestrator and pipelines | Trace export / logs / metrics |
 
 ## Pipelines
 
 | Component | Responsibility | Typical placement in workflow |
 |-----------|----------------|------------------------------|
-| `QueryUnderstandingPipeline` | Normalizes intent, extracts constraints, may invoke classifier client; feeds routing and retrieval planning. | Early stage |
+| `QueryUnderstandingPipeline` | Builds a deterministic, structured `QueryPlan` (normalization → classification → entity extraction → structured rewrite → intent/shape/ambiguity). In microphase 4.2 it is a mandatory runtime stage but has **no routing authority**. | Early stage |
 | `RetrievalPipeline` | Selects strategies (vector, metadata, hybrid) and fetches context from the Knowledge System. | Mid stage |
 | `PostRetrievalPipeline` | Ranks, compresses, or filters context; may invoke judges sufficiency before generation. | After retrieval, before / during generation |
 
@@ -54,7 +54,7 @@
 
 ## Interactions (prose)
 
-- `WorkflowSelector` uses `ExecutionContext` (especially resolved config and understanding signals) to bind an `ExecutionWorkflow`.
+- `WorkflowSelector` uses `ExecutionContext` (resolved config) to bind an `ExecutionWorkflow`.
 - `RagExecutionOrchestrator` drives pipelines and strategies in workflow order, appending to `ExecutionTrace`.
 - `PromptStack` is populated via **Runtime Configuration** (`SystemPromptComposer`); see [configuration-resolution-model.md](configuration-resolution-model.md).
 - `ExecutionTrace` is consumed by **Platform & Ops** (observability) and **Experimentation / Lab** for runs.
@@ -86,3 +86,8 @@
 - Full **ToolPolicy** surface matching target semantics.
 - All **four judges** as discrete, traceable stages if the target requires them for S4.
 - Documentation-to-code traceability matrix (optional future table) without changing this canonical vocabulary.
+
+### Microphase 4.2 (P5–P6 query understanding core)
+
+- **Implemented in code:** `QueryUnderstandingPipeline` as a mandatory runtime stage that produces an immutable `QueryPlan` for every orchestrated request and is executed by `RagExecutionOrchestrator` **before** `WorkflowSelector`. QU failures are non-fatal and visible in `QueryPlan.pipelineNotes` and `ExecutionTrace` stage entries.
+- **Frozen constraint:** `WorkflowSelector` does not branch on `QueryPlan` in 4.2; `QueryPlan` is planning metadata only.

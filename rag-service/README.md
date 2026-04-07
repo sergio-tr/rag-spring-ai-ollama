@@ -169,7 +169,9 @@ With `docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.
 
 ## RAG runtime execution
 
-Single pipeline for product and evaluation: `QueryRuntimeComponentsFactory` builds `QueryInputPreparer` + `ResponseSynthesisPipeline` (including `AnswerGenerationKernel`). Chat-scoped config resolution is centralized in `ChatScopedRagConfigResolver` so the main turn and SSE “sources” use the same cascade as `ResolvedRuntimeConfig` when `rag.config.v2.enabled=true`.
+**Orchestrated runtime (4.2):** `ProcessQueryService` / `SimpleProcessQueryService` are façades over `ExecutionContextFactory` → `RagExecutionOrchestrator`. The orchestrator executes `QueryUnderstandingPipeline` for every request to build an immutable `QueryPlan`, attaches it to `ExecutionContext`, then runs `WorkflowSelector` (fixed 4.1 matrix) and the selected `ExecutionWorkflow`. For answer generation and retrieval prompts, workflows use **only** `QueryPlan.rewrittenQueryText` (raw user input is trace-only).
+
+**Legacy preparation pipeline (non-orchestrated / transitional):** `service.query.pipeline` (`QueryInputPreparer`, `ResponseSynthesisPipeline`, `AnswerGenerationKernel`) remains as legacy logic but is bypassed by orchestrated execution paths.
 
 **Stage order (high level):** `config_resolve` → `context_arm` → `query_prepare` (expand → NER → classify) → `reasoning_pre` (optional) → `synthesis` → `reasoning_post` / `ranker` (optional). Span names for observability: `rag.runtime.stage.config_resolve`, … `rag.runtime.stage.synthesis`, etc. (add in application code as needed).
 

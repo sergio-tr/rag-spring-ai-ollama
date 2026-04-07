@@ -25,12 +25,13 @@ public class DocumentDenseRagWorkflow extends AbstractExecutionWorkflow {
     public RagExecutionResult execute(ExecutionContext ctx) {
         long t0 = System.nanoTime();
         List<ExecutionStageTrace> stages = new ArrayList<>();
+        String q = canonicalGenerationQuery(ctx);
         String context =
                 snapshotBoundRetrievalService.buildRetrievalContext(
-                        ctx, ctx.userQuery(), SnapshotBoundRetrievalService.DenseLayout.DOCUMENT_COMBINED);
+                        ctx, q, SnapshotBoundRetrievalService.DenseLayout.DOCUMENT_COMBINED);
         stages.add(stage("dense_retrieval", t0, ExecutionStageOutcome.SUCCESS, ""));
         long t1 = System.nanoTime();
-        String user = RuntimeAnswerPrompts.ragUserTurn(ctx.userQuery(), context);
+        String user = RuntimeAnswerPrompts.ragUserTurn(q, context);
         String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
         stages.add(stage("llm", t1, ExecutionStageOutcome.SUCCESS, ""));
         return RagExecutionResult.withPlaceholderTrace(

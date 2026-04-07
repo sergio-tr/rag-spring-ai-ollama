@@ -33,6 +33,8 @@ For each LLM call at the architectural level:
 
 - **Logical inputs:** `effective system prompt` + `user query`.
 
+In microphase 4.2, the runtime introduces `QueryUnderstandingPipeline` which consumes `ResolvedRuntimeConfig` (via `ExecutionContext.resolved()`) to deterministically build a `QueryPlan`. The canonical query text used for answer generation becomes `QueryPlan.rewrittenQueryText` (not the raw user input).
+
 **Layers of `effective system prompt` (all four are mandatory concepts):**
 
 1. `base system prompt` — platform-wide baseline.

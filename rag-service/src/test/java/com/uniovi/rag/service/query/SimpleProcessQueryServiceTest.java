@@ -92,6 +92,7 @@ class SimpleProcessQueryServiceTest {
                         Optional.empty(),
                         "t",
                         List.of("all"),
+                        Optional.empty(),
                         Optional.empty());
         when(executionContextFactory.buildForLegacyHttp(any(), any())).thenReturn(ctx);
         RagExecutionResult partial =

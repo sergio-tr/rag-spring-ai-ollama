@@ -88,6 +88,7 @@ class ProcessQueryServiceTest {
                 Optional.empty(),
                 "trace",
                 List.of("all"),
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -175,6 +176,7 @@ class ProcessQueryServiceTest {
                         Optional.empty(),
                         "c",
                         List.of("all"),
+                        Optional.empty(),
                         Optional.empty());
         when(executionContextFactory.buildForChatMessage(eq(uid), eq(pid), eq(conv), eq("q"), any(), isNull()))
                 .thenReturn(ctx);
