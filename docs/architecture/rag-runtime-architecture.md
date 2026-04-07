@@ -19,7 +19,7 @@
 
 | Component | Responsibility | Typical placement in workflow |
 |-----------|----------------|------------------------------|
-| `QueryUnderstandingPipeline` | Builds a deterministic, structured `QueryPlan` (normalization → classification → entity extraction → structured rewrite → intent/shape/ambiguity). In microphase 4.2 it is a mandatory runtime stage but has **no routing authority**. | Early stage |
+| `QueryUnderstandingPipeline` | Builds a deterministic, structured `QueryPlan` (normalization → classification → entity extraction → structured rewrite → intent/shape/ambiguity). It is a mandatory runtime stage but has **no routing authority**. | Early stage |
 | `RetrievalPipeline` | Selects strategies (vector, metadata, hybrid) and fetches context from the Knowledge System. | Mid stage |
 | `PostRetrievalPipeline` | Ranks, compresses, or filters context; may invoke judges sufficiency before generation. | After retrieval, before / during generation |
 
@@ -27,7 +27,7 @@
 
 | Component | Responsibility |
 |-----------|----------------|
-| `DeterministicToolStrategy` | Executes tools with fixed contracts (e.g. metadata tools) without open-ended model tool loops. |
+| `DeterministicToolStrategy` | Executes tools with fixed contracts (e.g. meeting-minutes metadata tools) without open-ended model tool loops. Only deterministic tool entrypoint and runs only inside `RagExecutionOrchestrator` after `WorkflowSelector`. |
 | `FunctionCallingToolStrategy` | Uses model-driven tool calls where appropriate; bounded by `ToolPolicy`. |
 | `ToolPolicy` | Allowed tools, rate limits, safety gates, and fallbacks per workflow / tenant / project. |
 
@@ -74,20 +74,26 @@
 - **Workflow** selection may be spread across flags, presets, and services rather than one `WorkflowSelector` abstraction.
 - **S0–S4** scenario ladder not uniformly encoded as `ExecutionRoute` values.
 
-### Microphase 4.1 (S0–S1 runtime engine base)
+### S0–S1 runtime engine base
 
+- **System base**: all implemented based on what had been developed before.
 - **Implemented in code:** `com.uniovi.rag.domain.runtime.engine.ExecutionContext` (factory-built only via `ExecutionContextFactory`), `RagExecutionOrchestrator`, `WorkflowSelector` (deterministic matrix from `RagConfig` + `MaterializationStrategy`), five `ExecutionWorkflow` beans (`DirectLlmWorkflow`, `FullCorpusWorkflow`, `DocumentDenseRagWorkflow`, `ChunkDenseRagWorkflow`, `ChunkDenseMetadataWorkflow`), `KnowledgeRuntimeSnapshotSelector`, `SnapshotCorpusAssembler`, `SnapshotBoundRetrievalService`, `RagExecutionResult` / `ExecutionTrace`.
 - **Product path:** `ProcessQueryService` is a façade: `ExecutionContextFactory` → `RagExecutionOrchestrator` → map to `QueryResponse`. Live resolution uses `ConfigResolverService.resolve` via `RuntimeConfigResolutionService.resolveForOrchestratedExecute` with the same merged conversation JSON as `ChatScopedRagConfigResolver`.
 - **Errors:** `unsupported-runtime-configuration` and `knowledge-snapshot-unavailable` surface as `RagServiceException` with HTTP **422** (see `ErrorCode`).
 
 ### What is still missing
 
-- **Persisted** `ExecutionTrace` / full lab–product parity for trace export beyond in-memory + logs; HYBRID / STRUCTURED_SEARCH / tools / advisors on the orchestrated path.
+- **Persisted** `ExecutionTrace` / full lab–product parity for trace export beyond in-memory + logs; HYBRID / STRUCTURED_SEARCH / function calling / advisors on the orchestrated path.
 - Full **ToolPolicy** surface matching target semantics.
 - All **four judges** as discrete, traceable stages if the target requires them for S4.
 - Documentation-to-code traceability matrix (optional future table) without changing this canonical vocabulary.
 
-### Microphase 4.2 (P5–P6 query understanding core)
+### S2: P5–P6 query understanding core
 
 - **Implemented in code:** `QueryUnderstandingPipeline` as a mandatory runtime stage that produces an immutable `QueryPlan` for every orchestrated request and is executed by `RagExecutionOrchestrator` **before** `WorkflowSelector`. QU failures are non-fatal and visible in `QueryPlan.pipelineNotes` and `ExecutionTrace` stage entries.
 - **Frozen constraint:** `WorkflowSelector` does not branch on `QueryPlan` in 4.2; `QueryPlan` is planning metadata only.
+
+### S2: P7 deterministic tools core
+
+- **Implemented in code:** `DeterministicToolStrategy` (package `application.service.runtime.tool`) is the **only** deterministic tool entrypoint. `RagExecutionOrchestrator` runs it **after** `WorkflowSelector.select(...)` and **before** `workflow.execute(...)`. Resolution uses **only** `ExecutionContext`, `ResolvedRuntimeConfig`, `QueryPlan`, and the selected workflow name; it does not re-run classifier/NER or reconstruct `QueryPlan`. When ambiguity is not `SUFFICIENT` or `toolsEnabled` is false, tools are suppressed and the trace records the reason; when a tool executes successfully, the orchestrator short-circuits and returns the tool answer without invoking the workflow. `ExecutionTrace` includes `tool_resolve`, `tool_execute`, `tool_result_map` stages plus summary fields (`deterministicToolOutcome`, `deterministicToolKind`, `deterministicToolDetail`).
+- **Frozen constraint:** `ExecutionWorkflow` implementations do not perform tool resolution, selection, or execution.

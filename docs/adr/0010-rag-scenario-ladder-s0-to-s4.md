@@ -13,7 +13,7 @@ The thesis requires a **defensible experimental ladder** covering baseline RAG t
 1. Scenarios **S0–S4** are **architecturally frozen** as a ladder ([implementation-roadmap.md](../architecture/implementation-roadmap.md) blocks **5–8**).
 2. **S0–S2** form the **core spine** of the **primary benchmark** narrative.
 3. **S3–S4** are **first-class** architecturally: they must be **implementable** and **documented** with the same rigour as S0–S2; the difference is **emphasis in the main benchmark story**, not optional existence.
-4. Mapping from scenarios to **`ExecutionRoute`** / workflows is defined during runtime implementation microphases.
+4. Mapping from scenarios to **`ExecutionRoute`** / workflows is defined during runtime implementation phases.
 
 ## Consequences
 

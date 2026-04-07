@@ -232,7 +232,7 @@ public class KnowledgePipelineOrchestrator {
     }
 
     /**
-     * Full-scope rebuild using {@link KnowledgeBuildProjection} (config-aware path, Microphase 3.2).
+     * Full-scope rebuild using {@link KnowledgeBuildProjection} (config-aware path).
      *
      * @return new knowledge snapshot id, or {@code null} when no READY documents (no snapshot created)
      */

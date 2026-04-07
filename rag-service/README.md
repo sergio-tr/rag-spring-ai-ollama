@@ -4,7 +4,7 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 
 **Target architecture (frozen model):** [RAG runtime](../docs/architecture/rag-runtime-architecture.md), [configuration & resolution](../docs/architecture/configuration-resolution-model.md).
 
-**Query execution (4.1):** chat and legacy query entry points use `ProcessQueryService` / `SimpleProcessQueryService` as a thin façade over `ExecutionContextFactory` → `RagExecutionOrchestrator` → a single `ExecutionWorkflow`. Unsupported combinations return **422** with `UNSUPPORTED_RUNTIME_CONFIGURATION`; missing ACTIVE knowledge snapshots for knowledge workflows return `KNOWLEDGE_SNAPSHOT_UNAVAILABLE`. Successful runs log `workflow`, snapshot ids, and `correlationId` at INFO.
+**Query execution:** chat and legacy query entry points use `ProcessQueryService` / `SimpleProcessQueryService` as a thin façade over `ExecutionContextFactory` → `RagExecutionOrchestrator` → optional deterministic tools → a single `ExecutionWorkflow`. Unsupported combinations return **422** with `UNSUPPORTED_RUNTIME_CONFIGURATION`; missing ACTIVE knowledge snapshots for knowledge workflows return `KNOWLEDGE_SNAPSHOT_UNAVAILABLE`. Successful runs log `workflow`, snapshot ids, and `correlationId` at INFO.
 
 **Layering:** Product REST controllers live under `com.uniovi.rag.interfaces.rest` and delegate to **application services** (`com.uniovi.rag.application..`) for persistence; JPA and repositories stay in `infrastructure.persistence`. Legacy RAG adapters (`interfaces.rest.legacy`, base path `rag.api.legacy-base-path`) are excluded from ArchUnit rules until refactored. See `src/test/java/com/uniovi/rag/architecture/LayeredArchitectureTest.java`.
 
@@ -169,13 +169,13 @@ With `docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.
 
 ## RAG runtime execution
 
-**Orchestrated runtime (4.2):** `ProcessQueryService` / `SimpleProcessQueryService` are façades over `ExecutionContextFactory` → `RagExecutionOrchestrator`. The orchestrator executes `QueryUnderstandingPipeline` for every request to build an immutable `QueryPlan`, attaches it to `ExecutionContext`, then runs `WorkflowSelector` (fixed 4.1 matrix) and the selected `ExecutionWorkflow`. For answer generation and retrieval prompts, workflows use **only** `QueryPlan.rewrittenQueryText` (raw user input is trace-only).
+**Orchestrated runtime:** `ProcessQueryService` / `SimpleProcessQueryService` are façades over `ExecutionContextFactory` → `RagExecutionOrchestrator`. The orchestrator executes `QueryUnderstandingPipeline` for every request to build an immutable `QueryPlan`, attaches it to `ExecutionContext`, then runs `WorkflowSelector`, then **`DeterministicToolStrategy`** (only tool entrypoint; rule-based selection from `QueryPlan` when `toolsEnabled` and ambiguity is sufficient). On successful deterministic tool execution, the orchestrator returns the tool answer **without** running the workflow; otherwise it runs the selected `ExecutionWorkflow`. For answer generation and retrieval prompts, workflows use **only** `QueryPlan.rewrittenQueryText` (raw user input is trace-only).
 
-**Legacy preparation pipeline (non-orchestrated / transitional):** `service.query.pipeline` (`QueryInputPreparer`, `ResponseSynthesisPipeline`, `AnswerGenerationKernel`) remains as legacy logic but is bypassed by orchestrated execution paths.
+**Legacy preparation pipeline (non-orchestrated / transitional):** `service.query.pipeline` (`QueryInputPreparer`, `ResponseSynthesisPipeline`, `AnswerGenerationKernel`) remains as legacy logic but is bypassed by orchestrated execution paths. `ResponseSynthesisPipeline` does **not** perform deterministic tool routing; tools are orchestrated only in `RagExecutionOrchestrator`.
 
 **Stage order (high level):** `config_resolve` → `context_arm` → `query_prepare` (expand → NER → classify) → `reasoning_pre` (optional) → `synthesis` → `reasoning_post` / `ranker` (optional). Span names for observability: `rag.runtime.stage.config_resolve`, … `rag.runtime.stage.synthesis`, etc. (add in application code as needed).
 
-**Internal order inside `ResponseSynthesisPipeline.synthesizeCore`:** metadata/date guard → `tryPreferToolForDate` → `tryMainToolsBlock` → `tryToolRoute` → LLM branch (`AnswerGenerationKernel`). Function-calling, when enabled, takes precedence over the deterministic tools adapter for those steps (see `ToolRoutingService`).
+**Internal order inside `ResponseSynthesisPipeline.synthesizeCore` (legacy only):** metadata/date guard → LLM branch (`AnswerGenerationKernel`). Deterministic tools are **not** invoked here.
 
 **Retrieval policy (`RetrievalPolicyResolver`):** if `postRetrievalEnabled` is true for the effective `RagConfig`, the stock `QuestionAnswerAdvisor` path is **not** used (manual retrieval + post-processing only), unless `rag.runtime.legacy-advisor-with-post-retrieval=true`. Evaluation continues to pass a `null` advisor bean when only manual retrieval is desired.
 

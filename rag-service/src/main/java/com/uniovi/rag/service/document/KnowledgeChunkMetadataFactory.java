@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Minimum chunk metadata for {@code vector_store.metadata} (schema §4.2), camelCase keys.
+ * Minimum chunk metadata for {@code vector_store.metadata}, camelCase keys.
  */
 public final class KnowledgeChunkMetadataFactory {
 

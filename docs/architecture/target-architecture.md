@@ -1,6 +1,6 @@
 # Target platform architecture
 
-**Purpose:** Single canonical description of **target** subsystems, boundaries, and global rules for this monorepo. It governs all later microphases until changed by an ADR. It is **not** a snapshot of the codebase; gaps are listed under [Alignment with the repository (current state)](#alignment-with-the-repository-current-state).
+**Purpose:** Single canonical description of **target** subsystems, boundaries, and global rules for this monorepo. It governs all later development phases until changed by an ADR. It is **not** a snapshot of the codebase; gaps are listed under [Alignment with the repository (current state)](#alignment-with-the-repository-current-state).
 
 **Related:** [rag-runtime-architecture.md](rag-runtime-architecture.md), [configuration-resolution-model.md](configuration-resolution-model.md), [knowledge-system-model.md](knowledge-system-model.md), [implementation-roadmap.md](implementation-roadmap.md), [integration-flows.md](integration-flows.md), [system-context.md](system-context.md).
 
@@ -11,7 +11,7 @@ The degree project centres on **RAG over neighbourhood meeting minutes** (*actas
 ## Global rules
 
 1. **Single RAG execution engine** — Product and Lab/benchmark share the same runtime semantics (see [ADR 0009](../adr/0009-unified-product-and-lab-execution-engine.md)).
-2. **No legacy without real use** — Legacy surfaces or code paths must either prove active use or carry an explicit sunset justification and removal criterion (documented here or in an ADR). Microphase 0.1 does **not** remove code; it freezes the **policy** only.
+2. **No legacy without real use** — Legacy surfaces or code paths must either prove active use or carry an explicit sunset justification and removal criterion (documented here or in an ADR).
 3. **Keycloak and HTTPS** — Identity and transport security foundations are closed decisions ([ADR 0006](../adr/0006-keycloak-identity-and-https-foundation.md)).
 4. **Configuration** — Feature flags may exist as inputs, but **governing semantics** are capabilities, compatibility rules, presets, resolved runtime configuration, and workflow selection — not a forest of ad-hoc conditionals ([ADR 0007](../adr/0007-capability-groups-and-compatibility-rules.md)).
 
@@ -101,7 +101,7 @@ The degree project centres on **RAG over neighbourhood meeting minutes** (*actas
 
 **Owns:** Decision records, canonical docs under `docs/`, rules for `docs/` vs module READMEs ([documentation-guidelines.md](../development/documentation-guidelines.md)).
 
-**Interfaces:** [adr/README.md](../adr/README.md), [branch-pr-strategy.md](../development/branch-pr-strategy.md), [cursor-workflow.md](../development/cursor-workflow.md).
+**Interfaces:** [adr/README.md](../adr/README.md).
 
 ## Conceptual data flow (high level)
 
@@ -128,5 +128,5 @@ Users and agents interact through Workspace / Product or Lab. Each **RAG request
 - Full alignment of Java/TS modules with every **named runtime component** in [rag-runtime-architecture.md](rag-runtime-architecture.md) (or explicit deprecation of gaps).
 - **`SystemPromptComposer`** and four-layer prompt stack as the **only** documented composition path for effective system prompts.
 - **`ReindexImpactAnalyzer`** (or equivalent) as a first-class concept tied to config changes.
-- Removal of **unused legacy** per policy (future microphases).
+- Removal of **unused legacy** per policy.
 - **Compliance / RGPD** block execution beyond high-level Governance placeholder.

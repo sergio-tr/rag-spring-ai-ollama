@@ -33,13 +33,12 @@ public class WorkflowSelector {
 
     public ExecutionWorkflow select(ExecutionContext ctx) {
         RagConfig rag = ctx.resolved().toRagConfig();
-        if (rag.toolsEnabled()
-                || rag.functionCallingEnabled()
+        if (rag.functionCallingEnabled()
                 || rag.useAdvisor()
                 || rag.reasoningEnabled()
                 || rag.rankerEnabled()
                 || rag.postRetrievalEnabled()) {
-            throw RagServiceException.unsupportedRuntimeConfiguration("advanced runtime capabilities are not implemented in 4.1");
+            throw RagServiceException.unsupportedRuntimeConfiguration("advanced runtime capabilities are not implemented");
         }
         MaterializationStrategy strategy = rag.materializationStrategy();
         if (rag.useRetrieval() && strategy == MaterializationStrategy.HYBRID) {

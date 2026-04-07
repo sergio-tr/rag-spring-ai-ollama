@@ -110,10 +110,12 @@ class WorkflowSelectorTest {
     }
 
     @Test
-    void select_throws_whenToolsEnabled() {
+    void select_allows_whenToolsEnabled() {
         RagFeatureConfiguration f = new RagFeatureConfiguration();
         f.setToolsEnabled(true);
+        f.setUseAdvisor(false);
+        f.setUseRetrieval(false);
         RagConfig base = RagConfig.fromFeatureConfiguration(f, 5, 0.2, "l", "e", "c", "r");
-        assertThrows(RagServiceException.class, () -> selector.select(ctx(base)));
+        assertTrue(selector.select(ctx(base)) instanceof DirectLlmWorkflow);
     }
 }

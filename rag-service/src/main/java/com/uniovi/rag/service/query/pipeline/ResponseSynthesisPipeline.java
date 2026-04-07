@@ -3,11 +3,9 @@ package com.uniovi.rag.service.query.pipeline;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.runtime.RagEffectiveFeatures;
 import com.uniovi.rag.application.model.DraftAndContext;
-import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.application.model.ReasoningPreOutput;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
-import com.uniovi.rag.tool.ToolResult;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +13,8 @@ import org.slf4j.LoggerFactory;
 import java.util.Optional;
 
 /**
- * <p>Single synthesis core used for every answer: metadata guard → tool shortcuts → routed tools → LLM (+RAG).
+ * <p>Legacy synthesis core: metadata guard → LLM (+RAG). Deterministic tools are orchestrated only in {@link
+ * com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator} (P7); this pipeline does not execute tool routing.
  * Reasoning ({@link com.uniovi.rag.service.reasoning.ReasoningStrategy}) only adds pre/post/ranker
  * <em>around</em> this core — it does not skip or duplicate these steps.</p>
  *
@@ -28,17 +27,14 @@ public final class ResponseSynthesisPipeline {
 
     private final RagFeatureConfiguration featureConfig;
     private final DateExistenceGuard dateExistenceGuard;
-    private final ToolRoutingService toolRouting;
     private final AnswerGenerationKernel kernel;
 
     public ResponseSynthesisPipeline(
             RagFeatureConfiguration featureConfig,
             DateExistenceGuard dateExistenceGuard,
-            ToolRoutingService toolRouting,
             AnswerGenerationKernel kernel) {
         this.featureConfig = featureConfig;
         this.dateExistenceGuard = dateExistenceGuard;
-        this.toolRouting = toolRouting;
         this.kernel = kernel;
     }
 
@@ -56,26 +52,7 @@ public final class ResponseSynthesisPipeline {
             return metadata.get();
         }
 
-        var preferTool = toolRouting.tryPreferToolForDate(queryType, nerEntities, expandedQuery);
-        if (preferTool.isPresent()) {
-            return fromToolQueryResponse(preferTool.get(), CoreSynthesisResult.Kind.TOOL);
-        }
-
-        var mainTools = toolRouting.tryMainToolsBlock(queryType, expandedQuery);
-        if (mainTools.isPresent()) {
-            return fromToolQueryResponse(mainTools.get(), CoreSynthesisResult.Kind.TOOL);
-        }
-
-        ToolResult routed = toolRouting.tryToolRoute(expandedQuery, nerEntities, queryType);
-        if (routed != null) {
-            log.info("Response generated with tool {}: {}", routed.source(), routed.result());
-            return new CoreSynthesisResult(
-                    new DraftAndContext(routed.result(), routed.result()),
-                    CoreSynthesisResult.Kind.TOOL,
-                    routed.source());
-        }
-
-        log.info("Response generated with model directly (fallback; see fallback_reason in log above if tools were enabled)");
+        log.info("Response generated with model directly (legacy pipeline; deterministic tools use RagExecutionOrchestrator)");
         return synthesizeLlmBranch(expandedQuery, nerEntities, queryType, reasoningPre);
     }
 
@@ -129,12 +106,6 @@ public final class ResponseSynthesisPipeline {
                 new DraftAndContext(text, text),
                 CoreSynthesisResult.Kind.METADATA_GUARD,
                 source));
-    }
-
-    private static CoreSynthesisResult fromToolQueryResponse(QueryResponse qr, CoreSynthesisResult.Kind kind) {
-        String answer = qr.getAnswer();
-        String a = answer != null ? answer : "";
-        return new CoreSynthesisResult(new DraftAndContext(a, a), kind, qr.getToolUsed());
     }
 
 }

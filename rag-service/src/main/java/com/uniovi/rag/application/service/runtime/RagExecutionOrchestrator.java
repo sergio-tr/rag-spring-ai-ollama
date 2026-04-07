@@ -2,6 +2,8 @@ package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
@@ -10,13 +12,16 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Component
 public class RagExecutionOrchestrator {
@@ -24,14 +29,17 @@ public class RagExecutionOrchestrator {
     private final WorkflowSelector workflowSelector;
     private final QueryUnderstandingPipeline queryUnderstandingPipeline;
     private final ExecutionContextFactory executionContextFactory;
+    private final DeterministicToolStrategy deterministicToolStrategy;
 
     public RagExecutionOrchestrator(
             WorkflowSelector workflowSelector,
             QueryUnderstandingPipeline queryUnderstandingPipeline,
-            ExecutionContextFactory executionContextFactory) {
+            ExecutionContextFactory executionContextFactory,
+            DeterministicToolStrategy deterministicToolStrategy) {
         this.workflowSelector = workflowSelector;
         this.queryUnderstandingPipeline = queryUnderstandingPipeline;
         this.executionContextFactory = executionContextFactory;
+        this.deterministicToolStrategy = deterministicToolStrategy;
     }
 
     public RagExecutionResult execute(ExecutionContext ctx) {
@@ -52,10 +60,35 @@ public class RagExecutionOrchestrator {
                 && withPlan.knowledgeSnapshotSelection().orderedSnapshotIds().isEmpty()) {
             throw RagServiceException.knowledgeSnapshotUnavailable();
         }
+
+        DeterministicToolExecutionResult toolResult =
+                deterministicToolStrategy.tryExecute(withPlan, plan, wname);
+        List<ExecutionStageTrace> toolStages = projectDeterministicToolStages(toolResult);
+
+        if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS && toolResult.success()) {
+            DeterministicToolKind kind =
+                    toolResult.toolKind().orElseThrow(() -> new IllegalStateException("tool kind missing on success"));
+            RagExecutionResult partial = new RagExecutionResult(
+                    toolResult.answerText(),
+                    wname,
+                    false,
+                    false,
+                    Optional.empty(),
+                    Optional.empty(),
+                    withPlan.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                    ExecutionTrace.placeholder(),
+                    "deterministic-tool",
+                    DeterministicToolKindMappings.toQueryType(kind),
+                    true,
+                    List.of());
+            ExecutionTrace trace = assembleTrace(withPlan, partial, wname, quStages, toolStages, toolResult);
+            return partial.withFinalTrace(trace);
+        }
+
         RagExecutionContextHolder.set(toLegacy(withPlan));
         try {
             RagExecutionResult partial = workflow.execute(withPlan);
-            ExecutionTrace trace = assembleTrace(withPlan, partial, wname, quStages);
+            ExecutionTrace trace = assembleTrace(withPlan, partial, wname, quStages, toolStages, toolResult);
             return partial.withFinalTrace(trace);
         } finally {
             RagExecutionContextHolder.clear();
@@ -83,25 +116,70 @@ public class RagExecutionOrchestrator {
             ExecutionContext ctx,
             RagExecutionResult partial,
             String workflowName,
-            List<ExecutionStageTrace> quStages) {
+            List<ExecutionStageTrace> quStages,
+            List<ExecutionStageTrace> toolStages,
+            DeterministicToolExecutionResult toolResult) {
         List<ExecutionStageTrace> all = new ArrayList<>();
         all.addAll(quStages);
+        all.addAll(toolStages);
         all.addAll(partial.workflowStageTraces());
         QueryPlan qp = ctx.queryPlan().orElse(null);
+        String toolOutcome = toolResult.outcome().name();
+        String toolKind = toolResult.toolKind().map(Enum::name).orElse("");
+        String toolDetail = buildToolDetail(toolResult);
         return new ExecutionTrace(
                 List.copyOf(all),
                 workflowName,
                 partial.retrievalUsed(),
                 partial.metadataUsed(),
                 partial.usedKnowledgeSnapshotIds(),
-                Optional.empty(),
-                Optional.empty(),
+                partial.usedResolvedConfigSnapshotId(),
+                partial.usedConfigHash(),
                 qp != null ? qp.queryPlanVersion() : "",
                 qp != null ? qp.classifierStatus().name() : "",
                 qp != null ? qp.classifierLabel() : "",
                 qp != null ? qp.expectedAnswerShape().name() : "",
                 qp != null ? qp.ambiguityAssessment().status().name() : "",
-                ctx.resolved().compatibility().severity().name());
+                ctx.resolved().compatibility().severity().name(),
+                toolOutcome,
+                toolKind,
+                toolDetail);
+    }
+
+    private static String buildToolDetail(DeterministicToolExecutionResult toolResult) {
+        String notes = toolResult.traceNotes().stream().collect(Collectors.joining(";"));
+        if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_FAILED_INFRA) {
+            return "tool_fallback_to_workflow;" + notes;
+        }
+        return notes;
+    }
+
+    private static List<ExecutionStageTrace> projectDeterministicToolStages(DeterministicToolExecutionResult r) {
+        List<ExecutionStageTrace> out = new ArrayList<>();
+        String msgBase = "outcome=" + r.outcome() + " success=" + r.success();
+        String notes = String.join(" | ", r.traceNotes());
+        out.add(new ExecutionStageTrace(
+                "tool_resolve",
+                0L,
+                ExecutionStageOutcome.SUCCESS,
+                msgBase + " notes=" + notes));
+
+        ExecutionStageOutcome execOutcome;
+        if (r.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS) {
+            execOutcome = ExecutionStageOutcome.SUCCESS;
+        } else if (r.outcome() == DeterministicToolOutcome.EXECUTED_FAILED_INFRA) {
+            execOutcome = ExecutionStageOutcome.FAILED;
+        } else {
+            execOutcome = ExecutionStageOutcome.SKIPPED;
+        }
+        out.add(new ExecutionStageTrace("tool_execute", 0L, execOutcome, msgBase));
+
+        ExecutionStageOutcome mapOutcome =
+                r.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS
+                        ? ExecutionStageOutcome.SUCCESS
+                        : ExecutionStageOutcome.SKIPPED;
+        out.add(new ExecutionStageTrace("tool_result_map", 0L, mapOutcome, msgBase));
+        return out;
     }
 
     private static List<ExecutionStageTrace> projectQuStages(QueryPlan plan) {

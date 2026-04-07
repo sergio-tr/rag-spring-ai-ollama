@@ -7,7 +7,7 @@ import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.runtime.RagConfig;
 
 /**
- * Normative aggregate for runtime configuration in microphase 2.1. Does not embed {@link
+ * Normative aggregate for runtime configuration. Does not embed {@link
  * com.uniovi.rag.domain.config.prompt.PromptStack}.
  */
 public record ResolvedRuntimeConfig(

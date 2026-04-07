@@ -204,7 +204,7 @@ This table stores a **reproducible, insert-only** snapshot of **resolved** runti
 | `provenance_jsonb` | yes | Domain provenance plus **`schema_version`** (int), **`creatingUserId`** (UUID string), optional **`correlationId`**, optional **`projectId`** (UUID string) for knowledge pin validation. |
 | `config_hash` | yes | `ResolvedRuntimeConfigHasher` SHA-256 over canonical `ResolvedRuntimeConfig` JSON; when `payload_jsonb` carries **`knowledgeBuildProjection`**, the same hasher appends that nested map so the digest covers the knowledge slice. |
 | `conversation_id`, `message_id`, `job_id` | optional | Optional linkage when the client supplies them. |
-| `prompt_stack_preview_jsonb` | omit (null) | Legacy; not written for new rows in microphase 2.2. |
+| `prompt_stack_preview_jsonb` | omit (null) | Legacy; not written for new rows. |
 
 **Forward compatibility:** new snapshot JSON keys and new nullable columns should be **additive** only; readers ignore unknown keys where possible.
 

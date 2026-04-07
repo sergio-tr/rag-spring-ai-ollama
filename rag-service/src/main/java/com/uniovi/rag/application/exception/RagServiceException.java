@@ -54,7 +54,7 @@ public class RagServiceException extends RuntimeException {
         return new RagServiceException(
                 ErrorCode.UNSUPPORTED_RUNTIME_CONFIGURATION,
                 HttpStatus.UNPROCESSABLE_ENTITY,
-                "unsupported-runtime-configuration: " + (detail != null ? detail : "configuration not supported in runtime 4.1"),
+                "unsupported-runtime-configuration: " + (detail != null ? detail : "configuration not supported in runtime"),
                 detail,
                 null);
     }

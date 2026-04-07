@@ -1388,7 +1388,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Fast pre-filtering without LLM to reduce the number of minutes before expensive filtering.
      * Uses improved date matching with LocalDate parsing for better accuracy.
      * 
-     * SOLUTION 2.2: Implemented flexible date matching (same year/month, within 1-2 days).
+     * Implemented flexible date matching (same year/month, within 1-2 days).
      */
     private List<Minute> preFilterMinutesFast(List<Minute> minutes, JSONObject ner) {
         if (ner == null || ner.isEmpty() || !ner.has("date") || ner.getJSONArray("date").isEmpty()) {
@@ -1424,7 +1424,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     
     /**
      * Checks if two dates match flexibly (same year/month, or within 1-2 days).
-     * SOLUTION 2.2: Flexible date matching to avoid rejecting relevant documents.
+     * Flexible date matching to avoid rejecting relevant documents.
      */
     private boolean datesMatchFlexibly(String date1, String date2) {
         if (date1 == null || date2 == null) {
@@ -1459,7 +1459,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     
     /**
      * Checks if dates are in the same year.
-     * SOLUTION 2.2: Helper for flexible date matching.
+     * Helper for flexible date matching.
      */
     private boolean datesInSameYear(String date1, List<String> date2List) {
         LocalDate parsed1 = parseDateToLocalDate(date1);

@@ -32,11 +32,13 @@
 | `infrastructure.persistence.mapper` | `ResolvedConfigSnapshotEntityMapper` (sole read/write shape for `resolved_config_snapshot` JSON columns); `KnowledgeIndexSnapshotMapper`, `ReindexEventMapper` (knowledge domain ↔ JPA) |
 | `infrastructure.classifier` | HTTP clients to **classifier-service** (`ClassifierLabClient`, `QueryClassifier`, etc.) |
 | `service.query` | `ProcessQueryService` / `SimpleProcessQueryService` façade → `application.service.runtime` (`ExecutionContextFactory`, `RagExecutionOrchestrator`, workflows) |
-| `application.service.runtime` | Runtime engine 4.1: orchestrator, workflow selector, snapshot-bound retrieval/corpus |
-| `application.service.runtime.query` | Runtime query understanding 4.2: `QueryUnderstandingPipeline` and adapters/resolvers producing `QueryPlan` |
+| `application.service.runtime` | Runtime engine: orchestrator, workflow selector, snapshot-bound retrieval/corpus |
+| `application.service.runtime.query` | Runtime query understanding: `QueryUnderstandingPipeline` and adapters/resolvers producing `QueryPlan` |
+| `application.service.runtime.tool` | Deterministic tools: `DeterministicToolStrategy` (sole entrypoint), resolver, executor, result mapper — invoked only from `RagExecutionOrchestrator` |
 | `domain.runtime.engine` | `ExecutionContext`, `RagExecutionResult`, `ExecutionTrace`, snapshot selection records |
 | `domain.runtime.query` | Query understanding domain: `QueryPlan`, normalization/entities/rewrite results, intent/shape/ambiguity enums |
-| `service.query.pipeline` | Preparation, synthesis, tools routing, answer kernel |
+| `domain.runtime.tool` | Deterministic tool domain: `DeterministicToolKind`, `DeterministicToolDecision`, `DeterministicToolExecutionResult`, outcomes |
+| `service.query.pipeline` | Preparation, synthesis, answer kernel (legacy; deterministic tools are not routed here) |
 | `service.retriever` | Vector / corpus retrieval implementations |
 | `service.config` | `ConfigResolver` (cascade merge owner), user/project configuration, sanitization; `JpaConfigurationSourceAdapter` implements `ConfigurationSourcePort` |
 | `service.chat` | Chat-oriented orchestration helpers (if present) |

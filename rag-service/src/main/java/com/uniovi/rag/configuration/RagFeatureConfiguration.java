@@ -18,7 +18,7 @@ public class RagFeatureConfiguration {
 
     private boolean expansionEnabled;
     private boolean nerEnabled;
-    /** Manual tools: deterministic {@link com.uniovi.rag.service.query.pipeline.ToolRoutingService} path + tool registry. */
+    /** Manual tools: deterministic tools path in {@link com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator} + {@link com.uniovi.rag.configuration.RagToolsConfiguration} registry. */
     private boolean toolsEnabled;
     private boolean metadataEnabled;
     private boolean reasoningEnabled;

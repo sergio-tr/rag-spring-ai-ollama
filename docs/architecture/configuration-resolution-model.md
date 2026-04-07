@@ -33,7 +33,7 @@ For each LLM call at the architectural level:
 
 - **Logical inputs:** `effective system prompt` + `user query`.
 
-In microphase 4.2, the runtime introduces `QueryUnderstandingPipeline` which consumes `ResolvedRuntimeConfig` (via `ExecutionContext.resolved()`) to deterministically build a `QueryPlan`. The canonical query text used for answer generation becomes `QueryPlan.rewrittenQueryText` (not the raw user input).
+The runtime introduces `QueryUnderstandingPipeline` which consumes `ResolvedRuntimeConfig` (via `ExecutionContext.resolved()`) to deterministically build a `QueryPlan`. The canonical query text used for answer generation becomes `QueryPlan.rewrittenQueryText` (not the raw user input).
 
 **Layers of `effective system prompt` (all four are mandatory concepts):**
 
@@ -59,7 +59,7 @@ The **UI** may edit underlying fields, but **canonical semantics** live under **
 ### What is partial
 
 - **`ResolvedConfigSnapshot` (domain)** exists; **persisted** snapshots are written from product `POST …/config/resolved-snapshots` and from knowledge flows (`KnowledgeConfigurationIntegrationService` / ingestion default snapshot) (see [DATA_MODEL.md](DATA_MODEL.md) §6.1). Lab runs continue to reference `resolved_config_snapshot.id` where the evaluation model already supports it.
-- Documented mapping from **every** governance-relevant flag to **capabilities** may still evolve (future microphase).
+- Documented mapping from **every** governance-relevant flag to **capabilities** may still evolve.
 
 ### What is still missing
 

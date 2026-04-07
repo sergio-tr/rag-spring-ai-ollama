@@ -20,7 +20,10 @@ public record ExecutionTrace(
         String classifierLabel,
         String expectedAnswerShape,
         String ambiguityStatus,
-        String compatibilitySeverity) {
+        String compatibilitySeverity,
+        String deterministicToolOutcome,
+        String deterministicToolKind,
+        String deterministicToolDetail) {
 
     public ExecutionTrace {
         stages = List.copyOf(stages);
@@ -34,6 +37,9 @@ public record ExecutionTrace(
         expectedAnswerShape = expectedAnswerShape == null ? "" : expectedAnswerShape;
         ambiguityStatus = ambiguityStatus == null ? "" : ambiguityStatus;
         compatibilitySeverity = compatibilitySeverity == null ? "" : compatibilitySeverity;
+        deterministicToolOutcome = deterministicToolOutcome == null ? "" : deterministicToolOutcome;
+        deterministicToolKind = deterministicToolKind == null ? "" : deterministicToolKind;
+        deterministicToolDetail = deterministicToolDetail == null ? "" : deterministicToolDetail;
     }
 
     public static ExecutionTrace placeholder() {
@@ -45,6 +51,9 @@ public record ExecutionTrace(
                 List.of(),
                 Optional.empty(),
                 Optional.empty(),
+                "",
+                "",
+                "",
                 "",
                 "",
                 "",

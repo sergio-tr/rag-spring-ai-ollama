@@ -1,12 +1,12 @@
 # Implementation roadmap (canonical blocks)
 
-**Purpose:** **Target** ordering and **canonical names** for implementation work after architecture freeze (microphase 0.1). These thirteen block names and their order (**1 → 13**) are **normative** for plans (including under `.cursor/plans/`), branch names, PR titles, and implementation write-ups **unless a future ADR renames or reorders them**.
+**Purpose:** **Target** ordering and **canonical names** for implementation work after architecture freeze. These thirteen block names and their order (**1 → 13**) are **normative** for plans (including under `.cursor/plans/`), branch names, PR titles, and implementation write-ups **unless a future ADR renames or reorders them**.
 
 **Related:** [target-architecture.md](target-architecture.md), [ADR 0005](../adr/0005-target-rag-architecture-and-runtime-center.md) through [ADR 0011](../adr/0011-knowledge-system-artifacts-snapshots-and-materialization.md).
 
 ## Canonical blocks (fixed order)
 
-1. **Governance & Architecture Freeze** — Deliver and merge canonical `docs/` architecture package + ADRs 0005–0011 (this block closes with microphase 0.1 into `dev`).
+1. **Governance & Architecture Freeze** — Deliver and merge canonical `docs/` architecture package + ADRs 0005–0011.
 2. **Platform Base** — Compose, images, environments, baseline observability; prerequisites for all runtime work.
 3. **Runtime Configuration Core** — Capability model, compatibility rules, resolution, snapshots, `SystemPromptComposer`, `ReindexImpactAnalyzer` alignment.
 4. **Knowledge System** — Artefacts, snapshots, reindex events, materialization strategies, structured search contracts.
@@ -43,7 +43,7 @@ For each block, implementation planning must state:
 ### What already exists
 
 - Substantial code in blocks **2** (docker/compose), **5** (partial — query pipeline), **4** (partial — ingestion/vectors), **9** (partial — lab endpoints), **11** (webapp).
-- ADRs 0001–0004 predate this roadmap; **0005–0011** added with microphase 0.1.
+- ADRs 0001–0004 predate this roadmap; **0005–0011** added with new phase.
 
 ### What is partial
 
