@@ -4,7 +4,7 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 
 **Target architecture (frozen model):** [RAG runtime](../docs/architecture/rag-runtime-architecture.md), [configuration & resolution](../docs/architecture/configuration-resolution-model.md).
 
-**Query execution:** chat and legacy query entry points use `ProcessQueryService` / `SimpleProcessQueryService` as a thin façade over `ExecutionContextFactory` → `RagExecutionOrchestrator` → optional deterministic tools → a single `ExecutionWorkflow`. Unsupported combinations return **422** with `UNSUPPORTED_RUNTIME_CONFIGURATION`; missing ACTIVE knowledge snapshots for knowledge workflows return `KNOWLEDGE_SNAPSHOT_UNAVAILABLE`. Successful runs log `workflow`, snapshot ids, and `correlationId` at INFO.
+**Query execution:** chat and legacy query entry points use `ProcessQueryService` / `SimpleProcessQueryService` as a thin façade over `ExecutionContextFactory` → `RagExecutionOrchestrator` → optional deterministic tools → optional P9 function calling (when `rag.features.function-calling-enabled` / `functionCallingEnabled` in resolved config and gates pass) → a single `ExecutionWorkflow`. Unsupported combinations return **422** with `UNSUPPORTED_RUNTIME_CONFIGURATION`; missing ACTIVE knowledge snapshots for knowledge workflows return `KNOWLEDGE_SNAPSHOT_UNAVAILABLE`. Successful runs log `workflow`, snapshot ids, and `correlationId` at INFO.
 
 **Advanced retrieval (dense workflows):** `DocumentDenseRagWorkflow`, `ChunkDenseRagWorkflow`, and `ChunkDenseMetadataWorkflow` call `AdvancedRetrievalPipeline` only. Retrieval uses `QueryPlan.rewrittenQueryText`, supports dense-only or hybrid (dense + PostgreSQL FTS with RRF fusion), then deterministic rerank, filter, and extractive compression. Optional JSON override: `advancedRetrievalMaxContextChars` (default `24000`, clamped with `naiveFullCorpusMaxChars` in the same config merge). Traces: substages `retrieval_*` plus `ExecutionTrace.retrievalDiagnostics`.
 
@@ -68,6 +68,7 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 | `rag.runtime.workflow-schema-version` | Semver of the RAG execution stage graph (Lab/eval reproducibility) | `1.0.0` |
 | `rag.runtime.legacy-advisor-with-post-retrieval` | Allow `QuestionAnswerAdvisor` when post-retrieval is on (legacy; not recommended) | `false` |
 | `rag.runtime.memory-max-turns` / `rag.runtime.memory-max-chars` | Caps for product “full” conversation memory when injected into prompts | `20` / `8000` |
+| `rag.features.function-calling-enabled` | Enables P9 Spring AI function calling for meeting-minutes tools (orchestrated path; deterministic tools still run first) | `false` |
 | `advancedRetrievalMaxContextChars` | (RAG config JSON) Max characters for curated retrieval context after extractive compression | `24000` |
 | `rag.evaluation.persistence.enabled` | Persist canonical `evaluation_run` / `evaluation_result` from Lab async handlers | `true` |
 | `rag.evaluation.storage-root` | Filesystem root for uploaded evaluation datasets (empty → temp dir) | — |

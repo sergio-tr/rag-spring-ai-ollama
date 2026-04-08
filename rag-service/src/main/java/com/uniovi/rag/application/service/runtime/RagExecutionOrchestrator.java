@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
+import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
@@ -11,6 +13,10 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
+import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingDecision;
+import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionResult;
+import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
+import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
@@ -30,16 +36,22 @@ public class RagExecutionOrchestrator {
     private final QueryUnderstandingPipeline queryUnderstandingPipeline;
     private final ExecutionContextFactory executionContextFactory;
     private final DeterministicToolStrategy deterministicToolStrategy;
+    private final FunctionCallingPolicyResolver functionCallingPolicyResolver;
+    private final FunctionCallingStrategy functionCallingStrategy;
 
     public RagExecutionOrchestrator(
             WorkflowSelector workflowSelector,
             QueryUnderstandingPipeline queryUnderstandingPipeline,
             ExecutionContextFactory executionContextFactory,
-            DeterministicToolStrategy deterministicToolStrategy) {
+            DeterministicToolStrategy deterministicToolStrategy,
+            FunctionCallingPolicyResolver functionCallingPolicyResolver,
+            FunctionCallingStrategy functionCallingStrategy) {
         this.workflowSelector = workflowSelector;
         this.queryUnderstandingPipeline = queryUnderstandingPipeline;
         this.executionContextFactory = executionContextFactory;
         this.deterministicToolStrategy = deterministicToolStrategy;
+        this.functionCallingPolicyResolver = functionCallingPolicyResolver;
+        this.functionCallingStrategy = functionCallingStrategy;
     }
 
     public RagExecutionResult execute(ExecutionContext ctx) {
@@ -48,11 +60,13 @@ public class RagExecutionOrchestrator {
         ExecutionContext withPlan = executionContextFactory.attachQueryPlan(ctx, plan);
 
         List<ExecutionStageTrace> quStages = projectQuStages(plan);
-        quStages.add(0, new ExecutionStageTrace(
-                "qu_total",
-                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - quStart),
-                ExecutionStageOutcome.SUCCESS,
-                "qu_status=OK message=QueryUnderstandingPipeline completed"));
+        quStages.add(
+                0,
+                new ExecutionStageTrace(
+                        "qu_total",
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - quStart),
+                        ExecutionStageOutcome.SUCCESS,
+                        "qu_status=OK message=QueryUnderstandingPipeline completed"));
 
         ExecutionWorkflow workflow = workflowSelector.select(withPlan);
         String wname = workflow.workflowName();
@@ -68,31 +82,154 @@ public class RagExecutionOrchestrator {
         if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS && toolResult.success()) {
             DeterministicToolKind kind =
                     toolResult.toolKind().orElseThrow(() -> new IllegalStateException("tool kind missing on success"));
-            RagExecutionResult partial = new RagExecutionResult(
-                    toolResult.answerText(),
-                    wname,
-                    false,
-                    false,
-                    Optional.empty(),
-                    Optional.empty(),
-                    withPlan.knowledgeSnapshotSelection().orderedSnapshotIds(),
-                    ExecutionTrace.placeholder(),
-                    "deterministic-tool",
-                    DeterministicToolKindMappings.toQueryType(kind),
-                    true,
-                    List.of(),
-                    Optional.empty());
-            ExecutionTrace trace = assembleTrace(withPlan, partial, wname, quStages, toolStages, toolResult);
+            RagExecutionResult partial =
+                    new RagExecutionResult(
+                            toolResult.answerText(),
+                            wname,
+                            false,
+                            false,
+                            Optional.empty(),
+                            Optional.empty(),
+                            withPlan.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                            ExecutionTrace.placeholder(),
+                            "deterministic-tool",
+                            DeterministicToolKindMappings.toQueryType(kind),
+                            true,
+                            List.of(),
+                            Optional.empty());
+            ExecutionTrace trace =
+                    assembleTrace(
+                            withPlan,
+                            partial,
+                            wname,
+                            quStages,
+                            toolStages,
+                            List.of(),
+                            toolResult,
+                            false,
+                            FunctionCallingOutcome.SUPPRESSED_BY_DETERMINISTIC_TOOL,
+                            "",
+                            false);
+            return partial.withFinalTrace(trace);
+        }
+
+        FcGate fcGate = evaluateFunctionCallingGate(withPlan, plan, wname, toolResult);
+        List<ExecutionStageTrace> fcStages = fcGate.stageTraces();
+
+        if (fcGate.functionCallingOutcome() == FunctionCallingOutcome.EXECUTED_SUCCESS
+                && fcGate.functionCallingShortCircuited()) {
+            FunctionCallingExecutionResult fr = fcGate.fcResult().orElseThrow();
+            DeterministicToolKind k =
+                    fr.selectedToolKind()
+                            .orElseThrow(() -> new IllegalStateException("tool kind missing on FC success"));
+            RagExecutionResult partial =
+                    new RagExecutionResult(
+                            fr.answerText(),
+                            wname,
+                            false,
+                            false,
+                            Optional.empty(),
+                            Optional.empty(),
+                            withPlan.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                            ExecutionTrace.placeholder(),
+                            "function-calling",
+                            DeterministicToolKindMappings.toQueryType(k),
+                            true,
+                            List.of(),
+                            Optional.empty());
+            ExecutionTrace trace =
+                    assembleTrace(
+                            withPlan,
+                            partial,
+                            wname,
+                            quStages,
+                            toolStages,
+                            fcStages,
+                            toolResult,
+                            fcGate.functionCallingAttempted(),
+                            fcGate.functionCallingOutcome(),
+                            fcGate.functionCallingToolKind(),
+                            fcGate.functionCallingShortCircuited());
             return partial.withFinalTrace(trace);
         }
 
         RagExecutionContextHolder.set(toLegacy(withPlan));
         try {
             RagExecutionResult partial = workflow.execute(withPlan);
-            ExecutionTrace trace = assembleTrace(withPlan, partial, wname, quStages, toolStages, toolResult);
+            ExecutionTrace trace =
+                    assembleTrace(
+                            withPlan,
+                            partial,
+                            wname,
+                            quStages,
+                            toolStages,
+                            fcStages,
+                            toolResult,
+                            fcGate.functionCallingAttempted(),
+                            fcGate.functionCallingOutcome(),
+                            fcGate.functionCallingToolKind(),
+                            fcGate.functionCallingShortCircuited());
             return partial.withFinalTrace(trace);
         } finally {
             RagExecutionContextHolder.clear();
+        }
+    }
+
+    private FcGate evaluateFunctionCallingGate(
+            ExecutionContext ctx,
+            QueryPlan plan,
+            String workflowName,
+            DeterministicToolExecutionResult toolResult) {
+
+        if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_FAILED_INFRA) {
+            return FcGate.blockedByDeterministicFailure();
+        }
+        var rag = ctx.resolved().toRagConfig();
+        if (!rag.functionCallingEnabled()) {
+            return FcGate.notAttempted(FunctionCallingOutcome.DISABLED_BY_CONFIG);
+        }
+        if (plan.ambiguityAssessment().status() != AmbiguityStatus.SUFFICIENT) {
+            return FcGate.notAttempted(FunctionCallingOutcome.SUPPRESSED_BY_AMBIGUITY);
+        }
+        Optional<FunctionCallingDecision> decision = functionCallingPolicyResolver.resolve(ctx, plan, workflowName);
+        if (decision.isEmpty()) {
+            return FcGate.notAttempted(FunctionCallingOutcome.NOT_APPLICABLE);
+        }
+        FunctionCallingExecutionResult fr =
+                functionCallingStrategy.tryExecute(ctx, plan, workflowName, decision.get());
+        boolean shortCircuited =
+                fr.outcome() == FunctionCallingOutcome.EXECUTED_SUCCESS && fr.shortCircuited();
+        String toolKindStr =
+                shortCircuited ? fr.selectedToolKind().map(Enum::name).orElse("") : "";
+        return new FcGate(
+                true,
+                fr.outcome(),
+                toolKindStr,
+                shortCircuited,
+                Optional.of(fr),
+                fr.stageTraces());
+    }
+
+    private record FcGate(
+            boolean functionCallingAttempted,
+            FunctionCallingOutcome functionCallingOutcome,
+            String functionCallingToolKind,
+            boolean functionCallingShortCircuited,
+            Optional<FunctionCallingExecutionResult> fcResult,
+            List<ExecutionStageTrace> stageTraces) {
+
+        static FcGate blockedByDeterministicFailure() {
+            return new FcGate(
+                    false,
+                    FunctionCallingOutcome.FC_BLOCKED_BY_DETERMINISTIC_TOOL_FAILURE,
+                    "",
+                    false,
+                    Optional.empty(),
+                    List.of());
+        }
+
+        static FcGate notAttempted(FunctionCallingOutcome outcome) {
+            return new FcGate(false, outcome, "", false, Optional.empty(), List.of());
         }
     }
 
@@ -119,10 +256,16 @@ public class RagExecutionOrchestrator {
             String workflowName,
             List<ExecutionStageTrace> quStages,
             List<ExecutionStageTrace> toolStages,
-            DeterministicToolExecutionResult toolResult) {
+            List<ExecutionStageTrace> fcStages,
+            DeterministicToolExecutionResult toolResult,
+            boolean functionCallingAttempted,
+            FunctionCallingOutcome functionCallingOutcome,
+            String functionCallingToolKind,
+            boolean functionCallingShortCircuited) {
         List<ExecutionStageTrace> all = new ArrayList<>();
         all.addAll(quStages);
         all.addAll(toolStages);
+        all.addAll(fcStages);
         all.addAll(partial.workflowStageTraces());
         QueryPlan qp = ctx.queryPlan().orElse(null);
         String toolOutcome = toolResult.outcome().name();
@@ -145,6 +288,10 @@ public class RagExecutionOrchestrator {
                 toolOutcome,
                 toolKind,
                 toolDetail,
+                functionCallingAttempted,
+                functionCallingOutcome.name(),
+                functionCallingToolKind != null ? functionCallingToolKind : "",
+                functionCallingShortCircuited,
                 partial.retrievalDiagnostics());
     }
 
@@ -160,11 +307,12 @@ public class RagExecutionOrchestrator {
         List<ExecutionStageTrace> out = new ArrayList<>();
         String msgBase = "outcome=" + r.outcome() + " success=" + r.success();
         String notes = String.join(" | ", r.traceNotes());
-        out.add(new ExecutionStageTrace(
-                "tool_resolve",
-                0L,
-                ExecutionStageOutcome.SUCCESS,
-                msgBase + " notes=" + notes));
+        out.add(
+                new ExecutionStageTrace(
+                        "tool_resolve",
+                        0L,
+                        ExecutionStageOutcome.SUCCESS,
+                        msgBase + " notes=" + notes));
 
         ExecutionStageOutcome execOutcome;
         if (r.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS) {
@@ -206,8 +354,6 @@ public class RagExecutionOrchestrator {
     }
 
     private static ExecutionStageTrace parseStageTraceLine(String line) {
-        // Expected format:
-        // <stageName> qu_status=<OK|FALLBACK|DISABLED|ERROR> durationMs=<n> message=<text>
         if (line == null || line.isBlank()) {
             return null;
         }
@@ -224,18 +370,22 @@ public class RagExecutionOrchestrator {
         } catch (Exception ignored) {
             durationMs = 0;
         }
-        ExecutionStageOutcome outcome = switch (quStatus) {
-            case "OK", "FALLBACK" -> ExecutionStageOutcome.SUCCESS;
-            case "DISABLED" -> ExecutionStageOutcome.SKIPPED;
-            case "ERROR" -> ExecutionStageOutcome.FAILED;
-            default -> ExecutionStageOutcome.SUCCESS;
-        };
-        return new ExecutionStageTrace(stageName, durationMs, outcome, "qu_status=" + quStatus + " " + extractMessage(line));
+        ExecutionStageOutcome outcome =
+                switch (quStatus) {
+                    case "OK", "FALLBACK" -> ExecutionStageOutcome.SUCCESS;
+                    case "DISABLED" -> ExecutionStageOutcome.SKIPPED;
+                    case "ERROR" -> ExecutionStageOutcome.FAILED;
+                    default -> ExecutionStageOutcome.SUCCESS;
+                };
+        return new ExecutionStageTrace(
+                stageName, durationMs, outcome, "qu_status=" + quStatus + " " + extractMessage(line));
     }
 
     private static String extractToken(String line, String key) {
         int idx = line.indexOf(key);
-        if (idx < 0) return "";
+        if (idx < 0) {
+            return "";
+        }
         int start = idx + key.length();
         int end = line.indexOf(' ', start);
         return end < 0 ? line.substring(start).trim() : line.substring(start, end).trim();
@@ -243,7 +393,9 @@ public class RagExecutionOrchestrator {
 
     private static String extractMessage(String line) {
         int idx = line.indexOf("message=");
-        if (idx < 0) return "";
+        if (idx < 0) {
+            return "";
+        }
         return "message=" + line.substring(idx + "message=".length()).trim();
     }
 }

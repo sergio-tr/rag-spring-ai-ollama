@@ -131,4 +131,14 @@ class WorkflowSelectorTest {
         RagConfig base = RagConfig.fromFeatureConfiguration(f, 5, 0.2, "l", "e", "c", "r");
         assertTrue(selector.select(ctx(base)) instanceof DirectLlmWorkflow);
     }
+
+    @Test
+    void select_allows_whenFunctionCallingEnabled() {
+        RagFeatureConfiguration f = new RagFeatureConfiguration();
+        f.setFunctionCallingEnabled(true);
+        f.setUseAdvisor(false);
+        f.setUseRetrieval(false);
+        RagConfig base = RagConfig.fromFeatureConfiguration(f, 5, 0.2, "l", "e", "c", "r");
+        assertTrue(selector.select(ctx(base)) instanceof DirectLlmWorkflow);
+    }
 }

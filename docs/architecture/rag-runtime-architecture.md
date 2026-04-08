@@ -28,8 +28,10 @@
 | Component | Responsibility |
 |-----------|----------------|
 | `DeterministicToolStrategy` | Executes tools with fixed contracts (e.g. meeting-minutes metadata tools) without open-ended model tool loops. Only deterministic tool entrypoint and runs only inside `RagExecutionOrchestrator` after `WorkflowSelector`. |
-| `FunctionCallingToolStrategy` | Uses model-driven tool calls where appropriate; bounded by `ToolPolicy`. |
-| `ToolPolicy` | Allowed tools, rate limits, safety gates, and fallbacks per workflow / tenant / project. |
+| `MeetingMinutesToolExecutionCore` | Shared business execution for the five meeting-minutes `DeterministicToolKind` tools; used by deterministic execution and by P9 function calling after model tool selection (no duplicate semantics in FC). |
+| `FunctionCallingStrategy` | P9: bounded Spring AI function-calling (single tool-enabled round, optional follow-up answer generation without tools). Sole FC entrypoint; invoked only from `RagExecutionOrchestrator` when config and `QueryPlan` gates pass. Final FC trace fields are written only by the orchestrator. |
+| `FunctionCallingPolicyResolver` | Exposes the whitelisted tool subset from `QueryPlan` when FC is eligible; no LLM calls. |
+| `ToolPolicy` | (Target) Allowed tools, rate limits, safety gates, and fallbacks per workflow / tenant / project. |
 
 ## Advisor, clarification, memory, routing
 
@@ -55,7 +57,7 @@
 ## Interactions (prose)
 
 - `WorkflowSelector` uses `ExecutionContext` (resolved config) to bind an `ExecutionWorkflow`.
-- `RagExecutionOrchestrator` drives pipelines and strategies in workflow order, appending to `ExecutionTrace`.
+- `RagExecutionOrchestrator` drives pipelines and strategies in workflow order, appending to `ExecutionTrace`. Order for orchestrated chat: `QueryUnderstandingPipeline` → `WorkflowSelector` → `DeterministicToolStrategy` → optional P9 FC phase (`functionCallingEnabled`, ambiguity `SUFFICIENT`, non-empty FC policy) → selected `ExecutionWorkflow` when nothing short-circuits. Deterministic tool success suppresses FC; deterministic tool execution failure blocks FC and continues with the already selected workflow.
 - `PromptStack` is populated via **Runtime Configuration** (`SystemPromptComposer`); see [configuration-resolution-model.md](configuration-resolution-model.md).
 - `ExecutionTrace` is consumed by **Platform & Ops** (observability) and **Experimentation / Lab** for runs.
 

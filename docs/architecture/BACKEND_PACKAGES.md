@@ -35,11 +35,13 @@
 | `application.service.runtime` | Runtime engine: orchestrator, workflow selector, full-corpus assembly |
 | `application.service.runtime.retrieval` | Advanced retrieval: `AdvancedRetrievalPipeline` (single entrypoint), dense/sparse/hybrid strategies, RRF fusion, deterministic rerank/filter/compression, metadata appendix loader |
 | `application.service.runtime.query` | Runtime query understanding: `QueryUnderstandingPipeline` and adapters/resolvers producing `QueryPlan` |
-| `application.service.runtime.tool` | Deterministic tools: `DeterministicToolStrategy` (sole entrypoint), resolver, executor, result mapper — invoked only from `RagExecutionOrchestrator` |
+| `application.service.runtime.tool` | Deterministic tools: `DeterministicToolStrategy` (sole entrypoint), resolver, executor, result mapper, `MeetingMinutesToolExecutionCore` (shared tool business execution) — invoked only from `RagExecutionOrchestrator` for P7 |
+| `application.service.runtime.functioncalling` | P9 function calling: `FunctionCallingStrategy`, `FunctionCallingPolicyResolver`, `FunctionCallingToolRegistry`, `FunctionCallingExecutor`, `FunctionCallingResultMapper` — FC execution only from `RagExecutionOrchestrator` |
 | `domain.runtime.engine` | `ExecutionContext`, `RagExecutionResult`, `ExecutionTrace`, snapshot selection records |
 | `domain.runtime.retrieval` | Advanced retrieval domain: `RetrievalRequest`, `RetrievalCandidate`, `CuratedContextSet`, `RetrievalDiagnostics`, `RetrievalMode`, fusion/rerank/compression outcomes |
 | `domain.runtime.query` | Query understanding domain: `QueryPlan`, normalization/entities/rewrite results, intent/shape/ambiguity enums |
 | `domain.runtime.tool` | Deterministic tool domain: `DeterministicToolKind`, `DeterministicToolDecision`, `DeterministicToolExecutionResult`, outcomes |
+| `domain.runtime.functioncalling` | P9 FC domain: `FunctionCallingMode`, `FunctionCallingOutcome`, `FunctionCallingDecision`, `FunctionCallingExecutionResult` |
 | `service.query.pipeline` | Preparation, synthesis, answer kernel (legacy; deterministic tools are not routed here) |
 | `service.retriever` | Vector / corpus retrieval implementations |
 | `service.config` | `ConfigResolver` (cascade merge owner), user/project configuration, sanitization; `JpaConfigurationSourceAdapter` implements `ConfigurationSourcePort` |

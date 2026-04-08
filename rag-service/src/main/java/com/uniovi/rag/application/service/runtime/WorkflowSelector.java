@@ -33,8 +33,7 @@ public class WorkflowSelector {
 
     public ExecutionWorkflow select(ExecutionContext ctx) {
         RagConfig rag = ctx.resolved().toRagConfig();
-        if (rag.functionCallingEnabled()
-                || rag.useAdvisor()
+        if (rag.useAdvisor()
                 || rag.reasoningEnabled()
                 || rag.rankerEnabled()
                 || rag.postRetrievalEnabled()) {

@@ -26,6 +26,10 @@ public record ExecutionTrace(
         String deterministicToolOutcome,
         String deterministicToolKind,
         String deterministicToolDetail,
+        boolean functionCallingAttempted,
+        String functionCallingOutcome,
+        String functionCallingToolKind,
+        boolean functionCallingShortCircuited,
         Optional<RetrievalDiagnostics> retrievalDiagnostics) {
 
     public ExecutionTrace {
@@ -43,6 +47,8 @@ public record ExecutionTrace(
         deterministicToolOutcome = deterministicToolOutcome == null ? "" : deterministicToolOutcome;
         deterministicToolKind = deterministicToolKind == null ? "" : deterministicToolKind;
         deterministicToolDetail = deterministicToolDetail == null ? "" : deterministicToolDetail;
+        functionCallingOutcome = functionCallingOutcome == null ? "" : functionCallingOutcome;
+        functionCallingToolKind = functionCallingToolKind == null ? "" : functionCallingToolKind;
         retrievalDiagnostics = retrievalDiagnostics == null ? Optional.empty() : retrievalDiagnostics;
     }
 
@@ -64,6 +70,10 @@ public record ExecutionTrace(
                 "",
                 "",
                 "",
+                false,
+                "",
+                "",
+                false,
                 Optional.empty());
     }
 }
