@@ -1,0 +1,105 @@
+package com.uniovi.rag.application.service.runtime.retrieval;
+
+import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.InstanceOfAssertFactories.type;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class SparseRetrievalStrategyTest {
+
+    @Mock
+    private NamedParameterJdbcTemplate jdbc;
+
+    @InjectMocks
+    private SparseRetrievalStrategy sparseRetrievalStrategy;
+
+    @Test
+    void retrieve_wrapsJdbcFailureAsRagServiceException() {
+        UUID sid = UUID.randomUUID();
+        RetrievalRequest req =
+                new RetrievalRequest(
+                        "q",
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        RetrievalMode.HYBRID_DENSE_SPARSE,
+                        5,
+                        5,
+                        10,
+                        5,
+                        24_000,
+                        50,
+                        List.of(sid),
+                        UUID.randomUUID(),
+                        Optional.empty(),
+                        List.of("all"),
+                        true);
+        when(jdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
+                .thenThrow(new DataAccessException("simulated") {});
+
+        assertThatThrownBy(() -> sparseRetrievalStrategy.retrieve(req))
+                .asInstanceOf(type(RagServiceException.class))
+                .extracting(RagServiceException::getPublicMessage)
+                .isEqualTo("hybrid sparse retrieval failed");
+    }
+
+    @Test
+    void retrieve_sqlUsesContentTsvAndWebsearch() {
+        UUID sid = UUID.randomUUID();
+        RetrievalRequest req =
+                new RetrievalRequest(
+                        "budget acta",
+                        Map.of(),
+                        List.of(),
+                        List.of(),
+                        EntityExtractionResult.emptyWithNote(""),
+                        RetrievalMode.HYBRID_DENSE_SPARSE,
+                        5,
+                        5,
+                        10,
+                        5,
+                        24_000,
+                        50,
+                        List.of(sid),
+                        UUID.randomUUID(),
+                        Optional.empty(),
+                        List.of("all"),
+                        true);
+        when(jdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
+                .thenReturn(List.of());
+
+        sparseRetrievalStrategy.retrieve(req);
+
+        org.mockito.Mockito.verify(jdbc)
+                .query(
+                        org.mockito.ArgumentMatchers.argThat(
+                                (String sql) ->
+                                        sql.contains("content_tsv")
+                                                && sql.contains("websearch_to_tsquery")
+                                                && sql.contains("ts_rank_cd")),
+                        any(MapSqlParameterSource.class),
+                        any(RowMapper.class));
+    }
+}

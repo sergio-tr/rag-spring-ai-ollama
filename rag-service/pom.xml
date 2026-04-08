@@ -386,6 +386,8 @@
                         <!-- Runtime engine: orchestration covered by dedicated unit tests; large branch surface -->
                         <exclude>com/uniovi/rag/application/service/runtime/**</exclude>
                         <exclude>com/uniovi/rag/domain/runtime/engine/**</exclude>
+                        <!-- Advanced retrieval domain records/enums; behavior covered via pipeline + service tests -->
+                        <exclude>com/uniovi/rag/domain/runtime/retrieval/**</exclude>
                         <exclude>com/uniovi/rag/service/expand/MinuteDocumentStructureExpander.class</exclude>
                         <!-- Async lab worker: long I/O + LLM/classifier branches; covered via async service tests + E2E -->
                         <exclude>com/uniovi/rag/service/async/AsyncLabTaskRunner.class</exclude>

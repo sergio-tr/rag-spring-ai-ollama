@@ -1,6 +1,7 @@
 package com.uniovi.rag.domain.runtime.engine;
 
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,7 +22,8 @@ public record RagExecutionResult(
         String toolUsedLabel,
         QueryType queryTypeForLegacy,
         boolean usedTool,
-        List<ExecutionStageTrace> workflowStageTraces) {
+        List<ExecutionStageTrace> workflowStageTraces,
+        Optional<RetrievalDiagnostics> retrievalDiagnostics) {
 
     public RagExecutionResult {
         usedKnowledgeSnapshotIds = List.copyOf(usedKnowledgeSnapshotIds);
@@ -30,6 +32,7 @@ public record RagExecutionResult(
                 usedResolvedConfigSnapshotId == null ? Optional.empty() : usedResolvedConfigSnapshotId;
         usedConfigHash = usedConfigHash == null ? Optional.empty() : usedConfigHash;
         toolUsedLabel = toolUsedLabel;
+        retrievalDiagnostics = retrievalDiagnostics == null ? Optional.empty() : retrievalDiagnostics;
     }
 
     public static RagExecutionResult withPlaceholderTrace(
@@ -39,6 +42,26 @@ public record RagExecutionResult(
             boolean metadataUsed,
             List<UUID> usedKnowledgeSnapshotIds,
             String toolUsedLabel,
+            List<ExecutionStageTrace> workflowStageTraces) {
+        return withPlaceholderTrace(
+                answerText,
+                workflowName,
+                retrievalUsed,
+                metadataUsed,
+                usedKnowledgeSnapshotIds,
+                toolUsedLabel,
+                Optional.empty(),
+                workflowStageTraces);
+    }
+
+    public static RagExecutionResult withPlaceholderTrace(
+            String answerText,
+            String workflowName,
+            boolean retrievalUsed,
+            boolean metadataUsed,
+            List<UUID> usedKnowledgeSnapshotIds,
+            String toolUsedLabel,
+            Optional<RetrievalDiagnostics> retrievalDiagnostics,
             List<ExecutionStageTrace> workflowStageTraces) {
         return new RagExecutionResult(
                 answerText,
@@ -52,7 +75,8 @@ public record RagExecutionResult(
                 toolUsedLabel,
                 null,
                 false,
-                workflowStageTraces);
+                workflowStageTraces,
+                retrievalDiagnostics);
     }
 
     public RagExecutionResult withFinalTrace(ExecutionTrace finalTrace) {
@@ -68,6 +92,7 @@ public record RagExecutionResult(
                 toolUsedLabel,
                 queryTypeForLegacy,
                 usedTool,
-                workflowStageTraces);
+                workflowStageTraces,
+                retrievalDiagnostics);
     }
 }

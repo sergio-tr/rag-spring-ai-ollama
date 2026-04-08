@@ -1,5 +1,7 @@
 package com.uniovi.rag.domain.runtime.engine;
 
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,7 +25,8 @@ public record ExecutionTrace(
         String compatibilitySeverity,
         String deterministicToolOutcome,
         String deterministicToolKind,
-        String deterministicToolDetail) {
+        String deterministicToolDetail,
+        Optional<RetrievalDiagnostics> retrievalDiagnostics) {
 
     public ExecutionTrace {
         stages = List.copyOf(stages);
@@ -40,6 +43,7 @@ public record ExecutionTrace(
         deterministicToolOutcome = deterministicToolOutcome == null ? "" : deterministicToolOutcome;
         deterministicToolKind = deterministicToolKind == null ? "" : deterministicToolKind;
         deterministicToolDetail = deterministicToolDetail == null ? "" : deterministicToolDetail;
+        retrievalDiagnostics = retrievalDiagnostics == null ? Optional.empty() : retrievalDiagnostics;
     }
 
     public static ExecutionTrace placeholder() {
@@ -59,6 +63,7 @@ public record ExecutionTrace(
                 "",
                 "",
                 "",
-                "");
+                "",
+                Optional.empty());
     }
 }

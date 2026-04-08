@@ -6,7 +6,7 @@ if [[ -f "${_LOCAL_ROOT}/.github/local/.env.local" ]]; then
   # shellcheck source=/dev/null
   source "${_LOCAL_ROOT}/.github/local/.env.local"
 fi
-# Image is never overridable via .env.local (plan 1.1 §9.2).
+# Image is never overridable via .env.local.
 export RAG_PLATFORM_POSTGRES_IMAGE="pgvector/pgvector:0.8.2-pg16-bookworm"
 
 export RAG_CI_POSTGRES_CONTAINER="${RAG_CI_POSTGRES_CONTAINER:-rag-ci-postgres}"

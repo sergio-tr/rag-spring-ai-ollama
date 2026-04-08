@@ -6,6 +6,7 @@ import com.uniovi.rag.domain.config.rules.HeuristicCombinationRule;
 import com.uniovi.rag.domain.config.rules.MutuallyExclusiveCapabilitiesRule;
 import com.uniovi.rag.domain.config.rules.NumericRagConfigRule;
 import com.uniovi.rag.domain.config.rules.RequiresCapabilitiesRule;
+import com.uniovi.rag.domain.config.rules.StructuredSearchRetrievalUnsupportedRule;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -30,6 +31,7 @@ public class CompatibilityRulesConfiguration {
                         EnumSet.of(Capability.POST_RETRIEVAL),
                         EnumSet.of(Capability.USE_RETRIEVAL)),
                 new NumericRagConfigRule("numeric_rag_config"),
+                new StructuredSearchRetrievalUnsupportedRule("structured_search_retrieval_unsupported"),
                 new HeuristicCombinationRule("heuristic_combinations"));
     }
 }

@@ -1,5 +1,5 @@
 # Full PR DAG: core → integration → e2e_fullstack → sonar → performance (main/master PRs only).
-# Invoked only from ci.yml (workflow_call). Single YAML so `needs:` is explicit (plan 1.1 §9.3).
+# Invoked only from ci.yml (workflow_call). Single YAML so `needs:` is explicit.
 name: Reusable CI PR pipeline
 
 on:

@@ -22,6 +22,14 @@ public record NumericRagConfigRule(String ruleId) implements CompatibilityRule {
                             "topK must be between 1 and 2000",
                             ruleId));
         }
+        if (ragConfig.advancedRetrievalMaxContextChars() < 1024
+                || ragConfig.advancedRetrievalMaxContextChars() > 500_000) {
+            errors.add(
+                    CompatibilityViolation.of(
+                            "ADV_RETRIEVAL_MAX_CHARS_RANGE",
+                            "advancedRetrievalMaxContextChars must be between 1024 and 500000",
+                            ruleId));
+        }
         return errors.isEmpty()
                 ? CompatibilityRuleOutcome.empty()
                 : new CompatibilityRuleOutcome(errors, List.of(), List.of());

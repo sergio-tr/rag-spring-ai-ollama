@@ -32,10 +32,12 @@
 | `infrastructure.persistence.mapper` | `ResolvedConfigSnapshotEntityMapper` (sole read/write shape for `resolved_config_snapshot` JSON columns); `KnowledgeIndexSnapshotMapper`, `ReindexEventMapper` (knowledge domain ↔ JPA) |
 | `infrastructure.classifier` | HTTP clients to **classifier-service** (`ClassifierLabClient`, `QueryClassifier`, etc.) |
 | `service.query` | `ProcessQueryService` / `SimpleProcessQueryService` façade → `application.service.runtime` (`ExecutionContextFactory`, `RagExecutionOrchestrator`, workflows) |
-| `application.service.runtime` | Runtime engine: orchestrator, workflow selector, snapshot-bound retrieval/corpus |
+| `application.service.runtime` | Runtime engine: orchestrator, workflow selector, full-corpus assembly |
+| `application.service.runtime.retrieval` | Advanced retrieval: `AdvancedRetrievalPipeline` (single entrypoint), dense/sparse/hybrid strategies, RRF fusion, deterministic rerank/filter/compression, metadata appendix loader |
 | `application.service.runtime.query` | Runtime query understanding: `QueryUnderstandingPipeline` and adapters/resolvers producing `QueryPlan` |
 | `application.service.runtime.tool` | Deterministic tools: `DeterministicToolStrategy` (sole entrypoint), resolver, executor, result mapper — invoked only from `RagExecutionOrchestrator` |
 | `domain.runtime.engine` | `ExecutionContext`, `RagExecutionResult`, `ExecutionTrace`, snapshot selection records |
+| `domain.runtime.retrieval` | Advanced retrieval domain: `RetrievalRequest`, `RetrievalCandidate`, `CuratedContextSet`, `RetrievalDiagnostics`, `RetrievalMode`, fusion/rerank/compression outcomes |
 | `domain.runtime.query` | Query understanding domain: `QueryPlan`, normalization/entities/rewrite results, intent/shape/ambiguity enums |
 | `domain.runtime.tool` | Deterministic tool domain: `DeterministicToolKind`, `DeterministicToolDecision`, `DeterministicToolExecutionResult`, outcomes |
 | `service.query.pipeline` | Preparation, synthesis, answer kernel (legacy; deterministic tools are not routed here) |

@@ -47,6 +47,7 @@ class ChatRetrievalSourceContributorTest {
                     "reason",
                     false,
                     RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                    RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
                     MaterializationStrategy.CHUNK_LEVEL);
 
     @Mock

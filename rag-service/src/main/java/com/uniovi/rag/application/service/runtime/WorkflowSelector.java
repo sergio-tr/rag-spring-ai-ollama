@@ -41,9 +41,6 @@ public class WorkflowSelector {
             throw RagServiceException.unsupportedRuntimeConfiguration("advanced runtime capabilities are not implemented");
         }
         MaterializationStrategy strategy = rag.materializationStrategy();
-        if (rag.useRetrieval() && strategy == MaterializationStrategy.HYBRID) {
-            throw RagServiceException.unsupportedRuntimeConfiguration("HYBRID materialization with retrieval");
-        }
         if (rag.useRetrieval() && strategy == MaterializationStrategy.STRUCTURED_SEARCH) {
             throw RagServiceException.unsupportedRuntimeConfiguration("STRUCTURED_SEARCH materialization with retrieval");
         }
@@ -61,6 +58,12 @@ public class WorkflowSelector {
             return chunkDenseRagWorkflow;
         }
         if (rag.useRetrieval() && strategy == MaterializationStrategy.CHUNK_LEVEL && rag.metadataEnabled()) {
+            return chunkDenseMetadataWorkflow;
+        }
+        if (rag.useRetrieval() && strategy == MaterializationStrategy.HYBRID && !rag.metadataEnabled()) {
+            return chunkDenseRagWorkflow;
+        }
+        if (rag.useRetrieval() && strategy == MaterializationStrategy.HYBRID && rag.metadataEnabled()) {
             return chunkDenseMetadataWorkflow;
         }
         throw RagServiceException.unsupportedRuntimeConfiguration("no matching workflow for flags");

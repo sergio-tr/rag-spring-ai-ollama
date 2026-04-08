@@ -68,6 +68,16 @@ public class RagServiceException extends RuntimeException {
                 null);
     }
 
+    /** Hybrid sparse leg failed; dense-only fallback is not applied. */
+    public static RagServiceException hybridSparseRetrievalFailed(Throwable cause) {
+        return new RagServiceException(
+                ErrorCode.INTERNAL_ERROR,
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "hybrid sparse retrieval failed",
+                cause != null ? cause.getMessage() : null,
+                cause);
+    }
+
     public ErrorCode getErrorCode() {
         return errorCode;
     }

@@ -47,7 +47,7 @@ A **reindex event** records that (re)building indices or embeddings was required
 ### Backend product development
 
 - **Canonical write path:** `KnowledgePipelineOrchestrator` (with `KnowledgeIndexingService` as stage helper) is the only production path for `document_artifact` inserts and corpus `vector_store` writes; `KnowledgeSnapshotService` owns snapshot rows, membership on activation, and vector deletes by `indexSnapshotId`.
-- **Orchestrated read path:** product RAG reads `vector_store` / `document_artifact` for query execution only through `SnapshotCorpusAssembler` and `SnapshotBoundRetrievalService`, constrained to ACTIVE `knowledge_index_snapshot` ids from `KnowledgeRuntimeSnapshotSelector` (`indexSnapshotId ∈ orderedSnapshotIds` when ids are non-empty).
+- **Orchestrated read path:** product RAG reads `vector_store` / `document_artifact` for query execution through `SnapshotCorpusAssembler` (full-corpus workflow) and `AdvancedRetrievalPipeline` (dense RAG workflows), constrained to ACTIVE `knowledge_index_snapshot` ids from `KnowledgeRuntimeSnapshotSelector` (`indexSnapshotId ∈ orderedSnapshotIds` when ids are non-empty). Hybrid retrieval uses PostgreSQL full-text search on `vector_store.content` (generated `tsvector` + GIN index; see migration `V29__vector_store_fts.sql`).
 - **REST:** `${rag.api.product-base-path}/projects/{projectId}/knowledge/*` — ingest, `POST …/rebuild/preview`, `POST …/rebuild/execute`, legacy `POST …/reindex` (thin alias to execute-with-defaults), list/detail snapshots with `corpusScope` and optional `conversationId` per scope rules ([rag-service README](../../rag-service/README.md)).
 - **Persistence:** Tables and JSONB rules are summarized in [DATA_MODEL.md](DATA_MODEL.md) §6.2; `reindex_event` rows are created/updated through `ReindexService` with mandatory `resolved_config_snapshot_id` (V27). Every `knowledge_index_snapshot` row carries `resolved_config_snapshot_id` + `resolved_config_hash` (V28). Corpus ingestion persists a default `resolved_config_snapshot` row (without `knowledgeBuildProjection`) so first-time indexing satisfies linkage.
 
@@ -59,6 +59,5 @@ A **reindex event** records that (re)building indices or embeddings was required
 
 ### Still out of scope (later phases)
 
-- Request-time **snapshot selection** for retrieval and wiring **RetrievalPipeline** to snapshot-filtered reads.
 - **Structured search execution** over stored projections (METADATA JSONB is persisted in 3.1; query execution is not).
 - Broader **automated reindex** from arbitrary non-knowledge callers (use `KnowledgeConfigurationIntegrationService` / product knowledge routes where config-aware behaviour is required).

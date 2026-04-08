@@ -34,10 +34,13 @@ public record RagConfig(
          */
         boolean naiveFullCorpusInPromptEnabled,
         int naiveFullCorpusMaxChars,
+        /** Max characters for extractive curated retrieval context (advanced pipeline). */
+        int advancedRetrievalMaxContextChars,
         MaterializationStrategy materializationStrategy
 ) {
 
     public static final int DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS = 24_000;
+    public static final int DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS = 24_000;
 
     public static RagConfig fromFeatureConfiguration(
             RagFeatureConfiguration features,
@@ -66,6 +69,7 @@ public record RagConfig(
                 reasoningStrategy,
                 false,
                 DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
                 MaterializationStrategy.CHUNK_LEVEL
         );
     }
@@ -80,6 +84,8 @@ public record RagConfig(
         }
         int maxChars = readInt(json, "naiveFullCorpusMaxChars", base.naiveFullCorpusMaxChars);
         maxChars = Math.clamp(maxChars, 1024, 500_000);
+        int advMax = readInt(json, "advancedRetrievalMaxContextChars", base.advancedRetrievalMaxContextChars);
+        advMax = Math.clamp(advMax, 1024, 500_000);
         return new RagConfig(
                 readBool(json, "expansionEnabled", base.expansionEnabled),
                 readBool(json, "nerEnabled", base.nerEnabled),
@@ -99,6 +105,7 @@ public record RagConfig(
                 readText(json, "reasoningStrategy", base.reasoningStrategy),
                 readBool(json, "naiveFullCorpusInPromptEnabled", base.naiveFullCorpusInPromptEnabled),
                 maxChars,
+                advMax,
                 readMaterializationStrategy(json, base.materializationStrategy)
         );
     }
@@ -153,6 +160,7 @@ public record RagConfig(
         m.put("reasoningStrategy", reasoningStrategy);
         m.put("naiveFullCorpusInPromptEnabled", naiveFullCorpusInPromptEnabled);
         m.put("naiveFullCorpusMaxChars", naiveFullCorpusMaxChars);
+        m.put("advancedRetrievalMaxContextChars", advancedRetrievalMaxContextChars);
         m.put("materializationStrategy", materializationStrategy.name());
         return m;
     }

@@ -80,7 +80,8 @@ public class RagExecutionOrchestrator {
                     "deterministic-tool",
                     DeterministicToolKindMappings.toQueryType(kind),
                     true,
-                    List.of());
+                    List.of(),
+                    Optional.empty());
             ExecutionTrace trace = assembleTrace(withPlan, partial, wname, quStages, toolStages, toolResult);
             return partial.withFinalTrace(trace);
         }
@@ -143,7 +144,8 @@ public class RagExecutionOrchestrator {
                 ctx.resolved().compatibility().severity().name(),
                 toolOutcome,
                 toolKind,
-                toolDetail);
+                toolDetail,
+                partial.retrievalDiagnostics());
     }
 
     private static String buildToolDetail(DeterministicToolExecutionResult toolResult) {

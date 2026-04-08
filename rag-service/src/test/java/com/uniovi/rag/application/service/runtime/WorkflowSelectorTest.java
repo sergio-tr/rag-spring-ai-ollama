@@ -48,6 +48,7 @@ class WorkflowSelectorTest {
                 "r",
                 naiveFull,
                 RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
                 strat);
     }
 
@@ -86,9 +87,9 @@ class WorkflowSelectorTest {
                 new WorkflowSelector(
                         new DirectLlmWorkflow(chatClient),
                         new FullCorpusWorkflow(chatClient, mock(SnapshotCorpusAssembler.class)),
-                        new DocumentDenseRagWorkflow(chatClient, mock(SnapshotBoundRetrievalService.class)),
-                        new ChunkDenseRagWorkflow(chatClient, mock(SnapshotBoundRetrievalService.class)),
-                        new ChunkDenseMetadataWorkflow(chatClient, mock(SnapshotBoundRetrievalService.class)));
+                        new DocumentDenseRagWorkflow(chatClient, mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class)),
+                        new ChunkDenseRagWorkflow(chatClient, mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class)),
+                        new ChunkDenseMetadataWorkflow(chatClient, mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class)));
     }
 
     @Test
@@ -107,6 +108,18 @@ class WorkflowSelectorTest {
     void select_chunkDense_whenChunkLevelWithoutMetadata() {
         assertTrue(selector.select(ctx(rag(true, false, MaterializationStrategy.CHUNK_LEVEL, false)))
                 instanceof ChunkDenseRagWorkflow);
+    }
+
+    @Test
+    void select_chunkDense_whenHybridWithoutMetadata() {
+        assertTrue(selector.select(ctx(rag(true, false, MaterializationStrategy.HYBRID, false)))
+                instanceof ChunkDenseRagWorkflow);
+    }
+
+    @Test
+    void select_chunkMetadata_whenHybridWithMetadata() {
+        assertTrue(selector.select(ctx(rag(true, false, MaterializationStrategy.HYBRID, true)))
+                instanceof ChunkDenseMetadataWorkflow);
     }
 
     @Test

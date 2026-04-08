@@ -102,4 +102,18 @@ class CompatibilityValidatorTest {
         assertFalse(r.valid());
         assertTrue(r.errors().stream().anyMatch(v -> "TOPK_RANGE".equals(v.code())));
     }
+
+    @Test
+    void structuredSearchWithRetrievalProducesError() throws Exception {
+        RagConfig cfg =
+                RagConfig.applyJsonOverrides(
+                        baselineFeatures(),
+                        MAPPER.readTree("{\"materializationStrategy\": \"STRUCTURED_SEARCH\"}"));
+        CapabilitySet caps = CapabilitySet.fromRagConfig(cfg);
+        CompatibilityResult r = validator.validate(caps, cfg);
+        assertFalse(r.valid());
+        assertTrue(
+                r.errors().stream()
+                        .anyMatch(v -> "STRUCTURED_SEARCH_RETRIEVAL_UNSUPPORTED".equals(v.code())));
+    }
 }
