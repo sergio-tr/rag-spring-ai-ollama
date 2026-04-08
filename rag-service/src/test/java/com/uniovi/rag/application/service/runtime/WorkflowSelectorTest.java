@@ -77,6 +77,7 @@ class WorkflowSelectorTest {
                 "t",
                 List.of("all"),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -140,5 +141,63 @@ class WorkflowSelectorTest {
         f.setUseRetrieval(false);
         RagConfig base = RagConfig.fromFeatureConfiguration(f, 5, 0.2, "l", "e", "c", "r");
         assertTrue(selector.select(ctx(base)) instanceof DirectLlmWorkflow);
+    }
+
+    @Test
+    void select_allows_useAdvisor_with_dense_retrieval() {
+        assertTrue(
+                selector.select(ctx(denseChunkWithUseAdvisor(true)))
+                        instanceof ChunkDenseRagWorkflow);
+    }
+
+    @Test
+    void select_rejects_useAdvisor_without_retrieval() {
+        RagConfig bad =
+                new RagConfig(
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        true,
+                        5,
+                        0.2,
+                        "l",
+                        "e",
+                        "c",
+                        "r",
+                        false,
+                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                        MaterializationStrategy.CHUNK_LEVEL);
+        assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
+    }
+
+    private static RagConfig denseChunkWithUseAdvisor(boolean useAdvisor) {
+        return new RagConfig(
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                useAdvisor,
+                5,
+                0.2,
+                "l",
+                "e",
+                "c",
+                "r",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
     }
 }

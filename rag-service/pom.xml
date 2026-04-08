@@ -388,6 +388,8 @@
                         <exclude>com/uniovi/rag/domain/runtime/engine/**</exclude>
                         <!-- P9 function-calling domain records/enums; behavior covered via runtime integration tests -->
                         <exclude>com/uniovi/rag/domain/runtime/functioncalling/**</exclude>
+                        <!-- P10 advisor domain records/enums; behavior covered via advisor unit tests + orchestrator -->
+                        <exclude>com/uniovi/rag/domain/runtime/advisor/**</exclude>
                         <exclude>com/uniovi/rag/domain/runtime/tool/MeetingMinutesToolRawResult.class</exclude>
                         <!-- Advanced retrieval domain records/enums; behavior covered via pipeline + service tests -->
                         <exclude>com/uniovi/rag/domain/runtime/retrieval/**</exclude>

@@ -1,6 +1,7 @@
 package com.uniovi.rag.domain.runtime.engine;
 
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
+import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 
 import java.util.List;
@@ -24,7 +25,8 @@ public record ExecutionContext(
         String correlationId,
         List<String> documentFilter,
         Optional<String> chatModelOverride,
-        Optional<QueryPlan> queryPlan) {
+        Optional<QueryPlan> queryPlan,
+        Optional<PackedContextSet> advisorPackedContextSet) {
 
     public ExecutionContext {
         documentFilter = List.copyOf(documentFilter);
@@ -33,6 +35,7 @@ public record ExecutionContext(
                 pinnedResolvedConfigSnapshotId == null ? Optional.empty() : pinnedResolvedConfigSnapshotId;
         chatModelOverride = chatModelOverride == null ? Optional.empty() : chatModelOverride;
         queryPlan = queryPlan == null ? Optional.empty() : queryPlan;
+        advisorPackedContextSet = advisorPackedContextSet == null ? Optional.empty() : advisorPackedContextSet;
     }
 
     /**

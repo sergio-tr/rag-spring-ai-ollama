@@ -70,6 +70,7 @@ class RetrievalRequestBuilderTest {
                         "c",
                         List.of("all"),
                         Optional.empty(),
+                        Optional.empty(),
                         Optional.empty());
         QueryPlan plan = minimalPlan("raw", "rewritten");
         var req = builder.build(ctx, plan);
@@ -104,6 +105,7 @@ class RetrievalRequestBuilderTest {
                         Optional.empty(),
                         "c",
                         List.of("all"),
+                        Optional.empty(),
                         Optional.empty(),
                         Optional.empty());
         QueryPlan plan = minimalPlan("a", "b");

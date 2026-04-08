@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.config.EffectiveModelPolicy;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
@@ -81,6 +82,7 @@ public class ExecutionContextFactory {
                 correlationId,
                 filter,
                 model,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -107,6 +109,7 @@ public class ExecutionContextFactory {
                 correlationId,
                 List.of(RagExecutionContext.ALL_DOCUMENTS),
                 model,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -144,6 +147,7 @@ public class ExecutionContextFactory {
                 correlationId,
                 copyDocumentFilter(documentFilter),
                 model,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -171,8 +175,40 @@ public class ExecutionContextFactory {
                 ctx.correlationId(),
                 ctx.documentFilter(),
                 ctx.chatModelOverride(),
-                Optional.of(plan)
+                Optional.of(plan),
+                Optional.empty()
         );
+    }
+
+    /**
+     * Attaches P10 advisor packed context for dense workflows; must be called only after {@link #attachQueryPlan}.
+     */
+    public ExecutionContext attachAdvisorPackedContextSet(ExecutionContext ctx, PackedContextSet packedContextSet) {
+        if (ctx == null) {
+            throw new IllegalArgumentException("ctx must not be null");
+        }
+        if (packedContextSet == null) {
+            throw new IllegalArgumentException("packedContextSet must not be null");
+        }
+        if (ctx.queryPlan().isEmpty()) {
+            throw new IllegalStateException("ExecutionContext must contain a QueryPlan before attaching advisor packed context");
+        }
+        return new ExecutionContext(
+                ctx.userId(),
+                ctx.projectId(),
+                ctx.conversationId(),
+                ctx.userQuery(),
+                ctx.operationKind(),
+                ctx.resolved(),
+                ctx.effectiveSystemPrompt(),
+                ctx.knowledgeSnapshotSelection(),
+                ctx.configHash(),
+                ctx.pinnedResolvedConfigSnapshotId(),
+                ctx.correlationId(),
+                ctx.documentFilter(),
+                ctx.chatModelOverride(),
+                ctx.queryPlan(),
+                Optional.of(packedContextSet));
     }
 
     private Optional<String> validateAndNormalizeChatModel(String chatModelOverride) {

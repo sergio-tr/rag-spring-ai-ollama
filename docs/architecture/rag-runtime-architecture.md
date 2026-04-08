@@ -37,6 +37,9 @@
 
 | Component | Responsibility |
 |-----------|----------------|
+| `AdvisorStrategy` | **P10 (implemented):** sole orchestrated advisor **execution** entrypoint; chains snapshot-bound retrieval (`RetrievalAdvisor` → `AdvancedRetrievalPipeline`) and deterministic packing (`ContextPackingAdvisor` → `PackedContextSet`). Invoked only from `RagExecutionOrchestrator`. |
+| `AdvisorPolicyResolver` | **P10:** policy only (no LLM, no retrieval); produces `AdvisorDecision` for dense workflows when `useAdvisor` and gates pass. |
+| `PackedContextSet` / `PackedContextBlock` | **P10:** immutable advisor-produced packed context; optional on `ExecutionContext` for dense workflows. |
 | `AdvisorMode` | Operational mode for advisory behaviour (e.g. suggest vs act) as part of resolved config. |
 | `ClarificationSession` | Tracks multi-turn clarification state when the runtime must resolve ambiguity before answering. |
 | `ClarificationQuestionGenerator` | Produces candidate clarification questions. |
@@ -57,7 +60,7 @@
 ## Interactions (prose)
 
 - `WorkflowSelector` uses `ExecutionContext` (resolved config) to bind an `ExecutionWorkflow`.
-- `RagExecutionOrchestrator` drives pipelines and strategies in workflow order, appending to `ExecutionTrace`. Order for orchestrated chat: `QueryUnderstandingPipeline` → `WorkflowSelector` → `DeterministicToolStrategy` → optional P9 FC phase (`functionCallingEnabled`, ambiguity `SUFFICIENT`, non-empty FC policy) → selected `ExecutionWorkflow` when nothing short-circuits. Deterministic tool success suppresses FC; deterministic tool execution failure blocks FC and continues with the already selected workflow.
+- `RagExecutionOrchestrator` drives pipelines and strategies in workflow order, appending to `ExecutionTrace`. Order for orchestrated chat: `QueryUnderstandingPipeline` → `WorkflowSelector` → `DeterministicToolStrategy` → optional P9 FC phase (`functionCallingEnabled`, ambiguity `SUFFICIENT`, non-empty FC policy) → **P10 advisor phase** (`AdvisorPolicyResolver` → `AdvisorStrategy` when gates pass, after FC and only if neither deterministic tools nor FC short-circuited the turn) → selected `ExecutionWorkflow`. Deterministic tool success suppresses FC; deterministic tool execution failure blocks FC and continues with the already selected workflow. Spring AI built-in advisors are not the architecture centre; the canonical advisor surface is `AdvisorStrategy` plus `domain.runtime.advisor` types. Dense workflows may receive `ExecutionContext.advisorPackedContextSet` (`PackedContextSet`) and must not duplicate retrieval/packing for that turn when present.
 - `PromptStack` is populated via **Runtime Configuration** (`SystemPromptComposer`); see [configuration-resolution-model.md](configuration-resolution-model.md).
 - `ExecutionTrace` is consumed by **Platform & Ops** (observability) and **Experimentation / Lab** for runs.
 
@@ -90,7 +93,7 @@
 
 ### What is still missing
 
-- **Persisted** `ExecutionTrace` / full lab–product parity for trace export beyond in-memory + logs; STRUCTURED_SEARCH / function calling / advisors on the orchestrated path beyond what it is already implemented.
+- **Persisted** `ExecutionTrace` / full lab–product parity for trace export beyond in-memory + logs; STRUCTURED_SEARCH on the orchestrated path; phases beyond P10 (clarification execution, memory advisor, routing advisor, judges as traceable stages).
 - Full **ToolPolicy** surface matching target semantics.
 - All **four judges** as discrete, traceable stages if the target requires them for S4.
 - Documentation-to-code traceability matrix (optional future table) without changing this canonical vocabulary.

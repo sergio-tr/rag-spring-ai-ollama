@@ -139,6 +139,7 @@ class AdvancedRetrievalPipelineTest {
                 "c",
                 List.of("all"),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 

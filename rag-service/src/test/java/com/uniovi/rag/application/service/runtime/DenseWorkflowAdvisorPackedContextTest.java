@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -8,11 +9,17 @@ import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
-import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
+import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
-import com.uniovi.rag.domain.runtime.query.*;
+import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
+import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
+import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
+import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
+import com.uniovi.rag.domain.runtime.query.QueryIntent;
+import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 
@@ -22,12 +29,55 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-class CanonicalQueryUsageWorkflowTest {
+class DenseWorkflowAdvisorPackedContextTest {
 
-    private static QueryPlan plan(String raw, String rewritten) {
+    @Test
+    void document_dense_skips_retrieval_pipeline_when_advisor_packed_context_present() {
+        AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
+        ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
+
+        DocumentDenseRagWorkflow wf = new DocumentDenseRagWorkflow(chatClient, pipeline);
+
+        QueryPlan qp = minimalPlan("raw", "rewritten");
+        PackedContextSet packed =
+                new PackedContextSet(List.of(), "s", 0, 0, List.of(), "FROM_ADVISOR");
+        ExecutionContext ctx = ctxWithPlanAndPack(qp, packed);
+
+        var result = wf.execute(ctx);
+        assertEquals("ANS", result.answerText());
+
+        verify(pipeline, never()).retrieve(any(), any(), anyString());
+    }
+
+    @Test
+    void chunk_dense_skips_retrieval_pipeline_when_advisor_packed_context_present() {
+        AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
+        ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
+
+        ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline);
+
+        QueryPlan qp = minimalPlan("raw", "rewritten");
+        PackedContextSet packed =
+                new PackedContextSet(List.of(), "s", 0, 0, List.of(), "FROM_ADVISOR");
+        ExecutionContext ctx = ctxWithPlanAndPack(qp, packed);
+
+        var result = wf.execute(ctx);
+        assertEquals("ANS", result.answerText());
+
+        verify(pipeline, never()).retrieve(any(), eq(qp), eq("ChunkDenseRagWorkflow"));
+    }
+
+    private static QueryPlan minimalPlan(String raw, String rewritten) {
         EntityExtractionResult entities =
                 new EntityExtractionResult(
                         List.of(), List.of(), List.of(), List.of(), List.of(),
@@ -64,7 +114,7 @@ class CanonicalQueryUsageWorkflowTest {
                 List.of());
     }
 
-    private static ExecutionContext ctxWithPlan(QueryPlan plan) {
+    private static ExecutionContext ctxWithPlanAndPack(QueryPlan plan, PackedContextSet packed) {
         RagConfig rag =
                 new RagConfig(
                         false,
@@ -76,7 +126,7 @@ class CanonicalQueryUsageWorkflowTest {
                         false,
                         false,
                         true,
-                        false,
+                        true,
                         5,
                         0.2,
                         "llm",
@@ -86,7 +136,7 @@ class CanonicalQueryUsageWorkflowTest {
                         false,
                         RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
                         RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                        MaterializationStrategy.CHUNK_LEVEL);
+                        MaterializationStrategy.DOCUMENT_LEVEL);
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         rag,
@@ -117,42 +167,6 @@ class CanonicalQueryUsageWorkflowTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.of(plan),
-                Optional.empty());
-    }
-
-    @Test
-    void denseWorkflow_usesRewrittenQueryForRetrievalAndGeneration() {
-        AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
-        com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet curated =
-                new com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet(
-                        List.of(),
-                        "CTX",
-                        new com.uniovi.rag.domain.runtime.retrieval.CompressionOutcome(0, 0, 0, List.of()),
-                        List.of(),
-                        new com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics(
-                                com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.DENSE_ONLY,
-                                java.util.Optional.empty(),
-                                "",
-                                0,
-                                0,
-                                0,
-                                0,
-                                0,
-                                0),
-                        List.of(),
-                        List.of());
-        when(pipeline.retrieve(any(), any(), anyString())).thenReturn(curated);
-
-        ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
-        when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
-
-        ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline);
-
-        QueryPlan qp = plan("raw user query", "rewritten query");
-        ExecutionContext ctx = ctxWithPlan(qp);
-        wf.execute(ctx);
-
-        verify(pipeline).retrieve(eq(ctx), eq(qp), eq("ChunkDenseRagWorkflow"));
+                Optional.of(packed));
     }
 }
-

@@ -159,6 +159,7 @@ class DefaultDeterministicToolResolverTest {
                 "t",
                 List.of("all"),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 

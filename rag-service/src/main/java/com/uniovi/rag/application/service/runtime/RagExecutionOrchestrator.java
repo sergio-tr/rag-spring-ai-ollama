@@ -1,6 +1,8 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
+import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
@@ -8,6 +10,10 @@ import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMapp
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
+import com.uniovi.rag.domain.runtime.advisor.AdvisorDecision;
+import com.uniovi.rag.domain.runtime.advisor.AdvisorExecutionResult;
+import com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome;
+import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -38,6 +44,8 @@ public class RagExecutionOrchestrator {
     private final DeterministicToolStrategy deterministicToolStrategy;
     private final FunctionCallingPolicyResolver functionCallingPolicyResolver;
     private final FunctionCallingStrategy functionCallingStrategy;
+    private final AdvisorPolicyResolver advisorPolicyResolver;
+    private final AdvisorStrategy advisorStrategy;
 
     public RagExecutionOrchestrator(
             WorkflowSelector workflowSelector,
@@ -45,13 +53,17 @@ public class RagExecutionOrchestrator {
             ExecutionContextFactory executionContextFactory,
             DeterministicToolStrategy deterministicToolStrategy,
             FunctionCallingPolicyResolver functionCallingPolicyResolver,
-            FunctionCallingStrategy functionCallingStrategy) {
+            FunctionCallingStrategy functionCallingStrategy,
+            AdvisorPolicyResolver advisorPolicyResolver,
+            AdvisorStrategy advisorStrategy) {
         this.workflowSelector = workflowSelector;
         this.queryUnderstandingPipeline = queryUnderstandingPipeline;
         this.executionContextFactory = executionContextFactory;
         this.deterministicToolStrategy = deterministicToolStrategy;
         this.functionCallingPolicyResolver = functionCallingPolicyResolver;
         this.functionCallingStrategy = functionCallingStrategy;
+        this.advisorPolicyResolver = advisorPolicyResolver;
+        this.advisorStrategy = advisorStrategy;
     }
 
     public RagExecutionResult execute(ExecutionContext ctx) {
@@ -109,7 +121,8 @@ public class RagExecutionOrchestrator {
                             false,
                             FunctionCallingOutcome.SUPPRESSED_BY_DETERMINISTIC_TOOL,
                             "",
-                            false);
+                            false,
+                            AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL));
             return partial.withFinalTrace(trace);
         }
 
@@ -149,13 +162,17 @@ public class RagExecutionOrchestrator {
                             fcGate.functionCallingAttempted(),
                             fcGate.functionCallingOutcome(),
                             fcGate.functionCallingToolKind(),
-                            fcGate.functionCallingShortCircuited());
+                            fcGate.functionCallingShortCircuited(),
+                            AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_FUNCTION_CALLING));
             return partial.withFinalTrace(trace);
         }
 
-        RagExecutionContextHolder.set(toLegacy(withPlan));
+        AdvisorPhaseResult advisorPhase = runAdvisorPhase(withPlan, plan, wname);
+        ExecutionContext ctxForWorkflow = advisorPhase.ctx();
+
+        RagExecutionContextHolder.set(toLegacy(ctxForWorkflow));
         try {
-            RagExecutionResult partial = workflow.execute(withPlan);
+            RagExecutionResult partial = workflow.execute(ctxForWorkflow);
             ExecutionTrace trace =
                     assembleTrace(
                             withPlan,
@@ -168,10 +185,95 @@ public class RagExecutionOrchestrator {
                             fcGate.functionCallingAttempted(),
                             fcGate.functionCallingOutcome(),
                             fcGate.functionCallingToolKind(),
-                            fcGate.functionCallingShortCircuited());
+                            fcGate.functionCallingShortCircuited(),
+                            advisorPhase.snapshot());
             return partial.withFinalTrace(trace);
         } finally {
             RagExecutionContextHolder.clear();
+        }
+    }
+
+    private AdvisorPhaseResult runAdvisorPhase(ExecutionContext ctx, QueryPlan plan, String workflowName) {
+        AdvisorDecision decision = advisorPolicyResolver.resolve(ctx, plan, workflowName);
+        List<ExecutionStageTrace> stages = new ArrayList<>();
+        stages.add(
+                new ExecutionStageTrace(
+                        "advisor_policy",
+                        0L,
+                        ExecutionStageOutcome.SUCCESS,
+                        "selected=" + decision.selected()));
+        if (!decision.selected()) {
+            return new AdvisorPhaseResult(ctx, AdvisorSnapshot.suppressed(stages));
+        }
+        AdvisorExecutionResult result = advisorStrategy.execute(ctx, plan, workflowName, decision);
+        if (result.outcome() != AdvisorOutcome.FAILED_RESERVED_KIND) {
+            stages.add(advisorRetrievalStage(result));
+            if (includesContextPackStage(result.outcome())) {
+                stages.add(advisorContextPackStage(result));
+            }
+        }
+        ExecutionContext out = ctx;
+        if (result.outcome() == AdvisorOutcome.EXECUTED_SUCCESS && result.packedContextSet().isPresent()) {
+            out = executionContextFactory.attachAdvisorPackedContextSet(ctx, result.packedContextSet().get());
+        }
+        return new AdvisorPhaseResult(out, AdvisorSnapshot.fromExecution(stages, result));
+    }
+
+    private static boolean includesContextPackStage(AdvisorOutcome outcome) {
+        return outcome == AdvisorOutcome.EXECUTED_SUCCESS || outcome == AdvisorOutcome.EXECUTED_FAILED_PACKING;
+    }
+
+    private static ExecutionStageTrace advisorRetrievalStage(AdvisorExecutionResult result) {
+        ExecutionStageOutcome o =
+                result.outcome() == AdvisorOutcome.EXECUTED_FAILED_RETRIEVAL
+                        ? ExecutionStageOutcome.FAILED
+                        : ExecutionStageOutcome.SUCCESS;
+        return new ExecutionStageTrace(
+                "advisor_retrieval", 0L, o, "outcome=" + result.outcome());
+    }
+
+    private static ExecutionStageTrace advisorContextPackStage(AdvisorExecutionResult result) {
+        ExecutionStageOutcome o =
+                result.outcome() == AdvisorOutcome.EXECUTED_FAILED_PACKING
+                        ? ExecutionStageOutcome.FAILED
+                        : ExecutionStageOutcome.SUCCESS;
+        return new ExecutionStageTrace(
+                "advisor_context_pack", 0L, o, "outcome=" + result.outcome());
+    }
+
+    private record AdvisorPhaseResult(ExecutionContext ctx, AdvisorSnapshot snapshot) {}
+
+    private record AdvisorSnapshot(
+            List<ExecutionStageTrace> advisorStages,
+            boolean advisorAttempted,
+            boolean advisorShortCircuitedContextPrep,
+            String advisorKindsExecuted,
+            AdvisorOutcome advisorOutcome,
+            int packedContextBlockCount,
+            int packedContextSourceCount) {
+
+        static AdvisorSnapshot notReached(AdvisorOutcome outcome) {
+            return new AdvisorSnapshot(List.of(), false, false, "", outcome, 0, 0);
+        }
+
+        static AdvisorSnapshot suppressed(List<ExecutionStageTrace> stages) {
+            return new AdvisorSnapshot(stages, false, false, "", AdvisorOutcome.SUPPRESSED_BY_POLICY, 0, 0);
+        }
+
+        static AdvisorSnapshot fromExecution(List<ExecutionStageTrace> stages, AdvisorExecutionResult result) {
+            Optional<PackedContextSet> packed = result.packedContextSet();
+            int blocks = packed.map(PackedContextSet::totalBlockCount).orElse(0);
+            int sources = packed.map(PackedContextSet::totalSourceCount).orElse(0);
+            boolean shortCirc =
+                    result.outcome() == AdvisorOutcome.EXECUTED_SUCCESS && result.shortCircuitedContextPrep();
+            return new AdvisorSnapshot(
+                    stages,
+                    true,
+                    shortCirc,
+                    "RETRIEVAL_ADVISOR,CONTEXT_PACKING_ADVISOR",
+                    result.outcome(),
+                    blocks,
+                    sources);
         }
     }
 
@@ -261,11 +363,13 @@ public class RagExecutionOrchestrator {
             boolean functionCallingAttempted,
             FunctionCallingOutcome functionCallingOutcome,
             String functionCallingToolKind,
-            boolean functionCallingShortCircuited) {
+            boolean functionCallingShortCircuited,
+            AdvisorSnapshot advisor) {
         List<ExecutionStageTrace> all = new ArrayList<>();
         all.addAll(quStages);
         all.addAll(toolStages);
         all.addAll(fcStages);
+        all.addAll(advisor.advisorStages());
         all.addAll(partial.workflowStageTraces());
         QueryPlan qp = ctx.queryPlan().orElse(null);
         String toolOutcome = toolResult.outcome().name();
@@ -292,7 +396,13 @@ public class RagExecutionOrchestrator {
                 functionCallingOutcome.name(),
                 functionCallingToolKind != null ? functionCallingToolKind : "",
                 functionCallingShortCircuited,
-                partial.retrievalDiagnostics());
+                partial.retrievalDiagnostics(),
+                advisor.advisorAttempted(),
+                advisor.advisorShortCircuitedContextPrep(),
+                advisor.advisorKindsExecuted(),
+                advisor.advisorOutcome().name(),
+                advisor.packedContextBlockCount(),
+                advisor.packedContextSourceCount());
     }
 
     private static String buildToolDetail(DeterministicToolExecutionResult toolResult) {

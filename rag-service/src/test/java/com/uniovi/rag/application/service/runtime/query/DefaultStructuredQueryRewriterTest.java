@@ -78,6 +78,7 @@ class DefaultStructuredQueryRewriterTest {
                 "corr",
                 List.of("all"),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 

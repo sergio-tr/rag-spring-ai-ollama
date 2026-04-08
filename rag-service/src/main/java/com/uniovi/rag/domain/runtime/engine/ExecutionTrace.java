@@ -30,7 +30,13 @@ public record ExecutionTrace(
         String functionCallingOutcome,
         String functionCallingToolKind,
         boolean functionCallingShortCircuited,
-        Optional<RetrievalDiagnostics> retrievalDiagnostics) {
+        Optional<RetrievalDiagnostics> retrievalDiagnostics,
+        boolean advisorAttempted,
+        boolean advisorShortCircuitedContextPrep,
+        String advisorKindsExecuted,
+        String advisorOutcome,
+        int packedContextBlockCount,
+        int packedContextSourceCount) {
 
     public ExecutionTrace {
         stages = List.copyOf(stages);
@@ -50,6 +56,8 @@ public record ExecutionTrace(
         functionCallingOutcome = functionCallingOutcome == null ? "" : functionCallingOutcome;
         functionCallingToolKind = functionCallingToolKind == null ? "" : functionCallingToolKind;
         retrievalDiagnostics = retrievalDiagnostics == null ? Optional.empty() : retrievalDiagnostics;
+        advisorKindsExecuted = advisorKindsExecuted == null ? "" : advisorKindsExecuted;
+        advisorOutcome = advisorOutcome == null ? "" : advisorOutcome;
     }
 
     public static ExecutionTrace placeholder() {
@@ -74,6 +82,12 @@ public record ExecutionTrace(
                 "",
                 "",
                 false,
-                Optional.empty());
+                Optional.empty(),
+                false,
+                false,
+                "",
+                "",
+                0,
+                0);
     }
 }

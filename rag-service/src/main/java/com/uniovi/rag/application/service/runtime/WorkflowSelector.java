@@ -33,10 +33,10 @@ public class WorkflowSelector {
 
     public ExecutionWorkflow select(ExecutionContext ctx) {
         RagConfig rag = ctx.resolved().toRagConfig();
-        if (rag.useAdvisor()
-                || rag.reasoningEnabled()
-                || rag.rankerEnabled()
-                || rag.postRetrievalEnabled()) {
+        if (rag.useAdvisor() && !rag.useRetrieval()) {
+            throw RagServiceException.unsupportedRuntimeConfiguration("useAdvisor requires useRetrieval and a dense retrieval workflow");
+        }
+        if (rag.reasoningEnabled() || rag.rankerEnabled() || rag.postRetrievalEnabled()) {
             throw RagServiceException.unsupportedRuntimeConfiguration("advanced runtime capabilities are not implemented");
         }
         MaterializationStrategy strategy = rag.materializationStrategy();

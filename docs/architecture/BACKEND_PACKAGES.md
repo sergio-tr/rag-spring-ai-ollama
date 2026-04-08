@@ -33,11 +33,13 @@
 | `infrastructure.classifier` | HTTP clients to **classifier-service** (`ClassifierLabClient`, `QueryClassifier`, etc.) |
 | `service.query` | `ProcessQueryService` / `SimpleProcessQueryService` façade → `application.service.runtime` (`ExecutionContextFactory`, `RagExecutionOrchestrator`, workflows) |
 | `application.service.runtime` | Runtime engine: orchestrator, workflow selector, full-corpus assembly |
+| `application.service.runtime.advisor` | P10 Advisor Core: `AdvisorPolicyResolver`, `AdvisorStrategy`, `RetrievalAdvisor`, `ContextPackingAdvisor` (orchestrated only from `RagExecutionOrchestrator`) |
 | `application.service.runtime.retrieval` | Advanced retrieval: `AdvancedRetrievalPipeline` (single entrypoint), dense/sparse/hybrid strategies, RRF fusion, deterministic rerank/filter/compression, metadata appendix loader |
 | `application.service.runtime.query` | Runtime query understanding: `QueryUnderstandingPipeline` and adapters/resolvers producing `QueryPlan` |
 | `application.service.runtime.tool` | Deterministic tools: `DeterministicToolStrategy` (sole entrypoint), resolver, executor, result mapper, `MeetingMinutesToolExecutionCore` (shared tool business execution) — invoked only from `RagExecutionOrchestrator` for P7 |
 | `application.service.runtime.functioncalling` | P9 function calling: `FunctionCallingStrategy`, `FunctionCallingPolicyResolver`, `FunctionCallingToolRegistry`, `FunctionCallingExecutor`, `FunctionCallingResultMapper` — FC execution only from `RagExecutionOrchestrator` |
 | `domain.runtime.engine` | `ExecutionContext`, `RagExecutionResult`, `ExecutionTrace`, snapshot selection records |
+| `domain.runtime.advisor` | P10 advisor domain: `AdvisorKind`, `AdvisorDecision`, `AdvisorExecutionResult`, `PackedContextSet`, `PackedContextBlock`, `AdvisorOutcome`, suppression reasons |
 | `domain.runtime.retrieval` | Advanced retrieval domain: `RetrievalRequest`, `RetrievalCandidate`, `CuratedContextSet`, `RetrievalDiagnostics`, `RetrievalMode`, fusion/rerank/compression outcomes |
 | `domain.runtime.query` | Query understanding domain: `QueryPlan`, normalization/entities/rewrite results, intent/shape/ambiguity enums |
 | `domain.runtime.tool` | Deterministic tool domain: `DeterministicToolKind`, `DeterministicToolDecision`, `DeterministicToolExecutionResult`, outcomes |

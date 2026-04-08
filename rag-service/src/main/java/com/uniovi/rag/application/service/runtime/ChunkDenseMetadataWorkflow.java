@@ -27,10 +27,25 @@ public class ChunkDenseMetadataWorkflow extends AbstractExecutionWorkflow {
     @Override
     public RagExecutionResult execute(ExecutionContext ctx) {
         QueryPlan plan = ctx.queryPlan().orElseThrow(() -> new IllegalStateException("QueryPlan required"));
-        CuratedContextSet curated = advancedRetrievalPipeline.retrieve(ctx, plan, workflowName());
-        List<ExecutionStageTrace> stages = new ArrayList<>(curated.retrievalStageTraces());
         String q = canonicalGenerationQuery(ctx);
         long tLlm = System.nanoTime();
+        if (ctx.advisorPackedContextSet().isPresent()) {
+            String user = RuntimeAnswerPrompts.ragUserTurn(q, ctx.advisorPackedContextSet().get().promptContextText());
+            String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
+            List<ExecutionStageTrace> stages = new ArrayList<>();
+            stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, "from_advisor_packed_context"));
+            return RagExecutionResult.withPlaceholderTrace(
+                    answer,
+                    workflowName(),
+                    true,
+                    true,
+                    ctx.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                    null,
+                    Optional.empty(),
+                    stages);
+        }
+        CuratedContextSet curated = advancedRetrievalPipeline.retrieve(ctx, plan, workflowName());
+        List<ExecutionStageTrace> stages = new ArrayList<>(curated.retrievalStageTraces());
         String user = RuntimeAnswerPrompts.ragUserTurn(q, curated.promptContextText());
         String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
         stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, ""));
