@@ -159,7 +159,7 @@ erDiagram
 |------|---------|-------|
 | `rag_configuration`, `default_system_configuration` | `level`, `is_active`, timestamps, `name` | `values` (topK, models, flags, …) |
 | `rag_preset` | name, tags, system flag, ownership | `values` |
-| `conversations` | title, optional model columns | `document_filter` (document IDs); runtime overrides if persisted |
+| `conversations` | title, optional model columns | `document_filter` (document IDs); `runtime_override_jsonb` (config only); **`pending_clarification_jsonb`** (P11: versioned clarification loop payload, nullable) |
 | `evaluation_run` | `type`, `status`, `progress` | `config_ids` |
 | `evaluation_result` | optional scalar metrics | `config_snapshot`, `sources` |
 | `classifier_model` | metrics, `is_active`, `passes_gate`, `artifact_path`, status | `hyperparams` |
@@ -309,8 +309,10 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 | `knowledge_index_snapshot.resolved_config_snapshot_id` FK | V26 | Additive FK when missing |
 | `reindex_event.resolved_config_snapshot_id` NOT NULL + index | V27 | Mandatory config provenance for reindex rows |
 | `knowledge_index_snapshot` resolved linkage NOT NULL | V28 | Drops orphan snapshots without config id/hash |
+| `vector_store` FTS / indexing helpers | V29 | |
+| `conversations.pending_clarification_jsonb` | V30 | P11 deterministic clarification pending state (JSONB, nullable) |
 
-**JPA:** `EvaluationRunEntity`, `AsyncTaskEntity` optional `@ManyToOne` to `ProjectEntity` (`project_id`). **`ResolvedConfigSnapshotEntity`** maps `resolved_config_snapshot` (§6.1). Knowledge tables: `KnowledgeIndexSnapshotEntity`, `KnowledgeSnapshotDocumentEntity`, `DocumentArtifactEntity`, `ReindexEventEntity`; workspace documents remain `KnowledgeDocumentEntity` → `project_documents`.
+**JPA:** `EvaluationRunEntity`, `AsyncTaskEntity` optional `@ManyToOne` to `ProjectEntity` (`project_id`). **`ResolvedConfigSnapshotEntity`** maps `resolved_config_snapshot` (§6.1). Knowledge tables: `KnowledgeIndexSnapshotEntity`, `KnowledgeSnapshotDocumentEntity`, `DocumentArtifactEntity`, `ReindexEventEntity`; workspace documents remain `KnowledgeDocumentEntity` → `project_documents`. **`ConversationEntity.pendingClarification`** maps `pending_clarification_jsonb`.
 
 ---
 

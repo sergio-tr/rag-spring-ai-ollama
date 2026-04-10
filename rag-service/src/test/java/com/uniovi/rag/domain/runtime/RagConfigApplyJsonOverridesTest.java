@@ -23,6 +23,7 @@ class RagConfigApplyJsonOverridesTest {
                 true,
                 true,
                 true,
+                false,
                 10,
                 0.35,
                 "llm-main",
@@ -121,5 +122,14 @@ class RagConfigApplyJsonOverridesTest {
         RagConfig out = RagConfig.applyJsonOverrides(base, node);
         assertThat(out.embeddingModel()).isEqualTo("e2");
         assertThat(out.classifierModelId()).isEqualTo("c2");
+    }
+
+    @Test
+    void applyJsonOverrides_updatesClarificationEnabled() throws Exception {
+        RagConfig base = sampleBase();
+        assertThat(base.clarificationEnabled()).isFalse();
+        JsonNode node = MAPPER.readTree("{\"clarificationEnabled\": true}");
+        RagConfig out = RagConfig.applyJsonOverrides(base, node);
+        assertThat(out.clarificationEnabled()).isTrue();
     }
 }

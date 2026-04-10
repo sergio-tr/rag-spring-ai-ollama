@@ -56,6 +56,12 @@ class DefaultQueryUnderstandingPipelineTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
+                q,
+                false,
+                false,
+                false,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -63,26 +69,27 @@ class DefaultQueryUnderstandingPipelineTest {
     void buildPlan_alwaysProducesValidQueryPlan_andFrozenStageOrder() {
         RagConfig rag =
                 new RagConfig(
-                        false,
-                        true,
-                        true,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        true,
-                        false,
-                        5,
-                        0.2,
-                        "llm",
-                        "emb",
-                        "cls",
-                        "reason",
-                        false,
-                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
-                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                        MaterializationStrategy.CHUNK_LEVEL);
+                false,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                5,
+                0.2,
+                "llm",
+                "emb",
+                "cls",
+                "reason",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
 
         QueryClassifier classifier = mock(QueryClassifier.class);
         when(classifier.classify(anyString())).thenReturn(QueryType.FILTER_AND_LIST);
@@ -117,7 +124,7 @@ class DefaultQueryUnderstandingPipelineTest {
 
         QueryPlan plan = pipeline.buildPlan(ctx(rag, "  list   all  items "));
 
-        assertEquals(QueryPlan.VERSION_P6_QU_CORE_V1, plan.queryPlanVersion());
+        assertEquals(QueryPlan.VERSION_P11_QU_CLARIFICATION_CORE_V1, plan.queryPlanVersion());
         assertEquals("  list   all  items ", plan.rawUserQuery());
         assertEquals("list all items", plan.normalizedQueryText());
         assertEquals("list all items", plan.rewrittenQueryText());
@@ -138,26 +145,27 @@ class DefaultQueryUnderstandingPipelineTest {
     void classifierDisabled_whenToolsDisabled() {
         RagConfig rag =
                 new RagConfig(
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        true,
-                        false,
-                        5,
-                        0.2,
-                        "llm",
-                        "emb",
-                        "cls",
-                        "reason",
-                        false,
-                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
-                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                        MaterializationStrategy.CHUNK_LEVEL);
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                5,
+                0.2,
+                "llm",
+                "emb",
+                "cls",
+                "reason",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
 
         QueryClassifier classifier = mock(QueryClassifier.class);
         QueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);

@@ -47,6 +47,7 @@ class CanonicalQueryUsageWorkflowTest {
                 QueryPlan.VERSION_P6_QU_CORE_V1,
                 raw,
                 raw,
+                raw,
                 rewritten,
                 "UNCLASSIFIED",
                 Optional.empty(),
@@ -67,26 +68,27 @@ class CanonicalQueryUsageWorkflowTest {
     private static ExecutionContext ctxWithPlan(QueryPlan plan) {
         RagConfig rag =
                 new RagConfig(
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        true,
-                        false,
-                        5,
-                        0.2,
-                        "llm",
-                        "emb",
-                        "cls",
-                        "reason",
-                        false,
-                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
-                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                        MaterializationStrategy.CHUNK_LEVEL);
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                5,
+                0.2,
+                "llm",
+                "emb",
+                "cls",
+                "reason",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         rag,
@@ -117,6 +119,12 @@ class CanonicalQueryUsageWorkflowTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.of(plan),
+                Optional.empty(),
+                plan.rawUserQuery(),
+                false,
+                false,
+                false,
+                Optional.empty(),
                 Optional.empty());
     }
 

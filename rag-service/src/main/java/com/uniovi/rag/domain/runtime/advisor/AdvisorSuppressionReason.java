@@ -1,7 +1,7 @@
 package com.uniovi.rag.domain.runtime.advisor;
 
 /**
- * Closed set for 5.2 when advisor execution is not selected.
+ * Suppression reason when advisor execution is not selected.
  */
 public enum AdvisorSuppressionReason {
     DISABLED_BY_CONFIG,

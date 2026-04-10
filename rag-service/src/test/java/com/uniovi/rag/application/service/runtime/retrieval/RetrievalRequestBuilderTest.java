@@ -56,22 +56,28 @@ class RetrievalRequestBuilderTest {
         UUID sid = UUID.randomUUID();
         ExecutionContext ctx =
                 new ExecutionContext(
-                        UUID.randomUUID(),
-                        UUID.randomUUID(),
-                        UUID.randomUUID(),
-                        "u",
-                        RuntimeOperationKind.CHAT_MESSAGE,
-                        resolved,
-                        "sys",
-                        new KnowledgeSnapshotSelection(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "u",
+                RuntimeOperationKind.CHAT_MESSAGE,
+                resolved,
+                "sys",
+                new KnowledgeSnapshotSelection(
                                 List.of(sid), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
-                        Optional.empty(),
-                        Optional.empty(),
-                        "c",
-                        List.of("all"),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                Optional.empty(),
+                Optional.empty(),
+                "c",
+                List.of("all"),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                "u",
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty());
         QueryPlan plan = minimalPlan("raw", "rewritten");
         var req = builder.build(ctx, plan);
         assertThat(req.queryText()).isEqualTo("rewritten");
@@ -93,21 +99,27 @@ class RetrievalRequestBuilderTest {
                         rag);
         ExecutionContext ctx =
                 new ExecutionContext(
-                        UUID.randomUUID(),
-                        UUID.randomUUID(),
-                        UUID.randomUUID(),
-                        "u",
-                        RuntimeOperationKind.CHAT_MESSAGE,
-                        resolved,
-                        "sys",
-                        KnowledgeSnapshotSelection.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        "c",
-                        List.of("all"),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "u",
+                RuntimeOperationKind.CHAT_MESSAGE,
+                resolved,
+                "sys",
+                KnowledgeSnapshotSelection.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                "c",
+                List.of("all"),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                "u",
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty());
         QueryPlan plan = minimalPlan("a", "b");
         assertThatThrownBy(() -> builder.build(ctx, plan)).isInstanceOf(IllegalStateException.class);
     }
@@ -123,6 +135,7 @@ class RetrievalRequestBuilderTest {
                 false,
                 false,
                 useRetrieval,
+                false,
                 false,
                 topK,
                 0.7,
@@ -143,6 +156,7 @@ class RetrievalRequestBuilderTest {
                         Optional.empty(), Optional.empty(), Optional.empty(), List.of());
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
+                raw,
                 raw,
                 raw,
                 rewritten,

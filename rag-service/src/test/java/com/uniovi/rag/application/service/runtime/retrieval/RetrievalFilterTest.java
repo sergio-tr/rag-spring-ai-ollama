@@ -72,6 +72,7 @@ class RetrievalFilterTest {
                 "r",
                 "r",
                 "r",
+                "r",
                 "L",
                 Optional.empty(),
                 com.uniovi.rag.domain.runtime.query.ClassifierStatus.DISABLED,

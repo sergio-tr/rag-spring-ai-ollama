@@ -10,6 +10,8 @@ import java.util.Optional;
 public record QueryPlan(
         String queryPlanVersion,
         String rawUserQuery,
+        /** Input text passed to QU normalize for this turn (merged on continuation when pending clarification exists). */
+        String effectivePlanningInputText,
         String normalizedQueryText,
         String rewrittenQueryText,
         String classifierLabel,
@@ -28,10 +30,13 @@ public record QueryPlan(
         List<String> pipelineNotes) {
 
     public static final String VERSION_P6_QU_CORE_V1 = "P6_QU_CORE_V1";
+    public static final String VERSION_P11_QU_CLARIFICATION_CORE_V1 = "P11_QU_CLARIFICATION_CORE_V1";
 
     public QueryPlan {
         queryPlanVersion = Objects.requireNonNull(queryPlanVersion, "queryPlanVersion");
         rawUserQuery = Objects.requireNonNull(rawUserQuery, "rawUserQuery");
+        effectivePlanningInputText =
+                Objects.requireNonNull(effectivePlanningInputText, "effectivePlanningInputText");
         normalizedQueryText = Objects.requireNonNull(normalizedQueryText, "normalizedQueryText");
         rewrittenQueryText = Objects.requireNonNull(rewrittenQueryText, "rewrittenQueryText");
         classifierLabel = Objects.requireNonNull(classifierLabel, "classifierLabel");
@@ -49,7 +54,8 @@ public record QueryPlan(
         classifierModelIdUsed = Objects.requireNonNull(classifierModelIdUsed, "classifierModelIdUsed");
         pipelineNotes = List.copyOf(Objects.requireNonNull(pipelineNotes, "pipelineNotes"));
 
-        if (!VERSION_P6_QU_CORE_V1.equals(queryPlanVersion)) {
+        if (!VERSION_P11_QU_CLARIFICATION_CORE_V1.equals(queryPlanVersion)
+                && !VERSION_P6_QU_CORE_V1.equals(queryPlanVersion)) {
             throw new IllegalArgumentException("Unsupported queryPlanVersion: " + queryPlanVersion);
         }
     }

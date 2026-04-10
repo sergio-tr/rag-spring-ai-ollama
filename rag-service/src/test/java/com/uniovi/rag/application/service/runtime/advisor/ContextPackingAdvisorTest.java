@@ -83,26 +83,27 @@ class ContextPackingAdvisorTest {
     private static ExecutionContext minimalCtx() {
         RagConfig rag =
                 new RagConfig(
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        true,
-                        true,
-                        5,
-                        0.2,
-                        "l",
-                        "e",
-                        "c",
-                        "r",
-                        false,
-                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
-                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                        MaterializationStrategy.CHUNK_LEVEL);
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                true,
+                false,
+                5,
+                0.2,
+                "l",
+                "e",
+                "c",
+                "r",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         rag,
@@ -128,12 +129,19 @@ class ContextPackingAdvisorTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
+                "q",
+                false,
+                false,
+                false,
+                Optional.empty(),
                 Optional.empty());
     }
 
     private static QueryPlan minimalPlan() {
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
                 "raw",
                 "norm",
                 "rewritten",

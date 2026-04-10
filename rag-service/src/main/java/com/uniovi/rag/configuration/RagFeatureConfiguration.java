@@ -28,6 +28,8 @@ public class RagFeatureConfiguration {
     private boolean functionCallingEnabled;
     private boolean useRetrieval = true;
     private boolean useAdvisor = true;
+    /** P11 clarification loop core (default off). */
+    private boolean clarificationEnabled;
 
     public boolean isExpansionEnabled() { return expansionEnabled; }
     public void setExpansionEnabled(boolean expansionEnabled) { this.expansionEnabled = expansionEnabled; }
@@ -59,6 +61,14 @@ public class RagFeatureConfiguration {
     public boolean isUseAdvisor() { return useAdvisor; }
     public void setUseAdvisor(boolean useAdvisor) { this.useAdvisor = useAdvisor; }
 
+    public boolean isClarificationEnabled() {
+        return clarificationEnabled;
+    }
+
+    public void setClarificationEnabled(boolean clarificationEnabled) {
+        this.clarificationEnabled = clarificationEnabled;
+    }
+
     public Map<String, Boolean> getConfiguration() {
         Map<String, Boolean> config = new HashMap<>();
         config.put("expansion", expansionEnabled);
@@ -71,6 +81,7 @@ public class RagFeatureConfiguration {
         config.put("function-calling", functionCallingEnabled);
         config.put("use-retrieval", useRetrieval);
         config.put("use-advisor", useAdvisor);
+        config.put("clarification", clarificationEnabled);
         return config;
     }
 }

@@ -26,7 +26,22 @@ public record ExecutionContext(
         List<String> documentFilter,
         Optional<String> chatModelOverride,
         Optional<QueryPlan> queryPlan,
-        Optional<PackedContextSet> advisorPackedContextSet) {
+        Optional<PackedContextSet> advisorPackedContextSet,
+        /** Normalize input for {@link com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline} only. */
+        String effectivePlanningInputText,
+        /**
+         * P11 trace: {@code true} iff valid pending was loaded and {@link com.uniovi.rag.application.service.runtime.clarification.ClarifiedQueryRefiner}
+         * produced merged planning text before QU.
+         */
+        boolean pendingClarificationLoadedForTrace,
+        /** P11: valid non-null pending existed at load before any invalid recovery clear. */
+        boolean validPendingExistedAtLoad,
+        /** P11: invalid JSON/version was cleared this turn before QU. */
+        boolean invalidPendingRecoveredThisTurn,
+        /** P11: when present, clarification is disabled by gates ({@code config_disabled} or {@code no_persistable_conversation_scope}). */
+        Optional<String> clarificationDisableReason,
+        /** User message id for the current turn when provided by the chat pipeline (optional). */
+        Optional<UUID> originatingUserMessageId) {
 
     public ExecutionContext {
         documentFilter = List.copyOf(documentFilter);
@@ -36,6 +51,12 @@ public record ExecutionContext(
         chatModelOverride = chatModelOverride == null ? Optional.empty() : chatModelOverride;
         queryPlan = queryPlan == null ? Optional.empty() : queryPlan;
         advisorPackedContextSet = advisorPackedContextSet == null ? Optional.empty() : advisorPackedContextSet;
+        effectivePlanningInputText =
+                effectivePlanningInputText != null ? effectivePlanningInputText : "";
+        clarificationDisableReason =
+                clarificationDisableReason == null ? Optional.empty() : clarificationDisableReason;
+        originatingUserMessageId =
+                originatingUserMessageId == null ? Optional.empty() : originatingUserMessageId;
     }
 
     /**

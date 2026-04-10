@@ -90,6 +90,12 @@ class ProcessQueryServiceTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
+                "hello",
+                false,
+                false,
+                false,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -144,44 +150,52 @@ class ProcessQueryServiceTest {
         UUID conv = UUID.randomUUID();
         RagConfig rag =
                 new RagConfig(
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        true,
-                        false,
-                        5,
-                        0.2,
-                        "llm",
-                        "emb",
-                        "cls",
-                        "reason",
-                        false,
-                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
-                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                        MaterializationStrategy.CHUNK_LEVEL);
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                5,
+                0.2,
+                "llm",
+                "emb",
+                "cls",
+                "reason",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
         ExecutionContext ctx =
                 new ExecutionContext(
-                        uid,
-                        pid,
-                        conv,
-                        "q",
-                        RuntimeOperationKind.CHAT_MESSAGE,
-                        minimalResolved(rag),
-                        "sys",
-                        new KnowledgeSnapshotSelection(List.of(UUID.randomUUID()), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
-                        Optional.empty(),
-                        Optional.empty(),
-                        "c",
-                        List.of("all"),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty());
-        when(executionContextFactory.buildForChatMessage(eq(uid), eq(pid), eq(conv), eq("q"), any(), isNull()))
+                uid,
+                pid,
+                conv,
+                "q",
+                RuntimeOperationKind.CHAT_MESSAGE,
+                minimalResolved(rag),
+                "sys",
+                new KnowledgeSnapshotSelection(List.of(UUID.randomUUID()), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty()),
+                Optional.empty(),
+                Optional.empty(),
+                "c",
+                List.of("all"),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                "q",
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty());
+        when(executionContextFactory.buildForChatMessage(
+                        eq(uid), eq(pid), eq(conv), eq("q"), any(), isNull(), any(Optional.class)))
                 .thenReturn(ctx);
         RagExecutionResult partial =
                 RagExecutionResult.withPlaceholderTrace(

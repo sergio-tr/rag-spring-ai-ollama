@@ -60,7 +60,7 @@ public class ChatMessageJobHandler implements LabJobHandler {
         }
         UUID conversationId = UUID.fromString(p.get(ChatJobPayloadKeys.CONVERSATION_ID).toString());
         UUID assistantId = UUID.fromString(p.get(ChatJobPayloadKeys.ASSISTANT_MESSAGE_ID).toString());
-        p.get(ChatJobPayloadKeys.USER_MESSAGE_ID).toString();
+        UUID userMessageId = UUID.fromString(p.get(ChatJobPayloadKeys.USER_MESSAGE_ID).toString());
         UUID userId = task.getUser().getId();
         UUID projectId = task.getProject() != null ? task.getProject().getId() : null;
         if (projectId == null) {
@@ -90,7 +90,7 @@ public class ChatMessageJobHandler implements LabJobHandler {
             }
             QueryResponse qr =
                     processQueryService.generateResponseForChat(
-                            userContent, llmModel, userId, projectId, conversationId, docFilter);
+                            userContent, llmModel, userId, projectId, conversationId, docFilter, userMessageId);
             String answer = qr.getAnswer() != null ? qr.getAnswer() : "";
             StringBuilder accumulated = new StringBuilder();
             for (String part : ChatStreamChunks.chunkForStream(answer)) {

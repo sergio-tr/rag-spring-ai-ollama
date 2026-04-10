@@ -34,6 +34,10 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
+import com.uniovi.rag.application.service.runtime.clarification.ClarificationPolicyResolver;
+import com.uniovi.rag.application.service.runtime.clarification.ClarificationStrategy;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
@@ -69,6 +73,8 @@ class RagExecutionOrchestratorAdvisorTest {
         FunctionCallingStrategy fcStrategy = mock(FunctionCallingStrategy.class);
         AdvisorPolicyResolver advisorPolicy = mock(AdvisorPolicyResolver.class);
         AdvisorStrategy advisorStrategy = mock(AdvisorStrategy.class);
+        ClarificationPolicyResolver clarificationPolicyResolver = clarificationPolicyNoAsk();
+        ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
 
         when(qu.buildPlan(in)).thenReturn(plan);
         when(factory.attachQueryPlan(in, plan)).thenAnswer(inv -> withPlan(inv.getArgument(0), plan));
@@ -97,7 +103,9 @@ class RagExecutionOrchestratorAdvisorTest {
                         fcPolicy,
                         fcStrategy,
                         advisorPolicy,
-                        advisorStrategy);
+                        advisorStrategy,
+                        clarificationPolicyResolver,
+                        clarificationStrategy);
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("tool-answer", out.answerText());
@@ -122,6 +130,8 @@ class RagExecutionOrchestratorAdvisorTest {
         FunctionCallingStrategy fcStrategy = mock(FunctionCallingStrategy.class);
         AdvisorPolicyResolver advisorPolicy = mock(AdvisorPolicyResolver.class);
         AdvisorStrategy advisorStrategy = mock(AdvisorStrategy.class);
+        ClarificationPolicyResolver clarificationPolicyResolver = clarificationPolicyNoAsk();
+        ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
 
         when(qu.buildPlan(in)).thenReturn(plan);
         when(factory.attachQueryPlan(in, plan)).thenAnswer(inv -> withPlan(inv.getArgument(0), plan));
@@ -169,7 +179,9 @@ class RagExecutionOrchestratorAdvisorTest {
                         fcPolicy,
                         fcStrategy,
                         advisorPolicy,
-                        advisorStrategy);
+                        advisorStrategy,
+                        clarificationPolicyResolver,
+                        clarificationStrategy);
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("fc-answer", out.answerText());
@@ -197,6 +209,8 @@ class RagExecutionOrchestratorAdvisorTest {
         FunctionCallingStrategy fcStrategy = mock(FunctionCallingStrategy.class);
         AdvisorPolicyResolver advisorPolicy = mock(AdvisorPolicyResolver.class);
         AdvisorStrategy advisorStrategy = mock(AdvisorStrategy.class);
+        ClarificationPolicyResolver clarificationPolicyResolver = clarificationPolicyNoAsk();
+        ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
 
         when(qu.buildPlan(in)).thenReturn(plan);
         when(factory.attachQueryPlan(in, plan)).thenAnswer(inv -> withPlan(inv.getArgument(0), plan));
@@ -251,7 +265,9 @@ class RagExecutionOrchestratorAdvisorTest {
                         fcPolicy,
                         fcStrategy,
                         advisorPolicy,
-                        advisorStrategy);
+                        advisorStrategy,
+                        clarificationPolicyResolver,
+                        clarificationStrategy);
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("wf-answer", out.answerText());
@@ -264,6 +280,13 @@ class RagExecutionOrchestratorAdvisorTest {
         verify(factory).attachAdvisorPackedContextSet(any(), eq(packed));
     }
 
+    private static ClarificationPolicyResolver clarificationPolicyNoAsk() {
+        ClarificationPolicyResolver m = mock(ClarificationPolicyResolver.class);
+        when(m.resolve(any(), any()))
+                .thenReturn(new ClarificationDecision(false, ClarificationOutcome.NOT_NEEDED, null, ""));
+        return m;
+    }
+
     private static RagConfig ragDirectLlm(boolean functionCallingEnabled) {
         return new RagConfig(
                 false,
@@ -274,6 +297,7 @@ class RagExecutionOrchestratorAdvisorTest {
                 false,
                 false,
                 functionCallingEnabled,
+                false,
                 false,
                 false,
                 5,
@@ -300,6 +324,7 @@ class RagExecutionOrchestratorAdvisorTest {
                 false,
                 true,
                 true,
+                false,
                 5,
                 0.2,
                 "l",
@@ -338,6 +363,12 @@ class RagExecutionOrchestratorAdvisorTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
+                "user q",
+                false,
+                false,
+                false,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -357,7 +388,13 @@ class RagExecutionOrchestratorAdvisorTest {
                 ctx.documentFilter(),
                 ctx.chatModelOverride(),
                 Optional.of(plan),
-                Optional.empty());
+                Optional.empty(),
+                ctx.effectivePlanningInputText(),
+                ctx.pendingClarificationLoadedForTrace(),
+                ctx.validPendingExistedAtLoad(),
+                ctx.invalidPendingRecoveredThisTurn(),
+                ctx.clarificationDisableReason(),
+                ctx.originatingUserMessageId());
     }
 
     private static ExecutionContext withAdvisorPack(ExecutionContext ctx, PackedContextSet packed) {
@@ -376,12 +413,19 @@ class RagExecutionOrchestratorAdvisorTest {
                 ctx.documentFilter(),
                 ctx.chatModelOverride(),
                 ctx.queryPlan(),
-                Optional.of(packed));
+                Optional.of(packed),
+                ctx.effectivePlanningInputText(),
+                ctx.pendingClarificationLoadedForTrace(),
+                ctx.validPendingExistedAtLoad(),
+                ctx.invalidPendingRecoveredThisTurn(),
+                ctx.clarificationDisableReason(),
+                ctx.originatingUserMessageId());
     }
 
     private static QueryPlan plan(AmbiguityStatus amb) {
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
                 "raw",
                 "norm",
                 "rewritten",

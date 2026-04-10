@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -59,11 +60,33 @@ public class ProcessQueryService implements QueryService, Loggable {
             UUID projectId,
             UUID conversationId,
             List<String> documentFilter) {
+        return generateResponseForChat(
+                query, chatModel, userId, projectId, conversationId, documentFilter, null);
+    }
+
+    /**
+     * @param userMessageId optional id of the persisted user message for this turn (used for clarification state).
+     */
+    @Transactional(readOnly = true)
+    public QueryResponse generateResponseForChat(
+            String query,
+            String chatModel,
+            UUID userId,
+            UUID projectId,
+            UUID conversationId,
+            List<String> documentFilter,
+            UUID userMessageId) {
         try {
             ollamaConnectivityChecker.prepareForQuery(chatModel);
             ExecutionContext ctx =
                     executionContextFactory.buildForChatMessage(
-                            userId, projectId, conversationId, query, documentFilter, chatModel);
+                            userId,
+                            projectId,
+                            conversationId,
+                            query,
+                            documentFilter,
+                            chatModel,
+                            Optional.ofNullable(userMessageId));
             return executeOrchestrated(ctx);
         } catch (RagServiceException | ResponseStatusException e) {
             throw e;

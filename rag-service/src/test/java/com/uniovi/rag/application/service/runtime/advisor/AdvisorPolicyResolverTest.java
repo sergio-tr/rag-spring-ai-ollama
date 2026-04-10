@@ -79,6 +79,7 @@ class AdvisorPolicyResolverTest {
                 false,
                 useRetrieval,
                 useAdvisor,
+                false,
                 5,
                 0.2,
                 "l",
@@ -117,12 +118,19 @@ class AdvisorPolicyResolverTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.of(plan),
+                Optional.empty(),
+                "q",
+                false,
+                false,
+                false,
+                Optional.empty(),
                 Optional.empty());
     }
 
     private static QueryPlan plan(AmbiguityStatus amb) {
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
                 "raw",
                 "norm",
                 "rewritten",

@@ -39,26 +39,27 @@ class DenseRetrievalStrategyTest {
     void setLegacyContext() {
         RagConfig rag =
                 new RagConfig(
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        true,
-                        false,
-                        5,
-                        0.7,
-                        "l",
-                        "e",
-                        "c",
-                        "r",
-                        false,
-                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
-                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                        com.uniovi.rag.domain.knowledge.MaterializationStrategy.CHUNK_LEVEL);
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                5,
+                0.7,
+                "l",
+                "e",
+                "c",
+                "r",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                com.uniovi.rag.domain.knowledge.MaterializationStrategy.CHUNK_LEVEL);
         RagExecutionContextHolder.set(RagExecutionContext.forLegacyPipeline(rag, "t"));
         denseRetrievalStrategy = new DenseRetrievalStrategy(vectorStore, 10, 0.7);
     }

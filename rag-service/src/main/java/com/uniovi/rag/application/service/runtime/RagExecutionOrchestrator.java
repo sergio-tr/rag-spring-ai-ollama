@@ -3,6 +3,8 @@ package com.uniovi.rag.application.service.runtime;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
+import com.uniovi.rag.application.service.runtime.clarification.ClarificationPolicyResolver;
+import com.uniovi.rag.application.service.runtime.clarification.ClarificationStrategy;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
@@ -18,6 +20,9 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationExecutionResult;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingDecision;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionResult;
@@ -46,6 +51,8 @@ public class RagExecutionOrchestrator {
     private final FunctionCallingStrategy functionCallingStrategy;
     private final AdvisorPolicyResolver advisorPolicyResolver;
     private final AdvisorStrategy advisorStrategy;
+    private final ClarificationPolicyResolver clarificationPolicyResolver;
+    private final ClarificationStrategy clarificationStrategy;
 
     public RagExecutionOrchestrator(
             WorkflowSelector workflowSelector,
@@ -55,7 +62,9 @@ public class RagExecutionOrchestrator {
             FunctionCallingPolicyResolver functionCallingPolicyResolver,
             FunctionCallingStrategy functionCallingStrategy,
             AdvisorPolicyResolver advisorPolicyResolver,
-            AdvisorStrategy advisorStrategy) {
+            AdvisorStrategy advisorStrategy,
+            ClarificationPolicyResolver clarificationPolicyResolver,
+            ClarificationStrategy clarificationStrategy) {
         this.workflowSelector = workflowSelector;
         this.queryUnderstandingPipeline = queryUnderstandingPipeline;
         this.executionContextFactory = executionContextFactory;
@@ -64,9 +73,12 @@ public class RagExecutionOrchestrator {
         this.functionCallingStrategy = functionCallingStrategy;
         this.advisorPolicyResolver = advisorPolicyResolver;
         this.advisorStrategy = advisorStrategy;
+        this.clarificationPolicyResolver = clarificationPolicyResolver;
+        this.clarificationStrategy = clarificationStrategy;
     }
 
     public RagExecutionResult execute(ExecutionContext ctx) {
+        List<ExecutionStageTrace> clarifyBeforeQu = buildClarificationPreQuStages(ctx);
         long quStart = System.nanoTime();
         QueryPlan plan = queryUnderstandingPipeline.buildPlan(ctx);
         ExecutionContext withPlan = executionContextFactory.attachQueryPlan(ctx, plan);
@@ -79,6 +91,27 @@ public class RagExecutionOrchestrator {
                         TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - quStart),
                         ExecutionStageOutcome.SUCCESS,
                         "qu_status=OK message=QueryUnderstandingPipeline completed"));
+
+        ClarificationDecision clarificationDecision = clarificationPolicyResolver.resolve(withPlan, plan);
+        List<ExecutionStageTrace> clarifyAfterQu = new ArrayList<>();
+        clarifyAfterQu.add(clarificationPolicyStage(clarificationDecision));
+
+        if (clarificationDecision.ask()) {
+            ClarificationExecutionResult cr =
+                    clarificationStrategy.executeAsk(withPlan, plan, clarificationDecision);
+            clarifyAfterQu.addAll(cr.stageTraces());
+            return finishClarificationAskShortCircuit(
+                    withPlan,
+                    clarifyBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    cr,
+                    clarificationDecision);
+        }
+
+        if (clarificationDecision.terminalOutcome() == ClarificationOutcome.RESOLVED_FROM_PENDING) {
+            clarificationStrategy.clearAfterResolved(withPlan.conversationId());
+        }
 
         ExecutionWorkflow workflow = workflowSelector.select(withPlan);
         String wname = workflow.workflowName();
@@ -114,7 +147,9 @@ public class RagExecutionOrchestrator {
                             withPlan,
                             partial,
                             wname,
+                            clarifyBeforeQu,
                             quStages,
+                            clarifyAfterQu,
                             toolStages,
                             List.of(),
                             toolResult,
@@ -122,7 +157,8 @@ public class RagExecutionOrchestrator {
                             FunctionCallingOutcome.SUPPRESSED_BY_DETERMINISTIC_TOOL,
                             "",
                             false,
-                            AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL));
+                            AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL),
+                            clarificationDecision);
             return partial.withFinalTrace(trace);
         }
 
@@ -155,7 +191,9 @@ public class RagExecutionOrchestrator {
                             withPlan,
                             partial,
                             wname,
+                            clarifyBeforeQu,
                             quStages,
+                            clarifyAfterQu,
                             toolStages,
                             fcStages,
                             toolResult,
@@ -163,7 +201,8 @@ public class RagExecutionOrchestrator {
                             fcGate.functionCallingOutcome(),
                             fcGate.functionCallingToolKind(),
                             fcGate.functionCallingShortCircuited(),
-                            AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_FUNCTION_CALLING));
+                            AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_FUNCTION_CALLING),
+                            clarificationDecision);
             return partial.withFinalTrace(trace);
         }
 
@@ -178,7 +217,9 @@ public class RagExecutionOrchestrator {
                             withPlan,
                             partial,
                             wname,
+                            clarifyBeforeQu,
                             quStages,
+                            clarifyAfterQu,
                             toolStages,
                             fcStages,
                             toolResult,
@@ -186,11 +227,94 @@ public class RagExecutionOrchestrator {
                             fcGate.functionCallingOutcome(),
                             fcGate.functionCallingToolKind(),
                             fcGate.functionCallingShortCircuited(),
-                            advisorPhase.snapshot());
+                            advisorPhase.snapshot(),
+                            clarificationDecision);
             return partial.withFinalTrace(trace);
         } finally {
             RagExecutionContextHolder.clear();
         }
+    }
+
+    private RagExecutionResult finishClarificationAskShortCircuit(
+            ExecutionContext withPlan,
+            List<ExecutionStageTrace> clarifyBeforeQu,
+            List<ExecutionStageTrace> quStages,
+            List<ExecutionStageTrace> clarifyAfterQu,
+            ClarificationExecutionResult cr,
+            ClarificationDecision clarificationDecision) {
+        DeterministicToolExecutionResult toolResult =
+                DeterministicToolExecutionResult.skipped(
+                        DeterministicToolOutcome.NOT_ATTEMPTED,
+                        List.of("suppressed_clarification_ask"),
+                        Optional.empty());
+        List<ExecutionStageTrace> toolStages = projectDeterministicToolStages(toolResult);
+        FcGate fcGate = FcGate.notAttempted(FunctionCallingOutcome.SUPPRESSED_BY_CLARIFICATION);
+        RagExecutionResult partial =
+                RagExecutionResult.withPlaceholderTrace(
+                        cr.answerText(),
+                        "clarification",
+                        false,
+                        false,
+                        withPlan.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                        "none",
+                        List.of());
+        ExecutionTrace trace =
+                assembleTrace(
+                        withPlan,
+                        partial,
+                        "clarification",
+                        clarifyBeforeQu,
+                        quStages,
+                        clarifyAfterQu,
+                        toolStages,
+                        fcGate.stageTraces(),
+                        toolResult,
+                        fcGate.functionCallingAttempted(),
+                        fcGate.functionCallingOutcome(),
+                        fcGate.functionCallingToolKind(),
+                        fcGate.functionCallingShortCircuited(),
+                        AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_CLARIFICATION),
+                        clarificationDecision);
+        return partial.withFinalTrace(trace);
+    }
+
+    private static List<ExecutionStageTrace> buildClarificationPreQuStages(ExecutionContext ctx) {
+        return List.of(
+                new ExecutionStageTrace(
+                        "clarification_state_resolve",
+                        0L,
+                        ExecutionStageOutcome.SUCCESS,
+                        clarifyResolveMessage(ctx)),
+                new ExecutionStageTrace(
+                        "clarification_query_refine",
+                        0L,
+                        ExecutionStageOutcome.SUCCESS,
+                        clarifyRefineMessage(ctx)));
+    }
+
+    private static String clarifyResolveMessage(ExecutionContext ctx) {
+        if (ctx.clarificationDisableReason().isPresent()) {
+            return "disable_reason=" + ctx.clarificationDisableReason().get();
+        }
+        if (ctx.invalidPendingRecoveredThisTurn()) {
+            return "invalid_pending_state_recovered";
+        }
+        return "pending_valid="
+                + ctx.validPendingExistedAtLoad()
+                + " merged="
+                + ctx.pendingClarificationLoadedForTrace();
+    }
+
+    private static String clarifyRefineMessage(ExecutionContext ctx) {
+        return "merged_before_qu=" + ctx.pendingClarificationLoadedForTrace();
+    }
+
+    private static ExecutionStageTrace clarificationPolicyStage(ClarificationDecision d) {
+        return new ExecutionStageTrace(
+                "clarification_policy",
+                0L,
+                ExecutionStageOutcome.SUCCESS,
+                "outcome=" + d.terminalOutcome().name() + " " + d.policyTraceNote());
     }
 
     private AdvisorPhaseResult runAdvisorPhase(ExecutionContext ctx, QueryPlan plan, String workflowName) {
@@ -356,7 +480,9 @@ public class RagExecutionOrchestrator {
             ExecutionContext ctx,
             RagExecutionResult partial,
             String workflowName,
+            List<ExecutionStageTrace> clarificationStagesBeforeQu,
             List<ExecutionStageTrace> quStages,
+            List<ExecutionStageTrace> clarificationStagesAfterQu,
             List<ExecutionStageTrace> toolStages,
             List<ExecutionStageTrace> fcStages,
             DeterministicToolExecutionResult toolResult,
@@ -364,9 +490,12 @@ public class RagExecutionOrchestrator {
             FunctionCallingOutcome functionCallingOutcome,
             String functionCallingToolKind,
             boolean functionCallingShortCircuited,
-            AdvisorSnapshot advisor) {
+            AdvisorSnapshot advisor,
+            ClarificationDecision clarificationDecision) {
         List<ExecutionStageTrace> all = new ArrayList<>();
+        all.addAll(clarificationStagesBeforeQu);
         all.addAll(quStages);
+        all.addAll(clarificationStagesAfterQu);
         all.addAll(toolStages);
         all.addAll(fcStages);
         all.addAll(advisor.advisorStages());
@@ -375,6 +504,8 @@ public class RagExecutionOrchestrator {
         String toolOutcome = toolResult.outcome().name();
         String toolKind = toolResult.toolKind().map(Enum::name).orElse("");
         String toolDetail = buildToolDetail(toolResult);
+        boolean pendingConsumed = ctx.pendingClarificationLoadedForTrace();
+        boolean questionAsked = clarificationDecision.ask();
         return new ExecutionTrace(
                 List.copyOf(all),
                 workflowName,
@@ -402,7 +533,11 @@ public class RagExecutionOrchestrator {
                 advisor.advisorKindsExecuted(),
                 advisor.advisorOutcome().name(),
                 advisor.packedContextBlockCount(),
-                advisor.packedContextSourceCount());
+                advisor.packedContextSourceCount(),
+                true,
+                clarificationDecision.terminalOutcome().name(),
+                pendingConsumed,
+                questionAsked);
     }
 
     private static String buildToolDetail(DeterministicToolExecutionResult toolResult) {

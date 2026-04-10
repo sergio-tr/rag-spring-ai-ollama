@@ -33,7 +33,9 @@ For each LLM call at the architectural level:
 
 - **Logical inputs:** `effective system prompt` + `user query`.
 
-The runtime introduces `QueryUnderstandingPipeline` which consumes `ResolvedRuntimeConfig` (via `ExecutionContext.resolved()`) to deterministically build a `QueryPlan`. The canonical query text used for answer generation becomes `QueryPlan.rewrittenQueryText` (not the raw user input).
+The runtime introduces `QueryUnderstandingPipeline` which consumes `ResolvedRuntimeConfig` (via `ExecutionContext.resolved()`) to deterministically build a `QueryPlan`. **P11:** QU normalizes `ExecutionContext.effectivePlanningInputText` (merged continuation text when `pending_clarification_jsonb` is active); `QueryPlan.rawUserQuery` stays the literal latest user turn; the canonical query text used for tools / retrieval / generation remains `QueryPlan.rewrittenQueryText` (not the raw user input).
+
+**Clarification gating:** `clarificationEnabled` is part of the materialized `RagConfig` (from `rag.features.clarification-enabled` and optional JSON key `clarificationEnabled` in configuration `values` maps). When false or when no persistable conversation scope exists, the runtime records `DISABLED_BY_CONFIG` on the clarification trace without persisting pending state.
 
 **Layers of `effective system prompt` (all four are mandatory concepts):**
 

@@ -6,6 +6,9 @@ import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.domain.config.EffectiveModelPolicy;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
+import com.uniovi.rag.application.service.runtime.clarification.ClarificationBootstrap;
+import com.uniovi.rag.application.service.runtime.clarification.ClarificationStateResolver;
+import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
@@ -33,17 +36,20 @@ public class ExecutionContextFactory {
     private final ChatScopedRagConfigResolver chatScopedRagConfigResolver;
     private final ModelCatalogPort modelCatalogPort;
     private final Tracer tracer;
+    private final ClarificationStateResolver clarificationStateResolver;
 
     public ExecutionContextFactory(
             RuntimeConfigResolutionService runtimeConfigResolutionService,
             KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector,
             ChatScopedRagConfigResolver chatScopedRagConfigResolver,
             ModelCatalogPort modelCatalogPort,
+            ClarificationStateResolver clarificationStateResolver,
             @org.springframework.beans.factory.annotation.Autowired(required = false) Tracer tracer) {
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
         this.knowledgeRuntimeSnapshotSelector = knowledgeRuntimeSnapshotSelector;
         this.chatScopedRagConfigResolver = chatScopedRagConfigResolver;
         this.modelCatalogPort = modelCatalogPort;
+        this.clarificationStateResolver = clarificationStateResolver;
         this.tracer = tracer;
     }
 
@@ -54,6 +60,18 @@ public class ExecutionContextFactory {
             String rawUserQuery,
             List<String> documentFilter,
             String chatModelOverride) {
+        return buildForChatMessage(
+                userId, projectId, conversationId, rawUserQuery, documentFilter, chatModelOverride, Optional.empty());
+    }
+
+    public ExecutionContext buildForChatMessage(
+            UUID userId,
+            UUID projectId,
+            UUID conversationId,
+            String rawUserQuery,
+            List<String> documentFilter,
+            String chatModelOverride,
+            Optional<UUID> originatingUserMessageId) {
         String correlationId =
                 Optional.ofNullable(TraceMdcBridge.currentCorrelationTraceId(tracer))
                         .orElseGet(() -> UUID.randomUUID().toString());
@@ -68,22 +86,18 @@ public class ExecutionContextFactory {
         KnowledgeSnapshotSelection snapshots =
                 knowledgeRuntimeSnapshotSelector.select(projectId, conversationId);
         List<String> filter = copyDocumentFilter(documentFilter);
-        return new ExecutionContext(
+        return buildWithClarification(
                 userId,
                 projectId,
                 conversationId,
-                rawUserQuery != null ? rawUserQuery : "",
+                rawUserQuery,
                 RuntimeOperationKind.CHAT_MESSAGE,
                 resolved,
-                resolved.effectiveSystemPrompt(),
                 snapshots,
-                Optional.empty(),
-                Optional.empty(),
                 correlationId,
                 filter,
                 model,
-                Optional.empty(),
-                Optional.empty());
+                originatingUserMessageId);
     }
 
     public ExecutionContext buildForLegacyHttp(String rawUserQuery, String chatModelOverride) {
@@ -95,21 +109,17 @@ public class ExecutionContextFactory {
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
                         null, null, null, correlationId);
         KnowledgeSnapshotSelection snapshots = knowledgeRuntimeSnapshotSelector.select(null, null);
-        return new ExecutionContext(
+        return buildWithClarification(
                 null,
                 null,
                 null,
-                rawUserQuery != null ? rawUserQuery : "",
+                rawUserQuery,
                 RuntimeOperationKind.LEGACY_HTTP,
                 resolved,
-                resolved.effectiveSystemPrompt(),
                 snapshots,
-                Optional.empty(),
-                Optional.empty(),
                 correlationId,
                 List.of(RagExecutionContext.ALL_DOCUMENTS),
                 model,
-                Optional.empty(),
                 Optional.empty());
     }
 
@@ -133,22 +143,68 @@ public class ExecutionContextFactory {
                         userId, projectId, merged, correlationId);
         KnowledgeSnapshotSelection snapshots =
                 knowledgeRuntimeSnapshotSelector.select(projectId, conversationId);
+        return buildWithClarification(
+                userId,
+                projectId,
+                conversationId,
+                rawUserQuery,
+                RuntimeOperationKind.LAB_PROCESS,
+                resolved,
+                snapshots,
+                correlationId,
+                copyDocumentFilter(documentFilter),
+                model,
+                Optional.empty());
+    }
+
+    private ExecutionContext buildWithClarification(
+            UUID userId,
+            UUID projectId,
+            UUID conversationId,
+            String rawUserQuery,
+            RuntimeOperationKind operationKind,
+            ResolvedRuntimeConfig resolved,
+            KnowledgeSnapshotSelection snapshots,
+            String correlationId,
+            List<String> documentFilter,
+            Optional<String> chatModelOverride,
+            Optional<UUID> originatingUserMessageId) {
+        String uq = rawUserQuery != null ? rawUserQuery : "";
+        RagConfig rag = resolved.toRagConfig();
+        Optional<String> disableReason = clarificationDisableReason(rag, conversationId);
+        ClarificationBootstrap boot = clarificationStateResolver.bootstrap(conversationId, uq);
         return new ExecutionContext(
                 userId,
                 projectId,
                 conversationId,
-                rawUserQuery != null ? rawUserQuery : "",
-                RuntimeOperationKind.LAB_PROCESS,
+                uq,
+                operationKind,
                 resolved,
                 resolved.effectiveSystemPrompt(),
                 snapshots,
                 Optional.empty(),
                 Optional.empty(),
                 correlationId,
-                copyDocumentFilter(documentFilter),
-                model,
+                documentFilter,
+                chatModelOverride,
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                boot.effectivePlanningInputText(),
+                boot.pendingClarificationLoadedForTrace(),
+                boot.validPendingExistedAtLoad(),
+                boot.invalidPendingRecoveredThisTurn(),
+                disableReason,
+                originatingUserMessageId);
+    }
+
+    private static Optional<String> clarificationDisableReason(RagConfig rag, UUID conversationId) {
+        if (!rag.clarificationEnabled()) {
+            return Optional.of("config_disabled");
+        }
+        if (conversationId == null) {
+            return Optional.of("no_persistable_conversation_scope");
+        }
+        return Optional.empty();
     }
 
     public ExecutionContext attachQueryPlan(ExecutionContext ctx, QueryPlan plan) {
@@ -176,8 +232,13 @@ public class ExecutionContextFactory {
                 ctx.documentFilter(),
                 ctx.chatModelOverride(),
                 Optional.of(plan),
-                Optional.empty()
-        );
+                Optional.empty(),
+                ctx.effectivePlanningInputText(),
+                ctx.pendingClarificationLoadedForTrace(),
+                ctx.validPendingExistedAtLoad(),
+                ctx.invalidPendingRecoveredThisTurn(),
+                ctx.clarificationDisableReason(),
+                ctx.originatingUserMessageId());
     }
 
     /**
@@ -208,7 +269,13 @@ public class ExecutionContextFactory {
                 ctx.documentFilter(),
                 ctx.chatModelOverride(),
                 ctx.queryPlan(),
-                Optional.of(packedContextSet));
+                Optional.of(packedContextSet),
+                ctx.effectivePlanningInputText(),
+                ctx.pendingClarificationLoadedForTrace(),
+                ctx.validPendingExistedAtLoad(),
+                ctx.invalidPendingRecoveredThisTurn(),
+                ctx.clarificationDisableReason(),
+                ctx.originatingUserMessageId());
     }
 
     private Optional<String> validateAndNormalizeChatModel(String chatModelOverride) {

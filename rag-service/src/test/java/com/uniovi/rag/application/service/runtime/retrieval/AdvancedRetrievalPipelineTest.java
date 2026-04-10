@@ -140,6 +140,12 @@ class AdvancedRetrievalPipelineTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
+                "u",
+                false,
+                false,
+                false,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -154,6 +160,7 @@ class AdvancedRetrievalPipelineTest {
                 false,
                 false,
                 true,
+                false,
                 false,
                 5,
                 0.7,
@@ -181,6 +188,7 @@ class AdvancedRetrievalPipelineTest {
                         List.of());
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
                 "raw",
                 "raw",
                 "rewritten",

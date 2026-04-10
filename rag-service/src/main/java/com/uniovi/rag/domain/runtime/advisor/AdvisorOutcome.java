@@ -1,11 +1,12 @@
 package com.uniovi.rag.domain.runtime.advisor;
 
 /**
- * Terminal advisor summary for one turn (5.2 closed set).
+ * Terminal advisor summary for one turn.
  */
 public enum AdvisorOutcome {
     NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL,
     NOT_REACHED_BECAUSE_FUNCTION_CALLING,
+    NOT_REACHED_BECAUSE_CLARIFICATION,
     SUPPRESSED_BY_POLICY,
     EXECUTED_SUCCESS,
     EXECUTED_FAILED_RETRIEVAL,

@@ -53,6 +53,12 @@ class DefaultFunctionCallingPolicyResolverTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
+                "q",
+                false,
+                false,
+                false,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -66,6 +72,7 @@ class DefaultFunctionCallingPolicyResolverTest {
                 false,
                 false,
                 true,
+                false,
                 false,
                 false,
                 5,
@@ -98,6 +105,7 @@ class DefaultFunctionCallingPolicyResolverTest {
                         List.of());
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
                 "raw",
                 "raw",
                 "rewritten",
@@ -135,6 +143,7 @@ class DefaultFunctionCallingPolicyResolverTest {
                         List.of());
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
                 "raw",
                 "raw",
                 "rewritten",
@@ -185,24 +194,25 @@ class DefaultFunctionCallingPolicyResolverTest {
                         List.of());
         QueryPlan plan =
                 new QueryPlan(
-                        QueryPlan.VERSION_P6_QU_CORE_V1,
-                        "raw",
-                        "raw",
-                        "rewritten",
-                        "L",
-                        Optional.of(QueryType.COUNT_AND_EXPLAIN),
-                        ClassifierStatus.OK,
-                        QueryIntent.UNKNOWN,
-                        Map.of(),
-                        List.of(),
-                        List.of(),
-                        entities,
-                        rewrite,
-                        ExpectedAnswerShape.UNKNOWN,
-                        AmbiguityAssessment.sufficient(),
-                        "c",
-                        "m",
-                        List.of());
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
+                "raw",
+                "raw",
+                "rewritten",
+                "L",
+                Optional.of(QueryType.COUNT_AND_EXPLAIN),
+                ClassifierStatus.OK,
+                QueryIntent.UNKNOWN,
+                Map.of(),
+                List.of(),
+                List.of(),
+                entities,
+                rewrite,
+                ExpectedAnswerShape.UNKNOWN,
+                AmbiguityAssessment.sufficient(),
+                "c",
+                "m",
+                List.of());
         var d = resolver.resolve(ctx(fcEnabled()), plan, "DirectLlmWorkflow");
         assertTrue(d.isPresent());
         assertTrue(d.get().exposedToolKinds().contains(DeterministicToolKind.COUNT_AND_EXPLAIN_TOOL));

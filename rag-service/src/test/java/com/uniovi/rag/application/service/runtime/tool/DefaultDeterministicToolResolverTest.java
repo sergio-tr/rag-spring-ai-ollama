@@ -87,24 +87,25 @@ class DefaultDeterministicToolResolverTest {
         RagConfig rag = baseRag(true, false);
         QueryPlan plan =
                 new QueryPlan(
-                        QueryPlan.VERSION_P6_QU_CORE_V1,
-                        "raw",
-                        "norm",
-                        "rewritten",
-                        "lbl",
-                        Optional.of(QueryType.GET_FIELD),
-                        ClassifierStatus.OK,
-                        QueryIntent.EXTRACT_FIELD,
-                        Map.of(),
-                        List.of(),
-                        List.of(),
-                        EntityExtractionResult.emptyWithNote(""),
-                        StructuredRewriteResult.identityDisabled("norm", ""),
-                        ExpectedAnswerShape.FIELD_VALUE,
-                        AmbiguityAssessment.sufficient(),
-                        "cid",
-                        "",
-                        List.of());
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
+                "raw",
+                "norm",
+                "rewritten",
+                "lbl",
+                Optional.of(QueryType.GET_FIELD),
+                ClassifierStatus.OK,
+                QueryIntent.EXTRACT_FIELD,
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                StructuredRewriteResult.identityDisabled("norm", ""),
+                ExpectedAnswerShape.FIELD_VALUE,
+                AmbiguityAssessment.sufficient(),
+                "cid",
+                "",
+                List.of());
         var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
         assertThat(d.selected()).isFalse();
         assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.NOT_APPLICABLE);
@@ -122,6 +123,7 @@ class DefaultDeterministicToolResolverTest {
                 false,
                 false,
                 useAdvisor,
+                false,
                 5,
                 0.2,
                 "l",
@@ -160,6 +162,12 @@ class DefaultDeterministicToolResolverTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
+                "q",
+                false,
+                false,
+                false,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -175,6 +183,7 @@ class DefaultDeterministicToolResolverTest {
             Optional<QueryType> classifierQt) {
         return new QueryPlan(
                 QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
                 "raw",
                 "norm",
                 "rewritten",

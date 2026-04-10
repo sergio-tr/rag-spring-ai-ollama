@@ -97,6 +97,7 @@ class DenseWorkflowAdvisorPackedContextTest {
                 QueryPlan.VERSION_P6_QU_CORE_V1,
                 raw,
                 raw,
+                raw,
                 rewritten,
                 "UNCLASSIFIED",
                 Optional.empty(),
@@ -117,26 +118,27 @@ class DenseWorkflowAdvisorPackedContextTest {
     private static ExecutionContext ctxWithPlanAndPack(QueryPlan plan, PackedContextSet packed) {
         RagConfig rag =
                 new RagConfig(
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        false,
-                        true,
-                        true,
-                        5,
-                        0.2,
-                        "llm",
-                        "emb",
-                        "cls",
-                        "reason",
-                        false,
-                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
-                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                        MaterializationStrategy.DOCUMENT_LEVEL);
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                true,
+                false,
+                5,
+                0.2,
+                "llm",
+                "emb",
+                "cls",
+                "reason",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.DOCUMENT_LEVEL);
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         rag,
@@ -167,6 +169,12 @@ class DenseWorkflowAdvisorPackedContextTest {
                 List.of("all"),
                 Optional.empty(),
                 Optional.of(plan),
-                Optional.of(packed));
+                Optional.of(packed),
+                plan.rawUserQuery(),
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty());
     }
 }

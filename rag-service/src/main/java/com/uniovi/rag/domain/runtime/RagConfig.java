@@ -22,6 +22,8 @@ public record RagConfig(
         boolean functionCallingEnabled,
         boolean useRetrieval,
         boolean useAdvisor,
+        /** P11: deterministic clarification loop; requires persistable conversation scope to store pending state. */
+        boolean clarificationEnabled,
         int topK,
         double similarityThreshold,
         String llmModel,
@@ -61,6 +63,7 @@ public record RagConfig(
                 features.isFunctionCallingEnabled(),
                 features.isUseRetrieval(),
                 features.isUseAdvisor(),
+                features.isClarificationEnabled(),
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -97,6 +100,7 @@ public record RagConfig(
                 readBool(json, "functionCallingEnabled", base.functionCallingEnabled),
                 readBool(json, "useRetrieval", base.useRetrieval),
                 readBool(json, "useAdvisor", base.useAdvisor),
+                readBool(json, "clarificationEnabled", base.clarificationEnabled),
                 readInt(json, "topK", base.topK),
                 readDouble(json, "similarityThreshold", base.similarityThreshold),
                 readText(json, "llmModel", base.llmModel),
@@ -152,6 +156,7 @@ public record RagConfig(
         m.put("functionCallingEnabled", functionCallingEnabled);
         m.put("useRetrieval", useRetrieval);
         m.put("useAdvisor", useAdvisor);
+        m.put("clarificationEnabled", clarificationEnabled);
         m.put("topK", topK);
         m.put("similarityThreshold", similarityThreshold);
         m.put("llmModel", llmModel);

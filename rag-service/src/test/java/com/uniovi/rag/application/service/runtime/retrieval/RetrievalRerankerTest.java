@@ -89,6 +89,7 @@ class RetrievalRerankerTest {
                 QueryPlan.VERSION_P6_QU_CORE_V1,
                 "raw",
                 "raw",
+                "raw",
                 "rewritten",
                 "L",
                 Optional.empty(),

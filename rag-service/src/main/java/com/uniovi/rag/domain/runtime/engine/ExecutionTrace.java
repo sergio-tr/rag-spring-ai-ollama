@@ -36,7 +36,11 @@ public record ExecutionTrace(
         String advisorKindsExecuted,
         String advisorOutcome,
         int packedContextBlockCount,
-        int packedContextSourceCount) {
+        int packedContextSourceCount,
+        boolean clarificationAttempted,
+        String clarificationOutcome,
+        boolean clarificationPendingStateConsumed,
+        boolean clarificationQuestionAsked) {
 
     public ExecutionTrace {
         stages = List.copyOf(stages);
@@ -58,6 +62,7 @@ public record ExecutionTrace(
         retrievalDiagnostics = retrievalDiagnostics == null ? Optional.empty() : retrievalDiagnostics;
         advisorKindsExecuted = advisorKindsExecuted == null ? "" : advisorKindsExecuted;
         advisorOutcome = advisorOutcome == null ? "" : advisorOutcome;
+        clarificationOutcome = clarificationOutcome == null ? "" : clarificationOutcome;
     }
 
     public static ExecutionTrace placeholder() {
@@ -88,6 +93,10 @@ public record ExecutionTrace(
                 "",
                 "",
                 0,
-                0);
+                0,
+                false,
+                "",
+                false,
+                false);
     }
 }

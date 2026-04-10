@@ -47,9 +47,15 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
     public QueryPlan buildPlan(ExecutionContext ctx) {
         List<String> notes = new ArrayList<>();
 
-        // 1) Normalize
+        String rawLiteral = ctx.userQuery() == null ? "" : ctx.userQuery();
+        String effectiveInput =
+                ctx.effectivePlanningInputText() == null || ctx.effectivePlanningInputText().isBlank()
+                        ? rawLiteral
+                        : ctx.effectivePlanningInputText();
+
+        // 1) Normalize (P11: only effective planning input)
         long t0 = System.nanoTime();
-        NormalizedQuery normalized = normalize(ctx.userQuery());
+        NormalizedQuery normalized = normalize(effectiveInput);
         notes.add(stageNote("qu_normalize", "OK", msSince(t0),
                 normalized.notes().isEmpty() ? "normalized" : String.join(",", normalized.notes())));
 
@@ -124,8 +130,9 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         // 8) Build QueryPlan
         Map<String, String> slots = rewrite.slotFilling();
         return new QueryPlan(
-                QueryPlan.VERSION_P6_QU_CORE_V1,
-                normalized.rawUserQuery(),
+                QueryPlan.VERSION_P11_QU_CLARIFICATION_CORE_V1,
+                rawLiteral,
+                effectiveInput,
                 normalized.normalizedText(),
                 rewrite.rewrittenQueryText(),
                 classifierLabel,

@@ -36,12 +36,14 @@
 | `application.service.runtime.advisor` | P10 Advisor Core: `AdvisorPolicyResolver`, `AdvisorStrategy`, `RetrievalAdvisor`, `ContextPackingAdvisor` (orchestrated only from `RagExecutionOrchestrator`) |
 | `application.service.runtime.retrieval` | Advanced retrieval: `AdvancedRetrievalPipeline` (single entrypoint), dense/sparse/hybrid strategies, RRF fusion, deterministic rerank/filter/compression, metadata appendix loader |
 | `application.service.runtime.query` | Runtime query understanding: `QueryUnderstandingPipeline` and adapters/resolvers producing `QueryPlan` |
+| `application.service.runtime.clarification` | **P11:** `ClarificationStateResolver`, `ClarifiedQueryRefiner`, `ClarificationPolicyResolver`, `ClarificationQuestionGenerator`, `ClarificationStrategy` (sole mutator caller for `PendingClarificationStore`); deterministic policy + templates; runs after QU, before `WorkflowSelector` |
 | `application.service.runtime.tool` | Deterministic tools: `DeterministicToolStrategy` (sole entrypoint), resolver, executor, result mapper, `MeetingMinutesToolExecutionCore` (shared tool business execution) — invoked only from `RagExecutionOrchestrator` for P7 |
 | `application.service.runtime.functioncalling` | P9 function calling: `FunctionCallingStrategy`, `FunctionCallingPolicyResolver`, `FunctionCallingToolRegistry`, `FunctionCallingExecutor`, `FunctionCallingResultMapper` — FC execution only from `RagExecutionOrchestrator` |
 | `domain.runtime.engine` | `ExecutionContext`, `RagExecutionResult`, `ExecutionTrace`, snapshot selection records |
 | `domain.runtime.advisor` | P10 advisor domain: `AdvisorKind`, `AdvisorDecision`, `AdvisorExecutionResult`, `PackedContextSet`, `PackedContextBlock`, `AdvisorOutcome`, suppression reasons |
 | `domain.runtime.retrieval` | Advanced retrieval domain: `RetrievalRequest`, `RetrievalCandidate`, `CuratedContextSet`, `RetrievalDiagnostics`, `RetrievalMode`, fusion/rerank/compression outcomes |
 | `domain.runtime.query` | Query understanding domain: `QueryPlan`, normalization/entities/rewrite results, intent/shape/ambiguity enums |
+| `domain.runtime.clarification` | **P11:** `ClarificationOutcome`, `ClarificationQuestionKind`, `PendingClarificationState`, `ClarificationQuestion`, `ClarificationDecision`, `ClarificationExecutionResult` |
 | `domain.runtime.tool` | Deterministic tool domain: `DeterministicToolKind`, `DeterministicToolDecision`, `DeterministicToolExecutionResult`, outcomes |
 | `domain.runtime.functioncalling` | P9 FC domain: `FunctionCallingMode`, `FunctionCallingOutcome`, `FunctionCallingDecision`, `FunctionCallingExecutionResult` |
 | `service.query.pipeline` | Preparation, synthesis, answer kernel (legacy; deterministic tools are not routed here) |
