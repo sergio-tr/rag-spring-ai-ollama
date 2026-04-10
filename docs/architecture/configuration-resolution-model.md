@@ -72,6 +72,7 @@ The **UI** may edit underlying fields, but **canonical semantics** live under **
 ### What is partial
 
 - **`ResolvedConfigSnapshot` (domain)** exists; **persisted** snapshots are written from product `POST …/config/resolved-snapshots` and from knowledge flows (`KnowledgeConfigurationIntegrationService` / ingestion default snapshot) (see [DATA_MODEL.md](DATA_MODEL.md) §6.1). Lab runs continue to reference `resolved_config_snapshot.id` where the evaluation model already supports it.
+- **P18 runtime trace replay (internal only; see [rag-runtime-architecture.md](rag-runtime-architecture.md))** materializes `ResolvedRuntimeConfig` only from the persisted `resolved_config_snapshot` row referenced by `runtime_execution_trace.resolved_config_snapshot_id`. Replay does **not** call `RuntimeConfigResolutionService.resolveForOrchestratedExecute` and does **not** merge current conversation `runtime_override_jsonb` for semantic replay inputs.
 - Documented mapping from **every** governance-relevant flag to **capabilities** may still evolve.
 
 ### What is still missing

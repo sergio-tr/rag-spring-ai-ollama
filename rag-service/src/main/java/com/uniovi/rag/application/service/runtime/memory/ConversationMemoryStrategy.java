@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -39,6 +40,23 @@ public class ConversationMemoryStrategy {
     public ConversationMemoryExecutionResult execute(
             ExecutionContext ctx,
             String preMemoryPlanningInputText) {
+        return runMemory(ctx, preMemoryPlanningInputText, historyLoader.loadEligibleHistory(ctx));
+    }
+
+    /**
+     * P18 replay: uses a precomputed eligible history window (messages with {@code seq} strictly before the
+     * replayed user turn) instead of loading the live conversation tail.
+     */
+    public ConversationMemoryExecutionResult executeWithEligibleHistory(
+            ExecutionContext ctx, String preMemoryPlanningInputText, List<ConversationMemoryTurn> eligibleHistory) {
+        Objects.requireNonNull(eligibleHistory, "eligibleHistory");
+        return runMemory(ctx, preMemoryPlanningInputText, List.copyOf(eligibleHistory));
+    }
+
+    private ConversationMemoryExecutionResult runMemory(
+            ExecutionContext ctx,
+            String preMemoryPlanningInputText,
+            List<ConversationMemoryTurn> eligible) {
         ConversationMemoryDecision decision = policyResolver.resolve(ctx);
         if (!decision.attemptMemory()) {
             ConversationMemoryOutcome out =
@@ -58,7 +76,6 @@ public class ConversationMemoryStrategy {
         List<ExecutionStageTrace> stages = new ArrayList<>();
 
         // Stage 1: history load (always present when memory attempted)
-        List<ConversationMemoryTurn> eligible = historyLoader.loadEligibleHistory(ctx);
         stages.add(new ExecutionStageTrace(
                 "memory_history_load",
                 0L,
@@ -162,4 +179,3 @@ public class ConversationMemoryStrategy {
         return t.isBlank() ? e.getClass().getSimpleName() : t;
     }
 }
-

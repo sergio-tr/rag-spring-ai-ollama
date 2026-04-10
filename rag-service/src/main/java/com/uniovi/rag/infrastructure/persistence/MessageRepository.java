@@ -13,6 +13,11 @@ public interface MessageRepository extends JpaRepository<MessageEntity, UUID> {
 
     List<MessageEntity> findByConversation_IdAndDeletedAtIsNullOrderBySeqAsc(UUID conversationId);
 
+    /**
+     * Messages strictly before {@code seq} (exclusive), for P18 replay memory reconstruction.
+     */
+    List<MessageEntity> findByConversation_IdAndSeqLessThanAndDeletedAtIsNullOrderBySeqAsc(UUID conversationId, int seq);
+
     @Query("SELECT COALESCE(MAX(m.seq), 0) FROM MessageEntity m WHERE m.conversation.id = :cid")
     int findMaxSeqByConversationId(@Param("cid") UUID conversationId);
 
