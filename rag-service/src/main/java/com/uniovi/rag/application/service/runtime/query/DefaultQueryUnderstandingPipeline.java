@@ -130,7 +130,7 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         // 8) Build QueryPlan
         Map<String, String> slots = rewrite.slotFilling();
         return new QueryPlan(
-                QueryPlan.VERSION_P11_QU_CLARIFICATION_CORE_V1,
+                QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1,
                 rawLiteral,
                 effectiveInput,
                 normalized.normalizedText(),

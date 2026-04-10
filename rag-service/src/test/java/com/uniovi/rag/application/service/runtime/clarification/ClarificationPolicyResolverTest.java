@@ -14,6 +14,7 @@ import com.uniovi.rag.domain.runtime.clarification.ClarificationQuestionKind;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
@@ -135,6 +136,15 @@ class ClarificationPolicyResolverTest {
                 Optional.empty(),
                 Optional.empty(),
                 userQuery,
+                userQuery,
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 pendingLoaded,
                 validPendingAtLoad,
                 invalidRecovered,
@@ -154,6 +164,7 @@ class ClarificationPolicyResolverTest {
                 false,
                 true,
                 true,
+                false,
                 false,
                 5,
                 0.2,

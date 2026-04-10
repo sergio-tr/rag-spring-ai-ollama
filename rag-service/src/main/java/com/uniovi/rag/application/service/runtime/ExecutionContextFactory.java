@@ -6,6 +6,7 @@ import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.domain.config.EffectiveModelPolicy;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
+import com.uniovi.rag.application.service.runtime.memory.ConversationMemoryStrategy;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationBootstrap;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStateResolver;
 import com.uniovi.rag.domain.runtime.RagConfig;
@@ -13,6 +14,8 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryExecutionResult;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
@@ -37,6 +40,7 @@ public class ExecutionContextFactory {
     private final ModelCatalogPort modelCatalogPort;
     private final Tracer tracer;
     private final ClarificationStateResolver clarificationStateResolver;
+    private final ConversationMemoryStrategy conversationMemoryStrategy;
 
     public ExecutionContextFactory(
             RuntimeConfigResolutionService runtimeConfigResolutionService,
@@ -44,12 +48,14 @@ public class ExecutionContextFactory {
             ChatScopedRagConfigResolver chatScopedRagConfigResolver,
             ModelCatalogPort modelCatalogPort,
             ClarificationStateResolver clarificationStateResolver,
+            ConversationMemoryStrategy conversationMemoryStrategy,
             @org.springframework.beans.factory.annotation.Autowired(required = false) Tracer tracer) {
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
         this.knowledgeRuntimeSnapshotSelector = knowledgeRuntimeSnapshotSelector;
         this.chatScopedRagConfigResolver = chatScopedRagConfigResolver;
         this.modelCatalogPort = modelCatalogPort;
         this.clarificationStateResolver = clarificationStateResolver;
+        this.conversationMemoryStrategy = conversationMemoryStrategy;
         this.tracer = tracer;
     }
 
@@ -173,7 +179,8 @@ public class ExecutionContextFactory {
         RagConfig rag = resolved.toRagConfig();
         Optional<String> disableReason = clarificationDisableReason(rag, conversationId);
         ClarificationBootstrap boot = clarificationStateResolver.bootstrap(conversationId, uq);
-        return new ExecutionContext(
+        String preMemory = boot.effectivePlanningInputText();
+        ExecutionContext base = new ExecutionContext(
                 userId,
                 projectId,
                 conversationId,
@@ -189,12 +196,60 @@ public class ExecutionContextFactory {
                 chatModelOverride,
                 Optional.empty(),
                 Optional.empty(),
+                preMemory,
                 boot.effectivePlanningInputText(),
+                Optional.empty(),
+                rag.memoryEnabled() && conversationId != null
+                        ? ConversationMemoryOutcome.NO_HISTORY_AVAILABLE
+                        : (conversationId == null ? ConversationMemoryOutcome.NO_CONVERSATION_SCOPE : ConversationMemoryOutcome.DISABLED_BY_CONFIG),
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 boot.pendingClarificationLoadedForTrace(),
                 boot.validPendingExistedAtLoad(),
                 boot.invalidPendingRecoveredThisTurn(),
                 disableReason,
                 originatingUserMessageId);
+
+        ConversationMemoryExecutionResult mem = conversationMemoryStrategy.execute(base, preMemory);
+        boolean attempted =
+                mem.outcome() != ConversationMemoryOutcome.DISABLED_BY_CONFIG
+                        && mem.outcome() != ConversationMemoryOutcome.NO_CONVERSATION_SCOPE;
+        boolean historyLoaded = attempted && (mem.outcome() != ConversationMemoryOutcome.DISABLED_BY_CONFIG);
+        return new ExecutionContext(
+                base.userId(),
+                base.projectId(),
+                base.conversationId(),
+                base.userQuery(),
+                base.operationKind(),
+                base.resolved(),
+                base.effectiveSystemPrompt(),
+                base.knowledgeSnapshotSelection(),
+                base.configHash(),
+                base.pinnedResolvedConfigSnapshotId(),
+                base.correlationId(),
+                base.documentFilter(),
+                base.chatModelOverride(),
+                base.queryPlan(),
+                base.advisorPackedContextSet(),
+                preMemory,
+                mem.finalPlanningInputText(),
+                mem.slice(),
+                mem.outcome(),
+                mem.stageTraces(),
+                attempted,
+                historyLoaded,
+                mem.condensationAttempted(),
+                mem.condensationUsed(),
+                mem.fallbackApplied(),
+                base.pendingClarificationLoadedForTrace(),
+                base.validPendingExistedAtLoad(),
+                base.invalidPendingRecoveredThisTurn(),
+                base.clarificationDisableReason(),
+                base.originatingUserMessageId());
     }
 
     private static Optional<String> clarificationDisableReason(RagConfig rag, UUID conversationId) {
@@ -233,7 +288,16 @@ public class ExecutionContextFactory {
                 ctx.chatModelOverride(),
                 Optional.of(plan),
                 Optional.empty(),
+                ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
+                ctx.memorySlice(),
+                ctx.memoryOutcome(),
+                ctx.memoryStageTraces(),
+                ctx.memoryAttempted(),
+                ctx.memoryHistoryLoaded(),
+                ctx.memoryCondensationAttempted(),
+                ctx.memoryCondensationUsed(),
+                ctx.memoryFallbackApplied(),
                 ctx.pendingClarificationLoadedForTrace(),
                 ctx.validPendingExistedAtLoad(),
                 ctx.invalidPendingRecoveredThisTurn(),
@@ -270,7 +334,16 @@ public class ExecutionContextFactory {
                 ctx.chatModelOverride(),
                 ctx.queryPlan(),
                 Optional.of(packedContextSet),
+                ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
+                ctx.memorySlice(),
+                ctx.memoryOutcome(),
+                ctx.memoryStageTraces(),
+                ctx.memoryAttempted(),
+                ctx.memoryHistoryLoaded(),
+                ctx.memoryCondensationAttempted(),
+                ctx.memoryCondensationUsed(),
+                ctx.memoryFallbackApplied(),
                 ctx.pendingClarificationLoadedForTrace(),
                 ctx.validPendingExistedAtLoad(),
                 ctx.invalidPendingRecoveredThisTurn(),

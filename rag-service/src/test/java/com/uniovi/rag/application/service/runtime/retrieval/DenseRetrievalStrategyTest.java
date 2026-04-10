@@ -50,6 +50,7 @@ class DenseRetrievalStrategyTest {
                 true,
                 false,
                 false,
+                false,
                 5,
                 0.7,
                 "l",

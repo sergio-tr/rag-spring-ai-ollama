@@ -12,6 +12,7 @@ import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPip
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -79,6 +80,7 @@ class CanonicalQueryUsageWorkflowTest {
                 true,
                 false,
                 false,
+                false,
                 5,
                 0.2,
                 "llm",
@@ -121,6 +123,15 @@ class CanonicalQueryUsageWorkflowTest {
                 Optional.of(plan),
                 Optional.empty(),
                 plan.rawUserQuery(),
+                plan.rawUserQuery(),
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,

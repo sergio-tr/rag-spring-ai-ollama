@@ -13,6 +13,7 @@ import com.uniovi.rag.domain.runtime.advisor.AdvisorSuppressionReason;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
@@ -80,6 +81,7 @@ class AdvisorPolicyResolverTest {
                 useRetrieval,
                 useAdvisor,
                 false,
+                false,
                 5,
                 0.2,
                 "l",
@@ -120,6 +122,15 @@ class AdvisorPolicyResolverTest {
                 Optional.of(plan),
                 Optional.empty(),
                 "q",
+                "q",
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,

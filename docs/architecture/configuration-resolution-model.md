@@ -37,6 +37,13 @@ The runtime introduces `QueryUnderstandingPipeline` which consumes `ResolvedRunt
 
 **Clarification gating:** `clarificationEnabled` is part of the materialized `RagConfig` (from `rag.features.clarification-enabled` and optional JSON key `clarificationEnabled` in configuration `values` maps). When false or when no persistable conversation scope exists, the runtime records `DISABLED_BY_CONFIG` on the clarification trace without persisting pending state.
 
+**Memory gating and planning input flow (P12):** `memoryEnabled` is part of the materialized `RagConfig` (from `rag.features.memory-enabled` and optional JSON key `memoryEnabled` in configuration `values` maps). When enabled and a persistable `conversation_id` exists, the runtime executes a bounded memory stage after P11 clarification pre-processing and before QU:
+
+- `ExecutionContext.userQuery` remains the literal latest user turn (trace-only).
+- `ExecutionContext.preMemoryPlanningInputText` is the clarification-refined planning input (after pending clarification merge, before memory).
+- Memory selects a fixed recent history slice and executes at most one LLM-backed condensation call; on failure it deterministically falls back to `preMemoryPlanningInputText`.
+- `ExecutionContext.effectivePlanningInputText` becomes the final memory-aware planning input and is the **only** text normalized by QU.
+
 **Layers of `effective system prompt` (all four are mandatory concepts):**
 
 1. `base system prompt` — platform-wide baseline.

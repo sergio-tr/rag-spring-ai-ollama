@@ -30,6 +30,8 @@ public class RagFeatureConfiguration {
     private boolean useAdvisor = true;
     /** P11 clarification loop core (default off). */
     private boolean clarificationEnabled;
+    /** P12 conversational memory stage (default off). */
+    private boolean memoryEnabled;
 
     public boolean isExpansionEnabled() { return expansionEnabled; }
     public void setExpansionEnabled(boolean expansionEnabled) { this.expansionEnabled = expansionEnabled; }
@@ -69,6 +71,14 @@ public class RagFeatureConfiguration {
         this.clarificationEnabled = clarificationEnabled;
     }
 
+    public boolean isMemoryEnabled() {
+        return memoryEnabled;
+    }
+
+    public void setMemoryEnabled(boolean memoryEnabled) {
+        this.memoryEnabled = memoryEnabled;
+    }
+
     public Map<String, Boolean> getConfiguration() {
         Map<String, Boolean> config = new HashMap<>();
         config.put("expansion", expansionEnabled);
@@ -82,6 +92,7 @@ public class RagFeatureConfiguration {
         config.put("use-retrieval", useRetrieval);
         config.put("use-advisor", useAdvisor);
         config.put("clarification", clarificationEnabled);
+        config.put("memory", memoryEnabled);
         return config;
     }
 }

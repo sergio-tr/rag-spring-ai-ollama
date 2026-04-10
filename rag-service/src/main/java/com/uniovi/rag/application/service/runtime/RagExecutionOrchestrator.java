@@ -79,6 +79,7 @@ public class RagExecutionOrchestrator {
 
     public RagExecutionResult execute(ExecutionContext ctx) {
         List<ExecutionStageTrace> clarifyBeforeQu = buildClarificationPreQuStages(ctx);
+        List<ExecutionStageTrace> memoryBeforeQu = List.copyOf(ctx.memoryStageTraces());
         long quStart = System.nanoTime();
         QueryPlan plan = queryUnderstandingPipeline.buildPlan(ctx);
         ExecutionContext withPlan = executionContextFactory.attachQueryPlan(ctx, plan);
@@ -103,6 +104,7 @@ public class RagExecutionOrchestrator {
             return finishClarificationAskShortCircuit(
                     withPlan,
                     clarifyBeforeQu,
+                    memoryBeforeQu,
                     quStages,
                     clarifyAfterQu,
                     cr,
@@ -148,6 +150,7 @@ public class RagExecutionOrchestrator {
                             partial,
                             wname,
                             clarifyBeforeQu,
+                            memoryBeforeQu,
                             quStages,
                             clarifyAfterQu,
                             toolStages,
@@ -192,6 +195,7 @@ public class RagExecutionOrchestrator {
                             partial,
                             wname,
                             clarifyBeforeQu,
+                            memoryBeforeQu,
                             quStages,
                             clarifyAfterQu,
                             toolStages,
@@ -218,6 +222,7 @@ public class RagExecutionOrchestrator {
                             partial,
                             wname,
                             clarifyBeforeQu,
+                            memoryBeforeQu,
                             quStages,
                             clarifyAfterQu,
                             toolStages,
@@ -238,6 +243,7 @@ public class RagExecutionOrchestrator {
     private RagExecutionResult finishClarificationAskShortCircuit(
             ExecutionContext withPlan,
             List<ExecutionStageTrace> clarifyBeforeQu,
+            List<ExecutionStageTrace> memoryBeforeQu,
             List<ExecutionStageTrace> quStages,
             List<ExecutionStageTrace> clarifyAfterQu,
             ClarificationExecutionResult cr,
@@ -264,6 +270,7 @@ public class RagExecutionOrchestrator {
                         partial,
                         "clarification",
                         clarifyBeforeQu,
+                        memoryBeforeQu,
                         quStages,
                         clarifyAfterQu,
                         toolStages,
@@ -481,6 +488,7 @@ public class RagExecutionOrchestrator {
             RagExecutionResult partial,
             String workflowName,
             List<ExecutionStageTrace> clarificationStagesBeforeQu,
+            List<ExecutionStageTrace> memoryStagesBeforeQu,
             List<ExecutionStageTrace> quStages,
             List<ExecutionStageTrace> clarificationStagesAfterQu,
             List<ExecutionStageTrace> toolStages,
@@ -494,6 +502,7 @@ public class RagExecutionOrchestrator {
             ClarificationDecision clarificationDecision) {
         List<ExecutionStageTrace> all = new ArrayList<>();
         all.addAll(clarificationStagesBeforeQu);
+        all.addAll(memoryStagesBeforeQu);
         all.addAll(quStages);
         all.addAll(clarificationStagesAfterQu);
         all.addAll(toolStages);
@@ -520,6 +529,12 @@ public class RagExecutionOrchestrator {
                 qp != null ? qp.expectedAnswerShape().name() : "",
                 qp != null ? qp.ambiguityAssessment().status().name() : "",
                 ctx.resolved().compatibility().severity().name(),
+                ctx.memoryAttempted(),
+                ctx.memoryOutcome().name(),
+                ctx.memoryHistoryLoaded(),
+                ctx.memoryCondensationAttempted(),
+                ctx.memoryCondensationUsed(),
+                ctx.memoryFallbackApplied(),
                 toolOutcome,
                 toolKind,
                 toolDetail,

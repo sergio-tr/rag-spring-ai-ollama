@@ -13,6 +13,7 @@ import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -39,6 +40,7 @@ class WorkflowSelectorTest {
                 false,
                 false,
                 useRetrieval,
+                false,
                 false,
                 false,
                 5,
@@ -81,6 +83,15 @@ class WorkflowSelectorTest {
                 Optional.empty(),
                 Optional.empty(),
                 "q",
+                "q",
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,
@@ -172,6 +183,7 @@ class WorkflowSelectorTest {
                 false,
                 true,
                 false,
+                false,
                 5,
                 0.2,
                 "l",
@@ -197,6 +209,7 @@ class WorkflowSelectorTest {
                 false,
                 true,
                 useAdvisor,
+                false,
                 false,
                 5,
                 0.2,

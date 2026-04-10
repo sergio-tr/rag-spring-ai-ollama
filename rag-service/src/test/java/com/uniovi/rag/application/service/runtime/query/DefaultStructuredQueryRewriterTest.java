@@ -12,6 +12,7 @@ import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.NormalizedQuery;
@@ -43,6 +44,7 @@ class DefaultStructuredQueryRewriterTest {
                 false,
                 false,
                 true,
+                false,
                 false,
                 false,
                 5,
@@ -82,6 +84,15 @@ class DefaultStructuredQueryRewriterTest {
                 Optional.empty(),
                 Optional.empty(),
                 "raw",
+                "raw",
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,

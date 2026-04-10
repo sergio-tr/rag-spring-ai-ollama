@@ -23,6 +23,12 @@ public record ExecutionTrace(
         String expectedAnswerShape,
         String ambiguityStatus,
         String compatibilitySeverity,
+        boolean memoryAttempted,
+        String memoryOutcome,
+        boolean memoryHistoryLoaded,
+        boolean memoryCondensationAttempted,
+        boolean memoryCondensationUsed,
+        boolean memoryFallbackApplied,
         String deterministicToolOutcome,
         String deterministicToolKind,
         String deterministicToolDetail,
@@ -54,6 +60,7 @@ public record ExecutionTrace(
         expectedAnswerShape = expectedAnswerShape == null ? "" : expectedAnswerShape;
         ambiguityStatus = ambiguityStatus == null ? "" : ambiguityStatus;
         compatibilitySeverity = compatibilitySeverity == null ? "" : compatibilitySeverity;
+        memoryOutcome = memoryOutcome == null ? "" : memoryOutcome;
         deterministicToolOutcome = deterministicToolOutcome == null ? "" : deterministicToolOutcome;
         deterministicToolKind = deterministicToolKind == null ? "" : deterministicToolKind;
         deterministicToolDetail = deterministicToolDetail == null ? "" : deterministicToolDetail;
@@ -80,6 +87,12 @@ public record ExecutionTrace(
                 "",
                 "",
                 "",
+                false,
+                "",
+                false,
+                false,
+                false,
+                false,
                 "",
                 "",
                 "",

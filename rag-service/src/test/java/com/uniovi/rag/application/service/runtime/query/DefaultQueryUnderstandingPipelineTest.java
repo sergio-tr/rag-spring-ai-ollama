@@ -12,6 +12,7 @@ import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
@@ -58,6 +59,15 @@ class DefaultQueryUnderstandingPipelineTest {
                 Optional.empty(),
                 Optional.empty(),
                 q,
+                q,
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,
@@ -78,6 +88,7 @@ class DefaultQueryUnderstandingPipelineTest {
                 false,
                 false,
                 true,
+                false,
                 false,
                 false,
                 5,
@@ -124,7 +135,7 @@ class DefaultQueryUnderstandingPipelineTest {
 
         QueryPlan plan = pipeline.buildPlan(ctx(rag, "  list   all  items "));
 
-        assertEquals(QueryPlan.VERSION_P11_QU_CLARIFICATION_CORE_V1, plan.queryPlanVersion());
+        assertEquals(QueryPlan.VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1, plan.queryPlanVersion());
         assertEquals("  list   all  items ", plan.rawUserQuery());
         assertEquals("list all items", plan.normalizedQueryText());
         assertEquals("list all items", plan.rewrittenQueryText());
@@ -154,6 +165,7 @@ class DefaultQueryUnderstandingPipelineTest {
                 false,
                 false,
                 true,
+                false,
                 false,
                 false,
                 5,

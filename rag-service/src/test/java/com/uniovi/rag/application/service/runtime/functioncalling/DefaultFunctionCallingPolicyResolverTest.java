@@ -12,6 +12,7 @@ import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.*;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import org.junit.jupiter.api.Test;
@@ -55,6 +56,15 @@ class DefaultFunctionCallingPolicyResolverTest {
                 Optional.empty(),
                 Optional.empty(),
                 "q",
+                "q",
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,
@@ -72,6 +82,7 @@ class DefaultFunctionCallingPolicyResolverTest {
                 false,
                 false,
                 true,
+                false,
                 false,
                 false,
                 false,

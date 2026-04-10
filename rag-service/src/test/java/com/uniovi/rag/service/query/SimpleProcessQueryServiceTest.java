@@ -16,6 +16,7 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,7 @@ class SimpleProcessQueryServiceTest {
     private static ResolvedRuntimeConfig minimalResolved() {
         RagConfig rag =
                 new RagConfig(
+                false,
                 false,
                 false,
                 false,
@@ -98,6 +100,15 @@ class SimpleProcessQueryServiceTest {
                 Optional.empty(),
                 Optional.empty(),
                 "q",
+                "q",
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,

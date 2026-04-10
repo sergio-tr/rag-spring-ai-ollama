@@ -40,6 +40,7 @@ class ChatRetrievalSourceContributorTest {
                 true,
                 false,
                 false,
+                false,
                 5,
                 0.2,
                 "llm",

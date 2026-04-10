@@ -17,6 +17,7 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import org.junit.jupiter.api.BeforeEach;
@@ -92,6 +93,15 @@ class ProcessQueryServiceTest {
                 Optional.empty(),
                 Optional.empty(),
                 "hello",
+                "hello",
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,
@@ -161,6 +171,7 @@ class ProcessQueryServiceTest {
                 true,
                 false,
                 false,
+                false,
                 5,
                 0.2,
                 "llm",
@@ -189,6 +200,15 @@ class ProcessQueryServiceTest {
                 Optional.empty(),
                 Optional.empty(),
                 "q",
+                "q",
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,

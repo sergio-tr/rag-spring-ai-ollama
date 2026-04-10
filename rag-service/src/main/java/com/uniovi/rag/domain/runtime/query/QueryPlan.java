@@ -31,6 +31,7 @@ public record QueryPlan(
 
     public static final String VERSION_P6_QU_CORE_V1 = "P6_QU_CORE_V1";
     public static final String VERSION_P11_QU_CLARIFICATION_CORE_V1 = "P11_QU_CLARIFICATION_CORE_V1";
+    public static final String VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1 = "P12_MEMORY_CONVERSATIONAL_FLOW_V1";
 
     public QueryPlan {
         queryPlanVersion = Objects.requireNonNull(queryPlanVersion, "queryPlanVersion");
@@ -54,7 +55,8 @@ public record QueryPlan(
         classifierModelIdUsed = Objects.requireNonNull(classifierModelIdUsed, "classifierModelIdUsed");
         pipelineNotes = List.copyOf(Objects.requireNonNull(pipelineNotes, "pipelineNotes"));
 
-        if (!VERSION_P11_QU_CLARIFICATION_CORE_V1.equals(queryPlanVersion)
+        if (!VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1.equals(queryPlanVersion)
+                && !VERSION_P11_QU_CLARIFICATION_CORE_V1.equals(queryPlanVersion)
                 && !VERSION_P6_QU_CORE_V1.equals(queryPlanVersion)) {
             throw new IllegalArgumentException("Unsupported queryPlanVersion: " + queryPlanVersion);
         }

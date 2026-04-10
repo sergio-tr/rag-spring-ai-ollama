@@ -12,6 +12,7 @@ import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
@@ -142,6 +143,15 @@ class AdvancedRetrievalPipelineTest {
                 Optional.empty(),
                 Optional.empty(),
                 "u",
+                "u",
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
                 false,
                 false,
                 false,
@@ -160,6 +170,7 @@ class AdvancedRetrievalPipelineTest {
                 false,
                 false,
                 true,
+                false,
                 false,
                 false,
                 5,
