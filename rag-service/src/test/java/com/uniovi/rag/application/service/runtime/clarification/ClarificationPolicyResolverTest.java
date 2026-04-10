@@ -149,7 +149,14 @@ class ClarificationPolicyResolverTest {
                 validPendingAtLoad,
                 invalidRecovered,
                 disableReason,
-                Optional.empty());
+                Optional.empty(),
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
     }
 
     private static RagConfig rag() {
@@ -164,6 +171,7 @@ class ClarificationPolicyResolverTest {
                 false,
                 true,
                 true,
+                false,
                 false,
                 false,
                 5,

@@ -29,6 +29,12 @@ public record ExecutionTrace(
         boolean memoryCondensationAttempted,
         boolean memoryCondensationUsed,
         boolean memoryFallbackApplied,
+        boolean routingAttempted,
+        String routingOutcome,
+        String routingRouteKind,
+        boolean routingFallbackApplied,
+        String routingFallbackRouteKind,
+        boolean routingWorkflowSelectorInvoked,
         String deterministicToolOutcome,
         String deterministicToolKind,
         String deterministicToolDetail,
@@ -61,6 +67,9 @@ public record ExecutionTrace(
         ambiguityStatus = ambiguityStatus == null ? "" : ambiguityStatus;
         compatibilitySeverity = compatibilitySeverity == null ? "" : compatibilitySeverity;
         memoryOutcome = memoryOutcome == null ? "" : memoryOutcome;
+        routingOutcome = routingOutcome == null ? "" : routingOutcome;
+        routingRouteKind = routingRouteKind == null ? "" : routingRouteKind;
+        routingFallbackRouteKind = routingFallbackRouteKind == null ? "" : routingFallbackRouteKind;
         deterministicToolOutcome = deterministicToolOutcome == null ? "" : deterministicToolOutcome;
         deterministicToolKind = deterministicToolKind == null ? "" : deterministicToolKind;
         deterministicToolDetail = deterministicToolDetail == null ? "" : deterministicToolDetail;
@@ -92,6 +101,12 @@ public record ExecutionTrace(
                 false,
                 false,
                 false,
+                false,
+                false,
+                "",
+                "",
+                false,
+                "",
                 false,
                 "",
                 "",

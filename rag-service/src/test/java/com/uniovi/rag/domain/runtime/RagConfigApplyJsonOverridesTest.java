@@ -25,6 +25,7 @@ class RagConfigApplyJsonOverridesTest {
                 true,
                 false,
                 false,
+                false,
                 10,
                 0.35,
                 "llm-main",

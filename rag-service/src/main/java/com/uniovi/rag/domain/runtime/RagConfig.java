@@ -26,6 +26,8 @@ public record RagConfig(
         boolean clarificationEnabled,
         /** P12: bounded conversational memory stage (runtime-owned, default off). */
         boolean memoryEnabled,
+        /** P13: deterministic adaptive routing stage (runtime-owned, default off). */
+        boolean adaptiveRoutingEnabled,
         int topK,
         double similarityThreshold,
         String llmModel,
@@ -45,6 +47,60 @@ public record RagConfig(
 
     public static final int DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS = 24_000;
     public static final int DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS = 24_000;
+
+    /**
+     * Backwards-compatible constructor for call sites that predate P13.
+     * Defaults {@code adaptiveRoutingEnabled=false}.
+     */
+    public RagConfig(
+            boolean expansionEnabled,
+            boolean nerEnabled,
+            boolean toolsEnabled,
+            boolean metadataEnabled,
+            boolean reasoningEnabled,
+            boolean rankerEnabled,
+            boolean postRetrievalEnabled,
+            boolean functionCallingEnabled,
+            boolean useRetrieval,
+            boolean useAdvisor,
+            boolean clarificationEnabled,
+            boolean memoryEnabled,
+            int topK,
+            double similarityThreshold,
+            String llmModel,
+            String embeddingModel,
+            String classifierModelId,
+            String reasoningStrategy,
+            boolean naiveFullCorpusInPromptEnabled,
+            int naiveFullCorpusMaxChars,
+            int advancedRetrievalMaxContextChars,
+            MaterializationStrategy materializationStrategy
+    ) {
+        this(
+                expansionEnabled,
+                nerEnabled,
+                toolsEnabled,
+                metadataEnabled,
+                reasoningEnabled,
+                rankerEnabled,
+                postRetrievalEnabled,
+                functionCallingEnabled,
+                useRetrieval,
+                useAdvisor,
+                clarificationEnabled,
+                memoryEnabled,
+                false,
+                topK,
+                similarityThreshold,
+                llmModel,
+                embeddingModel,
+                classifierModelId,
+                reasoningStrategy,
+                naiveFullCorpusInPromptEnabled,
+                naiveFullCorpusMaxChars,
+                advancedRetrievalMaxContextChars,
+                materializationStrategy);
+    }
 
     public static RagConfig fromFeatureConfiguration(
             RagFeatureConfiguration features,
@@ -67,6 +123,7 @@ public record RagConfig(
                 features.isUseAdvisor(),
                 features.isClarificationEnabled(),
                 features.isMemoryEnabled(),
+                features.isAdaptiveRoutingEnabled(),
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -105,6 +162,7 @@ public record RagConfig(
                 readBool(json, "useAdvisor", base.useAdvisor),
                 readBool(json, "clarificationEnabled", base.clarificationEnabled),
                 readBool(json, "memoryEnabled", base.memoryEnabled),
+                readBool(json, "adaptiveRoutingEnabled", base.adaptiveRoutingEnabled),
                 readInt(json, "topK", base.topK),
                 readDouble(json, "similarityThreshold", base.similarityThreshold),
                 readText(json, "llmModel", base.llmModel),
@@ -162,6 +220,7 @@ public record RagConfig(
         m.put("useAdvisor", useAdvisor);
         m.put("clarificationEnabled", clarificationEnabled);
         m.put("memoryEnabled", memoryEnabled);
+        m.put("adaptiveRoutingEnabled", adaptiveRoutingEnabled);
         m.put("topK", topK);
         m.put("similarityThreshold", similarityThreshold);
         m.put("llmModel", llmModel);

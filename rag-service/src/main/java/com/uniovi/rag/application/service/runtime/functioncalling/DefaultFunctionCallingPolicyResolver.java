@@ -26,7 +26,7 @@ import java.util.Optional;
 public class DefaultFunctionCallingPolicyResolver implements FunctionCallingPolicyResolver {
 
     @Override
-    public Optional<FunctionCallingDecision> resolve(ExecutionContext ctx, QueryPlan plan, String workflowName) {
+    public Optional<FunctionCallingDecision> resolve(ExecutionContext ctx, QueryPlan plan) {
         RagConfig rag = ctx.resolved().toRagConfig();
         if (!rag.functionCallingEnabled()) {
             throw new IllegalStateException("FunctionCallingPolicyResolver must run only when functionCallingEnabled is true");

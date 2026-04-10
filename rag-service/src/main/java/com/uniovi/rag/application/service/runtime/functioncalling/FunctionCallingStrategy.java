@@ -12,5 +12,5 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 public interface FunctionCallingStrategy {
 
     FunctionCallingExecutionResult tryExecute(
-            ExecutionContext ctx, QueryPlan plan, String workflowName, FunctionCallingDecision decision);
+            ExecutionContext ctx, QueryPlan plan, FunctionCallingDecision decision);
 }

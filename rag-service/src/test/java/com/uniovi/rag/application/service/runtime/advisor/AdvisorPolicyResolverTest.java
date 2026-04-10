@@ -38,15 +38,15 @@ class AdvisorPolicyResolverTest {
     @Test
     void disabled_when_useAdvisor_false() {
         QueryPlan p = plan(AmbiguityStatus.SUFFICIENT);
-        AdvisorDecision d = resolver.resolve(ctx(rag(false, true), p), p, "ChunkDenseRagWorkflow");
+        AdvisorDecision d = resolver.resolve(ctx(rag(false, true), p), p);
         assertFalse(d.selected());
         assertEquals(AdvisorSuppressionReason.DISABLED_BY_CONFIG, d.suppressionReason().orElseThrow());
     }
 
     @Test
-    void suppressed_when_workflow_not_dense() {
+    void suppressed_when_useRetrieval_false() {
         QueryPlan p = plan(AmbiguityStatus.SUFFICIENT);
-        AdvisorDecision d = resolver.resolve(ctx(rag(true, true), p), p, "DirectLlmWorkflow");
+        AdvisorDecision d = resolver.resolve(ctx(rag(true, false), p), p);
         assertFalse(d.selected());
         assertEquals(AdvisorSuppressionReason.WORKFLOW_NOT_SUPPORTED, d.suppressionReason().orElseThrow());
     }
@@ -54,7 +54,7 @@ class AdvisorPolicyResolverTest {
     @Test
     void suppressed_when_ambiguity_insufficient() {
         QueryPlan p = plan(AmbiguityStatus.MISSING_INFORMATION);
-        AdvisorDecision d = resolver.resolve(ctx(rag(true, true), p), p, "ChunkDenseRagWorkflow");
+        AdvisorDecision d = resolver.resolve(ctx(rag(true, true), p), p);
         assertFalse(d.selected());
         assertEquals(AdvisorSuppressionReason.SUPPRESSED_BY_AMBIGUITY, d.suppressionReason().orElseThrow());
     }
@@ -62,7 +62,7 @@ class AdvisorPolicyResolverTest {
     @Test
     void selected_when_dense_and_gates_ok() {
         QueryPlan p = plan(AmbiguityStatus.SUFFICIENT);
-        AdvisorDecision d = resolver.resolve(ctx(rag(true, true), p), p, "ChunkDenseRagWorkflow");
+        AdvisorDecision d = resolver.resolve(ctx(rag(true, true), p), p);
         assertTrue(d.selected());
         assertEquals(AdvisorDecision.EXECUTABLE_KINDS_5_2, d.executableKinds());
         assertTrue(d.suppressionReason().isEmpty());
@@ -80,6 +80,7 @@ class AdvisorPolicyResolverTest {
                 false,
                 useRetrieval,
                 useAdvisor,
+                false,
                 false,
                 false,
                 5,
@@ -135,7 +136,14 @@ class AdvisorPolicyResolverTest {
                 false,
                 false,
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
     }
 
     private static QueryPlan plan(AmbiguityStatus amb) {

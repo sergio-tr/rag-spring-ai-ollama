@@ -131,6 +131,7 @@ class DenseWorkflowAdvisorPackedContextTest {
                 true,
                 false,
                 false,
+                false,
                 5,
                 0.2,
                 "llm",
@@ -186,6 +187,13 @@ class DenseWorkflowAdvisorPackedContextTest {
                 false,
                 false,
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
     }
 }

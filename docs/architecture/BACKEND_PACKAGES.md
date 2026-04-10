@@ -38,6 +38,7 @@
 | `application.service.runtime.query` | Runtime query understanding: `QueryUnderstandingPipeline` and adapters/resolvers producing `QueryPlan` |
 | `application.service.runtime.clarification` | **P11:** `ClarificationStateResolver`, `ClarifiedQueryRefiner`, `ClarificationPolicyResolver`, `ClarificationQuestionGenerator`, `ClarificationStrategy` (sole mutator caller for `PendingClarificationStore`); deterministic policy + templates; runs after QU, before `WorkflowSelector` |
 | `application.service.runtime.memory` | **P12:** runtime-owned conversational memory stage: history loader, fixed slice selector, LLM-backed single-call condensation with deterministic fallback; runs after P11 clarification pre-processing and before QU |
+| `application.service.runtime.routing` | **P13:** adaptive routing stage: deterministic route-family selection (`AdaptiveRoutingPolicyResolver`) + single entrypoint (`AdaptiveRoutingStrategy`) + capability evaluator + gate builder; runs after clarification policy and before any downstream execution family |
 | `application.service.runtime.tool` | Deterministic tools: `DeterministicToolStrategy` (sole entrypoint), resolver, executor, result mapper, `MeetingMinutesToolExecutionCore` (shared tool business execution) — invoked only from `RagExecutionOrchestrator` for P7 |
 | `application.service.runtime.functioncalling` | P9 function calling: `FunctionCallingStrategy`, `FunctionCallingPolicyResolver`, `FunctionCallingToolRegistry`, `FunctionCallingExecutor`, `FunctionCallingResultMapper` — FC execution only from `RagExecutionOrchestrator` |
 | `domain.runtime.engine` | `ExecutionContext`, `RagExecutionResult`, `ExecutionTrace`, snapshot selection records |
@@ -46,6 +47,7 @@
 | `domain.runtime.query` | Query understanding domain: `QueryPlan`, normalization/entities/rewrite results, intent/shape/ambiguity enums |
 | `domain.runtime.clarification` | **P11:** `ClarificationOutcome`, `ClarificationQuestionKind`, `PendingClarificationState`, `ClarificationQuestion`, `ClarificationDecision`, `ClarificationExecutionResult` |
 | `domain.runtime.memory` | **P12:** memory domain: mode/outcome/decision, history turn/slice, memory execution result and trace fragments |
+| `domain.runtime.routing` | **P13:** routing domain: `AdaptiveRouteKind`, `AdaptiveRoutingOutcome`, `AdaptiveRoutingDecision`, `RouteExecutionGate`, `AdaptiveRoutingExecutionResult` |
 | `domain.runtime.tool` | Deterministic tool domain: `DeterministicToolKind`, `DeterministicToolDecision`, `DeterministicToolExecutionResult`, outcomes |
 | `domain.runtime.functioncalling` | P9 FC domain: `FunctionCallingMode`, `FunctionCallingOutcome`, `FunctionCallingDecision`, `FunctionCallingExecutionResult` |
 | `service.query.pipeline` | Preparation, synthesis, answer kernel (legacy; deterministic tools are not routed here) |

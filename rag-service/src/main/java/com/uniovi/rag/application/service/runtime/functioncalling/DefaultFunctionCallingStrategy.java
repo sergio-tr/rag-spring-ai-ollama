@@ -22,7 +22,7 @@ public class DefaultFunctionCallingStrategy implements FunctionCallingStrategy {
 
     @Override
     public FunctionCallingExecutionResult tryExecute(
-            ExecutionContext ctx, QueryPlan plan, String workflowName, FunctionCallingDecision decision) {
+            ExecutionContext ctx, QueryPlan plan, FunctionCallingDecision decision) {
         List<ExecutionStageTrace> stages = new ArrayList<>();
         stages.add(
                 new ExecutionStageTrace(

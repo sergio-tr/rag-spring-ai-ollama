@@ -7,6 +7,7 @@ import com.uniovi.rag.application.service.runtime.clarification.ClarificationStr
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -53,6 +54,7 @@ class RagExecutionOrchestratorMemoryTest {
         AdvisorStrategy advisorStrategy = mock(AdvisorStrategy.class);
         ClarificationPolicyResolver clarificationPolicy = mock(ClarificationPolicyResolver.class);
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
+        AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
 
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
@@ -65,7 +67,8 @@ class RagExecutionOrchestratorMemoryTest {
                         advisorPolicy,
                         advisorStrategy,
                         clarificationPolicy,
-                        clarificationStrategy);
+                        clarificationStrategy,
+                        routingStrategy);
 
         ExecutionStageTrace mem1 =
                 new ExecutionStageTrace(
@@ -105,9 +108,9 @@ class RagExecutionOrchestratorMemoryTest {
         when(wf.execute(any())).thenReturn(RagExecutionResult.withPlaceholderTrace("a", "DirectLlmWorkflow",
                 false, false, List.of(), "none", List.of()));
 
-        when(tools.tryExecute(any(), any(), any())).thenReturn(
+        when(tools.tryExecute(any(), any())).thenReturn(
                 DeterministicToolExecutionResult.skipped(DeterministicToolOutcome.NOT_ATTEMPTED, List.of(), Optional.empty()));
-        when(fcPolicy.resolve(any(), any(), any()))
+        when(fcPolicy.resolve(any(), any()))
                 .thenReturn(Optional.of(new com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingDecision(
                         com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingMode.DISABLED,
                         com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome.DISABLED_BY_CONFIG,
@@ -117,7 +120,7 @@ class RagExecutionOrchestratorMemoryTest {
                         Optional.of("disabled"),
                         "",
                         java.util.Map.of())));
-        when(advisorPolicy.resolve(any(), any(), any()))
+        when(advisorPolicy.resolve(any(), any()))
                 .thenReturn(new com.uniovi.rag.domain.runtime.advisor.AdvisorDecision(
                         com.uniovi.rag.domain.runtime.advisor.AdvisorMode.DISABLED, false, List.of(), "", List.of(), Optional.empty()));
         when(advisorStrategy.execute(any(), any(), any(), any()))
@@ -147,6 +150,7 @@ class RagExecutionOrchestratorMemoryTest {
                         false,
                         false,
                         true,
+                        false,
                         false,
                         false,
                         false,
@@ -207,7 +211,14 @@ class RagExecutionOrchestratorMemoryTest {
                 false,
                 false,
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
     }
 }
 

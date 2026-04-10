@@ -10,5 +10,5 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
  */
 public interface DeterministicToolStrategy {
 
-    DeterministicToolExecutionResult tryExecute(ExecutionContext ctx, QueryPlan plan, String workflowName);
+    DeterministicToolExecutionResult tryExecute(ExecutionContext ctx, QueryPlan plan);
 }

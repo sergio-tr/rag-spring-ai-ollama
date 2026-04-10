@@ -94,7 +94,14 @@ class ClarificationStrategyTest {
                         false,
                         false,
                         Optional.empty(),
-                        Optional.of(msg));
+                        Optional.of(msg),
+                        false,
+                        com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                        com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                        false,
+                        Optional.empty(),
+                        false,
+                        List.of());
         QueryPlan plan =
                 new QueryPlan(
                         QueryPlan.VERSION_P11_QU_CLARIFICATION_CORE_V1,
@@ -148,6 +155,7 @@ class ClarificationStrategyTest {
                 false,
                 true,
                 true,
+                false,
                 false,
                 false,
                 5,

@@ -97,7 +97,14 @@ class ConversationMemoryPolicyResolverTest {
                 false,
                 false,
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
     }
 
     private static RagConfig rag(boolean memoryEnabled) {
@@ -114,6 +121,7 @@ class ConversationMemoryPolicyResolverTest {
                 false,
                 false,
                 memoryEnabled,
+                false,
                 5,
                 0.2,
                 "l",

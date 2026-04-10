@@ -8,6 +8,7 @@ import com.uniovi.rag.application.service.runtime.clarification.ClarificationStr
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.application.port.PendingClarificationStore;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
@@ -64,6 +65,7 @@ class RagExecutionOrchestratorClarificationTest {
         FunctionCallingStrategy fcStrategy = mock(FunctionCallingStrategy.class);
         AdvisorPolicyResolver advisorPolicy = mock(AdvisorPolicyResolver.class);
         AdvisorStrategy advisorStrategy = mock(AdvisorStrategy.class);
+        AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
 
         PendingClarificationStore pendingStore = mock(PendingClarificationStore.class);
         ClarificationStrategy clarificationStrategy = new ClarificationStrategy(pendingStore);
@@ -84,7 +86,8 @@ class RagExecutionOrchestratorClarificationTest {
                         advisorPolicy,
                         advisorStrategy,
                         clarificationPolicyResolver,
-                        clarificationStrategy);
+                        clarificationStrategy,
+                        routingStrategy);
 
         var out = orchestrator.execute(in);
 
@@ -95,10 +98,10 @@ class RagExecutionOrchestratorClarificationTest {
 
         verify(qu).buildPlan(in);
         verify(workflowSelector, never()).select(any());
-        verify(tools, never()).tryExecute(any(), any(), any());
-        verify(fcPolicy, never()).resolve(any(), any(), any());
-        verify(fcStrategy, never()).tryExecute(any(), any(), any(), any());
-        verify(advisorPolicy, never()).resolve(any(), any(), any());
+        verify(tools, never()).tryExecute(any(), any());
+        verify(fcPolicy, never()).resolve(any(), any());
+        verify(fcStrategy, never()).tryExecute(any(), any(), any());
+        verify(advisorPolicy, never()).resolve(any(), any());
         verify(advisorStrategy, never()).execute(any(), any(), any(), any());
         verify(pendingStore).saveReplace(any(), any());
     }
@@ -150,7 +153,14 @@ class RagExecutionOrchestratorClarificationTest {
                         true,
                         false,
                         Optional.empty(),
-                        Optional.empty());
+                        Optional.empty(),
+                        false,
+                        com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                        com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                        false,
+                        Optional.empty(),
+                        false,
+                        List.of());
 
         QueryPlan plan =
                 new QueryPlan(
@@ -184,6 +194,7 @@ class RagExecutionOrchestratorClarificationTest {
         AdvisorStrategy advisorStrategy = mock(AdvisorStrategy.class);
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
+        AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
 
         when(clarificationPolicyResolver.resolve(any(), any()))
                 .thenReturn(
@@ -200,13 +211,13 @@ class RagExecutionOrchestratorClarificationTest {
                         com.uniovi.rag.domain.runtime.engine.RagExecutionResult.withPlaceholderTrace(
                                 "ok", "DirectLlmWorkflow", false, false, List.of(), "none", List.of()));
         when(workflowSelector.select(any())).thenReturn(wf);
-        when(tools.tryExecute(any(), any(), any()))
+        when(tools.tryExecute(any(), any()))
                 .thenReturn(
                         com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult.skipped(
                                 com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome.NOT_APPLICABLE,
                                 List.of(),
                                 Optional.empty()));
-        when(advisorPolicy.resolve(any(), any(), any()))
+        when(advisorPolicy.resolve(any(), any()))
                 .thenReturn(
                         new AdvisorDecision(
                                 AdvisorMode.ENABLED, false, List.of(), "", List.of(), Optional.empty()));
@@ -222,7 +233,8 @@ class RagExecutionOrchestratorClarificationTest {
                         advisorPolicy,
                         advisorStrategy,
                         clarificationPolicyResolver,
-                        clarificationStrategy);
+                        clarificationStrategy,
+                        routingStrategy);
 
         orchestrator.execute(merged);
 
@@ -243,6 +255,7 @@ class RagExecutionOrchestratorClarificationTest {
                 true,
                 true,
                 true,
+                false,
                 false,
                 5,
                 0.2,
@@ -298,7 +311,14 @@ class RagExecutionOrchestratorClarificationTest {
                 false,
                 false,
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
     }
 
     private static ExecutionContext withPlan(ExecutionContext ctx, QueryPlan plan) {
@@ -332,7 +352,14 @@ class RagExecutionOrchestratorClarificationTest {
                 ctx.validPendingExistedAtLoad(),
                 ctx.invalidPendingRecoveredThisTurn(),
                 ctx.clarificationDisableReason(),
-                ctx.originatingUserMessageId());
+                ctx.originatingUserMessageId(),
+                ctx.routingAttempted(),
+                ctx.routingOutcome(),
+                ctx.routingRouteKind(),
+                ctx.routingFallbackApplied(),
+                ctx.routingFallbackRouteKind(),
+                ctx.routingWorkflowSelectorInvoked(),
+                ctx.routingStageTraces());
     }
 
     private static QueryPlan planMissingDate() {

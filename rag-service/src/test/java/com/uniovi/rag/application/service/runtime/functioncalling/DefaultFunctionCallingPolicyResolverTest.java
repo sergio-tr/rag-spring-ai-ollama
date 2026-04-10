@@ -69,7 +69,14 @@ class DefaultFunctionCallingPolicyResolverTest {
                 false,
                 false,
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
     }
 
     private static RagConfig fcEnabled() {
@@ -82,6 +89,7 @@ class DefaultFunctionCallingPolicyResolverTest {
                 false,
                 false,
                 true,
+                false,
                 false,
                 false,
                 false,
@@ -176,14 +184,14 @@ class DefaultFunctionCallingPolicyResolverTest {
 
     @Test
     void exposesCountWhenIntentCount() {
-        var d = resolver.resolve(ctx(fcEnabled()), countPlan(), "DirectLlmWorkflow");
+        var d = resolver.resolve(ctx(fcEnabled()), countPlan());
         assertTrue(d.isPresent());
         assertTrue(d.get().exposedToolKinds().contains(DeterministicToolKind.COUNT_DOCUMENTS_TOOL));
     }
 
     @Test
     void emptyWhenNoToolMatches() {
-        assertTrue(resolver.resolve(ctx(fcEnabled()), noToolPlan(), "DirectLlmWorkflow").isEmpty());
+        assertTrue(resolver.resolve(ctx(fcEnabled()), noToolPlan()).isEmpty());
     }
 
     @Test
@@ -224,7 +232,7 @@ class DefaultFunctionCallingPolicyResolverTest {
                 "c",
                 "m",
                 List.of());
-        var d = resolver.resolve(ctx(fcEnabled()), plan, "DirectLlmWorkflow");
+        var d = resolver.resolve(ctx(fcEnabled()), plan);
         assertTrue(d.isPresent());
         assertTrue(d.get().exposedToolKinds().contains(DeterministicToolKind.COUNT_AND_EXPLAIN_TOOL));
     }

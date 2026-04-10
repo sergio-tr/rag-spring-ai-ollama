@@ -212,7 +212,14 @@ public class ExecutionContextFactory {
                 boot.validPendingExistedAtLoad(),
                 boot.invalidPendingRecoveredThisTurn(),
                 disableReason,
-                originatingUserMessageId);
+                originatingUserMessageId,
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
 
         ConversationMemoryExecutionResult mem = conversationMemoryStrategy.execute(base, preMemory);
         boolean attempted =
@@ -249,7 +256,14 @@ public class ExecutionContextFactory {
                 base.validPendingExistedAtLoad(),
                 base.invalidPendingRecoveredThisTurn(),
                 base.clarificationDisableReason(),
-                base.originatingUserMessageId());
+                base.originatingUserMessageId(),
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
     }
 
     private static Optional<String> clarificationDisableReason(RagConfig rag, UUID conversationId) {
@@ -302,7 +316,14 @@ public class ExecutionContextFactory {
                 ctx.validPendingExistedAtLoad(),
                 ctx.invalidPendingRecoveredThisTurn(),
                 ctx.clarificationDisableReason(),
-                ctx.originatingUserMessageId());
+                ctx.originatingUserMessageId(),
+                ctx.routingAttempted(),
+                ctx.routingOutcome(),
+                ctx.routingRouteKind(),
+                ctx.routingFallbackApplied(),
+                ctx.routingFallbackRouteKind(),
+                ctx.routingWorkflowSelectorInvoked(),
+                ctx.routingStageTraces());
     }
 
     /**
@@ -348,7 +369,14 @@ public class ExecutionContextFactory {
                 ctx.validPendingExistedAtLoad(),
                 ctx.invalidPendingRecoveredThisTurn(),
                 ctx.clarificationDisableReason(),
-                ctx.originatingUserMessageId());
+                ctx.originatingUserMessageId(),
+                ctx.routingAttempted(),
+                ctx.routingOutcome(),
+                ctx.routingRouteKind(),
+                ctx.routingFallbackApplied(),
+                ctx.routingFallbackRouteKind(),
+                ctx.routingWorkflowSelectorInvoked(),
+                ctx.routingStageTraces());
     }
 
     private Optional<String> validateAndNormalizeChatModel(String chatModelOverride) {

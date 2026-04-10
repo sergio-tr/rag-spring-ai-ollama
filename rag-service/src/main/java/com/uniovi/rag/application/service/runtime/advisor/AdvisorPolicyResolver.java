@@ -19,7 +19,7 @@ import java.util.Optional;
 @Service
 public class AdvisorPolicyResolver {
 
-    public AdvisorDecision resolve(ExecutionContext ctx, QueryPlan plan, String workflowName) {
+    public AdvisorDecision resolve(ExecutionContext ctx, QueryPlan plan) {
         RagConfig rag = ctx.resolved().toRagConfig();
         String canonical = plan.rewrittenQueryText();
         List<String> reasons = new ArrayList<>();
@@ -29,8 +29,8 @@ public class AdvisorPolicyResolver {
             return new AdvisorDecision(
                     AdvisorMode.DISABLED, false, List.of(), canonical, reasons, Optional.of(AdvisorSuppressionReason.DISABLED_BY_CONFIG));
         }
-        if (!isDenseAdvisorWorkflow(workflowName)) {
-            reasons.add("workflow_not_dense_advisor=" + workflowName);
+        if (!rag.useRetrieval()) {
+            reasons.add("useAdvisor_requires_useRetrieval");
             return new AdvisorDecision(
                     AdvisorMode.ENABLED,
                     false,
@@ -53,11 +53,5 @@ public class AdvisorPolicyResolver {
         reasons.add("advisor_execution_allowed");
         return new AdvisorDecision(
                 AdvisorMode.ENABLED, true, AdvisorDecision.EXECUTABLE_KINDS_5_2, canonical, reasons, Optional.empty());
-    }
-
-    private static boolean isDenseAdvisorWorkflow(String workflowName) {
-        return "DocumentDenseRagWorkflow".equals(workflowName)
-                || "ChunkDenseRagWorkflow".equals(workflowName)
-                || "ChunkDenseMetadataWorkflow".equals(workflowName);
     }
 }

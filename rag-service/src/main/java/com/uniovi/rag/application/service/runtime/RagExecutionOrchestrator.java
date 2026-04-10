@@ -7,6 +7,7 @@ import com.uniovi.rag.application.service.runtime.clarification.ClarificationPol
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStrategy;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
+import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
@@ -29,6 +30,8 @@ import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionRes
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
@@ -53,6 +56,7 @@ public class RagExecutionOrchestrator {
     private final AdvisorStrategy advisorStrategy;
     private final ClarificationPolicyResolver clarificationPolicyResolver;
     private final ClarificationStrategy clarificationStrategy;
+    private final AdaptiveRoutingStrategy adaptiveRoutingStrategy;
 
     public RagExecutionOrchestrator(
             WorkflowSelector workflowSelector,
@@ -64,7 +68,8 @@ public class RagExecutionOrchestrator {
             AdvisorPolicyResolver advisorPolicyResolver,
             AdvisorStrategy advisorStrategy,
             ClarificationPolicyResolver clarificationPolicyResolver,
-            ClarificationStrategy clarificationStrategy) {
+            ClarificationStrategy clarificationStrategy,
+            AdaptiveRoutingStrategy adaptiveRoutingStrategy) {
         this.workflowSelector = workflowSelector;
         this.queryUnderstandingPipeline = queryUnderstandingPipeline;
         this.executionContextFactory = executionContextFactory;
@@ -75,6 +80,7 @@ public class RagExecutionOrchestrator {
         this.advisorStrategy = advisorStrategy;
         this.clarificationPolicyResolver = clarificationPolicyResolver;
         this.clarificationStrategy = clarificationStrategy;
+        this.adaptiveRoutingStrategy = adaptiveRoutingStrategy;
     }
 
     public RagExecutionResult execute(ExecutionContext ctx) {
@@ -115,116 +121,286 @@ public class RagExecutionOrchestrator {
             clarificationStrategy.clearAfterResolved(withPlan.conversationId());
         }
 
-        ExecutionWorkflow workflow = workflowSelector.select(withPlan);
+        RoutingSnapshot routing = resolveRoutingSnapshot(withPlan, plan);
+        List<ExecutionStageTrace> routingStages = routing.routingStages();
+
+        ExecutionOutcome outcome =
+                executeSelectedRoute(
+                        withPlan,
+                        plan,
+                        clarificationDecision,
+                        routing,
+                        clarifyBeforeQu,
+                        memoryBeforeQu,
+                        quStages,
+                        clarifyAfterQu);
+        return outcome.result().withFinalTrace(outcome.trace());
+    }
+
+    private RoutingSnapshot resolveRoutingSnapshot(ExecutionContext ctx, QueryPlan plan) {
+        var rag = ctx.resolved().toRagConfig();
+        if (!rag.adaptiveRoutingEnabled()) {
+            AdaptiveRouteKind compat =
+                    rag.useRetrieval() ? AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE : AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE;
+            return RoutingSnapshot.disabledByConfig(compat);
+        }
+        var r = adaptiveRoutingStrategy.execute(ctx, plan);
+        return RoutingSnapshot.enabled(r.routingRouteKind(), r.gate(), r.stageTraces());
+    }
+
+    private ExecutionOutcome executeSelectedRoute(
+            ExecutionContext base,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            RoutingSnapshot routing,
+            List<ExecutionStageTrace> clarifyBeforeQu,
+            List<ExecutionStageTrace> memoryBeforeQu,
+            List<ExecutionStageTrace> quStages,
+            List<ExecutionStageTrace> clarifyAfterQu) {
+
+        AdaptiveRouteKind route = routing.routeKind();
+
+        // Family exclusivity: only the selected route family executes first.
+        if (route == AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE || route == AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE) {
+            return executeWorkflowRoute(
+                    base,
+                    plan,
+                    clarificationDecision,
+                    routing.withOutcome(AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED, false, Optional.empty(), true),
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu);
+        }
+        if (route == AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE) {
+            DeterministicToolExecutionResult toolResult = deterministicToolStrategy.tryExecute(base, plan);
+            if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS && toolResult.success()) {
+                DeterministicToolKind kind =
+                        toolResult.toolKind().orElseThrow(() -> new IllegalStateException("tool kind missing on success"));
+                RagExecutionResult partial =
+                        new RagExecutionResult(
+                                toolResult.answerText(),
+                                "deterministic-tool",
+                                false,
+                                false,
+                                Optional.empty(),
+                                Optional.empty(),
+                                base.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                                ExecutionTrace.placeholder(),
+                                "deterministic-tool",
+                                DeterministicToolKindMappings.toQueryType(kind),
+                                true,
+                                List.of(),
+                                Optional.empty());
+                ExecutionTrace trace =
+                        assembleTrace(
+                                base,
+                                partial,
+                                "deterministic-tool",
+                                clarifyBeforeQu,
+                                memoryBeforeQu,
+                                quStages,
+                                clarifyAfterQu,
+                                routing.routingStages(),
+                                projectDeterministicToolStages(toolResult),
+                                List.of(),
+                                toolResult,
+                                false,
+                                FunctionCallingOutcome.SUPPRESSED_BY_DETERMINISTIC_TOOL,
+                                "",
+                                false,
+                                AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL),
+                                routing.snapshotForTrace(
+                                        AdaptiveRoutingOutcome.PRIMARY_ROUTE_EXECUTED_TERMINALLY,
+                                        false,
+                                        Optional.empty(),
+                                        false),
+                                clarificationDecision);
+                return new ExecutionOutcome(partial, trace);
+            }
+
+            AdaptiveRouteKind fb = routing.fallbackWorkflowRouteKind().orElseThrow();
+            return executeWorkflowRoute(
+                    base,
+                    plan,
+                    clarificationDecision,
+                    routing.withOutcome(AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK, true, Optional.of(fb), true),
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    projectDeterministicToolStages(toolResult),
+                    List.of(),
+                    toolResult,
+                    FcGate.notAttempted(FunctionCallingOutcome.SUPPRESSED_BY_DETERMINISTIC_TOOL),
+                    AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL));
+        }
+        if (route == AdaptiveRouteKind.FUNCTION_CALLING_ROUTE) {
+            FcGate fcGate = evaluateFunctionCallingGate(base, plan);
+            if (fcGate.functionCallingOutcome() == FunctionCallingOutcome.EXECUTED_SUCCESS && fcGate.functionCallingShortCircuited()) {
+                FunctionCallingExecutionResult fr = fcGate.fcResult().orElseThrow();
+                DeterministicToolKind k =
+                        fr.selectedToolKind()
+                                .orElseThrow(() -> new IllegalStateException("tool kind missing on FC success"));
+                RagExecutionResult partial =
+                        new RagExecutionResult(
+                                fr.answerText(),
+                                "function-calling",
+                                false,
+                                false,
+                                Optional.empty(),
+                                Optional.empty(),
+                                base.knowledgeSnapshotSelection().orderedSnapshotIds(),
+                                ExecutionTrace.placeholder(),
+                                "function-calling",
+                                DeterministicToolKindMappings.toQueryType(k),
+                                true,
+                                List.of(),
+                                Optional.empty());
+                ExecutionTrace trace =
+                        assembleTrace(
+                                base,
+                                partial,
+                                "function-calling",
+                                clarifyBeforeQu,
+                                memoryBeforeQu,
+                                quStages,
+                                clarifyAfterQu,
+                                routing.routingStages(),
+                                projectDeterministicToolStages(DeterministicToolExecutionResult.skipped(DeterministicToolOutcome.NOT_ATTEMPTED, List.of("suppressed_by_routing_fc"), Optional.empty())),
+                                fcGate.stageTraces(),
+                                DeterministicToolExecutionResult.skipped(DeterministicToolOutcome.NOT_ATTEMPTED, List.of("suppressed_by_routing_fc"), Optional.empty()),
+                                fcGate.functionCallingAttempted(),
+                                fcGate.functionCallingOutcome(),
+                                fcGate.functionCallingToolKind(),
+                                fcGate.functionCallingShortCircuited(),
+                                AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_FUNCTION_CALLING),
+                                routing.snapshotForTrace(
+                                        AdaptiveRoutingOutcome.PRIMARY_ROUTE_EXECUTED_TERMINALLY,
+                                        false,
+                                        Optional.empty(),
+                                        false),
+                                clarificationDecision);
+                return new ExecutionOutcome(partial, trace);
+            }
+            AdaptiveRouteKind fb = routing.fallbackWorkflowRouteKind().orElseThrow();
+            DeterministicToolExecutionResult toolResult =
+                    DeterministicToolExecutionResult.skipped(DeterministicToolOutcome.NOT_ATTEMPTED, List.of("suppressed_by_routing_fc"), Optional.empty());
+            return executeWorkflowRoute(
+                    base,
+                    plan,
+                    clarificationDecision,
+                    routing.withOutcome(AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK, true, Optional.of(fb), true),
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    projectDeterministicToolStages(toolResult),
+                    fcGate.stageTraces(),
+                    toolResult,
+                    fcGate,
+                    AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_FUNCTION_CALLING));
+        }
+        if (route == AdaptiveRouteKind.ADVISOR_ROUTE) {
+            String advisorWorkflowName = selectRetrievalWorkflowNameForAdvisor(base.resolved().toRagConfig());
+            AdvisorPhaseResult advisorPhase = runAdvisorPhase(base, plan, advisorWorkflowName);
+            if (!advisorPhase.snapshot().advisorAttempted()) {
+                // Suppressed or failed: fallback to retrieval workflow only.
+                return executeWorkflowRoute(
+                        base,
+                        plan,
+                        clarificationDecision,
+                        routing.withOutcome(AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK, true, Optional.of(AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE), true),
+                        clarifyBeforeQu,
+                        memoryBeforeQu,
+                        quStages,
+                        clarifyAfterQu,
+                        projectDeterministicToolStages(DeterministicToolExecutionResult.skipped(DeterministicToolOutcome.NOT_ATTEMPTED, List.of("suppressed_by_routing_advisor"), Optional.empty())),
+                        List.of(),
+                        DeterministicToolExecutionResult.skipped(DeterministicToolOutcome.NOT_ATTEMPTED, List.of("suppressed_by_routing_advisor"), Optional.empty()),
+                        FcGate.notAttempted(FunctionCallingOutcome.NOT_APPLICABLE),
+                        advisorPhase.snapshot());
+            }
+            // Success: continue to retrieval workflow generation.
+            return executeWorkflowRoute(
+                    advisorPhase.ctx(),
+                    plan,
+                    clarificationDecision,
+                    routing.withOutcome(AdaptiveRoutingOutcome.PRIMARY_ROUTE_CONTINUED_TO_WORKFLOW, false, Optional.empty(), true),
+                    clarifyBeforeQu,
+                    memoryBeforeQu,
+                    quStages,
+                    clarifyAfterQu,
+                    projectDeterministicToolStages(DeterministicToolExecutionResult.skipped(DeterministicToolOutcome.NOT_ATTEMPTED, List.of("suppressed_by_routing_advisor"), Optional.empty())),
+                    List.of(),
+                    DeterministicToolExecutionResult.skipped(DeterministicToolOutcome.NOT_ATTEMPTED, List.of("suppressed_by_routing_advisor"), Optional.empty()),
+                    FcGate.notAttempted(FunctionCallingOutcome.NOT_APPLICABLE),
+                    advisorPhase.snapshot());
+        }
+
+        throw new IllegalStateException("unsupported route kind: " + route);
+    }
+
+    private ExecutionOutcome executeWorkflowRoute(
+            ExecutionContext ctxForWorkflow,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            RoutingSnapshot routing,
+            List<ExecutionStageTrace> clarifyBeforeQu,
+            List<ExecutionStageTrace> memoryBeforeQu,
+            List<ExecutionStageTrace> quStages,
+            List<ExecutionStageTrace> clarifyAfterQu) {
+        DeterministicToolExecutionResult toolResult =
+                DeterministicToolExecutionResult.skipped(DeterministicToolOutcome.NOT_ATTEMPTED, List.of("suppressed_by_routing_workflow"), Optional.empty());
+        return executeWorkflowRoute(
+                ctxForWorkflow,
+                plan,
+                clarificationDecision,
+                routing,
+                clarifyBeforeQu,
+                memoryBeforeQu,
+                quStages,
+                clarifyAfterQu,
+                projectDeterministicToolStages(toolResult),
+                List.of(),
+                toolResult,
+                FcGate.notAttempted(FunctionCallingOutcome.NOT_APPLICABLE),
+                AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_ROUTING));
+    }
+
+    private ExecutionOutcome executeWorkflowRoute(
+            ExecutionContext ctxForWorkflow,
+            QueryPlan plan,
+            ClarificationDecision clarificationDecision,
+            RoutingSnapshot routing,
+            List<ExecutionStageTrace> clarifyBeforeQu,
+            List<ExecutionStageTrace> memoryBeforeQu,
+            List<ExecutionStageTrace> quStages,
+            List<ExecutionStageTrace> clarifyAfterQu,
+            List<ExecutionStageTrace> toolStages,
+            List<ExecutionStageTrace> fcStages,
+            DeterministicToolExecutionResult toolResult,
+            FcGate fcGate,
+            AdvisorSnapshot advisorSnapshot) {
+        ExecutionWorkflow workflow = workflowSelector.select(ctxForWorkflow);
         String wname = workflow.workflowName();
         if (requiresKnowledgeSnapshots(wname)
-                && withPlan.knowledgeSnapshotSelection().orderedSnapshotIds().isEmpty()) {
+                && ctxForWorkflow.knowledgeSnapshotSelection().orderedSnapshotIds().isEmpty()) {
             throw RagServiceException.knowledgeSnapshotUnavailable();
         }
-
-        DeterministicToolExecutionResult toolResult =
-                deterministicToolStrategy.tryExecute(withPlan, plan, wname);
-        List<ExecutionStageTrace> toolStages = projectDeterministicToolStages(toolResult);
-
-        if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_SUCCESS && toolResult.success()) {
-            DeterministicToolKind kind =
-                    toolResult.toolKind().orElseThrow(() -> new IllegalStateException("tool kind missing on success"));
-            RagExecutionResult partial =
-                    new RagExecutionResult(
-                            toolResult.answerText(),
-                            wname,
-                            false,
-                            false,
-                            Optional.empty(),
-                            Optional.empty(),
-                            withPlan.knowledgeSnapshotSelection().orderedSnapshotIds(),
-                            ExecutionTrace.placeholder(),
-                            "deterministic-tool",
-                            DeterministicToolKindMappings.toQueryType(kind),
-                            true,
-                            List.of(),
-                            Optional.empty());
-            ExecutionTrace trace =
-                    assembleTrace(
-                            withPlan,
-                            partial,
-                            wname,
-                            clarifyBeforeQu,
-                            memoryBeforeQu,
-                            quStages,
-                            clarifyAfterQu,
-                            toolStages,
-                            List.of(),
-                            toolResult,
-                            false,
-                            FunctionCallingOutcome.SUPPRESSED_BY_DETERMINISTIC_TOOL,
-                            "",
-                            false,
-                            AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL),
-                            clarificationDecision);
-            return partial.withFinalTrace(trace);
-        }
-
-        FcGate fcGate = evaluateFunctionCallingGate(withPlan, plan, wname, toolResult);
-        List<ExecutionStageTrace> fcStages = fcGate.stageTraces();
-
-        if (fcGate.functionCallingOutcome() == FunctionCallingOutcome.EXECUTED_SUCCESS
-                && fcGate.functionCallingShortCircuited()) {
-            FunctionCallingExecutionResult fr = fcGate.fcResult().orElseThrow();
-            DeterministicToolKind k =
-                    fr.selectedToolKind()
-                            .orElseThrow(() -> new IllegalStateException("tool kind missing on FC success"));
-            RagExecutionResult partial =
-                    new RagExecutionResult(
-                            fr.answerText(),
-                            wname,
-                            false,
-                            false,
-                            Optional.empty(),
-                            Optional.empty(),
-                            withPlan.knowledgeSnapshotSelection().orderedSnapshotIds(),
-                            ExecutionTrace.placeholder(),
-                            "function-calling",
-                            DeterministicToolKindMappings.toQueryType(k),
-                            true,
-                            List.of(),
-                            Optional.empty());
-            ExecutionTrace trace =
-                    assembleTrace(
-                            withPlan,
-                            partial,
-                            wname,
-                            clarifyBeforeQu,
-                            memoryBeforeQu,
-                            quStages,
-                            clarifyAfterQu,
-                            toolStages,
-                            fcStages,
-                            toolResult,
-                            fcGate.functionCallingAttempted(),
-                            fcGate.functionCallingOutcome(),
-                            fcGate.functionCallingToolKind(),
-                            fcGate.functionCallingShortCircuited(),
-                            AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_FUNCTION_CALLING),
-                            clarificationDecision);
-            return partial.withFinalTrace(trace);
-        }
-
-        AdvisorPhaseResult advisorPhase = runAdvisorPhase(withPlan, plan, wname);
-        ExecutionContext ctxForWorkflow = advisorPhase.ctx();
-
         RagExecutionContextHolder.set(toLegacy(ctxForWorkflow));
         try {
             RagExecutionResult partial = workflow.execute(ctxForWorkflow);
             ExecutionTrace trace =
                     assembleTrace(
-                            withPlan,
+                            ctxForWorkflow,
                             partial,
                             wname,
                             clarifyBeforeQu,
                             memoryBeforeQu,
                             quStages,
                             clarifyAfterQu,
+                            routing.routingStages(),
                             toolStages,
                             fcStages,
                             toolResult,
@@ -232,11 +408,93 @@ public class RagExecutionOrchestrator {
                             fcGate.functionCallingOutcome(),
                             fcGate.functionCallingToolKind(),
                             fcGate.functionCallingShortCircuited(),
-                            advisorPhase.snapshot(),
+                            advisorSnapshot,
+                            routing.snapshotForTrace(),
                             clarificationDecision);
-            return partial.withFinalTrace(trace);
+            return new ExecutionOutcome(partial, trace);
         } finally {
             RagExecutionContextHolder.clear();
+        }
+    }
+
+    private static String selectRetrievalWorkflowNameForAdvisor(com.uniovi.rag.domain.runtime.RagConfig rag) {
+        var strategy = rag.materializationStrategy();
+        if (strategy == com.uniovi.rag.domain.knowledge.MaterializationStrategy.DOCUMENT_LEVEL) {
+            return "DocumentDenseRagWorkflow";
+        }
+        if ((strategy == com.uniovi.rag.domain.knowledge.MaterializationStrategy.CHUNK_LEVEL
+                || strategy == com.uniovi.rag.domain.knowledge.MaterializationStrategy.HYBRID)
+                && rag.metadataEnabled()) {
+            return "ChunkDenseMetadataWorkflow";
+        }
+        return "ChunkDenseRagWorkflow";
+    }
+
+    private record ExecutionOutcome(RagExecutionResult result, ExecutionTrace trace) {}
+
+    private record RoutingSnapshot(
+            AdaptiveRouteKind routeKind,
+            Optional<AdaptiveRouteKind> fallbackWorkflowRouteKind,
+            List<ExecutionStageTrace> routingStages,
+            boolean routingAttempted,
+            AdaptiveRoutingOutcome routingOutcome,
+            boolean fallbackApplied,
+            Optional<AdaptiveRouteKind> fallbackAppliedKind,
+            boolean workflowSelectorInvoked) {
+
+        static RoutingSnapshot disabledByConfig(AdaptiveRouteKind compat) {
+            return new RoutingSnapshot(
+                    compat,
+                    Optional.empty(),
+                    List.of(),
+                    false,
+                    AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                    false,
+                    Optional.empty(),
+                    true);
+        }
+
+        static RoutingSnapshot enabled(
+                AdaptiveRouteKind kind,
+                com.uniovi.rag.domain.runtime.routing.RouteExecutionGate gate,
+                List<ExecutionStageTrace> stages) {
+            return new RoutingSnapshot(
+                    kind,
+                    gate.fallbackRouteKind(),
+                    List.copyOf(stages),
+                    true,
+                    AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED,
+                    false,
+                    Optional.empty(),
+                    false);
+        }
+
+        RoutingSnapshot withOutcome(
+                AdaptiveRoutingOutcome outcome,
+                boolean fbApplied,
+                Optional<AdaptiveRouteKind> fbKind,
+                boolean workflowSelectorInvoked) {
+            return new RoutingSnapshot(
+                    routeKind,
+                    fallbackWorkflowRouteKind,
+                    routingStages,
+                    routingAttempted,
+                    outcome,
+                    fbApplied,
+                    fbKind == null ? Optional.empty() : fbKind,
+                    workflowSelectorInvoked);
+        }
+
+        RoutingSnapshot snapshotForTrace() {
+            return this;
+        }
+
+        RoutingSnapshot snapshotForTrace(
+                AdaptiveRoutingOutcome outcome,
+                boolean fbApplied,
+                Optional<AdaptiveRouteKind> fbKind,
+                boolean workflowSelectorInvoked) {
+            return withOutcome(outcome, fbApplied, fbKind, workflowSelectorInvoked);
         }
     }
 
@@ -273,6 +531,7 @@ public class RagExecutionOrchestrator {
                         memoryBeforeQu,
                         quStages,
                         clarifyAfterQu,
+                        List.of(),
                         toolStages,
                         fcGate.stageTraces(),
                         toolResult,
@@ -281,6 +540,15 @@ public class RagExecutionOrchestrator {
                         fcGate.functionCallingToolKind(),
                         fcGate.functionCallingShortCircuited(),
                         AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_CLARIFICATION),
+                        new RoutingSnapshot(
+                                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                                Optional.empty(),
+                                List.of(),
+                                false,
+                                AdaptiveRoutingOutcome.SUPPRESSED_BY_CLARIFICATION_SHORT_CIRCUIT,
+                                false,
+                                Optional.empty(),
+                                false),
                         clarificationDecision);
         return partial.withFinalTrace(trace);
     }
@@ -325,7 +593,7 @@ public class RagExecutionOrchestrator {
     }
 
     private AdvisorPhaseResult runAdvisorPhase(ExecutionContext ctx, QueryPlan plan, String workflowName) {
-        AdvisorDecision decision = advisorPolicyResolver.resolve(ctx, plan, workflowName);
+        AdvisorDecision decision = advisorPolicyResolver.resolve(ctx, plan);
         List<ExecutionStageTrace> stages = new ArrayList<>();
         stages.add(
                 new ExecutionStageTrace(
@@ -408,15 +676,7 @@ public class RagExecutionOrchestrator {
         }
     }
 
-    private FcGate evaluateFunctionCallingGate(
-            ExecutionContext ctx,
-            QueryPlan plan,
-            String workflowName,
-            DeterministicToolExecutionResult toolResult) {
-
-        if (toolResult.outcome() == DeterministicToolOutcome.EXECUTED_FAILED_INFRA) {
-            return FcGate.blockedByDeterministicFailure();
-        }
+    private FcGate evaluateFunctionCallingGate(ExecutionContext ctx, QueryPlan plan) {
         var rag = ctx.resolved().toRagConfig();
         if (!rag.functionCallingEnabled()) {
             return FcGate.notAttempted(FunctionCallingOutcome.DISABLED_BY_CONFIG);
@@ -424,12 +684,12 @@ public class RagExecutionOrchestrator {
         if (plan.ambiguityAssessment().status() != AmbiguityStatus.SUFFICIENT) {
             return FcGate.notAttempted(FunctionCallingOutcome.SUPPRESSED_BY_AMBIGUITY);
         }
-        Optional<FunctionCallingDecision> decision = functionCallingPolicyResolver.resolve(ctx, plan, workflowName);
+        Optional<FunctionCallingDecision> decision = functionCallingPolicyResolver.resolve(ctx, plan);
         if (decision.isEmpty()) {
             return FcGate.notAttempted(FunctionCallingOutcome.NOT_APPLICABLE);
         }
         FunctionCallingExecutionResult fr =
-                functionCallingStrategy.tryExecute(ctx, plan, workflowName, decision.get());
+                functionCallingStrategy.tryExecute(ctx, plan, decision.get());
         boolean shortCircuited =
                 fr.outcome() == FunctionCallingOutcome.EXECUTED_SUCCESS && fr.shortCircuited();
         String toolKindStr =
@@ -491,6 +751,7 @@ public class RagExecutionOrchestrator {
             List<ExecutionStageTrace> memoryStagesBeforeQu,
             List<ExecutionStageTrace> quStages,
             List<ExecutionStageTrace> clarificationStagesAfterQu,
+            List<ExecutionStageTrace> routingStages,
             List<ExecutionStageTrace> toolStages,
             List<ExecutionStageTrace> fcStages,
             DeterministicToolExecutionResult toolResult,
@@ -499,12 +760,14 @@ public class RagExecutionOrchestrator {
             String functionCallingToolKind,
             boolean functionCallingShortCircuited,
             AdvisorSnapshot advisor,
+            RoutingSnapshot routing,
             ClarificationDecision clarificationDecision) {
         List<ExecutionStageTrace> all = new ArrayList<>();
         all.addAll(clarificationStagesBeforeQu);
         all.addAll(memoryStagesBeforeQu);
         all.addAll(quStages);
         all.addAll(clarificationStagesAfterQu);
+        all.addAll(routingStages);
         all.addAll(toolStages);
         all.addAll(fcStages);
         all.addAll(advisor.advisorStages());
@@ -535,6 +798,12 @@ public class RagExecutionOrchestrator {
                 ctx.memoryCondensationAttempted(),
                 ctx.memoryCondensationUsed(),
                 ctx.memoryFallbackApplied(),
+                routing.routingAttempted(),
+                routing.routingOutcome().name(),
+                routing.routeKind().name(),
+                routing.fallbackApplied(),
+                routing.fallbackAppliedKind().map(Enum::name).orElse(""),
+                routing.workflowSelectorInvoked(),
                 toolOutcome,
                 toolKind,
                 toolDetail,

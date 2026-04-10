@@ -23,8 +23,8 @@ public class DefaultDeterministicToolStrategy implements DeterministicToolStrate
     }
 
     @Override
-    public DeterministicToolExecutionResult tryExecute(ExecutionContext ctx, QueryPlan plan, String workflowName) {
-        DeterministicToolDecision decision = resolver.resolve(ctx, plan, workflowName);
+    public DeterministicToolExecutionResult tryExecute(ExecutionContext ctx, QueryPlan plan) {
+        DeterministicToolDecision decision = resolver.resolve(ctx, plan);
         if (!decision.selected()) {
             return skippedFromDecision(decision);
         }

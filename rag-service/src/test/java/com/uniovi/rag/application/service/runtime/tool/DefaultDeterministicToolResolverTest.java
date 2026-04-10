@@ -45,7 +45,7 @@ class DefaultDeterministicToolResolverTest {
     void disabledByConfig() {
         RagConfig rag = baseRag(false, false);
         QueryPlan plan = minimalPlan(QueryIntent.COUNT, ExpectedAnswerShape.SCALAR_COUNT, AmbiguityStatus.SUFFICIENT);
-        var d = resolver.resolve(ctx(rag), plan, "DirectLlmWorkflow");
+        var d = resolver.resolve(ctx(rag), plan);
         assertThat(d.outcome()).isEqualTo(DeterministicToolOutcome.DISABLED_BY_CONFIG);
         assertThat(d.selected()).isFalse();
     }
@@ -126,6 +126,7 @@ class DefaultDeterministicToolResolverTest {
                 useAdvisor,
                 false,
                 false,
+                false,
                 5,
                 0.2,
                 "l",
@@ -179,7 +180,14 @@ class DefaultDeterministicToolResolverTest {
                 false,
                 false,
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
     }
 
     private static QueryPlan minimalPlan(

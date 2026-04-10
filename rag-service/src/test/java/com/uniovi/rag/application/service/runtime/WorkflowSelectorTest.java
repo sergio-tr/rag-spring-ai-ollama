@@ -43,6 +43,7 @@ class WorkflowSelectorTest {
                 false,
                 false,
                 false,
+                false,
                 5,
                 0.2,
                 "l",
@@ -96,7 +97,14 @@ class WorkflowSelectorTest {
                 false,
                 false,
                 Optional.empty(),
-                Optional.empty());
+                Optional.empty(),
+                false,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                false,
+                Optional.empty(),
+                false,
+                List.of());
     }
 
     @BeforeEach
@@ -184,6 +192,7 @@ class WorkflowSelectorTest {
                 true,
                 false,
                 false,
+                false,
                 5,
                 0.2,
                 "l",
@@ -209,6 +218,7 @@ class WorkflowSelectorTest {
                 false,
                 true,
                 useAdvisor,
+                false,
                 false,
                 false,
                 5,

@@ -29,7 +29,7 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
     public static final String FALLBACK_POLICY_INFRA = "tool_fallback_to_workflow";
 
     @Override
-    public DeterministicToolDecision resolve(ExecutionContext ctx, QueryPlan plan, String workflowName) {
+    public DeterministicToolDecision resolve(ExecutionContext ctx, QueryPlan plan) {
         RagConfig rag = ctx.resolved().toRagConfig();
         ToolExecutionMode mode = rag.toolsEnabled() ? ToolExecutionMode.ENABLED : ToolExecutionMode.DISABLED;
         if (mode == ToolExecutionMode.DISABLED) {
@@ -105,6 +105,14 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
                 normalizedInputs(ctx, plan),
                 Optional.empty(),
                 Optional.empty());
+    }
+
+    /**
+     * Backwards-compatible overload for pre-P13 call sites that passed a workflow name.
+     * The deterministic resolver is workflow-independent; the value is ignored.
+     */
+    public DeterministicToolDecision resolve(ExecutionContext ctx, QueryPlan plan, String workflowName) {
+        return resolve(ctx, plan);
     }
 
     private static boolean matchesCountDocuments(QueryPlan p) {

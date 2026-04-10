@@ -11,5 +11,5 @@ import java.util.Optional;
  */
 public interface FunctionCallingPolicyResolver {
 
-    Optional<FunctionCallingDecision> resolve(ExecutionContext ctx, QueryPlan plan, String workflowName);
+    Optional<FunctionCallingDecision> resolve(ExecutionContext ctx, QueryPlan plan);
 }

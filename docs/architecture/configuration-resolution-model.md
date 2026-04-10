@@ -44,6 +44,8 @@ The runtime introduces `QueryUnderstandingPipeline` which consumes `ResolvedRunt
 - Memory selects a fixed recent history slice and executes at most one LLM-backed condensation call; on failure it deterministically falls back to `preMemoryPlanningInputText`.
 - `ExecutionContext.effectivePlanningInputText` becomes the final memory-aware planning input and is the **only** text normalized by QU.
 
+**Adaptive routing gating (P13):** `adaptiveRoutingEnabled` is part of the materialized `RagConfig` (from `rag.features.adaptive-routing-enabled` and optional JSON key `adaptiveRoutingEnabled` in configuration `values` maps). When enabled, the runtime executes a deterministic routing stage after P11 clarification policy and before any downstream execution-family stage; when disabled, the orchestrator derives a single compatibility workflow route without attempting routing.
+
 **Layers of `effective system prompt` (all four are mandatory concepts):**
 
 1. `base system prompt` — platform-wide baseline.
