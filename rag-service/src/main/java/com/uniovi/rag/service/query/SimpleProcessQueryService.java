@@ -5,6 +5,7 @@ import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionMapper;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.infrastructure.observability.Loggable;
@@ -18,14 +19,17 @@ public class SimpleProcessQueryService implements QueryService, Loggable {
 
     private final ExecutionContextFactory executionContextFactory;
     private final RagExecutionOrchestrator ragExecutionOrchestrator;
+    private final RuntimeTracePersistenceService runtimeTracePersistenceService;
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
 
     public SimpleProcessQueryService(
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
+            RuntimeTracePersistenceService runtimeTracePersistenceService,
             OllamaConnectivityChecker ollamaConnectivityChecker) {
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
+        this.runtimeTracePersistenceService = runtimeTracePersistenceService;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
     }
 
@@ -35,6 +39,7 @@ public class SimpleProcessQueryService implements QueryService, Loggable {
             ollamaConnectivityChecker.prepareForQuery(chatModel);
             ExecutionContext ctx = executionContextFactory.buildForLegacyHttp(query, chatModel);
             RagExecutionResult result = ragExecutionOrchestrator.execute(ctx);
+            runtimeTracePersistenceService.persistBestEffort(ctx, result.executionTrace());
             return RagExecutionMapper.toQueryResponse(result);
         } catch (RagServiceException | ResponseStatusException e) {
             throw e;

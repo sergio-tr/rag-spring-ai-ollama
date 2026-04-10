@@ -3,6 +3,7 @@ package com.uniovi.rag.service.query;
 import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -32,6 +33,7 @@ class SimpleProcessQueryServiceTest {
 
     private ExecutionContextFactory executionContextFactory;
     private RagExecutionOrchestrator ragExecutionOrchestrator;
+    private RuntimeTracePersistenceService runtimeTracePersistenceService;
     private OllamaConnectivityChecker ollamaConnectivityChecker;
     private SimpleProcessQueryService service;
 
@@ -39,9 +41,15 @@ class SimpleProcessQueryServiceTest {
     void setUp() {
         executionContextFactory = mock(ExecutionContextFactory.class);
         ragExecutionOrchestrator = mock(RagExecutionOrchestrator.class);
+        runtimeTracePersistenceService = mock(RuntimeTracePersistenceService.class);
         ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
-        service = new SimpleProcessQueryService(executionContextFactory, ragExecutionOrchestrator, ollamaConnectivityChecker);
+        service =
+                new SimpleProcessQueryService(
+                        executionContextFactory,
+                        ragExecutionOrchestrator,
+                        runtimeTracePersistenceService,
+                        ollamaConnectivityChecker);
     }
 
     private static ResolvedRuntimeConfig minimalResolved() {

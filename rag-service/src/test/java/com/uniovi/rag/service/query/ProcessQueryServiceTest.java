@@ -4,6 +4,7 @@ import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -38,6 +39,7 @@ class ProcessQueryServiceTest {
 
     private ExecutionContextFactory executionContextFactory;
     private RagExecutionOrchestrator ragExecutionOrchestrator;
+    private RuntimeTracePersistenceService runtimeTracePersistenceService;
     private ChatClient chatClient;
     private OllamaConnectivityChecker ollamaConnectivityChecker;
     private ProcessQueryService service;
@@ -46,10 +48,17 @@ class ProcessQueryServiceTest {
     void setUp() {
         executionContextFactory = mock(ExecutionContextFactory.class);
         ragExecutionOrchestrator = mock(RagExecutionOrchestrator.class);
+        runtimeTracePersistenceService = mock(RuntimeTracePersistenceService.class);
         chatClient = ChatClientTestSupport.clientWithUserPromptReturning("error-llm-message");
         ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
-        service = new ProcessQueryService(executionContextFactory, ragExecutionOrchestrator, chatClient, ollamaConnectivityChecker);
+        service =
+                new ProcessQueryService(
+                        executionContextFactory,
+                        ragExecutionOrchestrator,
+                        runtimeTracePersistenceService,
+                        chatClient,
+                        ollamaConnectivityChecker);
     }
 
     private static ResolvedRuntimeConfig minimalResolved(RagConfig rag) {

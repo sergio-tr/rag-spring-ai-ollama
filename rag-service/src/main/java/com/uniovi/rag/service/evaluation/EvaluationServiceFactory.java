@@ -24,6 +24,7 @@ import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
@@ -81,6 +82,7 @@ public class EvaluationServiceFactory {
     private final boolean knowledgeChatOverlayEnabled;
     private final ExecutionContextFactory executionContextFactory;
     private final RagExecutionOrchestrator ragExecutionOrchestrator;
+    private final RuntimeTracePersistenceService runtimeTracePersistenceService;
 
     public EvaluationServiceFactory(
         ChatClient chatClient,
@@ -106,6 +108,7 @@ public class EvaluationServiceFactory {
         ChatScopedRagConfigResolver chatScopedRagConfigResolver,
         ExecutionContextFactory executionContextFactory,
         RagExecutionOrchestrator ragExecutionOrchestrator,
+        RuntimeTracePersistenceService runtimeTracePersistenceService,
         ReasoningStrategy reasoningStrategy,
         ResponseRanker responseRanker,
         PostRetrievalProcessor postRetrievalProcessor,
@@ -142,6 +145,7 @@ public class EvaluationServiceFactory {
         this.ragRuntimeProperties = ragRuntimeProperties;
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
+        this.runtimeTracePersistenceService = runtimeTracePersistenceService;
     }
 
     /**
@@ -190,10 +194,17 @@ public class EvaluationServiceFactory {
         }
         if ("simple-process".equals(queryServiceImpl)) {
             return new SimpleProcessQueryService(
-                    executionContextFactory, ragExecutionOrchestrator, ollamaConnectivityChecker);
+                    executionContextFactory,
+                    ragExecutionOrchestrator,
+                    runtimeTracePersistenceService,
+                    ollamaConnectivityChecker);
         }
         return new ProcessQueryService(
-                executionContextFactory, ragExecutionOrchestrator, chatClient, ollamaConnectivityChecker);
+                executionContextFactory,
+                ragExecutionOrchestrator,
+                runtimeTracePersistenceService,
+                chatClient,
+                ollamaConnectivityChecker);
     }
 
     /**

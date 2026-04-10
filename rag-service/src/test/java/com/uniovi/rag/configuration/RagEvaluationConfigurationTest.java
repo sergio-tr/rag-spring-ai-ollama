@@ -4,6 +4,7 @@ import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
@@ -42,6 +43,7 @@ class RagEvaluationConfigurationTest {
         ChatScopedRagConfigResolver chatScopedRagConfigResolver = mock(ChatScopedRagConfigResolver.class);
         ExecutionContextFactory executionContextFactory = mock(ExecutionContextFactory.class);
         RagExecutionOrchestrator ragExecutionOrchestrator = mock(RagExecutionOrchestrator.class);
+        RuntimeTracePersistenceService runtimeTracePersistenceService = mock(RuntimeTracePersistenceService.class);
         ReasoningStrategy reasoningStrategy = mock(ReasoningStrategy.class);
         ResponseRanker responseRanker = mock(ResponseRanker.class);
         PostRetrievalProcessor postRetrievalProcessor = mock(PostRetrievalProcessor.class);
@@ -72,6 +74,7 @@ class RagEvaluationConfigurationTest {
                 chatScopedRagConfigResolver,
                 executionContextFactory,
                 ragExecutionOrchestrator,
+                runtimeTracePersistenceService,
                 reasoningStrategy,
                 responseRanker,
                 postRetrievalProcessor,

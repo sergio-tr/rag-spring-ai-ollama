@@ -30,6 +30,7 @@ import com.uniovi.rag.service.query.ResponseValidator;
 
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 
 
 @Configuration
@@ -65,6 +66,7 @@ public class RagEvaluationConfiguration {
         ChatScopedRagConfigResolver chatScopedRagConfigResolver,
         ExecutionContextFactory executionContextFactory,
         RagExecutionOrchestrator ragExecutionOrchestrator,
+        RuntimeTracePersistenceService runtimeTracePersistenceService,
         ReasoningStrategy reasoningStrategy,
         ResponseRanker responseRanker,
         PostRetrievalProcessor postRetrievalProcessor,
@@ -77,7 +79,7 @@ public class RagEvaluationConfiguration {
                 expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
                 expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker,
                 metadataLlmResponseCacheService, modelCatalogPort, chatScopedRagConfigResolver,
-                executionContextFactory, ragExecutionOrchestrator,
+                executionContextFactory, ragExecutionOrchestrator, runtimeTracePersistenceService,
                 reasoningStrategy, responseRanker, postRetrievalProcessor, queryDateExtractor, knowledgeChatOverlayEnabled,
                 ragRuntimeProperties);
     }

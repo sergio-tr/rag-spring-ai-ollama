@@ -5,6 +5,7 @@ import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionMapper;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.infrastructure.observability.Loggable;
@@ -26,16 +27,19 @@ public class ProcessQueryService implements QueryService, Loggable {
 
     private final ExecutionContextFactory executionContextFactory;
     private final RagExecutionOrchestrator ragExecutionOrchestrator;
+    private final RuntimeTracePersistenceService runtimeTracePersistenceService;
     private final ChatClient chatClient;
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
 
     public ProcessQueryService(
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
+            RuntimeTracePersistenceService runtimeTracePersistenceService,
             ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker) {
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
+        this.runtimeTracePersistenceService = runtimeTracePersistenceService;
         this.chatClient = chatClient;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
     }
@@ -103,6 +107,7 @@ public class ProcessQueryService implements QueryService, Loggable {
             return QueryResponse.fromLLM(errorResponse);
         }
         RagExecutionResult result = ragExecutionOrchestrator.execute(ctx);
+        runtimeTracePersistenceService.persistBestEffort(ctx, result.executionTrace());
         log()
                 .info(
                         "Runtime workflow={} snapshots={} correlationId={}",

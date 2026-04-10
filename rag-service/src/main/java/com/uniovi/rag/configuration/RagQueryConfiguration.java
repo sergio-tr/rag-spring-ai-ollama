@@ -30,6 +30,7 @@ import com.uniovi.rag.service.query.LLMResponseValidatorService;
 import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -252,6 +253,7 @@ public class RagQueryConfiguration {
             OllamaConnectivityChecker ollamaConnectivityChecker,
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
+            RuntimeTracePersistenceService runtimeTracePersistenceService,
             RagImplementationProperties implProps,
             @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
     ) {
@@ -262,11 +264,20 @@ public class RagQueryConfiguration {
                 raw = new SimpleQueryService(expander, analyser, retriever, chatClient, ollamaConnectivityChecker);
                 break;
             case "simple-process":
-                raw = new SimpleProcessQueryService(executionContextFactory, ragExecutionOrchestrator, ollamaConnectivityChecker);
+                raw =
+                        new SimpleProcessQueryService(
+                                executionContextFactory,
+                                ragExecutionOrchestrator,
+                                runtimeTracePersistenceService,
+                                ollamaConnectivityChecker);
                 break;
             default:
                 raw = new ProcessQueryService(
-                        executionContextFactory, ragExecutionOrchestrator, chatClient, ollamaConnectivityChecker);
+                        executionContextFactory,
+                        ragExecutionOrchestrator,
+                        runtimeTracePersistenceService,
+                        chatClient,
+                        ollamaConnectivityChecker);
                 break;
         }
         if (observability != null) {

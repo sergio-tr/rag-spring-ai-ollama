@@ -165,6 +165,7 @@ erDiagram
 | `classifier_model` | metrics, `is_active`, `passes_gate`, `artifact_path`, status | `hyperparams` |
 | `async_task` | `task_type`, `status`, progress text | `request_payload`, `result_json` |
 | `resolved_config_snapshot` | `created_at`, `effective_system_prompt`, `config_hash` | `payload_jsonb`, `capability_set_jsonb`, `compatibility_result_jsonb`, `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `provenance_jsonb` (see §6.1) |
+| `runtime_execution_trace` | linkage (`user_id`, `project_id`, optional `conversation_id`/`message_id`), `correlation_id`, optional `resolved_config_snapshot_id`/`config_hash`, extracted summary columns (memory/routing/tool/FC/advisor/judge/clarification), `schema_version`, `created_at` | `execution_trace_jsonb` (bounded `ExecutionTrace` projection), `stages_jsonb` (bounded `ExecutionStageTrace` list) |
 | `knowledge_index_snapshot`, `knowledge_snapshot_document`, `document_artifact`, `reindex_event`; extended `project_documents` | scope, snapshot FK, storage columns, `requires_reindex` | Artifact payloads (`schemaVersion`); METADATA holds structured-search projection when applicable (§6.2) |
 
 **Trade-off:** JSON stays flexible for TFG iteration; heavy reporting may need GIN indexes or extracted columns later.
@@ -191,6 +192,12 @@ Chat execution paths that pass a **single** merged JSON node (e.g. legacy chat o
 **Migrations:** baseline [V21](../../rag-service/src/main/resources/db/migration/V21__config_profiles_and_presets.sql); semantic columns [V25](../../rag-service/src/main/resources/db/migration/V25__resolved_config_snapshot_semantic_columns.sql).
 
 This table stores a **reproducible, insert-only** snapshot of **resolved** runtime configuration. It is **not** `evaluation_run`, **not** `knowledge_index_snapshot`, **not** an execution trace. `evaluation_run.resolved_config_snapshot_id` references this table when a lab run pins configuration.
+
+### 6.3 `runtime_execution_trace` (orchestrated runtime trace artefact)
+
+**Migration:** [V31](../../rag-service/src/main/resources/db/migration/V31__runtime_execution_trace.sql).
+
+This table stores a **reproducible, append-only** persisted trace artefact for one completed orchestrated runtime turn. It is a **bounded projection** of the finalized in-memory `ExecutionTrace` (plus linkage ids), written as a best-effort append step after the turn completes. It is not `messages.execution_metadata` and must not be re-derived by re-running runtime logic.
 
 | Column | Required on product insert | Purpose |
 |--------|----------------------------|---------|
