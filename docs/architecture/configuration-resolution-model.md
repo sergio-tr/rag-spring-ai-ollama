@@ -46,6 +46,8 @@ The runtime introduces `QueryUnderstandingPipeline` which consumes `ResolvedRunt
 
 **Adaptive routing gating (P13):** `adaptiveRoutingEnabled` is part of the materialized `RagConfig` (from `rag.features.adaptive-routing-enabled` and optional JSON key `adaptiveRoutingEnabled` in configuration `values` maps). When enabled, the runtime executes a deterministic routing stage after P11 clarification policy and before any downstream execution-family stage; when disabled, the orchestrator derives a single compatibility workflow route without attempting routing.
 
+**Judge gating (P14):** `judgeEnabled` is part of the materialized `RagConfig` (from `rag.features.judge-enabled` and optional JSON key `judgeEnabled` in configuration `values` maps). When enabled, the runtime executes a post-answer judge stage after the selected execution family produces a candidate answer; the judge performs at most one evaluation and at most one bounded repair attempt and never re-runs clarification, memory, QU, or adaptive routing.
+
 **Layers of `effective system prompt` (all four are mandatory concepts):**
 
 1. `base system prompt` — platform-wide baseline.

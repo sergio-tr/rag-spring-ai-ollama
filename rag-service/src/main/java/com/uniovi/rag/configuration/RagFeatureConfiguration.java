@@ -34,6 +34,8 @@ public class RagFeatureConfiguration {
     private boolean memoryEnabled;
     /** P13 adaptive routing core (default off). */
     private boolean adaptiveRoutingEnabled;
+    /** P14 judge core (default off). */
+    private boolean judgeEnabled;
 
     public boolean isExpansionEnabled() { return expansionEnabled; }
     public void setExpansionEnabled(boolean expansionEnabled) { this.expansionEnabled = expansionEnabled; }
@@ -89,6 +91,14 @@ public class RagFeatureConfiguration {
         this.adaptiveRoutingEnabled = adaptiveRoutingEnabled;
     }
 
+    public boolean isJudgeEnabled() {
+        return judgeEnabled;
+    }
+
+    public void setJudgeEnabled(boolean judgeEnabled) {
+        this.judgeEnabled = judgeEnabled;
+    }
+
     public Map<String, Boolean> getConfiguration() {
         Map<String, Boolean> config = new HashMap<>();
         config.put("expansion", expansionEnabled);
@@ -104,6 +114,7 @@ public class RagFeatureConfiguration {
         config.put("clarification", clarificationEnabled);
         config.put("memory", memoryEnabled);
         config.put("adaptive-routing", adaptiveRoutingEnabled);
+        config.put("judge", judgeEnabled);
         return config;
     }
 }

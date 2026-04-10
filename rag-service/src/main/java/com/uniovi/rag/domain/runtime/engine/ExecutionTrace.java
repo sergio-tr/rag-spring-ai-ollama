@@ -49,6 +49,15 @@ public record ExecutionTrace(
         String advisorOutcome,
         int packedContextBlockCount,
         int packedContextSourceCount,
+        boolean judgeAttempted,
+        String judgeCandidateSource,
+        boolean judgeRetryRequested,
+        boolean judgeRetryAttempted,
+        boolean judgeRetrySucceeded,
+        String judgeFinalOutcome,
+        boolean judgeFinalAnswerFromRetry,
+        String judgeKind,
+        String judgeDetail,
         boolean clarificationAttempted,
         String clarificationOutcome,
         boolean clarificationPendingStateConsumed,
@@ -78,6 +87,10 @@ public record ExecutionTrace(
         retrievalDiagnostics = retrievalDiagnostics == null ? Optional.empty() : retrievalDiagnostics;
         advisorKindsExecuted = advisorKindsExecuted == null ? "" : advisorKindsExecuted;
         advisorOutcome = advisorOutcome == null ? "" : advisorOutcome;
+        judgeCandidateSource = judgeCandidateSource == null ? "" : judgeCandidateSource;
+        judgeFinalOutcome = judgeFinalOutcome == null ? "" : judgeFinalOutcome;
+        judgeKind = judgeKind == null ? "" : judgeKind;
+        judgeDetail = judgeDetail == null ? "" : judgeDetail;
         clarificationOutcome = clarificationOutcome == null ? "" : clarificationOutcome;
     }
 
@@ -122,6 +135,15 @@ public record ExecutionTrace(
                 "",
                 0,
                 0,
+                false,
+                "",
+                false,
+                false,
+                false,
+                "",
+                false,
+                "",
+                "",
                 false,
                 "",
                 false,

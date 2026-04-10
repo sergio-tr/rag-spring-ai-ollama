@@ -6,6 +6,7 @@ import com.uniovi.rag.application.service.runtime.clarification.ClarificationPol
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStrategy;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
+import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
@@ -27,6 +28,8 @@ import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
+import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
+import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -35,6 +38,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -55,6 +59,10 @@ class RagExecutionOrchestratorMemoryTest {
         ClarificationPolicyResolver clarificationPolicy = mock(ClarificationPolicyResolver.class);
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
+        JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
+
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+                .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
@@ -68,7 +76,8 @@ class RagExecutionOrchestratorMemoryTest {
                         advisorStrategy,
                         clarificationPolicy,
                         clarificationStrategy,
-                        routingStrategy);
+                        routingStrategy,
+                        judgeStrategy);
 
         ExecutionStageTrace mem1 =
                 new ExecutionStageTrace(

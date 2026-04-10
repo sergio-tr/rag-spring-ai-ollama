@@ -7,6 +7,7 @@ import com.uniovi.rag.application.service.runtime.clarification.ClarificationPol
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStrategy;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
+import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
@@ -25,6 +26,10 @@ import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationExecutionResult;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
+import com.uniovi.rag.domain.runtime.judge.JudgeCandidateSource;
+import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
+import com.uniovi.rag.domain.runtime.judge.JudgeKind;
+import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingDecision;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionResult;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
@@ -57,6 +62,7 @@ public class RagExecutionOrchestrator {
     private final ClarificationPolicyResolver clarificationPolicyResolver;
     private final ClarificationStrategy clarificationStrategy;
     private final AdaptiveRoutingStrategy adaptiveRoutingStrategy;
+    private final JudgeStrategy judgeStrategy;
 
     public RagExecutionOrchestrator(
             WorkflowSelector workflowSelector,
@@ -69,7 +75,8 @@ public class RagExecutionOrchestrator {
             AdvisorStrategy advisorStrategy,
             ClarificationPolicyResolver clarificationPolicyResolver,
             ClarificationStrategy clarificationStrategy,
-            AdaptiveRoutingStrategy adaptiveRoutingStrategy) {
+            AdaptiveRoutingStrategy adaptiveRoutingStrategy,
+            JudgeStrategy judgeStrategy) {
         this.workflowSelector = workflowSelector;
         this.queryUnderstandingPipeline = queryUnderstandingPipeline;
         this.executionContextFactory = executionContextFactory;
@@ -81,6 +88,7 @@ public class RagExecutionOrchestrator {
         this.clarificationPolicyResolver = clarificationPolicyResolver;
         this.clarificationStrategy = clarificationStrategy;
         this.adaptiveRoutingStrategy = adaptiveRoutingStrategy;
+        this.judgeStrategy = judgeStrategy;
     }
 
     public RagExecutionResult execute(ExecutionContext ctx) {
@@ -192,10 +200,19 @@ public class RagExecutionOrchestrator {
                                 true,
                                 List.of(),
                                 Optional.empty());
+                JudgeSnapshot judge =
+                        runJudge(
+                                base,
+                                plan,
+                                routing.routeKind(),
+                                partial.workflowName(),
+                                JudgeCandidateSource.DETERMINISTIC_TOOL,
+                                partial.answerText());
+                RagExecutionResult judgedPartial = applyJudgeToResult(partial, judge);
                 ExecutionTrace trace =
                         assembleTrace(
                                 base,
-                                partial,
+                                judgedPartial,
                                 "deterministic-tool",
                                 clarifyBeforeQu,
                                 memoryBeforeQu,
@@ -210,13 +227,14 @@ public class RagExecutionOrchestrator {
                                 "",
                                 false,
                                 AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_DETERMINISTIC_TOOL),
+                                judge,
                                 routing.snapshotForTrace(
                                         AdaptiveRoutingOutcome.PRIMARY_ROUTE_EXECUTED_TERMINALLY,
                                         false,
                                         Optional.empty(),
                                         false),
                                 clarificationDecision);
-                return new ExecutionOutcome(partial, trace);
+                return new ExecutionOutcome(judgedPartial, trace);
             }
 
             AdaptiveRouteKind fb = routing.fallbackWorkflowRouteKind().orElseThrow();
@@ -257,10 +275,19 @@ public class RagExecutionOrchestrator {
                                 true,
                                 List.of(),
                                 Optional.empty());
+                JudgeSnapshot judge =
+                        runJudge(
+                                base,
+                                plan,
+                                routing.routeKind(),
+                                partial.workflowName(),
+                                JudgeCandidateSource.FUNCTION_CALLING,
+                                partial.answerText());
+                RagExecutionResult judgedPartial = applyJudgeToResult(partial, judge);
                 ExecutionTrace trace =
                         assembleTrace(
                                 base,
-                                partial,
+                                judgedPartial,
                                 "function-calling",
                                 clarifyBeforeQu,
                                 memoryBeforeQu,
@@ -275,13 +302,14 @@ public class RagExecutionOrchestrator {
                                 fcGate.functionCallingToolKind(),
                                 fcGate.functionCallingShortCircuited(),
                                 AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_FUNCTION_CALLING),
+                                judge,
                                 routing.snapshotForTrace(
                                         AdaptiveRoutingOutcome.PRIMARY_ROUTE_EXECUTED_TERMINALLY,
                                         false,
                                         Optional.empty(),
                                         false),
                                 clarificationDecision);
-                return new ExecutionOutcome(partial, trace);
+                return new ExecutionOutcome(judgedPartial, trace);
             }
             AdaptiveRouteKind fb = routing.fallbackWorkflowRouteKind().orElseThrow();
             DeterministicToolExecutionResult toolResult =
@@ -391,10 +419,19 @@ public class RagExecutionOrchestrator {
         RagExecutionContextHolder.set(toLegacy(ctxForWorkflow));
         try {
             RagExecutionResult partial = workflow.execute(ctxForWorkflow);
+            JudgeSnapshot judge =
+                    runJudge(
+                            ctxForWorkflow,
+                            plan,
+                            routing.routeKind(),
+                            wname,
+                            JudgeCandidateSource.WORKFLOW,
+                            partial.answerText());
+            RagExecutionResult judgedPartial = applyJudgeToResult(partial, judge);
             ExecutionTrace trace =
                     assembleTrace(
                             ctxForWorkflow,
-                            partial,
+                            judgedPartial,
                             wname,
                             clarifyBeforeQu,
                             memoryBeforeQu,
@@ -409,9 +446,10 @@ public class RagExecutionOrchestrator {
                             fcGate.functionCallingToolKind(),
                             fcGate.functionCallingShortCircuited(),
                             advisorSnapshot,
+                            judge,
                             routing.snapshotForTrace(),
                             clarificationDecision);
-            return new ExecutionOutcome(partial, trace);
+            return new ExecutionOutcome(judgedPartial, trace);
         } finally {
             RagExecutionContextHolder.clear();
         }
@@ -540,6 +578,7 @@ public class RagExecutionOrchestrator {
                         fcGate.functionCallingToolKind(),
                         fcGate.functionCallingShortCircuited(),
                         AdvisorSnapshot.notReached(AdvisorOutcome.NOT_REACHED_BECAUSE_CLARIFICATION),
+                        JudgeSnapshot.notAttempted(JudgeCandidateSource.WORKFLOW),
                         new RoutingSnapshot(
                                 AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                                 Optional.empty(),
@@ -551,6 +590,85 @@ public class RagExecutionOrchestrator {
                                 false),
                         clarificationDecision);
         return partial.withFinalTrace(trace);
+    }
+
+    private JudgeSnapshot runJudge(
+            ExecutionContext ctx,
+            QueryPlan plan,
+            AdaptiveRouteKind routeKind,
+            String workflowName,
+            JudgeCandidateSource source,
+            String candidateAnswerText
+    ) {
+        if (!ctx.resolved().toRagConfig().judgeEnabled()) {
+            return JudgeSnapshot.notAttempted(source);
+        }
+        JudgeExecutionResult r =
+                judgeStrategy.execute(ctx, plan, routeKind, workflowName, source, candidateAnswerText);
+        return JudgeSnapshot.fromResult(source, r);
+    }
+
+    private static RagExecutionResult applyJudgeToResult(RagExecutionResult base, JudgeSnapshot judge) {
+        if (judge.finalAnswerFromRetry()) {
+            return new RagExecutionResult(
+                    judge.finalAnswerText(),
+                    base.workflowName(),
+                    base.retrievalUsed(),
+                    base.metadataUsed(),
+                    base.usedResolvedConfigSnapshotId(),
+                    base.usedConfigHash(),
+                    base.usedKnowledgeSnapshotIds(),
+                    base.executionTrace(),
+                    base.toolUsedLabel(),
+                    base.queryTypeForLegacy(),
+                    base.usedTool(),
+                    base.workflowStageTraces(),
+                    base.retrievalDiagnostics());
+        }
+        return base;
+    }
+
+    private record JudgeSnapshot(
+            boolean judgeAttempted,
+            JudgeCandidateSource candidateSource,
+            boolean retryRequested,
+            boolean retryAttempted,
+            boolean retrySucceeded,
+            JudgeOutcome finalOutcome,
+            boolean finalAnswerFromRetry,
+            JudgeKind kind,
+            String detail,
+            String finalAnswerText,
+            List<ExecutionStageTrace> judgeStages) {
+        static JudgeSnapshot notAttempted(JudgeCandidateSource source) {
+            return new JudgeSnapshot(
+                    false,
+                    source,
+                    false,
+                    false,
+                    false,
+                    JudgeOutcome.NOT_ATTEMPTED,
+                    false,
+                    JudgeKind.POST_ANSWER_JUDGE,
+                    "",
+                    "",
+                    List.of());
+        }
+
+        static JudgeSnapshot fromResult(JudgeCandidateSource source, JudgeExecutionResult r) {
+            return new JudgeSnapshot(
+                    r.judgeAttempted(),
+                    source,
+                    r.retryRequested(),
+                    r.retryAttempted(),
+                    r.retrySucceeded(),
+                    r.judgeOutcome(),
+                    r.finalAnswerFromRetry(),
+                    JudgeKind.POST_ANSWER_JUDGE,
+                    "outcome=" + r.judgeOutcome().name(),
+                    r.finalAnswerText(),
+                    List.copyOf(r.stageTraces()));
+        }
     }
 
     private static List<ExecutionStageTrace> buildClarificationPreQuStages(ExecutionContext ctx) {
@@ -760,6 +878,7 @@ public class RagExecutionOrchestrator {
             String functionCallingToolKind,
             boolean functionCallingShortCircuited,
             AdvisorSnapshot advisor,
+            JudgeSnapshot judge,
             RoutingSnapshot routing,
             ClarificationDecision clarificationDecision) {
         List<ExecutionStageTrace> all = new ArrayList<>();
@@ -772,6 +891,7 @@ public class RagExecutionOrchestrator {
         all.addAll(fcStages);
         all.addAll(advisor.advisorStages());
         all.addAll(partial.workflowStageTraces());
+        all.addAll(judge.judgeStages());
         QueryPlan qp = ctx.queryPlan().orElse(null);
         String toolOutcome = toolResult.outcome().name();
         String toolKind = toolResult.toolKind().map(Enum::name).orElse("");
@@ -818,6 +938,15 @@ public class RagExecutionOrchestrator {
                 advisor.advisorOutcome().name(),
                 advisor.packedContextBlockCount(),
                 advisor.packedContextSourceCount(),
+                judge.judgeAttempted(),
+                judge.candidateSource().name(),
+                judge.retryRequested(),
+                judge.retryAttempted(),
+                judge.retrySucceeded(),
+                judge.finalOutcome().name(),
+                judge.finalAnswerFromRetry(),
+                judge.kind().name(),
+                judge.detail(),
                 true,
                 clarificationDecision.terminalOutcome().name(),
                 pendingConsumed,

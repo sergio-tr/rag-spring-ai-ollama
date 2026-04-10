@@ -28,6 +28,8 @@ public record RagConfig(
         boolean memoryEnabled,
         /** P13: deterministic adaptive routing stage (runtime-owned, default off). */
         boolean adaptiveRoutingEnabled,
+        /** P14: post-answer judge stage (runtime-owned, default off). */
+        boolean judgeEnabled,
         int topK,
         double similarityThreshold,
         String llmModel,
@@ -90,6 +92,63 @@ public record RagConfig(
                 clarificationEnabled,
                 memoryEnabled,
                 false,
+                false,
+                topK,
+                similarityThreshold,
+                llmModel,
+                embeddingModel,
+                classifierModelId,
+                reasoningStrategy,
+                naiveFullCorpusInPromptEnabled,
+                naiveFullCorpusMaxChars,
+                advancedRetrievalMaxContextChars,
+                materializationStrategy);
+    }
+
+    /**
+     * Backwards-compatible constructor for call sites that predate P14.
+     * Defaults {@code judgeEnabled=false}.
+     */
+    public RagConfig(
+            boolean expansionEnabled,
+            boolean nerEnabled,
+            boolean toolsEnabled,
+            boolean metadataEnabled,
+            boolean reasoningEnabled,
+            boolean rankerEnabled,
+            boolean postRetrievalEnabled,
+            boolean functionCallingEnabled,
+            boolean useRetrieval,
+            boolean useAdvisor,
+            boolean clarificationEnabled,
+            boolean memoryEnabled,
+            boolean adaptiveRoutingEnabled,
+            int topK,
+            double similarityThreshold,
+            String llmModel,
+            String embeddingModel,
+            String classifierModelId,
+            String reasoningStrategy,
+            boolean naiveFullCorpusInPromptEnabled,
+            int naiveFullCorpusMaxChars,
+            int advancedRetrievalMaxContextChars,
+            MaterializationStrategy materializationStrategy
+    ) {
+        this(
+                expansionEnabled,
+                nerEnabled,
+                toolsEnabled,
+                metadataEnabled,
+                reasoningEnabled,
+                rankerEnabled,
+                postRetrievalEnabled,
+                functionCallingEnabled,
+                useRetrieval,
+                useAdvisor,
+                clarificationEnabled,
+                memoryEnabled,
+                adaptiveRoutingEnabled,
+                false,
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -124,6 +183,7 @@ public record RagConfig(
                 features.isClarificationEnabled(),
                 features.isMemoryEnabled(),
                 features.isAdaptiveRoutingEnabled(),
+                features.isJudgeEnabled(),
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -163,6 +223,7 @@ public record RagConfig(
                 readBool(json, "clarificationEnabled", base.clarificationEnabled),
                 readBool(json, "memoryEnabled", base.memoryEnabled),
                 readBool(json, "adaptiveRoutingEnabled", base.adaptiveRoutingEnabled),
+                readBool(json, "judgeEnabled", base.judgeEnabled),
                 readInt(json, "topK", base.topK),
                 readDouble(json, "similarityThreshold", base.similarityThreshold),
                 readText(json, "llmModel", base.llmModel),
@@ -221,6 +282,7 @@ public record RagConfig(
         m.put("clarificationEnabled", clarificationEnabled);
         m.put("memoryEnabled", memoryEnabled);
         m.put("adaptiveRoutingEnabled", adaptiveRoutingEnabled);
+        m.put("judgeEnabled", judgeEnabled);
         m.put("topK", topK);
         m.put("similarityThreshold", similarityThreshold);
         m.put("llmModel", llmModel);

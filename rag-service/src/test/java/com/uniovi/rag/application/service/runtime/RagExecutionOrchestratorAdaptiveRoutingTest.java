@@ -6,6 +6,7 @@ import com.uniovi.rag.application.service.runtime.clarification.ClarificationPol
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStrategy;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
+import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
@@ -35,6 +36,8 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.domain.runtime.routing.RouteExecutionGate;
+import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
+import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
@@ -47,6 +50,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -68,6 +72,7 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
         ClarificationPolicyResolver clarificationPolicyResolver = mock(ClarificationPolicyResolver.class);
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
+        JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
 
         when(qu.buildPlan(in)).thenReturn(plan);
         when(factory.attachQueryPlan(in, plan)).thenReturn(in);
@@ -104,6 +109,9 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
                                 Map.of(),
                                 List.of()));
 
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+                .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
+
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
@@ -116,7 +124,8 @@ class RagExecutionOrchestratorAdaptiveRoutingTest {
                         advisorStrategy,
                         clarificationPolicyResolver,
                         clarificationStrategy,
-                        routingStrategy);
+                        routingStrategy,
+                        judgeStrategy);
 
         var out = orchestrator.execute(in);
         assertEquals("tool-answer", out.answerText());

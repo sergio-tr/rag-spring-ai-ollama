@@ -33,6 +33,9 @@ import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
+import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
+import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
+import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationPolicyResolver;
@@ -54,6 +57,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -78,6 +82,10 @@ class RagExecutionOrchestratorAdvisorTest {
         ClarificationPolicyResolver clarificationPolicyResolver = clarificationPolicyNoAsk();
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
+        JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
+
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+                .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         when(qu.buildPlan(in)).thenReturn(plan);
         when(factory.attachQueryPlan(in, plan)).thenAnswer(inv -> withPlan(inv.getArgument(0), plan));
@@ -129,7 +137,8 @@ class RagExecutionOrchestratorAdvisorTest {
                         advisorStrategy,
                         clarificationPolicyResolver,
                         clarificationStrategy,
-                        routingStrategy);
+                        routingStrategy,
+                        judgeStrategy);
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("tool-answer", out.answerText());
@@ -157,6 +166,10 @@ class RagExecutionOrchestratorAdvisorTest {
         ClarificationPolicyResolver clarificationPolicyResolver = clarificationPolicyNoAsk();
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
+        JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
+
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+                .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         when(qu.buildPlan(in)).thenReturn(plan);
         when(factory.attachQueryPlan(in, plan)).thenAnswer(inv -> withPlan(inv.getArgument(0), plan));
@@ -227,7 +240,8 @@ class RagExecutionOrchestratorAdvisorTest {
                         advisorStrategy,
                         clarificationPolicyResolver,
                         clarificationStrategy,
-                        routingStrategy);
+                        routingStrategy,
+                        judgeStrategy);
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("fc-answer", out.answerText());
@@ -258,6 +272,10 @@ class RagExecutionOrchestratorAdvisorTest {
         ClarificationPolicyResolver clarificationPolicyResolver = clarificationPolicyNoAsk();
         ClarificationStrategy clarificationStrategy = mock(ClarificationStrategy.class);
         AdaptiveRoutingStrategy routingStrategy = mock(AdaptiveRoutingStrategy.class);
+        JudgeStrategy judgeStrategy = mock(JudgeStrategy.class);
+
+        when(judgeStrategy.execute(any(), any(), any(), anyString(), any(), anyString()))
+                .thenAnswer(inv -> new JudgeExecutionResult(false, JudgeOutcome.NOT_ATTEMPTED, false, false, false, inv.getArgument(5), false, List.of()));
 
         when(qu.buildPlan(in)).thenReturn(plan);
         when(factory.attachQueryPlan(in, plan)).thenAnswer(inv -> withPlan(inv.getArgument(0), plan));
@@ -335,7 +353,8 @@ class RagExecutionOrchestratorAdvisorTest {
                         advisorStrategy,
                         clarificationPolicyResolver,
                         clarificationStrategy,
-                        routingStrategy);
+                        routingStrategy,
+                        judgeStrategy);
 
         RagExecutionResult out = orchestrator.execute(in);
         assertEquals("wf-answer", out.answerText());
