@@ -150,6 +150,7 @@ Default container name: **`rag-ci-postgres`** (override with env `RAG_CI_POSTGRE
 ## API response shape (product vs legacy query)
 
 **Product API** (`rag.api.product-base-path`) uses JWT-backed routes for projects, chat, documents, and lab.  
+**Saved runtime trace regression suite definitions (P34/P35):** under `{product}/runtime-trace-regression-suite-definitions`, **`GET`** list and **`GET`** by id call **`RuntimeTraceRegressionSuiteDefinitionService`** read methods only; **`POST`** (create), **`PUT`** (replace), and **`DELETE`** call **`create`** / **`update`** / **`delete`** only — no suite execution, no ZIP, no **`materializeToSuiteRequest`** over HTTP. Any query string on these five routes returns **`400`** with an empty body. **`POST`/`PUT`** bodies use strict JSON via **`definitionMutationStrictObjectMapper`**; successful **`POST`** returns **`201`** with **`Location`** `{product}/runtime-trace-regression-suite-definitions/{uuid}`. See [rag-runtime-architecture.md](../docs/architecture/rag-runtime-architecture.md) for the full status matrix.  
 **Legacy** `GET {legacy}/query` (when `RAG_API_LEGACY_CONTROLLERS_ENABLED=true`) returns JSON: `{ "success": true, "data": { "answer", "queryType", "usedTool", "toolUsed" } }`.  
 If the LLM backend (Ollama) cannot be reached, the service returns **503** with `{ "success": false, "error": { "code": "LLM_UNAVAILABLE", ... } }`. While models are still downloading on startup, **503** uses code **`OLLAMA_PROVISIONING`** (retry when `/actuator/health/readiness` is UP).
 

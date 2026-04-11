@@ -1,6 +1,12 @@
 package com.uniovi.rag.interfaces.rest;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
+import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
+import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.CreateDefinitionCommand;
+import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntrySpec;
+import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.UpdateDefinitionCommand;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntrySnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUserSummary;
@@ -10,32 +16,166 @@ import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.Runtime
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntryDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionListResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSummaryDto;
+import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUpsertByConversationEntryRequestDto;
+import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUpsertByTraceIdsEntryRequestDto;
+import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto;
+import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto;
 import com.uniovi.rag.security.RagPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URI;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * P34: read-only GET routes for persisted regression suite definitions — delegates only to
- * {@link RuntimeTraceRegressionSuiteDefinitionService}.
+ * P34: read-only GET routes; P35: POST/PUT/DELETE for persisted regression suite definitions — mutations delegate only
+ * to {@link RuntimeTraceRegressionSuiteDefinitionService#create}, {@link #update}, {@link #delete}.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")
 public class RuntimeTraceRegressionSuiteDefinitionController {
 
-    private final RuntimeTraceRegressionSuiteDefinitionService definitionService;
+    private static final int NAME_MIN_LEN = 1;
+    private static final int NAME_MAX_LEN = 256;
+    private static final int DESCRIPTION_MAX_LEN = 2048;
+    private static final int ENTRIES_MIN = 1;
+    private static final int ENTRIES_MAX = 20;
+    private static final int TRACE_IDS_MAX = 50;
 
-    public RuntimeTraceRegressionSuiteDefinitionController(RuntimeTraceRegressionSuiteDefinitionService definitionService) {
+    private final RuntimeTraceRegressionSuiteDefinitionService definitionService;
+    private final ObjectMapper strictMutationMapper;
+    private final String productBasePath;
+
+    public RuntimeTraceRegressionSuiteDefinitionController(
+            RuntimeTraceRegressionSuiteDefinitionService definitionService,
+            @Qualifier(RegressionSuiteDefinitionMutationJacksonConfiguration.DEFINITION_MUTATION_STRICT_OBJECT_MAPPER)
+                    ObjectMapper strictMutationMapper,
+            @Value("${rag.api.product-base-path}") String productBasePath) {
         this.definitionService = definitionService;
+        this.strictMutationMapper = strictMutationMapper;
+        this.productBasePath = productBasePath;
+    }
+
+    @PostMapping(value = "/runtime-trace-regression-suite-definitions", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> createDefinition(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @RequestBody(required = false) String body,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (body == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        String trimmedBody = body.trim();
+        if (trimmedBody.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto;
+        try {
+            dto = strictMutationMapper.readValue(trimmedBody, RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto.class);
+        } catch (JsonProcessingException ex) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (!isUpsertAdapterValid(dto)) {
+            return ResponseEntity.badRequest().build();
+        }
+        UUID userId = principal.userId();
+        try {
+            UUID createdId = definitionService.create(userId, toCreateCommand(dto));
+            String location =
+                    productBasePath + "/runtime-trace-regression-suite-definitions/" + createdId;
+            return ResponseEntity.created(URI.create(location)).build();
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+    }
+
+    @PutMapping(
+            value = "/runtime-trace-regression-suite-definitions/{definitionId}",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Void> updateDefinition(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable("definitionId") String definitionIdRaw,
+            @RequestBody(required = false) String body,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> definitionId = parseDefinitionId(definitionIdRaw);
+        if (definitionId.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (body == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        String trimmedBody = body.trim();
+        if (trimmedBody.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto;
+        try {
+            dto = strictMutationMapper.readValue(trimmedBody, RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto.class);
+        } catch (JsonProcessingException ex) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (!isUpsertAdapterValid(dto)) {
+            return ResponseEntity.badRequest().build();
+        }
+        UUID userId = principal.userId();
+        try {
+            definitionService.update(definitionId.get(), userId, toUpdateCommand(dto));
+            return ResponseEntity.noContent().build();
+        } catch (NotFoundException ex) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
+    }
+
+    @DeleteMapping("/runtime-trace-regression-suite-definitions/{definitionId}")
+    public ResponseEntity<Void> deleteDefinition(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable("definitionId") String definitionIdRaw,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> definitionId = parseDefinitionId(definitionIdRaw);
+        if (definitionId.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        UUID userId = principal.userId();
+        try {
+            definitionService.delete(definitionId.get(), userId);
+            return ResponseEntity.noContent().build();
+        } catch (NotFoundException ex) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().build();
+        }
     }
 
     @GetMapping("/runtime-trace-regression-suite-definitions")
@@ -65,6 +205,102 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             throw new NotFoundException("definition not found");
         }
         return ResponseEntity.ok(toDetailDto(snap.get()));
+    }
+
+    private static boolean isUpsertAdapterValid(RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto) {
+        List<RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto> entries = dto.entries();
+        if (entries == null || entries.size() < ENTRIES_MIN || entries.size() > ENTRIES_MAX) {
+            return false;
+        }
+        for (RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto e : entries) {
+            if (e == null) {
+                return false;
+            }
+        }
+
+        String name = dto.name();
+        if (name == null || name.trim().isEmpty()) {
+            return false;
+        }
+        String trimmedName = name.trim();
+        if (trimmedName.length() < NAME_MIN_LEN || trimmedName.length() > NAME_MAX_LEN) {
+            return false;
+        }
+
+        String description = dto.description();
+        if (description != null) {
+            String dTrim = description.trim();
+            if (!dTrim.isEmpty() && dTrim.length() > DESCRIPTION_MAX_LEN) {
+                return false;
+            }
+        }
+
+        for (RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto e : entries) {
+            if (e instanceof RuntimeTraceRegressionSuiteDefinitionUpsertByTraceIdsEntryRequestDto w3) {
+                List<UUID> traceIds = w3.getTraceIds();
+                if (traceIds == null) {
+                    return false;
+                }
+                if (traceIds.stream().anyMatch(Objects::isNull)) {
+                    return false;
+                }
+                if (traceIds.size() > TRACE_IDS_MAX) {
+                    return false;
+                }
+            } else if (e instanceof RuntimeTraceRegressionSuiteDefinitionUpsertByConversationEntryRequestDto w4) {
+                if (w4.getConversationId() == null) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static CreateDefinitionCommand toCreateCommand(RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto) {
+        String trimmedName = dto.name().trim();
+        Optional<String> descriptionOptional = descriptionOptionalFromDto(dto.description());
+        List<RuntimeTraceRegressionSuiteDefinitionEntrySpec> entrySpecs = toEntrySpecs(dto.entries());
+        return new CreateDefinitionCommand(trimmedName, descriptionOptional, entrySpecs);
+    }
+
+    private static UpdateDefinitionCommand toUpdateCommand(RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto) {
+        String trimmedName = dto.name().trim();
+        Optional<String> descriptionOptional = descriptionOptionalFromDto(dto.description());
+        List<RuntimeTraceRegressionSuiteDefinitionEntrySpec> entrySpecs = toEntrySpecs(dto.entries());
+        return new UpdateDefinitionCommand(trimmedName, descriptionOptional, entrySpecs);
+    }
+
+    private static Optional<String> descriptionOptionalFromDto(String description) {
+        if (description == null) {
+            return Optional.empty();
+        }
+        String t = description.trim();
+        if (t.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(t);
+    }
+
+    private static List<RuntimeTraceRegressionSuiteDefinitionEntrySpec> toEntrySpecs(
+            List<RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto> entries) {
+        List<RuntimeTraceRegressionSuiteDefinitionEntrySpec> specs = new ArrayList<>(entries.size());
+        for (RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto e : entries) {
+            if (e instanceof RuntimeTraceRegressionSuiteDefinitionUpsertByTraceIdsEntryRequestDto w3) {
+                specs.add(new RuntimeTraceRegressionSuiteDefinitionEntrySpec.ByTraceIds(w3.getTraceIds()));
+            } else if (e instanceof RuntimeTraceRegressionSuiteDefinitionUpsertByConversationEntryRequestDto w4) {
+                Optional<Instant> from = Optional.ofNullable(w4.getCreatedAtFrom());
+                Optional<Instant> to = Optional.ofNullable(w4.getCreatedAtTo());
+                String wf = w4.getWorkflowName();
+                Optional<String> workflowNameOptional =
+                        wf == null || wf.isBlank() ? Optional.empty() : Optional.of(wf.trim());
+                specs.add(
+                        new RuntimeTraceRegressionSuiteDefinitionEntrySpec.ByConversation(
+                                w4.getConversationId(), from, to, workflowNameOptional));
+            }
+        }
+        return specs;
     }
 
     private static Optional<UUID> parseDefinitionId(String raw) {

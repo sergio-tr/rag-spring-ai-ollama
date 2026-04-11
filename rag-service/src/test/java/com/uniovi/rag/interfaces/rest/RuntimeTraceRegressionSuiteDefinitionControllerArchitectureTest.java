@@ -35,12 +35,15 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
 
     @ArchTest
-    static final ArchRule controllerHasSingleConstructorTakingDefinitionServiceOnly =
+    static final ArchRule controllerConstructorMatchesP35Adapter =
             constructors()
                     .that()
                     .areDeclaredIn(RuntimeTraceRegressionSuiteDefinitionController.class)
                     .should()
-                    .haveRawParameterTypes(RuntimeTraceRegressionSuiteDefinitionService.class.getName());
+                    .haveRawParameterTypes(
+                            RuntimeTraceRegressionSuiteDefinitionService.class.getName(),
+                            ObjectMapper.class.getName(),
+                            String.class.getName());
 
     @ArchTest
     static final ArchRule controllerDoesNotDependOnSuiteExecution =
@@ -167,12 +170,4 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                     .dependOnClassesThat()
                     .areAssignableTo(ThreadPoolTaskExecutor.class);
 
-    @ArchTest
-    static final ArchRule controllerDoesNotInjectObjectMapper =
-            noClasses()
-                    .that()
-                    .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionController")
-                    .should()
-                    .dependOnClassesThat()
-                    .areAssignableTo(ObjectMapper.class);
 }
