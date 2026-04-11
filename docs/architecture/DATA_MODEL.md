@@ -166,6 +166,7 @@ erDiagram
 | `async_task` | `task_type`, `status`, progress text | `request_payload`, `result_json` |
 | `resolved_config_snapshot` | `created_at`, `effective_system_prompt`, `config_hash` | `payload_jsonb`, `capability_set_jsonb`, `compatibility_result_jsonb`, `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `provenance_jsonb` (see §6.1) |
 | `runtime_execution_trace` | linkage (`user_id`, `project_id`, optional `conversation_id`/`message_id`), `correlation_id`, optional `resolved_config_snapshot_id`/`config_hash`, extracted summary columns (memory/routing/tool/FC/advisor/judge/clarification), `schema_version`, `created_at` | `execution_trace_jsonb` (bounded `ExecutionTrace` projection), `stages_jsonb` (bounded `ExecutionStageTrace` list) |
+| `runtime_trace_regression_suite_definition`, `runtime_trace_regression_suite_definition_entry`, `runtime_trace_regression_suite_definition_entry_trace` | **P33:** per-user named suite definitions (`UNIQUE (user_id, name)`), ordered entries (`entry_kind` **BY_TRACE_IDS** / **BY_CONVERSATION**), child rows for trace ids **only** for **BY_TRACE_IDS** | — (no JSONB / array column for trace ids) |
 | `knowledge_index_snapshot`, `knowledge_snapshot_document`, `document_artifact`, `reindex_event`; extended `project_documents` | scope, snapshot FK, storage columns, `requires_reindex` | Artifact payloads (`schemaVersion`); METADATA holds structured-search projection when applicable (§6.2) |
 
 **Trade-off:** JSON stays flexible for TFG iteration; heavy reporting may need GIN indexes or extracted columns later.
@@ -214,6 +215,18 @@ This table stores a **reproducible, append-only** persisted trace artefact for o
 | `prompt_stack_preview_jsonb` | omit (null) | Legacy; not written for new rows. |
 
 **Forward compatibility:** new snapshot JSON keys and new nullable columns should be **additive** only; readers ignore unknown keys where possible.
+
+### 6.4 `runtime_trace_regression_suite_*` (saved regression suite definitions — P33)
+
+**Migration:** [V32](../../rag-service/src/main/resources/db/migration/V32__runtime_trace_regression_suite_definition.sql).
+
+These tables persist **reusable suite definitions** (metadata + ordered entries). They do **not** store suite **execution** results, export blobs, or run history. **`RuntimeTraceRegressionSuiteDefinitionService`** (`application.service.runtime.traceregressionsuitedefinition`) is the **only** application owner for writes/reads; it can **materialize** a **`RuntimeTraceRegressionSuiteRequest`** (P30 shape) for the owning user — **read/map only**, without calling **`RuntimeTraceRegressionSuiteService#execute`**. P33 does **not** add HTTP routes for definitions (future phases may add REST on top of this service).
+
+| Table | Role |
+|-------|------|
+| `runtime_trace_regression_suite_definition` | `id`, `user_id`, `name` (**UNIQUE** per user), optional `description`, `schema_version`, `created_at`, `updated_at`. |
+| `runtime_trace_regression_suite_definition_entry` | One row per ordered entry (`position` 0…n−1), `entry_kind`, nullable conversation/timestamp/workflow columns per kind; **CHECK** constraints align with P30 entry shapes. |
+| `runtime_trace_regression_suite_definition_entry_trace` | For **BY_TRACE_IDS** entries only: ordered `trace_id` rows (`position`); **no** rows for **BY_CONVERSATION** entries. |
 
 ### 6.2 Knowledge system (snapshots, artifacts, reindex) — §13a field rules
 
