@@ -27,7 +27,12 @@ import org.springframework.scheduling.annotation.EnableScheduling;
                 pattern = "com\\.uniovi\\.rag\\.testsupport\\.webmvc\\..*"))
 @EnableAsync(proxyTargetClass = true)
 @EnableScheduling
-@EntityScan(basePackages = "com.uniovi.rag.infrastructure.persistence.jpa")
+@EntityScan(
+        basePackages = {
+            "com.uniovi.rag.infrastructure.persistence.jpa",
+            "com.uniovi.rag.infrastructure.persistence.traceregressionsuitedefinition",
+            "com.uniovi.rag.infrastructure.persistence.traceregressionsuiterun"
+        })
 @EnableJpaRepositories(basePackages = "com.uniovi.rag.infrastructure.persistence")
 @EnableConfigurationProperties({
     RagAccountProperties.class,

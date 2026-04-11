@@ -167,6 +167,7 @@ erDiagram
 | `resolved_config_snapshot` | `created_at`, `effective_system_prompt`, `config_hash` | `payload_jsonb`, `capability_set_jsonb`, `compatibility_result_jsonb`, `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `provenance_jsonb` (see §6.1) |
 | `runtime_execution_trace` | linkage (`user_id`, `project_id`, optional `conversation_id`/`message_id`), `correlation_id`, optional `resolved_config_snapshot_id`/`config_hash`, extracted summary columns (memory/routing/tool/FC/advisor/judge/clarification), `schema_version`, `created_at` | `execution_trace_jsonb` (bounded `ExecutionTrace` projection), `stages_jsonb` (bounded `ExecutionStageTrace` list) |
 | `runtime_trace_regression_suite_definition`, `runtime_trace_regression_suite_definition_entry`, `runtime_trace_regression_suite_definition_entry_trace` | **P33:** per-user named suite definitions (`UNIQUE (user_id, name)`), ordered entries (`entry_kind` **BY_TRACE_IDS** / **BY_CONVERSATION**), child rows for trace ids **only** for **BY_TRACE_IDS** | — (no JSONB / array column for trace ids) |
+| `runtime_trace_regression_suite_run`, `runtime_trace_regression_suite_run_entry` | **P41:** per-user suite **run** header + summary counters + one row per executed entry (bounded scalars only); **`definition_id`** opaque UUID when `source_type = SAVED_DEFINITION` (**no FK** to definitions) | — (no JSONB / arrays / trace blobs) |
 | `knowledge_index_snapshot`, `knowledge_snapshot_document`, `document_artifact`, `reindex_event`; extended `project_documents` | scope, snapshot FK, storage columns, `requires_reindex` | Artifact payloads (`schemaVersion`); METADATA holds structured-search projection when applicable (§6.2) |
 
 **Trade-off:** JSON stays flexible for TFG iteration; heavy reporting may need GIN indexes or extracted columns later.
@@ -227,6 +228,17 @@ These tables persist **reusable suite definitions** (metadata + ordered entries)
 | `runtime_trace_regression_suite_definition` | `id`, `user_id`, `name` (**UNIQUE** per user), optional `description`, `schema_version`, `created_at`, `updated_at`. |
 | `runtime_trace_regression_suite_definition_entry` | One row per ordered entry (`position` 0…n−1), `entry_kind`, nullable conversation/timestamp/workflow columns per kind; **CHECK** constraints align with P30 entry shapes. |
 | `runtime_trace_regression_suite_definition_entry_trace` | For **BY_TRACE_IDS** entries only: ordered `trace_id` rows (`position`); **no** rows for **BY_CONVERSATION** entries. |
+
+### 6.5 `runtime_trace_regression_suite_run*` (regression suite run snapshots — P41)
+
+**Migration:** [V33](../../rag-service/src/main/resources/db/migration/V33__runtime_trace_regression_suite_run.sql).
+
+These tables persist a **minimal, query-ready snapshot** of a completed **`RuntimeTraceRegressionSuiteResult`** (P30): **no** re-execution, **no** batch payloads, **no** JSONB. **`RuntimeTraceRegressionSuiteRunPersistenceService`** (`application.service.runtime.traceregressionsuiterun`) is the **only** Spring owner for writes/reads to these tables. **`definition_id`** is stored as an opaque UUID when `source_type = SAVED_DEFINITION` (no FK to **`runtime_trace_regression_suite_definition`**). Child **`runtime_trace_regression_suite_run_entry`** rows use **`ON DELETE CASCADE`** from the parent run.
+
+| Table | Role |
+|-------|------|
+| `runtime_trace_regression_suite_run` | Run header: `user_id`, `source_type` (**AD_HOC** \| **SAVED_DEFINITION**), optional `definition_id` (required iff **SAVED_DEFINITION**), `suite_outcome`, five suite summary integers mirroring **`RuntimeTraceRegressionSuiteSummary`**, `created_at`; table-level **CHECK**s tie counters together. |
+| `runtime_trace_regression_suite_run_entry` | One row per entry (`entry_order` 0…19): `entry_kind`, capped `selector_echo`, `execution_status` (**BATCH_RETURNED** \| **EXECUTION_FAILED**), either batch outcome + three counts **or** failure kind (+ optional `failure_detail`) per row-shape **CHECK**. |
 
 ### 6.2 Knowledge system (snapshots, artifacts, reindex) — §13a field rules
 
