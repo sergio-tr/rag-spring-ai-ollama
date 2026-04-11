@@ -12,13 +12,11 @@ import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegression
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.CreateDefinitionCommand;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntrySpec;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.UpdateDefinitionCommand;
-import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntrySnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUserSummary;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionByConversationEntryDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionByTraceIdsEntryDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionDetailDto;
-import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntryDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionListResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSummaryDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUpsertByConversationEntryRequestDto;
@@ -275,7 +273,7 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         if (snap.isEmpty()) {
             throw new NotFoundException("definition not found");
         }
-        return ResponseEntity.ok(toDetailDto(snap.get()));
+        return ResponseEntity.ok(RuntimeTraceRegressionSuiteDefinitionDetailDto.fromSnapshot(snap.get()));
     }
 
     private static boolean isExecuteBodyAllowed(String body) {
@@ -424,28 +422,4 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         return new RuntimeTraceRegressionSuiteDefinitionListResponseDto(defs);
     }
 
-    private static RuntimeTraceRegressionSuiteDefinitionDetailDto toDetailDto(RuntimeTraceRegressionSuiteDefinitionSnapshot snap) {
-        List<RuntimeTraceRegressionSuiteDefinitionEntryDto> entryDtos = new ArrayList<>(snap.entries().size());
-        for (RuntimeTraceRegressionSuiteDefinitionEntrySnapshot e : snap.entries()) {
-            entryDtos.add(toEntryDto(e));
-        }
-        return new RuntimeTraceRegressionSuiteDefinitionDetailDto(
-                snap.id(),
-                snap.name(),
-                snap.description(),
-                snap.schemaVersion(),
-                snap.createdAt(),
-                snap.updatedAt(),
-                entryDtos);
-    }
-
-    private static RuntimeTraceRegressionSuiteDefinitionEntryDto toEntryDto(RuntimeTraceRegressionSuiteDefinitionEntrySnapshot snap) {
-        return switch (snap) {
-            case RuntimeTraceRegressionSuiteDefinitionEntrySnapshot.ByTraceIds b ->
-                    new RuntimeTraceRegressionSuiteDefinitionByTraceIdsEntryDto(b.traceIds());
-            case RuntimeTraceRegressionSuiteDefinitionEntrySnapshot.ByConversation c ->
-                    new RuntimeTraceRegressionSuiteDefinitionByConversationEntryDto(
-                            c.conversationId(), c.createdAtFrom(), c.createdAtTo(), c.workflowName());
-        };
-    }
 }
