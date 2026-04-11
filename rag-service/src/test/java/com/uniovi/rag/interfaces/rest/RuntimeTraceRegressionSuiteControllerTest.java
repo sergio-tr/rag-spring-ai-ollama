@@ -79,7 +79,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
 
     @Test
     void explicit_route_query_string_returns_400() throws Exception {
-        when(suiteService.run(any())).thenReturn(emptySuiteResult());
+        when(suiteService.execute(any())).thenReturn(emptySuiteResult());
         mockMvc.perform(
                         post("/api/v5/runtime-traces/regression-suite")
                                 .queryParam("x", "1")
@@ -90,7 +90,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
 
     @Test
     void conversation_route_query_string_returns_400() throws Exception {
-        when(suiteService.run(any())).thenReturn(emptySuiteResult());
+        when(suiteService.execute(any())).thenReturn(emptySuiteResult());
         mockMvc.perform(
                         post("/api/v5/conversations/{cid}/runtime-traces/regression-suite", conversationId)
                                 .queryParam("x", "1")
@@ -215,7 +215,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
 
     @Test
     void empty_entries_returns_200_empty_suite() throws Exception {
-        when(suiteService.run(any())).thenReturn(emptySuiteResult());
+        when(suiteService.execute(any())).thenReturn(emptySuiteResult());
         mockMvc.perform(
                         post("/api/v5/runtime-traces/regression-suite")
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -229,7 +229,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
 
     @Test
     void not_attempted_from_service_returns_400() throws Exception {
-        when(suiteService.run(any())).thenReturn(notAttemptedResult());
+        when(suiteService.execute(any())).thenReturn(notAttemptedResult());
         mockMvc.perform(
                         post("/api/v5/runtime-traces/regression-suite")
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -252,7 +252,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
                         1,
                         1);
         var summary = new RuntimeTraceRegressionSuiteSummary(1, 1, 1, 0, 0);
-        when(suiteService.run(any()))
+        when(suiteService.execute(any()))
                 .thenReturn(
                         new RuntimeTraceRegressionSuiteResult(
                                 RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS, summary, List.of(row)));

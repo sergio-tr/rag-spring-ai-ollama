@@ -47,7 +47,7 @@ public class RuntimeTraceRegressionSuiteService {
     /**
      * Runs the suite: validates request, then one batch execute per entry in order (capture exceptions per entry).
      */
-    public RuntimeTraceRegressionSuiteResult run(RuntimeTraceRegressionSuiteRequest request) {
+    public RuntimeTraceRegressionSuiteResult execute(RuntimeTraceRegressionSuiteRequest request) {
         if (request == null || request.userId() == null || request.entries() == null) {
             return notAttempted();
         }

@@ -50,7 +50,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
     @Test
     void null_user_id_is_not_attempted_and_never_executes() {
         var req = new RuntimeTraceRegressionSuiteRequest(null, List.of(entryIds(UUID.randomUUID())));
-        var r = suite.run(req);
+        var r = suite.execute(req);
         assertThat(r.suiteOutcome()).isEqualTo(RuntimeTraceRegressionSuiteOutcome.NOT_ATTEMPTED);
         assertThat(r.entryResults()).isEmpty();
         verify(batchService, never()).execute(any());
@@ -59,7 +59,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
     @Test
     void null_entries_reference_is_not_attempted() {
         var req = new RuntimeTraceRegressionSuiteRequest(userId, null);
-        var r = suite.run(req);
+        var r = suite.execute(req);
         assertThat(r.suiteOutcome()).isEqualTo(RuntimeTraceRegressionSuiteOutcome.NOT_ATTEMPTED);
         assertThat(r.entryResults()).isEmpty();
         verify(batchService, never()).execute(any());
@@ -72,7 +72,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
             entries.add(entryIds(UUID.randomUUID()));
         }
         var req = new RuntimeTraceRegressionSuiteRequest(userId, entries);
-        var r = suite.run(req);
+        var r = suite.execute(req);
         assertThat(r.suiteOutcome()).isEqualTo(RuntimeTraceRegressionSuiteOutcome.NOT_ATTEMPTED);
         assertThat(r.entryResults()).isEmpty();
         verify(batchService, never()).execute(any());
@@ -81,7 +81,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
     @Test
     void empty_suite_has_empty_results_and_zero_execute() {
         var req = new RuntimeTraceRegressionSuiteRequest(userId, List.of());
-        var r = suite.run(req);
+        var r = suite.execute(req);
         assertThat(r.suiteOutcome()).isEqualTo(RuntimeTraceRegressionSuiteOutcome.EMPTY_SUITE);
         assertThat(r.entryResults()).isEmpty();
         assertThat(r.summary().requestedEntryCount()).isZero();
@@ -103,7 +103,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
                 new RuntimeTraceRegressionSuiteRequest(
                         userId,
                         List.of(entryIds(a), entryIds(b), entryIds(c)));
-        suite.run(req);
+        suite.execute(req);
 
         InOrder order = inOrder(batchService);
         order.verify(batchService).execute(RuntimeTraceReplayComparisonBatchRequest.byTraceIds(userId, List.of(a)));
@@ -116,7 +116,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
         when(batchService.execute(any())).thenReturn(batchResult(RuntimeTraceReplayComparisonBatchOutcome.COMPLETED_ALL_EXACT_MATCH, 1, 1, 1));
         var t1 = UUID.randomUUID();
         var t2 = UUID.randomUUID();
-        suite.run(
+        suite.execute(
                 new RuntimeTraceRegressionSuiteRequest(
                         userId, List.of(entryIds(t1), entryIds(t2))));
         verify(batchService, times(2)).execute(any());
@@ -129,7 +129,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
                 .thenReturn(batchResult(RuntimeTraceReplayComparisonBatchOutcome.EMPTY_SELECTION, 0, 0, 0));
 
         var r =
-                suite.run(
+                suite.execute(
                         new RuntimeTraceRegressionSuiteRequest(
                                 userId,
                                 List.of(entryIds(UUID.randomUUID()), entryIds(UUID.randomUUID()))));
@@ -152,7 +152,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
                 .thenReturn(ok);
 
         var r =
-                suite.run(
+                suite.execute(
                         new RuntimeTraceRegressionSuiteRequest(
                                 userId,
                                 List.of(
@@ -179,7 +179,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
                 .thenReturn(batchResult(RuntimeTraceReplayComparisonBatchOutcome.COMPLETED_ALL_EXACT_MATCH, 1, 1, 1));
 
         var r =
-                suite.run(
+                suite.execute(
                         new RuntimeTraceRegressionSuiteRequest(
                                 userId, List.of(entryIds(UUID.randomUUID()), entryIds(UUID.randomUUID()))));
 
@@ -202,7 +202,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
                 .thenReturn(batchResult(RuntimeTraceReplayComparisonBatchOutcome.COMPLETED_ALL_EXACT_MATCH, 1, 1, 1));
 
         var r =
-                suite.run(
+                suite.execute(
                         new RuntimeTraceRegressionSuiteRequest(
                                 userId, List.of(entryIds(UUID.randomUUID()), entryIds(UUID.randomUUID()))));
 
@@ -220,7 +220,7 @@ class RuntimeTraceRegressionSuiteServiceTest {
         when(batchService.execute(any()))
                 .thenReturn(batchResult(RuntimeTraceReplayComparisonBatchOutcome.EMPTY_SELECTION, 0, 0, 0));
 
-        suite.run(
+        suite.execute(
                 new RuntimeTraceRegressionSuiteRequest(
                         userId,
                         List.of(
