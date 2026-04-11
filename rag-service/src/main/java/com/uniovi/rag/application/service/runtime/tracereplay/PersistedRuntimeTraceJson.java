@@ -8,12 +8,12 @@ import java.util.UUID;
 /**
  * Read-only projection helpers for fields embedded in {@code runtime_execution_trace.execution_trace_jsonb} (P15/P16).
  */
-final class PersistedRuntimeTraceJson {
+public final class PersistedRuntimeTraceJson {
 
     private PersistedRuntimeTraceJson() {
     }
 
-    static List<UUID> readUsedKnowledgeSnapshotIds(Map<String, Object> executionTraceJson) {
+    public static List<UUID> readUsedKnowledgeSnapshotIds(Map<String, Object> executionTraceJson) {
         if (executionTraceJson == null || executionTraceJson.isEmpty()) {
             return List.of();
         }
@@ -21,7 +21,7 @@ final class PersistedRuntimeTraceJson {
         return parseUuidList(raw);
     }
 
-    static String readDeterministicToolKind(Map<String, Object> executionTraceJson) {
+    public static String readDeterministicToolKind(Map<String, Object> executionTraceJson) {
         if (executionTraceJson == null || executionTraceJson.isEmpty()) {
             return "";
         }
