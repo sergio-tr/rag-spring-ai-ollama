@@ -111,6 +111,7 @@ public class RuntimeTraceReplayComparisonService {
             RuntimeTraceReplayComparisonOutcome outcome = deriveComparisonOutcome(mismatches);
             boolean exact = outcome == RuntimeTraceReplayComparisonOutcome.COMPARISON_SUCCEEDED_EXACT_MATCH;
             String summary = summarizeComparison(outcome, mismatches.size(), replayOutcome);
+            RouteWorkflowEnrichment rw = enrich(original, replayTrace);
             return new RuntimeTraceReplayComparisonResult(
                     original.userId(),
                     original.projectId() != null ? original.projectId() : NIL,
@@ -124,7 +125,11 @@ public class RuntimeTraceReplayComparisonService {
                     answerStatus,
                     exact,
                     summary,
-                    mismatches);
+                    mismatches,
+                    rw.originalRouteKind(),
+                    rw.replayRouteKind(),
+                    rw.originalWorkflowName(),
+                    rw.replayWorkflowName());
         } catch (RuntimeException e) {
             return buildComparisonFailedSafe(
                     original, request, replayResult, "comparison failed: " + e.getClass().getSimpleName());
@@ -193,7 +198,11 @@ public class RuntimeTraceReplayComparisonService {
                 RuntimeTraceReplayAnswerComparisonStatus.NOT_COMPARABLE_ORIGINAL_ABSENT,
                 false,
                 cap(summary),
-                List.of());
+                List.of(),
+                "",
+                "",
+                "",
+                "");
     }
 
     private RuntimeTraceReplayComparisonResult buildTerminalWithoutComparator(
@@ -203,6 +212,7 @@ public class RuntimeTraceReplayComparisonService {
             RuntimeTraceReplayComparisonOutcome outcome,
             String summary) {
         RuntimeTraceReplayAnswerComparisonStatus answerStatus = comparator.classifyAnswerStatus(replayResult.answerText());
+        RouteWorkflowEnrichment rw = enrich(original, replayResult.transientReplayTrace());
         return new RuntimeTraceReplayComparisonResult(
                 original.userId(),
                 original.projectId() != null ? original.projectId() : NIL,
@@ -216,7 +226,11 @@ public class RuntimeTraceReplayComparisonService {
                 answerStatus,
                 false,
                 cap(summary),
-                List.of());
+                List.of(),
+                rw.originalRouteKind(),
+                rw.replayRouteKind(),
+                rw.originalWorkflowName(),
+                rw.replayWorkflowName());
     }
 
     private RuntimeTraceReplayComparisonResult buildComparisonFailedSafe(
@@ -224,6 +238,7 @@ public class RuntimeTraceReplayComparisonService {
             RuntimeTraceReplayComparisonRequest request,
             RuntimeTraceReplayResult replayResult,
             String summary) {
+        RouteWorkflowEnrichment rw = enrich(original, replayResult.transientReplayTrace());
         return new RuntimeTraceReplayComparisonResult(
                 original.userId(),
                 original.projectId() != null ? original.projectId() : NIL,
@@ -237,8 +252,29 @@ public class RuntimeTraceReplayComparisonService {
                 comparator.classifyAnswerStatus(replayResult.answerText()),
                 false,
                 cap(summary),
-                List.of());
+                List.of(),
+                rw.originalRouteKind(),
+                rw.replayRouteKind(),
+                rw.originalWorkflowName(),
+                rw.replayWorkflowName());
     }
+
+    private static RouteWorkflowEnrichment enrich(RuntimeExecutionTraceDetailDto original, Optional<ExecutionTrace> replayTrace) {
+        String ork = nz(original.routingRouteKind());
+        String owf = nz(original.workflowName());
+        if (replayTrace.isEmpty()) {
+            return new RouteWorkflowEnrichment(ork, "", owf, "");
+        }
+        ExecutionTrace t = replayTrace.get();
+        return new RouteWorkflowEnrichment(ork, nz(t.routingRouteKind()), owf, nz(t.workflowName()));
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
+    }
+
+    private record RouteWorkflowEnrichment(
+            String originalRouteKind, String replayRouteKind, String originalWorkflowName, String replayWorkflowName) {}
 
     private static String summarizeReplay(RuntimeTraceReplayOutcome replayOutcome) {
         return cap("replay outcome=" + replayOutcome.name());
