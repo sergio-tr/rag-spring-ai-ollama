@@ -1,4 +1,4 @@
-package com.uniovi.rag.interfaces.rest;
+package com.uniovi.rag.application.service.runtime.tracereplayexport;
 
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
@@ -7,110 +7,128 @@ import com.tngtech.archunit.lang.ArchRule;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracecomparison.RuntimeTraceReplayComparisonService;
 import com.uniovi.rag.application.service.runtime.tracecomparisonexport.RuntimeTraceReplayComparisonExportService;
-import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
 import com.uniovi.rag.application.service.runtime.traceexport.RuntimeTraceExportService;
 import com.uniovi.rag.application.service.runtime.tracequery.RuntimeTraceQueryService;
 import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplayService;
 import com.uniovi.rag.infrastructure.persistence.jpa.RuntimeExecutionTraceRepository;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.web.bind.annotation.RestController;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 @AnalyzeClasses(
-        packagesOf = RuntimeTraceReplayController.class,
+        packages = "com.uniovi.rag.application.service.runtime.tracereplayexport",
         importOptions = ImportOption.DoNotIncludeTests.class
 )
-class RuntimeTraceReplayControllerArchitectureTest {
+class RuntimeTraceReplayExportServiceOwnershipArchitectureTest {
 
     @ArchTest
-    static final ArchRule controllerDependsOnReplayService =
+    static final ArchRule exportServiceDependsOnReplayService =
             classes()
                     .that()
-                    .haveSimpleName("RuntimeTraceReplayController")
+                    .haveSimpleName("RuntimeTraceReplayExportService")
                     .should()
                     .dependOnClassesThat()
                     .areAssignableTo(RuntimeTraceReplayService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnTraceQueryService =
+    static final ArchRule exportDoesNotDependOnTraceRepository =
             noClasses()
                     .that()
-                    .haveSimpleName("RuntimeTraceReplayController")
+                    .resideInAnyPackage("..tracereplayexport..")
+                    .should()
+                    .dependOnClassesThat()
+                    .haveFullyQualifiedName(RuntimeExecutionTraceRepository.class.getName());
+
+    @ArchTest
+    static final ArchRule exportDoesNotDependOnTraceQueryService =
+            noClasses()
+                    .that()
+                    .resideInAnyPackage("..tracereplayexport..")
                     .should()
                     .dependOnClassesThat()
                     .areAssignableTo(RuntimeTraceQueryService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnTraceRepository =
+    static final ArchRule exportDoesNotDependOnComparisonService =
             noClasses()
                     .that()
-                    .haveSimpleName("RuntimeTraceReplayController")
-                    .should()
-                    .dependOnClassesThat()
-                    .areAssignableTo(RuntimeExecutionTraceRepository.class);
-
-    @ArchTest
-    static final ArchRule controllerDoesNotDependOnComparisonService =
-            noClasses()
-                    .that()
-                    .haveSimpleName("RuntimeTraceReplayController")
+                    .resideInAnyPackage("..tracereplayexport..")
                     .should()
                     .dependOnClassesThat()
                     .areAssignableTo(RuntimeTraceReplayComparisonService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnP17ExportService =
+    static final ArchRule exportDoesNotDependOnP17Export =
             noClasses()
                     .that()
-                    .haveSimpleName("RuntimeTraceReplayController")
+                    .resideInAnyPackage("..tracereplayexport..")
                     .should()
                     .dependOnClassesThat()
                     .areAssignableTo(RuntimeTraceExportService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnComparisonExportService =
+    static final ArchRule exportDoesNotDependOnP21Export =
             noClasses()
                     .that()
-                    .haveSimpleName("RuntimeTraceReplayController")
+                    .resideInAnyPackage("..tracereplayexport..")
                     .should()
                     .dependOnClassesThat()
                     .areAssignableTo(RuntimeTraceReplayComparisonExportService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnReplayExportService =
+    static final ArchRule exportDoesNotDependOnProcessQueryService =
             noClasses()
                     .that()
-                    .haveSimpleName("RuntimeTraceReplayController")
-                    .should()
-                    .dependOnClassesThat()
-                    .areAssignableTo(RuntimeTraceReplayExportService.class);
-
-    @ArchTest
-    static final ArchRule controllerDoesNotDependOnProcessQueryService =
-            noClasses()
-                    .that()
-                    .haveSimpleName("RuntimeTraceReplayController")
+                    .resideInAnyPackage("..tracereplayexport..")
                     .should()
                     .dependOnClassesThat()
                     .areAssignableTo(ProcessQueryService.class);
 
     @ArchTest
-    static final ArchRule controllerDoesNotDependOnOrchestrator =
+    static final ArchRule exportDoesNotDependOnOrchestrator =
             noClasses()
                     .that()
-                    .haveSimpleName("RuntimeTraceReplayController")
+                    .resideInAnyPackage("..tracereplayexport..")
                     .should()
                     .dependOnClassesThat()
                     .areAssignableTo(RagExecutionOrchestrator.class);
 
     @ArchTest
-    static final ArchRule dtoTracereplayDoesNotDependOnJpaRepository =
+    static final ArchRule noRestControllersInExportPackage =
+            classes()
+                    .that()
+                    .resideInAnyPackage("..tracereplayexport..")
+                    .should()
+                    .notBeAnnotatedWith(RestController.class);
+
+    @ArchTest
+    static final ArchRule exportPackageDoesNotDependOnJpaRepository =
             noClasses()
                     .that()
-                    .resideInAPackage("..interfaces.rest.dto.tracereplay..")
+                    .resideInAnyPackage("..tracereplayexport..")
                     .should()
                     .dependOnClassesThat()
                     .areAssignableTo(JpaRepository.class);
+
+    @ArchTest
+    static final ArchRule exportServiceIsNotAsync =
+            classes()
+                    .that()
+                    .haveSimpleName("RuntimeTraceReplayExportService")
+                    .should()
+                    .notBeAnnotatedWith(Async.class);
+
+    @ArchTest
+    static final ArchRule exportServiceDoesNotDependOnTaskExecutor =
+            noClasses()
+                    .that()
+                    .haveSimpleName("RuntimeTraceReplayExportService")
+                    .should()
+                    .dependOnClassesThat()
+                    .areAssignableTo(ThreadPoolTaskExecutor.class);
 }
