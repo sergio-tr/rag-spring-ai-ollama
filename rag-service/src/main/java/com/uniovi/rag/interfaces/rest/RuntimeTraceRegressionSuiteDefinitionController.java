@@ -2,8 +2,13 @@ package com.uniovi.rag.interfaces.rest;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
+import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteEntry;
+import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteOutcome;
+import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteRequest;
+import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteResult;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.CreateDefinitionCommand;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntrySpec;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.UpdateDefinitionCommand;
@@ -20,6 +25,7 @@ import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.Runtime
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUpsertByTraceIdsEntryRequestDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto;
+import com.uniovi.rag.interfaces.rest.dto.traceregressionsuite.RuntimeTraceRegressionSuiteResponseDto;
 import com.uniovi.rag.security.RagPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -46,8 +52,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * P34: read-only GET routes; P35: POST/PUT/DELETE for persisted regression suite definitions — mutations delegate only
- * to {@link RuntimeTraceRegressionSuiteDefinitionService#create}, {@link #update}, {@link #delete}.
+ * P34: read-only GET routes; P35: POST/PUT/DELETE for definitions; P36: POST execute routes materialize via
+ * {@link RuntimeTraceRegressionSuiteDefinitionService#materializeToSuiteRequest} then {@link RuntimeTraceRegressionSuiteService#execute} only.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")
@@ -61,15 +67,18 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
     private static final int TRACE_IDS_MAX = 50;
 
     private final RuntimeTraceRegressionSuiteDefinitionService definitionService;
+    private final RuntimeTraceRegressionSuiteService suiteService;
     private final ObjectMapper strictMutationMapper;
     private final String productBasePath;
 
     public RuntimeTraceRegressionSuiteDefinitionController(
             RuntimeTraceRegressionSuiteDefinitionService definitionService,
+            RuntimeTraceRegressionSuiteService suiteService,
             @Qualifier(RegressionSuiteDefinitionMutationJacksonConfiguration.DEFINITION_MUTATION_STRICT_OBJECT_MAPPER)
                     ObjectMapper strictMutationMapper,
             @Value("${rag.api.product-base-path}") String productBasePath) {
         this.definitionService = definitionService;
+        this.suiteService = suiteService;
         this.strictMutationMapper = strictMutationMapper;
         this.productBasePath = productBasePath;
     }
@@ -122,7 +131,7 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         if (request.getQueryString() != null) {
             return ResponseEntity.badRequest().build();
         }
-        Optional<UUID> definitionId = parseDefinitionId(definitionIdRaw);
+        Optional<UUID> definitionId = parseUuid(definitionIdRaw);
         if (definitionId.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
@@ -163,7 +172,7 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         if (request.getQueryString() != null) {
             return ResponseEntity.badRequest().build();
         }
-        Optional<UUID> definitionId = parseDefinitionId(definitionIdRaw);
+        Optional<UUID> definitionId = parseUuid(definitionIdRaw);
         if (definitionId.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
@@ -176,6 +185,68 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
         }
+    }
+
+    @PostMapping("/runtime-trace-regression-suite-definitions/{definitionId}/execute")
+    public ResponseEntity<RuntimeTraceRegressionSuiteResponseDto> executeDefinitionFromSaved(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable("definitionId") String definitionIdRaw,
+            @RequestBody(required = false) String body,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> definitionIdOpt = parseUuid(definitionIdRaw);
+        if (definitionIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (!isExecuteBodyAllowed(body)) {
+            return ResponseEntity.badRequest().build();
+        }
+        UUID userId = principal.userId();
+        UUID definitionId = definitionIdOpt.get();
+        RuntimeTraceRegressionSuiteRequest req;
+        try {
+            req = definitionService.materializeToSuiteRequest(definitionId, userId);
+        } catch (NotFoundException ex) {
+            return ResponseEntity.notFound().build();
+        }
+        RuntimeTraceRegressionSuiteResult result = suiteService.execute(req);
+        return respondDefinitionExecution(result);
+    }
+
+    @PostMapping("/conversations/{conversationId}/runtime-trace-regression-suite-definitions/{definitionId}/execute")
+    public ResponseEntity<RuntimeTraceRegressionSuiteResponseDto> executeDefinitionFromSavedConversationScoped(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable("conversationId") String conversationIdRaw,
+            @PathVariable("definitionId") String definitionIdRaw,
+            @RequestBody(required = false) String body,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> definitionIdOpt = parseUuid(definitionIdRaw);
+        Optional<UUID> conversationIdOpt = parseUuid(conversationIdRaw);
+        if (definitionIdOpt.isEmpty() || conversationIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (!isExecuteBodyAllowed(body)) {
+            return ResponseEntity.badRequest().build();
+        }
+        UUID userId = principal.userId();
+        UUID definitionId = definitionIdOpt.get();
+        UUID conversationId = conversationIdOpt.get();
+        RuntimeTraceRegressionSuiteRequest req;
+        try {
+            req = definitionService.materializeToSuiteRequest(definitionId, userId);
+        } catch (NotFoundException ex) {
+            return ResponseEntity.notFound().build();
+        }
+        if (conversationScopedGuardFails(conversationId, req)) {
+            return ResponseEntity.notFound().build();
+        }
+        RuntimeTraceRegressionSuiteResult result = suiteService.execute(req);
+        return respondDefinitionExecution(result);
     }
 
     @GetMapping("/runtime-trace-regression-suite-definitions")
@@ -195,7 +266,7 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         if (request.getQueryString() != null) {
             return ResponseEntity.badRequest().build();
         }
-        Optional<UUID> definitionId = parseDefinitionId(definitionIdRaw);
+        Optional<UUID> definitionId = parseUuid(definitionIdRaw);
         if (definitionId.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
@@ -205,6 +276,34 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             throw new NotFoundException("definition not found");
         }
         return ResponseEntity.ok(toDetailDto(snap.get()));
+    }
+
+    private static boolean isExecuteBodyAllowed(String body) {
+        if (body == null) {
+            return true;
+        }
+        return body.trim().isEmpty();
+    }
+
+    private static boolean conversationScopedGuardFails(UUID pathConversationId, RuntimeTraceRegressionSuiteRequest request) {
+        boolean sawConversation = false;
+        for (RuntimeTraceRegressionSuiteEntry e : request.entries()) {
+            if (e instanceof RuntimeTraceRegressionSuiteEntry.ByConversation bc) {
+                sawConversation = true;
+                if (!pathConversationId.equals(bc.conversationId())) {
+                    return true;
+                }
+            }
+        }
+        return !sawConversation;
+    }
+
+    private static ResponseEntity<RuntimeTraceRegressionSuiteResponseDto> respondDefinitionExecution(
+            RuntimeTraceRegressionSuiteResult result) {
+        if (result.suiteOutcome() == RuntimeTraceRegressionSuiteOutcome.NOT_ATTEMPTED) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(RuntimeTraceRegressionSuiteResponseDto.fromResult(result));
     }
 
     private static boolean isUpsertAdapterValid(RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto) {
@@ -303,7 +402,7 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         return specs;
     }
 
-    private static Optional<UUID> parseDefinitionId(String raw) {
+    private static Optional<UUID> parseUuid(String raw) {
         if (raw == null) {
             return Optional.empty();
         }

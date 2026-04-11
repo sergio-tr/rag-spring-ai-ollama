@@ -1,5 +1,6 @@
 package com.uniovi.rag.interfaces.rest;
 
+import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
 import com.uniovi.rag.security.RagPrincipal;
@@ -52,6 +53,9 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
     @MockitoBean
     private RuntimeTraceRegressionSuiteDefinitionService definitionService;
 
+    @MockitoBean
+    private RuntimeTraceRegressionSuiteService suiteService;
+
     private UUID userId;
     private UUID definitionId;
 
@@ -69,6 +73,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
     @AfterEach
     void clearSecurity() {
         SecurityContextHolder.clearContext();
+        verify(suiteService, never()).execute(any());
     }
 
     private static String upsertOneByTraceIds(String name, String traceId) {

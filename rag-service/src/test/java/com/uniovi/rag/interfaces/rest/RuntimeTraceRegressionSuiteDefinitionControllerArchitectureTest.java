@@ -35,24 +35,16 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
 
     @ArchTest
-    static final ArchRule controllerConstructorMatchesP35Adapter =
+    static final ArchRule controllerConstructorMatchesP36Adapter =
             constructors()
                     .that()
                     .areDeclaredIn(RuntimeTraceRegressionSuiteDefinitionController.class)
                     .should()
                     .haveRawParameterTypes(
                             RuntimeTraceRegressionSuiteDefinitionService.class.getName(),
+                            RuntimeTraceRegressionSuiteService.class.getName(),
                             ObjectMapper.class.getName(),
                             String.class.getName());
-
-    @ArchTest
-    static final ArchRule controllerDoesNotDependOnSuiteExecution =
-            noClasses()
-                    .that()
-                    .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionController")
-                    .should()
-                    .dependOnClassesThat()
-                    .areAssignableTo(RuntimeTraceRegressionSuiteService.class);
 
     @ArchTest
     static final ArchRule controllerDoesNotDependOnComparisonBatchService =
