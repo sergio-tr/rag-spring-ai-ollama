@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,24 +34,27 @@ import java.util.UUID;
  *
  * <p>P46: two {@code POST} routes execute an ad hoc suite via {@link RuntimeTraceRegressionSuiteService#execute} then persist the
  * result with {@link RuntimeTraceRegressionSuiteRunPersistenceService#createRun} when the outcome allows — no bridge {@code @Service}.
+ *
+ * <p>P49: {@code DELETE …/runtime-trace-regression-suite-runs/{runId}} calls {@link
+ * RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUser} only — no bridge {@code @Service}.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")
 public class RuntimeTraceRegressionSuiteRunController {
 
-    private final RuntimeTraceRegressionSuiteService suiteService;
     private final RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
+    private final RuntimeTraceRegressionSuiteService suiteService;
     private final ObjectMapper strictRegressionSuiteMapper;
     private final String productBasePath;
 
     public RuntimeTraceRegressionSuiteRunController(
-            RuntimeTraceRegressionSuiteService suiteService,
             RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService,
+            RuntimeTraceRegressionSuiteService suiteService,
             @Qualifier(RegressionSuiteRestJacksonConfiguration.REGRESSION_SUITE_STRICT_OBJECT_MAPPER)
                     ObjectMapper strictRegressionSuiteMapper,
             @Value("${rag.api.product-base-path}") String productBasePath) {
-        this.suiteService = suiteService;
         this.runPersistenceService = runPersistenceService;
+        this.suiteService = suiteService;
         this.strictRegressionSuiteMapper = strictRegressionSuiteMapper;
         this.productBasePath = productBasePath;
     }
@@ -124,6 +128,25 @@ public class RuntimeTraceRegressionSuiteRunController {
         }
         RuntimeTraceRegressionSuiteResult result = suiteService.execute(parsed.get().domainRequest());
         return executeAndPersistAdHoc(userId, result);
+    }
+
+    @DeleteMapping("/runtime-trace-regression-suite-runs/{runId}")
+    public ResponseEntity<Void> deleteRun(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable("runId") String runIdRaw,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> runIdOpt = parseUuid(runIdRaw);
+        if (runIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        boolean deleted = runPersistenceService.deleteRunForUser(runIdOpt.get(), principal.userId());
+        if (deleted) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.notFound().build();
     }
 
     private ResponseEntity<Void> executeAndPersistAdHoc(UUID userId, RuntimeTraceRegressionSuiteResult result) {

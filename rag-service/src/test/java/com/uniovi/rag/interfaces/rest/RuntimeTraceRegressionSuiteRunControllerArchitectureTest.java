@@ -87,7 +87,11 @@ class RuntimeTraceRegressionSuiteRunControllerArchitectureTest {
                     "RuntimeTraceRegressionSuiteRunCreationService",
                     "RuntimeTraceRegressionSuiteRunFacade",
                     "RuntimeTraceRegressionSuiteRunOrchestrator",
-                    "RuntimeTraceRegressionSuiteRunApplicationService");
+                    "RuntimeTraceRegressionSuiteRunApplicationService",
+                    "RuntimeTraceRegressionSuiteRunDeletionSurfaceService",
+                    "RuntimeTraceRegressionSuiteRunDeleteFacade",
+                    "RuntimeTraceRegressionSuiteRunDeleteOrchestrator",
+                    "RuntimeTraceRegressionSuiteRunDeleteApplicationService");
 
     private static ArchCondition<JavaClass> doesNotDependOnFd28Forbidden() {
         return new ArchCondition<>("not depend on FD28 forbidden types") {
@@ -112,8 +116,8 @@ class RuntimeTraceRegressionSuiteRunControllerArchitectureTest {
                     .areDeclaredIn(RuntimeTraceRegressionSuiteRunController.class)
                     .should()
                     .haveRawParameterTypes(
-                            RuntimeTraceRegressionSuiteService.class.getName(),
                             RuntimeTraceRegressionSuiteRunPersistenceService.class.getName(),
+                            RuntimeTraceRegressionSuiteService.class.getName(),
                             ObjectMapper.class.getName(),
                             String.class.getName());
 
