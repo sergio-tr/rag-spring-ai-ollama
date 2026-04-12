@@ -285,4 +285,121 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
         assertThat(idxHigh).isGreaterThanOrEqualTo(0);
         assertThat(idxLow).isLessThan(idxHigh);
     }
+
+    @Test
+    void p48_t7_delete_removes_run_then_load_empty() {
+        UUID userA = UUID.randomUUID();
+        UUID runId =
+                runPersistenceService.createRun(
+                        userA, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
+        assertThat(runPersistenceService.deleteRunForUser(runId, userA)).isTrue();
+        assertThat(runPersistenceService.loadByIdForUser(runId, userA)).isEmpty();
+    }
+
+    @Test
+    void p48_t8_delete_random_id_false() {
+        assertThat(runPersistenceService.deleteRunForUser(UUID.randomUUID(), UUID.randomUUID())).isFalse();
+    }
+
+    @Test
+    void p48_t9_wrong_user_delete_false_entries_unchanged() {
+        UUID userA = UUID.randomUUID();
+        UUID userB = UUID.randomUUID();
+        UUID runId =
+                runPersistenceService.createRun(
+                        userA, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
+        int entriesBefore =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM runtime_trace_regression_suite_run_entry WHERE run_id = ?",
+                        Integer.class,
+                        runId);
+        assertThat(entriesBefore).isEqualTo(1);
+        assertThat(runPersistenceService.deleteRunForUser(runId, userB)).isFalse();
+        assertThat(runPersistenceService.loadByIdForUser(runId, userA)).isPresent();
+        int entriesAfter =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM runtime_trace_regression_suite_run_entry WHERE run_id = ?",
+                        Integer.class,
+                        runId);
+        assertThat(entriesAfter).isEqualTo(entriesBefore);
+    }
+
+    @Test
+    void p48_t10_delete_removes_run_and_cascade_entries() {
+        UUID userId = UUID.randomUUID();
+        UUID runId =
+                runPersistenceService.createRun(
+                        userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM runtime_trace_regression_suite_run_entry WHERE run_id = ?",
+                                Integer.class,
+                                runId))
+                .isEqualTo(1);
+        assertThat(runPersistenceService.deleteRunForUser(runId, userId)).isTrue();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM runtime_trace_regression_suite_run WHERE id = ?", Integer.class, runId))
+                .isZero();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM runtime_trace_regression_suite_run_entry WHERE run_id = ?",
+                                Integer.class,
+                                runId))
+                .isZero();
+    }
+
+    @Test
+    void p48_t11_delete_first_second_still_loadable() {
+        UUID userId = UUID.randomUUID();
+        UUID run1 =
+                runPersistenceService.createRun(
+                        userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
+        UUID run2 =
+                runPersistenceService.createRun(
+                        userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
+        assertThat(runPersistenceService.deleteRunForUser(run1, userId)).isTrue();
+        assertThat(runPersistenceService.loadByIdForUser(run2, userId)).isPresent();
+    }
+
+    @Test
+    void p48_t12_delete_first_preserves_second_entry_count() {
+        UUID userId = UUID.randomUUID();
+        UUID run1 =
+                runPersistenceService.createRun(
+                        userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
+        UUID run2 =
+                runPersistenceService.createRun(
+                        userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
+        int e2 =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM runtime_trace_regression_suite_run_entry WHERE run_id = ?",
+                        Integer.class,
+                        run2);
+        assertThat(e2).isGreaterThanOrEqualTo(1);
+        assertThat(runPersistenceService.deleteRunForUser(run1, userId)).isTrue();
+        int e2After =
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM runtime_trace_regression_suite_run_entry WHERE run_id = ?",
+                        Integer.class,
+                        run2);
+        assertThat(e2After).isEqualTo(e2);
+    }
+
+    @Test
+    void p48_t13_wrong_user_delete_row_still_owned_by_user_a() {
+        UUID userA = UUID.randomUUID();
+        UUID userB = UUID.randomUUID();
+        UUID runId =
+                runPersistenceService.createRun(
+                        userA, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
+        assertThat(runPersistenceService.deleteRunForUser(runId, userB)).isFalse();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM runtime_trace_regression_suite_run WHERE id = ? AND user_id = ?",
+                                Integer.class,
+                                runId,
+                                userA))
+                .isEqualTo(1);
+    }
 }

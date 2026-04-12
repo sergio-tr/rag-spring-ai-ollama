@@ -45,7 +45,11 @@ class RuntimeTraceRegressionSuiteRunPersistenceServiceArchitectureTest {
                     "SimpleProcessQueryService",
                     "TaskExecutor",
                     "AsyncTaskExecutor",
-                    "ThreadPoolTaskExecutor");
+                    "ThreadPoolTaskExecutor",
+                    "RuntimeTraceRegressionSuiteRunDeletionService",
+                    "RuntimeTraceRegressionSuiteRunDeleteFacade",
+                    "RuntimeTraceRegressionSuiteRunDeleteOrchestrator",
+                    "RuntimeTraceRegressionSuiteRunDeleteApplicationService");
 
     private static ArchCondition<JavaClass> doesNotDependOnFd28Forbidden() {
         return new ArchCondition<>("not depend on FD28 forbidden types") {

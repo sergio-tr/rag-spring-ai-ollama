@@ -27,6 +27,9 @@ import java.util.UUID;
 /**
  * P41 — run snapshot persistence adapter: writes and reads {@code runtime_trace_regression_suite_run*} only from a
  * supplied {@link RuntimeTraceRegressionSuiteResult}. Does not execute suites or touch definition services.
+ *
+ * <p>P48 — {@link #deleteRunForUser} removes a run row for the owning user; entry rows are removed only via DB {@code ON
+ * DELETE CASCADE} (no application deletes against {@code runtime_trace_regression_suite_run_entry}).
  */
 @Service
 public class RuntimeTraceRegressionSuiteRunPersistenceService {
@@ -178,6 +181,18 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
             out.add(mapper.toSummary(row));
         }
         return out;
+    }
+
+    @Transactional
+    public boolean deleteRunForUser(UUID runId, UUID userId) {
+        if (runId == null) {
+            throw new IllegalArgumentException("runId");
+        }
+        if (userId == null) {
+            throw new IllegalArgumentException("userId");
+        }
+        long deleted = runRepository.deleteByIdAndUserId(runId, userId);
+        return deleted == 1L;
     }
 
     /**
