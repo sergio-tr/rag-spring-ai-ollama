@@ -2,6 +2,7 @@ package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntrySnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUserSummary;
@@ -58,6 +59,9 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
     @MockitoBean
     private RuntimeTraceRegressionSuiteService suiteService;
 
+    @MockitoBean
+    private RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
+
     private UUID userId;
     private UUID definitionId;
 
@@ -75,6 +79,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
     @AfterEach
     void clearSecurity() {
         SecurityContextHolder.clearContext();
+        verify(runPersistenceService, never()).createRun(any(), any(), any(), any());
     }
 
     @Test

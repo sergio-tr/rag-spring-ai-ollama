@@ -14,6 +14,7 @@ import com.uniovi.rag.application.service.runtime.tracequery.RuntimeTraceQuerySe
 import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiteexport.RuntimeTraceRegressionSuiteExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
 import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplayService;
 import com.uniovi.rag.application.service.runtime.tracereplaybatchexport.RuntimeTraceReplayBatchExportService;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
@@ -35,7 +36,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
 
     @ArchTest
-    static final ArchRule controllerConstructorMatchesP36Adapter =
+    static final ArchRule controllerConstructorMatchesFd5 =
             constructors()
                     .that()
                     .areDeclaredIn(RuntimeTraceRegressionSuiteDefinitionController.class)
@@ -43,6 +44,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                     .haveRawParameterTypes(
                             RuntimeTraceRegressionSuiteDefinitionService.class.getName(),
                             RuntimeTraceRegressionSuiteService.class.getName(),
+                            RuntimeTraceRegressionSuiteRunPersistenceService.class.getName(),
                             ObjectMapper.class.getName(),
                             String.class.getName());
 
