@@ -276,4 +276,74 @@ public final class RunImportZipTestUtil {
     public static byte[] buildZipWrongOrder(byte[] manifestBytes, byte[] runBytes) throws IOException {
         return zipStored("run.json", runBytes, "manifest.json", manifestBytes);
     }
+
+    /** Manifest is not valid JSON (fails {@code readTree}). */
+    public static byte[] buildZipWithInvalidManifestJson(UUID runId, UUID userId) throws IOException {
+        byte[] manifestBytes = "{".getBytes(StandardCharsets.UTF_8);
+        Instant createdAt = Instant.parse("2024-06-01T12:00:00Z");
+        ObjectNode run = FD4.createObjectNode();
+        run.put("id", runId.toString());
+        run.put("sourceType", "AD_HOC");
+        run.putNull("definitionId");
+        run.put("suiteOutcome", "COMPLETED_ALL_BATCH_RETURNS");
+        run.put("createdAt", createdAt.toString());
+        run.put("requestedEntryCount", 0);
+        run.put("processedEntryCount", 0);
+        run.put("batchReturnedCount", 0);
+        run.put("executionFailedCount", 0);
+        run.put("batchNotAttemptedSubcount", 0);
+        run.putArray("entries");
+        byte[] runBytes = FD4.writeValueAsBytes(run);
+        return zipStored("manifest.json", manifestBytes, "run.json", runBytes);
+    }
+
+    /** Manifest {@code exportKind} is not {@code REGRESSION_SUITE_RUN}. */
+    public static byte[] buildZipWithWrongExportKind(UUID runId, UUID userId) throws IOException {
+        Instant createdAt = Instant.parse("2024-06-01T12:00:00Z");
+        ObjectNode run = FD4.createObjectNode();
+        run.put("id", runId.toString());
+        run.put("sourceType", "AD_HOC");
+        run.putNull("definitionId");
+        run.put("suiteOutcome", "COMPLETED_ALL_BATCH_RETURNS");
+        run.put("createdAt", createdAt.toString());
+        run.put("requestedEntryCount", 0);
+        run.put("processedEntryCount", 0);
+        run.put("batchReturnedCount", 0);
+        run.put("executionFailedCount", 0);
+        run.put("batchNotAttemptedSubcount", 0);
+        run.putArray("entries");
+        byte[] runBytes = FD4.writeValueAsBytes(run);
+        ObjectNode scope = FD4.createObjectNode();
+        scope.put("runId", runId.toString());
+        ObjectNode manifest = baseManifestAdHocEmpty(runId, userId);
+        manifest.put("exportKind", "REGRESSION_SUITE_DEFINITION");
+        manifest.set("scope", scope);
+        return convergeZip(manifest, runBytes);
+    }
+
+    /**
+     * Top-level {@code runId} text differs from {@code scope.runId} (fails manifest validation before coherence).
+     */
+    public static byte[] buildZipWithScopeRunIdMismatch(UUID topRunId, UUID scopeRunId, UUID userId) throws IOException {
+        Instant createdAt = Instant.parse("2024-06-01T12:00:00Z");
+        ObjectNode run = FD4.createObjectNode();
+        run.put("id", topRunId.toString());
+        run.put("sourceType", "AD_HOC");
+        run.putNull("definitionId");
+        run.put("suiteOutcome", "COMPLETED_ALL_BATCH_RETURNS");
+        run.put("createdAt", createdAt.toString());
+        run.put("requestedEntryCount", 0);
+        run.put("processedEntryCount", 0);
+        run.put("batchReturnedCount", 0);
+        run.put("executionFailedCount", 0);
+        run.put("batchNotAttemptedSubcount", 0);
+        run.putArray("entries");
+        byte[] runBytes = FD4.writeValueAsBytes(run);
+        ObjectNode scope = FD4.createObjectNode();
+        scope.put("runId", scopeRunId.toString());
+        ObjectNode manifest = baseManifestAdHocEmpty(topRunId, userId);
+        manifest.set("scope", scope);
+        manifest.put("runId", topRunId.toString());
+        return convergeZip(manifest, runBytes);
+    }
 }
