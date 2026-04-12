@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
@@ -31,6 +32,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.constructors;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @AnalyzeClasses(
         packagesOf = RuntimeTraceRegressionSuiteRunImportPreviewService.class,
@@ -211,4 +213,14 @@ class RuntimeTraceRegressionSuiteRunImportPreviewServiceArchitectureTest {
                     .orShould()
                     .dependOnClassesThat()
                     .areAssignableTo(ThreadPoolTaskExecutor.class);
+
+    @ArchTest
+    static void p56_preview_import_zip_does_not_delegate_to_preview_import_zip_for_definition(JavaClasses classes) {
+        JavaClass svc = classes.get(RuntimeTraceRegressionSuiteRunImportPreviewService.class);
+        JavaMethod method = svc.getMethod("previewImportZip", byte[].class);
+        assertThat(
+                        method.getMethodCallsFromSelf().stream()
+                                .anyMatch(c -> "previewImportZipForDefinition".equals(c.getName())))
+                .isFalse();
+    }
 }

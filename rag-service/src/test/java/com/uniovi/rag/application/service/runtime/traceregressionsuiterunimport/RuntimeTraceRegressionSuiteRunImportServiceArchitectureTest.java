@@ -2,6 +2,8 @@ package com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport
 
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -23,10 +25,12 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.Set;
+import java.util.UUID;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.constructors;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @AnalyzeClasses(
         packagesOf = RuntimeTraceRegressionSuiteRunImportService.class,
@@ -179,4 +183,14 @@ class RuntimeTraceRegressionSuiteRunImportServiceArchitectureTest {
                     .orShould()
                     .dependOnClassesThat()
                     .areAssignableTo(ThreadPoolTaskExecutor.class);
+
+    @ArchTest
+    static void p56_import_run_zip_does_not_delegate_to_import_run_zip_for_definition(JavaClasses classes) {
+        JavaClass svc = classes.get(RuntimeTraceRegressionSuiteRunImportService.class);
+        JavaMethod method = svc.getMethod("importRunZip", byte[].class, UUID.class);
+        assertThat(
+                        method.getMethodCallsFromSelf().stream()
+                                .anyMatch(c -> "importRunZipForDefinition".equals(c.getName())))
+                .isFalse();
+    }
 }

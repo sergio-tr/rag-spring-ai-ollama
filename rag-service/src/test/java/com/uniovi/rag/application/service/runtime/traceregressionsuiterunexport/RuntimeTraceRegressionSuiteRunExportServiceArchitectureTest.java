@@ -24,7 +24,9 @@ import org.springframework.data.repository.Repository;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
@@ -187,5 +189,25 @@ class RuntimeTraceRegressionSuiteRunExportServiceArchitectureTest {
                         .map(JavaMethodCall::getName)
                         .collect(Collectors.toList());
         assertThat(names).containsExactly("loadByIdForUserAndDefinition");
+    }
+
+    @ArchTest
+    static void p56_export_run_zip_calls_load_by_id_for_user_only(JavaClasses classes) {
+        JavaClass svc = classes.get(RuntimeTraceRegressionSuiteRunExportService.class);
+        JavaMethod method = svc.getMethod("exportRunZip", UUID.class, UUID.class);
+        List<String> persistenceCalls =
+                method.getMethodCallsFromSelf().stream()
+                        .filter(
+                                c ->
+                                        c.getTargetOwner()
+                                                .isAssignableTo(RuntimeTraceRegressionSuiteRunPersistenceService.class))
+                        .map(JavaMethodCall::getName)
+                        .collect(Collectors.toList());
+        assertThat(persistenceCalls).contains("loadByIdForUser");
+        assertThat(persistenceCalls).doesNotContain("loadByIdForUserAndDefinition");
+        assertThat(
+                        method.getMethodCallsFromSelf().stream()
+                                .anyMatch(c -> "exportRunZipForDefinition".equals(c.getName())))
+                .isFalse();
     }
 }

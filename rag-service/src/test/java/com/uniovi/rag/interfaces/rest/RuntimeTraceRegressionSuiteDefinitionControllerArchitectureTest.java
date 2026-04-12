@@ -3,7 +3,10 @@ package com.uniovi.rag.interfaces.rest;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaMethodCall;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -36,18 +39,48 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.repository.Repository;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.constructors;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @AnalyzeClasses(
         packagesOf = RuntimeTraceRegressionSuiteDefinitionController.class,
         importOptions = ImportOption.DoNotIncludeTests.class)
 class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
+
+    /*
+     * FD-definition-arch-inventory (P56): @ArchTest members that enforce merged P50/P52/P53/P54/P55 rules:
+     * controllerConstructorMatchesFd8,
+     * importRunZipForDefinitionDoesNotTouchRunPersistence,
+     * previewImportZipForDefinitionDoesNotTouchRunPersistenceOrImport,
+     * exportRunZipForDefinitionDoesNotAccessRunPersistence,
+     * deleteRunForDefinitionDoesNotCallDeleteRunForUser,
+     * p56_definition_controller_mappings_use_definition_path_families,
+     * controllerDoesNotDependOnP50ForbiddenFacadeTypes,
+     * controllerDoesNotDependOnComparisonBatchService,
+     * controllerDoesNotDependOnComparisonService,
+     * controllerDoesNotDependOnReplayService,
+     * controllerDoesNotDependOnTraceQueryService,
+     * controllerDoesNotDependOnRepositories,
+     * controllerDoesNotDependOnInfrastructurePersistence,
+     * controllerDoesNotDependOnExportServices,
+     * controllerDoesNotDependOnOrchestrator,
+     * controllerDoesNotDependOnProcessQueryServices,
+     * controllerDoesNotUseAsyncOrExecutors.
+     */
 
     private static final Set<String> P50_P52_P53_FD_O_FORBIDDEN_SIMPLE_NAMES =
             Set.of(
@@ -128,6 +161,170 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
         };
     }
 
+    private static ArchCondition<JavaMethod> exportRunZipForDefinitionDoesNotAccessRunPersistenceService() {
+        return new ArchCondition<>("not access RuntimeTraceRegressionSuiteRunPersistenceService") {
+            @Override
+            public void check(JavaMethod method, ConditionEvents events) {
+                for (JavaAccess<?> access : method.getAccessesFromSelf()) {
+                    if (access.getTargetOwner().isAssignableTo(RuntimeTraceRegressionSuiteRunPersistenceService.class)) {
+                        events.add(
+                                SimpleConditionEvent.violated(
+                                        access,
+                                        method.getFullName()
+                                                + " must not access "
+                                                + RuntimeTraceRegressionSuiteRunPersistenceService.class.getSimpleName()));
+                    }
+                }
+            }
+        };
+    }
+
+    private static ArchCondition<JavaMethod> deleteRunForDefinitionDoesNotCallDeleteRunForUser() {
+        return new ArchCondition<>("not call deleteRunForUser on run persistence") {
+            @Override
+            public void check(JavaMethod method, ConditionEvents events) {
+                for (JavaMethodCall call : method.getMethodCallsFromSelf()) {
+                    if (call.getTargetOwner().isAssignableTo(RuntimeTraceRegressionSuiteRunPersistenceService.class)
+                            && "deleteRunForUser".equals(call.getName())) {
+                        events.add(
+                                SimpleConditionEvent.violated(
+                                        call,
+                                        method.getFullName()
+                                                + " must not call "
+                                                + RuntimeTraceRegressionSuiteRunPersistenceService.class.getSimpleName()
+                                                + "#deleteRunForUser"));
+                    }
+                }
+            }
+        };
+    }
+
+    private static List<String> springWebMappingPaths(JavaMethod method) {
+        Method ref = method.reflect();
+        List<String> out = new ArrayList<>();
+        addPaths(out, ref.getAnnotation(GetMapping.class));
+        addPaths(out, ref.getAnnotation(PostMapping.class));
+        addPaths(out, ref.getAnnotation(PutMapping.class));
+        addPaths(out, ref.getAnnotation(DeleteMapping.class));
+        addPaths(out, ref.getAnnotation(PatchMapping.class));
+        return out;
+    }
+
+    private static void addPaths(List<String> out, GetMapping a) {
+        if (a == null) {
+            return;
+        }
+        if (a.path().length > 0) {
+            for (String p : a.path()) {
+                out.add(p);
+            }
+        } else {
+            for (String p : a.value()) {
+                out.add(p);
+            }
+        }
+    }
+
+    private static void addPaths(List<String> out, PostMapping a) {
+        if (a == null) {
+            return;
+        }
+        if (a.path().length > 0) {
+            for (String p : a.path()) {
+                out.add(p);
+            }
+        } else {
+            for (String p : a.value()) {
+                out.add(p);
+            }
+        }
+    }
+
+    private static void addPaths(List<String> out, PutMapping a) {
+        if (a == null) {
+            return;
+        }
+        if (a.path().length > 0) {
+            for (String p : a.path()) {
+                out.add(p);
+            }
+        } else {
+            for (String p : a.value()) {
+                out.add(p);
+            }
+        }
+    }
+
+    private static void addPaths(List<String> out, DeleteMapping a) {
+        if (a == null) {
+            return;
+        }
+        if (a.path().length > 0) {
+            for (String p : a.path()) {
+                out.add(p);
+            }
+        } else {
+            for (String p : a.value()) {
+                out.add(p);
+            }
+        }
+    }
+
+    private static void addPaths(List<String> out, PatchMapping a) {
+        if (a == null) {
+            return;
+        }
+        if (a.path().length > 0) {
+            for (String p : a.path()) {
+                out.add(p);
+            }
+        } else {
+            for (String p : a.value()) {
+                out.add(p);
+            }
+        }
+    }
+
+    private static boolean isAllowedDefinitionSurfacePath(String rawPath) {
+        if (rawPath == null || rawPath.isBlank()) {
+            return false;
+        }
+        String path = rawPath.startsWith("/") ? rawPath : "/" + rawPath;
+        String[] segs =
+                java.util.Arrays.stream(path.split("/")).filter(s -> !s.isEmpty()).toArray(String[]::new);
+        if (segs.length == 0) {
+            return false;
+        }
+        if ("runtime-trace-regression-suite-runs".equals(segs[0])) {
+            return false;
+        }
+        if ("runtime-trace-regression-suite-definitions".equals(segs[0])) {
+            return true;
+        }
+        return "conversations".equals(segs[0])
+                && segs.length >= 3
+                && "runtime-trace-regression-suite-definitions".equals(segs[2]);
+    }
+
+    @ArchTest
+    static void p56_definition_controller_mappings_use_definition_path_families(JavaClasses imported) {
+        JavaClass controller = imported.get(RuntimeTraceRegressionSuiteDefinitionController.class);
+        for (JavaMethod method : controller.getMethods()) {
+            if (!method.getModifiers().contains(JavaModifier.PUBLIC)) {
+                continue;
+            }
+            List<String> paths = springWebMappingPaths(method);
+            if (paths.isEmpty()) {
+                continue;
+            }
+            for (String p : paths) {
+                assertThat(isAllowedDefinitionSurfacePath(p))
+                        .as("Method %s maps disallowed path %s", method.getName(), p)
+                        .isTrue();
+            }
+        }
+    }
+
     @ArchTest
     static final ArchRule controllerConstructorMatchesFd8 =
             constructors()
@@ -161,6 +358,24 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                     .and()
                     .haveName("previewImportZipForDefinition")
                     .should(previewImportZipForDefinitionDoesNotAccessPersistenceOrImportService());
+
+    @ArchTest
+    static final ArchRule exportRunZipForDefinitionDoesNotAccessRunPersistence =
+            methods()
+                    .that()
+                    .areDeclaredIn(RuntimeTraceRegressionSuiteDefinitionController.class)
+                    .and()
+                    .haveName("exportRunZipForDefinition")
+                    .should(exportRunZipForDefinitionDoesNotAccessRunPersistenceService());
+
+    @ArchTest
+    static final ArchRule deleteRunForDefinitionDoesNotCallDeleteRunForUser =
+            methods()
+                    .that()
+                    .areDeclaredIn(RuntimeTraceRegressionSuiteDefinitionController.class)
+                    .and()
+                    .haveName("deleteRunForDefinition")
+                    .should(deleteRunForDefinitionDoesNotCallDeleteRunForUser());
 
     @ArchTest
     static final ArchRule controllerDoesNotDependOnP50ForbiddenFacadeTypes =

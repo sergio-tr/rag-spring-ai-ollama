@@ -3,6 +3,9 @@ package com.uniovi.rag.interfaces.rest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -37,13 +40,22 @@ import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.Repository;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.constructors;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @AnalyzeClasses(
         packagesOf = RuntimeTraceRegressionSuiteRunController.class,
@@ -56,6 +68,7 @@ class RuntimeTraceRegressionSuiteRunControllerArchitectureTest {
                     "RuntimeTraceRegressionSuiteDefinitionImportService",
                     "RuntimeTraceRegressionSuiteDefinitionExportService",
                     "RuntimeTraceRegressionSuiteRunImportService",
+                    "RuntimeTraceRegressionSuiteRunImportPreviewService",
                     "RuntimeTraceRegressionSuiteRunExportService",
                     "RuntimeTraceRegressionSuiteExportController",
                     "RuntimeTraceRegressionSuiteDefinitionImportController",
@@ -107,6 +120,122 @@ class RuntimeTraceRegressionSuiteRunControllerArchitectureTest {
                 }
             }
         };
+    }
+
+    private static List<String> springWebMappingPaths(JavaMethod method) {
+        Method ref = method.reflect();
+        List<String> out = new ArrayList<>();
+        addPaths(out, ref.getAnnotation(GetMapping.class));
+        addPaths(out, ref.getAnnotation(PostMapping.class));
+        addPaths(out, ref.getAnnotation(PutMapping.class));
+        addPaths(out, ref.getAnnotation(DeleteMapping.class));
+        addPaths(out, ref.getAnnotation(PatchMapping.class));
+        return out;
+    }
+
+    private static void addPaths(List<String> out, GetMapping a) {
+        if (a == null) {
+            return;
+        }
+        if (a.path().length > 0) {
+            for (String p : a.path()) {
+                out.add(p);
+            }
+        } else {
+            for (String p : a.value()) {
+                out.add(p);
+            }
+        }
+    }
+
+    private static void addPaths(List<String> out, PostMapping a) {
+        if (a == null) {
+            return;
+        }
+        if (a.path().length > 0) {
+            for (String p : a.path()) {
+                out.add(p);
+            }
+        } else {
+            for (String p : a.value()) {
+                out.add(p);
+            }
+        }
+    }
+
+    private static void addPaths(List<String> out, PutMapping a) {
+        if (a == null) {
+            return;
+        }
+        if (a.path().length > 0) {
+            for (String p : a.path()) {
+                out.add(p);
+            }
+        } else {
+            for (String p : a.value()) {
+                out.add(p);
+            }
+        }
+    }
+
+    private static void addPaths(List<String> out, DeleteMapping a) {
+        if (a == null) {
+            return;
+        }
+        if (a.path().length > 0) {
+            for (String p : a.path()) {
+                out.add(p);
+            }
+        } else {
+            for (String p : a.value()) {
+                out.add(p);
+            }
+        }
+    }
+
+    private static void addPaths(List<String> out, PatchMapping a) {
+        if (a == null) {
+            return;
+        }
+        if (a.path().length > 0) {
+            for (String p : a.path()) {
+                out.add(p);
+            }
+        } else {
+            for (String p : a.value()) {
+                out.add(p);
+            }
+        }
+    }
+
+    private static boolean isAllowedRunSurfacePath(String rawPath) {
+        if (rawPath == null || rawPath.isBlank()) {
+            return false;
+        }
+        String path = rawPath.startsWith("/") ? rawPath : "/" + rawPath;
+        if (path.startsWith("/runtime-trace-regression-suite-runs")) {
+            return true;
+        }
+        return path.matches("^/conversations/[^/]+/runtime-trace-regression-suite-runs(/.*)?");
+    }
+
+    @ArchTest
+    static void p56_run_controller_mappings_use_run_path_families_only(JavaClasses imported) {
+        JavaClass controller = imported.get(RuntimeTraceRegressionSuiteRunController.class);
+        for (JavaMethod method : controller.getMethods()) {
+            if (!method.getModifiers().contains(JavaModifier.PUBLIC)) {
+                continue;
+            }
+            List<String> paths = springWebMappingPaths(method);
+            if (paths.isEmpty()) {
+                continue;
+            }
+            for (String p : paths) {
+                assertThat(isAllowedRunSurfacePath(p))
+                        .as("Method %s maps disallowed path %s", method.getName(), p)
+                        .isTrue();
+            }
+        }
     }
 
     @ArchTest
