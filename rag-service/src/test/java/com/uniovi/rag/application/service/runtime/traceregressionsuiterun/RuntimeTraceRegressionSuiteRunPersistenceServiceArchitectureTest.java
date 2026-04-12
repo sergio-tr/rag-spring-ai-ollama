@@ -49,7 +49,11 @@ class RuntimeTraceRegressionSuiteRunPersistenceServiceArchitectureTest {
                     "RuntimeTraceRegressionSuiteRunDeletionService",
                     "RuntimeTraceRegressionSuiteRunDeleteFacade",
                     "RuntimeTraceRegressionSuiteRunDeleteOrchestrator",
-                    "RuntimeTraceRegressionSuiteRunDeleteApplicationService");
+                    "RuntimeTraceRegressionSuiteRunDeleteApplicationService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunDeletionService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunDeleteFacade",
+                    "RuntimeTraceRegressionSuiteDefinitionRunDeleteOrchestrator",
+                    "RuntimeTraceRegressionSuiteDefinitionRunDeleteApplicationService");
 
     private static ArchCondition<JavaClass> doesNotDependOnFd28Forbidden() {
         return new ArchCondition<>("not depend on FD28 forbidden types") {

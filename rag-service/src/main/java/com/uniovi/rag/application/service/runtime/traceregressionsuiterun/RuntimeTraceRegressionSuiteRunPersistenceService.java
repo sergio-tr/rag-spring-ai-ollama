@@ -33,6 +33,10 @@ import java.util.UUID;
  *
  * <p>P50 — {@link #listSummariesForUserAndDefinition} and {@link #loadByIdForUserAndDefinition} scope reads by owning user
  * and saved-definition id (single-query detail path).
+ *
+ * <p>P51 — {@link #deleteRunForUserAndDefinition} deletes a run row only when {@code id}, {@code user_id}, and
+ * {@code definition_id} all match; entries cascade via DB only (same as P48). {@link #deleteRunForUser} remains the global
+ * two-column delete (unchanged).
  */
 @Service
 public class RuntimeTraceRegressionSuiteRunPersistenceService {
@@ -235,6 +239,21 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
             throw new IllegalArgumentException("userId");
         }
         long deleted = runRepository.deleteByIdAndUserId(runId, userId);
+        return deleted == 1L;
+    }
+
+    @Transactional
+    public boolean deleteRunForUserAndDefinition(UUID runId, UUID userId, UUID definitionId) {
+        if (runId == null) {
+            throw new IllegalArgumentException("runId");
+        }
+        if (userId == null) {
+            throw new IllegalArgumentException("userId");
+        }
+        if (definitionId == null) {
+            throw new IllegalArgumentException("definitionId");
+        }
+        long deleted = runRepository.deleteByIdAndUserIdAndDefinitionId(runId, userId, definitionId);
         return deleted == 1L;
     }
 

@@ -19,4 +19,6 @@ public interface RuntimeTraceRegressionSuiteRunRepository extends JpaRepository<
             UUID id, UUID userId, UUID definitionId);
 
     long deleteByIdAndUserId(UUID id, UUID userId);
+
+    long deleteByIdAndUserIdAndDefinitionId(UUID id, UUID userId, UUID definitionId);
 }

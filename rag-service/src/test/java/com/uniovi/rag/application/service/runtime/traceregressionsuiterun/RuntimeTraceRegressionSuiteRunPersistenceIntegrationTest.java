@@ -402,4 +402,95 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
                                 userA))
                 .isEqualTo(1);
     }
+
+    @Test
+    void p51_t9_deleteForDefinition_removes_saved_run_then_load_empty() {
+        UUID userA = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        UUID runId =
+                runPersistenceService.createRun(
+                        userA,
+                        RuntimeTraceRegressionSuiteRunSourceType.SAVED_DEFINITION,
+                        Optional.of(defId),
+                        oneBatchEntry());
+        assertThat(runPersistenceService.deleteRunForUserAndDefinition(runId, userA, defId)).isTrue();
+        assertThat(runPersistenceService.loadByIdForUser(runId, userA)).isEmpty();
+    }
+
+    @Test
+    void p51_t10_wrong_definition_delete_false_run_still_present() {
+        UUID userA = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        UUID otherDefId = UUID.randomUUID();
+        UUID runId =
+                runPersistenceService.createRun(
+                        userA,
+                        RuntimeTraceRegressionSuiteRunSourceType.SAVED_DEFINITION,
+                        Optional.of(defId),
+                        oneBatchEntry());
+        assertThat(runPersistenceService.deleteRunForUserAndDefinition(runId, userA, otherDefId)).isFalse();
+        assertThat(runPersistenceService.loadByIdForUser(runId, userA)).isPresent();
+    }
+
+    @Test
+    void p51_t11_ad_hoc_delete_with_definition_id_false_row_remains() {
+        UUID userA = UUID.randomUUID();
+        UUID someDefId = UUID.randomUUID();
+        UUID adhocRunId =
+                runPersistenceService.createRun(
+                        userA, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
+        assertThat(runPersistenceService.deleteRunForUserAndDefinition(adhocRunId, userA, someDefId)).isFalse();
+        assertThat(runPersistenceService.loadByIdForUser(adhocRunId, userA)).isPresent();
+    }
+
+    @Test
+    void p51_t12_delete_random_id_false() {
+        assertThat(
+                        runPersistenceService.deleteRunForUserAndDefinition(
+                                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()))
+                .isFalse();
+    }
+
+    @Test
+    void p51_t13_deleteForDefinition_cascades_entries() {
+        UUID userId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        UUID runId =
+                runPersistenceService.createRun(
+                        userId,
+                        RuntimeTraceRegressionSuiteRunSourceType.SAVED_DEFINITION,
+                        Optional.of(defId),
+                        oneBatchEntry());
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM runtime_trace_regression_suite_run_entry WHERE run_id = ?",
+                                Integer.class,
+                                runId))
+                .isGreaterThanOrEqualTo(1);
+        assertThat(runPersistenceService.deleteRunForUserAndDefinition(runId, userId, defId)).isTrue();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM runtime_trace_regression_suite_run WHERE id = ?", Integer.class, runId))
+                .isZero();
+        assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM runtime_trace_regression_suite_run_entry WHERE run_id = ?",
+                                Integer.class,
+                                runId))
+                .isZero();
+    }
+
+    @Test
+    void p51_t14_global_delete_still_works_after_p51() {
+        UUID userId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        UUID runId =
+                runPersistenceService.createRun(
+                        userId,
+                        RuntimeTraceRegressionSuiteRunSourceType.SAVED_DEFINITION,
+                        Optional.of(defId),
+                        oneBatchEntry());
+        assertThat(runPersistenceService.deleteRunForUser(runId, userId)).isTrue();
+        assertThat(runPersistenceService.loadByIdForUser(runId, userId)).isEmpty();
+    }
 }

@@ -318,4 +318,102 @@ class RuntimeTraceRegressionSuiteRunPersistenceServiceMockTest {
         verify(spy, never()).loadByIdForUser(any(), any());
         verify(spy, never()).listSummariesForUser(any());
     }
+
+    @Test
+    void p51_t1_deleteForDefinition_returns_true_when_one_row_deleted() {
+        UUID existingId = UUID.randomUUID();
+        UUID ownerUserId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        when(runRepository.deleteByIdAndUserIdAndDefinitionId(existingId, ownerUserId, defId)).thenReturn(1L);
+
+        assertThat(service.deleteRunForUserAndDefinition(existingId, ownerUserId, defId)).isTrue();
+
+        verify(runRepository, times(1)).deleteByIdAndUserIdAndDefinitionId(existingId, ownerUserId, defId);
+        verify(runRepository, never()).deleteByIdAndUserId(any(), any());
+        verifyNoInteractions(entryRepository);
+    }
+
+    @Test
+    void p51_t2_deleteForDefinition_returns_false_when_zero_rows() {
+        UUID missingId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        when(runRepository.deleteByIdAndUserIdAndDefinitionId(missingId, userId, defId)).thenReturn(0L);
+
+        assertThat(service.deleteRunForUserAndDefinition(missingId, userId, defId)).isFalse();
+
+        verify(runRepository, only()).deleteByIdAndUserIdAndDefinitionId(missingId, userId, defId);
+    }
+
+    @Test
+    void p51_t3_wrong_user_returns_false() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        when(runRepository.deleteByIdAndUserIdAndDefinitionId(runId, userId, defId)).thenReturn(0L);
+
+        assertThat(service.deleteRunForUserAndDefinition(runId, userId, defId)).isFalse();
+    }
+
+    @Test
+    void p51_t4_wrong_definition_returns_false() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        when(runRepository.deleteByIdAndUserIdAndDefinitionId(runId, userId, defId)).thenReturn(0L);
+
+        assertThat(service.deleteRunForUserAndDefinition(runId, userId, defId)).isFalse();
+    }
+
+    @Test
+    void p51_t5_null_run_id_throws() {
+        UUID userId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        assertThatThrownBy(() -> service.deleteRunForUserAndDefinition(null, userId, defId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("runId");
+    }
+
+    @Test
+    void p51_t6_null_user_id_throws() {
+        UUID runId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        assertThatThrownBy(() -> service.deleteRunForUserAndDefinition(runId, null, defId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("userId");
+    }
+
+    @Test
+    void p51_t7_null_definition_id_throws() {
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        assertThatThrownBy(() -> service.deleteRunForUserAndDefinition(runId, userId, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("definitionId");
+    }
+
+    @Test
+    void p51_t8_deleteForDefinition_does_not_delegate_or_touch_reads() {
+        RuntimeTraceRegressionSuiteRunPersistenceMapper mapper = new RuntimeTraceRegressionSuiteRunPersistenceMapper();
+        RuntimeTraceRegressionSuiteRunPersistenceService spy =
+                Mockito.spy(
+                        new RuntimeTraceRegressionSuiteRunPersistenceService(
+                                runRepository,
+                                entryRepository,
+                                mapper,
+                                Clock.fixed(Instant.parse("2026-01-02T12:00:00Z"), ZoneOffset.UTC)));
+        UUID runId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        when(runRepository.deleteByIdAndUserIdAndDefinitionId(runId, userId, defId)).thenReturn(1L);
+
+        assertThat(spy.deleteRunForUserAndDefinition(runId, userId, defId)).isTrue();
+
+        verify(spy, never()).deleteRunForUser(any(), any());
+        verify(spy, never()).createRun(any(), any(), any(), any());
+        verify(spy, never()).loadByIdForUser(any(), any());
+        verify(spy, never()).listSummariesForUser(any());
+        verify(spy, never()).listSummariesForUserAndDefinition(any(), any());
+        verify(spy, never()).loadByIdForUserAndDefinition(any(), any(), any());
+    }
 }
