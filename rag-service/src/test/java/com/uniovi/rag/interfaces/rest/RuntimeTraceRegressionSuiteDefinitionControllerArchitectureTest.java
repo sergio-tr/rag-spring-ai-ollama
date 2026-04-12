@@ -24,6 +24,9 @@ import com.uniovi.rag.application.service.runtime.tracequery.RuntimeTraceQuerySe
 import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiteexport.RuntimeTraceRegressionSuiteExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionexport.RuntimeTraceRegressionSuiteDefinitionExportService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionimport.RuntimeTraceRegressionSuiteDefinitionImportService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionimportpreview.RuntimeTraceRegressionSuiteDefinitionImportPreviewService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportService;
@@ -62,13 +65,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
 
     /*
-     * FD-definition-arch-inventory (P56): @ArchTest members that enforce merged P50/P52/P53/P54/P55 rules:
+     * FD-definition-arch-inventory (P56 + P57): @ArchTest members that enforce merged P50/P52/P53/P54/P55 and P57 rules:
      * controllerConstructorMatchesFd8,
      * importRunZipForDefinitionDoesNotTouchRunPersistence,
      * previewImportZipForDefinitionDoesNotTouchRunPersistenceOrImport,
      * exportRunZipForDefinitionDoesNotAccessRunPersistence,
      * deleteRunForDefinitionDoesNotCallDeleteRunForUser,
      * p56_definition_controller_mappings_use_definition_path_families,
+     * definitionControllerDoesNotDependOnDefinitionDocumentZipServices,
+     * p57_definition_controller_must_not_declare_global_def_zip_mappings,
      * controllerDoesNotDependOnP50ForbiddenFacadeTypes,
      * controllerDoesNotDependOnComparisonBatchService,
      * controllerDoesNotDependOnComparisonService,
@@ -321,6 +326,56 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                 assertThat(isAllowedDefinitionSurfacePath(p))
                         .as("Method %s maps disallowed path %s", method.getName(), p)
                         .isTrue();
+            }
+        }
+    }
+
+    @ArchTest
+    static final ArchRule definitionControllerDoesNotDependOnDefinitionDocumentZipServices =
+            noClasses()
+                    .that()
+                    .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionController")
+                    .should()
+                    .dependOnClassesThat()
+                    .areAssignableTo(RuntimeTraceRegressionSuiteDefinitionExportService.class)
+                    .orShould()
+                    .dependOnClassesThat()
+                    .areAssignableTo(RuntimeTraceRegressionSuiteDefinitionImportService.class)
+                    .orShould()
+                    .dependOnClassesThat()
+                    .areAssignableTo(RuntimeTraceRegressionSuiteDefinitionImportPreviewService.class);
+
+    @ArchTest
+    static void p57_definition_controller_must_not_declare_global_def_zip_mappings(JavaClasses classes) {
+        Set<String> forbiddenGlobalDefZipPaths =
+                Set.of(
+                        "/runtime-trace-regression-suite-definitions/{definitionId}/export",
+                        "/runtime-trace-regression-suite-definitions/import",
+                        "/runtime-trace-regression-suite-definitions/import/preview");
+        for (Method m : RuntimeTraceRegressionSuiteDefinitionController.class.getDeclaredMethods()) {
+            GetMapping gm = m.getAnnotation(GetMapping.class);
+            if (gm != null) {
+                String[] paths = gm.path().length > 0 ? gm.path() : gm.value();
+                for (String p : paths) {
+                    assertThat(forbiddenGlobalDefZipPaths)
+                            .as(
+                                    "Method %s must not declare P38/P39/P40 global definition ZIP path %s",
+                                    m.getName(),
+                                    p)
+                            .doesNotContain(p);
+                }
+            }
+            PostMapping pm = m.getAnnotation(PostMapping.class);
+            if (pm != null) {
+                String[] paths = pm.path().length > 0 ? pm.path() : pm.value();
+                for (String p : paths) {
+                    assertThat(forbiddenGlobalDefZipPaths)
+                            .as(
+                                    "Method %s must not declare P38/P39/P40 global definition ZIP path %s",
+                                    m.getName(),
+                                    p)
+                            .doesNotContain(p);
+                }
             }
         }
     }
