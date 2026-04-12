@@ -2,6 +2,8 @@
 
 **Workflows vs gates (canonical):** [../development/e2e-testing-strategy.md](../development/e2e-testing-strategy.md).
 
+**Quality baseline, exclusions, Sonar baseline, and test policies (AP01):** [../quality/README.md](../quality/README.md).
+
 ## Quality gates before deploy (VM)
 
 [`deploy.yml`](../../.github/workflows/deploy.yml) runs only on **`workflow_dispatch`** and **requires** successful runs of the following workflows on the **same commit SHA** as the deploy job (see [../operations/deploy-workflow-audit.md](../operations/deploy-workflow-audit.md)):
@@ -13,7 +15,7 @@
 
 **Not blocking deploy by default:** `integration.yml`, `sonar.yml`, `gatling.yml`, `micro-benchmark.yml`, `system-checks.yml`, `build-images.yml`, `e2e.yml`. Promote any of these only if release policy demands it.
 
-**Operational smoke after deploy:** manual checks (health, login/chat) are documented in [../operations/runbook-docker-vm.md](../operations/runbook-docker-vm.md) and [docker/README.md](../../docker/README.md) § Deployment runbook — not automated in `deploy.yml` today.
+**Operational smoke after deploy:** manual checks (health, login/chat) are documented in [../operations/runbook-docker-vm.md](../operations/runbook-docker-vm.md) and the Deployment runbook section in [docker/README.md](../../docker/README.md) — not automated in `deploy.yml` today.
 
 ## Principles
 

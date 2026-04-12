@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiteexport.RuntimeTraceRegressionSuiteExportArtifact;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiteexport.RuntimeTraceRegressionSuiteExportNotAttemptedException;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiteexport.RuntimeTraceRegressionSuiteExportService;
@@ -78,7 +80,7 @@ class RuntimeTraceRegressionSuiteExportControllerTest {
     @Test
     void explicit_route_unknown_field_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite/export")
+                        post(path("/runtime-traces/regression-suite/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[],\"extra\":1}"))
                 .andExpect(status().isBadRequest());
@@ -88,7 +90,7 @@ class RuntimeTraceRegressionSuiteExportControllerTest {
     void query_string_returns_400() throws Exception {
         when(exportService.exportExplicit(eq(userId), any(), any())).thenReturn(sampleZip("runtime-trace-regression-suite.zip"));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite/export")
+                        post(path("/runtime-traces/regression-suite/export"))
                                 .queryParam("x", "1")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[]}"))
@@ -100,7 +102,7 @@ class RuntimeTraceRegressionSuiteExportControllerTest {
         when(exportService.exportExplicit(eq(userId), any(), any()))
                 .thenReturn(sampleZip("runtime-trace-regression-suite.zip"));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite/export")
+                        post(path("/runtime-traces/regression-suite/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[]}"))
                 .andExpect(status().isOk())
@@ -113,7 +115,7 @@ class RuntimeTraceRegressionSuiteExportControllerTest {
         when(exportService.exportExplicit(eq(userId), any(), any()))
                 .thenThrow(new RuntimeTraceRegressionSuiteExportNotAttemptedException("x"));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite/export")
+                        post(path("/runtime-traces/regression-suite/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[]}"))
                 .andExpect(status().isBadRequest());
@@ -124,7 +126,7 @@ class RuntimeTraceRegressionSuiteExportControllerTest {
         when(exportService.exportExplicit(eq(userId), any(), any()))
                 .thenThrow(new RuntimeTraceRegressionSuiteExportSizeExceededException("too large"));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite/export")
+                        post(path("/runtime-traces/regression-suite/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[]}"))
                 .andExpect(status().isPayloadTooLarge());
@@ -133,7 +135,7 @@ class RuntimeTraceRegressionSuiteExportControllerTest {
     @Test
     void conversation_route_invalid_uuid_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/conversations/not-a-uuid/runtime-traces/regression-suite/export")
+                        post(path("/conversations/not-a-uuid/runtime-traces/regression-suite/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[]}"))
                 .andExpect(status().isBadRequest());
@@ -145,7 +147,7 @@ class RuntimeTraceRegressionSuiteExportControllerTest {
         when(exportService.exportConversationScoped(eq(userId), any(), eq(conversationId), any()))
                 .thenReturn(sampleZip(fn));
         mockMvc.perform(
-                        post("/api/v5/conversations/{cid}/runtime-traces/regression-suite/export", conversationId)
+                        post(path("/conversations/{cid}/runtime-traces/regression-suite/export"), conversationId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[]}"))
                 .andExpect(status().isOk())

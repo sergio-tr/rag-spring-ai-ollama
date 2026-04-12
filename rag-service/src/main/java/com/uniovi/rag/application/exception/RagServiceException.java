@@ -28,7 +28,7 @@ public class RagServiceException extends RuntimeException {
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "The AI inference service (Ollama) is not reachable. "
                         + "Ensure Ollama is running and that spring.ai.ollama.base-url / OLLAMA_BASE_URL points to it "
-                        + "(e.g. http://ollama:11434 in Docker with compose.ollama-local-gpu.yml).",
+                        + "(e.g. http://ollama:11434 in Docker with docker-compose profile ollama).",
                 cause != null ? cause.getClass().getSimpleName() : null,
                 cause
         );

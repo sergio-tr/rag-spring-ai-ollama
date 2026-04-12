@@ -40,7 +40,31 @@ public class MessageFeedbackEntity {
     protected MessageFeedbackEntity() {
     }
 
+    /** Test and application helper: persistable feedback row linked to a stored message and user. */
+    public static MessageFeedbackEntity create(
+            MessageEntity message, UserEntity user, Integer rating, String comment, Instant createdAt) {
+        MessageFeedbackEntity e = new MessageFeedbackEntity();
+        e.message = message;
+        e.user = user;
+        e.rating = rating;
+        e.comment = comment;
+        e.createdAt = createdAt;
+        return e;
+    }
+
     public UUID getId() {
         return id;
+    }
+
+    public Integer getRating() {
+        return rating;
+    }
+
+    public String getComment() {
+        return comment;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
     }
 }

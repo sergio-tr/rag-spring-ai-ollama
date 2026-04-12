@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplayService;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayOutcome;
@@ -71,7 +73,7 @@ class RuntimeTraceReplayControllerTest {
     @Test
     void query_string_on_trace_path_returns_400() throws Exception {
         when(runtimeTraceReplayService.replay(any())).thenReturn(successResult());
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay", traceId).queryParam("x", "1"))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay"), traceId).queryParam("x", "1"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -80,7 +82,7 @@ class RuntimeTraceReplayControllerTest {
         when(runtimeTraceReplayService.replay(any())).thenReturn(successResult());
         mockMvc.perform(
                         get(
-                                        "/api/v5/conversations/{cid}/messages/{mid}/runtime-trace/replay",
+                                        path("/conversations/{cid}/messages/{mid}/runtime-trace/replay"),
                                         conversationId,
                                         messageId)
                                 .queryParam("x", "1"))
@@ -90,7 +92,7 @@ class RuntimeTraceReplayControllerTest {
     @Test
     void not_found_exception_from_replay_returns_404_on_trace_path() throws Exception {
         when(runtimeTraceReplayService.replay(any())).thenThrow(new NotFoundException("trace not found"));
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay"), traceId))
                 .andExpect(status().isNotFound());
     }
 
@@ -99,7 +101,7 @@ class RuntimeTraceReplayControllerTest {
         when(runtimeTraceReplayService.replay(any())).thenThrow(new NotFoundException("trace not found"));
         mockMvc.perform(
                         get(
-                                "/api/v5/conversations/{cid}/messages/{mid}/runtime-trace/replay",
+                                path("/conversations/{cid}/messages/{mid}/runtime-trace/replay"),
                                 conversationId,
                                 messageId))
                 .andExpect(status().isNotFound());
@@ -108,7 +110,7 @@ class RuntimeTraceReplayControllerTest {
     @Test
     void replay_succeeded_returns_200_with_dto_on_trace_path() throws Exception {
         when(runtimeTraceReplayService.replay(any())).thenReturn(successResult());
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay"), traceId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.selectorMode").value("BY_TRACE_ID"))
                 .andExpect(jsonPath("$.replayOutcome").value("REPLAY_SUCCEEDED"))
@@ -126,7 +128,7 @@ class RuntimeTraceReplayControllerTest {
         when(runtimeTraceReplayService.replay(any())).thenReturn(successResult());
         mockMvc.perform(
                         get(
-                                "/api/v5/conversations/{cid}/messages/{mid}/runtime-trace/replay",
+                                path("/conversations/{cid}/messages/{mid}/runtime-trace/replay"),
                                 conversationId,
                                 messageId))
                 .andExpect(status().isOk())
@@ -142,7 +144,7 @@ class RuntimeTraceReplayControllerTest {
         when(runtimeTraceReplayService.replay(any()))
                 .thenReturn(RuntimeTraceReplayResult.unsupported(
                         RuntimeTraceReplayOutcome.UNSUPPORTED_ROUTE_FAMILY, Optional.of("detail")));
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay"), traceId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.replayOutcome").value("UNSUPPORTED_ROUTE_FAMILY"))
                 .andExpect(jsonPath("$.failureDetail").value("detail"));
@@ -150,7 +152,7 @@ class RuntimeTraceReplayControllerTest {
 
     @Test
     void malformed_uuid_on_trace_path_returns_400() throws Exception {
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay", "not-a-uuid"))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay"), "not-a-uuid"))
                 .andExpect(status().isBadRequest());
     }
 

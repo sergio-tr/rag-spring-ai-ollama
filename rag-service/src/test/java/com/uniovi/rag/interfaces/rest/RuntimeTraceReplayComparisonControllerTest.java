@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.tracecomparison.RuntimeTraceReplayComparisonService;
 import com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayAnswerComparisonStatus;
 import com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayComparisonOutcome;
@@ -74,7 +76,7 @@ class RuntimeTraceReplayComparisonControllerTest {
     @Test
     void query_string_on_trace_path_returns_400() throws Exception {
         when(runtimeTraceReplayComparisonService.compare(any())).thenReturn(sampleOkResult());
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay-comparison", traceId).queryParam("x", "1"))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay-comparison"), traceId).queryParam("x", "1"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -83,7 +85,7 @@ class RuntimeTraceReplayComparisonControllerTest {
         when(runtimeTraceReplayComparisonService.compare(any())).thenReturn(sampleOkResult());
         mockMvc.perform(
                         get(
-                                        "/api/v5/conversations/{cid}/messages/{mid}/runtime-trace/replay-comparison",
+                                        path("/conversations/{cid}/messages/{mid}/runtime-trace/replay-comparison"),
                                         conversationId,
                                         messageId)
                                 .queryParam("x", "1"))
@@ -93,14 +95,14 @@ class RuntimeTraceReplayComparisonControllerTest {
     @Test
     void original_not_found_returns_404() throws Exception {
         when(runtimeTraceReplayComparisonService.compare(any())).thenReturn(notFoundResult());
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay-comparison", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay-comparison"), traceId))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void replay_unsupported_returns_200_with_outcome_in_body() throws Exception {
         when(runtimeTraceReplayComparisonService.compare(any())).thenReturn(replayUnsupportedResult());
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay-comparison", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay-comparison"), traceId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.comparisonOutcome").value("REPLAY_UNSUPPORTED"))
                 .andExpect(jsonPath("$.originalRouteKind").value("DIRECT_WORKFLOW_ROUTE"));

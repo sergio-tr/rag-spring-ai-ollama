@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.traceexport.RuntimeTraceExportArtifact;
 import com.uniovi.rag.application.service.runtime.traceexport.RuntimeTraceExportService;
 import com.uniovi.rag.application.service.runtime.traceexport.RuntimeTraceExportSizeLimitExceededException;
@@ -70,7 +72,7 @@ class RuntimeTraceExportControllerTest {
         when(runtimeTraceExportService.exportSingleTraceById(eq(userId), eq(traceId)))
                 .thenReturn(new RuntimeTraceExportArtifact("x.zip", "application/zip", new byte[] {1, 2}, 2L, "SINGLE_TRACE"));
 
-        mockMvc.perform(get("/api/v5/runtime-traces/{id}/export", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{id}/export"), traceId))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "application/zip"))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"x.zip\""));
@@ -81,20 +83,20 @@ class RuntimeTraceExportControllerTest {
         when(runtimeTraceExportService.exportSingleTraceByMessageId(eq(userId), eq(conversationId), eq(messageId)))
                 .thenReturn(new RuntimeTraceExportArtifact("x.zip", "application/zip", new byte[] {1}, 1L, "SINGLE_TRACE"));
 
-        mockMvc.perform(get("/api/v5/conversations/{cid}/messages/{mid}/runtime-trace/export", conversationId, messageId))
+        mockMvc.perform(get(path("/conversations/{cid}/messages/{mid}/runtime-trace/export"), conversationId, messageId))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "application/zip"));
     }
 
     @Test
     void exportConversationBundle_rejectsUnsupportedQueryParam400() throws Exception {
-        mockMvc.perform(get("/api/v5/conversations/{cid}/runtime-traces/export?nope=1", conversationId))
+        mockMvc.perform(get(path("/conversations/{cid}/runtime-traces/export?nope=1"), conversationId))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     void exportSingleByTraceId_rejectsAnyQueryParam400() throws Exception {
-        mockMvc.perform(get("/api/v5/runtime-traces/{id}/export?x=1", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{id}/export?x=1"), traceId))
                 .andExpect(status().isBadRequest());
     }
 
@@ -103,7 +105,7 @@ class RuntimeTraceExportControllerTest {
         when(runtimeTraceExportService.exportSingleTraceById(eq(userId), eq(traceId)))
                 .thenThrow(new RuntimeTraceExportSizeLimitExceededException("too big"));
 
-        mockMvc.perform(get("/api/v5/runtime-traces/{id}/export", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{id}/export"), traceId))
                 .andExpect(status().isPayloadTooLarge());
     }
 
@@ -112,7 +114,7 @@ class RuntimeTraceExportControllerTest {
         when(runtimeTraceExportService.exportSingleTraceById(eq(userId), eq(traceId)))
                 .thenThrow(new NotFoundException("trace not found"));
 
-        mockMvc.perform(get("/api/v5/runtime-traces/{id}/export", traceId).accept(MediaType.APPLICATION_JSON))
+        mockMvc.perform(get(path("/runtime-traces/{id}/export"), traceId).accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound());
     }
 }

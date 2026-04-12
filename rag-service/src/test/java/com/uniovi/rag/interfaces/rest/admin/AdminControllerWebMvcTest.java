@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest.admin;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaModelProvisioningService;
@@ -61,7 +63,7 @@ class AdminControllerWebMvcTest {
 
     @BeforeEach
     void setAdmin() {
-        when(apiPathProperties.getProductBasePath()).thenReturn("/api/v5");
+        when(apiPathProperties.getProductBasePath()).thenReturn(path(""));
         userId = UUID.randomUUID();
         RagPrincipal principal = new RagPrincipal(userId, "admin@test", "ADMIN");
         SecurityContextHolder.getContext()

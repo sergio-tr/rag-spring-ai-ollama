@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -117,7 +119,7 @@ class RuntimeTraceRegressionSuiteDefinitionDetailGetFdParityWebMvcTest {
         when(definitionService.loadByIdForUser(eq(definitionId), eq(userId))).thenReturn(Optional.of(snapshot));
 
         byte[] body =
-                mockMvc.perform(get("/api/v5/runtime-trace-regression-suite-definitions/{id}", definitionId))
+                mockMvc.perform(get(path("/runtime-trace-regression-suite-definitions/{id}"), definitionId))
                         .andExpect(status().isOk())
                         .andReturn()
                         .getResponse()

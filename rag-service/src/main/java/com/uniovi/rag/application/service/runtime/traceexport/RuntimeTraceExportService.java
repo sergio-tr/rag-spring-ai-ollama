@@ -199,17 +199,21 @@ public class RuntimeTraceExportService {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ZipOutputStream zos =
                      new ZipOutputStream(new BufferedOutputStream(baos), StandardCharsets.UTF_8)) {
-            putJson(zos, "manifest.json", manifest);
-            putJson(zos, "traces/index.json", new Index(index));
+            // Ensure deterministic ZIP bytes: fix entry timestamps to the manifest generation instant.
+            long entryTimeMillis = manifest.generatedAt().toEpochMilli();
+            putJson(zos, "manifest.json", manifest, entryTimeMillis);
+            putJson(zos, "traces/index.json", new Index(index), entryTimeMillis);
             for (TraceFile f : traceFiles) {
-                putJson(zos, f.zipPath(), f.payload());
+                putJson(zos, f.zipPath(), f.payload(), entryTimeMillis);
             }
         }
         return baos.toByteArray();
     }
 
-    private void putJson(ZipOutputStream zos, String name, Object value) throws IOException {
-        zos.putNextEntry(new ZipEntry(name));
+    private void putJson(ZipOutputStream zos, String name, Object value, long entryTimeMillis) throws IOException {
+        ZipEntry e = new ZipEntry(name);
+        e.setTime(entryTimeMillis);
+        zos.putNextEntry(e);
         byte[] bytes = objectMapper.writeValueAsBytes(value);
         zos.write(bytes);
         zos.closeEntry();

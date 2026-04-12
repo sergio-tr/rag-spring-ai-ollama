@@ -29,6 +29,8 @@ RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring
 
 **Documentation:** global architecture, domain, and governance live in **[`docs/README.md`](docs/README.md)**. Per-module setup and commands live in each folder’s **README** (see table below).
 
+**Quality baseline (test audit, gates, Sonar baseline):** [`docs/quality/README.md`](docs/quality/README.md).
+
 **Where it runs:** Repository automation (`docker/scripts/*.sh`, `tests/**/*.sh`, Compose, Gatling via `./gradlew`) and **CI/CD** are designed for **Linux** (local shell or `ubuntu-*` runners). **Docker images** for backend, classifier, databases, and observability are **Linux-based**. For day-to-day parity with CI, develop on Linux or **WSL2**, not raw Windows shells.
 
 ## Quick start (development)

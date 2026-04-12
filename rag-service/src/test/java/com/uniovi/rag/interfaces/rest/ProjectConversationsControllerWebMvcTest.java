@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ConversationApplicationService;
 import com.uniovi.rag.application.service.MoveConversationApplicationService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -65,7 +67,7 @@ class ProjectConversationsControllerWebMvcTest {
     void list_returnsOkAndEmptyArray() throws Exception {
         when(conversationApplicationService.listConversations(eq(userId), eq(projectId))).thenReturn(List.of());
 
-        mockMvc.perform(get("/api/v5/projects/{projectId}/conversations", projectId))
+        mockMvc.perform(get(path("/projects/{projectId}/conversations"), projectId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$.length()").value(0));

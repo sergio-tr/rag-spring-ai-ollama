@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.tracereplaybatch.RuntimeTraceReplayBatchService;
 import com.uniovi.rag.configuration.ReplayBatchRestJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayOutcome;
@@ -87,7 +89,7 @@ class RuntimeTraceReplayBatchControllerTest {
     void query_string_on_trace_ids_route_returns_400() throws Exception {
         when(batchService.execute(any())).thenReturn(emptySelectionByTraceIds(0, 0));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .queryParam("x", "1")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[]}"))
@@ -98,7 +100,7 @@ class RuntimeTraceReplayBatchControllerTest {
     void query_string_on_conversation_route_returns_400() throws Exception {
         when(batchService.execute(any())).thenReturn(conversationEmptySelection());
         mockMvc.perform(
-                        post("/api/v5/conversations/{cid}/runtime-traces/replays/batch", conversationId)
+                        post(path("/conversations/{cid}/runtime-traces/replays/batch"), conversationId)
                                 .queryParam("x", "1")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{}"))
@@ -108,7 +110,7 @@ class RuntimeTraceReplayBatchControllerTest {
     @Test
     void trace_ids_route_unknown_json_field_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[],\"extra\":1}"))
                 .andExpect(status().isBadRequest());
@@ -117,7 +119,7 @@ class RuntimeTraceReplayBatchControllerTest {
     @Test
     void conversation_route_unknown_json_field_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/conversations/{cid}/runtime-traces/replays/batch", conversationId)
+                        post(path("/conversations/{cid}/runtime-traces/replays/batch"), conversationId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"workflowName\":\"x\",\"oops\":1}"))
                 .andExpect(status().isBadRequest());
@@ -126,7 +128,7 @@ class RuntimeTraceReplayBatchControllerTest {
     @Test
     void trace_ids_route_wrong_traceIds_type_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":\"nope\"}"))
                 .andExpect(status().isBadRequest());
@@ -135,7 +137,7 @@ class RuntimeTraceReplayBatchControllerTest {
     @Test
     void trace_ids_route_missing_traceIds_key_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{}"))
                 .andExpect(status().isBadRequest());
@@ -143,7 +145,7 @@ class RuntimeTraceReplayBatchControllerTest {
 
     @Test
     void trace_ids_route_null_body_returns_400() throws Exception {
-        mockMvc.perform(post("/api/v5/runtime-traces/replays/batch").contentType(MediaType.APPLICATION_JSON))
+        mockMvc.perform(post(path("/runtime-traces/replays/batch")).contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest());
     }
 
@@ -158,7 +160,7 @@ class RuntimeTraceReplayBatchControllerTest {
         }
         sb.append("]}");
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(sb.toString()))
                 .andExpect(status().isBadRequest());
@@ -167,7 +169,7 @@ class RuntimeTraceReplayBatchControllerTest {
     @Test
     void trace_ids_route_null_element_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[null]}"))
                 .andExpect(status().isBadRequest());
@@ -176,7 +178,7 @@ class RuntimeTraceReplayBatchControllerTest {
     @Test
     void trace_ids_route_null_traceIds_value_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":null}"))
                 .andExpect(status().isBadRequest());
@@ -186,7 +188,7 @@ class RuntimeTraceReplayBatchControllerTest {
     void trace_ids_route_empty_list_returns_200_empty_selection() throws Exception {
         when(batchService.execute(any())).thenReturn(emptySelectionByTraceIds(0, 0));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[]}"))
                 .andExpect(status().isOk())
@@ -200,7 +202,7 @@ class RuntimeTraceReplayBatchControllerTest {
     void not_attempted_from_service_returns_400() throws Exception {
         when(batchService.execute(any())).thenReturn(notAttempted(3, 0));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[\"" + UUID.randomUUID() + "\"]}"))
                 .andExpect(status().isBadRequest());
@@ -230,7 +232,7 @@ class RuntimeTraceReplayBatchControllerTest {
                 new RuntimeTraceReplayBatchResult(1, 1, RuntimeTraceReplayBatchOutcome.COMPLETED_MIXED, sum, List.of(item));
         when(batchService.execute(any())).thenReturn(result);
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[\"" + tid + "\"]}"))
                 .andExpect(status().isOk())
@@ -265,7 +267,7 @@ class RuntimeTraceReplayBatchControllerTest {
                         1, 1, RuntimeTraceReplayBatchOutcome.COMPLETED_ALL_REPLAY_SUCCEEDED, sum, List.of(item));
         when(batchService.execute(any())).thenReturn(result);
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replays/batch")
+                        post(path("/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[\"" + tid + "\"]}"))
                 .andExpect(status().isOk())
@@ -278,7 +280,7 @@ class RuntimeTraceReplayBatchControllerTest {
     void conversation_not_found_returns_404() throws Exception {
         when(batchService.execute(any())).thenThrow(new NotFoundException("conversation not found"));
         mockMvc.perform(
-                        post("/api/v5/conversations/{cid}/runtime-traces/replays/batch", conversationId)
+                        post(path("/conversations/{cid}/runtime-traces/replays/batch"), conversationId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{}"))
                 .andExpect(status().isNotFound());
@@ -288,7 +290,7 @@ class RuntimeTraceReplayBatchControllerTest {
     void conversation_empty_selection_returns_200() throws Exception {
         when(batchService.execute(any())).thenReturn(conversationEmptySelection());
         mockMvc.perform(
-                        post("/api/v5/conversations/{cid}/runtime-traces/replays/batch", conversationId)
+                        post(path("/conversations/{cid}/runtime-traces/replays/batch"), conversationId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{}"))
                 .andExpect(status().isOk())
@@ -300,7 +302,7 @@ class RuntimeTraceReplayBatchControllerTest {
     @Test
     void malformed_conversation_uuid_in_path_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/conversations/not-a-uuid/runtime-traces/replays/batch")
+                        post(path("/conversations/not-a-uuid/runtime-traces/replays/batch"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{}"))
                 .andExpect(status().isBadRequest());
@@ -310,7 +312,7 @@ class RuntimeTraceReplayBatchControllerTest {
     void conversation_route_trims_blank_workflow_to_no_filter() throws Exception {
         when(batchService.execute(any())).thenReturn(conversationEmptySelection());
         mockMvc.perform(
-                        post("/api/v5/conversations/{cid}/runtime-traces/replays/batch", conversationId)
+                        post(path("/conversations/{cid}/runtime-traces/replays/batch"), conversationId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"workflowName\":\"   \"}"))
                 .andExpect(status().isOk());

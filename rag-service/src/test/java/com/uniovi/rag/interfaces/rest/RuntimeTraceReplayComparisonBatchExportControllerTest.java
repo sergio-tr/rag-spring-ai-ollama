@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.tracecomparisonbatchexport.RuntimeTraceReplayComparisonBatchExportArtifact;
 import com.uniovi.rag.application.service.runtime.tracecomparisonbatchexport.RuntimeTraceReplayComparisonBatchExportNotAttemptedException;
 import com.uniovi.rag.application.service.runtime.tracecomparisonbatchexport.RuntimeTraceReplayComparisonBatchExportService;
@@ -81,7 +83,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
     void query_string_on_trace_export_returns_400() throws Exception {
         when(batchExportService.exportByTraceIds(any(), any())).thenReturn(sampleZip("runtime-trace-replay-comparisons-batch.zip"));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replay-comparisons/batch/export")
+                        post(path("/runtime-traces/replay-comparisons/batch/export"))
                                 .queryParam("x", "1")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[]}"))
@@ -94,7 +96,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
                 .thenReturn(sampleZip("z.zip"));
         mockMvc.perform(
                         post(
-                                        "/api/v5/conversations/{cid}/runtime-traces/replay-comparisons/batch/export",
+                                        path("/conversations/{cid}/runtime-traces/replay-comparisons/batch/export"),
                                         conversationId)
                                 .queryParam("y", "1")
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -105,7 +107,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
     @Test
     void unknown_field_on_trace_route_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replay-comparisons/batch/export")
+                        post(path("/runtime-traces/replay-comparisons/batch/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[],\"extra\":1}"))
                 .andExpect(status().isBadRequest());
@@ -122,7 +124,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
         }
         sb.append("]}");
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replay-comparisons/batch/export")
+                        post(path("/runtime-traces/replay-comparisons/batch/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(sb.toString()))
                 .andExpect(status().isBadRequest());
@@ -131,7 +133,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
     @Test
     void null_trace_id_element_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replay-comparisons/batch/export")
+                        post(path("/runtime-traces/replay-comparisons/batch/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[null]}"))
                 .andExpect(status().isBadRequest());
@@ -142,7 +144,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
         when(batchExportService.exportByTraceIds(eq(userId), any()))
                 .thenThrow(new RuntimeTraceReplayComparisonBatchExportNotAttemptedException("x"));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replay-comparisons/batch/export")
+                        post(path("/runtime-traces/replay-comparisons/batch/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[\"" + traceId + "\"]}"))
                 .andExpect(status().isBadRequest());
@@ -153,7 +155,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
         when(batchExportService.exportByTraceIds(eq(userId), eq(List.of())))
                 .thenReturn(sampleZip("runtime-trace-replay-comparisons-batch.zip"));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replay-comparisons/batch/export")
+                        post(path("/runtime-traces/replay-comparisons/batch/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[]}"))
                 .andExpect(status().isOk())
@@ -166,7 +168,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
                 .thenThrow(new NotFoundException("conversation not found"));
         mockMvc.perform(
                         post(
-                                        "/api/v5/conversations/{cid}/runtime-traces/replay-comparisons/batch/export",
+                                        path("/conversations/{cid}/runtime-traces/replay-comparisons/batch/export"),
                                         conversationId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{}"))
@@ -180,7 +182,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
                 .thenReturn(sampleZip(fn));
         mockMvc.perform(
                         post(
-                                        "/api/v5/conversations/{cid}/runtime-traces/replay-comparisons/batch/export",
+                                        path("/conversations/{cid}/runtime-traces/replay-comparisons/batch/export"),
                                         conversationId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{}"))
@@ -192,7 +194,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
     void trace_export_never_404_after_valid_body() throws Exception {
         when(batchExportService.exportByTraceIds(eq(userId), any())).thenReturn(sampleZip("runtime-trace-replay-comparisons-batch.zip"));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replay-comparisons/batch/export")
+                        post(path("/runtime-traces/replay-comparisons/batch/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[\"" + UUID.randomUUID() + "\"]}"))
                 .andExpect(status().isOk());
@@ -203,7 +205,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
         when(batchExportService.exportByTraceIds(eq(userId), any()))
                 .thenThrow(new RuntimeTraceReplayComparisonBatchExportSizeExceededException("too large"));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/replay-comparisons/batch/export")
+                        post(path("/runtime-traces/replay-comparisons/batch/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"traceIds\":[]}"))
                 .andExpect(status().isPayloadTooLarge());
@@ -212,7 +214,7 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
     @Test
     void malformed_conversation_uuid_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/conversations/not-a-uuid/runtime-traces/replay-comparisons/batch/export")
+                        post(path("/conversations/not-a-uuid/runtime-traces/replay-comparisons/batch/export"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{}"))
                 .andExpect(status().isBadRequest());

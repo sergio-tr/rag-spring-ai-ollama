@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.tracecomparisonexport.RuntimeTraceReplayComparisonExportArtifact;
 import com.uniovi.rag.application.service.runtime.tracecomparisonexport.RuntimeTraceReplayComparisonExportService;
 import com.uniovi.rag.application.service.runtime.tracecomparisonexport.RuntimeTraceReplayComparisonExportSizeExceededException;
@@ -71,7 +73,7 @@ class RuntimeTraceReplayComparisonExportControllerTest {
     @Test
     void query_string_on_trace_export_path_returns_400() throws Exception {
         when(runtimeTraceReplayComparisonExportService.exportByTraceId(any(), any())).thenReturn(sampleZip());
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay-comparison/export", traceId).queryParam("x", "1"))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay-comparison/export"), traceId).queryParam("x", "1"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -81,7 +83,7 @@ class RuntimeTraceReplayComparisonExportControllerTest {
                 .thenReturn(sampleZip());
         mockMvc.perform(
                         get(
-                                        "/api/v5/conversations/{cid}/messages/{mid}/runtime-trace/replay-comparison/export",
+                                        path("/conversations/{cid}/messages/{mid}/runtime-trace/replay-comparison/export"),
                                         conversationId,
                                         messageId)
                                 .queryParam("x", "1"))
@@ -92,7 +94,7 @@ class RuntimeTraceReplayComparisonExportControllerTest {
     void not_found_from_service_returns_404() throws Exception {
         when(runtimeTraceReplayComparisonExportService.exportByTraceId(eq(userId), eq(traceId)))
                 .thenThrow(new NotFoundException("trace not found"));
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay-comparison/export", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay-comparison/export"), traceId))
                 .andExpect(status().isNotFound());
     }
 
@@ -100,7 +102,7 @@ class RuntimeTraceReplayComparisonExportControllerTest {
     void size_overflow_returns_413() throws Exception {
         when(runtimeTraceReplayComparisonExportService.exportByTraceId(eq(userId), eq(traceId)))
                 .thenThrow(new RuntimeTraceReplayComparisonExportSizeExceededException("too large"));
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay-comparison/export", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay-comparison/export"), traceId))
                 .andExpect(status().isPayloadTooLarge());
     }
 
@@ -116,7 +118,7 @@ class RuntimeTraceReplayComparisonExportControllerTest {
                         content.length);
         when(runtimeTraceReplayComparisonExportService.exportByTraceId(eq(userId), eq(traceId)))
                 .thenReturn(artifact);
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay-comparison/export", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay-comparison/export"), traceId))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/zip"))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"" + filename + "\""));

@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.tracequery.RuntimeTraceQueryService;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceSummaryDto;
@@ -110,7 +112,7 @@ class RuntimeTraceControllerTest {
                 anyInt()))
                 .thenReturn(page);
 
-        mockMvc.perform(get("/api/v5/conversations/{id}/runtime-traces", conversationId))
+        mockMvc.perform(get(path("/conversations/{id}/runtime-traces"), conversationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].id").value(traceId.toString()));
     }
@@ -149,7 +151,7 @@ class RuntimeTraceControllerTest {
                         List.of());
         when(runtimeTraceQueryService.getTraceDetailById(eq(userId), eq(traceId))).thenReturn(d);
 
-        mockMvc.perform(get("/api/v5/runtime-traces/{id}", traceId).accept(MediaType.APPLICATION_JSON))
+        mockMvc.perform(get(path("/runtime-traces/{id}"), traceId).accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(traceId.toString()));
     }
@@ -189,7 +191,7 @@ class RuntimeTraceControllerTest {
         when(runtimeTraceQueryService.getMostRecentTraceDetailByMessageId(eq(userId), eq(conversationId), eq(messageId)))
                 .thenReturn(d);
 
-        mockMvc.perform(get("/api/v5/conversations/{cid}/messages/{mid}/runtime-trace", conversationId, messageId))
+        mockMvc.perform(get(path("/conversations/{cid}/messages/{mid}/runtime-trace"), conversationId, messageId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.messageId").value(messageId.toString()));
     }

@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.evaluation.BenchmarkJobAccepted;
 import com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator;
 import com.uniovi.rag.application.service.evaluation.LabEvaluationRunService;
@@ -65,7 +67,7 @@ class LabBenchmarkControllerWebMvcTest {
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
                                 principal, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));
-        when(apiPathProperties.getProductBasePath()).thenReturn("/api/v5");
+        when(apiPathProperties.getProductBasePath()).thenReturn(path(""));
     }
 
     @AfterEach
@@ -85,7 +87,7 @@ class LabBenchmarkControllerWebMvcTest {
         String body = String.format(
                 "{\"datasetId\":\"%s\",\"runKind\":\"PRODUCT_EXPLORATION\"}", ds);
 
-        mockMvc.perform(post("/api/v5/lab/benchmarks/LLM_JUDGE_QA/runs").contentType(MediaType.APPLICATION_JSON).content(body))
+        mockMvc.perform(post(path("/lab/benchmarks/LLM_JUDGE_QA/runs")).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.evaluationRunId").value(runId.toString()))
                 .andExpect(jsonPath("$.asyncTaskId").value(taskId.toString()))
@@ -118,7 +120,7 @@ class LabBenchmarkControllerWebMvcTest {
                         null);
         when(labEvaluationRunService.getRun(userId, runId)).thenReturn(dto);
 
-        mockMvc.perform(get("/api/v5/lab/runs/" + runId))
+        mockMvc.perform(get(path("/lab/runs/") + runId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(runId.toString()))
                 .andExpect(jsonPath("$.benchmarkKind").value("LLM_JUDGE_QA"));
@@ -131,7 +133,7 @@ class LabBenchmarkControllerWebMvcTest {
         when(labEvaluationRunService.compare(userId, a, b))
                 .thenReturn(new CompareRunsResponseDto(true, List.of(), a, b));
 
-        mockMvc.perform(get("/api/v5/lab/runs/compare").param("runA", a.toString()).param("runB", b.toString()))
+        mockMvc.perform(get(path("/lab/runs/compare")).param("runA", a.toString()).param("runB", b.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.comparable").value(true));
     }

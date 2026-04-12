@@ -10,6 +10,13 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 
 **Layering:** Product REST controllers live under `com.uniovi.rag.interfaces.rest` and delegate to **application services** (`com.uniovi.rag.application..`) for persistence; JPA and repositories stay in `infrastructure.persistence`. Legacy RAG adapters (`interfaces.rest.legacy`, base path `rag.api.legacy-base-path`) are excluded from ArchUnit rules until refactored. See `src/test/java/com/uniovi/rag/architecture/LayeredArchitectureTest.java`.
 
+## Quality baseline and API paths in tests (AP01)
+
+- **Verification gate:** from this directory, `./mvnw clean verify` (Surefire + JaCoCo `jacoco:check` on the configured bundle, line coverage ≥ 80%). Operational equivalent from a parent reactor: `mvn test -pl rag-service` does not replace `verify` if you need the same gate as CI Sonar prep.
+- **Policies and baseline table:** [docs/quality/README.md](../docs/quality/README.md) (exclusions matrix, Ollama/OTLP test notes, Sonar project key).
+- **Product base path in tests:** `src/test/resources/application.properties` sets `rag.api.product-base-path` (default `/api/v5`). Use `com.uniovi.rag.testsupport.RagApiTestPaths#path` (and `productBasePath()`) for MockMvc URLs so paths track that property. For slices that intentionally use another base (e.g. `/api/test`, `/api/v1`), keep an explicit `PRODUCT_BASE` constant or `@TestPropertySource` on that class — do not use `RagApiTestPaths` there, because it always reads the shared `application.properties` file.
+- **OTLP in tests:** the same `application.properties` sets harmless localhost OTLP endpoints so actuator export config does not break bootstrap when the environment supplies relative OTLP URLs; `SafeTestSecretsApplicationContextInitializer` still normalizes edge cases.
+
 ## P61 — Final closure and change control (runtime trace regression suite HTTP surface)
 
 **P61** (**Microphase 5.53 — Runtime Trace Regression Suite Final Closure and Change-Control Protocol (P61)**) is **documentation only**: it does not add tests or change runtime code. It declares the **nine-controller** regression-suite HTTP block (**`FD-p59-controller-set`**) a **frozen maintenance module** after **P61** merge and publishes how to change that surface safely.
@@ -145,6 +152,8 @@ You can use environment variables with placeholders `${VAR_NAME:default}`. Overr
 ## Tests and JaCoCo (`target/site/jacoco/index.html`)
 
 ### Replicate CI locally (backend `mvn verify`)
+
+Full pipeline job names, PR merge policy, and Compose parity: [`docs/devops/README.md`](../docs/devops/README.md).
 
 The **Backend (Java)** job in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) uses:
 

@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.interfaces.rest.dto.ClassifierModelResponseDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
@@ -77,7 +79,7 @@ class ClassifierModelRegistryControllerWebMvcTest {
                                         false,
                                         Map.of())));
 
-        mockMvc.perform(get("/api/v5/lab/classifier/models"))
+        mockMvc.perform(get(path("/lab/classifier/models")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].inferenceTag").value("tag-1"));
     }
@@ -100,7 +102,7 @@ class ClassifierModelRegistryControllerWebMvcTest {
                                 Map.of()));
 
         mockMvc.perform(
-                        post("/api/v5/lab/classifier/models/" + mid + "/activate")
+                        post(path("/lab/classifier/models/") + mid + "/activate")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"projectId\":\"" + pid + "\"}"))
                 .andExpect(status().isOk())

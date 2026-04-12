@@ -85,6 +85,7 @@
 ## Related
 
 - Documentation hub: [../README.md](../README.md)
+- Quality baseline (tests, exclusions, Sonar): [../quality/README.md](../quality/README.md)
 - ADR index: [../adr/README.md](../adr/README.md)
 - Docker operations: [../../docker/README.md](../../docker/README.md)
 - Observability configuration: [../../observability/README.md](../../observability/README.md)

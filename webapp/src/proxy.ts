@@ -18,7 +18,10 @@ function stripLocale(pathname: string): string {
 
 function localeFromPath(pathname: string): string {
   const first = pathname.split("/").find((s) => s.length > 0);
-  if (routing.locales.includes(first as "en" | "es")) {
+  if (
+    first !== undefined &&
+    routing.locales.includes(first as "en" | "es")
+  ) {
     return first;
   }
   return routing.defaultLocale;

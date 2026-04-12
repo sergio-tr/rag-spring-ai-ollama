@@ -26,7 +26,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(OllamaModelController.class)
 @TestPropertySource(
         properties = {
-            "rag.api.product-base-path=/api/v5",
             "rag.api.legacy-base-path=/api/v4"
         })
 class OllamaModelControllerTest {

@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
@@ -97,7 +99,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
     @Test
     void list_noQueryString_emptyService_returns200_emptyDefinitions() throws Exception {
         when(definitionService.listSummariesForUser(userId)).thenReturn(List.of());
-        mockMvc.perform(get("/api/v5/runtime-trace-regression-suite-definitions"))
+        mockMvc.perform(get(path("/runtime-trace-regression-suite-definitions")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.definitions").isArray())
                 .andExpect(jsonPath("$.definitions", hasSize(0)))
@@ -118,7 +120,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
                         new RuntimeTraceRegressionSuiteDefinitionUserSummary(id1, "a", null, 2, t1, t2),
                         new RuntimeTraceRegressionSuiteDefinitionUserSummary(id2, "b", "d", 1, t1, t2));
         when(definitionService.listSummariesForUser(userId)).thenReturn(rows);
-        mockMvc.perform(get("/api/v5/runtime-trace-regression-suite-definitions"))
+        mockMvc.perform(get(path("/runtime-trace-regression-suite-definitions")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.definitions[0].id").value(id1.toString()))
                 .andExpect(jsonPath("$.definitions[1].id").value(id2.toString()));
@@ -129,7 +131,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
 
     @Test
     void list_queryParam_returns400_emptyBody() throws Exception {
-        mockMvc.perform(get("/api/v5/runtime-trace-regression-suite-definitions").queryParam("a", "b"))
+        mockMvc.perform(get(path("/runtime-trace-regression-suite-definitions")).queryParam("a", "b"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
         verify(definitionService, never()).listSummariesForUser(any());
@@ -140,7 +142,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
     @Test
     void list_emptyQueryString_returns400() throws Exception {
         mockMvc.perform(
-                        get("/api/v5/runtime-trace-regression-suite-definitions")
+                        get(path("/runtime-trace-regression-suite-definitions"))
                                 .with((RequestPostProcessor) request -> {
                                     request.setQueryString("");
                                     return request;
@@ -169,7 +171,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
                                 new RuntimeTraceRegressionSuiteDefinitionEntrySnapshot.ByConversation(
                                         conv, null, null, "wf")));
         when(definitionService.loadByIdForUser(definitionId, userId)).thenReturn(Optional.of(snap));
-        mockMvc.perform(get("/api/v5/runtime-trace-regression-suite-definitions/{id}", definitionId))
+        mockMvc.perform(get(path("/runtime-trace-regression-suite-definitions/{id}"), definitionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(definitionId.toString()))
                 .andExpect(jsonPath("$.name").value("suite"))
@@ -197,7 +199,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
     @Test
     void detail_emptyOptional_wrongOwner_returns404() throws Exception {
         when(definitionService.loadByIdForUser(definitionId, userId)).thenReturn(Optional.empty());
-        mockMvc.perform(get("/api/v5/runtime-trace-regression-suite-definitions/{id}", definitionId))
+        mockMvc.perform(get(path("/runtime-trace-regression-suite-definitions/{id}"), definitionId))
                 .andExpect(status().isNotFound())
                 .andExpect(
                         result ->
@@ -213,14 +215,14 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
     void detail_emptyOptional_missingId_returns404() throws Exception {
         UUID missing = UUID.randomUUID();
         when(definitionService.loadByIdForUser(missing, userId)).thenReturn(Optional.empty());
-        mockMvc.perform(get("/api/v5/runtime-trace-regression-suite-definitions/{id}", missing))
+        mockMvc.perform(get(path("/runtime-trace-regression-suite-definitions/{id}"), missing))
                 .andExpect(status().isNotFound());
         verifyMutatingNever();
     }
 
     @Test
     void detail_malformedUuid_returns400() throws Exception {
-        mockMvc.perform(get("/api/v5/runtime-trace-regression-suite-definitions/{id}", "not-a-uuid"))
+        mockMvc.perform(get(path("/runtime-trace-regression-suite-definitions/{id}"), "not-a-uuid"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
         verify(definitionService, never()).loadByIdForUser(any(), any());
@@ -230,7 +232,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
     @Test
     void detail_queryParam_returns400() throws Exception {
         mockMvc.perform(
-                        get("/api/v5/runtime-trace-regression-suite-definitions/{id}", definitionId)
+                        get(path("/runtime-trace-regression-suite-definitions/{id}"), definitionId)
                                 .queryParam("x", "1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
@@ -245,7 +247,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
                         List.of(
                                 new RuntimeTraceRegressionSuiteDefinitionUserSummary(
                                         definitionId, "n", null, 1, Instant.now(), Instant.now())));
-        mockMvc.perform(get("/api/v5/runtime-trace-regression-suite-definitions"))
+        mockMvc.perform(get(path("/runtime-trace-regression-suite-definitions")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.definitions").exists())
                 .andExpect(jsonPath("$.id").doesNotExist());
@@ -261,7 +263,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
                         List.of(
                                 new RuntimeTraceRegressionSuiteDefinitionUserSummary(
                                         definitionId, "nm", "desc", 3, c, u)));
-        mockMvc.perform(get("/api/v5/runtime-trace-regression-suite-definitions"))
+        mockMvc.perform(get(path("/runtime-trace-regression-suite-definitions")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.definitions[0].id").value(definitionId.toString()))
                 .andExpect(jsonPath("$.definitions[0].name").value("nm"))

@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.interfaces.rest.dto.ProjectListResponseDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
@@ -60,7 +62,7 @@ class ProjectControllerTest {
         when(projectService.list(eq(userId), eq(0), eq(24)))
                 .thenReturn(new ProjectListResponseDto(List.of(), 0));
 
-        mockMvc.perform(get("/api/v5/projects"))
+        mockMvc.perform(get(path("/projects")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(0));
     }

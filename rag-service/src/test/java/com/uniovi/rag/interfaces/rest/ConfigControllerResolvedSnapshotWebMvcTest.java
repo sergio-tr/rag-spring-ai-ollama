@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
@@ -83,7 +85,7 @@ class ConfigControllerResolvedSnapshotWebMvcTest {
                 .thenReturn(new ResolvedConfigSnapshotCreatedResponse(snapId, "h1", Instant.parse("2026-01-01T00:00:00Z")));
 
         mockMvc.perform(
-                        post("/api/v5/config/resolved-snapshots")
+                        post(path("/config/resolved-snapshots"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         objectMapper.writeValueAsString(
@@ -114,7 +116,7 @@ class ConfigControllerResolvedSnapshotWebMvcTest {
                                 null,
                                 null));
 
-        mockMvc.perform(get("/api/v5/config/resolved-snapshots/" + snapId))
+        mockMvc.perform(get(path("/config/resolved-snapshots/") + snapId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(snapId.toString()))
                 .andExpect(jsonPath("$.configHash").value("h"));

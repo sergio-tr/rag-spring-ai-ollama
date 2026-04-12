@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -1501,16 +1503,15 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     }
 
     @Nested
-    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteDefinitionController (read, /api/v5)")
+    @DisplayName("P60 slice — RuntimeTraceRegressionSuiteDefinitionController (read, product API)")
     @WebMvcTest(controllers = RuntimeTraceRegressionSuiteDefinitionController.class)
     @ContextConfiguration(classes = RagWebMvcTestApplication.class)
     @AutoConfigureMockMvc(addFilters = false)
     @Import({RuntimeTraceRegressionSuiteDefinitionController.class, RegressionSuiteDefinitionMutationJacksonConfiguration.class})
     @ActiveProfiles("test")
-    @TestPropertySource(properties = "rag.api.product-base-path=/api/v5")
     class SliceP60DefinitionReadV5 {
 
-        private static final String BASE = "/api/v5";
+        private static final String BASE = path("");
 
         @Autowired
         private MockMvc mockMvc;

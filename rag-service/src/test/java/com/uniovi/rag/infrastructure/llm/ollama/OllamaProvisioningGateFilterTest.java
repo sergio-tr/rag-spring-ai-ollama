@@ -1,5 +1,7 @@
 package com.uniovi.rag.infrastructure.llm.ollama;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletResponse;
@@ -31,14 +33,14 @@ class OllamaProvisioningGateFilterTest {
     @Test
     void shouldNotFilter_whenReady() {
         when(provisioningService.isReadyForApiTraffic()).thenReturn(true);
-        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v5/projects");
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", path("/projects"));
         assertTrue(filter.shouldNotFilter(req));
     }
 
     @Test
     void shouldNotFilter_apiPathNotReady() {
         when(provisioningService.isReadyForApiTraffic()).thenReturn(false);
-        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v5/projects");
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", path("/projects"));
         assertFalse(filter.shouldNotFilter(req));
     }
 
@@ -47,7 +49,7 @@ class OllamaProvisioningGateFilterTest {
         when(provisioningService.getState()).thenReturn(OllamaModelProvisioningService.State.PENDING);
         when(provisioningService.getLastError()).thenReturn(null);
 
-        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/v5/projects");
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", path("/projects"));
         MockHttpServletResponse res = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
 

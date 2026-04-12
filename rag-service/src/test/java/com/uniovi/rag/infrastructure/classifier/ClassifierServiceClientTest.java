@@ -1,6 +1,7 @@
 package com.uniovi.rag.infrastructure.classifier;
 
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -30,14 +31,16 @@ class ClassifierServiceClientTest {
 
     @BeforeEach
     void setUp() {
-        restTemplate = new RestTemplate();
-        server = MockRestServiceServer.bindTo(restTemplate).build();
-        classifier = new ClassifierServiceClient("http://localhost:8000", "default", 5000, restTemplate);
+        var fixture = ClassifierClientTestSupport.newDefaultFixture();
+        restTemplate = fixture.restTemplate();
+        server = fixture.server();
+        classifier = fixture.client();
     }
 
     @Test
     void classify_returnsQueryType_whenServiceReturns200WithValidQueryType() {
-        server.expect(requestTo("http://localhost:8000/classify"))
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                 .andExpect(content().json("{\"query\":\"How many documents?\",\"modelId\":\"default\"}"))
@@ -51,7 +54,8 @@ class ClassifierServiceClientTest {
 
     @Test
     void classifyWithText_returnsString_whenServiceReturns200() {
-        server.expect(requestTo("http://localhost:8000/classify"))
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
                 .andRespond(withSuccess("{\"queryType\": \"FIND_PARAGRAPH\"}", MediaType.APPLICATION_JSON));
 
         String result = classifier.classifyWithText("Find the paragraph about X");
@@ -62,7 +66,8 @@ class ClassifierServiceClientTest {
 
     @Test
     void classify_returnsNull_whenServiceReturns5xx() {
-        server.expect(requestTo("http://localhost:8000/classify"))
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
                 .andRespond(withServerError());
 
         QueryType result = classifier.classify("any query");
@@ -73,7 +78,8 @@ class ClassifierServiceClientTest {
 
     @Test
     void classify_returnsNull_whenServiceReturnsInvalidQueryType() {
-        server.expect(requestTo("http://localhost:8000/classify"))
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
                 .andRespond(withSuccess("{\"queryType\": \"NOT_A_REAL_ENUM\"}", MediaType.APPLICATION_JSON));
 
         QueryType result = classifier.classify("any query");
@@ -84,7 +90,8 @@ class ClassifierServiceClientTest {
 
     @Test
     void classify_returnsNull_whenServiceReturnsNon2xx() {
-        server.expect(requestTo("http://localhost:8000/classify"))
+        String base = ClassifierClientTestSupport.defaultBaseUrl();
+        server.expect(requestTo(base + "/classify"))
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST));
 
         QueryType result = classifier.classify("any query");
@@ -102,9 +109,9 @@ class ClassifierServiceClientTest {
                 Mockito.eq(ClassifyResponseDto.class)))
                 .thenThrow(new RestClientException("timeout"));
 
-        // Nota: constructor package-private permite inyectar RestTemplate para simular timeouts.
+        // Constructor with injected RestTemplate simulates timeouts without real HTTP.
         ClassifierServiceClient c = new ClassifierServiceClient(
-                "http://localhost:8000",
+                ClassifierClientTestSupport.defaultBaseUrl(),
                 "default",
                 1,
                 throwingRestTemplate

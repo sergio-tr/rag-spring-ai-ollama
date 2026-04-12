@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ChatMessageApplicationService;
 import com.uniovi.rag.application.service.ConversationApplicationService;
 import com.uniovi.rag.configuration.RagApiPathProperties;
@@ -70,7 +72,7 @@ class ConversationControllerWebMvcTest {
     void messages_returnsOkAndEmptyList() throws Exception {
         when(conversationApplicationService.listMessages(eq(userId), eq(conversationId))).thenReturn(List.<MessageDto>of());
 
-        mockMvc.perform(get("/api/v5/conversations/{conversationId}/messages", conversationId))
+        mockMvc.perform(get(path("/conversations/{conversationId}/messages"), conversationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$.length()").value(0));

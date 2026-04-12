@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
 import com.uniovi.rag.configuration.RegressionSuiteRestJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.tracecomparisonbatch.RuntimeTraceReplayComparisonBatchOutcome;
@@ -81,7 +83,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     void explicit_route_query_string_returns_400() throws Exception {
         when(suiteService.execute(any())).thenReturn(emptySuiteResult());
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .queryParam("x", "1")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[]}"))
@@ -92,7 +94,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     void conversation_route_query_string_returns_400() throws Exception {
         when(suiteService.execute(any())).thenReturn(emptySuiteResult());
         mockMvc.perform(
-                        post("/api/v5/conversations/{cid}/runtime-traces/regression-suite", conversationId)
+                        post(path("/conversations/{cid}/runtime-traces/regression-suite"), conversationId)
                                 .queryParam("x", "1")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[]}"))
@@ -102,7 +104,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     @Test
     void explicit_route_unknown_json_key_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[],\"extra\":1}"))
                 .andExpect(status().isBadRequest());
@@ -111,7 +113,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     @Test
     void conversation_route_unknown_json_key_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/conversations/{cid}/runtime-traces/regression-suite", conversationId)
+                        post(path("/conversations/{cid}/runtime-traces/regression-suite"), conversationId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[],\"oops\":1}"))
                 .andExpect(status().isBadRequest());
@@ -128,7 +130,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
         }
         sb.append("]}");
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(sb.toString()))
                 .andExpect(status().isBadRequest());
@@ -137,7 +139,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     @Test
     void explicit_route_null_element_in_entries_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[null]}"))
                 .andExpect(status().isBadRequest());
@@ -146,7 +148,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     @Test
     void conversation_route_null_element_in_entries_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/conversations/{cid}/runtime-traces/regression-suite", conversationId)
+                        post(path("/conversations/{cid}/runtime-traces/regression-suite"), conversationId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[null]}"))
                 .andExpect(status().isBadRequest());
@@ -155,7 +157,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     @Test
     void explicit_route_entry_missing_kind_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[{\"traceIds\":[]}]}"))
                 .andExpect(status().isBadRequest());
@@ -164,7 +166,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     @Test
     void explicit_route_entry_unknown_kind_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[{\"kind\":\"OTHER\",\"traceIds\":[]}]}"))
                 .andExpect(status().isBadRequest());
@@ -173,7 +175,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     @Test
     void explicit_route_by_trace_ids_null_traceIds_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[{\"kind\":\"BY_TRACE_IDS\",\"traceIds\":null}]}"))
                 .andExpect(status().isBadRequest());
@@ -182,7 +184,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     @Test
     void explicit_route_by_trace_ids_null_uuid_element_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[{\"kind\":\"BY_TRACE_IDS\",\"traceIds\":[null]}]}"))
                 .andExpect(status().isBadRequest());
@@ -198,7 +200,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
             ids.append('"').append(UUID.randomUUID()).append('"');
         }
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[{\"kind\":\"BY_TRACE_IDS\",\"traceIds\":[" + ids + "]}]}"))
                 .andExpect(status().isBadRequest());
@@ -207,7 +209,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     @Test
     void conversation_route_invalid_path_uuid_returns_400() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/conversations/not-a-uuid/runtime-traces/regression-suite")
+                        post(path("/conversations/not-a-uuid/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[]}"))
                 .andExpect(status().isBadRequest());
@@ -217,7 +219,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     void empty_entries_returns_200_empty_suite() throws Exception {
         when(suiteService.execute(any())).thenReturn(emptySuiteResult());
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"entries\":[]}"))
                 .andExpect(status().isOk())
@@ -231,7 +233,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
     void not_attempted_from_service_returns_400() throws Exception {
         when(suiteService.execute(any())).thenReturn(notAttemptedResult());
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         "{\"entries\":[{\"kind\":\"BY_TRACE_IDS\",\"traceIds\":[\""
@@ -257,7 +259,7 @@ class RuntimeTraceRegressionSuiteControllerTest {
                         new RuntimeTraceRegressionSuiteResult(
                                 RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS, summary, List.of(row)));
         mockMvc.perform(
-                        post("/api/v5/runtime-traces/regression-suite")
+                        post(path("/runtime-traces/regression-suite"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         "{\"entries\":[{\"kind\":\"BY_TRACE_IDS\",\"traceIds\":[\""

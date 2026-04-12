@@ -2,6 +2,8 @@
 
 This document records **where** each module writes coverage output after the canonical commands. Regenerate after major refactors; **do not** commit generated HTML/XML into git (folders are usually gitignored).
 
+**Quality baseline hub** (exclusions matrix, Sonar baseline, coverage strategy): [../quality/README.md](../quality/README.md).
+
 ## Commands and outputs
 
 | Module | Command (from module root) | Primary reports |

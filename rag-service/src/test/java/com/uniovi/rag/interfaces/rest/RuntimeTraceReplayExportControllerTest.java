@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportArtifact;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportSizeExceededException;
@@ -69,7 +71,7 @@ class RuntimeTraceReplayExportControllerTest {
     @Test
     void query_string_on_trace_export_returns_400() throws Exception {
         when(runtimeTraceReplayExportService.exportByTraceId(any(), any())).thenReturn(sampleZip(traceId));
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay/export", traceId).queryParam("x", "1"))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay/export"), traceId).queryParam("x", "1"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -79,7 +81,7 @@ class RuntimeTraceReplayExportControllerTest {
                 .thenReturn(sampleZipMessage(messageId));
         mockMvc.perform(
                         get(
-                                        "/api/v5/conversations/{cid}/messages/{mid}/runtime-trace/replay/export",
+                                        path("/conversations/{cid}/messages/{mid}/runtime-trace/replay/export"),
                                         conversationId,
                                         messageId)
                                 .queryParam("x", "1"))
@@ -90,7 +92,7 @@ class RuntimeTraceReplayExportControllerTest {
     void not_found_returns_404() throws Exception {
         when(runtimeTraceReplayExportService.exportByTraceId(any(), any()))
                 .thenThrow(new NotFoundException("trace not found"));
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay/export", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay/export"), traceId))
                 .andExpect(status().isNotFound());
     }
 
@@ -98,7 +100,7 @@ class RuntimeTraceReplayExportControllerTest {
     void success_returns_zip_with_headers() throws Exception {
         RuntimeTraceReplayExportArtifact artifact = sampleZip(traceId);
         when(runtimeTraceReplayExportService.exportByTraceId(any(), any())).thenReturn(artifact);
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay/export", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay/export"), traceId))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "application/zip"))
                 .andExpect(header().string("Content-Length", String.valueOf(artifact.sizeBytes())))
@@ -112,7 +114,7 @@ class RuntimeTraceReplayExportControllerTest {
     @Test
     void unsupported_replay_still_returns_200_zip_when_service_returns() throws Exception {
         when(runtimeTraceReplayExportService.exportByTraceId(any(), any())).thenReturn(sampleZip(traceId));
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay/export", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay/export"), traceId))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Type", "application/zip"));
     }
@@ -121,13 +123,13 @@ class RuntimeTraceReplayExportControllerTest {
     void oversize_returns_413() throws Exception {
         when(runtimeTraceReplayExportService.exportByTraceId(any(), any()))
                 .thenThrow(new RuntimeTraceReplayExportSizeExceededException("too large"));
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay/export", traceId))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay/export"), traceId))
                 .andExpect(status().isPayloadTooLarge());
     }
 
     @Test
     void malformed_uuid_returns_400() throws Exception {
-        mockMvc.perform(get("/api/v5/runtime-traces/{traceId}/replay/export", "not-a-uuid"))
+        mockMvc.perform(get(path("/runtime-traces/{traceId}/replay/export"), "not-a-uuid"))
                 .andExpect(status().isBadRequest());
     }
 
