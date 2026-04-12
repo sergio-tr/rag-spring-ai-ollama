@@ -2,6 +2,9 @@ package com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitio
 
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -9,6 +12,7 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
+import com.uniovi.rag.application.arch.DefinitionZipServiceP58ArchAssertions;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.service.query.ProcessQueryService;
@@ -20,15 +24,31 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.Set;
+import java.util.UUID;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.constructors;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @AnalyzeClasses(
         packagesOf = RuntimeTraceRegressionSuiteDefinitionImportService.class,
         importOptions = ImportOption.DoNotIncludeTests.class)
 class RuntimeTraceRegressionSuiteDefinitionImportServiceArchitectureTest {
+
+    /*
+     * FD-def-zip-svc-arch-inventory — @ArchTest members:
+     *   importPackageDoesNotDependOnInfrastructurePersistence
+     *   importServiceDoesNotDependOnFd28Types
+     *   importServiceDoesNotDependOnOrchestrator
+     *   importServiceDoesNotDependOnProcessQueryServices
+     *   importServiceDoesNotDependOnRepositories
+     *   importServiceDoesNotUseAsyncOrExecutors
+     *   importServicePublicConstructorInjectsOnlyDefinitionService
+     *   p58_def_zip_import_no_run_layer_accesses_in_declared_bodies
+     *   p58_def_zip_import_no_run_layer_constructor_or_field_dependencies
+     *   p58_def_zip_import_public_import_definition_zip_signature_frozen
+     */
 
     private static final Set<String> FD28_FORBIDDEN_SIMPLE_NAMES =
             Set.of(
@@ -149,4 +169,27 @@ class RuntimeTraceRegressionSuiteDefinitionImportServiceArchitectureTest {
                     .orShould()
                     .dependOnClassesThat()
                     .areAssignableTo(ThreadPoolTaskExecutor.class);
+
+    @ArchTest
+    static void p58_def_zip_import_no_run_layer_constructor_or_field_dependencies(JavaClasses classes) {
+        JavaClass service = classes.get(RuntimeTraceRegressionSuiteDefinitionImportService.class);
+        DefinitionZipServiceP58ArchAssertions.assertNoRunLayerDependenciesInConstructorsOrInstanceFields(service);
+    }
+
+    @ArchTest
+    static void p58_def_zip_import_no_run_layer_accesses_in_declared_bodies(JavaClasses classes) {
+        JavaClass service = classes.get(RuntimeTraceRegressionSuiteDefinitionImportService.class);
+        DefinitionZipServiceP58ArchAssertions.assertNoRunLayerAccessesInDeclaredCodeUnits(service);
+    }
+
+    @ArchTest
+    static void p58_def_zip_import_public_import_definition_zip_signature_frozen(JavaClasses classes) {
+        JavaClass service = classes.get(RuntimeTraceRegressionSuiteDefinitionImportService.class);
+        JavaMethod method = service.getMethod("importDefinitionZip", byte[].class, UUID.class);
+        assertThat(method.getModifiers()).contains(JavaModifier.PUBLIC);
+        assertThat(method.getRawParameterTypes())
+                .extracting(JavaClass::getName)
+                .containsExactly(byte[].class.getName(), UUID.class.getName());
+        assertThat(method.getRawReturnType().getName()).isEqualTo(UUID.class.getName());
+    }
 }
