@@ -10,6 +10,7 @@ import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.SimpleProcessQueryService;
@@ -70,7 +71,10 @@ class RuntimeTraceRegressionSuiteRunImportServiceArchitectureTest {
                     "RuntimeTraceRegressionSuiteRunImportFacade",
                     "RuntimeTraceRegressionSuiteRunImportOrchestrator",
                     "RuntimeTraceRegressionSuiteRunWriteService",
-                    "RuntimeTraceRegressionSuiteRunMutationService");
+                    "RuntimeTraceRegressionSuiteRunMutationService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunImportFacade",
+                    "RuntimeTraceRegressionSuiteDefinitionRunImportOrchestrator",
+                    "RuntimeTraceRegressionSuiteDefinitionRunZipImportService");
 
     private static ArchCondition<JavaClass> doesNotDependOnFd28Forbidden() {
         return new ArchCondition<>("not depend on FD28 forbidden types") {
@@ -131,6 +135,15 @@ class RuntimeTraceRegressionSuiteRunImportServiceArchitectureTest {
                     .orShould()
                     .dependOnClassesThat()
                     .areAssignableTo(EntityManager.class);
+
+    @ArchTest
+    static final ArchRule importServiceDoesNotDependOnDefinitionService =
+            noClasses()
+                    .that()
+                    .haveSimpleName("RuntimeTraceRegressionSuiteRunImportService")
+                    .should()
+                    .dependOnClassesThat()
+                    .areAssignableTo(RuntimeTraceRegressionSuiteDefinitionService.class);
 
     @ArchTest
     static final ArchRule importServiceDoesNotDependOnOrchestrator =

@@ -8,6 +8,8 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.Runtim
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportArtifact;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportSizeExceededException;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportRejectedException;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportService;
 import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteEntry;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteOutcome;
@@ -38,6 +40,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -50,6 +53,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -74,6 +78,9 @@ import java.util.UUID;
  *
  * <p>P53: definition-scoped run ZIP {@code GET …/export} — gate then {@link RuntimeTraceRegressionSuiteRunExportService#exportRunZipForDefinition}
  * only (controller does not call {@link RuntimeTraceRegressionSuiteRunPersistenceService} on that path).
+ *
+ * <p>P54: definition-gated run ZIP {@code POST …/runs/import} — gate before body read, then
+ * {@link RuntimeTraceRegressionSuiteRunImportService#importRunZipForDefinition} only (no {@code createRun} in this controller).
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")
@@ -92,6 +99,7 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
     private final ObjectMapper strictMutationMapper;
     private final String productBasePath;
     private final RuntimeTraceRegressionSuiteRunExportService runExportService;
+    private final RuntimeTraceRegressionSuiteRunImportService runImportService;
 
     public RuntimeTraceRegressionSuiteDefinitionController(
             RuntimeTraceRegressionSuiteDefinitionService definitionService,
@@ -100,13 +108,15 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             @Qualifier(RegressionSuiteDefinitionMutationJacksonConfiguration.DEFINITION_MUTATION_STRICT_OBJECT_MAPPER)
                     ObjectMapper strictMutationMapper,
             @Value("${rag.api.product-base-path}") String productBasePath,
-            RuntimeTraceRegressionSuiteRunExportService runExportService) {
+            RuntimeTraceRegressionSuiteRunExportService runExportService,
+            RuntimeTraceRegressionSuiteRunImportService runImportService) {
         this.definitionService = definitionService;
         this.suiteService = suiteService;
         this.runPersistenceService = runPersistenceService;
         this.strictMutationMapper = strictMutationMapper;
         this.productBasePath = productBasePath;
         this.runExportService = runExportService;
+        this.runImportService = runImportService;
     }
 
     @PostMapping(value = "/runtime-trace-regression-suite-definitions", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -450,6 +460,58 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             return ResponseEntity.notFound().build();
         } catch (RuntimeTraceRegressionSuiteRunExportSizeExceededException ex) {
             return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build();
+        }
+    }
+
+    @PostMapping("/runtime-trace-regression-suite-definitions/{definitionId}/runs/import")
+    public ResponseEntity<Void> importRunZipForDefinition(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable("definitionId") String definitionIdRaw,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> definitionIdOpt = parseUuid(definitionIdRaw);
+        if (definitionIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        UUID definitionId = definitionIdOpt.get();
+        UUID userId = principal.userId();
+        if (definitionService.loadByIdForUser(definitionId, userId).isEmpty()) {
+            throw new NotFoundException("definition not found");
+        }
+        String rawCt = request.getContentType();
+        if (rawCt == null || rawCt.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(rawCt.trim());
+        } catch (InvalidMediaTypeException ex) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (!"application".equals(mediaType.getType())
+                || !"zip".equals(mediaType.getSubtype())
+                || !mediaType.getParameters().isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        byte[] body;
+        try {
+            body = request.getInputStream().readAllBytes();
+        } catch (IOException ex) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (body.length == 0 || body.length > RuntimeTraceRegressionSuiteRunImportService.MAX_IMPORT_ZIP_BYTES) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            UUID createdId = runImportService.importRunZipForDefinition(body, userId, definitionId);
+            String location = productBasePath + "/runtime-trace-regression-suite-runs/" + createdId;
+            return ResponseEntity.created(URI.create(location)).build();
+        } catch (RuntimeTraceRegressionSuiteRunImportRejectedException ex) {
+            return ResponseEntity.badRequest().build();
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().build();
         }
     }
 

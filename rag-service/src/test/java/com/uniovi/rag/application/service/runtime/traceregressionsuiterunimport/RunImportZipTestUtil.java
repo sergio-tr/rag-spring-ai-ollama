@@ -324,6 +324,96 @@ public final class RunImportZipTestUtil {
     /**
      * Top-level {@code runId} text differs from {@code scope.runId} (fails manifest validation before coherence).
      */
+    /**
+     * P53-shaped STORED ZIP: {@code selectorType} {@code SAVED_DEFINITION_SCOPED_RUN}, coherent {@code scope} and empty run payload.
+     */
+    public static byte[] buildSavedDefinitionScopedEmptyRunZip(UUID runId, UUID userId, UUID definitionId)
+            throws IOException {
+        Instant createdAt = Instant.parse("2024-06-01T12:00:00Z");
+        ObjectNode run = FD4.createObjectNode();
+        run.put("id", runId.toString());
+        run.put("sourceType", "SAVED_DEFINITION");
+        run.put("definitionId", definitionId.toString());
+        run.put("suiteOutcome", "COMPLETED_ALL_BATCH_RETURNS");
+        run.put("createdAt", createdAt.toString());
+        run.put("requestedEntryCount", 0);
+        run.put("processedEntryCount", 0);
+        run.put("batchReturnedCount", 0);
+        run.put("executionFailedCount", 0);
+        run.put("batchNotAttemptedSubcount", 0);
+        run.putArray("entries");
+        byte[] runBytes = FD4.writeValueAsBytes(run);
+
+        ObjectNode scope = FD4.createObjectNode();
+        scope.put("definitionId", definitionId.toString());
+        scope.put("runId", runId.toString());
+
+        ObjectNode manifest = FD4.createObjectNode();
+        manifest.put("schemaVersion", 1);
+        manifest.put("exportKind", "REGRESSION_SUITE_RUN");
+        manifest.put("generatedAt", Instant.parse("2024-06-01T10:00:00Z").toString());
+        manifest.put("requestedByUserId", userId.toString());
+        manifest.put("selectorType", "SAVED_DEFINITION_SCOPED_RUN");
+        manifest.set("scope", scope);
+        manifest.put("runId", runId.toString());
+        manifest.put("sourceType", "SAVED_DEFINITION");
+        manifest.put("definitionId", definitionId.toString());
+        manifest.put("suiteOutcome", "COMPLETED_ALL_BATCH_RETURNS");
+        manifest.put("requestedEntryCount", 0);
+        manifest.put("processedEntryCount", 0);
+        manifest.put("batchReturnedCount", 0);
+        manifest.put("executionFailedCount", 0);
+        manifest.put("batchNotAttemptedSubcount", 0);
+        manifest.put("truncated", false);
+
+        return convergeZip(manifest, runBytes);
+    }
+
+    /**
+     * P53-shaped manifest with {@code scope.definitionId} not equal to the path definition id (fails P54 manifest gate).
+     */
+    public static byte[] buildSavedDefinitionScopedZipWrongScopeDefinitionId(
+            UUID runId, UUID userId, UUID pathDefinitionId, UUID scopeDefinitionId) throws IOException {
+        Instant createdAt = Instant.parse("2024-06-01T12:00:00Z");
+        ObjectNode run = FD4.createObjectNode();
+        run.put("id", runId.toString());
+        run.put("sourceType", "SAVED_DEFINITION");
+        run.put("definitionId", scopeDefinitionId.toString());
+        run.put("suiteOutcome", "COMPLETED_ALL_BATCH_RETURNS");
+        run.put("createdAt", createdAt.toString());
+        run.put("requestedEntryCount", 0);
+        run.put("processedEntryCount", 0);
+        run.put("batchReturnedCount", 0);
+        run.put("executionFailedCount", 0);
+        run.put("batchNotAttemptedSubcount", 0);
+        run.putArray("entries");
+        byte[] runBytes = FD4.writeValueAsBytes(run);
+
+        ObjectNode scope = FD4.createObjectNode();
+        scope.put("definitionId", scopeDefinitionId.toString());
+        scope.put("runId", runId.toString());
+
+        ObjectNode manifest = FD4.createObjectNode();
+        manifest.put("schemaVersion", 1);
+        manifest.put("exportKind", "REGRESSION_SUITE_RUN");
+        manifest.put("generatedAt", Instant.parse("2024-06-01T10:00:00Z").toString());
+        manifest.put("requestedByUserId", userId.toString());
+        manifest.put("selectorType", "SAVED_DEFINITION_SCOPED_RUN");
+        manifest.set("scope", scope);
+        manifest.put("runId", runId.toString());
+        manifest.put("sourceType", "SAVED_DEFINITION");
+        manifest.put("definitionId", scopeDefinitionId.toString());
+        manifest.put("suiteOutcome", "COMPLETED_ALL_BATCH_RETURNS");
+        manifest.put("requestedEntryCount", 0);
+        manifest.put("processedEntryCount", 0);
+        manifest.put("batchReturnedCount", 0);
+        manifest.put("executionFailedCount", 0);
+        manifest.put("batchNotAttemptedSubcount", 0);
+        manifest.put("truncated", false);
+
+        return convergeZip(manifest, runBytes);
+    }
+
     public static byte[] buildZipWithScopeRunIdMismatch(UUID topRunId, UUID scopeRunId, UUID userId) throws IOException {
         Instant createdAt = Instant.parse("2024-06-01T12:00:00Z");
         ObjectNode run = FD4.createObjectNode();

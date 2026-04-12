@@ -89,4 +89,64 @@ class RuntimeTraceRegressionSuiteRunImportServiceTest {
 
         verify(persistence, never()).createRun(any(), any(), any(), any());
     }
+
+    @Test
+    void p54_createRunOnce_savedDefinitionScopedFixture() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        UUID createdId = UUID.randomUUID();
+        byte[] zip = RunImportZipTestUtil.buildSavedDefinitionScopedEmptyRunZip(runId, userId, defId);
+        byte[] runJson = RunImportZipTestUtil.extractRunJsonBytes(zip);
+        RuntimeTraceRegressionSuiteRunDetailDto detail =
+                RunImportZipTestUtil.FD4.readValue(runJson, RuntimeTraceRegressionSuiteRunDetailDto.class);
+        RuntimeTraceRegressionSuiteResult expected = detail.toRuntimeTraceRegressionSuiteResultForImport();
+
+        when(persistence.createRun(any(), any(), any(), any())).thenReturn(createdId);
+
+        UUID returned = importService.importRunZipForDefinition(zip, userId, defId);
+
+        assertThat(returned).isEqualTo(createdId);
+        ArgumentCaptor<RuntimeTraceRegressionSuiteResult> resultCaptor =
+                ArgumentCaptor.forClass(RuntimeTraceRegressionSuiteResult.class);
+        verify(persistence, times(1))
+                .createRun(
+                        eq(userId),
+                        eq(RuntimeTraceRegressionSuiteRunSourceType.SAVED_DEFINITION),
+                        eq(Optional.of(defId)),
+                        resultCaptor.capture());
+        assertThat(resultCaptor.getValue()).isEqualTo(expected);
+    }
+
+    @Test
+    void p54_globalZip_rejects_invalid_manifest() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID defId = UUID.randomUUID();
+        byte[] zip = RunImportZipTestUtil.buildAdHocEmptyRunZip(UUID.randomUUID(), userId);
+
+        assertThatThrownBy(() -> importService.importRunZipForDefinition(zip, userId, defId))
+                .isInstanceOf(RuntimeTraceRegressionSuiteRunImportRejectedException.class)
+                .hasMessage("invalid manifest")
+                .hasNoCause();
+
+        verify(persistence, never()).createRun(any(), any(), any(), any());
+    }
+
+    @Test
+    void p54_scopeDefinitionIdMismatchPath_rejects_invalid_manifest() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID pathDefId = UUID.randomUUID();
+        UUID scopeDefId = UUID.randomUUID();
+        byte[] zip =
+                RunImportZipTestUtil.buildSavedDefinitionScopedZipWrongScopeDefinitionId(
+                        runId, userId, pathDefId, scopeDefId);
+
+        assertThatThrownBy(() -> importService.importRunZipForDefinition(zip, userId, pathDefId))
+                .isInstanceOf(RuntimeTraceRegressionSuiteRunImportRejectedException.class)
+                .hasMessage("invalid manifest")
+                .hasNoCause();
+
+        verify(persistence, never()).createRun(any(), any(), any(), any());
+    }
 }

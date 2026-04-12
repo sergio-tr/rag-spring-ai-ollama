@@ -6,6 +6,7 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTr
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportService;
 import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteOutcome;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteSummary;
@@ -79,6 +80,9 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunExportService runExportService;
+
+    @MockitoBean
+    private RuntimeTraceRegressionSuiteRunImportService runImportService;
 
     private UUID userId;
     private UUID definitionId;

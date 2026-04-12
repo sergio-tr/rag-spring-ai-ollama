@@ -5,6 +5,7 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportArtifact;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportSizeExceededException;
 import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteOutcome;
@@ -76,6 +77,9 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunExportWebMvcTest {
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunExportService runExportService;
+
+    @MockitoBean
+    private RuntimeTraceRegressionSuiteRunImportService runImportService;
 
     private UUID userId;
     private UUID definitionId;

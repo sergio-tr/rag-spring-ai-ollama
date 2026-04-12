@@ -70,6 +70,128 @@ public class RuntimeTraceRegressionSuiteRunImportService {
         return runPersistenceService.createRun(userId, sourceType, definitionId, result);
     }
 
+    /**
+     * P54: validates a P53-shaped ZIP (same layout as {@link #importRunZip}), persists via
+     * {@link RuntimeTraceRegressionSuiteRunPersistenceService#createRun} with {@link RuntimeTraceRegressionSuiteRunSourceType#SAVED_DEFINITION}
+     * and {@link Optional#of} the path {@code definitionId} only.
+     */
+    public UUID importRunZipForDefinition(byte[] body, UUID userId, UUID definitionId) {
+        byte[][] parts = readManifestAndRunBytes(body);
+        byte[] manifestBytes = parts[0];
+        byte[] runJsonBytes = parts[1];
+
+        JsonNode manifestRoot;
+        try {
+            manifestRoot = objectMapper.readTree(manifestBytes);
+        } catch (IOException ex) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest", ex);
+        }
+        validateManifestDefinitionScoped(manifestRoot, body.length, definitionId);
+
+        RuntimeTraceRegressionSuiteRunDetailDto detail;
+        try {
+            detail = objectMapper.readValue(runJsonBytes, RuntimeTraceRegressionSuiteRunDetailDto.class);
+        } catch (IOException ex) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid run.json", ex);
+        }
+
+        assertManifestMatchesDetail(manifestRoot, detail);
+        assertSourceTypeDefinitionIdPairing(detail);
+        if (detail.definitionId() == null || !detail.definitionId().equals(definitionId)) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("artifact manifest and run.json mismatch");
+        }
+
+        RuntimeTraceRegressionSuiteResult result = detail.toRuntimeTraceRegressionSuiteResultForImport();
+        return runPersistenceService.createRun(
+                userId, RuntimeTraceRegressionSuiteRunSourceType.SAVED_DEFINITION, Optional.of(definitionId), result);
+    }
+
+    private void validateManifestDefinitionScoped(JsonNode root, int bodyLength, UUID pathDefinitionId) {
+        if (!root.hasNonNull("exportKind")
+                || !root.get("exportKind").isTextual()
+                || !"REGRESSION_SUITE_RUN".equals(root.get("exportKind").asText())) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!root.has("schemaVersion")
+                || !root.get("schemaVersion").isIntegralNumber()
+                || root.get("schemaVersion").intValue() != 1) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!root.has("truncated")
+                || !root.get("truncated").isBoolean()
+                || root.get("truncated").booleanValue()) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!root.has("zipSizeBytes")
+                || !root.get("zipSizeBytes").isIntegralNumber()
+                || root.get("zipSizeBytes").longValue() != (long) bodyLength) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!root.hasNonNull("selectorType")
+                || !root.get("selectorType").isTextual()
+                || !"SAVED_DEFINITION_SCOPED_RUN".equals(root.get("selectorType").asText())) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!root.has("scope") || !root.get("scope").isObject()) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        JsonNode scope = root.get("scope");
+        if (!scope.hasNonNull("runId") || !scope.get("runId").isTextual()) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        try {
+            UUID.fromString(scope.get("runId").asText());
+        } catch (IllegalArgumentException ex) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!scope.hasNonNull("definitionId") || !scope.get("definitionId").isTextual()) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        try {
+            UUID.fromString(scope.get("definitionId").asText());
+        } catch (IllegalArgumentException ex) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!scope.get("definitionId").asText().equals(pathDefinitionId.toString())) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!root.hasNonNull("runId") || !root.get("runId").isTextual()) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        try {
+            UUID.fromString(root.get("runId").asText());
+        } catch (IllegalArgumentException ex) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!scope.get("runId").asText().equals(root.get("runId").asText())) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!root.hasNonNull("definitionId") || !root.get("definitionId").isTextual()) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        try {
+            UUID.fromString(root.get("definitionId").asText());
+        } catch (IllegalArgumentException ex) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!root.get("definitionId").asText().equals(scope.get("definitionId").asText())) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!root.hasNonNull("sourceType") || !root.get("sourceType").isTextual()) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!root.hasNonNull("suiteOutcome") || !root.get("suiteOutcome").isTextual()) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+        if (!manifestHasIntegralCount(root, "requestedEntryCount")
+                || !manifestHasIntegralCount(root, "processedEntryCount")
+                || !manifestHasIntegralCount(root, "batchReturnedCount")
+                || !manifestHasIntegralCount(root, "executionFailedCount")
+                || !manifestHasIntegralCount(root, "batchNotAttemptedSubcount")) {
+            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        }
+    }
+
     private void validateManifest(JsonNode root, int bodyLength) {
         if (!root.hasNonNull("exportKind")
                 || !root.get("exportKind").isTextual()
