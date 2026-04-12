@@ -20,6 +20,7 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTr
 import com.uniovi.rag.application.service.runtime.traceregressionsuiteexport.RuntimeTraceRegressionSuiteExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
 import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplayService;
 import com.uniovi.rag.application.service.runtime.tracereplaybatchexport.RuntimeTraceReplayBatchExportService;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
@@ -43,7 +44,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
         importOptions = ImportOption.DoNotIncludeTests.class)
 class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
 
-    private static final Set<String> P50_P52_FD_O_FORBIDDEN_SIMPLE_NAMES =
+    private static final Set<String> P50_P52_P53_FD_O_FORBIDDEN_SIMPLE_NAMES =
             Set.of(
                     "RuntimeTraceRegressionSuiteDefinitionRunQueryService",
                     "RuntimeTraceRegressionSuiteDefinitionRunReadFacade",
@@ -52,7 +53,11 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                     "RuntimeTraceRegressionSuiteDefinitionRunDeletionSurfaceService",
                     "RuntimeTraceRegressionSuiteDefinitionRunDeleteFacade",
                     "RuntimeTraceRegressionSuiteDefinitionRunDeleteOrchestrator",
-                    "RuntimeTraceRegressionSuiteDefinitionRunDeleteApplicationService");
+                    "RuntimeTraceRegressionSuiteDefinitionRunDeleteApplicationService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunExportFacade",
+                    "RuntimeTraceRegressionSuiteDefinitionRunExportOrchestrator",
+                    "RuntimeTraceRegressionSuiteDefinitionRunExportApplicationService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunZipService");
 
     private static ArchCondition<JavaClass> doesNotDependOnP50Forbidden() {
         return new ArchCondition<>("not depend on P50/P52 FD-O-forbidden types") {
@@ -60,7 +65,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
             public void check(JavaClass clazz, ConditionEvents events) {
                 for (Dependency dep : clazz.getDirectDependenciesFromSelf()) {
                     String simple = dep.getTargetClass().getSimpleName();
-                    if (P50_P52_FD_O_FORBIDDEN_SIMPLE_NAMES.contains(simple)) {
+                    if (P50_P52_P53_FD_O_FORBIDDEN_SIMPLE_NAMES.contains(simple)) {
                         events.add(
                                 SimpleConditionEvent.violated(
                                         dep, clazz.getSimpleName() + " must not depend on " + simple));
@@ -71,7 +76,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
     }
 
     @ArchTest
-    static final ArchRule controllerConstructorMatchesFd5 =
+    static final ArchRule controllerConstructorMatchesFd6 =
             constructors()
                     .that()
                     .areDeclaredIn(RuntimeTraceRegressionSuiteDefinitionController.class)
@@ -81,7 +86,8 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                             RuntimeTraceRegressionSuiteService.class.getName(),
                             RuntimeTraceRegressionSuiteRunPersistenceService.class.getName(),
                             ObjectMapper.class.getName(),
-                            String.class.getName());
+                            String.class.getName(),
+                            RuntimeTraceRegressionSuiteRunExportService.class.getName());
 
     @ArchTest
     static final ArchRule controllerDoesNotDependOnP50ForbiddenFacadeTypes =

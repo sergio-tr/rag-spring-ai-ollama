@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportArtifact;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportSizeExceededException;
 import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteEntry;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteOutcome;
@@ -33,6 +36,7 @@ import com.uniovi.rag.security.RagPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -67,6 +71,9 @@ import java.util.UUID;
  * <p>P52: one {@code DELETE} route removes a persisted run in definition context — same gate, then
  * {@link RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUserAndDefinition} only (no global
  * {@link RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUser(UUID, UUID)}).
+ *
+ * <p>P53: definition-scoped run ZIP {@code GET …/export} — gate then {@link RuntimeTraceRegressionSuiteRunExportService#exportRunZipForDefinition}
+ * only (controller does not call {@link RuntimeTraceRegressionSuiteRunPersistenceService} on that path).
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")
@@ -84,6 +91,7 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
     private final RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
     private final ObjectMapper strictMutationMapper;
     private final String productBasePath;
+    private final RuntimeTraceRegressionSuiteRunExportService runExportService;
 
     public RuntimeTraceRegressionSuiteDefinitionController(
             RuntimeTraceRegressionSuiteDefinitionService definitionService,
@@ -91,12 +99,14 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService,
             @Qualifier(RegressionSuiteDefinitionMutationJacksonConfiguration.DEFINITION_MUTATION_STRICT_OBJECT_MAPPER)
                     ObjectMapper strictMutationMapper,
-            @Value("${rag.api.product-base-path}") String productBasePath) {
+            @Value("${rag.api.product-base-path}") String productBasePath,
+            RuntimeTraceRegressionSuiteRunExportService runExportService) {
         this.definitionService = definitionService;
         this.suiteService = suiteService;
         this.runPersistenceService = runPersistenceService;
         this.strictMutationMapper = strictMutationMapper;
         this.productBasePath = productBasePath;
+        this.runExportService = runExportService;
     }
 
     @PostMapping(value = "/runtime-trace-regression-suite-definitions", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -409,6 +419,40 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         return ResponseEntity.ok(RuntimeTraceRegressionSuiteRunDetailDto.fromSnapshot(snap.get()));
     }
 
+    @GetMapping(
+            value = "/runtime-trace-regression-suite-definitions/{definitionId}/runs/{runId}/export",
+            produces = "application/zip")
+    public ResponseEntity<byte[]> exportRunZipForDefinition(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable("definitionId") String definitionIdRaw,
+            @PathVariable("runId") String runIdRaw,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> definitionIdOpt = parseUuid(definitionIdRaw);
+        if (definitionIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> runIdOpt = parseUuid(runIdRaw);
+        if (runIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        UUID userId = principal.userId();
+        UUID definitionId = definitionIdOpt.get();
+        UUID runId = runIdOpt.get();
+        if (definitionService.loadByIdForUser(definitionId, userId).isEmpty()) {
+            throw new NotFoundException("definition not found");
+        }
+        try {
+            return toZipResponse(runExportService.exportRunZipForDefinition(runId, userId, definitionId));
+        } catch (NotFoundException ex) {
+            return ResponseEntity.notFound().build();
+        } catch (RuntimeTraceRegressionSuiteRunExportSizeExceededException ex) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build();
+        }
+    }
+
     @DeleteMapping("/runtime-trace-regression-suite-definitions/{definitionId}/runs/{runId}")
     public ResponseEntity<Void> deleteRunForDefinition(
             @AuthenticationPrincipal RagPrincipal principal,
@@ -576,6 +620,14 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             }
         }
         return specs;
+    }
+
+    private static ResponseEntity<byte[]> toZipResponse(RuntimeTraceRegressionSuiteRunExportArtifact artifact) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + artifact.filename() + "\"")
+                .header(HttpHeaders.CONTENT_LENGTH, Long.toString(artifact.sizeBytes()))
+                .contentType(MediaType.parseMediaType(artifact.mediaType()))
+                .body(artifact.content());
     }
 
     private static Optional<UUID> parseUuid(String raw) {

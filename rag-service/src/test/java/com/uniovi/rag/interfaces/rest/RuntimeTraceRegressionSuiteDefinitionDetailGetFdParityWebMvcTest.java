@@ -6,6 +6,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
 import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntrySnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSnapshot;
@@ -62,6 +63,9 @@ class RuntimeTraceRegressionSuiteDefinitionDetailGetFdParityWebMvcTest {
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
+
+    @MockitoBean
+    private RuntimeTraceRegressionSuiteRunExportService runExportService;
 
     private static ObjectMapper fd4ObjectMapper() {
         return new ObjectMapper()

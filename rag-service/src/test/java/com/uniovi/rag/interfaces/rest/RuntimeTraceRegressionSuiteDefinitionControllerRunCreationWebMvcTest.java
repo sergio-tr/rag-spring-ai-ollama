@@ -3,6 +3,7 @@ package com.uniovi.rag.interfaces.rest;
 import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
 import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteEntry;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteOutcome;
@@ -74,6 +75,9 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunCreationWebMvcTest {
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
+
+    @MockitoBean
+    private RuntimeTraceRegressionSuiteRunExportService runExportService;
 
     private UUID userId;
     private UUID definitionId;
@@ -480,7 +484,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunCreationWebMvcTest {
     }
 
     @Test
-    void p47_p50_p52_controller_has_twelve_http_handler_methods() {
+    void p47_p50_p52_p53_controller_has_thirteen_http_handler_methods() {
         long count =
                 Arrays.stream(RuntimeTraceRegressionSuiteDefinitionController.class.getDeclaredMethods())
                         .filter(
@@ -490,7 +494,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunCreationWebMvcTest {
                                                 || m.isAnnotationPresent(PutMapping.class)
                                                 || m.isAnnotationPresent(DeleteMapping.class))
                         .count();
-        assertThat(count).isEqualTo(12);
+        assertThat(count).isEqualTo(13);
     }
 
     private static String expectedLocation(UUID createdRunId) {

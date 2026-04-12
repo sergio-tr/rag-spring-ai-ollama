@@ -22,9 +22,11 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * P43: ZIP export adapter (non-owning) — builds {@code manifest.json} + {@code run.json} after
- * {@link RuntimeTraceRegressionSuiteRunPersistenceService#loadByIdForUser(java.util.UUID, java.util.UUID)}; does not own
- * storage-backed reads of persisted runs.
+ * P43 / P53: ZIP export adapter (non-owning) — builds {@code manifest.json} + {@code run.json}; does not own
+ * storage-backed reads of persisted runs. {@link #exportRunZip} uses
+ * {@link RuntimeTraceRegressionSuiteRunPersistenceService#loadByIdForUser(java.util.UUID, java.util.UUID)}; {@link
+ * #exportRunZipForDefinition} uses {@link RuntimeTraceRegressionSuiteRunPersistenceService#loadByIdForUserAndDefinition}
+ * only (no global load on the P53 path).
  */
 @Service
 public class RuntimeTraceRegressionSuiteRunExportService {
@@ -34,6 +36,7 @@ public class RuntimeTraceRegressionSuiteRunExportService {
     private static final int EXPORT_SCHEMA_VERSION = 1;
     private static final String EXPORT_KIND = "REGRESSION_SUITE_RUN";
     private static final String SELECTOR_SAVED_RUN_BY_ID = "SAVED_RUN_BY_ID";
+    private static final String SELECTOR_SAVED_DEFINITION_SCOPED_RUN = "SAVED_DEFINITION_SCOPED_RUN";
 
     private final RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
     private final ObjectMapper objectMapper;
@@ -69,7 +72,14 @@ public class RuntimeTraceRegressionSuiteRunExportService {
             throw new IllegalStateException("Failed to build run export ZIP", ex);
         }
         Instant generatedAt = Instant.now();
-        byte[] zipBytes = buildZipBytes(generatedAt, userId, runId, snapshot, runJsonBytes);
+        byte[] zipBytes =
+                buildZipBytes(
+                        generatedAt,
+                        userId,
+                        SELECTOR_SAVED_RUN_BY_ID,
+                        Map.of("runId", runId.toString()),
+                        snapshot,
+                        runJsonBytes);
         if (zipBytes.length > maxZipSizeBytes) {
             throw new RuntimeTraceRegressionSuiteRunExportSizeExceededException("run export exceeds max ZIP size");
         }
@@ -81,14 +91,47 @@ public class RuntimeTraceRegressionSuiteRunExportService {
                 zipBytes.length);
     }
 
+    public RuntimeTraceRegressionSuiteRunExportArtifact exportRunZipForDefinition(UUID runId, UUID userId, UUID definitionId) {
+        Optional<RuntimeTraceRegressionSuiteRunSnapshot> loaded =
+                runPersistenceService.loadByIdForUserAndDefinition(runId, userId, definitionId);
+        if (loaded.isEmpty()) {
+            throw new NotFoundException("run not found");
+        }
+        RuntimeTraceRegressionSuiteRunSnapshot snapshot = loaded.get();
+        RuntimeTraceRegressionSuiteRunDetailDto detailDto = RuntimeTraceRegressionSuiteRunDetailDto.fromSnapshot(snapshot);
+        byte[] runJsonBytes;
+        try {
+            runJsonBytes = objectMapper.writeValueAsBytes(detailDto);
+        } catch (IOException ex) {
+            throw new IllegalStateException("Failed to build run export ZIP", ex);
+        }
+        Instant generatedAt = Instant.now();
+        Map<String, String> scope =
+                Map.of(
+                        "definitionId", definitionId.toString(),
+                        "runId", runId.toString());
+        byte[] zipBytes =
+                buildZipBytes(
+                        generatedAt, userId, SELECTOR_SAVED_DEFINITION_SCOPED_RUN, scope, snapshot, runJsonBytes);
+        if (zipBytes.length > maxZipSizeBytes) {
+            throw new RuntimeTraceRegressionSuiteRunExportSizeExceededException("run export exceeds max ZIP size");
+        }
+        String filename = "runtime-trace-regression-suite-definition-run_" + definitionId + "_" + runId + ".zip";
+        return new RuntimeTraceRegressionSuiteRunExportArtifact(
+                filename,
+                RuntimeTraceRegressionSuiteRunExportArtifact.MEDIA_TYPE_ZIP,
+                zipBytes,
+                zipBytes.length);
+    }
+
     byte[] buildZipBytes(
             Instant generatedAt,
             UUID requestedByUserId,
-            UUID pathRunId,
+            String selectorType,
+            Map<String, String> scope,
             RuntimeTraceRegressionSuiteRunSnapshot snapshot,
             byte[] runJsonUtf8) {
         long candidateZipSizeBytes = 0L;
-        Map<String, String> scope = Map.of("runId", pathRunId.toString());
         var sum = snapshot.summary();
         for (int i = 0; i < 64; i++) {
             RuntimeTraceRegressionSuiteRunExportManifest manifest =
@@ -97,7 +140,7 @@ public class RuntimeTraceRegressionSuiteRunExportService {
                             EXPORT_KIND,
                             generatedAt,
                             requestedByUserId.toString(),
-                            SELECTOR_SAVED_RUN_BY_ID,
+                            selectorType,
                             scope,
                             snapshot.id().value().toString(),
                             snapshot.sourceType().name(),

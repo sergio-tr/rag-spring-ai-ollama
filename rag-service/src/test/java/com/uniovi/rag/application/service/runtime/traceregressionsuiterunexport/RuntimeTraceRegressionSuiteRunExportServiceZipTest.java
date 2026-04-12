@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.zip.CRC32;
@@ -85,6 +86,19 @@ class RuntimeTraceRegressionSuiteRunExportServiceZipTest {
                 repeatedEntries(entryCount));
     }
 
+    private static RuntimeTraceRegressionSuiteRunSnapshot snapshotWithDefinition(
+            UUID runId, UUID userId, UUID definitionId, int entryCount) {
+        return new RuntimeTraceRegressionSuiteRunSnapshot(
+                new RuntimeTraceRegressionSuiteRunId(runId),
+                userId,
+                RuntimeTraceRegressionSuiteRunSourceType.SAVED_DEFINITION,
+                Optional.of(definitionId),
+                RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS,
+                new RuntimeTraceRegressionSuiteSummary(entryCount, entryCount, entryCount, 0, 0),
+                Instant.parse("2024-03-01T12:00:00Z"),
+                repeatedEntries(entryCount));
+    }
+
     @Test
     void t7_t8_t9_zipOrderStoredManifestAndRunJson() throws Exception {
         UUID userId = UUID.randomUUID();
@@ -127,7 +141,14 @@ class RuntimeTraceRegressionSuiteRunExportServiceZipTest {
         UUID runId = UUID.randomUUID();
         RuntimeTraceRegressionSuiteRunSnapshot snap = snapshot(runId, userId, 0);
         byte[] runJsonUtf8 = "{\"x\":1}".getBytes(StandardCharsets.UTF_8);
-        byte[] zip = svc.buildZipBytes(generatedAt, userId, runId, snap, runJsonUtf8);
+        byte[] zip =
+                svc.buildZipBytes(
+                        generatedAt,
+                        userId,
+                        "SAVED_RUN_BY_ID",
+                        Map.of("runId", runId.toString()),
+                        snap,
+                        runJsonUtf8);
 
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(zip))) {
             ZipEntry e1 = zin.getNextEntry();
@@ -137,6 +158,71 @@ class RuntimeTraceRegressionSuiteRunExportServiceZipTest {
             assertThat(man.get("zipSizeBytes").asLong()).isEqualTo(zip.length);
             ZipEntry e2 = zin.getNextEntry();
             assertThat(e2.getName()).isEqualTo("run.json");
+            assertThat(zin.getNextEntry()).isNull();
+        }
+    }
+
+    @Test
+    void p53_t13_exportRunZipForDefinition_usesScopedLoad_manifestSelectorAndScope() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+        RuntimeTraceRegressionSuiteRunSnapshot snap = snapshotWithDefinition(runId, userId, definitionId, 1);
+        when(runPersistenceService.loadByIdForUserAndDefinition(eq(runId), eq(userId), eq(definitionId)))
+                .thenReturn(Optional.of(snap));
+
+        var svc = new RuntimeTraceRegressionSuiteRunExportService(runPersistenceService);
+        RuntimeTraceRegressionSuiteRunExportArtifact art = svc.exportRunZipForDefinition(runId, userId, definitionId);
+
+        verify(runPersistenceService, times(1)).loadByIdForUserAndDefinition(runId, userId, definitionId);
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+
+        ObjectMapper om = fd4ObjectMapper();
+        try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(art.content()))) {
+            ZipEntry e1 = zin.getNextEntry();
+            assertThat(e1.getName()).isEqualTo("manifest.json");
+            assertThat(e1.getMethod()).isEqualTo(ZipEntry.STORED);
+            byte[] manBytes = zin.readNBytes((int) e1.getSize());
+            JsonNode man = om.readTree(manBytes);
+            assertThat(man.get("selectorType").asText()).isEqualTo("SAVED_DEFINITION_SCOPED_RUN");
+            assertThat(man.get("scope").get("definitionId").asText()).isEqualTo(definitionId.toString());
+            assertThat(man.get("scope").get("runId").asText()).isEqualTo(runId.toString());
+            ZipEntry e2 = zin.getNextEntry();
+            assertThat(e2.getName()).isEqualTo("run.json");
+            assertThat(e2.getMethod()).isEqualTo(ZipEntry.STORED);
+            assertThat(zin.getNextEntry()).isNull();
+        }
+    }
+
+    @Test
+    void p53_t14_exportRunZip_global_contract_regression() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        RuntimeTraceRegressionSuiteRunSnapshot snap = snapshot(runId, userId, 1);
+        when(runPersistenceService.loadByIdForUser(eq(runId), eq(userId))).thenReturn(Optional.of(snap));
+
+        var svc = new RuntimeTraceRegressionSuiteRunExportService(runPersistenceService);
+        RuntimeTraceRegressionSuiteRunExportArtifact art = svc.exportRunZip(runId, userId);
+
+        ObjectMapper om = fd4ObjectMapper();
+
+        try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(art.content()))) {
+            ZipEntry e1 = zin.getNextEntry();
+            assertThat(e1.getName()).isEqualTo("manifest.json");
+            assertThat(e1.getMethod()).isEqualTo(ZipEntry.STORED);
+            byte[] manBytes = zin.readNBytes((int) e1.getSize());
+            JsonNode man = om.readTree(manBytes);
+            assertThat(man.get("exportKind").asText()).isEqualTo("REGRESSION_SUITE_RUN");
+            assertThat(man.get("selectorType").asText()).isEqualTo("SAVED_RUN_BY_ID");
+            JsonNode scope = man.get("scope");
+            assertThat(scope.has("definitionId")).isFalse();
+            assertThat(scope.get("runId").asText()).isEqualTo(runId.toString());
+            ZipEntry e2 = zin.getNextEntry();
+            assertThat(e2.getName()).isEqualTo("run.json");
+            assertThat(e2.getMethod()).isEqualTo(ZipEntry.STORED);
+            byte[] runBytes = zin.readNBytes((int) e2.getSize());
+            assertThat(om.readValue(runBytes, RuntimeTraceRegressionSuiteRunDetailDto.class))
+                    .isEqualTo(RuntimeTraceRegressionSuiteRunDetailDto.fromSnapshot(snap));
             assertThat(zin.getNextEntry()).isNull();
         }
     }
