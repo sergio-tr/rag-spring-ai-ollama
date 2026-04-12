@@ -5,6 +5,7 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimportpreview.RuntimeTraceRegressionSuiteRunImportPreviewService;
 import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteEntry;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteOutcome;
@@ -82,6 +83,9 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunCreationWebMvcTest {
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunImportService runImportService;
+
+    @MockitoBean
+    private RuntimeTraceRegressionSuiteRunImportPreviewService runImportPreviewService;
 
     private UUID userId;
     private UUID definitionId;
@@ -488,7 +492,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunCreationWebMvcTest {
     }
 
     @Test
-    void p47_p50_p52_p53_p54_controller_has_fourteen_http_handler_methods() {
+    void p47_p50_p52_p53_p54_p55_controller_has_fifteen_http_handler_methods() {
         long count =
                 Arrays.stream(RuntimeTraceRegressionSuiteDefinitionController.class.getDeclaredMethods())
                         .filter(
@@ -498,7 +502,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunCreationWebMvcTest {
                                                 || m.isAnnotationPresent(PutMapping.class)
                                                 || m.isAnnotationPresent(DeleteMapping.class))
                         .count();
-        assertThat(count).isEqualTo(14);
+        assertThat(count).isEqualTo(15);
     }
 
     private static String expectedLocation(UUID createdRunId) {

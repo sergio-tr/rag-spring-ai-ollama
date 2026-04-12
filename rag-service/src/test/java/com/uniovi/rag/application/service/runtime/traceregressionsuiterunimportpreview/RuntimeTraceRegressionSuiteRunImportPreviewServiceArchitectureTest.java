@@ -1,7 +1,9 @@
 package com.uniovi.rag.application.service.runtime.traceregressionsuiterunimportpreview;
 
 import com.tngtech.archunit.core.domain.Dependency;
+import com.tngtech.archunit.core.domain.JavaAccess;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaMethod;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -10,6 +12,9 @@ import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportService;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.SimpleProcessQueryService;
 import jakarta.persistence.EntityManager;
@@ -24,6 +29,7 @@ import java.util.Set;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.constructors;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 @AnalyzeClasses(
@@ -68,7 +74,27 @@ class RuntimeTraceRegressionSuiteRunImportPreviewServiceArchitectureTest {
                     "ThreadPoolTaskExecutor",
                     "RuntimeTraceRegressionSuiteRunImportPreviewFacade",
                     "RuntimeTraceRegressionSuiteRunImportPreviewOrchestrator",
-                    "RuntimeTraceRegressionSuiteRunImportPreviewApplicationService");
+                    "RuntimeTraceRegressionSuiteRunImportPreviewApplicationService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunImportPreviewService");
+
+    private static ArchCondition<JavaMethod> previewImportZipForDefinitionDoesNotAccessForbiddenServices() {
+        return new ArchCondition<>("not access definition, persistence, or import services") {
+            @Override
+            public void check(JavaMethod method, ConditionEvents events) {
+                for (JavaAccess<?> access : method.getAccessesFromSelf()) {
+                    JavaClass owner = access.getTargetOwner();
+                    if (owner.isAssignableTo(RuntimeTraceRegressionSuiteDefinitionService.class)
+                            || owner.isAssignableTo(RuntimeTraceRegressionSuiteRunPersistenceService.class)
+                            || owner.isAssignableTo(RuntimeTraceRegressionSuiteRunImportService.class)) {
+                        events.add(
+                                SimpleConditionEvent.violated(
+                                        access,
+                                        method.getFullName() + " must not access " + owner.getSimpleName()));
+                    }
+                }
+            }
+        };
+    }
 
     private static ArchCondition<JavaClass> doesNotDependOnFd28Forbidden() {
         return new ArchCondition<>("not depend on FD28 forbidden types") {
@@ -102,6 +128,15 @@ class RuntimeTraceRegressionSuiteRunImportPreviewServiceArchitectureTest {
                     .that()
                     .haveSimpleName("RuntimeTraceRegressionSuiteRunImportPreviewService")
                     .should(doesNotDependOnFd28Forbidden());
+
+    @ArchTest
+    static final ArchRule previewImportZipForDefinitionDoesNotTouchDefinitionPersistenceOrImport =
+            methods()
+                    .that()
+                    .areDeclaredIn(RuntimeTraceRegressionSuiteRunImportPreviewService.class)
+                    .and()
+                    .haveName("previewImportZipForDefinition")
+                    .should(previewImportZipForDefinitionDoesNotAccessForbiddenServices());
 
     @ArchTest
     static final ArchRule previewPackageMustNotDependOnRunPersistenceOrImportService =

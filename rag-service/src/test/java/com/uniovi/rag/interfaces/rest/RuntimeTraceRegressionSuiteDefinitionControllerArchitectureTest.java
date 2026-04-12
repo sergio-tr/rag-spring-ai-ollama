@@ -24,6 +24,7 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimportpreview.RuntimeTraceRegressionSuiteRunImportPreviewService;
 import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplayService;
 import com.uniovi.rag.application.service.runtime.tracereplaybatchexport.RuntimeTraceReplayBatchExportService;
 import com.uniovi.rag.application.service.runtime.tracereplayexport.RuntimeTraceReplayExportService;
@@ -64,7 +65,8 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                     "RuntimeTraceRegressionSuiteDefinitionRunZipService",
                     "RuntimeTraceRegressionSuiteDefinitionRunImportFacade",
                     "RuntimeTraceRegressionSuiteDefinitionRunImportOrchestrator",
-                    "RuntimeTraceRegressionSuiteDefinitionRunZipImportService");
+                    "RuntimeTraceRegressionSuiteDefinitionRunZipImportService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunImportPreviewService");
 
     private static ArchCondition<JavaClass> doesNotDependOnP50Forbidden() {
         return new ArchCondition<>("not depend on P50/P52 FD-O-forbidden types") {
@@ -100,8 +102,34 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
         };
     }
 
+    private static ArchCondition<JavaMethod> previewImportZipForDefinitionDoesNotAccessPersistenceOrImportService() {
+        return new ArchCondition<>("not access run persistence or import service") {
+            @Override
+            public void check(JavaMethod method, ConditionEvents events) {
+                for (JavaAccess<?> access : method.getAccessesFromSelf()) {
+                    if (access.getTargetOwner().isAssignableTo(RuntimeTraceRegressionSuiteRunPersistenceService.class)) {
+                        events.add(
+                                SimpleConditionEvent.violated(
+                                        access,
+                                        method.getFullName()
+                                                + " must not access "
+                                                + RuntimeTraceRegressionSuiteRunPersistenceService.class.getSimpleName()));
+                    }
+                    if (access.getTargetOwner().isAssignableTo(RuntimeTraceRegressionSuiteRunImportService.class)) {
+                        events.add(
+                                SimpleConditionEvent.violated(
+                                        access,
+                                        method.getFullName()
+                                                + " must not access "
+                                                + RuntimeTraceRegressionSuiteRunImportService.class.getSimpleName()));
+                    }
+                }
+            }
+        };
+    }
+
     @ArchTest
-    static final ArchRule controllerConstructorMatchesFd7 =
+    static final ArchRule controllerConstructorMatchesFd8 =
             constructors()
                     .that()
                     .areDeclaredIn(RuntimeTraceRegressionSuiteDefinitionController.class)
@@ -113,7 +141,8 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                             ObjectMapper.class.getName(),
                             String.class.getName(),
                             RuntimeTraceRegressionSuiteRunExportService.class.getName(),
-                            RuntimeTraceRegressionSuiteRunImportService.class.getName());
+                            RuntimeTraceRegressionSuiteRunImportService.class.getName(),
+                            RuntimeTraceRegressionSuiteRunImportPreviewService.class.getName());
 
     @ArchTest
     static final ArchRule importRunZipForDefinitionDoesNotTouchRunPersistence =
@@ -123,6 +152,15 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                     .and()
                     .haveName("importRunZipForDefinition")
                     .should(importRunZipForDefinitionDoesNotAccessRunPersistenceService());
+
+    @ArchTest
+    static final ArchRule previewImportZipForDefinitionDoesNotTouchRunPersistenceOrImport =
+            methods()
+                    .that()
+                    .areDeclaredIn(RuntimeTraceRegressionSuiteDefinitionController.class)
+                    .and()
+                    .haveName("previewImportZipForDefinition")
+                    .should(previewImportZipForDefinitionDoesNotAccessPersistenceOrImportService());
 
     @ArchTest
     static final ArchRule controllerDoesNotDependOnP50ForbiddenFacadeTypes =
