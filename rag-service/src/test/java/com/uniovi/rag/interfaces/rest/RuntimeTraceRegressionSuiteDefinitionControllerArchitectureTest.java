@@ -1,9 +1,14 @@
 package com.uniovi.rag.interfaces.rest;
 
+import com.tngtech.archunit.core.domain.Dependency;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
+import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracecomparison.RuntimeTraceReplayComparisonService;
 import com.uniovi.rag.application.service.runtime.tracecomparisonbatch.RuntimeTraceReplayComparisonBatchService;
@@ -27,6 +32,9 @@ import org.springframework.data.repository.Repository;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+import java.util.Set;
+
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.constructors;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
@@ -34,6 +42,29 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
         packagesOf = RuntimeTraceRegressionSuiteDefinitionController.class,
         importOptions = ImportOption.DoNotIncludeTests.class)
 class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
+
+    private static final Set<String> P50_FD_O_FORBIDDEN_SIMPLE_NAMES =
+            Set.of(
+                    "RuntimeTraceRegressionSuiteDefinitionRunQueryService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunReadFacade",
+                    "RuntimeTraceRegressionSuiteDefinitionRunQueryOrchestrator",
+                    "RuntimeTraceRegressionSuiteDefinitionRunQueryApplicationService");
+
+    private static ArchCondition<JavaClass> doesNotDependOnP50Forbidden() {
+        return new ArchCondition<>("not depend on P50 FD-O-forbidden types") {
+            @Override
+            public void check(JavaClass clazz, ConditionEvents events) {
+                for (Dependency dep : clazz.getDirectDependenciesFromSelf()) {
+                    String simple = dep.getTargetClass().getSimpleName();
+                    if (P50_FD_O_FORBIDDEN_SIMPLE_NAMES.contains(simple)) {
+                        events.add(
+                                SimpleConditionEvent.violated(
+                                        dep, clazz.getSimpleName() + " must not depend on " + simple));
+                    }
+                }
+            }
+        };
+    }
 
     @ArchTest
     static final ArchRule controllerConstructorMatchesFd5 =
@@ -47,6 +78,13 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                             RuntimeTraceRegressionSuiteRunPersistenceService.class.getName(),
                             ObjectMapper.class.getName(),
                             String.class.getName());
+
+    @ArchTest
+    static final ArchRule controllerDoesNotDependOnP50ForbiddenFacadeTypes =
+            classes()
+                    .that()
+                    .haveSimpleName("RuntimeTraceRegressionSuiteDefinitionController")
+                    .should(doesNotDependOnP50Forbidden());
 
     @ArchTest
     static final ArchRule controllerDoesNotDependOnComparisonBatchService =

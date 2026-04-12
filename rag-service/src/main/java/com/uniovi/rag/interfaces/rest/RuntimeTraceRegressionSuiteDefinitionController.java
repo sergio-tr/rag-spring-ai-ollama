@@ -15,6 +15,7 @@ import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTrace
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.UpdateDefinitionCommand;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUserSummary;
+import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSourceType;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionByConversationEntryDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionByTraceIdsEntryDto;
@@ -26,6 +27,8 @@ import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.Runtime
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuite.RuntimeTraceRegressionSuiteResponseDto;
+import com.uniovi.rag.interfaces.rest.dto.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunDetailDto;
+import com.uniovi.rag.interfaces.rest.dto.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunListResponseDto;
 import com.uniovi.rag.security.RagPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -57,6 +60,9 @@ import java.util.UUID;
  *
  * <p>P47: two {@code POST} routes persist a suite run after materialize + {@code execute} with {@link RuntimeTraceRegressionSuiteRunSourceType#SAVED_DEFINITION} —
  * orchestration only in this controller (no bridge {@code @Service}).
+ *
+ * <p>P50: two {@code GET} routes list/detail persisted runs for a saved definition — {@link RuntimeTraceRegressionSuiteDefinitionService#loadByIdForUser}
+ * gate only, then {@link RuntimeTraceRegressionSuiteRunPersistenceService} definition-scoped reads (no {@code execute}, no {@code createRun}).
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")
@@ -344,6 +350,59 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             throw new NotFoundException("definition not found");
         }
         return ResponseEntity.ok(RuntimeTraceRegressionSuiteDefinitionDetailDto.fromSnapshot(snap.get()));
+    }
+
+    @GetMapping("/runtime-trace-regression-suite-definitions/{definitionId}/runs")
+    public ResponseEntity<RuntimeTraceRegressionSuiteRunListResponseDto> listRunsForDefinition(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable("definitionId") String definitionIdRaw,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> definitionIdOpt = parseUuid(definitionIdRaw);
+        if (definitionIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        UUID userId = principal.userId();
+        UUID definitionId = definitionIdOpt.get();
+        if (definitionService.loadByIdForUser(definitionId, userId).isEmpty()) {
+            throw new NotFoundException("definition not found");
+        }
+        return ResponseEntity.ok(
+                RuntimeTraceRegressionSuiteRunListResponseDto.fromSummaries(
+                        runPersistenceService.listSummariesForUserAndDefinition(userId, definitionId)));
+    }
+
+    @GetMapping("/runtime-trace-regression-suite-definitions/{definitionId}/runs/{runId}")
+    public ResponseEntity<RuntimeTraceRegressionSuiteRunDetailDto> getRunForDefinition(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable("definitionId") String definitionIdRaw,
+            @PathVariable("runId") String runIdRaw,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> definitionIdOpt = parseUuid(definitionIdRaw);
+        if (definitionIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> runIdOpt = parseUuid(runIdRaw);
+        if (runIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        UUID userId = principal.userId();
+        UUID definitionId = definitionIdOpt.get();
+        UUID runId = runIdOpt.get();
+        if (definitionService.loadByIdForUser(definitionId, userId).isEmpty()) {
+            throw new NotFoundException("definition not found");
+        }
+        Optional<RuntimeTraceRegressionSuiteRunSnapshot> snap =
+                runPersistenceService.loadByIdForUserAndDefinition(runId, userId, definitionId);
+        if (snap.isEmpty()) {
+            throw new NotFoundException("run not found");
+        }
+        return ResponseEntity.ok(RuntimeTraceRegressionSuiteRunDetailDto.fromSnapshot(snap.get()));
     }
 
     private static boolean isExecuteBodyAllowed(String body) {

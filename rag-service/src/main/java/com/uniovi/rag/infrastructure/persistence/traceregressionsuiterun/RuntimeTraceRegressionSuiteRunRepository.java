@@ -12,5 +12,11 @@ public interface RuntimeTraceRegressionSuiteRunRepository extends JpaRepository<
 
     List<RuntimeTraceRegressionSuiteRunEntity> findAllByUserIdOrderByCreatedAtDescIdAsc(UUID userId);
 
+    List<RuntimeTraceRegressionSuiteRunEntity> findAllByUserIdAndDefinitionIdOrderByCreatedAtDescIdAsc(
+            UUID userId, UUID definitionId);
+
+    Optional<RuntimeTraceRegressionSuiteRunEntity> findByIdAndUserIdAndDefinitionId(
+            UUID id, UUID userId, UUID definitionId);
+
     long deleteByIdAndUserId(UUID id, UUID userId);
 }

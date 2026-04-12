@@ -30,6 +30,9 @@ import java.util.UUID;
  *
  * <p>P48 — {@link #deleteRunForUser} removes a run row for the owning user; entry rows are removed only via DB {@code ON
  * DELETE CASCADE} (no application deletes against {@code runtime_trace_regression_suite_run_entry}).
+ *
+ * <p>P50 — {@link #listSummariesForUserAndDefinition} and {@link #loadByIdForUserAndDefinition} scope reads by owning user
+ * and saved-definition id (single-query detail path).
  */
 @Service
 public class RuntimeTraceRegressionSuiteRunPersistenceService {
@@ -181,6 +184,46 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
             out.add(mapper.toSummary(row));
         }
         return out;
+    }
+
+    @Transactional(readOnly = true)
+    public List<RuntimeTraceRegressionSuiteRunSummary> listSummariesForUserAndDefinition(
+            UUID userId, UUID definitionId) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId");
+        }
+        if (definitionId == null) {
+            throw new IllegalArgumentException("definitionId");
+        }
+        List<RuntimeTraceRegressionSuiteRunEntity> rows =
+                runRepository.findAllByUserIdAndDefinitionIdOrderByCreatedAtDescIdAsc(userId, definitionId);
+        List<RuntimeTraceRegressionSuiteRunSummary> out = new ArrayList<>(rows.size());
+        for (RuntimeTraceRegressionSuiteRunEntity row : rows) {
+            out.add(mapper.toSummary(row));
+        }
+        return out;
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<RuntimeTraceRegressionSuiteRunSnapshot> loadByIdForUserAndDefinition(
+            UUID runId, UUID userId, UUID definitionId) {
+        if (runId == null) {
+            throw new IllegalArgumentException("runId");
+        }
+        if (userId == null) {
+            throw new IllegalArgumentException("userId");
+        }
+        if (definitionId == null) {
+            throw new IllegalArgumentException("definitionId");
+        }
+        Optional<RuntimeTraceRegressionSuiteRunEntity> run =
+                runRepository.findByIdAndUserIdAndDefinitionId(runId, userId, definitionId);
+        if (run.isEmpty()) {
+            return Optional.empty();
+        }
+        List<RuntimeTraceRegressionSuiteRunEntryEntity> entries =
+                entryRepository.findAllByRunIdOrderByEntryOrderAsc(runId);
+        return Optional.of(mapper.toSnapshot(run.get(), entries));
     }
 
     @Transactional
