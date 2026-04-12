@@ -63,6 +63,10 @@ import java.util.UUID;
  *
  * <p>P50: two {@code GET} routes list/detail persisted runs for a saved definition — {@link RuntimeTraceRegressionSuiteDefinitionService#loadByIdForUser}
  * gate only, then {@link RuntimeTraceRegressionSuiteRunPersistenceService} definition-scoped reads (no {@code execute}, no {@code createRun}).
+ *
+ * <p>P52: one {@code DELETE} route removes a persisted run in definition context — same gate, then
+ * {@link RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUserAndDefinition} only (no global
+ * {@link RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUser(UUID, UUID)}).
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")
@@ -403,6 +407,36 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             throw new NotFoundException("run not found");
         }
         return ResponseEntity.ok(RuntimeTraceRegressionSuiteRunDetailDto.fromSnapshot(snap.get()));
+    }
+
+    @DeleteMapping("/runtime-trace-regression-suite-definitions/{definitionId}/runs/{runId}")
+    public ResponseEntity<Void> deleteRunForDefinition(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable("definitionId") String definitionIdRaw,
+            @PathVariable("runId") String runIdRaw,
+            HttpServletRequest request) {
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> definitionIdOpt = parseUuid(definitionIdRaw);
+        if (definitionIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        Optional<UUID> runIdOpt = parseUuid(runIdRaw);
+        if (runIdOpt.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        UUID userId = principal.userId();
+        UUID definitionId = definitionIdOpt.get();
+        UUID runId = runIdOpt.get();
+        if (definitionService.loadByIdForUser(definitionId, userId).isEmpty()) {
+            throw new NotFoundException("definition not found");
+        }
+        boolean deleted = runPersistenceService.deleteRunForUserAndDefinition(runId, userId, definitionId);
+        if (deleted) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.notFound().build();
     }
 
     private static boolean isExecuteBodyAllowed(String body) {

@@ -43,20 +43,24 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
         importOptions = ImportOption.DoNotIncludeTests.class)
 class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
 
-    private static final Set<String> P50_FD_O_FORBIDDEN_SIMPLE_NAMES =
+    private static final Set<String> P50_P52_FD_O_FORBIDDEN_SIMPLE_NAMES =
             Set.of(
                     "RuntimeTraceRegressionSuiteDefinitionRunQueryService",
                     "RuntimeTraceRegressionSuiteDefinitionRunReadFacade",
                     "RuntimeTraceRegressionSuiteDefinitionRunQueryOrchestrator",
-                    "RuntimeTraceRegressionSuiteDefinitionRunQueryApplicationService");
+                    "RuntimeTraceRegressionSuiteDefinitionRunQueryApplicationService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunDeletionSurfaceService",
+                    "RuntimeTraceRegressionSuiteDefinitionRunDeleteFacade",
+                    "RuntimeTraceRegressionSuiteDefinitionRunDeleteOrchestrator",
+                    "RuntimeTraceRegressionSuiteDefinitionRunDeleteApplicationService");
 
     private static ArchCondition<JavaClass> doesNotDependOnP50Forbidden() {
-        return new ArchCondition<>("not depend on P50 FD-O-forbidden types") {
+        return new ArchCondition<>("not depend on P50/P52 FD-O-forbidden types") {
             @Override
             public void check(JavaClass clazz, ConditionEvents events) {
                 for (Dependency dep : clazz.getDirectDependenciesFromSelf()) {
                     String simple = dep.getTargetClass().getSimpleName();
-                    if (P50_FD_O_FORBIDDEN_SIMPLE_NAMES.contains(simple)) {
+                    if (P50_P52_FD_O_FORBIDDEN_SIMPLE_NAMES.contains(simple)) {
                         events.add(
                                 SimpleConditionEvent.violated(
                                         dep, clazz.getSimpleName() + " must not depend on " + simple));

@@ -480,7 +480,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunCreationWebMvcTest {
     }
 
     @Test
-    void p47_p50_controller_has_eleven_http_handler_methods() {
+    void p47_p50_p52_controller_has_twelve_http_handler_methods() {
         long count =
                 Arrays.stream(RuntimeTraceRegressionSuiteDefinitionController.class.getDeclaredMethods())
                         .filter(
@@ -490,7 +490,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunCreationWebMvcTest {
                                                 || m.isAnnotationPresent(PutMapping.class)
                                                 || m.isAnnotationPresent(DeleteMapping.class))
                         .count();
-        assertThat(count).isEqualTo(11);
+        assertThat(count).isEqualTo(12);
     }
 
     private static String expectedLocation(UUID createdRunId) {
