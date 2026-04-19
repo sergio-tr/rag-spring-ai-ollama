@@ -10,7 +10,7 @@
 
 ## In scope (minimum TFG)
 
-- **Platform:** Authenticated **multi-user** product API (see `RAG_API_PRODUCT_BASE_PATH` / `NEXT_PUBLIC_RAG_API_PREFIX` in module READMEs), projects, documents, conversations, streaming chat, layered RAG configuration and presets — as implemented in `rag-service` and `webapp`, consistent with [ADR 0002 — multitenancy assumption](../adr/0002-multitenancy-assumption.md).
+- **Platform:** Authenticated **multi-user** product API (see `RAG_API_PRODUCT_BASE_PATH` / `NEXT_PUBLIC_RAG_API_PREFIX` in module READMEs), projects, documents, conversations, streaming chat, layered RAG configuration and presets — as implemented in `rag-service` and `webapp`, consistent with [ADR 0002 — user/project data isolation](../adr/0002-multitenancy-assumption.md).
 - **Research Lab:** Use of existing Lab endpoints (evaluations, classifier proxy, async jobs) for demonstration; promotion modes per [ADR 0001](../adr/0001-lab-promotion-modes.md) (no silent writes to production config).
 - **Classifier:** Training/evaluation **via BFF** to `classifier-service`; no requirement for a new public REST CRUD for evaluation **datasets** in the minimum scope (see decision below).
 - **Observability:** Stack demonstrable with Compose (`compose.obs.yml`); traces/metrics sufficient for thesis defence narrative, not necessarily full SLO automation.

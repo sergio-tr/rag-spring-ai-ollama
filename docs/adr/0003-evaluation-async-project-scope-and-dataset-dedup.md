@@ -23,5 +23,5 @@ Product and observability benefit from optional **project** traceability without
 
 ## Related
 
-- [DATA_MODEL.md](../architecture/DATA_MODEL.md) § “evaluation_run vs async_task”
-- [ADR 0002 — multitenancy](0002-multitenancy-assumption.md)
+- [DATA_MODEL.md — Section 10 (`evaluation_run` vs `async_task`)](../architecture/DATA_MODEL.md#dm-s10)
+- [ADR 0002 — data isolation model](0002-multitenancy-assumption.md)

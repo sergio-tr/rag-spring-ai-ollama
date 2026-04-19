@@ -61,7 +61,7 @@ docs/
 
 ---
 
-## 4. Rules for agents (DO / DON’T)
+## 4. Rules for contributors (DO / DON’T)
 
 **DO**
 
@@ -102,4 +102,45 @@ docs/
 |------|------------|
 | Breaking links in PRs | Single migration PR + grep for stale paths |
 | Contributor confusion | Keep the layers table in [documentation-guidelines.md](documentation-guidelines.md) current |
-| Agent rule drift | Keep agent DO/DON’T in guidelines + `.cursor/rules` aligned |
+| Policy drift | Keep [documentation-guidelines.md](documentation-guidelines.md) aligned with repository contribution rules |
+
+---
+
+## 8. Canonical policy (documentation layers and forbidden content)
+
+This section fixes **where** content lives and **what must not** appear in official documentation.
+
+### 8.1 README (repository root and module roots)
+
+**May include:** purpose, badges, quick start, links to `docs/README.md`, critical env vars and ports, build/test commands.  
+**Must not include:** long internal roadmaps, work-item identifiers (e.g. `P` + digits), or copy-pasted sprint plans.
+
+### 8.2 `docs/architecture/`
+
+**May include:** system vision, boundaries, diagrams (Mermaid sources), package maps written for **readers** (stable package names and responsibilities).  
+**Must not include:** internal planning vocabulary as if it were product vocabulary; prefer linking to ADRs and `rag-service/README.md` for deep traceability.
+
+### 8.3 `docs/adr/`
+
+**May include:** ADRs with context / decision / consequences for **structural** choices.  
+**Must not include:** transient experiment write-ups — use issues or non-canonical areas per [documentation-guidelines.md](documentation-guidelines.md).
+
+### 8.4 Forbidden in canonical docs (outside `docs/enhancement/`)
+
+Unless clearly marked historical: **no** internal work-item IDs, **no** editor or planning tool names, **no** branch strategies the repository does not use, **no** sprint plans presented as implementation status.
+
+### 8.5 Non-canonical: `docs/enhancement/`
+
+Planning and research notes only. **Do not** cite as sole authority for integration decisions; start from [docs/README.md](../README.md).
+
+### 8.6 Frozen conceptual docs (substantive edits require maintainer review)
+
+| Path | Rule |
+| --- | --- |
+| [architecture/DATA_MODEL.md](../architecture/DATA_MODEL.md) | Copyedit and links only unless explicitly reviewed. |
+| [architecture/configuration-resolution-model.md](../architecture/configuration-resolution-model.md) | Same. |
+
+### 8.7 Inventory
+
+Classification table: [documentation-inventory.md](documentation-inventory.md).
+

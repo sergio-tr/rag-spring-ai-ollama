@@ -1,10 +1,12 @@
-# Quality baseline, test audit, and quality gates (AP01)
+# Quality baseline, test audit, and quality gates
 
 This hub records **verified** test execution, **exclusion inventories**, and **normative policies** for mocks, API path usage in tests, SonarCloud baseline, and coverage strategy. It complements [../testing/README.md](../testing/README.md) (what runs where) and [../coverage/README.md](../coverage/README.md) (report paths).
 
 **JaCoCo Coverage Target Ledger** (canonical exclude inventory, policy, Sonar vs JaCoCo parity, and the **Residual final allowlist** in the Wave 6.09 section): [../coverage/jacoco-coverage-target-ledger.md](../coverage/jacoco-coverage-target-ledger.md).
 
 **External test harness** (Ollama, classifier HTTP, OTLP — mocks and recipes): [../testing/external-test-harness.md](../testing/external-test-harness.md).
+
+**Other artifacts:** [Baseline runbook (local + CI)](../testing/baseline-runbook.md) · [Maven / JaCoCo inventory](maven-jacoco-inventory.md) · [Sonar baseline record](sonar-baseline-record.md) · [API path policy](api-path-policy.md) · [External mocks policy](external-mocks-policy.md) · [Coverage strategy (global vs new code)](coverage-strategy.md) · [Merge / release quality gates](merge-quality-gates.md).
 
 **Governance:** [../development/documentation-guidelines.md](../development/documentation-guidelines.md).
 
@@ -16,9 +18,12 @@ Update this table when you re-run the canonical commands on a new release candid
 
 | Commit (short) | Full SHA | Date (UTC) | rag-service `./mvnw clean verify` | classifier `pytest tests/` | webapp `lint` / `typecheck` / `test:coverage` / `build` |
 |----------------|----------|--------------|-------------------------------------|----------------------------|--------------------------------------------------------|
+| `ebd3453` | `ebd3453f9c89360d737df73321da5dac588f1482` | 2026-04-19 | **PASS** (local WSL2); Surefire aggregate **2309** tests, **52** skipped (`@EnabledIf` / env), **0** failures | **PASS** (local; `apt`-installed `python3-pip` then `pip install -r requirements.txt`): **107 passed**, coverage **91.85%** line (`coverage.xml` written) | **PASS** (local **Node v24.14.1** / **npm 11.11.0**): `lint` **0 errors** (4 warnings), `typecheck` OK, `test:coverage` OK (Vitest thresholds), `build` OK |
 | `47e6d0d647` | `47e6d0d647db58e39e3c23157ff27003fb3fb572` | 2026-04-12 | **PASS** (local) | **Not executed** (Python `pip`/`pytest` not available in baseline environment) | **PASS** after mechanical `undefined` guard in [`webapp/src/proxy.ts`](../../webapp/src/proxy.ts) (`localeFromPath`) |
 
-**Canonical commands (normative):**
+**Evidence (ebd3453 backend):** aggregated Surefire XML reports → **2309** tests run, **52** skipped (conditional `@EnabledIf`, mostly Docker / Postgres gates via [`TestEnvironment`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/TestEnvironment.java)), **0** failures/errors.
+
+**Canonical commands (normative):** full prerequisites and CI equivalence → [../testing/baseline-runbook.md](../testing/baseline-runbook.md). Summary:
 
 1. **Backend:** `cd rag-service && ./mvnw clean verify` — JaCoCo `check` on bundle (line coverage ≥ 80% per [`pom.xml`](../../rag-service/pom.xml)).
 2. **Classifier:** `cd classifier-service && pytest tests/ -v` (coverage via [`pytest.ini`](../../classifier-service/pytest.ini) / [`.coveragerc`](../../classifier-service/.coveragerc), `fail_under = 80`).
@@ -41,20 +46,21 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 | Vitest `coverage.exclude` in [`webapp/vitest.config.ts`](../../webapp/vitest.config.ts) | Frontend coverage gate | App Router pages/layouts, some UI shells, etc. | E2E / manual | Review per file | Document in module README when changing |
 | Playwright `test:e2e` vs `test:e2e:fullstack` | CI jobs | Smoke excludes `@fullstack` | Time / infra | Yes | Treat as **CI filter**, not Maven exclusion |
 | pytest markers (`unit`, `integration`, `slow`, …) in [`classifier-service/pytest.ini`](../../classifier-service/pytest.ini) | Discovery | Classification | Selective runs | Yes | **CI alignment:** `core_classifier` runs **full** `pytest tests/ -v`; **`sonar` job** runs a **subset** (`tests/unit`, one regression file, `-m "not integration and not slow"`). Treat as **intentional split** (fast Sonar path vs full PR gate) — if they diverge in failure, investigate before merge |
+| `@EnabledIf` / `@Disabled` on Java tests | Surefire execution | Methods/classes not run when guard fails | Docker / Postgres availability (see [`TestEnvironment`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/TestEnvironment.java)) | Yes | Baseline **ebd3453**: **52** skips, **0** failures — expected on laptops without Docker; CI supplies Postgres service |
 | Surefire `<excludes>` for test classes | Java test run | *(none in current `pom.xml`)* | — | — | If added later, add a row here |
 
 ---
 
-## Normative policies (FD-ap01-*)
+## Normative policies
 
 | ID | Policy |
 |----|--------|
-| **FD-ap01-single-gate-command** | Backend gate: `cd rag-service && ./mvnw clean verify`. |
-| **FD-ap01-api-path-tests** | In Spring tests, build paths from **`rag.api.product-base-path`** (`@TestPropertySource` / `@DynamicPropertySource`) and a **single constant per test class** (e.g. `PRODUCT_BASE`). Do not scatter literals `/api/vN` except tests whose **only** purpose is cross-prefix compatibility (document in test name or comment). |
-| **FD-ap01-ollama-mock** | Prefer **mock `OllamaConnectivityChecker`** and stubbed `ChatModel`/`ChatClient` in unit/WebMvc tests; unit tests should not require a live Ollama. |
-| **FD-ap01-otel-test-env** | For full-context or metrics export: disable OTLP export or use inert endpoints (e.g. `MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=false` as in [../development/sonar-local-analysis.md](../development/sonar-local-analysis.md)). |
-| **FD-ap01-sonar-baseline-source** | Baseline must reference project key `sergio-tr_rag-spring-ai-ollama` from [`sonar-project.properties`](../../sonar-project.properties) and [SonarCloud quality gates](https://docs.sonarsource.com/sonarqube-cloud/managing-your-projects/defining-quality-gates/). |
-| **FD-ap01-coverage-dual** | **Global:** maintain ≥ 80% where already enforced (JaCoCo bundle, Vitest thresholds, classifier `fail_under`). **New code:** Sonar **New Code** quality gate is the primary merge contract; record dashboard numbers below. |
+| **FD-single-gate-command** | Backend gate: `cd rag-service && ./mvnw clean verify`. |
+| **FD-api-path-tests** | In Spring tests, build paths from **`rag.api.product-base-path`** (`@TestPropertySource` / `@DynamicPropertySource`) and a **single constant per test class** (e.g. `PRODUCT_BASE`). Do not scatter literals `/api/vN` except tests whose **only** purpose is cross-prefix compatibility (document in test name or comment). |
+| **FD-ollama-mock** | Prefer **mock `OllamaConnectivityChecker`** and stubbed `ChatModel`/`ChatClient` in unit/WebMvc tests; unit tests should not require a live Ollama. |
+| **FD-otel-test-env** | For full-context or metrics export: disable OTLP export or use inert endpoints (e.g. `MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED=false` as in [../development/sonar-local-analysis.md](../development/sonar-local-analysis.md)). |
+| **FD-sonar-baseline-source** | Baseline must reference project key `sergio-tr_rag-spring-ai-ollama` from [`sonar-project.properties`](../../sonar-project.properties) and [SonarCloud quality gates](https://docs.sonarsource.com/sonarqube-cloud/managing-your-projects/defining-quality-gates/). |
+| **FD-coverage-dual** | **Global:** maintain ≥ 80% where already enforced (JaCoCo bundle, Vitest thresholds, classifier `fail_under`). **New code:** Sonar **New Code** quality gate is the primary merge contract; record dashboard numbers below. |
 
 ---
 
@@ -92,9 +98,9 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 | **Project key** | `sergio-tr_rag-spring-ai-ollama` ([`sonar-project.properties`](../../sonar-project.properties)) |
 | **Organization** | `sergio-tr` |
 | **Dashboard** | [SonarCloud project summary](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama) |
-| **Quality gate** | As configured in SonarCloud for the organization (see official docs above). **Record** numeric baseline (coverage, bugs, vulnerabilities, security hotspots) from the dashboard when closing a release; update this table periodically. |
+| **Quality gate** | As configured in SonarCloud for the organization (see official docs above). **Record** numeric baseline (coverage, bugs, vulnerabilities, security hotspots) from the dashboard when closing a release — template: [sonar-baseline-record.md](sonar-baseline-record.md). |
 
-**CI workflow:** [`sonar.yml`](../../.github/workflows/sonar.yml); local parity: [../development/sonar-local-analysis.md](../development/sonar-local-analysis.md).
+**CI workflow:** PR / main DAG → [`ci.yml`](../../.github/workflows/ci.yml) → [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) job **`sonar`**; optional manual scan → [`sonar.yml`](../../.github/workflows/sonar.yml). Local parity: [../development/sonar-local-analysis.md](../development/sonar-local-analysis.md).
 
 **Fork PR note:** `SONAR_TOKEN` may be missing on forks — the reusable pipeline fails fast if absent; document team policy for required checks.
 
@@ -134,6 +140,7 @@ A **literal 0% JaCoCo excludes** goal is **aspirational** with a **single bundle
 
 ## Related
 
+- Runbook: [../testing/baseline-runbook.md](../testing/baseline-runbook.md)
 - Testing overview: [../testing/README.md](../testing/README.md)
 - Coverage report locations: [../coverage/README.md](../coverage/README.md)
 - Repository hub: [../README.md](../README.md)

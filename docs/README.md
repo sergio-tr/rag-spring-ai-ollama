@@ -2,13 +2,13 @@
 
 **Global, conceptual documentation** for this monorepo: what the system is, how pieces relate, and where to find **how-to** detail. Module-specific commands and config live in **README files next to code** (`rag-service/`, `webapp/`, `docker/`, etc.).
 
-**Governance:** [development/documentation-guidelines.md](development/documentation-guidelines.md)
+**Governance:** [development/documentation-guidelines.md](development/documentation-guidelines.md); strategy: [development/documentation-governance-strategy.md](development/documentation-governance-strategy.md); [documentation inventory](development/documentation-inventory.md) (classification).
 
 ## Start here
 
 | Topic | Document |
 | --- | --- |
-| **Architecture freeze (0.1 — target model)** | [architecture/target-architecture.md](architecture/target-architecture.md) — [rag-runtime-architecture.md](architecture/rag-runtime-architecture.md), [configuration-resolution-model.md](architecture/configuration-resolution-model.md), [knowledge-system-model.md](architecture/knowledge-system-model.md), [implementation-roadmap.md](architecture/implementation-roadmap.md); ADRs [0005–0011](adr/README.md) |
+| **Architecture freeze (0.1 — target model)** | [architecture/target-architecture.md](architecture/target-architecture.md) — [rag-runtime-architecture.md](architecture/rag-runtime-architecture.md), [configuration-resolution-model.md](architecture/configuration-resolution-model.md), [knowledge-system-model.md](architecture/knowledge-system-model.md), [implementation-roadmap.md](architecture/implementation-roadmap.md); ADRs [0005–0012](adr/README.md) |
 | Product scope and boundaries | [overview/README.md](overview/README.md) — [product-context.md](overview/product-context.md), [thesis-scope.md](overview/thesis-scope.md) |
 | System context and diagrams | [architecture/README.md](architecture/README.md), [architecture/system-context.md](architecture/system-context.md) |
 | Deployment (conceptual) | [architecture/deployment-model.md](architecture/deployment-model.md), [operations/README.md](operations/README.md) |
@@ -24,7 +24,8 @@
 | Classifier registry (train → activate) | [development/classifier-registry-demo.md](development/classifier-registry-demo.md) |
 | Performance / load (overview) | [performance/README.md](performance/README.md) |
 | ADRs | [adr/README.md](adr/README.md) |
-| Contributor doc rules | [development/README.md](development/README.md) |
+| Backend refactoring governance (`rag-service`) | [backend/refactoring-governance.md](backend/refactoring-governance.md); ADR [0012](adr/0012-backend-refactoring-governance.md) |
+| Contributor doc rules | [development/README.md](development/README.md), [development/documentation-guidelines.md](development/documentation-guidelines.md) (including [inventory](development/documentation-inventory.md)) |
 
 ## Platform assumptions (Linux-first)
 

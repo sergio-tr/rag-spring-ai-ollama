@@ -1,6 +1,6 @@
 # Implementation roadmap (canonical blocks)
 
-**Purpose:** **Target** ordering and **canonical names** for implementation work after architecture freeze. These thirteen block names and their order (**1 → 13**) are **normative** for plans (including under `.cursor/plans/`), branch names, PR titles, and implementation write-ups **unless a future ADR renames or reorders them**.
+**Purpose:** **Target** ordering and **canonical names** for implementation work after architecture freeze. These thirteen block names and their order (**1 → 13**) are **normative** for architecture and planning documents in this repository: roadmap text, milestone write-ups, and cross-references to ADRs—**unless a future ADR renames or reorders them**. (They are **not** a substitute for release or branch policy unless the team agrees that separately.)
 
 **Related:** [target-architecture.md](target-architecture.md), [ADR 0005](../adr/0005-target-rag-architecture-and-runtime-center.md) through [ADR 0011](../adr/0011-knowledge-system-artifacts-snapshots-and-materialization.md).
 

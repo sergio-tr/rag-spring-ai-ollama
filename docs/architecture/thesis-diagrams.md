@@ -28,6 +28,7 @@ Suggested grouping for the thesis chapter outline: **context** → **services** 
 | [observability-pipeline.mmd](observability-pipeline.mmd) | Traces metrics logs Grafana |
 | [observability-states.mmd](observability-states.mmd) | When OTLP is active |
 | [rag-request-flow.mmd](rag-request-flow.mmd) | RAG path Spring |
+| [backend-logical-layers.mmd](backend-logical-layers.mmd) | Backend package families application domain infrastructure |
 | [security-api-boundaries.mmd](security-api-boundaries.mmd) | Public JWT admin |
 
 ## Export with Mermaid CLI

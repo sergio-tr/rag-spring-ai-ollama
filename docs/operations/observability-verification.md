@@ -18,7 +18,7 @@ Manual verification steps and traceability for metrics, traces, and logs. Re-run
 | Classifier | `ClassifierInferenceMetricsDecorator`: `rag_classifier_calls_total` with `status` ∈ `success`, `null_result` only |
 | HTTP tracing | `RagQueryConfiguration` + `ClassifierServiceClient` using shared `RestTemplate` for W3C propagation |
 | Logs | `application-infra.properties`: logging patterns include `trace_id` / `span_id` (MDC) |
-| Compose | [`observability/README.md`](../../observability/README.md) § Start with Compose; backend `SPRING_PROFILES_ACTIVE: docker,infra` in `compose.obs.yml` |
+| Compose | [`observability/README.md`](../../observability/README.md#start-with-compose) — Start with Compose; backend `SPRING_PROFILES_ACTIVE: docker,infra` in `compose.obs.yml` |
 | Dashboards | `observability/grafana/provisioning/dashboards/json/rag-overview.json` (classifier + retrieval panels) |
 | Guide | [grafana-observability-guide.md](grafana-observability-guide.md) |
 | This checklist | Sections below |
@@ -33,7 +33,7 @@ Complete in order; mark **OK** when satisfied.
    - Confirm backend logs or env show **`docker,infra`** and OTLP endpoints toward the collector.
 
 2. **Telemetry validation**  
-   - Follow **Telemetry validation checklist** in [`observability/README.md`](../../observability/README.md) § Telemetry validation checklist (Jaeger + Grafana RAG Overview).  
+   - Follow **Telemetry validation checklist** in [`observability/README.md`](../../observability/README.md#telemetry-validation-checklist) (Jaeger + Grafana RAG Overview).  
    - **OK** if: `rag.query.classify` and `rag.documents.search` appear in a trace for a typical RAG request; RAG Overview panels show movement for query rate/duration, classifier, and retrieval buckets after traffic.
 
 3. **Prometheus series**  

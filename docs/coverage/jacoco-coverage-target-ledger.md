@@ -172,7 +172,7 @@ _Update SHA when merging if different._
 
 | Check | Result |
 |-------|--------|
-| JaCoCo `<excludes>` removed | **Yes** — all **32** per-class lines under `com/uniovi/rag/infrastructure/persistence/jpa/*.class` listed in wave 6.04 plan §1.1 (including `EvaluationRunEntity` … `UserPreferencesEntity`). **No** compensating `**/jpa/**` or equivalent glob. |
+| JaCoCo `<excludes>` removed | **Yes** — all **32** per-class lines under `com/uniovi/rag/infrastructure/persistence/jpa/*.class` listed in wave 6.04 plan section 1.1 (including `EvaluationRunEntity` … `UserPreferencesEntity`). **No** compensating `**/jpa/**` or equivalent glob. |
 | Sonar `sonar.coverage.exclusions` | **Aligned** — removed the **32** matching `**/infrastructure/persistence/jpa/<SameName>.java` entries; left all other exclusions unchanged. |
 | Tests | Unit: embeddables, factories, mappers (`JpaEmbeddableAndKeyTest`, `JpaEntityFactoryTest`, `*MapperTest`); accessor coverage `JpaHeavyEntityAccessorTest` for bundle gate when Postgres ITs skip; ITs: `*JpaIT` under `infrastructure/persistence/jpa` with `TestAiStubConfiguration` + `TestcontainersDatasourceConfiguration` + `@EnabledIf(TestEnvironment#isSpringBootPostgresAvailable)`. |
 | `./mvnw test` + `./mvnw verify` (from `rag-service/`) | **PASS** |
@@ -292,7 +292,7 @@ _Update SHA when merging if different._
   - Do **not** “fix” the gate by widening `sonar.coverage.exclusions` beyond the audited allowlist above.
   - Capture the failing condition (coverage, bug/vulnerability, hotspot) from the SonarCloud UI or CI logs, then:
     - If it is caused by coverage: add tests or adjust the JaCoCo/Sonar allowlist only with **row-level RESIDUAL_EXCEPTION** evidence.
-    - If it is unrelated to coverage (hotspots/issues): open an issue and track it separately (per Wave 6.09 §4.3).
+    - If it is unrelated to coverage (hotspots/issues): open an issue and track it separately (per Wave 6.09 section 4.3).
 
 ---
 

@@ -27,9 +27,9 @@
 
 RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring AI**, **Ollama**, and **PostgreSQL + pgvector**. Includes a trainable query-type classifier exposed as an HTTP microservice (FastAPI + TensorFlow).
 
-**Documentation:** global architecture, domain, and governance live in **[`docs/README.md`](docs/README.md)**. Per-module setup and commands live in each folder’s **README** (see table below).
+**Documentation:** global architecture, domain, and governance live in **[`docs/README.md`](docs/README.md)** (policy layers and non-canonical areas: [`docs/development/documentation-governance-strategy.md`](docs/development/documentation-governance-strategy.md)). Per-module setup and commands live in each folder’s **README** (see table below).
 
-**Quality baseline (test audit, gates, Sonar baseline):** [`docs/quality/README.md`](docs/quality/README.md).
+**Quality baseline:** canonical commands + CI parity — [`docs/testing/baseline-runbook.md`](docs/testing/baseline-runbook.md); hub (exclusions, policies, Sonar links) — [`docs/quality/README.md`](docs/quality/README.md).
 
 **CI pull requests, job gates, Docker/Compose pins:** [`docs/devops/README.md`](docs/devops/README.md).
 

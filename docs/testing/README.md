@@ -2,7 +2,9 @@
 
 **Workflows vs gates (canonical):** [../development/e2e-testing-strategy.md](../development/e2e-testing-strategy.md).
 
-**Quality baseline, exclusions, Sonar baseline, and test policies (AP01):** [../quality/README.md](../quality/README.md).
+**CI jobs, branch protection names, Docker/Compose gates:** [../devops/README.md](../devops/README.md).
+
+**Quality baseline, exclusions, Sonar baseline, and test policies:** [../quality/README.md](../quality/README.md).
 
 **External test harness (Ollama / classifier HTTP / OTLP mocks, Wave 6.02):** [external-test-harness.md](external-test-harness.md).
 
@@ -30,6 +32,7 @@
 
 | Layer | Purpose | Location | Typical CI |
 | --- | --- | --- | --- |
+| Compose YAML policy | Structural `compose_guard`, env generation | `docker/scripts`, `docker/*.yml` | [`ci.yml`](../../.github/workflows/ci.yml) job **Compose structural guard**; merge validation in [`docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml) when `docker/**` changes |
 | Unit | Fast, isolated | JUnit, classifier pytest, Vitest | [`ci.yml`](../../.github/workflows/ci.yml) |
 | Integration (service) | Spring `@WebMvcTest`, JDBC | `rag-service/src/test` | `ci.yml` (`mvn verify`) |
 | Stack integration (HTTP) | Auth, product API, lab jobs, optional classifier/obs | `tests/integration` | [`integration.yml`](../../.github/workflows/integration.yml) |
@@ -44,6 +47,7 @@
 
 | Layer | Canonical doc |
 | --- | --- |
+| **Baseline runbook** (exact local + CI commands for rag-service, classifier, webapp, Sonar inputs) | [baseline-runbook.md](baseline-runbook.md) |
 | Backend verify (Surefire + JaCoCo) | [../../rag-service/README.md](../../rag-service/README.md) |
 | External dependency mocks (rag-service testsupport) | [external-test-harness.md](external-test-harness.md) |
 | Classifier pytest + coverage | [../../classifier-service/README.md](../../classifier-service/README.md) |

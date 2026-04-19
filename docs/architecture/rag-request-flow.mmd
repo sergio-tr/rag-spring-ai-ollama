@@ -11,14 +11,19 @@ flowchart TB
     LEG[Legacy RAG v4]
   end
 
+  subgraph resolve [Resolution]
+    CFG[ConfigResolver merged layers]
+    SNAP[Optional resolved_config_snapshot persist]
+  end
+
   subgraph core [Orchestration]
-    CFG[Effective RAG config user project]
-    PIPE[Query pipeline]
-    STORE[(Vector store)]
+    PIPE[RAG execution orchestrator workflows]
+    QU[Query understanding retrieval generation]
+    STORE[(PostgreSQL pgvector)]
   end
 
   subgraph external [External HTTP]
-    OLL[Ollama]
+    OLL[Ollama embeddings and chat]
     CLF[classifier-service]
   end
 
@@ -27,8 +32,10 @@ flowchart TB
   UI -.->|legacy tooling| LEG
   V5 --> CFG
   LEG --> CFG
+  CFG --> SNAP
   CFG --> PIPE
-  PIPE --> STORE
-  PIPE --> OLL
-  PIPE -.->|optional classify| CLF
+  PIPE --> QU
+  QU --> STORE
+  QU --> OLL
+  QU -.->|optional classify| CLF
   V5 -.->|SSE chat stream| PIPE

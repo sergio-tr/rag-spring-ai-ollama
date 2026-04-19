@@ -2,7 +2,7 @@
 
 Normative guide for **mocking and stubbing** external dependencies in `rag-service` tests so **unit**, **`@WebMvcTest`**, and controlled **`@SpringBootTest`** runs do not require Ollama, a live classifier HTTP service, or OTLP collectors.
 
-**Related:** [Quality hub / AP01](../quality/README.md), [Coverage Target Ledger](../coverage/jacoco-coverage-target-ledger.md), [rag-service README](../../rag-service/README.md).
+**Related:** [Quality hub](../quality/README.md), [Coverage Target Ledger](../coverage/jacoco-coverage-target-ledger.md), [rag-service README](../../rag-service/README.md).
 
 ---
 

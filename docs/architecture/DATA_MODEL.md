@@ -164,15 +164,17 @@ erDiagram
 | `evaluation_result` | optional scalar metrics | `config_snapshot`, `sources` |
 | `classifier_model` | metrics, `is_active`, `passes_gate`, `artifact_path`, status | `hyperparams` |
 | `async_task` | `task_type`, `status`, progress text | `request_payload`, `result_json` |
-| `resolved_config_snapshot` | `created_at`, `effective_system_prompt`, `config_hash` | `payload_jsonb`, `capability_set_jsonb`, `compatibility_result_jsonb`, `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `provenance_jsonb` (see §6.1) |
+| `resolved_config_snapshot` | `created_at`, `effective_system_prompt`, `config_hash` | `payload_jsonb`, `capability_set_jsonb`, `compatibility_result_jsonb`, `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `provenance_jsonb` (see [Section 6.1](DATA_MODEL.md#dm-s6-1)) |
 | `runtime_execution_trace` | linkage (`user_id`, `project_id`, optional `conversation_id`/`message_id`), `correlation_id`, optional `resolved_config_snapshot_id`/`config_hash`, extracted summary columns (memory/routing/tool/FC/advisor/judge/clarification), `schema_version`, `created_at` | `execution_trace_jsonb` (bounded `ExecutionTrace` projection), `stages_jsonb` (bounded `ExecutionStageTrace` list) |
 | `runtime_trace_regression_suite_definition`, `runtime_trace_regression_suite_definition_entry`, `runtime_trace_regression_suite_definition_entry_trace` | **P33:** per-user named suite definitions (`UNIQUE (user_id, name)`), ordered entries (`entry_kind` **BY_TRACE_IDS** / **BY_CONVERSATION**), child rows for trace ids **only** for **BY_TRACE_IDS** | — (no JSONB / array column for trace ids) |
 | `runtime_trace_regression_suite_run`, `runtime_trace_regression_suite_run_entry` | **P41:** per-user suite **run** header + summary counters + one row per executed entry (bounded scalars only); **`definition_id`** opaque UUID when `source_type = SAVED_DEFINITION` (**no FK** to definitions) | — (no JSONB / arrays / trace blobs) |
-| `knowledge_index_snapshot`, `knowledge_snapshot_document`, `document_artifact`, `reindex_event`; extended `project_documents` | scope, snapshot FK, storage columns, `requires_reindex` | Artifact payloads (`schemaVersion`); METADATA holds structured-search projection when applicable (§6.2) |
+| `knowledge_index_snapshot`, `knowledge_snapshot_document`, `document_artifact`, `reindex_event`; extended `project_documents` | scope, snapshot FK, storage columns, `requires_reindex` | Artifact payloads (`schemaVersion`); METADATA holds structured-search projection when applicable ([Section 6.2](DATA_MODEL.md#dm-s6-2)) |
 
 **Trade-off:** JSON stays flexible for TFG iteration; heavy reporting may need GIN indexes or extracted columns later.
 
 ---
+
+<a id="6-active-configuration-resolution"></a>
 
 ## 6. Active configuration resolution
 
@@ -188,6 +190,8 @@ There is **no** single global “active_config” row. **Effective** RAG paramet
 Chat execution paths that pass a **single** merged JSON node (e.g. legacy chat overlay) still delegate to the same resolver entrypoints; they do not reimplement merge.
 
 **ADR:** [0002-multitenancy-assumption.md](../adr/0002-multitenancy-assumption.md).
+
+<a id="dm-s6-1"></a>
 
 ### 6.1 `resolved_config_snapshot` (configuration artefact, not a run)
 
@@ -217,6 +221,8 @@ This table stores a **reproducible, append-only** persisted trace artefact for o
 
 **Forward compatibility:** new snapshot JSON keys and new nullable columns should be **additive** only; readers ignore unknown keys where possible.
 
+<a id="dm-s6-4"></a>
+
 ### 6.4 `runtime_trace_regression_suite_*` (saved regression suite definitions — P33)
 
 **Migration:** [V32](../../rag-service/src/main/resources/db/migration/V32__runtime_trace_regression_suite_definition.sql).
@@ -229,6 +235,8 @@ These tables persist **reusable suite definitions** (metadata + ordered entries)
 | `runtime_trace_regression_suite_definition_entry` | One row per ordered entry (`position` 0…n−1), `entry_kind`, nullable conversation/timestamp/workflow columns per kind; **CHECK** constraints align with P30 entry shapes. |
 | `runtime_trace_regression_suite_definition_entry_trace` | For **BY_TRACE_IDS** entries only: ordered `trace_id` rows (`position`); **no** rows for **BY_CONVERSATION** entries. |
 
+<a id="dm-s6-5"></a>
+
 ### 6.5 `runtime_trace_regression_suite_run*` (regression suite run snapshots — P41)
 
 **Migration:** [V33](../../rag-service/src/main/resources/db/migration/V33__runtime_trace_regression_suite_run.sql).
@@ -240,7 +248,9 @@ These tables persist a **minimal, query-ready snapshot** of a completed **`Runti
 | `runtime_trace_regression_suite_run` | Run header: `user_id`, `source_type` (**AD_HOC** \| **SAVED_DEFINITION**), optional `definition_id` (required iff **SAVED_DEFINITION**), `suite_outcome`, five suite summary integers mirroring **`RuntimeTraceRegressionSuiteSummary`**, `created_at`; table-level **CHECK**s tie counters together. |
 | `runtime_trace_regression_suite_run_entry` | One row per entry (`entry_order` 0…19): `entry_kind`, capped `selector_echo`, `execution_status` (**BATCH_RETURNED** \| **EXECUTION_FAILED**), either batch outcome + three counts **or** failure kind (+ optional `failure_detail`) per row-shape **CHECK**. |
 
-### 6.2 Knowledge system (snapshots, artifacts, reindex) — §13a field rules
+<a id="dm-s6-2"></a>
+
+### 6.2 Knowledge system (snapshots, artifacts, reindex)
 
 **Migrations:** [V22](../../rag-service/src/main/resources/db/migration/V22__knowledge_snapshots_and_documents.sql); optional FK [V26](../../rag-service/src/main/resources/db/migration/V26__knowledge_index_snapshot_resolved_config_fk.sql) on `knowledge_index_snapshot.resolved_config_snapshot_id` → `resolved_config_snapshot(id)`; **`reindex_event.resolved_config_snapshot_id` NOT NULL** [V27](../../rag-service/src/main/resources/db/migration/V27__reindex_event_resolved_config_snapshot.sql); **`knowledge_index_snapshot` config linkage NOT NULL** [V28](../../rag-service/src/main/resources/db/migration/V28__knowledge_index_snapshot_config_linkage_not_null.sql).
 
@@ -337,16 +347,18 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 | `evaluation_run.project_id`, `async_task.project_id` | V19 | Nullable FK to `projects`, `ON DELETE SET NULL`; see ADR 0003 |
 | `config_profile`, `rag_preset_profile_ref`, `resolved_config_snapshot`, `user_preferences`, `user_personalization`; `rag_preset.composition_version`; `projects.project_prompt`; `conversations.runtime_override_jsonb` | V21 | Config profiles, preset–profile composition, resolved snapshot baseline, prefs/personalization |
 | `resolved_config_snapshot` (semantic columns) | V25 | `reindex_impact_jsonb`, `system_prompt_layers_jsonb`, `effective_system_prompt` |
-| Knowledge snapshots, artifacts, reindex; `project_documents` corpus columns | V22 | See §6.2 |
+| Knowledge snapshots, artifacts, reindex; `project_documents` corpus columns | V22 | See [Section 6.2](DATA_MODEL.md#dm-s6-2) |
 | `knowledge_index_snapshot.resolved_config_snapshot_id` FK | V26 | Additive FK when missing |
 | `reindex_event.resolved_config_snapshot_id` NOT NULL + index | V27 | Mandatory config provenance for reindex rows |
 | `knowledge_index_snapshot` resolved linkage NOT NULL | V28 | Drops orphan snapshots without config id/hash |
 | `vector_store` FTS / indexing helpers | V29 | |
 | `conversations.pending_clarification_jsonb` | V30 | P11 deterministic clarification pending state (JSONB, nullable) |
 
-**JPA:** `EvaluationRunEntity`, `AsyncTaskEntity` optional `@ManyToOne` to `ProjectEntity` (`project_id`). **`ResolvedConfigSnapshotEntity`** maps `resolved_config_snapshot` (§6.1). Knowledge tables: `KnowledgeIndexSnapshotEntity`, `KnowledgeSnapshotDocumentEntity`, `DocumentArtifactEntity`, `ReindexEventEntity`; workspace documents remain `KnowledgeDocumentEntity` → `project_documents`. **`ConversationEntity.pendingClarification`** maps `pending_clarification_jsonb`.
+**JPA:** `EvaluationRunEntity`, `AsyncTaskEntity` optional `@ManyToOne` to `ProjectEntity` (`project_id`). **`ResolvedConfigSnapshotEntity`** maps `resolved_config_snapshot` ([Section 6.1](DATA_MODEL.md#dm-s6-1)). Knowledge tables: `KnowledgeIndexSnapshotEntity`, `KnowledgeSnapshotDocumentEntity`, `DocumentArtifactEntity`, `ReindexEventEntity`; workspace documents remain `KnowledgeDocumentEntity` → `project_documents`. **`ConversationEntity.pendingClarification`** maps `pending_clarification_jsonb`.
 
 ---
+
+<a id="dm-s10"></a>
 
 ## 10. `evaluation_run` vs `async_task` (two “run” worlds)
 
@@ -375,7 +387,7 @@ Do **not** conflate the two: a Lab “eval LLM” `async_task` is **not** an `ev
 | JSON without strict DB schema | Write-time sanitization; characterization tests for merge; document keys (e.g. configuration schema in application). |
 | Duplicate datasets (same SHA) | Application-level dedup by **`(owner_id, sha256)`** when hashing is available; no mandatory UK in DB for thesis scope ([ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). |
 | `artifact_path` not portable | Environment-specific prefixes; avoid hard-coded absolute paths. |
-| Two “run” concepts (`evaluation_run` vs `async_task`) | See §10; use the right table per flow. |
+| Two “run” concepts (`evaluation_run` vs `async_task`) | See [Section 10](DATA_MODEL.md#dm-s10); use the right table per flow. |
 | `evaluation_result` growth | Retention/partitioning later; index on `run_id` (V9). |
 
 ---
@@ -383,7 +395,7 @@ Do **not** conflate the two: a Lab “eval LLM” `async_task` is **not** an `ev
 ## 13. Open questions (remaining product/schema)
 
 1. Single active `classifier_model` per user, per project, or global (ADMIN)?
-2. Conversation-level config: new `rag_configuration` level vs JSON-only on `conversations` (see functional-model §8.1).
+2. Conversation-level config: new `rag_configuration` level vs JSON-only on `conversations` (product design choice; not fixed in this schema — see [conceptual-model.md](../domain/conceptual-model.md)).
 
 **Resolved (see [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)):** nullable FK `project_id` on `evaluation_run` and `async_task`; dataset dedup policy `(owner_id, sha256)` at application level.
 
