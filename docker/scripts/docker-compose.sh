@@ -19,7 +19,7 @@
 #   With command "down": same flags as "up dev --down".
 #   --gpu and --ollama are aliases: both start Ollama in Docker (GPU only, if available).
 #   --classifier-gpu enables GPU access for classifier-service (if available).
-#   --ollama-remote adds compose.ollama-remote.yml (backend points to external Ollama; no Ollama container).
+#   --ollama-remote skips the local Ollama container profile when combined with --gpu/--ollama (URL always from rag-service/.env).
 #   Local Ollama in Docker uses profile "ollama" in docker-compose.yml (+ ollama/.env for http://ollama:11434 when --gpu and NVIDIA available).
 #   --all  = --gpu --obs --classifier --logs --infra --rag (no --proxy; add --proxy to use nginx in dev)
 #
@@ -241,12 +241,6 @@ if [ "$MODE" = dev ]; then
   [ "$WITH_DEV_PROXY" = true ] && [ "$WITH_RAG_BACKEND" = true ] && COMPOSE_FILES+=(-f "compose.dev-proxy.yml")
   [ "$WITH_OBS" = true ]        && COMPOSE_FILES+=(-f "compose.obs.yml")
   [ "$WITH_NVIDIA" = true ] && COMPOSE_FILES+=(-f "compose.gpu.yml")
-  if [ "$WITH_OLLAMA_REMOTE" = true ]; then
-    COMPOSE_FILES+=(-f "compose.ollama-remote.yml")
-    if [ "$WITH_CLASSIFIER" = true ] || [ "$WITH_RAG_BACKEND" = true ]; then
-      COMPOSE_FILES+=(-f "compose.ollama-remote.dev.yml")
-    fi
-  fi
   [ "$WITH_RAG_BACKEND" = true ] && [ "$WITH_OBS" = true ] && COMPOSE_FILES+=(-f "compose.rag-dev-obs.yml")
 
   PROFILE_ARGS=()
@@ -343,10 +337,12 @@ if [ "$MODE" = dev ]; then
     else
       echo "               API on host: http://127.0.0.1:${BACKEND_PORT:-9000} — set WEBAPP_NEXT_PUBLIC_API_BASE_URL accordingly in webapp/.env for the browser."
     fi
-    if [ "$WITH_GPU" = true ]; then
-      echo "               Ollama: container at http://ollama:11434 (profile ollama in docker-compose.yml)."
+    if [ "$WITH_GPU" = true ] && [ "$WITH_OLLAMA_REMOTE" != true ]; then
+      echo "               Ollama: container at http://ollama:11434 (profile ollama). Set OLLAMA_BASE_URL in rag-service/.env to match."
+    elif [ "$WITH_GPU" = true ] && [ "$WITH_OLLAMA_REMOTE" = true ]; then
+      echo "               Ollama: no local container (--ollama-remote). Use OLLAMA_BASE_URL / SPRING_AI_OLLAMA_BASE_URL in rag-service/.env (e.g. host.docker.internal or LAN)."
     else
-      echo "               Ollama on HOST: http://host.docker.internal:11434 (or enable --gpu with NVIDIA)."
+      echo "               Ollama URL: rag-service/.env (OLLAMA_BASE_URL); default from compose is host.docker.internal when not using profile ollama."
     fi
     echo "  Webapp:      in Docker (Next.js). Without --proxy: http://127.0.0.1:${WEBAPP_HTTP_PORT:-80}/"
     if [ "$WITH_DEV_PROXY" = true ]; then
@@ -409,9 +405,6 @@ fi
 
 COMPOSE_FILES=(-f "docker-compose.yml")
 [ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.obs.yml")
-if [ "$WITH_OLLAMA_REMOTE" = true ]; then
-  COMPOSE_FILES+=(-f "compose.ollama-remote.yml")
-fi
 COMPOSE_FILES+=(-f "compose.prod.yml")
 [ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.prod-obs.yml")
 

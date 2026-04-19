@@ -61,9 +61,9 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${PORT:-8000}
-      # When using profile ollama + ollama/.env, point at the container (see docker/README.md).
+      # Ollama URL: same rag-service/.env keys as production backend (host.docker.internal, ollama:11434, etc.).
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      SPRING_AI_OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      SPRING_AI_OLLAMA_BASE_URL: ${SPRING_AI_OLLAMA_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
     volumes:
       - ../rag-service:/app
       - rag_m2_cache:/root/.m2

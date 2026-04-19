@@ -98,7 +98,7 @@ Compose defaults for the same prefix live under **Compose parameterization** bel
 
 **Full `compose_guard` (including `environment_literal`, `healthcheck_*`):** not enforced in CI until remaining overlays are migrated; tracked backlog: `compose.obs.yml`, `compose.prod.yml` (`reverse-proxy`), `compose.rag-dev-obs.yml`, `docker-compose.yml` (classifier healthcheck). CI continues to use `--only-rules` structural subset in both workflows.
 
-**Remote Ollama overlays:** [`docker/compose.ollama-remote.yml`](../../docker/compose.ollama-remote.yml) requires **`RAG_COMPOSE_OLLAMA_REMOTE_URL`** in `rag-service/.env` (see `rag-service/.env.example`).
+**Remote / host Ollama:** URLs come only from **`rag-service/.env`** (`OLLAMA_BASE_URL`, `SPRING_AI_OLLAMA_BASE_URL`). Flag **`--ollama-remote`** on **`docker/scripts/up.sh`** skips the local **`ollama`** container profile when used with **`--gpu`/`--ollama`**; it does not add extra compose merge files.
 
 ## Local vs CI parity
 

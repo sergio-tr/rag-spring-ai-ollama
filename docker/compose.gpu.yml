@@ -1,5 +1,5 @@
 # NVIDIA runtime override for classifier-service (merged when the host has the NVIDIA runtime).
-# Ollama in Docker uses profile "ollama" in docker-compose.yml. Remote LLM URL: compose.ollama-remote.yml.
+# Ollama in Docker uses profile "ollama" in docker-compose.yml. Remote/host URL: OLLAMA_BASE_URL / SPRING_AI_OLLAMA_BASE_URL in rag-service/.env.
 
 services:
   classifier-service:

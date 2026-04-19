@@ -9,7 +9,6 @@ flowchart TB
 
   ROOT --> O1[compose.obs.yml Spring OTLP for backend + classifier]
   ROOT --> G1[compose.gpu.yml NVIDIA classifier]
-  ROOT --> G3[compose.ollama-remote.yml external Ollama URL]
 
   ROOT --> PR[compose.prod.yml reverse-proxy hardening]
   PR --> PR2[compose.prod-obs.yml prod plus obs wiring]

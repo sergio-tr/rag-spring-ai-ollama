@@ -1,8 +1,0 @@
-# Use an external Ollama endpoint (no local Ollama container).
-#
-# Set RAG_COMPOSE_OLLAMA_REMOTE_URL in rag-service/.env (see rag-service/.env.example) before merging this file.
-services:
-  backend:
-    environment:
-      OLLAMA_BASE_URL: ${RAG_COMPOSE_OLLAMA_REMOTE_URL:?set RAG_COMPOSE_OLLAMA_REMOTE_URL in rag-service/.env for compose.ollama-remote}
-      SPRING_AI_OLLAMA_BASE_URL: ${RAG_COMPOSE_OLLAMA_REMOTE_URL:?set RAG_COMPOSE_OLLAMA_REMOTE_URL in rag-service/.env for compose.ollama-remote}

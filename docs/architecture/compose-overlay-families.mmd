@@ -11,8 +11,7 @@ flowchart TB
 
   subgraph ollfam [Ollama and GPU]
     G0[compose.gpu.yml NVIDIA for classifier optional]
-    G3[compose.ollama-remote.yml remote LLM URL backend]
-    G4[compose.ollama-remote.dev.yml remote LLM URL backend-dev]
+    G3["Ollama HTTP URL from rag-service/.env in docker-compose.yml and compose.dev.yml"]
   end
 
   subgraph tel [Telemetry and logs]

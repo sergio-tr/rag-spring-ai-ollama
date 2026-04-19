@@ -99,14 +99,14 @@ Canonical compose flags live in [**docker/scripts/up.sh**](../docker/scripts/up.
 
 The `postgres` and `backend` services load **db/.env** for DB credentials. Port and app defaults are in the compose file. For observability, see [observability/README.md](../observability/README.md); run with `--env-file ../observability/.env` when using `compose.obs.yml`.
 
-**Remote Ollama (no Ollama container in Compose):** if you merge `docker/compose.ollama-remote.yml` or `docker/compose.ollama-remote.dev.yml`, set **`RAG_COMPOSE_OLLAMA_REMOTE_URL`** in **`rag-service/.env`** (documented in `rag-service/.env.example`). Without it, `docker compose config` fails for those overlays.
+**Ollama URL (host, Docker service, or remote machine):** set **`OLLAMA_BASE_URL`** and **`SPRING_AI_OLLAMA_BASE_URL`** in **`rag-service/.env`** to the same HTTP origin the JVM must use (`http://localhost:11434` on the host, `http://host.docker.internal:11434` from containers to the host, `http://ollama:11434` when the **`ollama`** Compose service is running). **`./docker/scripts/up.sh … --ollama-remote`** does **not** change those variables; it only skips starting the local **`ollama`** container when combined with **`--gpu`/`--ollama`**, so your URL in `.env` should point at host or external Ollama.
 
 ## Key variables
 
 | Variable / property | Description | Example / default |
 | --- | --- | --- |
-| `OLLAMA_BASE_URL` | Ollama URL | `http://localhost:11434` |
-| `RAG_COMPOSE_OLLAMA_REMOTE_URL` | Required when using `compose.ollama-remote*.yml` overlays | e.g. `http://your-host:11434` |
+| `OLLAMA_BASE_URL` | Ollama HTTP API (used by Compose for both services) | `http://localhost:11434` (host JVM) or `http://host.docker.internal:11434` (containers → host) |
+| `SPRING_AI_OLLAMA_BASE_URL` | Spring AI `spring.ai.ollama.base-url` | Same as `OLLAMA_BASE_URL` unless you intentionally split them |
 | `SPRING_AI_OLLAMA_CHAT_MODEL` / `SPRING_AI_OLLAMA_EMBEDDING_MODEL` | Models used by Spring AI | e.g. `gemma3:4b`, `mxbai-embed-large` |
 | `rag.ollama.auto-pull-enabled` | Pull missing models via Ollama HTTP API on startup | `true` (set `false` offline / air-gapped) |
 | `rag.ollama.pull-read-timeout-ms` | Per-`pull` timeout (large models) | `1800000` (30 min) |

@@ -79,7 +79,9 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-vectordb}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      SPRING_AI_OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      # Ollama URL: set OLLAMA_BASE_URL and/or SPRING_AI_OLLAMA_BASE_URL in rag-service/.env (e.g. host, ollama:11434, or LAN IP).
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      SPRING_AI_OLLAMA_BASE_URL: ${SPRING_AI_OLLAMA_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
       SPRING_AI_OLLAMA_CHAT_MODEL: ${SPRING_AI_OLLAMA_CHAT_MODEL:-gemma3:4b}
       SPRING_AI_OLLAMA_EMBEDDING_MODEL: ${SPRING_AI_OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large}
       RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${PORT:-8000}
