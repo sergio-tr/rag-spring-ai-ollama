@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.MeetingMinutesToolRawResult;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.MeetingMinutesToolExecutionCore;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -27,7 +28,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * Spring AI protocol + ChatClient orchestration for FC (§9.4).
+ * Spring AI protocol + ChatClient orchestration for bounded function calling.
  */
 @Component
 public class FunctionCallingExecutor {
@@ -98,10 +99,9 @@ public class FunctionCallingExecutor {
                         List.of("multiple_tool_calls"));
             }
             ToolCall tc = assistant.getToolCalls().getFirst();
-            DeterministicToolKind kind;
-            try {
-                kind = DeterministicToolKind.valueOf(tc.name());
-            } catch (IllegalArgumentException e) {
+            DeterministicToolKind kind =
+                    DeterministicToolKindMappings.fromDeclaredToolName(tc.name()).orElse(null);
+            if (kind == null) {
                 stages.add(fcResultMapStage(FunctionCallingOutcome.INVALID_MODEL_OUTPUT));
                 return terminalOutcome(
                         FunctionCallingOutcome.INVALID_MODEL_OUTPUT,

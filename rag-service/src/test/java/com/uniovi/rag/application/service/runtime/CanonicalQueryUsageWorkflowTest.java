@@ -173,7 +173,7 @@ class CanonicalQueryUsageWorkflowTest {
         ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
 
-        ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline);
+        ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline, null);
 
         QueryPlan qp = plan("raw user query", "rewritten query");
         ExecutionContext ctx = ctxWithPlan(qp);

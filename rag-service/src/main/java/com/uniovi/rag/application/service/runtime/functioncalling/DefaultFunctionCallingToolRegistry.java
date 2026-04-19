@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.functioncalling;
 
+import com.uniovi.rag.configuration.ToolDescriptor;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.function.FunctionToolCallback;
@@ -11,7 +12,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Production whitelist: exactly five {@link DeterministicToolKind} values (§9.3).
+ * Production whitelist: exactly five {@link DeterministicToolKind} values.
+ * Tool names and descriptions match {@link ToolDescriptor} / {@link com.uniovi.rag.tool.MeetingMinutesToolsAdapter} {@code @Tool} metadata.
  */
 @Component
 public class DefaultFunctionCallingToolRegistry implements FunctionCallingToolRegistry {
@@ -21,34 +23,19 @@ public class DefaultFunctionCallingToolRegistry implements FunctionCallingToolRe
     public DefaultFunctionCallingToolRegistry() {
         byKind.put(
                 DeterministicToolKind.COUNT_DOCUMENTS_TOOL,
-                stubCallback(
-                        "COUNT_DOCUMENTS_TOOL",
-                        "Count documents matching the query.",
-                        schemaSingleQuery()));
+                stubCallback(DeterministicToolKind.COUNT_DOCUMENTS_TOOL, schemaSingleQuery()));
         byKind.put(
                 DeterministicToolKind.FIND_PARAGRAPH_TOOL,
-                stubCallback(
-                        "FIND_PARAGRAPH_TOOL",
-                        "Find a relevant paragraph for the query.",
-                        schemaSingleQuery()));
+                stubCallback(DeterministicToolKind.FIND_PARAGRAPH_TOOL, schemaSingleQuery()));
         byKind.put(
                 DeterministicToolKind.GET_FIELD_TOOL,
-                stubCallback(
-                        "GET_FIELD_TOOL",
-                        "Extract a field value for the query.",
-                        schemaGetField()));
+                stubCallback(DeterministicToolKind.GET_FIELD_TOOL, schemaGetField()));
         byKind.put(
                 DeterministicToolKind.BOOLEAN_QUERY_TOOL,
-                stubCallback(
-                        "BOOLEAN_QUERY_TOOL",
-                        "Answer a boolean question about the corpus.",
-                        schemaSingleQuery()));
+                stubCallback(DeterministicToolKind.BOOLEAN_QUERY_TOOL, schemaSingleQuery()));
         byKind.put(
                 DeterministicToolKind.COUNT_AND_EXPLAIN_TOOL,
-                stubCallback(
-                        "COUNT_AND_EXPLAIN_TOOL",
-                        "Count matching documents and explain briefly.",
-                        schemaSingleQuery()));
+                stubCallback(DeterministicToolKind.COUNT_AND_EXPLAIN_TOOL, schemaSingleQuery()));
         if (byKind.size() != 5) {
             throw new IllegalStateException("FC registry must contain exactly five tools");
         }
@@ -67,9 +54,10 @@ public class DefaultFunctionCallingToolRegistry implements FunctionCallingToolRe
         return List.copyOf(out);
     }
 
-    private static ToolCallback stubCallback(String name, String description, String inputSchema) {
-        return FunctionToolCallback.builder(name, (String args) -> "")
-                .description(description)
+    private static ToolCallback stubCallback(DeterministicToolKind kind, String inputSchema) {
+        var qt = kind.toQueryType();
+        return FunctionToolCallback.builder(ToolDescriptor.getName(qt), (String args) -> "")
+                .description(ToolDescriptor.getDescription(qt))
                 .inputSchema(inputSchema)
                 .inputType(String.class)
                 .build();

@@ -24,7 +24,7 @@ class DefaultFunctionCallingToolRegistryTest {
         var cbs = reg.callbacksFor(List.of(
                 DeterministicToolKind.BOOLEAN_QUERY_TOOL,
                 DeterministicToolKind.COUNT_DOCUMENTS_TOOL));
-        assertEquals("BOOLEAN_QUERY_TOOL", cbs.getFirst().getName());
-        assertEquals("COUNT_DOCUMENTS_TOOL", cbs.get(1).getName());
+        assertEquals("booleanQuery", cbs.getFirst().getName());
+        assertEquals("countDocuments", cbs.get(1).getName());
     }
 }

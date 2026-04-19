@@ -12,8 +12,11 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,6 +37,8 @@ import java.util.stream.Collectors;
 
 /**
  * Sole write path for corpus {@code document_artifact} rows and {@code vector_store} inserts.
+ * ETL stages: binary storage and checksum → snapshot creation → vector delete → per-document indexing → activation.
+ * Micrometer counter {@code rag.knowledge.etl.events} tags {@code stage} / {@code outcome} when {@link MeterRegistry} is present.
  */
 @Service
 public class KnowledgePipelineOrchestrator {
@@ -49,6 +54,7 @@ public class KnowledgePipelineOrchestrator {
     private final int chunkMaxChars;
     private final String embeddingModelId;
     private final MaterializationStrategy materializationStrategy;
+    private final MeterRegistry meterRegistry;
 
     public KnowledgePipelineOrchestrator(
             JdbcTemplate jdbcTemplate,
@@ -59,7 +65,8 @@ public class KnowledgePipelineOrchestrator {
             KnowledgeIndexingService knowledgeIndexingService,
             @Value("${rag.chunk.max-chars:400}") int chunkMaxChars,
             @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large}") String embeddingModelId,
-            @Value("${rag.knowledge.materialization-strategy:CHUNK_LEVEL}") String materializationStrategyRaw) {
+            @Value("${rag.knowledge.materialization-strategy:CHUNK_LEVEL}") String materializationStrategyRaw,
+            @Autowired(required = false) MeterRegistry meterRegistry) {
         this.jdbcTemplate = jdbcTemplate;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
@@ -69,6 +76,18 @@ public class KnowledgePipelineOrchestrator {
         this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
         this.embeddingModelId = embeddingModelId;
         this.materializationStrategy = parseMaterializationStrategy(materializationStrategyRaw);
+        this.meterRegistry = meterRegistry;
+    }
+
+    private void recordEtlEvent(String stage, String outcome) {
+        if (meterRegistry == null) {
+            return;
+        }
+        Counter.builder("rag.knowledge.etl.events")
+                .tag("stage", stage)
+                .tag("outcome", outcome)
+                .register(meterRegistry)
+                .increment();
     }
 
     private static MaterializationStrategy parseMaterializationStrategy(String raw) {
@@ -99,6 +118,7 @@ public class KnowledgePipelineOrchestrator {
         }
         KnowledgeIndexSnapshotEntity building = null;
         try {
+            recordEtlEvent("ingest_temp_file", "started");
             try (InputStream in = Files.newInputStream(tempFile)) {
                 long size = Files.size(tempFile);
                 BinaryStoragePort.StoredObject stored =
@@ -169,8 +189,10 @@ public class KnowledgePipelineOrchestrator {
             rowDone.setErrorMessage(null);
             rowDone.setReindexedAt(Instant.now());
             knowledgeDocumentRepository.save(rowDone);
+            recordEtlEvent("ingest_temp_file", "success");
             log.info("Knowledge pipeline completed for project document {} (snapshot {})", projectDocumentId, building.getId());
         } catch (Exception e) {
+            recordEtlEvent("ingest_temp_file", "failure");
             log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
             if (building != null) {
                 knowledgeSnapshotService.deleteVectorsForSnapshotId(building.getId());
@@ -250,6 +272,7 @@ public class KnowledgePipelineOrchestrator {
         }
         KnowledgeIndexSnapshotEntity building = null;
         try {
+            recordEtlEvent("rebuild_scope", "started");
             IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, projection);
             String indexSigHex = sig.indexSigHex();
             String snapshotSigHex = sig.snapshotSigHex();
@@ -301,9 +324,11 @@ public class KnowledgePipelineOrchestrator {
                 d.setReindexedAt(now);
                 knowledgeDocumentRepository.save(d);
             }
+            recordEtlEvent("rebuild_scope", "success");
             log.info("rebuildScope completed snapshot {} for project {}", building.getId(), projectId);
             return building.getId();
         } catch (Exception e) {
+            recordEtlEvent("rebuild_scope", "failure");
             log.error("rebuildScope failed: {}", e.getMessage(), e);
             if (building != null) {
                 knowledgeSnapshotService.deleteVectorsForSnapshotId(building.getId());

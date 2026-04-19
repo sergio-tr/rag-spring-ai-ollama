@@ -8,7 +8,8 @@
 
 | Topic | Document |
 | --- | --- |
-| **Architecture freeze (0.1 — target model)** | [architecture/target-architecture.md](architecture/target-architecture.md) — [rag-runtime-architecture.md](architecture/rag-runtime-architecture.md), [configuration-resolution-model.md](architecture/configuration-resolution-model.md), [knowledge-system-model.md](architecture/knowledge-system-model.md), [implementation-roadmap.md](architecture/implementation-roadmap.md); ADRs [0005–0012](adr/README.md) |
+| **Architecture freeze (0.1 — target model)** | [architecture/target-architecture.md](architecture/target-architecture.md) — [rag-runtime-architecture.md](architecture/rag-runtime-architecture.md), [configuration-resolution-model.md](architecture/configuration-resolution-model.md), [knowledge-system-model.md](architecture/knowledge-system-model.md), [implementation-roadmap.md](architecture/implementation-roadmap.md); ADRs [0005–0013](adr/README.md) |
+| **Spring AI / RAG modernization** | [ai/README.md](ai/README.md) — inventory, pipeline contracts; [adr/0013](adr/0013-agentic-patterns-adoption-gate.md) |
 | Product scope and boundaries | [overview/README.md](overview/README.md) — [product-context.md](overview/product-context.md), [thesis-scope.md](overview/thesis-scope.md) |
 | System context and diagrams | [architecture/README.md](architecture/README.md), [architecture/system-context.md](architecture/system-context.md) |
 | Deployment (conceptual) | [architecture/deployment-model.md](architecture/deployment-model.md), [operations/README.md](operations/README.md) |

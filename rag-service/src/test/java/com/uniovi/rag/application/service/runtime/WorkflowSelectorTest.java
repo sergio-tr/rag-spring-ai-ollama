@@ -112,11 +112,20 @@ class WorkflowSelectorTest {
         ChatClient chatClient = mock(ChatClient.class);
         selector =
                 new WorkflowSelector(
-                        new DirectLlmWorkflow(chatClient),
-                        new FullCorpusWorkflow(chatClient, mock(SnapshotCorpusAssembler.class)),
-                        new DocumentDenseRagWorkflow(chatClient, mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class)),
-                        new ChunkDenseRagWorkflow(chatClient, mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class)),
-                        new ChunkDenseMetadataWorkflow(chatClient, mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class)));
+                        new DirectLlmWorkflow(chatClient, null),
+                        new FullCorpusWorkflow(chatClient, mock(SnapshotCorpusAssembler.class), null),
+                        new DocumentDenseRagWorkflow(
+                                chatClient,
+                                mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class),
+                                null),
+                        new ChunkDenseRagWorkflow(
+                                chatClient,
+                                mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class),
+                                null),
+                        new ChunkDenseMetadataWorkflow(
+                                chatClient,
+                                mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class),
+                                null));
     }
 
     @Test

@@ -43,7 +43,8 @@ class KnowledgePipelineOrchestratorTest {
                         knowledgeIndexingService,
                         400,
                         "mxbai-embed-large",
-                        "CHUNK_LEVEL");
+                        "CHUNK_LEVEL",
+                        null);
 
         String a = orchestrator.previewSnapshotSignatureHex(projectId, CorpusScope.PROJECT_SHARED, null);
         String b = orchestrator.previewSnapshotSignatureHex(projectId, CorpusScope.PROJECT_SHARED, null);
@@ -67,7 +68,8 @@ class KnowledgePipelineOrchestratorTest {
                         knowledgeIndexingService,
                         400,
                         "mxbai-embed-large",
-                        "CHUNK_LEVEL");
+                        "CHUNK_LEVEL",
+                        null);
 
         assertThat(orchestrator.scopeHasRequiresReindex(projectId, CorpusScope.PROJECT_SHARED, null)).isFalse();
     }

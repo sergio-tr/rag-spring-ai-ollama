@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import org.springframework.lang.Nullable;
+
 /**
  * Central support for tracing and metrics. Use this to create spans with attributes
  * and to record counters/timers for observability (OTEL/Jaeger and Prometheus).
@@ -87,6 +89,28 @@ public class ObservabilitySupport {
             return result;
         } catch (RuntimeException e) {
             sample.stop(Timer.builder(timerName).tag("error", "true").register(meterRegistry));
+            throw e;
+        }
+    }
+
+    /**
+     * One LLM call from an {@link com.uniovi.rag.application.service.runtime.AbstractExecutionWorkflow} subclass:
+     * Micrometer timer {@code rag.ai.llm.invoke} (tag {@code workflow}) plus tracing span {@code rag.ai.llm.invoke}.
+     */
+    public <T> T recordExecutionWorkflowLlmInvocation(@Nullable String workflowSimpleName, Supplier<T> supplier) {
+        String wf = workflowSimpleName != null && !workflowSimpleName.isBlank() ? workflowSimpleName : "unknown";
+        Timer.Sample sample = Timer.start(meterRegistry);
+        try {
+            T result = runWithSpan(
+                    "rag.ai.llm.invoke",
+                    Map.of("workflow", wf),
+                    null,
+                    supplier);
+            sample.stop(Timer.builder("rag.ai.llm.invoke").tag("workflow", wf).register(meterRegistry));
+            return result;
+        } catch (RuntimeException e) {
+            sample.stop(
+                    Timer.builder("rag.ai.llm.invoke").tag("workflow", wf).tag("error", "true").register(meterRegistry));
             throw e;
         }
     }

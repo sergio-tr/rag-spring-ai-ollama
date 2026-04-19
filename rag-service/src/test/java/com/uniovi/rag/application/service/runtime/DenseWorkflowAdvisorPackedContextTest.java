@@ -46,7 +46,7 @@ class DenseWorkflowAdvisorPackedContextTest {
         ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
 
-        DocumentDenseRagWorkflow wf = new DocumentDenseRagWorkflow(chatClient, pipeline);
+        DocumentDenseRagWorkflow wf = new DocumentDenseRagWorkflow(chatClient, pipeline, null);
 
         QueryPlan qp = minimalPlan("raw", "rewritten");
         PackedContextSet packed =
@@ -65,7 +65,7 @@ class DenseWorkflowAdvisorPackedContextTest {
         ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
 
-        ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline);
+        ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline, null);
 
         QueryPlan qp = minimalPlan("raw", "rewritten");
         PackedContextSet packed =

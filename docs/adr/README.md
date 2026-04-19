@@ -38,6 +38,7 @@ Add new rows when you add files.
 | [0010](0010-rag-scenario-ladder-s0-to-s4.md) | RAG scenario ladder S0–S4 | Accepted |
 | [0011](0011-knowledge-system-artifacts-snapshots-and-materialization.md) | Knowledge artefacts, snapshots, materialization | Accepted |
 | [0012](0012-backend-refactoring-governance.md) | Backend refactoring governance and slice policy | Accepted |
+| [0013](0013-agentic-patterns-adoption-gate.md) | Gate for additional agentic patterns beyond the orchestrated runtime | Accepted |
 
 ## Related
 

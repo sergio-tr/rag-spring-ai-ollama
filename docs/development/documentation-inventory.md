@@ -16,6 +16,8 @@
 | [`docs/architecture/`](../architecture/) | `DATA_MODEL`, diagram catalogue, `BACKEND_PACKAGES` | `implementation-roadmap` “alignment” bullets age with the repo | Roadmap must not imply unpublished branch policy | Backend logical diagram: [`backend-logical-layers.mmd`](../architecture/backend-logical-layers.mmd) |
 | [`docs/operations/`](../operations/) | Runbooks, deploy audit | Gate wording vs current workflows | Legacy cross-reference style (clean up toward Markdown anchors) | — |
 | [`docs/overview/`](../overview/) | `thesis-scope`, `product-context` | — | Informal “multi-tenant-style” wording without ADR 0002 nuance | — |
+| [`docs/ai/`](../ai/) | Hub, inventory, pipeline contracts | — | — | — |
+| [`docs/backend/`](../backend/) | Backend norms index (`README`), refactoring pointer | — | — | Previously missing `README` / refactoring pointer — restored for ADR 0012 links |
 | [`docs/enhancement/`](../enhancement/) | README states non-canonical intent | Sprint plans superseded by code | [`planes-ejecucion/`](../enhancement/planes-ejecucion/) historical plans | — |
 | Root [`README.md`](../../README.md) | Quick start + pointers | Badge URLs if repo moves | — | — |
 | [`rag-service/README.md`](../../rag-service/README.md) | API summary + links | — | — | — |

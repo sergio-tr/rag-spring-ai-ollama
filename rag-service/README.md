@@ -16,6 +16,13 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 
 **Verification gate for any backend refactor slice:** from this directory run `./mvnw verify` (same as the quality baseline below: unit + integration + JaCoCo `jacoco:check` on the configured bundle).
 
+## Spring AI / RAG modernization
+
+- **Inventory, metrics names, freezes:** [`docs/ai/spring-ai-rag-inventory.md`](../docs/ai/spring-ai-rag-inventory.md)
+- **Pipeline boundaries** (orchestrator, `AdvancedRetrievalPipeline`, workflows): [`docs/ai/spring-ai-rag-pipeline-contracts.md`](../docs/ai/spring-ai-rag-pipeline-contracts.md)
+- **Agentic additions gate:** [`docs/adr/0013-agentic-patterns-adoption-gate.md`](../docs/adr/0013-agentic-patterns-adoption-gate.md)
+- **Implementation notes:** function-calling whitelist stubs use the same tool names as `ToolDescriptor` / `MeetingMinutesToolsAdapter`; workflow LLM calls emit Micrometer timer `rag.ai.llm.invoke`; knowledge ingest emits `rag.knowledge.etl.events`.
+
 ## Quality baseline and API paths in tests
 
 - **Verification gate:** from this directory, `./mvnw clean verify` (Surefire + JaCoCo `jacoco:check` on the configured bundle, line coverage ≥ 80%). Operational equivalent from a parent reactor: `mvn test -pl rag-service` does not replace `verify` if you need the same gate as CI Sonar prep.
@@ -140,7 +147,7 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 
 Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `evaluation_run` + `evaluation_result`; `async_task` is operational (poll `/lab/jobs/{asyncTaskId}`).
 
-| Goal (TFG / product) | Use | Legacy (not primary SCIENCE evidence) |
+| Goal (product) | Use | Legacy (not primary SCIENCE evidence) |
 | --- | --- | --- |
 | LLM judge QA (no retrieval) | `POST /lab/benchmarks/LLM_JUDGE_QA/runs` | — |
 | Embedding / retrieval only | `POST /lab/benchmarks/EMBEDDING_RETRIEVAL/runs` | — |
@@ -149,6 +156,10 @@ Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `eval
 | Combinatorial feature-flag matrix | — | `GET {legacy}/evaluate/all` → body includes `legacyEvaluationMode: LEGACY_COMBINATORIAL` |
 
 Export: `GET /lab/runs/{id}/export?format=csv` (first line `#META:` + JSON run header, then CSV rows) or `format=json`.
+
+### Thesis empirical evidence
+
+For **degree-project** experimentation (hypotheses, freeze protocol, ablation matrices, run sheets, and closing synthesis), use the canonical folder **[`docs/research/`](../docs/research/README.md)**. Keep long CSV/JSON exports **out of git** when large; record paths and checksums in the run sheets there.
 
 ### Configuration layout (two main files + tests)
 

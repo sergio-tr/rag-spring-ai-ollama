@@ -18,7 +18,7 @@
     "hasAccount": "¿Ya tienes cuenta?",
     "registerLink": "Regístrate",
     "loginLink": "Inicia sesión",
-    "forgotPassword": "¿Olvidaste la contraseña? (reset por admin en este TFG)",
+    "forgotPassword": "¿Olvidaste la contraseña? (reset por admin)",
     "invalidCredentials": "Correo o contraseña incorrectos.",
     "registerFailed": "No se pudo registrar. Prueba otro correo.",
     "networkError": "Error de red. Revisa la URL de la API y CORS."

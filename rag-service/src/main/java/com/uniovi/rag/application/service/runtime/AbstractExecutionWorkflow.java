@@ -4,8 +4,10 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.ollama.api.OllamaOptions;
+import org.springframework.lang.Nullable;
 
 import java.util.concurrent.TimeUnit;
 
@@ -15,12 +17,23 @@ import java.util.concurrent.TimeUnit;
 public abstract class AbstractExecutionWorkflow implements ExecutionWorkflow {
 
     protected final ChatClient chatClient;
+    private final ObservabilitySupport observability;
 
-    protected AbstractExecutionWorkflow(ChatClient chatClient) {
+    protected AbstractExecutionWorkflow(ChatClient chatClient, @Nullable ObservabilitySupport observability) {
         this.chatClient = chatClient;
+        this.observability = observability;
     }
 
     protected String invokeChat(ExecutionContext ctx, String systemPrompt, String userMessage) {
+        if (observability == null) {
+            return invokeChatUnscoped(ctx, systemPrompt, userMessage);
+        }
+        return observability.recordExecutionWorkflowLlmInvocation(
+                this.getClass().getSimpleName(),
+                () -> invokeChatUnscoped(ctx, systemPrompt, userMessage));
+    }
+
+    private String invokeChatUnscoped(ExecutionContext ctx, String systemPrompt, String userMessage) {
         var spec = chatClient.prompt();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             spec = spec.system(systemPrompt);

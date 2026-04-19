@@ -172,3 +172,9 @@
 
 - **Implemented in code:** `DeterministicToolStrategy` (package `application.service.runtime.tool`) is the **only** deterministic tool entrypoint. `RagExecutionOrchestrator` runs it **after** `WorkflowSelector.select(...)` and **before** `workflow.execute(...)`. Resolution uses **only** `ExecutionContext`, `ResolvedRuntimeConfig`, `QueryPlan`, and the selected workflow name; it does not re-run classifier/NER or reconstruct `QueryPlan`. When ambiguity is not `SUFFICIENT` or `toolsEnabled` is false, tools are suppressed and the trace records the reason; when a tool executes successfully, the orchestrator short-circuits and returns the tool answer without invoking the workflow. `ExecutionTrace` includes `tool_resolve`, `tool_execute`, `tool_result_map` stages plus summary fields (`deterministicToolOutcome`, `deterministicToolKind`, `deterministicToolDetail`).
 - **Frozen constraint:** `ExecutionWorkflow` implementations do not perform tool resolution, selection, or execution.
+
+### Maintenance: Spring AI and RAG modernization
+
+- **Inventory and metrics baseline:** [`docs/ai/spring-ai-rag-inventory.md`](../ai/spring-ai-rag-inventory.md) — verified components, Micrometer names (`rag.ai.llm.invoke`, `rag.knowledge.etl.events`), P59–P61 HTTP freeze pointer.
+- **Pipeline boundaries:** [`docs/ai/spring-ai-rag-pipeline-contracts.md`](../ai/spring-ai-rag-pipeline-contracts.md) — orchestrator vs `AdvancedRetrievalPipeline` vs workflow synthesis vs legacy kernel.
+- **Agentic additions:** gated by [ADR 0013](../adr/0013-agentic-patterns-adoption-gate.md); default remains orchestrated workflows and bounded function-calling.

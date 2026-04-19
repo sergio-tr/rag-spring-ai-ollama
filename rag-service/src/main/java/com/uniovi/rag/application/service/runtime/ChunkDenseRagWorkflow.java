@@ -7,7 +7,9 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet;
+import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -19,8 +21,11 @@ public class ChunkDenseRagWorkflow extends AbstractExecutionWorkflow {
 
     private final AdvancedRetrievalPipeline advancedRetrievalPipeline;
 
-    public ChunkDenseRagWorkflow(ChatClient chatClient, AdvancedRetrievalPipeline advancedRetrievalPipeline) {
-        super(chatClient);
+    public ChunkDenseRagWorkflow(
+            ChatClient chatClient,
+            AdvancedRetrievalPipeline advancedRetrievalPipeline,
+            @Autowired(required = false) ObservabilitySupport observability) {
+        super(chatClient, observability);
         this.advancedRetrievalPipeline = advancedRetrievalPipeline;
     }
 

@@ -170,7 +170,7 @@ erDiagram
 | `runtime_trace_regression_suite_run`, `runtime_trace_regression_suite_run_entry` | **P41:** per-user suite **run** header + summary counters + one row per executed entry (bounded scalars only); **`definition_id`** opaque UUID when `source_type = SAVED_DEFINITION` (**no FK** to definitions) | — (no JSONB / arrays / trace blobs) |
 | `knowledge_index_snapshot`, `knowledge_snapshot_document`, `document_artifact`, `reindex_event`; extended `project_documents` | scope, snapshot FK, storage columns, `requires_reindex` | Artifact payloads (`schemaVersion`); METADATA holds structured-search projection when applicable ([Section 6.2](DATA_MODEL.md#dm-s6-2)) |
 
-**Trade-off:** JSON stays flexible for TFG iteration; heavy reporting may need GIN indexes or extracted columns later.
+**Trade-off:** JSON stays flexible; heavy reporting may need GIN indexes or extracted columns later.
 
 ---
 

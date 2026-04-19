@@ -18,7 +18,7 @@
     "hasAccount": "Already have an account?",
     "registerLink": "Register",
     "loginLink": "Sign in",
-    "forgotPassword": "Forgot password? (admin reset in this TFG)",
+    "forgotPassword": "Forgot password? (admin reset)",
     "invalidCredentials": "Invalid email or password.",
     "registerFailed": "Could not register. Try another email.",
     "networkError": "Network error. Check API URL and CORS."

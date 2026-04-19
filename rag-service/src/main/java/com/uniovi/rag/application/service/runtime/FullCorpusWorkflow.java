@@ -4,7 +4,9 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
+import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -15,8 +17,11 @@ public class FullCorpusWorkflow extends AbstractExecutionWorkflow {
 
     private final SnapshotCorpusAssembler snapshotCorpusAssembler;
 
-    public FullCorpusWorkflow(ChatClient chatClient, SnapshotCorpusAssembler snapshotCorpusAssembler) {
-        super(chatClient);
+    public FullCorpusWorkflow(
+            ChatClient chatClient,
+            SnapshotCorpusAssembler snapshotCorpusAssembler,
+            @Autowired(required = false) ObservabilitySupport observability) {
+        super(chatClient, observability);
         this.snapshotCorpusAssembler = snapshotCorpusAssembler;
     }
 

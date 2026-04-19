@@ -8,6 +8,7 @@ import java.util.Map;
 
 /**
  * Name and description for each tool, for function-calling prompts and Spring AI @Tool metadata.
+ * {@link com.uniovi.rag.domain.runtime.tool.DeterministicToolKind#toQueryType()} maps FC whitelist kinds to the same names/descriptions.
  */
 public final class ToolDescriptor {
 
