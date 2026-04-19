@@ -24,8 +24,10 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,11 +48,15 @@ class ProjectConversationsControllerWebMvcTest {
 
     private UUID userId;
     private UUID projectId;
+    private UUID conversationId;
+    private UUID destinationProjectId;
 
     @BeforeEach
     void setUp() {
         userId = UUID.randomUUID();
         projectId = UUID.randomUUID();
+        conversationId = UUID.randomUUID();
+        destinationProjectId = UUID.randomUUID();
         RagPrincipal principal = new RagPrincipal(userId, "u@test", "USER");
         SecurityContextHolder.getContext()
                 .setAuthentication(
@@ -71,5 +77,16 @@ class ProjectConversationsControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void move_returnsNoContentAndDelegatesToService() throws Exception {
+        mockMvc.perform(
+                        post(path("/projects/{projectId}/conversations/{conversationId}/move"), projectId, conversationId)
+                                .param("destinationProjectId", destinationProjectId.toString()))
+                .andExpect(status().isNoContent());
+
+        verify(moveConversationApplicationService)
+                .moveConversationToProject(userId, projectId, conversationId, destinationProjectId);
     }
 }

@@ -4,9 +4,11 @@ import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -67,4 +69,22 @@ public interface KnowledgeIndexSnapshotRepository extends JpaRepository<Knowledg
             """)
     List<KnowledgeIndexSnapshotEntity> findByConversationAndScopeOrderByCreatedAtDesc(
             @Param("cid") UUID conversationId, @Param("st") KnowledgeSnapshotScopeType scopeType);
+
+    /**
+     * Keeps {@code knowledge_index_snapshot.project_id} aligned with the conversation's project after a move.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+            value =
+                    """
+                    UPDATE knowledge_index_snapshot
+                    SET project_id = :destProjectId, updated_at = :updatedAt
+                    WHERE conversation_id = :conversationId
+                      AND scope_type = 'CONVERSATION'
+                    """,
+            nativeQuery = true)
+    int updateProjectIdForConversationSnapshots(
+            @Param("conversationId") UUID conversationId,
+            @Param("destProjectId") UUID destProjectId,
+            @Param("updatedAt") Instant updatedAt);
 }

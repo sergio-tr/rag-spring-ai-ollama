@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service;
 
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.service.project.ProjectAccessService;
@@ -11,9 +12,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -26,6 +30,9 @@ class MoveConversationApplicationServiceTest {
 
     @Mock
     private KnowledgeDocumentRepository knowledgeDocumentRepository;
+
+    @Mock
+    private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
 
     @Mock
     private ProjectAccessService projectAccessService;
@@ -55,8 +62,11 @@ class MoveConversationApplicationServiceTest {
         service.moveConversationToProject(userId, sourcePid, convId, destPid);
 
         verify(conv).setProject(destProject);
+        verify(conv).setDocumentFilter(eq(List.of()));
         verify(conversationRepository).save(conv);
         verify(knowledgeDocumentRepository).updateProjectForChatLocalDocuments(convId, destPid);
+        verify(knowledgeIndexSnapshotRepository)
+                .updateProjectIdForConversationSnapshots(eq(convId), eq(destPid), any(Instant.class));
     }
 
     @Test

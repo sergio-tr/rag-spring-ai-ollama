@@ -23,6 +23,8 @@ The **Chat** page (`src/app/[locale]/(app)/chat/page.tsx`) loads conversations w
 
 Use **`PATCH {product}/conversations/{id}`** from the same UI for `presetId` / `clearPreset` and `documentFilter` (subset of project document UUIDs). Model and preset dropdowns use **`GET {product}/models`** and **`GET {product}/presets`**.
 
+**Move conversation:** `POST {product}/projects/{sourceProjectId}/conversations/{conversationId}/move?destinationProjectId=` (**204 No Content**) reassigns the chat to another project you own; only **chat-local** corpus documents move with it, not shared project documents. The UI clears the persisted document subset after a move (`MoveConversationDialog`, `useMoveConversation`).
+
 ### Research Lab
 
 Routes under `src/app/[locale]/(app)/lab/`: **`useLabStatus`** (`src/features/lab/hooks/use-lab-status.ts`) calls **`GET {product}/lab/status`** to enable/disable evaluation buttons and show classifier availability. Long operations use **`POST {product}/lab/evaluations/*`** and **`POST {product}/lab/classifier/*`** with default **async** (**HTTP 202** + `LabJobAcceptedDto`). Progress is tracked with **`followLabJob`** (`src/lib/lab-job-follow.ts`): **polling** via `GET {product}/lab/jobs/{id}` (`src/lib/async-task.ts`) or **SSE** via `GET …/events` (`src/lib/lab-job-sse.ts`). Optional **`?sync=true`** returns inline JSON for quick local checks. Lab results are **reports only** (ADR 0001 — no silent writes to presets or project config).

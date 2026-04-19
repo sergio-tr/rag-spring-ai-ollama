@@ -295,7 +295,17 @@
     "saveAndRegenerate": "Save & regenerate",
     "cancelEdit": "Cancel",
     "retryAssistant": "Retry",
-    "editError": "Could not update message."
+    "editError": "Could not update message.",
+    "moveConversation": "Move to another project…",
+    "moveConversationTitle": "Move conversation",
+    "moveConversationDescription": "This conversation will appear under the destination project. Only documents uploaded for this chat move with it, not shared project documents.",
+    "moveDestinationLabel": "Destination project",
+    "moveDestinationPlaceholder": "Choose a project…",
+    "moveConfirm": "Move",
+    "moveError": "Could not move conversation.",
+    "sidebarCollapse": "Hide conversation list",
+    "sidebarExpand": "Show conversation list",
+    "sidebarCollapsedHint": "Conversation list hidden. Use the button to show it again."
   },
   "Documents": {
     "title": "Documents",
