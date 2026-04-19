@@ -10,6 +10,9 @@ permissions:
   pull-requests: read   # Read PR metadata for inline PR decoration
   checks: write         # Write check-run status badge on PRs
 
+env:
+  POSTGRES_SERVICE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
+
 jobs:
   sonar:
     name: SonarCloud Scan
@@ -17,7 +20,7 @@ jobs:
     # Same Postgres setup as ci.yml — required for @SpringBootTest and JDBC integration tests during mvn verify.
     services:
       postgres:
-        image: pgvector/pgvector:0.8.2-pg16-bookworm
+        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

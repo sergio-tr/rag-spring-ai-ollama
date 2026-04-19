@@ -4,6 +4,8 @@
 
 **Quality baseline, exclusions, Sonar baseline, and test policies (AP01):** [../quality/README.md](../quality/README.md).
 
+**External test harness (Ollama / classifier HTTP / OTLP mocks, Wave 6.02):** [external-test-harness.md](external-test-harness.md).
+
 ## Quality gates before deploy (VM)
 
 [`deploy.yml`](../../.github/workflows/deploy.yml) runs only on **`workflow_dispatch`** and **requires** successful runs of the following workflows on the **same commit SHA** as the deploy job (see [../operations/deploy-workflow-audit.md](../operations/deploy-workflow-audit.md)):
@@ -43,6 +45,7 @@
 | Layer | Canonical doc |
 | --- | --- |
 | Backend verify (Surefire + JaCoCo) | [../../rag-service/README.md](../../rag-service/README.md) |
+| External dependency mocks (rag-service testsupport) | [external-test-harness.md](external-test-harness.md) |
 | Classifier pytest + coverage | [../../classifier-service/README.md](../../classifier-service/README.md) |
 | Webapp unit / Playwright UI + API | [../../webapp/README.md](../../webapp/README.md), [../../webapp/e2e/api/README.md](../../webapp/e2e/api/README.md) |
 | Integration (stack running) | [../../tests/integration/README.md](../../tests/integration/README.md) |
@@ -54,6 +57,10 @@
 ## CI
 
 Authoritative workflow table: [../README.md](../README.md) (CI workflows section).
+
+### CI parity (commands and policy)
+
+Use the same commands locally that the reusable workflow runs (`./mvnw verify`, `pytest tests/`, `npm run test:coverage`, etc.). **Which jobs are blocking for merge**, how **fork PRs** interact with **SonarCloud**, and where **Compose / `NEXT_PUBLIC_*` defaults** are defined are documented in **[`docs/devops/README.md`](../devops/README.md)**.
 
 ### Coverage gates (commands, thresholds, CI artifacts)
 

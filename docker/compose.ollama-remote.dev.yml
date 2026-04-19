@@ -1,7 +1,7 @@
 # Dev-only: external Ollama URL for backend-dev. Merge with compose.dev.yml (see docker/scripts/docker-compose.sh).
-
+# Set RAG_COMPOSE_OLLAMA_REMOTE_URL in rag-service/.env.
 services:
   backend-dev:
     environment:
-      OLLAMA_BASE_URL: http://156.35.95.18:11434
-      SPRING_AI_OLLAMA_BASE_URL: http://156.35.95.18:11434
+      OLLAMA_BASE_URL: ${RAG_COMPOSE_OLLAMA_REMOTE_URL:?set RAG_COMPOSE_OLLAMA_REMOTE_URL in rag-service/.env for compose.ollama-remote.dev}
+      SPRING_AI_OLLAMA_BASE_URL: ${RAG_COMPOSE_OLLAMA_REMOTE_URL:?set RAG_COMPOSE_OLLAMA_REMOTE_URL in rag-service/.env for compose.ollama-remote.dev}

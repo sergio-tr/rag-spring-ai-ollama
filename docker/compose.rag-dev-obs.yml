@@ -20,5 +20,12 @@ services:
       MANAGEMENT_OTLP_METRICS_EXPORT_URL: http://otel-collector:4318/v1/metrics
       MANAGEMENT_METRICS_EXPORT_OTLP_ENABLED: "true"
     depends_on:
+      postgres:
+        condition: service_healthy
+      classifier-service:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+        required: false
       otel-collector:
         condition: service_started

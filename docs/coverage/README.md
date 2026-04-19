@@ -4,6 +4,10 @@ This document records **where** each module writes coverage output after the can
 
 **Quality baseline hub** (exclusions matrix, Sonar baseline, coverage strategy): [../quality/README.md](../quality/README.md).
 
+**Coverage Target Ledger** (Wave 6.01+ — JaCoCo exclude census, `target_wave` per row, Sonar parity, and the **Residual final allowlist** in the Wave 6.09 section): [jacoco-coverage-target-ledger.md](jacoco-coverage-target-ledger.md).
+
+**External test harness** (Wave 6.02 — mocks for Ollama, classifier, OTLP): [../testing/external-test-harness.md](../testing/external-test-harness.md).
+
 ## Commands and outputs
 
 | Module | Command (from module root) | Primary reports |

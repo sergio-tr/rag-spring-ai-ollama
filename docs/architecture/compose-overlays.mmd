@@ -1,21 +1,15 @@
-%% Conceptual layering of Compose files under docker/ — not an execution order
-%% Use docker/scripts/docker-compose.sh or docker/README.md for real chains
+%% Conceptual layering: docker-compose.yml + profiles + thin overlays — see docker/README.md
 flowchart TB
-  ROOT[docker-compose.yml base postgres classifier backend]
+  ROOT["docker-compose.yml — core + profiles: observability, logs, infra, ollama, cadvisor"]
 
   ROOT --> P1[compose.dev.yml hot reload backend-dev classifier]
-  ROOT --> P2[compose.dev-webapp.yml webapp profile rag]
-  ROOT --> P2b[compose.dev-web.yml nginx webapp backend-dev bundle]
-  ROOT --> P3[compose.dev-proxy.yml nginx in dev behind rag]
+  ROOT --> P2[compose.dev-webapp.yml webapp after backend-dev]
+  ROOT --> P3[compose.dev-proxy.yml nginx in dev + profile proxy]
   ROOT --> P4[compose.rag-dev-obs.yml backend-dev OTLP to collector]
 
-  ROOT --> O1[compose.obs.yml otel jaeger prometheus grafana]
-  ROOT --> O2[compose.logs.yml loki promtail]
-  ROOT --> O3[compose.infra.yml node-exporter cadvisor optional profile]
-
-  ROOT --> G1[compose.gpu.yml NVIDIA classifier or global]
-  ROOT --> G2[compose.ollama-local-gpu.yml local ollama GPU]
-  ROOT --> G3[compose.ollama-remote.yml external ollama URL]
+  ROOT --> O1[compose.obs.yml Spring OTLP for backend + classifier]
+  ROOT --> G1[compose.gpu.yml NVIDIA classifier]
+  ROOT --> G3[compose.ollama-remote.yml external Ollama URL]
 
   ROOT --> PR[compose.prod.yml reverse-proxy hardening]
   PR --> PR2[compose.prod-obs.yml prod plus obs wiring]

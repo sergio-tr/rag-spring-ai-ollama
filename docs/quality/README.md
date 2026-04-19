@@ -2,6 +2,10 @@
 
 This hub records **verified** test execution, **exclusion inventories**, and **normative policies** for mocks, API path usage in tests, SonarCloud baseline, and coverage strategy. It complements [../testing/README.md](../testing/README.md) (what runs where) and [../coverage/README.md](../coverage/README.md) (report paths).
 
+**JaCoCo Coverage Target Ledger** (canonical exclude inventory, policy, Sonar vs JaCoCo parity, and the **Residual final allowlist** in the Wave 6.09 section): [../coverage/jacoco-coverage-target-ledger.md](../coverage/jacoco-coverage-target-ledger.md).
+
+**External test harness** (Ollama, classifier HTTP, OTLP — mocks and recipes): [../testing/external-test-harness.md](../testing/external-test-harness.md).
+
 **Governance:** [../development/documentation-guidelines.md](../development/documentation-guidelines.md).
 
 ---
@@ -32,8 +36,8 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 
 | Mechanism | Scope | What it excludes or filters | Apparent reason | Still valid? | Recommended action |
 |-----------|--------|------------------------------|-----------------|--------------|-------------------|
-| JaCoCo `<excludes>` in [`rag-service/pom.xml`](../../rag-service/pom.xml) | Coverage bytecode | Many production packages (config, model, large orchestration, tools, DTOs, entities, selected controllers) | Keep bundle ≥ 80%; focus on testable surfaces | Yes, until slice adds targeted tests | When touching a package, consider shrinking the exclude only with tests that restore the same gate |
-| `sonar.coverage.exclusions` / `sonar.exclusions` in [`sonar-project.properties`](../../sonar-project.properties) | Sonar metrics / analysis | Aligns with JaCoCo + extra paths (e.g. TS/Python noise) | Multi-language Sonar | Yes | Keep in sync when JaCoCo excludes change |
+| JaCoCo `<excludes>` in [`rag-service/pom.xml`](../../rag-service/pom.xml) | Coverage bytecode | Many production packages (config, model, large orchestration, **tools**, DTOs, most JPA entities); **`com.uniovi.rag/tool/**` stays excluded** (large surface; would collapse the bundle ratio without a dedicated campaign). **`infrastructure/observability/**`** is excluded (matches Sonar `**/observability/**`; the old `com.uniovi.rag/observability/**` pattern was a no-op). **`ChatMessageApplicationService`** is measured (`ChatMessageApplicationServiceTest` + `AfterCommitTaskScheduler` port with a production `SpringAfterCommitTaskScheduler`). **`ProjectVisualStyleValidator`**: [`ProjectVisualStyleValidatorTest`](../../rag-service/src/test/java/com/uniovi/rag/application/service/account/ProjectVisualStyleValidatorTest.java) (counted in JaCoCo; no longer Sonar-only). **`LabEvaluationRunService`** (under excluded `application/service/evaluation/**`): [`LabEvaluationRunServiceTest`](../../rag-service/src/test/java/com/uniovi/rag/application/service/evaluation/LabEvaluationRunServiceTest.java) for future exclude shrink. **`ToolResult`**: [`ToolResultTest`](../../rag-service/src/test/java/com/uniovi/rag/tool/ToolResultTest.java) (package still JaCoCo-excluded until `tool/**` is narrowed). **Measured when covered** (non-exhaustive): `ConversationApplicationService`, `ProjectDocumentApplicationService`, `application.service.me.*` (unit tests), `AsyncLabTaskRunner`, `api.v5.*Controller`, `ProcessQueryService`, `MessageStreamController`, `LabBenchmarkController`, `MinuteDocumentStructureExpander`, `ConfigProfileController`, `ConfigProfileApplicationService`, `MoveConversationApplicationService`, `PromoteDocumentApplicationService`, `UserAccountPersistenceAdapter`, `AnswerGenerationKernel`, `ChatMessageJobHandler`, `ProjectKnowledgeController`, `ChatStreamChunks`, `ContextPropagatingFutures`, `LegacyCompatibilityValidatorBridge`, `ChatScopedRagConfigResolver`, `LocalBinaryStorageAdapter`, `KnowledgeLegacyBackfillService`, `RuntimeConfigResolutionService`, `MeetingMinutesToolRawResult`, `domain.evaluation` enums / `RagEvaluationLegacy`, nested port records on `BinaryStoragePort` / `EvaluationDatasetStorePort`, `ChatJobCancellationRegistry`, `LocalEvaluationDatasetStorageAdapter`, `AuditApplicationService`, `KnowledgeIndexSnapshotService`, `ProductionSecurityValidator`, `E2eAdminUserSeeder`. **`AuditLogEntity`**: Postgres IT (`AuditLogPersistenceIT`). **`ConversationDraftEntity`**: Postgres IT (`ConversationDraftPersistenceIT`). | Keep bundle ≥ 80%; focus on testable surfaces | Yes | When touching a package, shrink an exclude only with tests that keep the same bundle gate |
+| `sonar.coverage.exclusions` / `sonar.exclusions` in [`sonar-project.properties`](../../sonar-project.properties) | Sonar metrics / analysis | Aligns with JaCoCo for rag-service Java coverage intent; adds **`**/domain/runtime/functioncalling/**`**, **`**/domain/runtime/retrieval/**`**, **`**/domain/entity/**`**, **`**/api/v5/dto/**`**, **`**/api/auth/dto/**`** (parity with the POM). **`**/*Configuration.java`** / **`**/*Properties.java`** are **broader** than JaCoCo’s `com.uniovi.rag.configuration/**` (Sonar-only, on purpose). TS/Python noise paths unchanged. | Multi-language Sonar | Yes | When changing JaCoCo `<excludes>`, update `sonar.coverage.exclusions` for the same Java intent; re-run `verify` and a Sonar scan on release candidates |
 | Vitest `coverage.exclude` in [`webapp/vitest.config.ts`](../../webapp/vitest.config.ts) | Frontend coverage gate | App Router pages/layouts, some UI shells, etc. | E2E / manual | Review per file | Document in module README when changing |
 | Playwright `test:e2e` vs `test:e2e:fullstack` | CI jobs | Smoke excludes `@fullstack` | Time / infra | Yes | Treat as **CI filter**, not Maven exclusion |
 | pytest markers (`unit`, `integration`, `slow`, …) in [`classifier-service/pytest.ini`](../../classifier-service/pytest.ini) | Discovery | Classification | Selective runs | Yes | **CI alignment:** `core_classifier` runs **full** `pytest tests/ -v`; **`sonar` job** runs a **subset** (`tests/unit`, one regression file, `-m "not integration and not slow"`). Treat as **intentional split** (fast Sonar path vs full PR gate) — if they diverge in failure, investigate before merge |
@@ -56,16 +60,14 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 
 ## API path literals in tests (inventory summary)
 
-**Finding:** Many MockMvc tests under `rag-service/src/test/.../interfaces/rest` still use hardcoded **`/api/v5`** (or `/api/v1`) in `perform(get/post(...))`. Newer contract tests use `@TestPropertySource(properties = "rag.api.product-base-path=/api/v1")` and a `PRODUCT_BASE` constant — that is the **target pattern**.
+**Default product base:** tests use [`rag-service/src/test/resources/application.properties`](../../rag-service/src/test/resources/application.properties) (`rag.api.product-base-path=/api/v5`). Prefer [`RagApiTestPaths`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/RagApiTestPaths.java) (`path(...)`, `productBasePath()`) for MockMvc URLs so they track that file — already applied across most `interfaces/rest` WebMvc tests.
 
-**Representative files with `/api/v5` or mixed versions** (non-exhaustive; re-run search when planning refactors):
+**Alternate base paths:** slices that intentionally override the product path (e.g. `@TestPropertySource(properties = "rag.api.product-base-path=/api/v1")` or `/api/test`) must keep an explicit `PRODUCT_BASE` (or equivalent) per nested class; do **not** use `RagApiTestPaths` there, because it reads the shared classpath `application.properties`, not the Spring `Environment` of that slice.
 
-- `RuntimeTraceRegressionSuiteDefinitionControllerTest`, `RuntimeTraceRegressionSuite*ControllerTest`, `RuntimeTraceReplay*ControllerTest`, legacy `RagControllerTest`, and related WebMvc tests.
+**Backlog (incremental):**
 
-**Backlog (incremental, no big bang):**
-
-1. When touching a test class for other reasons, migrate literals to `PRODUCT_BASE` + property.
-2. Keep CI/env alignment: [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) sets `NEXT_PUBLIC_RAG_API_PREFIX` — document the same default in one place when refactoring env blocks.
+1. When adding tests, default to `RagApiTestPaths` unless the slice fixes a non-default base path.
+2. Keep CI/env alignment: [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) sets `NEXT_PUBLIC_RAG_API_PREFIX` — keep defaults consistent when refactoring env blocks.
 
 ---
 
@@ -111,6 +113,22 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 - **Tag or mark** slow/integration tests (classifier already uses markers).
 - **Do not** delete tests solely to raise coverage; prefer **narrower scope** or **faster fixtures**.
 - **Replace** brittle timing with deterministic waits where the stack already supports it.
+
+### DTOs, bootstrap, and JPA entities
+
+Pure REST **DTO records**, **bootstrap** (`Application`), and **configuration** bindings stay excluded from the JaCoCo bundle where they are thin wiring or data holders; the **80% gate** is meant to stress orchestration and behavior. When removing an entity or DTO exclude, add **meaningful** coverage (for example `@JsonTest` for Jackson edge cases, or a Postgres integration test that round-trips Flyway schema), not mechanical getter-only tests.
+
+### “Zero exclusions” and persistence slices
+
+A **literal 0% JaCoCo excludes** goal is **aspirational** with a **single bundle** line gate at **0.80**: large packages (`tool/**`, full JPA surface, all DTOs) usually need either **many** tests or a **measurement policy change** (per-package thresholds, `includes`, or documented residual excludes). The project’s default for **JPA** is **Postgres-backed `SpringBootTest` ITs** (Flyway schema, `TestcontainersDatasourceConfiguration` / `SafeTestSecretsApplicationContextInitializer`) rather than `@DataJpaTest`; use the latter only when a minimal slice is proven stable with Flyway.
+
+**Parity checklist (when you touch excludes):**
+
+1. Edit [`rag-service/pom.xml`](../../rag-service/pom.xml) JaCoCo `<excludes>` and the matching Java patterns in [`sonar-project.properties`](../../sonar-project.properties) `sonar.coverage.exclusions`.
+2. Prefer **tests first**, then **remove** excludes; run `cd rag-service && ./mvnw clean verify`.
+3. Spot-check `target/site/jacoco/index.html` for the affected package.
+
+**Master roadmap (progressive exclude reduction)** — execution order: (1) thin adapters / small application services with Mockito + paridad Sonar; (2) `@WebMvcTest` for REST surfaces not yet sliced; (3) heavier `application.service` types (`Conversation*`, `ProjectDocument*`, `me/**`) incrementally; (4) pipelines / async / `tool/**` / retriever with mocks and **minimal** refactors; (5) residual DTO–config–JPA policy in this doc + stable `verify`. Several steps are **already satisfied** in tree (e.g. `ConfigProfile*`, `Move*`, `Promote*`, `UserAccountPersistenceAdapter`, `ProjectKnowledgeControllerWebMvcTest`, `ChatMessageApplicationService` + `AfterCommitTaskScheduler`); large globs (`knowledge/**`, `runtime/**`, `tool/**`) stay excluded until a deliberate vertical campaign.
 
 ---
 

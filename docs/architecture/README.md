@@ -25,6 +25,8 @@
 
 ### Docker and Compose
 
+**CI vs Compose pins and PR job policy:** [../devops/README.md](../devops/README.md).
+
 | Diagram | File | What it shows |
 | --- | --- | --- |
 | Overlay tree from base | [compose-overlays.mmd](compose-overlays.mmd) | Files under `docker/` that layer on `docker-compose.yml` |

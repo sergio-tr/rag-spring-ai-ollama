@@ -23,7 +23,7 @@ scrape_configs:
     static_configs:
       - targets: ["node-exporter:9100"]
 
-  # cAdvisor is behind Compose profile "cadvisor" (see docker/compose.infra.yml). Uncomment when you run it.
+  # cAdvisor is behind Compose profile "cadvisor" in docker-compose.yml. Uncomment when you run it.
   # - job_name: "cadvisor"
   #   static_configs:
   #     - targets: ["cadvisor:8080"]

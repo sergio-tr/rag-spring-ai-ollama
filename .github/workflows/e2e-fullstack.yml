@@ -13,6 +13,9 @@ concurrency:
   group: e2e-fullstack-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  POSTGRES_SERVICE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
+
 jobs:
   playwright-fullstack:
     name: Playwright @fullstack
@@ -20,7 +23,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: pgvector/pgvector:0.8.2-pg16-bookworm
+        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

@@ -1,6 +1,6 @@
 # Database (PostgreSQL + pgvector)
 
-PostgreSQL 16 with the pgvector extension. The stack uses the **pinned** image `pgvector/pgvector:0.8.2-pg16-bookworm` (same as CI and [.github/local/lib/common.sh](../.github/local/lib/common.sh)). The backend (rag-service) uses this database for vectors and RAG data.
+PostgreSQL 16 with the pgvector extension. The stack builds a thin image from [Dockerfile](./Dockerfile) with base **`POSTGRES_BASE_IMAGE`** (default `pgvector/pgvector:0.8.2-pg16-bookworm`, same pin as CI and [.github/local/lib/common.sh](../.github/local/lib/common.sh)). The backend (rag-service) uses this database for vectors and RAG data.
 
 ## Schema bootstrap (db/init)
 
@@ -14,6 +14,7 @@ The **db/init/** directory contains SQL run on **first container init** (mounted
 
 | Variable | Description | Default |
 | --- | --- | --- |
+| `POSTGRES_BASE_IMAGE` | Upstream image for `db/Dockerfile` (build arg) | `pgvector/pgvector:0.8.2-pg16-bookworm` |
 | `POSTGRES_PORT` | Exposed port | `5432` |
 | `POSTGRES_USER` | User | `postgres` |
 | `POSTGRES_PASSWORD` | Password | `postgres` |
@@ -33,7 +34,7 @@ Use `--force` to overwrite. The template is **db/.env.example**.
 
 ## Using Docker Compose
 
-The main stack uses **db/.env**, **classifier-service/.env** and **rag-service/.env**. The `postgres` service uses **`image: pgvector/pgvector:0.8.2-pg16-bookworm`** in [docker/docker-compose.yml](../docker/docker-compose.yml) (no custom DB image build). The backend and classifier are still built from their own Dockerfiles.
+The main stack uses **db/.env**, **classifier-service/.env** and **rag-service/.env**. The `postgres` service is built from **`db/Dockerfile`** in [docker/docker-compose.yml](../docker/docker-compose.yml) (thin wrapper over `POSTGRES_BASE_IMAGE`). The backend and classifier are built from their own Dockerfiles.
 
 From the repo root:
 

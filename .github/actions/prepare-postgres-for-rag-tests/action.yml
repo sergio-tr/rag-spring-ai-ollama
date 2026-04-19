@@ -3,7 +3,7 @@
 # - extensions on vectordb (vector, hstore, uuid-ossp)
 # - database testdb + src/test/resources/test-init.sql
 #
-# Jobs must still set service postgres (pgvector/pgvector:0.8.2-pg16-bookworm) and job env, e.g.:
+# Jobs must still set service postgres (image: ${{ env.POSTGRES_SERVICE_IMAGE }}; pin: .github/ci/postgres-service-image.env) and job env, e.g.:
 #   SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD
 #   RAG_TEST_USE_TESTCONTAINERS_DATASOURCE=false, INTEGRATION_JDBC_URL (for mvn verify)
 name: Prepare Postgres for RAG tests

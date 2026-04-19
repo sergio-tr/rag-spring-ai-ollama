@@ -1,5 +1,4 @@
-# Dev full stack (--rag): start webapp after backend-dev (see docker/scripts/docker-compose.sh).
-
+# Dev full stack (--rag): order webapp after backend-dev (profile rag). Merged only when using --rag.
 services:
   webapp:
     depends_on:

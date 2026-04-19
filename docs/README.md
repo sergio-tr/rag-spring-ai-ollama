@@ -18,6 +18,7 @@
 | Domain concepts | [domain/README.md](domain/README.md) |
 | Data model (ER) | [architecture/DATA_MODEL.md](architecture/DATA_MODEL.md) |
 | Testing strategy (overview) | [testing/README.md](testing/README.md), [development/e2e-testing-strategy.md](development/e2e-testing-strategy.md) (workflows vs gates), [testing/traceability-legacy-tools.md](testing/traceability-legacy-tools.md) (load-tool mapping) |
+| CI / PR validation and Compose pins | [devops/README.md](devops/README.md) |
 | Coverage reports (paths, Sonar) | [coverage/README.md](coverage/README.md) |
 | SonarCloud scan locally (match `sonar.yml`) | [development/sonar-local-analysis.md](development/sonar-local-analysis.md), [scripts/README.md](../scripts/README.md) |
 | Classifier registry (train → activate) | [development/classifier-registry-demo.md](development/classifier-registry-demo.md) |
@@ -67,7 +68,8 @@
 
 | Workflow | When it runs | Role |
 | --- | --- | --- |
-| [`ci.yml`](../.github/workflows/ci.yml) | PR/push `main`/`master` | **Primary gate**: `mvn verify` (JUnit), classifier `pytest`, webapp lint/typecheck/coverage/build, Playwright **smoke** (excludes `@fullstack`) |
+| [`ci.yml`](../.github/workflows/ci.yml) | PR/push `dev`, `main`, `master` | **Primary gate**: `mvn verify` (JUnit), classifier `pytest`, webapp lint/typecheck/coverage/build, Playwright **smoke** (excludes `@fullstack`), stack integration, **Docker build smoke** (no push), `@fullstack` E2E, Sonar (details: [devops/README.md](devops/README.md)) |
+| [`docker-compose-ci.yml`](../.github/workflows/docker-compose-ci.yml) | PR/push path `docker/**` (branches as above) | `create-env-all.sh`, `compose_guard.py`, `docker compose config` (merge validation) |
 | [`build.yml`](../.github/workflows/build.yml) | PR/push | Fast compile-only (`mvn package -DskipTests`, classifier build) — no tests |
 | [`integration.yml`](../.github/workflows/integration.yml) | PR/push path filter + `workflow_dispatch` | **Stack HTTP integration**: `pytest tests/integration` against Spring **`e2e`** + Postgres (`INTEGRATION_CHECK_OBS=0`; classifier tests skip if no classifier) |
 | [`e2e-fullstack.yml`](../.github/workflows/e2e-fullstack.yml) | PR/push path filter + `workflow_dispatch` | Spring `e2e` + Postgres + Playwright **`@fullstack`** (browser E2E) |

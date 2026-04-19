@@ -14,6 +14,7 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 
 - **Verification gate:** from this directory, `./mvnw clean verify` (Surefire + JaCoCo `jacoco:check` on the configured bundle, line coverage ≥ 80%). Operational equivalent from a parent reactor: `mvn test -pl rag-service` does not replace `verify` if you need the same gate as CI Sonar prep.
 - **Policies and baseline table:** [docs/quality/README.md](../docs/quality/README.md) (exclusions matrix, Ollama/OTLP test notes, Sonar project key).
+- **External test harness (mocks for Ollama, classifier HTTP, OTLP):** [docs/testing/external-test-harness.md](../docs/testing/external-test-harness.md).
 - **Product base path in tests:** `src/test/resources/application.properties` sets `rag.api.product-base-path` (default `/api/v5`). Use `com.uniovi.rag.testsupport.RagApiTestPaths#path` (and `productBasePath()`) for MockMvc URLs so paths track that property. For slices that intentionally use another base (e.g. `/api/test`, `/api/v1`), keep an explicit `PRODUCT_BASE` constant or `@TestPropertySource` on that class — do not use `RagApiTestPaths` there, because it always reads the shared `application.properties` file.
 - **OTLP in tests:** the same `application.properties` sets harmless localhost OTLP endpoints so actuator export config does not break bootstrap when the environment supplies relative OTLP URLs; `SafeTestSecretsApplicationContextInitializer` still normalizes edge cases.
 
@@ -236,7 +237,7 @@ With `docker compose -f docker-compose.yml -f compose.obs.yml --env-file ../db/.
 
 ## Ollama requirement (Docker without GPU compose)
 
-The default backend image talks to Ollama at `SPRING_AI_OLLAMA_BASE_URL` (from `docker-compose.yml`, usually `http://host.docker.internal:11434`). **Ollama must be reachable** (host or container). On startup, the backend calls Ollama’s HTTP API (`POST /api/pull`) to **download** the chat and embedding models configured in `spring.ai.ollama.chat.model` / `spring.ai.ollama.embedding.model` if they are missing (`rag.ollama.auto-pull-enabled=true` by default). Disable auto-pull in air-gapped environments and provide models manually. Use `compose.ollama-local-gpu.yml` (NVIDIA GPU only; `./docker/scripts/up.sh … --gpu` or `--ollama`) so Ollama runs in Docker (`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`).
+The default backend image talks to Ollama at `SPRING_AI_OLLAMA_BASE_URL` (from `docker-compose.yml`, usually `http://host.docker.internal:11434`). **Ollama must be reachable** (host or container). On startup, the backend calls Ollama’s HTTP API (`POST /api/pull`) to **download** the chat and embedding models configured in `spring.ai.ollama.chat.model` / `spring.ai.ollama.embedding.model` if they are missing (`rag.ollama.auto-pull-enabled=true` by default). Disable auto-pull in air-gapped environments and provide models manually. Use **`docker-compose.yml`** with **`--profile ollama`** (NVIDIA GPU only; `./docker/scripts/up.sh … --gpu` or `--ollama`) so Ollama runs in Docker (`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`).
 
 ## Execution modes
 

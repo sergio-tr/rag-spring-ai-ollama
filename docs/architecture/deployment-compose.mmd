@@ -1,6 +1,4 @@
-%% Illustrative full stack when base + observability + logs + infra + optional Ollama are merged
-%% Not all edges exist in minimal compose — optional links shown dashed where applicable
-%% Operational truth: docker/README.md docker/scripts/README.md
+%% Illustrative stack: profiles observability, logs, infra, ollama in docker-compose.yml
 flowchart TB
   subgraph host [Docker host]
     subgraph optional_edge [Optional compose.prod.yml]
@@ -15,24 +13,24 @@ flowchart TB
 
     subgraph data_tier [Data and optional Ollama]
       PG[("postgres")]
-      OLL[ollama optional NVIDIA]
+      OLL[ollama profile ollama NVIDIA]
     end
 
-    subgraph obs_tier [Optional compose.obs.yml]
+    subgraph obs_tier [Profile observability + compose.obs.yml]
       OTC[otel-collector]
       JGR[jaeger]
       PRM[prometheus]
       GRF[grafana]
     end
 
-    subgraph logs_tier [Optional compose.logs.yml]
+    subgraph logs_tier [Profile logs]
       LOK[loki]
       PRT[promtail]
     end
 
-    subgraph infra_tier [Optional compose.infra.yml]
+    subgraph infra_tier [Profiles infra + cadvisor]
       NODE[node-exporter]
-      CAD[cAdvisor profile cadvisor]
+      CAD[cAdvisor]
     end
   end
 
@@ -41,14 +39,5 @@ flowchart TB
   FE -->|API| BE
   BE --> PG
   BE --> CLF
-  BE -.->|when OLLAMA in compose| OLL
+  BE -.->|profile ollama| OLL
   BE -.->|or host.docker.internal| OLL
-  BE -.->|when compose.obs active| OTC
-  CLF -.->|when compose.obs active| OTC
-  OTC --> JGR
-  OTC --> PRM
-  PRM --> GRF
-  PRT --> LOK
-  LOK --> GRF
-  PRM -.->|optional scrape| NODE
-  PRM -.->|optional scrape profile| CAD

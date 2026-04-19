@@ -37,6 +37,14 @@ jobs:
             context: observability/prometheus
           - service: grafana
             context: observability/grafana
+          - service: loki
+            context: observability/loki
+          - service: promtail
+            context: observability/promtail
+          - service: node-exporter
+            context: observability/node-exporter
+          - service: cadvisor
+            context: observability/cadvisor
           - service: reverse-proxy
             context: reverse-proxy
           - service: webapp

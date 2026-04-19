@@ -8,7 +8,7 @@ Application source lives in this monorepo; **behavioural truth** is code + migra
 
 Backend, classifier, webapp, and infra images are **Linux OCI** images. [`.github/workflows/build-images.yml`](../../.github/workflows/build-images.yml) pushes each service to GHCR with:
 
-- **`<github_sha>`** (full commit SHA) — **canonical tag** for reproducible deploy and rollback documentation. Prefer `docker pull …:<SHA>` / Compose `image: …:<SHA>` when operating from a known commit.
+- **`<github_sha>`** (full commit SHA) — **canonical tag** for reproducible deploy and rollback documentation. Prefer `docker pull ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<SHA>` when consuming images from [`build-images.yml`](../../.github/workflows/build-images.yml). Repository Compose files under `docker/` use **`build:`** with local contexts; pin bases via `.env` (see [`docker/README.md`](../../docker/README.md)).
 - **`latest`** — updated on each successful build; **not** a contract for production rollback; use only for ad-hoc convenience.
 
 Digest may be recorded in release notes as extra evidence; the **primary** operational reference is the SHA tag.

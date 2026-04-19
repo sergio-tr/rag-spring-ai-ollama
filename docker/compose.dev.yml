@@ -13,7 +13,7 @@
 #   ./docker/scripts/up.sh dev --rag [--obs] [--gpu|…]
 #   See rag-service/Dockerfile.dev and rag-service/scripts/docker-dev-entrypoint.sh
 #
-# With --obs, compose.rag-dev-obs.yml fixes OTLP for backend-dev (compose.obs.yml only patches service "backend").
+# With --obs and --rag, compose.rag-dev-obs.yml fixes OTLP for backend-dev (compose.obs.yml only patches service "backend").
 #
 services:
   # Override classifier-service: bind-mount source + Dockerfile.dev (uvicorn --reload)
@@ -61,6 +61,9 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${PORT:-8000}
+      # When using profile ollama + ollama/.env, point at the container (see docker/README.md).
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      SPRING_AI_OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     volumes:
       - ../rag-service:/app
       - rag_m2_cache:/root/.m2
@@ -71,6 +74,9 @@ services:
         condition: service_healthy
       classifier-service:
         condition: service_healthy
+      ollama:
+        condition: service_started
+        required: false
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${SERVER_PORT:-9000}/actuator/health/liveness >/dev/null || exit 1"]
       interval: 20s

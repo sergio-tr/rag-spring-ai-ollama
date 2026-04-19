@@ -5,6 +5,14 @@ name: Reusable CI PR pipeline
 on:
   workflow_call:
 
+# Single source of truth for Next.js public env in this workflow.
+# Jobs may override NEXT_PUBLIC_API_BASE_URL when the browser must target 127.0.0.1 instead of localhost.
+env:
+  NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
+  NEXT_PUBLIC_API_BASE_URL: http://localhost:9000
+  # Must match .github/ci/postgres-service-image.env (verified by verify-pinned-postgres-image.sh).
+  POSTGRES_SERVICE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
+
 jobs:
   core_backend:
     name: Backend (Java)
@@ -12,7 +20,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: pgvector/pgvector:0.8.2-pg16-bookworm
+        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -76,9 +84,6 @@ jobs:
     defaults:
       run:
         working-directory: webapp
-    env:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:9000
-      NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/cache-npm-webapp
@@ -118,9 +123,6 @@ jobs:
     defaults:
       run:
         working-directory: webapp
-    env:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:9000
-      NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/cache-npm-webapp
@@ -159,7 +161,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: pgvector/pgvector:0.8.2-pg16-bookworm
+        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -231,14 +233,71 @@ jobs:
           path: /tmp/spring-integration.log
           retention-days: 7
 
+  docker_build_smoke:
+    name: Docker build smoke (no push)
+    runs-on: ubuntu-latest
+    needs: [core_done]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build rag-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./rag-service
+          push: false
+      - name: Build classifier-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./classifier-service
+          push: false
+      - name: Build webapp image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./webapp
+          push: false
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=http://localhost:9000
+            NEXT_PUBLIC_RAG_API_PREFIX=/api/v5
+            NEXT_PUBLIC_TIMEZONE=UTC
+      - name: Build db image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./db
+          push: false
+          build-args: |
+            POSTGRES_BASE_IMAGE=${{ env.POSTGRES_SERVICE_IMAGE }}
+      - name: Build reverse-proxy image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./reverse-proxy
+          push: false
+
+  compose_structural_guard:
+    name: Compose structural guard (no Docker)
+    runs-on: ubuntu-latest
+    needs: [core_done]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PyYAML for compose_guard
+        run: python3 -m pip install --user -q pyyaml
+      - name: Create .env files
+        run: bash ./docker/scripts/create-env-all.sh --force
+      - name: Compose policy guard (structural rules, same as docker-compose-ci)
+        run: |
+          set -euo pipefail
+          python3 docker/scripts/compose_guard.py \
+            --only-rules image_forbidden,yaml_error,build_invalid,build_missing_context,build_missing_dockerfile
+
   e2e_fullstack:
     name: E2E fullstack (Playwright @fullstack)
     runs-on: ubuntu-latest
-    needs: [integration]
+    needs: [integration, docker_build_smoke, compose_structural_guard]
     timeout-minutes: 45
     services:
       postgres:
-        image: pgvector/pgvector:0.8.2-pg16-bookworm
+        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -258,6 +317,9 @@ jobs:
       RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+      # Browser stack uses loopback IP (workflow default is localhost for Node jobs).
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:9000
+      NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -292,8 +354,6 @@ jobs:
       - name: Install, build Next.js, run @fullstack Playwright
         working-directory: webapp
         env:
-          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:9000
-          NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
           E2E_ALLOW_INSECURE_COOKIES: "true"
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
         run: |
@@ -331,7 +391,7 @@ jobs:
       checks: write
     services:
       postgres:
-        image: pgvector/pgvector:0.8.2-pg16-bookworm
+        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -379,12 +439,12 @@ jobs:
       - name: Install Python dependencies
         working-directory: classifier-service
         run: pip install -r requirements.txt
+      # Same command as core_classifier (pytest.ini addopts apply). Previously Sonar used a narrower
+      # path list than core_classifier, which could report green while tests/test_api.py failed.
       - name: Run classifier tests with coverage
         working-directory: classifier-service
         run: |
-          pytest tests/unit tests/regression/test_baseline_lib.py \
-            -m "not integration and not slow" \
-            -v
+          pytest tests/ -v
           python scripts/patch_coverage_xml_for_sonar.py
         env:
           MODELS_DIR: ./models
@@ -420,7 +480,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: pgvector/pgvector:0.8.2-pg16-bookworm
+        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
