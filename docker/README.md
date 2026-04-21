@@ -6,7 +6,7 @@ Orchestration files (`docker-compose.yml`, `compose.*.yml`) and operational docu
 
 **Target architecture (frozen model):** [ADR 0006 — Keycloak & HTTPS foundation](../docs/adr/0006-keycloak-identity-and-https-foundation.md).
 
-**Images:** Every `FROM` in this monorepo targets a **Linux** userland (OpenJDK/Eclipse Temurin, Node, Python slim, Ollama CUDA variants, etc.). **Postgres** is built from **`db/Dockerfile`** with **`POSTGRES_BASE_IMAGE`** defaulting to the pinned **`pgvector/pgvector:0.8.2-pg16-bookworm`** (see [db/README.md](../db/README.md)). Loki, Promtail, node-exporter, and cAdvisor use thin Dockerfiles under **`observability/*/`** with tags from **`observability/.env`**. Compose is validated on **Linux** hosts and in **CI** (`ubuntu-*`); use Linux or WSL2 locally for parity.
+**Images:** Every `FROM` in this monorepo targets a **Linux** userland (OpenJDK/Eclipse Temurin, Node, Python slim, Ollama CUDA variants, etc.). **Postgres** is built from **`db/Dockerfile`**; **`docker-compose.yml`** passes a **fixed** pgvector pin **`pgvector/pgvector:0.8.2-pg16-bookworm`** as `POSTGRES_BASE_IMAGE` (see [db/README.md](../db/README.md)). Loki, Promtail, node-exporter, and cAdvisor use thin Dockerfiles under **`observability/*/`** with tags from **`observability/.env`**. Compose is validated on **Linux** hosts and in **CI** (`ubuntu-*`); use Linux or WSL2 locally for parity.
 
 **GHCR tags ([`build-images.yml`](../.github/workflows/build-images.yml)):** Each built service is pushed as `ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<github_sha>` and also `:latest`. For **reproducible deploy and rollback**, pin by **commit SHA** tag. Treat **`latest` as non-contractual** in runbooks and thesis evidence.
 
@@ -26,7 +26,7 @@ With observability, add `-f compose.obs.yml`, **`--profile observability`**, and
 
 | Path | Purpose |
 | --- | --- |
-| `db/.env` | Postgres port, credentials, `POSTGRES_BASE_IMAGE` |
+| `db/.env` | Postgres port, credentials, monitor user; `POSTGRES_BASE_IMAGE` is documentation / manual build only |
 | `classifier-service/.env` | Python image, `PORT`, model paths |
 | `rag-service/.env` | JDK/JRE images, `SERVER_PORT`, DB URL, `OLLAMA_BASE_URL` / `SPRING_AI_OLLAMA_BASE_URL`, Spring |
 | `webapp/.env` | Next.js / `WEBAPP_*` host and container ports |

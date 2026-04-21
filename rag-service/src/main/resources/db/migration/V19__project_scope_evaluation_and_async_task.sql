@@ -1,4 +1,4 @@
--- Optional project scope for batch evaluation runs and async Lab jobs (ADR 0003).
+-- Optional project scope for batch evaluation runs and async Lab jobs.
 
 ALTER TABLE evaluation_run
     ADD COLUMN project_id UUID REFERENCES projects (id) ON DELETE SET NULL;

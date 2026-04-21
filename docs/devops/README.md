@@ -83,7 +83,7 @@ Compose defaults for the same prefix live under **Compose parameterization** bel
 
 | Concern | Canonical location | Notes |
 | --- | --- | --- |
-| Postgres base image | `POSTGRES_BASE_IMAGE` in `db/.env` (default `pgvector/pgvector:0.8.2-pg16-bookworm`) | Canonical string also in [`.github/ci/postgres-service-image.env`](../../.github/ci/postgres-service-image.env). CI job services use `env.POSTGRES_SERVICE_IMAGE` (same value) in [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml). Verified by [`.github/scripts/verify-pinned-postgres-image.sh`](../../.github/scripts/verify-pinned-postgres-image.sh). |
+| Postgres base image | Fixed build-arg in [`docker/docker-compose.yml`](../../docker/docker-compose.yml) (`pgvector/pgvector:0.8.2-pg16-bookworm`); `POSTGRES_BASE_IMAGE` in `db/.env` is for docs / manual `docker build` | Canonical string in [`.github/ci/postgres-service-image.env`](../../.github/ci/postgres-service-image.env). CI job services use `env.POSTGRES_SERVICE_IMAGE` in [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml). Verified by [`.github/scripts/verify-pinned-postgres-image.sh`](../../.github/scripts/verify-pinned-postgres-image.sh). |
 | Java base images (backend image) | `RAG_JAVA_JDK_BASE_IMAGE`, `RAG_JAVA_JRE_BASE_IMAGE` | `docker-compose.yml` `args` → `rag-service/.env` / defaults in Dockerfile `ARG`. |
 | Python base (classifier) | `CLASSIFIER_PYTHON_BASE_IMAGE` | Compose `args` → `classifier-service/.env`. |
 | Webapp `NEXT_PUBLIC_*` at build | `WEBAPP_NEXT_PUBLIC_*` or `NEXT_PUBLIC_*` via compose env | See `webapp` service `build.args` in [`docker-compose.yml`](../../docker/docker-compose.yml); defaults include `/api/v5` for the API prefix. |

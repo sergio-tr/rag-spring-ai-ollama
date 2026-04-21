@@ -7,7 +7,8 @@ services:
       context: ../db
       dockerfile: Dockerfile
       args:
-        POSTGRES_BASE_IMAGE: ${POSTGRES_BASE_IMAGE:-pgvector/pgvector:0.8.2-pg16-bookworm}
+        # Pinned here (not from db/.env) so a wrong POSTGRES_BASE_IMAGE cannot produce a Postgres without pgvector.
+        POSTGRES_BASE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
     container_name: postgres
     env_file:
       - ../db/.env
@@ -26,6 +27,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   classifier-service:
     build:
@@ -73,6 +75,7 @@ services:
       - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
     environment:
       SERVER_PORT: ${SERVER_PORT:-9000}
+      SPRING_MAIN_ALLOW_CIRCULAR_REFERENCES: ${SPRING_MAIN_ALLOW_CIRCULAR_REFERENCES:-true}
       # Disables OTLP to localhost inside the JVM; compose.obs.yml adds profile "infra" and sets OTEL_* to the collector.
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
       # DB connection (same user/password as in db/.env)
@@ -216,6 +219,28 @@ services:
     restart: unless-stopped
 
   # --- Optional: OpenTelemetry + Jaeger + Prometheus + Grafana (profile observability) ---
+  # One-shot: initdb.d does not re-run on existing volumes; this creates POSTGRES_MONITOR_* before otel scrapes.
+  postgres-monitor-bootstrap:
+    profiles:
+      - observability
+    image: postgres:16-alpine
+    container_name: postgres-monitor-bootstrap
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../db/.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-vectordb}
+    volumes:
+      - ../db/scripts/ensure-postgres-monitor-role.sh:/ensure.sh:ro
+    entrypoint: ["/bin/sh", "/ensure.sh"]
+    restart: "no"
+
   otel-collector:
     profiles:
       - observability
@@ -229,6 +254,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-monitor-bootstrap:
+        condition: service_completed_successfully
+    env_file:
+      # db/.env first: POSTGRES_MONITOR_* must match postgres_exporter password (see db/init/01-monitor-user.sh).
+      - ../db/.env
+      - ../observability/.env
     volumes:
       - ../observability/otel-collector/config.yaml:/etc/otel-collector-config.yaml
     environment:
@@ -237,8 +268,9 @@ services:
       OBS_INTERNAL_OTEL_OTLP_HTTP: ${OBS_INTERNAL_OTEL_OTLP_HTTP:-4318}
       OBS_INTERNAL_OTEL_PROM_EXPORT: ${OBS_INTERNAL_OTEL_PROM_EXPORT:-8889}
       OBS_PG_ENDPOINT: ${OBS_PG_ENDPOINT:-postgres:5432}
-      OBS_PG_EXPORTER_USER: ${OBS_PG_EXPORTER_USER:-postgres_exporter}
-      OBS_PG_EXPORTER_PASSWORD: ${OBS_PG_EXPORTER_PASSWORD:-postgres_exporter}
+      # Single-level defaults: nested ${A:-${B:-c}} is unreliable across Compose versions. Source of truth is db/.env (same as postgres init).
+      OBS_PG_EXPORTER_USER: ${POSTGRES_MONITOR_USER:-postgres_exporter}
+      OBS_PG_EXPORTER_PASSWORD: ${POSTGRES_MONITOR_PASSWORD:-postgres_exporter}
       OBS_PG_DB: ${OBS_PG_DB:-vectordb}
       OBS_OTEL_EXPORT_JAEGER_ENDPOINT: ${OBS_OTEL_EXPORT_JAEGER_ENDPOINT:-jaeger:4317}
     ports:
