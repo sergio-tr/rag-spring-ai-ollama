@@ -15,6 +15,7 @@ vi.mock("@/features/documents/hooks/use-project-documents", () => ({
     mutateAsync: uploadHook.mutateAsync,
     isError: uploadHook.isError,
     isPending: uploadHook.isPending,
+    error: null,
   }),
 }));
 
