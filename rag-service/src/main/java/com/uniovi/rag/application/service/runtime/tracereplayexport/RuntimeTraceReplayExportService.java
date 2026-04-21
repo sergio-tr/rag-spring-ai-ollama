@@ -7,6 +7,7 @@ import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplay
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayRequest;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayResult;
 import com.uniovi.rag.interfaces.rest.dto.tracereplay.RuntimeTraceReplayResponseDto;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedOutputStream;
@@ -34,6 +35,7 @@ public class RuntimeTraceReplayExportService {
     private final ObjectMapper objectMapper;
     private final long maxZipSizeBytes;
 
+    @Autowired
     public RuntimeTraceReplayExportService(RuntimeTraceReplayService replayService) {
         this(replayService, MAX_ZIP_SIZE_BYTES);
     }

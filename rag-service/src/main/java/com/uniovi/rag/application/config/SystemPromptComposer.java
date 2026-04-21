@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Sole production composer of the four effective system prompt layers (ADR 0008).
+ * Sole production composer of the four effective system prompt layers.
  */
 @Component
 public class SystemPromptComposer {

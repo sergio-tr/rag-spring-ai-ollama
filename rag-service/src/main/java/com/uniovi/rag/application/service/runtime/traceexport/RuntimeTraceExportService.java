@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.uniovi.rag.application.service.runtime.tracequery.RuntimeTraceQueryService;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceSummaryDto;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 
@@ -38,10 +39,8 @@ public class RuntimeTraceExportService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
-    public RuntimeTraceExportService(
-            RuntimeTraceQueryService runtimeTraceQueryService,
-            ObjectMapper objectMapper
-    ) {
+    @Autowired
+    public RuntimeTraceExportService(RuntimeTraceQueryService runtimeTraceQueryService, ObjectMapper objectMapper) {
         this(runtimeTraceQueryService, objectMapper, Clock.systemUTC());
     }
 

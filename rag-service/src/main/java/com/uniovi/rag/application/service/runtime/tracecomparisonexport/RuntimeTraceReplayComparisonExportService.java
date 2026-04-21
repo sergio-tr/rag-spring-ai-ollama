@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayCompariso
 import com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayComparisonResult;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayMode;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedOutputStream;
@@ -34,6 +35,7 @@ public class RuntimeTraceReplayComparisonExportService {
     private final ObjectMapper objectMapper;
     private final long maxZipSizeBytes;
 
+    @Autowired
     public RuntimeTraceReplayComparisonExportService(RuntimeTraceReplayComparisonService comparisonService) {
         this(comparisonService, MAX_ZIP_SIZE_BYTES);
     }

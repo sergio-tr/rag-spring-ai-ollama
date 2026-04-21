@@ -93,6 +93,15 @@ public class KnowledgeIngestionService {
                 file.getOriginalFilename() != null ? file.getOriginalFilename() : DEFAULT_ORIGINAL_FILENAME;
         String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
 
+        Optional<KnowledgeDocumentEntity> existing =
+                knowledgeDocumentRepository.findFirstByProject_IdAndFileNameAndCorpusScopeAndConversationIsNull(
+                        projectId, original, CorpusScope.PROJECT_SHARED);
+        if (existing.isPresent()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "A document with this filename already exists in the project.");
+        }
+
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newIngesting(project, original);
         row = knowledgeDocumentRepository.save(row);
 
@@ -116,6 +125,16 @@ public class KnowledgeIngestionService {
         String original =
                 file.getOriginalFilename() != null ? file.getOriginalFilename() : DEFAULT_ORIGINAL_FILENAME;
         String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+
+        Optional<KnowledgeDocumentEntity> existing =
+                knowledgeDocumentRepository.findFirstByProject_IdAndFileNameAndCorpusScopeAndConversation_Id(
+                        projectId, original, CorpusScope.CHAT_LOCAL, conversationId);
+        if (existing.isPresent()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "A document with this filename already exists in the conversation.");
+        }
+
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newChatLocalIngesting(conv.getProject(), conv, original);
         row = knowledgeDocumentRepository.save(row);
         Path temp = Files.createTempFile("rag-doc-overlay-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));

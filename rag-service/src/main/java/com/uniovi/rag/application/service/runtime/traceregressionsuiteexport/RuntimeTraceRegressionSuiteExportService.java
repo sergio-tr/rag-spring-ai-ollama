@@ -19,6 +19,7 @@ import java.util.UUID;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -38,6 +39,7 @@ public class RuntimeTraceRegressionSuiteExportService {
     private final ObjectMapper objectMapper;
     private final long maxZipSizeBytes;
 
+    @Autowired
     public RuntimeTraceRegressionSuiteExportService(RuntimeTraceRegressionSuiteService suiteService) {
         this(suiteService, MAX_ZIP_SIZE_BYTES);
     }

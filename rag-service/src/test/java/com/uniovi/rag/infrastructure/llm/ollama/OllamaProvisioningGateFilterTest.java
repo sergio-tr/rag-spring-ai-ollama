@@ -2,6 +2,7 @@ package com.uniovi.rag.infrastructure.llm.ollama;
 
 
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
+import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletResponse;
@@ -21,7 +22,9 @@ class OllamaProvisioningGateFilterTest {
     @BeforeEach
     void setUp() {
         provisioningService = mock(OllamaModelProvisioningService.class);
-        filter = new OllamaProvisioningGateFilter(provisioningService, new ObjectMapper());
+        filter =
+                new OllamaProvisioningGateFilter(
+                        provisioningService, new ObjectMapper(), new RagApiPathProperties());
     }
 
     @Test
@@ -31,16 +34,25 @@ class OllamaProvisioningGateFilterTest {
     }
 
     @Test
-    void shouldNotFilter_whenReady() {
+    void shouldNotFilter_whenReady_allowsNonOllamaEndpoints() {
         when(provisioningService.isReadyForApiTraffic()).thenReturn(true);
         MockHttpServletRequest req = new MockHttpServletRequest("GET", path("/projects"));
         assertTrue(filter.shouldNotFilter(req));
     }
 
     @Test
-    void shouldNotFilter_apiPathNotReady() {
+    void shouldNotFilter_whenNotReady_allowsNonOllamaEndpoints() {
         when(provisioningService.isReadyForApiTraffic()).thenReturn(false);
         MockHttpServletRequest req = new MockHttpServletRequest("GET", path("/projects"));
+        assertTrue(filter.shouldNotFilter(req));
+        verify(provisioningService, never()).isReadyForApiTraffic();
+    }
+
+    @Test
+    void shouldNotFilter_whenNotReady_blocksChatMessageExecution() {
+        when(provisioningService.isReadyForApiTraffic()).thenReturn(false);
+        MockHttpServletRequest req =
+                new MockHttpServletRequest("POST", path("/conversations/00000000-0000-0000-0000-000000000000/messages"));
         assertFalse(filter.shouldNotFilter(req));
     }
 
@@ -49,7 +61,10 @@ class OllamaProvisioningGateFilterTest {
         when(provisioningService.getState()).thenReturn(OllamaModelProvisioningService.State.PENDING);
         when(provisioningService.getLastError()).thenReturn(null);
 
-        MockHttpServletRequest req = new MockHttpServletRequest("GET", path("/projects"));
+        MockHttpServletRequest req =
+                new MockHttpServletRequest(
+                        "POST",
+                        path("/conversations/00000000-0000-0000-0000-000000000000/messages"));
         MockHttpServletResponse res = new MockHttpServletResponse();
         FilterChain chain = mock(FilterChain.class);
 

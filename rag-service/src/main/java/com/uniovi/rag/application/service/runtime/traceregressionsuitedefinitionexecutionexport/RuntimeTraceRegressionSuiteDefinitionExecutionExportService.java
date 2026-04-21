@@ -12,6 +12,7 @@ import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegression
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteResult;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuite.RuntimeTraceRegressionSuiteResponseDto;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedOutputStream;
@@ -43,6 +44,7 @@ public class RuntimeTraceRegressionSuiteDefinitionExecutionExportService {
     private final ObjectMapper objectMapper;
     private final long maxZipSizeBytes;
 
+    @Autowired
     public RuntimeTraceRegressionSuiteDefinitionExecutionExportService(
             RuntimeTraceRegressionSuiteDefinitionService definitionService,
             RuntimeTraceRegressionSuiteService suiteService) {
