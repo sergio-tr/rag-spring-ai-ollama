@@ -5,11 +5,13 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionexecutionexport.RuntimeTraceRegressionSuiteDefinitionExecutionExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionexecutionexport.RuntimeTraceRegressionSuiteDefinitionExecutionExportSizeExceededException;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -47,7 +49,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteDefinitionExecutionExportService exportService;
@@ -102,7 +111,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
         String expectedDisposition =
                 "attachment; filename=\"runtime-trace-regression-suite-definition-execution_" + definitionId + ".zip\"";
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_TYPE, org.hamcrest.Matchers.containsString("application/zip")))
@@ -119,7 +128,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
         when(exportService.exportByDefinitionId(eq(definitionId), eq(userId)))
                 .thenThrow(new NotFoundException("missing"));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(noZipDownloadResponse());
@@ -131,7 +140,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
                 .thenThrow(new NotFoundException("missing"));
         mockMvc.perform(
                         post(
-                                        "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
+                                        productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
                                         conversationId,
                                         definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
@@ -142,7 +151,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
     @Test
     void t4_x1_malformedDefinitionId() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", "not-uuid")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", "not-uuid")
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(noZipDownloadResponse());
@@ -152,7 +161,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
     void t5_x1_queryString_neverCallsExport() throws Exception {
         when(exportService.exportByDefinitionId(any(), any())).thenReturn(sampleZip("x.zip"));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .queryParam("x", "1")
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
@@ -163,7 +172,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
     @Test
     void t6_x1_nonEmptyBody_neverCallsExport() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"a\":1}"))
                 .andExpect(status().isBadRequest())
@@ -175,7 +184,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
     void t7_x2_nonEmptyBody_neverCallsExport() throws Exception {
         mockMvc.perform(
                         post(
-                                        "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
+                                        productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
                                         conversationId,
                                         definitionId)
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -190,7 +199,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
         when(exportService.exportByDefinitionId(eq(definitionId), eq(userId)))
                 .thenThrow(new RuntimeTraceRegressionSuiteDefinitionExecutionExportNotAttemptedException("x"));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(noZipDownloadResponse());
@@ -201,7 +210,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
         String fn = "runtime-trace-regression-suite-definition-execution_" + definitionId + ".zip";
         when(exportService.exportByDefinitionId(eq(definitionId), eq(userId))).thenReturn(sampleZip(fn));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_TYPE, org.hamcrest.Matchers.containsString("application/zip")))
@@ -213,7 +222,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
         String fn = "runtime-trace-regression-suite-definition-execution_" + definitionId + ".zip";
         when(exportService.exportByDefinitionId(eq(definitionId), eq(userId))).thenReturn(sampleZip(fn));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_TYPE, org.hamcrest.Matchers.containsString("application/zip")))
@@ -225,7 +234,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
         when(exportService.exportByDefinitionId(eq(definitionId), eq(userId)))
                 .thenThrow(new RuntimeTraceRegressionSuiteDefinitionExecutionExportSizeExceededException("big"));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isPayloadTooLarge())
                 .andExpect(noZipDownloadResponse());
@@ -238,7 +247,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
                 .thenThrow(new RuntimeTraceRegressionSuiteDefinitionExecutionExportSizeExceededException("big"));
         mockMvc.perform(
                         post(
-                                        "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
+                                        productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
                                         conversationId,
                                         definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
@@ -259,7 +268,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
                 .thenReturn(sampleZip(fn));
         mockMvc.perform(
                         post(
-                                        "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
+                                        productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
                                         conversationId,
                                         definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))

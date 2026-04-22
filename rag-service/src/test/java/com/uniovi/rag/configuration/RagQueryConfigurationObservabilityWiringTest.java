@@ -21,6 +21,7 @@ import io.micrometer.tracing.test.simple.SimpleTracer;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.web.client.RestTemplate;
+import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.Mockito.mock;
@@ -59,7 +60,12 @@ class RagQueryConfigurationObservabilityWiringTest {
 
         QueryClassifier classifier =
                 config.queryClassifier(
-                        "http://localhost:8000", "default", 5000, observability, new SimpleMeterRegistry(), new RestTemplate());
+                        ClassifierClientTestSupport.defaultBaseUrl(),
+                        "default",
+                        5000,
+                        observability,
+                        new SimpleMeterRegistry(),
+                        new RestTemplate());
         assertInstanceOf(TracedQueryClassifier.class, classifier);
 
         RagImplementationProperties implProps = new RagImplementationProperties();

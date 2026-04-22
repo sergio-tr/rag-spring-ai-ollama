@@ -17,6 +17,7 @@ import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.service.query.SimpleQueryService;
 import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
+import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -60,7 +61,7 @@ class EvaluationServiceFactoryTest {
                 jdbcTemplate,
                 10,
                 0.7,
-                "http://localhost:8000",
+                ClassifierClientTestSupport.defaultBaseUrl(),
                 "default",
                 5000,
                 400,

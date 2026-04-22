@@ -22,11 +22,13 @@ import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegress
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuiterunimportpreview.RuntimeTraceRegressionSuiteRunImportPreviewResponseDto;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -68,10 +70,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = "rag.api.product-base-path=/api/v1")
 class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest {
 
-    private static final String PRODUCT_BASE = "/api/v1";
-    private static final String PREVIEW_PATH =
-            PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{defId}/runs/import/preview";
-
     private static final ObjectMapper PREVIEW_TEST_MAPPER =
             new ObjectMapper()
                     .registerModule(new JavaTimeModule())
@@ -80,7 +78,19 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
                     .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
+
+    private String previewPath() {
+        return RagApiTestPaths.path(
+                environment, "/runtime-trace-regression-suite-definitions/{defId}/runs/import/preview");
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -137,7 +147,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
     void p55_t1_queryString_400_neverGateOrPreview() throws Exception {
         MvcResult result =
                 mockMvc.perform(
-                                post(PREVIEW_PATH, definitionId)
+                                post(previewPath(), definitionId)
                                         .queryParam("x", "1")
                                         .contentType("application/zip")
                                         .content(new byte[] {1}))
@@ -154,7 +164,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
     void p55_t2_invalid_definitionId_400_neverGateOrPreview() throws Exception {
         MvcResult result =
                 mockMvc.perform(
-                                post(PREVIEW_PATH, "not-a-uuid")
+                                post(previewPath(), "not-a-uuid")
                                         .contentType("application/zip")
                                         .content(new byte[] {1}))
                         .andExpect(status().isBadRequest())
@@ -170,7 +180,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
     void p55_t3_gate_empty_404_neverPreview() throws Exception {
         when(definitionService.loadByIdForUser(definitionId, userId)).thenReturn(Optional.empty());
         MvcResult result =
-                mockMvc.perform(post(PREVIEW_PATH, definitionId).contentType("application/zip").content(new byte[] {1}))
+                mockMvc.perform(post(previewPath(), definitionId).contentType("application/zip").content(new byte[] {1}))
                         .andExpect(status().isNotFound())
                         .andReturn();
         assertThat(result.getResponse().getContentAsByteArray().length).isZero();
@@ -184,7 +194,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
         when(definitionService.loadByIdForUser(definitionId, userId)).thenReturn(Optional.empty());
         MvcResult result =
                 mockMvc.perform(
-                                post(PREVIEW_PATH, definitionId)
+                                post(previewPath(), definitionId)
                                         .contentType(MediaType.APPLICATION_JSON)
                                         .content("{}"))
                         .andExpect(status().isNotFound())
@@ -208,7 +218,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
         when(runImportPreviewService.previewImportZipForDefinition(any(byte[].class), eq(definitionId)))
                 .thenReturn(dto);
 
-        mockMvc.perform(post(PREVIEW_PATH, definitionId).contentType("application/zip").content(zip))
+        mockMvc.perform(post(previewPath(), definitionId).contentType("application/zip").content(zip))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.importable").value(true))
                 .andExpect(jsonPath("$.warnings").isArray())
@@ -230,7 +240,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
                 .thenReturn(Optional.of(minimalDefinitionSnapshot(definitionId)));
         MvcResult result =
                 mockMvc.perform(
-                                post(PREVIEW_PATH, definitionId)
+                                post(previewPath(), definitionId)
                                         .contentType(MediaType.APPLICATION_JSON)
                                         .content("{}"))
                         .andExpect(status().isBadRequest())
@@ -247,7 +257,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
                 .thenReturn(Optional.of(minimalDefinitionSnapshot(definitionId)));
         MvcResult result =
                 mockMvc.perform(
-                                post(PREVIEW_PATH, definitionId).contentType("application/zip").content(new byte[0]))
+                                post(previewPath(), definitionId).contentType("application/zip").content(new byte[0]))
                         .andExpect(status().isBadRequest())
                         .andReturn();
         assertThat(result.getResponse().getContentAsByteArray().length).isZero();
@@ -262,7 +272,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
                 .thenReturn(Optional.of(minimalDefinitionSnapshot(definitionId)));
         byte[] huge = new byte[(int) RuntimeTraceRegressionSuiteRunImportPreviewService.MAX_PREVIEW_ZIP_BYTES + 1];
         MvcResult result =
-                mockMvc.perform(post(PREVIEW_PATH, definitionId).contentType("application/zip").content(huge))
+                mockMvc.perform(post(previewPath(), definitionId).contentType("application/zip").content(huge))
                         .andExpect(status().isBadRequest())
                         .andReturn();
         assertThat(result.getResponse().getContentAsByteArray().length).isZero();
@@ -280,7 +290,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
 
         MvcResult result =
                 mockMvc.perform(
-                                post(PREVIEW_PATH, definitionId)
+                                post(previewPath(), definitionId)
                                         .contentType("application/zip")
                                         .content(new byte[] {1, 2}))
                         .andExpect(status().isBadRequest())
@@ -300,7 +310,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
 
         MvcResult result =
                 mockMvc.perform(
-                                post(PREVIEW_PATH, definitionId)
+                                post(previewPath(), definitionId)
                                         .contentType("application/zip")
                                         .content(new byte[] {1, 2}))
                         .andExpect(status().isBadRequest())
@@ -317,7 +327,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
                 .thenReturn(Optional.of(minimalDefinitionSnapshot(definitionId)));
         when(runPersistenceService.listSummariesForUserAndDefinition(userId, definitionId)).thenReturn(List.of());
 
-        mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
                 .andExpect(status().isOk());
 
         verify(runPersistenceService, times(1)).listSummariesForUserAndDefinition(eq(userId), eq(definitionId));
@@ -342,7 +352,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunImportPreviewWebMvcTest 
 
         mockMvc.perform(
                         get(
-                                PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
+                                productBase() + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                 definitionId,
                                 runId))
                 .andExpect(status().isOk());

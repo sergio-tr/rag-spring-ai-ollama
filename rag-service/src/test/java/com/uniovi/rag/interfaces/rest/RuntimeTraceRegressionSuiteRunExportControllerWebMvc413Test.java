@@ -5,11 +5,13 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.Runtim
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportSizeExceededException;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -47,7 +49,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RuntimeTraceRegressionSuiteRunExportControllerWebMvc413Test {
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunExportService exportService;
@@ -94,7 +103,7 @@ class RuntimeTraceRegressionSuiteRunExportControllerWebMvc413Test {
     void t5_exportServiceThrows413_noPersistenceCalls() throws Exception {
         when(exportService.exportRunZip(eq(runId), eq(userId)))
                 .thenThrow(new RuntimeTraceRegressionSuiteRunExportSizeExceededException("run export exceeds max ZIP size"));
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", runId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", runId))
                 .andExpect(status().isPayloadTooLarge())
                 .andExpect(noZipDownloadResponse());
         verify(runPersistenceService, never()).loadByIdForUser(any(), any());

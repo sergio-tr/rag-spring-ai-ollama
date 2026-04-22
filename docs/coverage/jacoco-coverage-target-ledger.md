@@ -81,7 +81,7 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 | EXC-009 | `com/uniovi/rag/service/evaluation/**` | `**/service/evaluation/**` | Service_integrations | Eval runners / LLM judge | High | Unit + mock ChatClient; parser tables | **6.06** | — | — |
 | EXC-010 | `com/uniovi/rag/tool/**` | `**/tool/**` | Service_integrations | Tool adapters | High | Existing tool tests + gaps; mock LLM cache | **6.06** | — | Bundle ratio — add tests before remove |
 | EXC-011 | `com/uniovi/rag/infrastructure/observability/**` | `**/observability/**` | Observability | Tracing decorators | Med | Unit with mock delegate + `ObservabilitySupport` | **6.02** | — | Align path with `infrastructure` package |
-| EXC-012 | `com/uniovi/rag/service/analyser/**` | `**/service/analyser/**` | Service_integrations | NER / QU | High | `ChatClientTestSupport` stubs | **6.07** | — | — |
+| EXC-012 | **removed 6.21** (was `com/uniovi/rag/service/analyser/**`) | **removed 6.21** (was `**/service/analyser/**`) | Service_integrations | NER / QU | High | `ChatClientTestSupport` stubs + existing unit tests | **6.21** done | — | — |
 | EXC-013 | `com/uniovi/rag/service/extraction/**` | `**/service/extraction/**` | Service_integrations | Minute parsing | Med | String fixtures | **6.07** | — | — |
 | EXC-014 | `com/uniovi/rag/service/ranker/**` | `**/service/ranker/**` | Service_integrations | LLM-as-judge | High | Mock ChatClient; candidate lists | **6.07** | — | — |
 | EXC-015 | **removed 6.05** (was `com/uniovi/rag/application/service/runtime/**`) | **removed 6.05** (was `**/application/service/runtime/**`) | Application_orchestration | Trace replay, orchestrator | High | Mockito + selective ITs (`RagExecutionOrchestrator*Test`, `WorkflowSelectorTest`, `DefaultQueryUnderstandingPipelineTest`, `RuntimeTraceReplayStrategyBranchTest`, retrieval loaders, etc.) | **6.05** done | — | — |
@@ -89,13 +89,13 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 | EXC-017 | `com/uniovi/rag/domain/runtime/functioncalling/**` | `**/domain/runtime/functioncalling/**` | DTOs_records_enums | P9 records | Med | Unit invariants | **6.03** | — | — |
 | EXC-018 | `com/uniovi/rag/domain/runtime/advisor/**` | `**/domain/runtime/advisor/**` | DTOs_records_enums | P10 advisor domain | Med | Unit (`PackedContextSet`, etc.) | **6.03** | — | — |
 | EXC-019 | `com/uniovi/rag/domain/runtime/retrieval/**` | `**/domain/runtime/retrieval/**` | DTOs_records_enums | Retrieval diagnostics | Med | Unit invariants | **6.03** | — | — |
-| EXC-020 | `com/uniovi/rag/domain/entity/**` | `**/domain/entity/**` | DTOs_records_enums | Domain structs | Med–High | Unit where logic; else indirect | **6.03** / **6.09** | Possible RESIDUAL for pure tuples | Enumerate vs bundle |
+| EXC-020 | **removed 6.21** (was `com/uniovi/rag/domain/entity/**`) | **removed 6.21** (was `**/domain/entity/**`) | DTOs_records_enums | Legacy dead pattern (no package) | — | N/A | **6.21** done | — | See `.cursor/plans/rag_service_domain_entity_coverage_decision_2026-04-21.plan.md` |
 | EXC-021 | `com/uniovi/rag/api/v5/dto/**` | `**/api/v5/dto/**` | DTOs_records_enums | API DTOs | Low | **Verified:** no `com.uniovi.rag.api` tree | **6.03** | — | Dead JaCoCo; clean Sonar line |
 | EXC-022 | `com/uniovi/rag/interfaces/rest/dto/**` | `**/interfaces/rest/dto/**/*.java` | DTOs_records_enums | REST records | Med | `@JsonTest`, factory tests | **6.03** | — | Large tree — prioritize Jackson |
 | EXC-023 | `com/uniovi/rag/api/auth/dto/**` | `**/api/auth/dto/**` | DTOs_records_enums | Auth DTOs | Low | **Verified:** no package | **6.03** | — | Dead JaCoCo |
-| EXC-024 | `com/uniovi/rag/application/service/evaluation/**` | **Sonar_gap:** no dedicated line in `sonar.coverage.exclusions` (coverage follows JaCoCo XML only) | Application_orchestration | Lab benchmarks | High | Unit + WebMvc existing | **6.06** | — | Add explicit Sonar line when removing JaCoCo exclude (6.09 parity) |
+| EXC-024 | `com/uniovi/rag/application/service/evaluation/**` | `**/application/service/evaluation/**` | Application_orchestration | Lab benchmarks | High | Unit + WebMvc existing | **6.06** | — | JaCoCo + Sonar aligned |
 
-*Note:* Confirm `application/service/evaluation/**` has an explicit Sonar line when converging; POM comment references lab benchmarks.
+*Note:* `application/service/evaluation/**` has an explicit `sonar.coverage.exclusions` line matching JaCoCo intent.
 
 ---
 
@@ -149,7 +149,7 @@ Aligns with project plans 6.02–6.09; adjust dates in PR descriptions.
 3. **6.04** — JPA list (`EXC-JPA-*`).  
 4. **6.05** — Runtime app + engine (`EXC-015`, `EXC-016`).  
 5. **6.06** — Knowledge, retriever, evaluation, tool, app evaluation (`EXC-007`–`EXC-010`, `EXC-024`).  
-6. **6.07** — Document, analyser, extraction, ranker (`EXC-006`, `EXC-012`–`EXC-014`).  
+6. **6.07** — Document, extraction, ranker (`EXC-006`, `EXC-013`–`EXC-014`); **6.21** retired `EXC-012` analyser package.  
 7. **6.08** — Test hardening, `/api/v5` inventory, Surefire hygiene.  
 8. **6.09** — Final allowlist, Sonar QG, bootstrap residual (`EXC-001`).
 
@@ -251,14 +251,12 @@ _Update SHA when merging if different._
   - `com/uniovi/rag/service/retriever/**` — **RESIDUAL_EXCEPTION** (wave 6.06 attempt reverted; see Wave 6.06 record).
   - `com/uniovi/rag/service/evaluation/**` — **RESIDUAL_EXCEPTION** (wave 6.06 attempt reverted; see Wave 6.06 record).
   - `com/uniovi/rag/tool/**` — **RESIDUAL_EXCEPTION** (wave 6.06 attempt reverted; see Wave 6.06 record).
-  - `com/uniovi/rag/service/analyser/**` — **RESIDUAL_EXCEPTION** (scheduled for later wave; not removed here).
   - `com/uniovi/rag/service/extraction/**` — **RESIDUAL_EXCEPTION** (scheduled for later wave; not removed here).
   - `com/uniovi/rag/service/ranker/**` — **RESIDUAL_EXCEPTION** (scheduled for later wave; not removed here).
-  - `com/uniovi/rag/domain/entity/**` — **RESIDUAL_EXCEPTION** (domain structs; not converged to enumeration yet).
   - `com/uniovi/rag/application/service/evaluation/**` — **RESIDUAL_EXCEPTION** (lab benchmarks; large orchestration surface).
 
 - **Sonar `sonar.coverage.exclusions` (rag-service Java intent)**:
-  - **Aligned** with JaCoCo package intent: `Application`, `service/document`, knowledge/retriever/evaluation/tool, analyser/extraction/ranker, `domain/entity`.
+  - **Aligned** with JaCoCo package intent: `Application`, `service/document`, knowledge/retriever/evaluation/tool, extraction/ranker ( **`service/analyser/**` measured** since 6.21; **`domain/entity` patterns removed** as dead).
   - **Narrowing status**: broad globs `**/*Configuration.java`, `**/*Properties.java`, `**/model/**`, `**/exception/**` are **not present** in the current file; residual exclusions are explicit paths under `rag-service/src/main/java/...` only.
   - **Non-Java-module Sonar entries** retained (classifier/webapp) under **NON_JAVA_MODULE**.
 
@@ -272,10 +270,10 @@ _Update SHA when merging if different._
 | R-004 | JaCoCo + Sonar | `com/uniovi/rag/service/retriever/**` / `**/service/retriever/**` | RESIDUAL_EXCEPTION | Wave 6.06 attempt reverted; naive corpus + metadata retrievers require more coverage to carry full package. | Wave 6.06 record | 6.06 retry |
 | R-005 | JaCoCo + Sonar | `com/uniovi/rag/service/evaluation/**` / `**/service/evaluation/**` | RESIDUAL_EXCEPTION | Wave 6.06 attempt reverted; abstract evaluation service remains red without further tests. | Wave 6.06 record | 6.06 retry |
 | R-006 | JaCoCo + Sonar | `com/uniovi/rag/tool/**` / `**/tool/**` | RESIDUAL_EXCEPTION | Wave 6.06 attempt reverted; `tool/metadata` dominates missed lines (needs focused work). | Wave 6.06 record | 6.06 retry |
-| R-007 | JaCoCo + Sonar | `com/uniovi/rag/service/analyser/**` / `**/service/analyser/**` | RESIDUAL_EXCEPTION | Scheduled for later coverage wave; not addressed in convergence. | Ledger EXC-012 | 6.07 |
+| R-007 | **RETIRED 6.21** | `com/uniovi/rag/service/analyser/**` / `**/service/analyser/**` | — | Removed from JaCoCo + Sonar; small package; bundle gate still ≥ 0.80. | Ledger EXC-012 | — |
 | R-008 | JaCoCo + Sonar | `com/uniovi/rag/service/extraction/**` / `**/service/extraction/**` | RESIDUAL_EXCEPTION | Scheduled for later coverage wave; not addressed in convergence. | Ledger EXC-013 | 6.07 |
 | R-009 | JaCoCo + Sonar | `com/uniovi/rag/service/ranker/**` / `**/service/ranker/**` | RESIDUAL_EXCEPTION | Scheduled for later coverage wave; not addressed in convergence. | Ledger EXC-014 | 6.07 |
-| R-010 | JaCoCo + Sonar | `com/uniovi/rag/domain/entity/**` / `**/domain/entity/**` | RESIDUAL_EXCEPTION | Domain tuple layer still excluded pending enumeration decision. | Ledger EXC-020 | 6.09/6.12 |
+| R-010 | **RETIRED 6.21** | `com/uniovi/rag/domain/entity/**` / `**/domain/entity/**` | — | No matching sources; dead JaCoCo/Sonar patterns removed. | Ledger EXC-020 | — |
 | R-011 | JaCoCo only | `com/uniovi/rag/application/service/evaluation/**` | RESIDUAL_EXCEPTION | Lab benchmark orchestration; not converged to measured set yet. | Ledger EXC-024 | 6.09/6.12 |
 | R-012 | Sonar only | `classifier-service/...` entries | NON_JAVA_MODULE | Python classifier paths; excluded from Sonar coverage. | Existing Sonar config | 6.12 |
 | R-013 | Sonar only | `webapp/...` entries | NON_JAVA_MODULE | Webapp files excluded from Sonar coverage per project policy. | Existing Sonar config | 6.12 |

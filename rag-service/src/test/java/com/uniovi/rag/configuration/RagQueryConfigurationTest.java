@@ -33,6 +33,7 @@ import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.web.client.RestTemplate;
+import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -66,7 +67,7 @@ class RagQueryConfigurationTest {
     void queryClassifierBean_returnsClassifierServiceClient() {
         RagQueryConfiguration config = new RagQueryConfiguration();
         QueryClassifier classifier =
-                config.queryClassifier("http://localhost:8000", "default", 5000, null, null, new RestTemplate());
+                config.queryClassifier(ClassifierClientTestSupport.defaultBaseUrl(), "default", 5000, null, null, new RestTemplate());
         assertNotNull(classifier);
         assertTrue(classifier instanceof ClassifierServiceClient);
     }
@@ -124,7 +125,12 @@ class RagQueryConfigurationTest {
         RagQueryConfiguration config = new RagQueryConfiguration();
         QueryClassifier qc =
                 config.queryClassifier(
-                        "http://localhost:8000", "mid", 1000, null, new SimpleMeterRegistry(), new RestTemplate());
+                        ClassifierClientTestSupport.defaultBaseUrl(),
+                        "mid",
+                        1000,
+                        null,
+                        new SimpleMeterRegistry(),
+                        new RestTemplate());
         assertInstanceOf(ClassifierInferenceMetricsDecorator.class, qc);
     }
 

@@ -14,6 +14,7 @@ import com.uniovi.rag.service.ranker.ResponseRanker;
 import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
+import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
@@ -56,7 +57,7 @@ class RagEvaluationConfigurationTest {
                 jdbcTemplate,
                 10,
                 0.7,
-                "http://localhost:8000",
+                ClassifierClientTestSupport.defaultBaseUrl(),
                 "default",
                 5000,
                 400,

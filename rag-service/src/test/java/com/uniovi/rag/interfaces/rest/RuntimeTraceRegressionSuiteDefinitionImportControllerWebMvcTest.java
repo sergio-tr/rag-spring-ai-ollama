@@ -10,11 +10,13 @@ import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTrace
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSnapshot;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionDetailDto;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -51,8 +53,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
 class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
 
-    private static final String IMPORT_PATH = "/api/test/runtime-trace-regression-suite-definitions/import";
-
     @TestConfiguration
     static class ImportTestConfig {
 
@@ -64,7 +64,18 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
     }
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
+
+    private String importPath() {
+        return RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-definitions/import");
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -114,13 +125,13 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
     void t1_created201_locationEmptyBody_createOnce() throws Exception {
         UUID createdId = UUID.randomUUID();
         when(definitionService.create(eq(userId), any(CreateDefinitionCommand.class))).thenReturn(createdId);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(validZip()))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(validZip()))
                 .andExpect(status().isCreated())
                 .andExpect(
                         result -> {
                             assertThat(result.getResponse().getContentAsByteArray().length).isZero();
                             assertThat(result.getResponse().getHeader(HttpHeaders.LOCATION))
-                                    .isEqualTo("/api/test/runtime-trace-regression-suite-definitions/" + createdId);
+                                    .isEqualTo(productBase() + "/runtime-trace-regression-suite-definitions/" + createdId);
                         });
         verify(definitionService, times(1)).create(eq(userId), any(CreateDefinitionCommand.class));
     }
@@ -128,7 +139,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
     @Test
     void t2_queryString_neverCreate() throws Exception {
         mockMvc.perform(
-                        post(IMPORT_PATH)
+                        post(importPath())
                                 .queryParam("x", "1")
                                 .contentType("application/zip")
                                 .content(validZip()))
@@ -139,7 +150,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
 
     @Test
     void t3_contentTypeJson_neverCreate() throws Exception {
-        mockMvc.perform(post(IMPORT_PATH).contentType(MediaType.APPLICATION_JSON).content("{}"))
+        mockMvc.perform(post(importPath()).contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -147,7 +158,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
     @Test
     void t3b_contentTypeZipWithCharset_neverCreate() throws Exception {
         mockMvc.perform(
-                        post(IMPORT_PATH)
+                        post(importPath())
                                 .header(HttpHeaders.CONTENT_TYPE, "application/zip; charset=UTF-8")
                                 .content(validZip()))
                 .andExpect(status().isBadRequest());
@@ -156,21 +167,21 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
 
     @Test
     void t3c_malformedContentType_neverCreate() throws Exception {
-        mockMvc.perform(post(IMPORT_PATH).header(HttpHeaders.CONTENT_TYPE, "@@@").content(validZip()))
+        mockMvc.perform(post(importPath()).header(HttpHeaders.CONTENT_TYPE, "@@@").content(validZip()))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
 
     @Test
     void t4_emptyBody_neverCreate() throws Exception {
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(new byte[0]))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(new byte[0]))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
 
     @Test
     void t5_garbageZip_neverCreate() throws Exception {
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(new byte[] {0x50, 0x4b, 0x03}))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(new byte[] {0x50, 0x4b, 0x03}))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -180,7 +191,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
         byte[] man = "{}".getBytes();
         byte[] def = validDefinitionJson();
         byte[] zip = P39ImportZipTestUtil.writeTwoStored("wrong.json", man, "definition.json", def);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -194,7 +205,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
         man.put("zipSizeBytes", 999999L);
         byte[] manBytes = fd4.writeValueAsBytes(man);
         byte[] zip = P39ImportZipTestUtil.writeTwoStored("manifest.json", manBytes, "wrong.json", validDefinitionJson());
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -209,7 +220,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
         man.put("zipSizeBytes", 999999L);
         byte[] manBytes = fd4.writeValueAsBytes(man);
         byte[] zip = P39ImportZipTestUtil.writeTwoStored(manBytes, def);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -223,7 +234,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
         man.put("truncated", true);
         man.put("zipSizeBytes", 999999L);
         byte[] zip = P39ImportZipTestUtil.writeTwoStored(fd4.writeValueAsBytes(man), def);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -236,7 +247,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
         man.put("schemaVersion", 1);
         man.put("zipSizeBytes", 999999L);
         byte[] zip = P39ImportZipTestUtil.writeTwoStored(fd4.writeValueAsBytes(man), def);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -250,7 +261,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
         man.put("truncated", "yes");
         man.put("zipSizeBytes", 999999L);
         byte[] zip = P39ImportZipTestUtil.writeTwoStored(fd4.writeValueAsBytes(man), def);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -264,7 +275,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
         man.put("truncated", false);
         man.put("zipSizeBytes", 999999L);
         byte[] zip = P39ImportZipTestUtil.writeTwoStored(fd4.writeValueAsBytes(man), def);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -277,7 +288,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
         man.put("truncated", false);
         man.put("zipSizeBytes", 999999L);
         byte[] zip = P39ImportZipTestUtil.writeTwoStored(fd4.writeValueAsBytes(man), def);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -291,7 +302,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
         man.put("truncated", false);
         man.put("zipSizeBytes", 999999L);
         byte[] zip = P39ImportZipTestUtil.writeTwoStored(fd4.writeValueAsBytes(man), def);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -303,7 +314,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
                         new IllegalStateException(
                                 "A regression suite definition with this name already exists for the user",
                                 new RuntimeException()));
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(validZip()))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(validZip()))
                 .andExpect(status().isConflict());
         verify(definitionService, times(1)).create(eq(userId), any(CreateDefinitionCommand.class));
     }
@@ -317,7 +328,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
         man.put("truncated", false);
         man.put("zipSizeBytes", 1L);
         byte[] zip = P39ImportZipTestUtil.writeTwoStored(fd4.writeValueAsBytes(man), def);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -337,7 +348,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
                         false));
         byte[] def = validDefinitionJson();
         byte[] zip = P39ImportZipTestUtil.writeTwoStored("definition.json", def, "manifest.json", man);
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }
@@ -352,7 +363,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportControllerWebMvcTest {
                         definitionIdPath,
                         validDefinitionJson(),
                         new byte[] {9});
-        mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(zip))
+        mockMvc.perform(post(importPath()).contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(definitionService, never()).create(any(), any());
     }

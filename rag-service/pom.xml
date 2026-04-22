@@ -323,6 +323,28 @@
                 </configuration>
             </plugin>
 
+            <!-- Failsafe: integration-test tier (executes *IT / *IntegrationIT) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.4</version>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                        <include>**/*IntegrationIT.java</include>
+                    </includes>
+                    <argLine>-Xshare:off @{argLine} -javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar"</argLine>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- JaCoCo: code coverage for SonarCloud -->
             <plugin>
                 <groupId>org.jacoco</groupId>
@@ -354,6 +376,8 @@
                 </executions>
                 <configuration>
                     <!-- Keep aligned with ../sonar-project.properties sonar.coverage.exclusions (same intent). -->
+                    <!-- Heavy-package <excludes> below: per-pattern unit / WebMvc / IT exit contract and prerequisites -->
+                    <!-- (docs/testing/rag-service-heavy-package-coverage-exit-contracts.md). -->
                     <!-- Wave 6.03: removed legacy no-op patterns (no matching packages in main bytecode):
                          com.uniovi.rag.model, com.uniovi.rag.exception, com.uniovi.rag.api.v5.dto, com.uniovi.rag.api.auth.dto. -->
                     <excludes>
@@ -369,14 +393,14 @@
                         <!-- MessageStreamController: covered by MessageStreamControllerTest -->
                         <!-- v5 REST controllers: counted in JaCoCo; covered by WebMvc / integration tests (do not exclude) -->
                         <!-- Wave 6.04: removed 32 per-class JaCoCo excludes under infrastructure/persistence/jpa; coverage from unit tests + Postgres ITs in src/test/.../persistence. -->
-                        <exclude>com/uniovi/rag/domain/entity/**</exclude>
+                        <!-- domain/entity: legacy JaCoCo exclude removed 2026-04-21 (no com.uniovi.rag.domain.entity sources). -->
                         <!-- Heavy LLM/metadata/tooling + ingestion stacks: covered by focused unit tests + integration/E2E (bundle gate targets overall product coverage). -->
                         <exclude>com/uniovi/rag/service/document/**</exclude>
                         <exclude>com/uniovi/rag/application/service/knowledge/**</exclude>
                         <exclude>com/uniovi/rag/service/retriever/**</exclude>
+                        <!-- LLM/judge + persistence-heavy evaluation stack; bundle gate fails if fully included before broader tests (see .cursor/plans/rag_service_evaluation_coverage_exit_2026-04-21.plan.md). -->
                         <exclude>com/uniovi/rag/service/evaluation/**</exclude>
                         <exclude>com/uniovi/rag/tool/**</exclude>
-                        <exclude>com/uniovi/rag/service/analyser/**</exclude>
                         <exclude>com/uniovi/rag/service/extraction/**</exclude>
                         <exclude>com/uniovi/rag/service/ranker/**</exclude>
                         <exclude>com/uniovi/rag/application/service/evaluation/**</exclude>

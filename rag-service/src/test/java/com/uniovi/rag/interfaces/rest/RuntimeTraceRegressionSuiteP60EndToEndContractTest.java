@@ -1,7 +1,6 @@
 package com.uniovi.rag.interfaces.rest;
 
 
-import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -44,6 +43,7 @@ import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.Runtime
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuiterunimportpreview.RuntimeTraceRegressionSuiteRunImportPreviewResponseDto;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -63,6 +63,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -278,12 +279,17 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     class SliceP60RunController {
 
         private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-        private static final String PRODUCT_BASE = "/api/v1";
-        private static final String POST_EXPLICIT = PRODUCT_BASE + "/runtime-trace-regression-suite-runs";
         private static final String VALID_EMPTY_ENTRIES_JSON = "{\"entries\":[]}";
 
         @Autowired
+        private Environment environment;
+
+        @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
@@ -315,7 +321,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m01() throws Exception {
             when(runPersistenceService.listSummariesForUser(userId)).thenReturn(List.of());
-            mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-runs"))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs"))
                     .andExpect(status().isOk())
                     .andExpect(content().json("{\"runs\":[]}", true));
             verify(runPersistenceService, times(1)).listSummariesForUser(any());
@@ -326,7 +332,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m02() throws Exception {
-            mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-runs").queryParam("x", "1"))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs").queryParam("x", "1"))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().string(""));
             verify(runPersistenceService, never()).listSummariesForUser(any());
@@ -348,7 +354,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                             List.of());
             when(runPersistenceService.loadByIdForUser(runId, userId)).thenReturn(Optional.of(snap));
             MvcResult result =
-                    mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-runs/{id}", runId))
+                    mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId))
                             .andExpect(status().isOk())
                             .andExpect(jsonPath("$.id").value(runId.toString()))
                             .andExpect(jsonPath("$.definitionId").value(nullValue()))
@@ -384,7 +390,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         void p60_m04() throws Exception {
             UUID id = UUID.randomUUID();
             when(runPersistenceService.loadByIdForUser(id, userId)).thenReturn(Optional.empty());
-            mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-runs/{id}", id))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}", id))
                     .andExpect(status().isNotFound())
                     .andExpect(
                             r ->
@@ -398,7 +404,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m05() throws Exception {
-            mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-runs/{id}", "not-a-uuid"))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}", "not-a-uuid"))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().string(""));
             verify(runPersistenceService, never()).loadByIdForUser(any(), any());
@@ -408,7 +414,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m06() throws Exception {
-            mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-runs/{id}", runId).queryParam("x", "1"))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId).queryParam("x", "1"))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().string(""));
             verify(runPersistenceService, never()).loadByIdForUser(any(), any());
@@ -427,7 +433,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                     .thenReturn(createdId);
 
             mockMvc.perform(
-                            post(POST_EXPLICIT)
+                            post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-runs"))
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(VALID_EMPTY_ENTRIES_JSON))
                     .andExpect(status().isCreated())
@@ -436,7 +442,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                             header()
                                     .string(
                                             HttpHeaders.LOCATION,
-                                            PRODUCT_BASE + "/runtime-trace-regression-suite-runs/" + createdId));
+                                            productBase() + "/runtime-trace-regression-suite-runs/" + createdId));
 
             verify(suiteService, times(1)).execute(any());
             verify(runPersistenceService, times(1))
@@ -461,7 +467,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
             mockMvc.perform(
                             post(
-                                            PRODUCT_BASE
+                                            productBase()
                                                     + "/conversations/{cid}/runtime-trace-regression-suite-runs",
                                             conversationId)
                                     .contentType(MediaType.APPLICATION_JSON)
@@ -472,7 +478,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                             header()
                                     .string(
                                             HttpHeaders.LOCATION,
-                                            PRODUCT_BASE + "/runtime-trace-regression-suite-runs/" + createdId));
+                                            productBase() + "/runtime-trace-regression-suite-runs/" + createdId));
 
             verify(suiteService, times(1)).execute(any());
             verify(runPersistenceService, times(1))
@@ -488,7 +494,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m09() throws Exception {
             mockMvc.perform(
-                            post(POST_EXPLICIT)
+                            post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-runs"))
                                     .queryParam("x", "1")
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(VALID_EMPTY_ENTRIES_JSON))
@@ -503,7 +509,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m10() throws Exception {
-            mockMvc.perform(post(POST_EXPLICIT).contentType(MediaType.APPLICATION_JSON).content("{"))
+            mockMvc.perform(post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-runs")).contentType(MediaType.APPLICATION_JSON).content("{"))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().string(""));
 
@@ -516,7 +522,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m11() throws Exception {
             mockMvc.perform(
-                            post(PRODUCT_BASE + "/conversations/{cid}/runtime-trace-regression-suite-runs", "not-a-uuid")
+                            post(productBase() + "/conversations/{cid}/runtime-trace-regression-suite-runs", "not-a-uuid")
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(VALID_EMPTY_ENTRIES_JSON))
                     .andExpect(status().isBadRequest())
@@ -534,7 +540,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             when(suiteService.execute(any())).thenReturn(result);
 
             mockMvc.perform(
-                            post(POST_EXPLICIT)
+                            post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-runs"))
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(VALID_EMPTY_ENTRIES_JSON))
                     .andExpect(status().isBadRequest())
@@ -549,7 +555,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m13() throws Exception {
             when(runPersistenceService.deleteRunForUser(eq(runId), eq(userId))).thenReturn(true);
-            mockMvc.perform(delete(PRODUCT_BASE + "/runtime-trace-regression-suite-runs/{id}", runId))
+            mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId))
                     .andExpect(status().isNoContent())
                     .andExpect(
                             r -> {
@@ -564,7 +570,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m14() throws Exception {
             when(runPersistenceService.deleteRunForUser(eq(runId), eq(userId))).thenReturn(false);
-            mockMvc.perform(delete(PRODUCT_BASE + "/runtime-trace-regression-suite-runs/{id}", runId))
+            mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId))
                     .andExpect(status().isNotFound())
                     .andExpect(
                             r -> {
@@ -578,7 +584,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m15() throws Exception {
-            mockMvc.perform(delete(PRODUCT_BASE + "/runtime-trace-regression-suite-runs/{id}", runId).queryParam("x", "1"))
+            mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId).queryParam("x", "1"))
                     .andExpect(status().isBadRequest())
                     .andExpect(
                             r -> {
@@ -592,7 +598,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m16() throws Exception {
-            mockMvc.perform(delete(PRODUCT_BASE + "/runtime-trace-regression-suite-runs/{id}", "not-a-uuid"))
+            mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-runs/{id}", "not-a-uuid"))
                     .andExpect(status().isBadRequest())
                     .andExpect(
                             r -> {
@@ -640,7 +646,14 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         }
 
         @Autowired
+        private Environment environment;
+
+        @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
@@ -697,7 +710,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             when(runPersistenceService.loadByIdForUser(eq(runId), eq(userId)))
                     .thenReturn(Optional.of(minimalSnapshot(runId, userId)));
             String expectedDisposition = "attachment; filename=\"runtime-trace-regression-suite-run_" + runId + ".zip\"";
-            mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", runId))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", runId))
                     .andExpect(status().isOk())
                     .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "application/zip"))
                     .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, expectedDisposition))
@@ -717,7 +730,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m18() throws Exception {
-            mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", runId).queryParam("x", "1"))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", runId).queryParam("x", "1"))
                     .andExpect(status().isBadRequest())
                     .andExpect(noZipDownloadResponse());
             verify(runPersistenceService, never()).loadByIdForUser(any(), any());
@@ -728,7 +741,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m19() throws Exception {
-            mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", "not-a-uuid"))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", "not-a-uuid"))
                     .andExpect(status().isBadRequest())
                     .andExpect(noZipDownloadResponse());
             verify(runPersistenceService, never()).loadByIdForUser(any(), any());
@@ -740,7 +753,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m20() throws Exception {
             when(runPersistenceService.loadByIdForUser(eq(runId), eq(userId))).thenReturn(Optional.empty());
-            mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", runId))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", runId))
                     .andExpect(status().isNotFound())
                     .andExpect(noZipDownloadResponse());
             verify(runPersistenceService, times(1)).loadByIdForUser(eq(runId), eq(userId));
@@ -761,7 +774,14 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     class SliceP60RunExport413 {
 
         @Autowired
+        private Environment environment;
+
+        @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteRunExportService exportService;
@@ -808,7 +828,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         void p60_m21() throws Exception {
             when(exportService.exportRunZip(eq(runId), eq(userId)))
                     .thenThrow(new RuntimeTraceRegressionSuiteRunExportSizeExceededException("run export exceeds max ZIP size"));
-            mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", runId))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", runId))
                     .andExpect(status().isPayloadTooLarge())
                     .andExpect(noZipDownloadResponse());
             verify(runPersistenceService, never()).loadByIdForUser(any(), any());
@@ -841,7 +861,14 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         }
 
         @Autowired
+        private Environment environment;
+
+        @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteRunPersistenceService persistence;
@@ -877,11 +904,11 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             when(persistence.createRun(eq(userId), any(), any(), any())).thenReturn(createdId);
             byte[] zip = RunImportZipTestUtil.buildAdHocEmptyRunZip(runIdInFixture, userId);
             mockMvc.perform(
-                            post("/api/test/runtime-trace-regression-suite-runs/import")
+                            post(productBase() + "/runtime-trace-regression-suite-runs/import")
                                     .contentType("application/zip")
                                     .content(zip))
                     .andExpect(status().isCreated())
-                    .andExpect(header().string(HttpHeaders.LOCATION, "/api/test/runtime-trace-regression-suite-runs/" + createdId))
+                    .andExpect(header().string(HttpHeaders.LOCATION, productBase() + "/runtime-trace-regression-suite-runs/" + createdId))
                     .andExpect(result -> assertThat(result.getResponse().getContentAsByteArray().length).isZero());
             verify(persistence, times(1)).createRun(eq(userId), any(), any(), any());
             verify(persistence, never()).loadByIdForUser(any(), any());
@@ -894,7 +921,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m23() throws Exception {
             mockMvc.perform(
-                            post("/api/test/runtime-trace-regression-suite-runs/import")
+                            post(productBase() + "/runtime-trace-regression-suite-runs/import")
                                     .queryParam("x", "1")
                                     .contentType("application/zip")
                                     .content(RunImportZipTestUtil.buildAdHocEmptyRunZip(runIdInFixture, userId)))
@@ -905,7 +932,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m24() throws Exception {
             mockMvc.perform(
-                            post("/api/test/runtime-trace-regression-suite-runs/import")
+                            post(productBase() + "/runtime-trace-regression-suite-runs/import")
                                     .contentType("application/zip; charset=UTF-8")
                                     .content(RunImportZipTestUtil.buildAdHocEmptyRunZip(runIdInFixture, userId)))
                     .andExpect(status().isBadRequest());
@@ -922,10 +949,15 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
     class SliceP60RunImportPreview {
 
-        private static final String PREVIEW_PATH = "/api/test/runtime-trace-regression-suite-runs/import/preview";
+        @Autowired
+        private Environment environment;
 
         @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteRunImportPreviewService previewService;
@@ -962,7 +994,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         void p60_m25() throws Exception {
             delegatePreviewToReal();
             byte[] zip = RunImportZipTestUtil.buildAdHocEmptyRunZip(runId, userId);
-            mockMvc.perform(post(PREVIEW_PATH).contentType("application/zip").content(zip))
+            mockMvc.perform(post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-runs/import/preview")).contentType("application/zip").content(zip))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.importable").value(true))
                     .andExpect(jsonPath("$.warnings").isArray())
@@ -982,7 +1014,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m26() throws Exception {
             mockMvc.perform(
-                            post(PREVIEW_PATH)
+                            post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-runs/import/preview"))
                                     .queryParam("x", "1")
                                     .contentType("application/zip")
                                     .content(RunImportZipTestUtil.buildAdHocEmptyRunZip(runId, userId)))
@@ -992,7 +1024,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m27() throws Exception {
-            mockMvc.perform(post(PREVIEW_PATH).content(RunImportZipTestUtil.buildAdHocEmptyRunZip(runId, userId)))
+            mockMvc.perform(post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-runs/import/preview")).content(RunImportZipTestUtil.buildAdHocEmptyRunZip(runId, userId)))
                     .andExpect(status().isBadRequest());
             verify(previewService, never()).previewImportZip(any());
         }
@@ -1021,7 +1053,14 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         }
 
         @Autowired
+        private Environment environment;
+
+        @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -1078,7 +1117,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                     .thenReturn(Optional.of(minimalSnapshot(definitionId)));
             String expectedDisposition =
                     "attachment; filename=\"runtime-trace-regression-suite-definition_" + definitionId + ".zip\"";
-            mockMvc.perform(get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
                     .andExpect(status().isOk())
                     .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "application/zip"))
                     .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, expectedDisposition))
@@ -1094,7 +1133,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m29() throws Exception {
             mockMvc.perform(
-                            get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", definitionId)
+                            get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", definitionId)
                                     .queryParam("x", "1"))
                     .andExpect(status().isBadRequest())
                     .andExpect(noZipDownloadResponse());
@@ -1104,7 +1143,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m30() throws Exception {
-            mockMvc.perform(get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", "not-a-uuid"))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", "not-a-uuid"))
                     .andExpect(status().isBadRequest())
                     .andExpect(noZipDownloadResponse());
             verify(definitionService, never()).loadByIdForUser(any(), any());
@@ -1114,7 +1153,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m31() throws Exception {
             when(definitionService.loadByIdForUser(eq(definitionId), eq(userId))).thenReturn(Optional.empty());
-            mockMvc.perform(get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
                     .andExpect(status().isNotFound())
                     .andExpect(noZipDownloadResponse());
             verify(definitionService, times(1)).loadByIdForUser(eq(definitionId), eq(userId));
@@ -1135,8 +1174,6 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
     class SliceP60DefinitionImport {
 
-        private static final String IMPORT_PATH = "/api/test/runtime-trace-regression-suite-definitions/import";
-
         @TestConfiguration
         static class ImportTestConfig {
 
@@ -1148,7 +1185,14 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         }
 
         @Autowired
+        private Environment environment;
+
+        @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -1198,13 +1242,13 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         void p60_m32() throws Exception {
             UUID createdId = UUID.randomUUID();
             when(definitionService.create(eq(userId), any(CreateDefinitionCommand.class))).thenReturn(createdId);
-            mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(validZip()))
+            mockMvc.perform(post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-definitions/import")).contentType("application/zip").content(validZip()))
                     .andExpect(status().isCreated())
                     .andExpect(
                             result -> {
                                 assertThat(result.getResponse().getContentAsByteArray().length).isZero();
                                 assertThat(result.getResponse().getHeader(HttpHeaders.LOCATION))
-                                        .isEqualTo("/api/test/runtime-trace-regression-suite-definitions/" + createdId);
+                                        .isEqualTo(productBase() + "/runtime-trace-regression-suite-definitions/" + createdId);
                             });
             verify(definitionService, times(1)).create(eq(userId), any(CreateDefinitionCommand.class));
         }
@@ -1212,7 +1256,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m33() throws Exception {
             mockMvc.perform(
-                            post(IMPORT_PATH)
+                            post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-definitions/import"))
                                     .queryParam("x", "1")
                                     .contentType("application/zip")
                                     .content(validZip()))
@@ -1228,7 +1272,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                             new IllegalStateException(
                                     "A regression suite definition with this name already exists for the user",
                                     new RuntimeException()));
-            mockMvc.perform(post(IMPORT_PATH).contentType("application/zip").content(validZip()))
+            mockMvc.perform(post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-definitions/import")).contentType("application/zip").content(validZip()))
                     .andExpect(status().isConflict());
             verify(definitionService, times(1)).create(eq(userId), any(CreateDefinitionCommand.class));
         }
@@ -1246,8 +1290,6 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
     class SliceP60DefinitionImportPreview {
 
-        private static final String PREVIEW_PATH = "/api/test/runtime-trace-regression-suite-definitions/import/preview";
-
         @TestConfiguration
         static class PreviewTestConfig {
 
@@ -1258,7 +1300,14 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         }
 
         @Autowired
+        private Environment environment;
+
+        @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         private UUID userId;
         private UUID definitionIdPath;
@@ -1303,7 +1352,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m35() throws Exception {
-            mockMvc.perform(post(PREVIEW_PATH).contentType("application/zip").content(validZip()))
+            mockMvc.perform(post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-definitions/import/preview")).contentType("application/zip").content(validZip()))
                     .andExpect(status().isOk())
                     .andExpect(result -> assertThat(result.getResponse().getContentType()).contains("application/json"))
                     .andExpect(jsonPath("$.importable").value(true))
@@ -1316,7 +1365,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m36() throws Exception {
             mockMvc.perform(
-                            post(PREVIEW_PATH)
+                            post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-definitions/import/preview"))
                                     .queryParam("x", "1")
                                     .contentType("application/zip")
                                     .content(validZip()))
@@ -1326,7 +1375,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m37() throws Exception {
-            mockMvc.perform(post(PREVIEW_PATH).contentType("application/zip").content(new byte[0]))
+            mockMvc.perform(post(RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-definitions/import/preview")).contentType("application/zip").content(new byte[0]))
                     .andExpect(status().isBadRequest())
                     .andExpect(r -> assertThat(r.getResponse().getContentAsByteArray().length).isZero());
         }
@@ -1342,7 +1391,14 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     class SliceP60DefinitionExecutionExport {
 
         @Autowired
+        private Environment environment;
+
+        @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteDefinitionExecutionExportService exportService;
@@ -1397,7 +1453,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             String expectedDisposition =
                     "attachment; filename=\"runtime-trace-regression-suite-definition-execution_" + definitionId + ".zip\"";
             mockMvc.perform(
-                            post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                            post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andExpect(header().string(HttpHeaders.CONTENT_TYPE, Matchers.containsString("application/zip")))
@@ -1414,7 +1470,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             when(exportService.exportByDefinitionId(eq(definitionId), eq(userId)))
                     .thenThrow(new NotFoundException("missing"));
             mockMvc.perform(
-                            post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                            post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isNotFound())
                     .andExpect(noZipDownloadResponse());
@@ -1426,7 +1482,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                     .thenThrow(new NotFoundException("missing"));
             mockMvc.perform(
                             post(
-                                            "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
+                                            productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
                                             conversationId,
                                             definitionId)
                                     .contentType(MediaType.APPLICATION_JSON))
@@ -1437,7 +1493,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m41() throws Exception {
             mockMvc.perform(
-                            post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", "not-uuid")
+                            post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", "not-uuid")
                                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isBadRequest())
                     .andExpect(noZipDownloadResponse());
@@ -1448,7 +1504,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             when(exportService.exportByDefinitionId(eq(definitionId), eq(userId)))
                     .thenThrow(new RuntimeTraceRegressionSuiteDefinitionExecutionExportSizeExceededException("big"));
             mockMvc.perform(
-                            post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                            post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isPayloadTooLarge())
                     .andExpect(noZipDownloadResponse());
@@ -1461,7 +1517,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                     .thenThrow(new RuntimeTraceRegressionSuiteDefinitionExecutionExportSizeExceededException("big"));
             mockMvc.perform(
                             post(
-                                            "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
+                                            productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
                                             conversationId,
                                             definitionId)
                                     .contentType(MediaType.APPLICATION_JSON))
@@ -1482,7 +1538,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                     .thenReturn(sampleZip(fn));
             mockMvc.perform(
                             post(
-                                            "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
+                                            productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute/export",
                                             conversationId,
                                             definitionId)
                                     .contentType(MediaType.APPLICATION_JSON))
@@ -1495,7 +1551,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             when(exportService.exportByDefinitionId(eq(definitionId), eq(userId)))
                     .thenThrow(new RuntimeTraceRegressionSuiteDefinitionExecutionExportNotAttemptedException("x"));
             mockMvc.perform(
-                            post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
+                            post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isBadRequest())
                     .andExpect(noZipDownloadResponse());
@@ -1511,10 +1567,15 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @ActiveProfiles("test")
     class SliceP60DefinitionReadV5 {
 
-        private static final String BASE = path("");
+        @Autowired
+        private Environment environment;
 
         @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -1565,7 +1626,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m46() throws Exception {
             when(definitionService.listSummariesForUser(userId)).thenReturn(List.of());
-            mockMvc.perform(get(BASE + "/runtime-trace-regression-suite-definitions"))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.definitions").isArray())
                     .andExpect(jsonPath("$.definitions", hasSize(0)))
@@ -1577,7 +1638,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m47() throws Exception {
-            mockMvc.perform(get(BASE + "/runtime-trace-regression-suite-definitions").queryParam("a", "b"))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions").queryParam("a", "b"))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().string(""));
             verify(definitionService, never()).listSummariesForUser(any());
@@ -1603,7 +1664,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                                     new RuntimeTraceRegressionSuiteDefinitionEntrySnapshot.ByConversation(
                                             conv, null, null, "wf")));
             when(definitionService.loadByIdForUser(definitionId, userId)).thenReturn(Optional.of(snap));
-            mockMvc.perform(get(BASE + "/runtime-trace-regression-suite-definitions/{id}", definitionId))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.id").value(definitionId.toString()))
                     .andExpect(jsonPath("$.name").value("suite"))
@@ -1632,14 +1693,14 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         void p60_m49() throws Exception {
             UUID missing = UUID.randomUUID();
             when(definitionService.loadByIdForUser(missing, userId)).thenReturn(Optional.empty());
-            mockMvc.perform(get(BASE + "/runtime-trace-regression-suite-definitions/{id}", missing))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}", missing))
                     .andExpect(status().isNotFound());
             verifyMutatingNever();
         }
 
         @Test
         void p60_m50() throws Exception {
-            mockMvc.perform(get(BASE + "/runtime-trace-regression-suite-definitions/{id}", "not-a-uuid"))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}", "not-a-uuid"))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().string(""));
             verify(definitionService, never()).loadByIdForUser(any(), any());
@@ -1656,10 +1717,15 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     @TestPropertySource(properties = "rag.api.product-base-path=/api/test")
     class SliceP60DefinitionMutateAndExecuteApiTest {
 
-        private static final String BASE = "/api/test";
+        @Autowired
+        private Environment environment;
 
         @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -1712,7 +1778,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             UUID tid = UUID.randomUUID();
             when(definitionService.create(eq(userId), any())).thenReturn(created);
             mockMvc.perform(
-                            post(BASE + "/runtime-trace-regression-suite-definitions")
+                            post(productBase() + "/runtime-trace-regression-suite-definitions")
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(upsertOneByTraceIds("suite", tid.toString())))
                     .andExpect(status().isCreated())
@@ -1721,7 +1787,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                             header()
                                     .string(
                                             "Location",
-                                            "/api/test/runtime-trace-regression-suite-definitions/" + created));
+                                            productBase() + "/runtime-trace-regression-suite-definitions/" + created));
             verify(definitionService).create(eq(userId), any());
         }
 
@@ -1729,7 +1795,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         void p60_m52() throws Exception {
             UUID tid = UUID.randomUUID();
             mockMvc.perform(
-                            put(BASE + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
+                            put(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(upsertOneByTraceIds("suite", tid.toString())))
                     .andExpect(status().isNoContent())
@@ -1739,7 +1805,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
         @Test
         void p60_m53() throws Exception {
-            mockMvc.perform(delete(BASE + "/runtime-trace-regression-suite-definitions/{id}", definitionId))
+            mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId))
                     .andExpect(status().isNoContent())
                     .andExpect(content().string(""));
             verify(definitionService).delete(eq(definitionId), eq(userId));
@@ -1750,7 +1816,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             UUID tid = UUID.randomUUID();
             when(definitionService.create(eq(userId), any())).thenThrow(new IllegalStateException("dup"));
             mockMvc.perform(
-                            post(BASE + "/runtime-trace-regression-suite-definitions")
+                            post(productBase() + "/runtime-trace-regression-suite-definitions")
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(upsertOneByTraceIds("suite", tid.toString())))
                     .andExpect(status().isConflict())
@@ -1764,7 +1830,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                     .when(definitionService)
                     .update(eq(definitionId), eq(userId), any());
             mockMvc.perform(
-                            put(BASE + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
+                            put(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
                                     .contentType(MediaType.APPLICATION_JSON)
                                     .content(upsertOneByTraceIds("suite", tid.toString())))
                     .andExpect(status().isConflict())
@@ -1776,7 +1842,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             doThrow(new NotFoundException("missing"))
                     .when(definitionService)
                     .delete(eq(definitionId), eq(userId));
-            mockMvc.perform(delete(BASE + "/runtime-trace-regression-suite-definitions/{id}", definitionId))
+            mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId))
                     .andExpect(status().isNotFound())
                     .andExpect(content().string(""));
         }
@@ -1803,7 +1869,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                             new RuntimeTraceRegressionSuiteResult(
                                     RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS, summary, List.of(row)));
             mockMvc.perform(
-                            post(BASE + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
+                            post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
                                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andExpect(
@@ -1839,7 +1905,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                                     RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS, summary, List.of(row)));
             mockMvc.perform(
                             post(
-                                            BASE
+                                            productBase()
                                                     + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
                                             conversationId,
                                             definitionId)
@@ -1858,7 +1924,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             when(definitionService.materializeToSuiteRequest(eq(definitionId), eq(userId)))
                     .thenThrow(new NotFoundException("missing"));
             mockMvc.perform(
-                            post(BASE + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
+                            post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
                                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isNotFound())
                     .andExpect(content().string(""));
@@ -1869,7 +1935,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m60() throws Exception {
             mockMvc.perform(
-                            post(BASE + "/runtime-trace-regression-suite-definitions/{id}/execute", "not-a-uuid")
+                            post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", "not-a-uuid")
                                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().string(""));
@@ -1889,7 +1955,6 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
     class SliceP60DefinitionRunsV1 {
 
         private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-        private static final String PRODUCT_BASE = "/api/v1";
 
         private static final ObjectMapper PREVIEW_TEST_MAPPER =
                 new ObjectMapper()
@@ -1899,7 +1964,14 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                         .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
         @Autowired
+        private Environment environment;
+
+        @Autowired
         private MockMvc mockMvc;
+
+        private String productBase() {
+            return RagApiTestPaths.productBasePath(environment);
+        }
 
         @MockitoBean
         private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -1954,8 +2026,8 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                     List.of(new RuntimeTraceRegressionSuiteDefinitionEntrySnapshot.ByTraceIds(List.of(tid))));
         }
 
-        private static String expectedLocation(UUID createdRunId) {
-            return "/api/v1/runtime-trace-regression-suite-runs/" + createdRunId;
+        private String expectedLocation(UUID createdRunId) {
+            return productBase() + "/runtime-trace-regression-suite-runs/" + createdRunId;
         }
 
         private static RuntimeTraceRegressionSuiteResult resultOf(RuntimeTraceRegressionSuiteOutcome outcome) {
@@ -1987,7 +2059,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
             MvcResult mvcResult =
                     mockMvc.perform(
-                                    post(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId)
+                                    post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId)
                                             .contentType(MediaType.APPLICATION_JSON))
                             .andExpect(status().isCreated())
                             .andExpect(header().string(HttpHeaders.LOCATION, expectedLocation(createdRunId)))
@@ -2009,7 +2081,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             when(definitionService.materializeToSuiteRequest(eq(definitionId), eq(userId)))
                     .thenThrow(new NotFoundException("missing"));
             mockMvc.perform(
-                            post(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId)
+                            post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId)
                                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isNotFound())
                     .andExpect(content().string(""))
@@ -2023,7 +2095,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m63() throws Exception {
             mockMvc.perform(
-                            post(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId)
+                            post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId)
                                     .queryParam("x", "1")
                                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isBadRequest())
@@ -2046,7 +2118,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
             MvcResult mvcResult =
                     mockMvc.perform(
-                                    post(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId)
+                                    post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId)
                                             .contentType(MediaType.APPLICATION_JSON))
                             .andExpect(status().isBadRequest())
                             .andReturn();
@@ -2063,7 +2135,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                     .thenReturn(Optional.of(minimalDefinitionSnapshot(definitionId)));
             when(runPersistenceService.listSummariesForUserAndDefinition(userId, definitionId)).thenReturn(List.of());
 
-            mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
                     .andExpect(status().isOk())
                     .andExpect(content().json("{\"runs\":[]}", true));
 
@@ -2093,7 +2165,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             MvcResult result =
                     mockMvc.perform(
                                     get(
-                                                    PRODUCT_BASE
+                                                    productBase()
                                                             + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                                     definitionId,
                                                     runId))
@@ -2128,7 +2200,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
         @Test
         void p60_m67() throws Exception {
             when(definitionService.loadByIdForUser(definitionId, userId)).thenReturn(Optional.empty());
-            mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
+            mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
                     .andExpect(status().isNotFound())
                     .andExpect(
                             r ->
@@ -2148,7 +2220,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
             mockMvc.perform(
                             get(
-                                            PRODUCT_BASE
+                                            productBase()
                                                     + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                             definitionId,
                                             runId))
@@ -2175,7 +2247,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             MvcResult result =
                     mockMvc.perform(
                                     get(
-                                                    PRODUCT_BASE
+                                                    productBase()
                                                             + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}/export",
                                                     definitionId,
                                                     runId))
@@ -2204,7 +2276,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             MvcResult result =
                     mockMvc.perform(
                                     post(
-                                                    PRODUCT_BASE
+                                                    productBase()
                                                             + "/runtime-trace-regression-suite-definitions/{defId}/runs/import",
                                                     definitionId)
                                             .contentType("application/zip")
@@ -2213,7 +2285,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
                             .andReturn();
 
             assertThat(result.getResponse().getHeader(HttpHeaders.LOCATION))
-                    .isEqualTo("/api/v1/runtime-trace-regression-suite-runs/" + createdId);
+                    .isEqualTo(productBase() + "/runtime-trace-regression-suite-runs/" + createdId);
             verify(runImportService, times(1)).importRunZipForDefinition(any(byte[].class), eq(userId), eq(definitionId));
             verify(runPersistenceService, never()).createRun(any(), any(), any(), any());
             verify(runPersistenceService, never()).loadByIdForUser(any(), any());
@@ -2237,7 +2309,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
 
             mockMvc.perform(
                             post(
-                                            PRODUCT_BASE
+                                            productBase()
                                                     + "/runtime-trace-regression-suite-definitions/{defId}/runs/import/preview",
                                             definitionId)
                                     .contentType("application/zip")
@@ -2267,7 +2339,7 @@ public class RuntimeTraceRegressionSuiteP60EndToEndContractTest {
             MvcResult result =
                     mockMvc.perform(
                                     delete(
-                                                    PRODUCT_BASE
+                                                    productBase()
                                                             + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                                     definitionId,
                                                     runId))

@@ -8,11 +8,13 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimportpreview.RuntimeTraceRegressionSuiteRunImportPreviewService;
 import com.uniovi.rag.configuration.RegressionSuiteDefinitionMutationJacksonConfiguration;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -52,7 +54,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -105,7 +114,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
         UUID tid = UUID.randomUUID();
         when(definitionService.create(eq(userId), any())).thenReturn(created);
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(upsertOneByTraceIds("suite", tid.toString())))
                 .andExpect(status().isCreated())
@@ -114,7 +123,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
                         header()
                                 .string(
                                         "Location",
-                                        "/api/test/runtime-trace-regression-suite-definitions/" + created));
+                                        productBase() + "/runtime-trace-regression-suite-definitions/" + created));
         verify(definitionService).create(eq(userId), any());
     }
 
@@ -122,7 +131,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
     void t2_update_valid_returns204_emptyBody() throws Exception {
         UUID tid = UUID.randomUUID();
         mockMvc.perform(
-                        put("/api/test/runtime-trace-regression-suite-definitions/{id}", definitionId)
+                        put(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(upsertOneByTraceIds("suite", tid.toString())))
                 .andExpect(status().isNoContent())
@@ -132,7 +141,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
 
     @Test
     void t3_delete_valid_returns204_emptyBody() throws Exception {
-        mockMvc.perform(delete("/api/test/runtime-trace-regression-suite-definitions/{id}", definitionId))
+        mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
         verify(definitionService).delete(eq(definitionId), eq(userId));
@@ -143,7 +152,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
         UUID tid = UUID.randomUUID();
         when(definitionService.create(eq(userId), any())).thenThrow(new IllegalStateException("dup"));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(upsertOneByTraceIds("suite", tid.toString())))
                 .andExpect(status().isConflict())
@@ -157,7 +166,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
                 .when(definitionService)
                 .update(eq(definitionId), eq(userId), any());
         mockMvc.perform(
-                        put("/api/test/runtime-trace-regression-suite-definitions/{id}", definitionId)
+                        put(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(upsertOneByTraceIds("suite", tid.toString())))
                 .andExpect(status().isConflict())
@@ -171,7 +180,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
                 .when(definitionService)
                 .update(eq(definitionId), eq(userId), any());
         mockMvc.perform(
-                        put("/api/test/runtime-trace-regression-suite-definitions/{id}", definitionId)
+                        put(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(upsertOneByTraceIds("suite", tid.toString())))
                 .andExpect(status().isNotFound())
@@ -183,7 +192,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
         doThrow(new NotFoundException("missing"))
                 .when(definitionService)
                 .delete(eq(definitionId), eq(userId));
-        mockMvc.perform(delete("/api/test/runtime-trace-regression-suite-definitions/{id}", definitionId))
+        mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId))
                 .andExpect(status().isNotFound())
                 .andExpect(content().string(""));
     }
@@ -192,7 +201,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
     void t8_m2_nonUuidDefinitionId_returns400_neverCallsUpdate() throws Exception {
         UUID tid = UUID.randomUUID();
         mockMvc.perform(
-                        put("/api/test/runtime-trace-regression-suite-definitions/{id}", "not-a-uuid")
+                        put(productBase() + "/runtime-trace-regression-suite-definitions/{id}", "not-a-uuid")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(upsertOneByTraceIds("suite", tid.toString())))
                 .andExpect(status().isBadRequest())
@@ -202,7 +211,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
 
     @Test
     void t8_m3_nonUuidDefinitionId_returns400_neverCallsDelete() throws Exception {
-        mockMvc.perform(delete("/api/test/runtime-trace-regression-suite-definitions/{id}", "not-a-uuid"))
+        mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-definitions/{id}", "not-a-uuid"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
         verify(definitionService, never()).delete(any(), any());
@@ -212,7 +221,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
     void t9_mutations_withQueryString_return400_noServiceCalls() throws Exception {
         UUID tid = UUID.randomUUID();
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .queryParam("a", "1")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(upsertOneByTraceIds("suite", tid.toString())))
@@ -221,7 +230,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
         verify(definitionService, never()).create(any(), any());
 
         mockMvc.perform(
-                        put("/api/test/runtime-trace-regression-suite-definitions/{id}", definitionId)
+                        put(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
                                 .queryParam("a", "1")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(upsertOneByTraceIds("suite", tid.toString())))
@@ -230,7 +239,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
         verify(definitionService, never()).update(any(), any(), any());
 
         mockMvc.perform(
-                        delete("/api/test/runtime-trace-regression-suite-definitions/{id}", definitionId)
+                        delete(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
                                 .queryParam("a", "1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
@@ -245,7 +254,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
                 {"name":"n","description":null,"entries":[{"entryKind":"BY_TRACE_IDS","traceIds":["%s"]}],"extra":1}"""
                         .formatted(tid);
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(json))
                 .andExpect(status().isBadRequest())
@@ -255,7 +264,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
     @Test
     void t11_create_entriesSizeZero_returns400() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"name\":\"n\",\"description\":null,\"entries\":[]}"))
                 .andExpect(status().isBadRequest())
@@ -273,7 +282,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
         }
         String json = "{\"name\":\"n\",\"description\":null,\"entries\":[" + entries + "]}";
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(json))
                 .andExpect(status().isBadRequest())
@@ -283,7 +292,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
     @Test
     void t12_create_entriesContainsNull_returns400() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"name\":\"n\",\"description\":null,\"entries\":[null]}"))
                 .andExpect(status().isBadRequest())
@@ -298,7 +307,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
                         + a
                         + "\",null]}]}";
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(json))
                 .andExpect(status().isBadRequest())
@@ -317,7 +326,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
                         + ids
                         + "]}]}";
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(json))
                 .andExpect(status().isBadRequest())
@@ -327,7 +336,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
     @Test
     void t15_create_byConversationMissingConversationId_returns400() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         "{\"name\":\"n\",\"description\":null,\"entries\":[{\"entryKind\":\"BY_CONVERSATION\"}]}"))
@@ -338,7 +347,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
     @Test
     void t16_post_jsonContentType_noBody_returns400() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
@@ -347,7 +356,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
     @Test
     void t17_put_truncatedJson_returns400() throws Exception {
         mockMvc.perform(
-                        put("/api/test/runtime-trace-regression-suite-definitions/{id}", definitionId)
+                        put(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"name\":\"x\",\"entries\":"))
                 .andExpect(status().isBadRequest())
@@ -360,7 +369,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
         UUID tid = UUID.randomUUID();
         when(definitionService.create(eq(userId), any())).thenReturn(created);
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(upsertOneByTraceIds("suite", tid.toString())))
                 .andExpect(status().isCreated());
@@ -377,7 +386,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
                 {"name":"n","description":null,"entries":[{"entryKind":"BY_TRACE_IDS","traceIds":["%s"]}],"who":1}"""
                         .formatted(tid);
         mockMvc.perform(
-                        put("/api/test/runtime-trace-regression-suite-definitions/{id}", definitionId)
+                        put(productBase() + "/runtime-trace-regression-suite-definitions/{id}", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(json))
                 .andExpect(status().isBadRequest())
@@ -386,7 +395,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerMutationWebMvcTest {
 
     @Test
     void t20_getList_withQueryParam_returns400_neverCallsListSummaries() throws Exception {
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-definitions").queryParam("x", "1"))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions").queryParam("x", "1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
         verify(definitionService, never()).listSummariesForUser(any());

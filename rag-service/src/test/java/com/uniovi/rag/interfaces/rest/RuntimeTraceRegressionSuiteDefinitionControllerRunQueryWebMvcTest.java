@@ -18,11 +18,13 @@ import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegress
 import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSourceType;
 import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSummary;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -65,10 +67,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final String PRODUCT_BASE = "/api/v1";
+    @Autowired
+    private Environment environment;
 
     @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -133,7 +140,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
                 .thenReturn(Optional.of(minimalDefinitionSnapshot(definitionId)));
         when(runPersistenceService.listSummariesForUserAndDefinition(userId, definitionId)).thenReturn(List.of());
 
-        mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
                 .andExpect(status().isOk())
                 .andExpect(content().json("{\"runs\":[]}", true));
 
@@ -176,7 +183,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
                 .thenReturn(Optional.of(minimalDefinitionSnapshot(definitionId)));
         when(runPersistenceService.listSummariesForUserAndDefinition(userId, definitionId)).thenReturn(rows);
 
-        mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.runs.length()").value(2))
                 .andExpect(jsonPath("$.runs[0].id").value(id1.toString()))
@@ -188,7 +195,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
     @Test
     void p50_t3_list_queryString_400_noDownstream() throws Exception {
         mockMvc.perform(
-                        get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId)
+                        get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId)
                                 .queryParam("x", "1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
@@ -201,7 +208,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
     void p50_t3_detail_queryString_400_noDownstream() throws Exception {
         mockMvc.perform(
                         get(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{runId}",
                                 definitionId,
                                 runId)
@@ -215,7 +222,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
 
     @Test
     void p50_t4_list_invalid_definitionId_400() throws Exception {
-        mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", "not-a-uuid"))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", "not-a-uuid"))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
         verify(definitionService, never()).loadByIdForUser(any(), any());
@@ -227,7 +234,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
     void p50_t4_detail_invalid_definitionId_400() throws Exception {
         mockMvc.perform(
                         get(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{runId}",
                                 "not-a-uuid",
                                 runId))
@@ -240,7 +247,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
     @Test
     void p50_t5_list_gate_empty_404_neverRunQueries() throws Exception {
         when(definitionService.loadByIdForUser(definitionId, userId)).thenReturn(Optional.empty());
-        mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
                 .andExpect(status().isNotFound())
                 .andExpect(
                         r ->
@@ -256,7 +263,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
         when(definitionService.loadByIdForUser(definitionId, userId)).thenReturn(Optional.empty());
         mockMvc.perform(
                         get(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{runId}",
                                 definitionId,
                                 runId))
@@ -289,7 +296,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
         MvcResult result =
                 mockMvc.perform(
                                 get(
-                                        PRODUCT_BASE
+                                        productBase()
                                                 + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                         definitionId,
                                         runId))
@@ -330,7 +337,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
 
         mockMvc.perform(
                         get(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                 definitionId,
                                 runId))
@@ -347,7 +354,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
     void p50_t8_detail_invalid_runId_400_neverLoadScoped() throws Exception {
         mockMvc.perform(
                         get(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                 definitionId,
                                 "not-a-uuid"))
@@ -362,7 +369,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
         when(definitionService.loadByIdForUser(definitionId, userId))
                 .thenReturn(Optional.of(minimalDefinitionSnapshot(definitionId)));
         when(runPersistenceService.listSummariesForUserAndDefinition(userId, definitionId)).thenReturn(List.of());
-        mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
                 .andExpect(status().isOk());
         verifyP50NeverMutateOrGlobalRunReads();
 
@@ -380,7 +387,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
                 .thenReturn(Optional.of(snap));
         mockMvc.perform(
                         get(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                 definitionId,
                                 runId))
@@ -407,7 +414,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
 
         mockMvc.perform(
                         get(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                 definitionId,
                                 runId))
@@ -423,7 +430,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
                 .thenReturn(Optional.of(minimalDefinitionSnapshot(definitionId)));
         when(runPersistenceService.listSummariesForUserAndDefinition(userId, definitionId)).thenReturn(List.of());
 
-        mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
                 .andExpect(status().isOk());
 
         verify(runPersistenceService, times(1)).listSummariesForUserAndDefinition(eq(userId), eq(definitionId));
@@ -449,7 +456,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunQueryWebMvcTest {
 
         mockMvc.perform(
                         get(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                 definitionId,
                                 runId))

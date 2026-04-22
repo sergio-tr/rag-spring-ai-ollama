@@ -9,11 +9,13 @@ import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegress
 import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSourceType;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -65,7 +67,14 @@ class RuntimeTraceRegressionSuiteRunExportControllerWebMvcTest {
     }
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
@@ -122,7 +131,7 @@ class RuntimeTraceRegressionSuiteRunExportControllerWebMvcTest {
         when(runPersistenceService.loadByIdForUser(eq(runId), eq(userId)))
                 .thenReturn(Optional.of(minimalSnapshot(runId, userId)));
         String expectedDisposition = "attachment; filename=\"runtime-trace-regression-suite-run_" + runId + ".zip\"";
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", runId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", runId))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "application/zip"))
                 .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, expectedDisposition))
@@ -142,7 +151,7 @@ class RuntimeTraceRegressionSuiteRunExportControllerWebMvcTest {
 
     @Test
     void t2_queryString_returns400_neverCallsLoad() throws Exception {
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", runId).queryParam("x", "1"))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", runId).queryParam("x", "1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(noZipDownloadResponse());
         verify(runPersistenceService, never()).loadByIdForUser(any(), any());
@@ -153,7 +162,7 @@ class RuntimeTraceRegressionSuiteRunExportControllerWebMvcTest {
 
     @Test
     void t3_malformedUuid_returns400_neverCallsLoad() throws Exception {
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", "not-a-uuid"))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", "not-a-uuid"))
                 .andExpect(status().isBadRequest())
                 .andExpect(noZipDownloadResponse());
         verify(runPersistenceService, never()).loadByIdForUser(any(), any());
@@ -165,7 +174,7 @@ class RuntimeTraceRegressionSuiteRunExportControllerWebMvcTest {
     @Test
     void t4_emptyOptional_returns404_loadOnce_verifyNoMoreInteractions() throws Exception {
         when(runPersistenceService.loadByIdForUser(eq(runId), eq(userId))).thenReturn(Optional.empty());
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", runId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", runId))
                 .andExpect(status().isNotFound())
                 .andExpect(noZipDownloadResponse());
         verify(runPersistenceService, times(1)).loadByIdForUser(eq(runId), eq(userId));
@@ -180,7 +189,7 @@ class RuntimeTraceRegressionSuiteRunExportControllerWebMvcTest {
         UUID otherRunId = UUID.randomUUID();
         when(runPersistenceService.loadByIdForUser(eq(otherRunId), eq(userId)))
                 .thenReturn(Optional.of(minimalSnapshot(otherRunId, userId)));
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-runs/{id}/export", otherRunId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}/export", otherRunId))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"runtime-trace-regression-suite-run_" + otherRunId + ".zip\""));
         verify(runPersistenceService, times(1)).loadByIdForUser(eq(otherRunId), eq(userId));

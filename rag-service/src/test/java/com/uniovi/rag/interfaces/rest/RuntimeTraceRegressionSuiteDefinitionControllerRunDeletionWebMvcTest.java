@@ -15,11 +15,13 @@ import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegress
 import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSourceType;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -61,10 +63,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = "rag.api.product-base-path=/api/v1")
 class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
 
-    private static final String PRODUCT_BASE = "/api/v1";
+    @Autowired
+    private Environment environment;
 
     @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -133,7 +140,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
         MvcResult result =
                 mockMvc.perform(
                                 delete(
-                                        PRODUCT_BASE
+                                        productBase()
                                                 + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                         definitionId,
                                         runId))
@@ -157,7 +164,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
         MvcResult result =
                 mockMvc.perform(
                                 delete(
-                                        PRODUCT_BASE
+                                        productBase()
                                                 + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                         definitionId,
                                         runId))
@@ -175,7 +182,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
     void p52_t3_queryString_400_neverGateOrDelete() throws Exception {
         mockMvc.perform(
                         delete(
-                                        PRODUCT_BASE
+                                        productBase()
                                                 + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                         definitionId,
                                         runId)
@@ -192,7 +199,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
     void p52_t4_invalid_definitionId_400_neverGateOrDelete() throws Exception {
         mockMvc.perform(
                         delete(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                 "not-a-uuid",
                                 runId))
@@ -208,7 +215,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
     void p52_t4b_invalid_definitionId_valid_runId_still_400_neverGateOrDelete() throws Exception {
         mockMvc.perform(
                         delete(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                 "not-a-uuid",
                                 runId))
@@ -224,7 +231,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
     void p52_t5_invalid_runId_400_neverGateOrDelete() throws Exception {
         mockMvc.perform(
                         delete(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                 definitionId,
                                 "not-a-uuid"))
@@ -243,7 +250,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
         MvcResult result =
                 mockMvc.perform(
                                 delete(
-                                        PRODUCT_BASE
+                                        productBase()
                                                 + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                         definitionId,
                                         runId))
@@ -269,7 +276,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
         MvcResult r204 =
                 mockMvc.perform(
                                 delete(
-                                        PRODUCT_BASE
+                                        productBase()
                                                 + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                         definitionId,
                                         runId))
@@ -283,7 +290,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
         MvcResult r404run =
                 mockMvc.perform(
                                 delete(
-                                        PRODUCT_BASE
+                                        productBase()
                                                 + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                         definitionId,
                                         runId))
@@ -295,7 +302,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
         MvcResult r400qs =
                 mockMvc.perform(
                                 delete(
-                                                PRODUCT_BASE
+                                                productBase()
                                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                                 definitionId,
                                                 runId)
@@ -309,7 +316,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
         MvcResult r404def =
                 mockMvc.perform(
                                 delete(
-                                        PRODUCT_BASE
+                                        productBase()
                                                 + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                         definitionId,
                                         runId))
@@ -325,7 +332,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
                 .thenReturn(Optional.of(minimalDefinitionSnapshot(definitionId)));
         when(runPersistenceService.listSummariesForUserAndDefinition(userId, definitionId)).thenReturn(List.of());
 
-        mockMvc.perform(get(PRODUCT_BASE + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/runs", definitionId))
                 .andExpect(status().isOk());
 
         verify(runPersistenceService, times(1)).listSummariesForUserAndDefinition(eq(userId), eq(definitionId));
@@ -350,7 +357,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunDeletionWebMvcTest {
 
         mockMvc.perform(
                         get(
-                                PRODUCT_BASE
+                                productBase()
                                         + "/runtime-trace-regression-suite-definitions/{defId}/runs/{rid}",
                                 definitionId,
                                 runId))

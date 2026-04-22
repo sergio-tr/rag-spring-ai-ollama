@@ -31,17 +31,17 @@ There is **exactly one** [`pom.xml`](../../rag-service/pom.xml) in this reposito
 Production bytecode matching these **Ant-style** paths is excluded from the JaCoCo **bundle** ratio:
 
 1. `com/uniovi/Application.class`
-2. `com/uniovi/rag/domain/entity/**`
-3. `com/uniovi/rag/service/document/**`
-4. `com/uniovi/rag/application/service/knowledge/**`
-5. `com/uniovi/rag/service/retriever/**`
-6. `com/uniovi/rag/service/evaluation/**`
-7. `com/uniovi/rag/tool/**`
-8. `com/uniovi/rag/service/analyser/**`
-9. `com/uniovi/rag/service/extraction/**`
-10. `com/uniovi/rag/service/ranker/**`
-11. `com/uniovi/rag/application/service/evaluation/**`
-12. `com/uniovi/rag/infrastructure/persistence/traceregressionsuitedefinition/**`
+2. `com/uniovi/rag/service/document/**`
+3. `com/uniovi/rag/application/service/knowledge/**`
+4. `com/uniovi/rag/service/retriever/**`
+5. `com/uniovi/rag/service/evaluation/**`
+6. `com/uniovi/rag/tool/**`
+7. `com/uniovi/rag/service/extraction/**`
+8. `com/uniovi/rag/service/ranker/**`
+9. `com/uniovi/rag/application/service/evaluation/**`
+10. `com/uniovi/rag/infrastructure/persistence/traceregressionsuitedefinition/**`
+
+**Note:** `com/uniovi/rag/domain/entity/**` and `com/uniovi/rag/service/analyser/**` were **removed** from `<excludes>` in 2026-04-21 (dead pattern vs. small deterministic package, respectively); see `.cursor/plans/rag_service_domain_entity_coverage_decision_2026-04-21.plan.md` and the evaluation/analyser notes in the coverage ledger.
 
 ### Failsafe
 

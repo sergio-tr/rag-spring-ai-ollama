@@ -6,11 +6,13 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntrySnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSnapshot;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -65,7 +67,14 @@ class RuntimeTraceRegressionSuiteDefinitionExportControllerWebMvcTest {
     }
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -122,7 +131,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportControllerWebMvcTest {
                 .thenReturn(Optional.of(minimalSnapshot(definitionId)));
         String expectedDisposition =
                 "attachment; filename=\"runtime-trace-regression-suite-definition_" + definitionId + ".zip\"";
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CONTENT_TYPE, "application/zip"))
                 .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, expectedDisposition))
@@ -138,7 +147,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportControllerWebMvcTest {
     @Test
     void t2_queryString_returns400_neverCallsLoad() throws Exception {
         mockMvc.perform(
-                        get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", definitionId)
+                        get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", definitionId)
                                 .queryParam("x", "1"))
                 .andExpect(status().isBadRequest())
                 .andExpect(noZipDownloadResponse());
@@ -148,7 +157,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportControllerWebMvcTest {
 
     @Test
     void t3_malformedUuid_returns400_neverCallsLoad() throws Exception {
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", "not-a-uuid"))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", "not-a-uuid"))
                 .andExpect(status().isBadRequest())
                 .andExpect(noZipDownloadResponse());
         verify(definitionService, never()).loadByIdForUser(any(), any());
@@ -158,7 +167,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportControllerWebMvcTest {
     @Test
     void t4_emptyOptional_returns404_loadOnce_verifyNoMoreInteractions() throws Exception {
         when(definitionService.loadByIdForUser(eq(definitionId), eq(userId))).thenReturn(Optional.empty());
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
                 .andExpect(status().isNotFound())
                 .andExpect(noZipDownloadResponse());
         verify(definitionService, times(1)).loadByIdForUser(eq(definitionId), eq(userId));
@@ -170,7 +179,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportControllerWebMvcTest {
     void t6_success_neverMaterializes_loadOnce_verifyNoMoreInteractions() throws Exception {
         when(definitionService.loadByIdForUser(eq(definitionId), eq(userId)))
                 .thenReturn(Optional.of(minimalSnapshot(definitionId)));
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
                 .andExpect(status().isOk());
         verify(definitionService, times(1)).loadByIdForUser(eq(definitionId), eq(userId));
         verify(definitionService, never()).materializeToSuiteRequest(any(), any());
@@ -182,7 +191,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportControllerWebMvcTest {
     void t7_suiteService_neverExecute() throws Exception {
         when(definitionService.loadByIdForUser(eq(definitionId), eq(userId)))
                 .thenReturn(Optional.of(minimalSnapshot(definitionId)));
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
                 .andExpect(status().isOk());
         verify(suiteService, never()).execute(any());
     }

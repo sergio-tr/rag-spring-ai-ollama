@@ -13,6 +13,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,6 +33,9 @@ class UserProjectConfigurationServiceTest {
     private ConfigResolver configResolver;
 
     @Mock
+    private ObjectProvider<ConfigResolver> configResolverProvider;
+
+    @Mock
     private UserRepository userRepository;
 
     @Mock
@@ -46,6 +50,7 @@ class UserProjectConfigurationServiceTest {
     @Test
     void getEffectiveUserConfig_delegatesToResolver() {
         UUID uid = UUID.randomUUID();
+        when(configResolverProvider.getObject()).thenReturn(configResolver);
         RagConfig cfg = RagConfig.fromFeatureConfiguration(
                 new com.uniovi.rag.configuration.RagFeatureConfiguration(),
                 3,
@@ -64,6 +69,7 @@ class UserProjectConfigurationServiceTest {
     @Test
     void putUserConfig_updatesExistingRow() {
         UUID uid = UUID.randomUUID();
+        when(configResolverProvider.getObject()).thenReturn(configResolver);
         var user = mock(com.uniovi.rag.infrastructure.persistence.jpa.UserEntity.class);
         when(userRepository.findById(uid)).thenReturn(Optional.of(user));
 
@@ -108,6 +114,7 @@ class UserProjectConfigurationServiceTest {
     void mergeProjectConfig_preservesExistingKeysAndAppliesPatch() {
         UUID uid = UUID.randomUUID();
         UUID pid = UUID.randomUUID();
+        when(configResolverProvider.getObject()).thenReturn(configResolver);
         ProjectEntity project = mock(ProjectEntity.class);
         when(projectAccessService.requireOwnedProject(uid, pid)).thenReturn(project);
         var user = mock(com.uniovi.rag.infrastructure.persistence.jpa.UserEntity.class);

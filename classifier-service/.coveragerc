@@ -12,8 +12,6 @@ omit =
     venv/*
     */__pycache__/*
     */site-packages/*
-    app/routes.py
-    app/main.py
 
 # Enable branch coverage (more accurate; SonarCloud uses it)
 branch = true

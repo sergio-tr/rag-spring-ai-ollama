@@ -29,6 +29,7 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 - **Runbook (all modules, same commands as CI):** [docs/testing/baseline-runbook.md](../docs/testing/baseline-runbook.md).
 - **Policies and baseline table:** [docs/quality/README.md](../docs/quality/README.md) (exclusions matrix, Ollama/OTLP test notes, Sonar project key).
 - **External test harness (mocks for Ollama, classifier HTTP, OTLP):** [docs/testing/external-test-harness.md](../docs/testing/external-test-harness.md).
+- **JaCoCo heavy-package exit contracts** (tiers + exit conditions before shrinking `<excludes>`): [docs/testing/rag-service-heavy-package-coverage-exit-contracts.md](../docs/testing/rag-service-heavy-package-coverage-exit-contracts.md).
 - **Product base path in tests:** `src/test/resources/application.properties` sets `rag.api.product-base-path` (default `/api/v5`). Use `com.uniovi.rag.testsupport.RagApiTestPaths#path` (and `productBasePath()`) for MockMvc URLs so paths track that property. For slices that intentionally use another base (e.g. `/api/test`, `/api/v1`), keep an explicit `PRODUCT_BASE` constant or `@TestPropertySource` on that class — do not use `RagApiTestPaths` there, because it always reads the shared `application.properties` file.
 - **OTLP in tests:** the same `application.properties` sets harmless localhost OTLP endpoints so actuator export config does not break bootstrap when the environment supplies relative OTLP URLs; `SafeTestSecretsApplicationContextInitializer` still normalizes edge cases.
 

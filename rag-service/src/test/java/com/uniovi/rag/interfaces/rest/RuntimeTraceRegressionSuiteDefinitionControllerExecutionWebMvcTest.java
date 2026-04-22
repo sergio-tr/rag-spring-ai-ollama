@@ -16,12 +16,14 @@ import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegression
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteResult;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteSummary;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -59,7 +61,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteDefinitionService definitionService;
@@ -123,7 +132,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
                         new RuntimeTraceRegressionSuiteResult(
                                 RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS, summary, List.of(row)));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.suiteOutcome").value("COMPLETED_ALL_BATCH_RETURNS"));
@@ -137,7 +146,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
         when(definitionService.materializeToSuiteRequest(eq(definitionId), eq(userId)))
                 .thenThrow(new NotFoundException("missing"));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(content().string(""));
@@ -148,7 +157,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
     @Test
     void t3_e1_malformedDefinitionId_returns400_neverMaterializeNeverExecute() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute", "not-a-uuid")
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", "not-a-uuid")
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
@@ -159,7 +168,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
     @Test
     void t4_e1_queryString_returns400_neverMaterializeNeverExecute() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
                                 .queryParam("a", "1")
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
@@ -171,7 +180,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
     @Test
     void t5_e1_nonEmptyBody_returns400_neverMaterializeNeverExecute() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{}"))
                 .andExpect(status().isBadRequest())
@@ -192,7 +201,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
                                 new RuntimeTraceRegressionSuiteSummary(0, 0, 0, 0, 0),
                                 List.of()));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(""));
@@ -212,7 +221,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
                                 new RuntimeTraceRegressionSuiteSummary(0, 0, 0, 0, 0),
                                 List.of()));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.suiteOutcome").value("EMPTY_SUITE"));
@@ -230,7 +239,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
                                 new RuntimeTraceRegressionSuiteSummary(1, 1, 0, 1, 0),
                                 List.of()));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.suiteOutcome").value("COMPLETED_WITH_ENTRY_EXECUTION_FAILURES"));
@@ -261,7 +270,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
                                 RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS, summary, List.of(row)));
         mockMvc.perform(
                         post(
-                                        "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
+                                        productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
                                         conversationId,
                                         definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
@@ -281,7 +290,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
         when(definitionService.materializeToSuiteRequest(eq(definitionId), eq(userId))).thenReturn(req);
         mockMvc.perform(
                         post(
-                                        "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
+                                        productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
                                         conversationId,
                                         definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
@@ -305,7 +314,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
         when(definitionService.materializeToSuiteRequest(eq(definitionId), eq(userId))).thenReturn(req);
         mockMvc.perform(
                         post(
-                                        "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
+                                        productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
                                         conversationId,
                                         definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
@@ -319,7 +328,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
     void t12_e2_malformedConversationId_returns400_neverMaterializeNeverExecute() throws Exception {
         mockMvc.perform(
                         post(
-                                        "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
+                                        productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
                                         "bad-uuid",
                                         definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
@@ -341,7 +350,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
                                 new RuntimeTraceRegressionSuiteSummary(1, 1, 1, 0, 0),
                                 List.of()));
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
+                        post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
         verify(definitionService, never()).create(any(), any());
@@ -355,7 +364,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
     void t14_e2_queryString_returns400_neverMaterializeNeverExecute() throws Exception {
         mockMvc.perform(
                         post(
-                                        "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
+                                        productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
                                         conversationId,
                                         definitionId)
                                 .queryParam("a", "1")
@@ -383,7 +392,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerExecutionWebMvcTest {
                                 List.of()));
         mockMvc.perform(
                         post(
-                                        "/api/test/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
+                                        productBase() + "/conversations/{cid}/runtime-trace-regression-suite-definitions/{id}/execute",
                                         conversationId,
                                         definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))

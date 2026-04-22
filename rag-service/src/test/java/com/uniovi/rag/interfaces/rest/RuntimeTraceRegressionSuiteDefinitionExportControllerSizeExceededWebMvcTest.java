@@ -3,11 +3,13 @@ package com.uniovi.rag.interfaces.rest;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionexport.RuntimeTraceRegressionSuiteDefinitionExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionexport.RuntimeTraceRegressionSuiteDefinitionExportSizeExceededException;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -40,7 +42,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RuntimeTraceRegressionSuiteDefinitionExportControllerSizeExceededWebMvcTest {
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteDefinitionExportService exportService;
@@ -68,7 +77,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportControllerSizeExceededWebMvcTes
     void t5_exportServiceThrowsSizeExceeded_returns413() throws Exception {
         when(exportService.exportDefinitionZip(eq(definitionId), eq(userId)))
                 .thenThrow(new RuntimeTraceRegressionSuiteDefinitionExportSizeExceededException("definition export exceeds max ZIP size"));
-        mockMvc.perform(get("/api/test/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-definitions/{id}/export", definitionId))
                 .andExpect(status().isPayloadTooLarge())
                 .andExpect(
                         result -> {

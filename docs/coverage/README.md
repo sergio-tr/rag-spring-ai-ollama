@@ -8,6 +8,8 @@ This document records **where** each module writes coverage output after the can
 
 **External test harness** (Wave 6.02 — mocks for Ollama, classifier, OTLP): [../testing/external-test-harness.md](../testing/external-test-harness.md).
 
+**Heavy JaCoCo / Sonar excludes — per-package exit contract** (test tiers, gate, prerequisites): [../testing/rag-service-heavy-package-coverage-exit-contracts.md](../testing/rag-service-heavy-package-coverage-exit-contracts.md).
+
 ## Commands and outputs
 
 | Module | Command (from module root) | Primary reports |

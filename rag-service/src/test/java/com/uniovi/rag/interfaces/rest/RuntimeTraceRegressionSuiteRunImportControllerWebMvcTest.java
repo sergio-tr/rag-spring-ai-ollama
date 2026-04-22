@@ -6,11 +6,13 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.Runtim
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RunImportZipTestUtil;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportService;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -61,7 +63,14 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
     }
 
     @Autowired
+    private Environment environment;
+
+    @Autowired
     private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
 
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunPersistenceService persistence;
@@ -97,11 +106,11 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
         when(persistence.createRun(eq(userId), any(), any(), any())).thenReturn(createdId);
         byte[] zip = RunImportZipTestUtil.buildAdHocEmptyRunZip(runIdInFixture, userId);
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-runs/import")
+                        post(productBase() + "/runtime-trace-regression-suite-runs/import")
                                 .contentType("application/zip")
                                 .content(zip))
                 .andExpect(status().isCreated())
-                .andExpect(header().string(HttpHeaders.LOCATION, "/api/test/runtime-trace-regression-suite-runs/" + createdId))
+                .andExpect(header().string(HttpHeaders.LOCATION, productBase() + "/runtime-trace-regression-suite-runs/" + createdId))
                 .andExpect(result -> assertThat(result.getResponse().getContentAsByteArray().length).isZero());
         verify(persistence, times(1)).createRun(eq(userId), any(), any(), any());
         verify(persistence, never()).loadByIdForUser(any(), any());
@@ -114,7 +123,7 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
     @Test
     void t2_queryString_400_neverCreateRun() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-runs/import")
+                        post(productBase() + "/runtime-trace-regression-suite-runs/import")
                                 .queryParam("x", "1")
                                 .contentType("application/zip")
                                 .content(RunImportZipTestUtil.buildAdHocEmptyRunZip(runIdInFixture, userId)))
@@ -125,7 +134,7 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
     @Test
     void t3_contentTypeWithCharset_400() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-runs/import")
+                        post(productBase() + "/runtime-trace-regression-suite-runs/import")
                                 .contentType("application/zip; charset=UTF-8")
                                 .content(RunImportZipTestUtil.buildAdHocEmptyRunZip(runIdInFixture, userId)))
                 .andExpect(status().isBadRequest());
@@ -135,7 +144,7 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
     @Test
     void t4_octetStream_400() throws Exception {
         mockMvc.perform(
-                        post("/api/test/runtime-trace-regression-suite-runs/import")
+                        post(productBase() + "/runtime-trace-regression-suite-runs/import")
                                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                                 .content(RunImportZipTestUtil.buildAdHocEmptyRunZip(runIdInFixture, userId)))
                 .andExpect(status().isBadRequest());
@@ -144,7 +153,7 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
 
     @Test
     void t5_emptyBody_400() throws Exception {
-        mockMvc.perform(post("/api/test/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(new byte[0]))
+        mockMvc.perform(post(productBase() + "/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(new byte[0]))
                 .andExpect(status().isBadRequest());
         verify(persistence, never()).createRun(any(), any(), any(), any());
     }
@@ -162,17 +171,17 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
             run = zin.readNBytes((int) e2.getSize());
         }
         byte[] deflated = RunImportZipTestUtil.buildZipWithDeflatedFirstEntry(man, run);
-        mockMvc.perform(post("/api/test/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(deflated))
+        mockMvc.perform(post(productBase() + "/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(deflated))
                 .andExpect(status().isBadRequest());
         verify(persistence, never()).createRun(any(), any(), any(), any());
 
         byte[] three = RunImportZipTestUtil.buildZipWithThreeEntries(man, run);
-        mockMvc.perform(post("/api/test/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(three))
+        mockMvc.perform(post(productBase() + "/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(three))
                 .andExpect(status().isBadRequest());
         verify(persistence, never()).createRun(any(), any(), any(), any());
 
         byte[] wrongOrder = RunImportZipTestUtil.buildZipWrongOrder(man, run);
-        mockMvc.perform(post("/api/test/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(wrongOrder))
+        mockMvc.perform(post(productBase() + "/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(wrongOrder))
                 .andExpect(status().isBadRequest());
         verify(persistence, never()).createRun(any(), any(), any(), any());
     }
@@ -180,7 +189,7 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
     @Test
     void t7_invalidRunJson_400() throws Exception {
         byte[] zip = RunImportZipTestUtil.buildZipWithInvalidRunJson(runIdInFixture, userId);
-        mockMvc.perform(post("/api/test/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(zip))
+        mockMvc.perform(post(productBase() + "/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(persistence, never()).createRun(any(), any(), any(), any());
     }
@@ -188,7 +197,7 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
     @Test
     void t8_coherenceMismatch_400() throws Exception {
         byte[] zip = RunImportZipTestUtil.buildZipWithCoherenceMismatch(runIdInFixture, userId);
-        mockMvc.perform(post("/api/test/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(zip))
+        mockMvc.perform(post(productBase() + "/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(zip))
                 .andExpect(status().isBadRequest());
         verify(persistence, never()).createRun(any(), any(), any(), any());
     }
@@ -198,7 +207,7 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
         UUID createdId = UUID.randomUUID();
         when(persistence.createRun(eq(userId), any(), any(), any())).thenReturn(createdId);
         byte[] zip = RunImportZipTestUtil.buildAdHocEmptyRunZip(runIdInFixture, userId);
-        mockMvc.perform(post("/api/test/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(zip))
+        mockMvc.perform(post(productBase() + "/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(zip))
                 .andExpect(status().isCreated())
                 .andExpect(
                         result -> {
@@ -211,7 +220,7 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
     @Test
     void t11_bodyTooLarge_400() throws Exception {
         byte[] body = new byte[2097153];
-        mockMvc.perform(post("/api/test/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(body))
+        mockMvc.perform(post(productBase() + "/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(body))
                 .andExpect(status().isBadRequest());
         verify(persistence, never()).createRun(any(), any(), any(), any());
     }
