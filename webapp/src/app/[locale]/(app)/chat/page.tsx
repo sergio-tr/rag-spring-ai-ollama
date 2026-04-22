@@ -17,6 +17,7 @@ import { useProjectDocuments } from "@/features/documents/hooks/use-project-docu
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { cn } from "@/lib/utils";
+import { useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
 import { useChatExplainStore } from "@/store/chat-explain.store";
 import type {
@@ -27,6 +28,7 @@ import type {
 } from "@/types/api";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
@@ -44,6 +46,8 @@ function isAssistantRetryable(status: string | null | undefined): boolean {
 
 export default function ChatPage() {
   const t = useTranslations("Chat");
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const active = useAppStore((s) => s.activeProject);
   const projectId = active?.id;
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -72,6 +76,18 @@ export default function ChatPage() {
       /* sessionStorage unavailable */
     }
   }, []);
+
+  const urlConversationId = searchParams.get("conversationId");
+  useEffect(() => {
+    if (urlConversationId && urlConversationId !== conversationId) {
+      setConversationId(urlConversationId);
+    }
+  }, [urlConversationId, conversationId]);
+
+  function selectConversation(nextId: string) {
+    setConversationId(nextId);
+    router.push(`/chat?conversationId=${encodeURIComponent(nextId)}`);
+  }
 
   function persistConvListCollapsed(next: boolean) {
     setConvListCollapsed(next);
@@ -429,7 +445,7 @@ export default function ChatPage() {
             disabled={createConv.isPending}
             onClick={async () => {
               const c = await createConv.mutateAsync();
-              setConversationId(c.id);
+              selectConversation(c.id);
               void refetchMessages();
             }}
           >
@@ -444,7 +460,7 @@ export default function ChatPage() {
                 variant={conversationId === c.id ? "secondary" : "ghost"}
                 size="sm"
                 className="h-auto justify-start py-2 text-left"
-                onClick={() => setConversationId(c.id)}
+                onClick={() => selectConversation(c.id)}
               >
                 <span className="line-clamp-2 text-xs">{c.title}</span>
               </Button>
