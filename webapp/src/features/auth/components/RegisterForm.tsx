@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
+import { setStoredUserRole } from "@/lib/user-role";
 import {
   registerSchema,
   type RegisterFormValues,
@@ -43,6 +44,7 @@ export function RegisterForm() {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
       });
+      setStoredUserRole(data.user.role);
       router.push("/projects");
       router.refresh();
     } catch (e) {
