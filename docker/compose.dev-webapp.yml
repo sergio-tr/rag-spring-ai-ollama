@@ -1,6 +1,0 @@
-# Dev full stack (--rag): order webapp after backend-dev (profile rag). Merged only when using --rag.
-services:
-  webapp:
-    depends_on:
-      backend-dev:
-        condition: service_started

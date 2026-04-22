@@ -14,7 +14,6 @@ services:
     build:
       context: ../reverse-proxy
       dockerfile: Dockerfile
-    container_name: reverse-proxy-dev
     depends_on:
       backend-dev:
         condition: service_started

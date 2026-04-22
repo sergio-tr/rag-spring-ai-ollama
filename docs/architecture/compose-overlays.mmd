@@ -3,7 +3,6 @@ flowchart TB
   ROOT["docker-compose.yml — core + profiles: observability, logs, infra, ollama, cadvisor"]
 
   ROOT --> P1[compose.dev.yml hot reload backend-dev classifier]
-  ROOT --> P2[compose.dev-webapp.yml webapp after backend-dev]
   ROOT --> P3[compose.dev-proxy.yml nginx in dev + profile proxy]
   ROOT --> P4[compose.rag-dev-obs.yml backend-dev OTLP to collector]
 

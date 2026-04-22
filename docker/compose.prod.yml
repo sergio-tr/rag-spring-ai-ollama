@@ -34,7 +34,6 @@ services:
     build:
       context: ../reverse-proxy
       dockerfile: Dockerfile
-    container_name: reverse-proxy
     depends_on:
       - backend
       - webapp

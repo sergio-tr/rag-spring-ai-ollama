@@ -7,9 +7,8 @@ services:
       context: ../db
       dockerfile: Dockerfile
       args:
-        # Pinned here (not from db/.env) so a wrong POSTGRES_BASE_IMAGE cannot produce a Postgres without pgvector.
-        POSTGRES_BASE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
-    container_name: postgres
+        # Source of truth: db/.env(.example). CI also enforces the canonical pgvector pin.
+        POSTGRES_BASE_IMAGE: ${POSTGRES_BASE_IMAGE:-pgvector/pgvector:0.8.2-pg16-bookworm}
     env_file:
       - ../db/.env
     ports:
@@ -38,7 +37,6 @@ services:
         PORT: ${PORT:-8000}
         MODELS_DIR: ${MODELS_DIR:-/app/models}
         DATA_DIR: ${DATA_DIR:-/app/data}
-    container_name: classifier-service
     env_file:
       - ../classifier-service/.env
     ports:
@@ -67,7 +65,6 @@ services:
         JDK_BASE_IMAGE: ${RAG_JAVA_JDK_BASE_IMAGE:-eclipse-temurin:21-jdk}
         JRE_BASE_IMAGE: ${RAG_JAVA_JRE_BASE_IMAGE:-eclipse-temurin:21-jre-alpine}
         SERVER_PORT: ${SERVER_PORT:-9000}
-    container_name: backend
     env_file:
       - ../db/.env
       - ../rag-service/.env
@@ -120,7 +117,6 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${WEBAPP_NEXT_PUBLIC_API_BASE_URL:-${NEXT_PUBLIC_API_BASE_URL:-}}
         NEXT_PUBLIC_RAG_API_PREFIX: ${WEBAPP_NEXT_PUBLIC_RAG_API_PREFIX:-${NEXT_PUBLIC_RAG_API_PREFIX:-/api/v5}}
         NEXT_PUBLIC_TIMEZONE: ${WEBAPP_NEXT_PUBLIC_TIMEZONE:-${NEXT_PUBLIC_TIMEZONE:-UTC}}
-    container_name: webapp
     ports:
       # Host:container — ports come from ../webapp/.env (WEBAPP_HTTP_PORT, WEBAPP_CONTAINER_PORT).
       - "${WEBAPP_HTTP_PORT:-80}:${WEBAPP_CONTAINER_PORT:-3000}"
@@ -139,7 +135,6 @@ services:
       dockerfile: Dockerfile
       args:
         LOKI_BASE_IMAGE: ${LOKI_BASE_IMAGE:-grafana/loki:2.9.6}
-    container_name: loki
     volumes:
       - ../observability/loki/config.yml.template:/config.yml.template:ro
     entrypoint: ["/bin/sh", "-c"]
@@ -157,7 +152,6 @@ services:
       dockerfile: Dockerfile
       args:
         PROMTAIL_BASE_IMAGE: ${PROMTAIL_BASE_IMAGE:-grafana/promtail:2.9.6}
-    container_name: promtail
     volumes:
       - ../observability/promtail/config.yml.template:/config.yml.template:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -179,7 +173,6 @@ services:
       dockerfile: Dockerfile
       args:
         NODE_EXPORTER_BASE_IMAGE: ${NODE_EXPORTER_BASE_IMAGE:-prom/node-exporter:v1.7.0}
-    container_name: node-exporter
     command:
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
@@ -203,7 +196,6 @@ services:
       dockerfile: Dockerfile
       args:
         CADVISOR_BASE_IMAGE: ${CADVISOR_BASE_IMAGE:-gcr.io/cadvisor/cadvisor:v0.49.1}
-    container_name: cadvisor
     privileged: true
     devices:
       - /dev/kmsg:/dev/kmsg
@@ -223,8 +215,11 @@ services:
   postgres-monitor-bootstrap:
     profiles:
       - observability
-    image: postgres:16-alpine
-    container_name: postgres-monitor-bootstrap
+    build:
+      context: ../db
+      dockerfile: postgres-monitor-bootstrap/Dockerfile
+      args:
+        POSTGRES_MONITOR_BOOTSTRAP_BASE_IMAGE: ${POSTGRES_MONITOR_BOOTSTRAP_BASE_IMAGE:-postgres:16-alpine}
     depends_on:
       postgres:
         condition: service_healthy
@@ -232,7 +227,7 @@ services:
       - ../db/.env
     environment:
       POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-vectordb}
@@ -249,7 +244,6 @@ services:
       dockerfile: Dockerfile
       args:
         BASE_IMAGE: ${OTEL_COLLECTOR_BASE_IMAGE:-otel/opentelemetry-collector-contrib:0.102.0}
-    container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yaml"]
     depends_on:
       postgres:
@@ -287,7 +281,6 @@ services:
       dockerfile: Dockerfile
       args:
         BASE_IMAGE: ${JAEGER_BASE_IMAGE:-jaegertracing/jaeger:2.16.0}
-    container_name: jaeger
     ports:
       - "${JAEGER_UI_PORT:-16686}:${OBS_INTERNAL_JAEGER_UI:-16686}"
       - "${JAEGER_COLLECTOR_PORT:-14268}:${OBS_INTERNAL_JAEGER_COLLECTOR_HTTP:-14268}"
@@ -303,7 +296,6 @@ services:
       dockerfile: Dockerfile
       args:
         BASE_IMAGE: ${PROMETHEUS_BASE_IMAGE:-prom/prometheus:v2.52.0}
-    container_name: prometheus
     environment:
       OBS_INTERNAL_BACKEND_ACTUATOR: ${OBS_INTERNAL_BACKEND_ACTUATOR:-9000}
       OBS_INTERNAL_OTEL_PROM_EXPORT: ${OBS_INTERNAL_OTEL_PROM_EXPORT:-8889}
@@ -324,7 +316,6 @@ services:
       dockerfile: Dockerfile
       args:
         BASE_IMAGE: ${GRAFANA_BASE_IMAGE:-grafana/grafana:11.2.0}
-    container_name: grafana
     ports:
       - "${GRAFANA_PORT:-3000}:${OBS_INTERNAL_GRAFANA:-3000}"
     environment:
@@ -351,7 +342,6 @@ services:
       dockerfile: Dockerfile
       args:
         BASE_IMAGE: ${OLLAMA_BASE_IMAGE:-ollama/ollama:latest}
-    container_name: ollama
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
     volumes:

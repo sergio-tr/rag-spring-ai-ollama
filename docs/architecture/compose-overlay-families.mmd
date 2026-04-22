@@ -4,7 +4,6 @@ flowchart TB
 
   subgraph devfam [Developer overlays]
     D1[compose.dev.yml backend-dev hot reload]
-    D2[compose.dev-webapp.yml webapp waits for backend-dev]
     D4[compose.dev-proxy.yml nginx + profile proxy]
     D5[compose.rag-dev-obs.yml OTLP targets for backend-dev]
   end
