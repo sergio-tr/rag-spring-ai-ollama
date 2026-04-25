@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { Link } from "@/navigation";
 
@@ -64,9 +64,17 @@ export function ConfirmEmailView() {
         </p>
       )}
       <div className="flex gap-3">
-        <Button asChild disabled={status === "busy"}>
-          <Link href="/login">{t("loginLink")}</Link>
-        </Button>
+        <Link
+          className={buttonVariants({})}
+          href="/login"
+          aria-disabled={status === "busy"}
+          tabIndex={status === "busy" ? -1 : 0}
+          onClick={(e) => {
+            if (status === "busy") e.preventDefault();
+          }}
+        >
+          {t("loginLink")}
+        </Link>
       </div>
     </div>
   );

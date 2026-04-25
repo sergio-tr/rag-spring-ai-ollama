@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "@/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -64,9 +64,9 @@ export function LoginForm() {
       noValidate
     >
       {oauthGoogleEnabled && (
-        <Button asChild type="button" variant="secondary">
-          <Link href="/api/auth/oauth/google/start">{t("oauthGoogleCta")}</Link>
-        </Button>
+        <Link className={buttonVariants({ variant: "secondary" })} href="/api/auth/oauth/google/start">
+          {t("oauthGoogleCta")}
+        </Link>
       )}
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">{t("email")}</Label>

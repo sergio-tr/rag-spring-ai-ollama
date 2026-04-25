@@ -18,6 +18,7 @@ import { useTranslations } from "next-intl";
 import { usePathname, Link, useRouter } from "@/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useState } from "react";
@@ -189,11 +190,16 @@ export function AppSidebar() {
               if (!o) setSearchText("");
             }}
           >
-            <DialogTrigger asChild>
-              <Button type="button" size="sm" variant="outline">
-                <Search className="mr-2 size-4" aria-hidden />
-                Search chat
-              </Button>
+            <DialogTrigger
+              render={
+                <button
+                  type="button"
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                />
+              }
+            >
+              <Search className="mr-2 size-4" aria-hidden />
+              Search chat
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
