@@ -5,8 +5,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
@@ -45,6 +45,21 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
                 .locations("classpath:db/migration")
                 .load()
                 .migrate();
+
+        // Defensive diagnostics for CI: if schema resolution differs, fail early with actionable context.
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        String currentSchema = jdbc.queryForObject("SELECT current_schema()", String.class);
+        String searchPath = jdbc.queryForObject("SHOW search_path", String.class);
+        Integer defTableCount = jdbc.queryForObject(
+                "SELECT COUNT(*)::int FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'runtime_trace_regression_suite_definition'",
+                Integer.class);
+        if (defTableCount == null || defTableCount != 1) {
+            throw new IllegalStateException(
+                    "Flyway migrations completed but expected table was not found. "
+                            + "current_schema=" + currentSchema
+                            + ", search_path=" + searchPath
+                            + ", public.runtime_trace_regression_suite_definition count=" + defTableCount);
+        }
     }
 
     @AfterAll

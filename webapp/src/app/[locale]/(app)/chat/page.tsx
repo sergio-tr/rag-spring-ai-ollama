@@ -29,7 +29,7 @@ import type {
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
 
@@ -44,7 +44,7 @@ function isAssistantRetryable(status: string | null | undefined): boolean {
   return status === "ERROR" || status === "CANCELLED";
 }
 
-export default function ChatPage() {
+function ChatPageInner() {
   const t = useTranslations("Chat");
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -715,5 +715,14 @@ export default function ChatPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ChatPage() {
+  // Next.js requires useSearchParams() to be under a Suspense boundary for the CSR bailout.
+  return (
+    <Suspense fallback={null}>
+      <ChatPageInner />
+    </Suspense>
   );
 }
