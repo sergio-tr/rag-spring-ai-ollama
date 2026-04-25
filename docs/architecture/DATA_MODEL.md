@@ -13,21 +13,21 @@ The platform persists: **identity and containers** (user, project, project docum
 
 ```mermaid
 erDiagram
-  users || --o{ projects : owns
-  users || --o{ rag_configuration : user_level
-  projects || --o{ rag_configuration : project_level
-  users || --o{ rag_preset : owns
-  users || --o{ conversations : starts
-  projects || --o{ conversations : contains
-  conversations || --o{ messages : has
-  projects || --o{ project_documents : contains
-  users || --o{ evaluation_dataset : owns
-  evaluation_dataset || --o{ evaluation_run : feeds
-  evaluation_run || --o{ evaluation_result : produces
-  projects || --o{ evaluation_run : optional_scope
-  users || --o{ classifier_model : owns
-  users || --o{ async_task : submits
-  projects || --o{ async_task : optional_scope
+  users ||--o{ projects : owns
+  users ||--o{ rag_configuration : user_level
+  projects ||--o{ rag_configuration : project_level
+  users ||--o{ rag_preset : owns
+  users ||--o{ conversations : starts
+  projects ||--o{ conversations : contains
+  conversations ||--o{ messages : has
+  projects ||--o{ project_documents : contains
+  users ||--o{ evaluation_dataset : owns
+  evaluation_dataset ||--o{ evaluation_run : feeds
+  evaluation_run ||--o{ evaluation_result : produces
+  projects ||--o{ evaluation_run : optional_scope
+  users ||--o{ classifier_model : owns
+  users ||--o{ async_task : submits
+  projects ||--o{ async_task : optional_scope
 ```
 
 ---
@@ -36,14 +36,14 @@ erDiagram
 
 ```mermaid
 erDiagram
-  users || --o{ projects : owns
-  users || --o{ rag_configuration : has
-  projects || --o{ rag_configuration : scopes
-  users || --o{ rag_preset : owns
-  users || --o{ conversations : starts
-  projects || --o{ conversations : contains
-  conversations || --o{ messages : has
-  projects || --o{ project_documents : ingests
+  users ||--o{ projects : owns
+  users ||--o{ rag_configuration : has
+  projects ||--o{ rag_configuration : scopes
+  users ||--o{ rag_preset : owns
+  users ||--o{ conversations : starts
+  projects ||--o{ conversations : contains
+  conversations ||--o{ messages : has
+  projects ||--o{ project_documents : ingests
 
   users {
     uuid id PK
@@ -115,15 +115,15 @@ erDiagram
 
 ```mermaid
 erDiagram
-  users || --o{ evaluation_dataset : owns
-  evaluation_dataset || --o{ evaluation_run : feeds
-  evaluation_run || --o{ evaluation_result : produces
-  users || --o{ evaluation_run : triggers
-  projects || --o{ evaluation_run : optional_scope
-  users || --o{ classifier_model : owns
-  evaluation_dataset || --o{ classifier_model : trained_from
-  users || --o{ async_task : submits
-  projects || --o{ async_task : optional_scope
+  users ||--o{ evaluation_dataset : owns
+  evaluation_dataset ||--o{ evaluation_run : feeds
+  evaluation_run ||--o{ evaluation_result : produces
+  users ||--o{ evaluation_run : triggers
+  projects ||--o{ evaluation_run : optional_scope
+  users ||--o{ classifier_model : owns
+  evaluation_dataset ||--o{ classifier_model : trained_from
+  users ||--o{ async_task : submits
+  projects ||--o{ async_task : optional_scope
   allowed_model {
     uuid id PK
     string name
