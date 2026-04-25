@@ -43,10 +43,10 @@ jobs:
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Verify pinned Postgres image references
         run: bash ./.github/scripts/verify-pinned-postgres-image.sh
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -59,7 +59,7 @@ jobs:
           ./mvnw -B clean verify
       - name: Upload Maven test reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rag-service-maven-test-reports
           path: |
@@ -77,8 +77,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Install dependencies
@@ -91,7 +91,7 @@ jobs:
           pytest tests/ -v
       - name: Upload Python coverage.xml
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: classifier-coverage-xml
           path: classifier-service/coverage.xml
@@ -106,11 +106,12 @@ jobs:
       run:
         working-directory: webapp
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/cache-npm-webapp
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
       - run: npm install --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
@@ -127,7 +128,7 @@ jobs:
           fi
       - name: Upload coverage report
         if: ${{ always() && (steps.vitest_coverage.outcome == 'success' || steps.vitest_coverage.outcome == 'failure') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: webapp-coverage
           path: webapp/coverage/
@@ -145,11 +146,12 @@ jobs:
       run:
         working-directory: webapp
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/cache-npm-webapp
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
       - name: Install and build
         run: |
           npm install --no-audit --no-fund
@@ -161,7 +163,7 @@ jobs:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-smoke-report
           path: webapp/playwright-report/
@@ -209,8 +211,8 @@ jobs:
       INTEGRATION_ADMIN_EMAIL: admin@e2e.local
       INTEGRATION_ADMIN_PASSWORD: e2e
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -243,7 +245,7 @@ jobs:
           else
             echo "Readiness status: HTTP $code"
           fi
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Install integration test deps
@@ -256,7 +258,7 @@ jobs:
           if [ -f /tmp/spring-integration.pid ]; then kill "$(cat /tmp/spring-integration.pid)" 2>/dev/null || true; fi
       - name: Upload Spring log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: spring-integration-log
           path: /tmp/spring-integration.log
@@ -303,11 +305,11 @@ jobs:
       # Model-loaded is NOT required in CI by default (connectivity is the primary gate).
       INTEGRATION_REQUIRE_CLASSIFIER_MODEL: "0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -366,7 +368,7 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: stack-integration-classifier-required-logs
           path: |
@@ -387,7 +389,7 @@ jobs:
     needs: [core_done]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v3
       - name: Build rag-service image
         uses: docker/build-push-action@v6
@@ -427,7 +429,7 @@ jobs:
     needs: [core_done]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install PyYAML for compose_guard
         run: python3 -m pip install --user -q pyyaml
       - name: Create .env files
@@ -440,7 +442,7 @@ jobs:
             2>&1 | tee /tmp/compose-structural-guard.log
       - name: Upload compose guard log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: compose-structural-guard-log
           path: /tmp/compose-structural-guard.log
@@ -478,8 +480,8 @@ jobs:
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:9000
       NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -513,9 +515,10 @@ jobs:
             echo "Readiness status: HTTP $code"
           fi
       - uses: ./.github/actions/cache-npm-webapp
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
       - name: Install, build Next.js, run @fullstack Playwright
         working-directory: webapp
         env:
@@ -532,14 +535,14 @@ jobs:
           if [ -f /tmp/spring-e2e.pid ]; then kill "$(cat /tmp/spring-e2e.pid)" 2>/dev/null || true; fi
       - name: Upload Spring log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: spring-e2e-log
           path: /tmp/spring-e2e.log
           retention-days: 7
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-fullstack-report
           path: webapp/playwright-report/
@@ -578,8 +581,8 @@ jobs:
       INTEGRATION_LOGIN_EMAIL: dev@local.test
       INTEGRATION_LOGIN_PASSWORD: dev
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -610,9 +613,10 @@ jobs:
       - name: Cache npm (webapp)
         uses: ./.github/actions/cache-npm-webapp
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
       - name: Install webapp dependencies
         working-directory: webapp
         run: npm install --no-audit --no-fund
@@ -630,7 +634,7 @@ jobs:
 
       - name: Upload logs/reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-api-smoke-artifacts
           path: |
@@ -673,10 +677,10 @@ jobs:
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -684,7 +688,7 @@ jobs:
       - name: Ensure Maven wrapper is executable
         working-directory: rag-service
         run: chmod +x mvnw
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -712,9 +716,10 @@ jobs:
           MODELS_DIR: ./models
           DATA_DIR: ./data
       - uses: ./.github/actions/cache-npm-webapp
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
       - name: Install webapp dependencies and generate LCOV
         working-directory: webapp
         run: |
@@ -763,8 +768,8 @@ jobs:
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
       RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -800,7 +805,7 @@ jobs:
         run: |
           set -e
           ./gradlew --no-daemon gatlingRun --simulation simulations.ActuatorHealthSimulation
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Infra micro-benchmark (actuator health probe)
@@ -822,7 +827,7 @@ jobs:
         run: tail -n 200 /tmp/spring-perf.log || true
       - name: Upload Gatling reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gatling-reports-pr
           path: tests/gatling/build/reports/gatling/

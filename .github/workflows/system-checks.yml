@@ -22,15 +22,16 @@ jobs:
       run:
         working-directory: webapp
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Cache npm (webapp)
         uses: ./.github/actions/cache-npm-webapp
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
@@ -46,7 +47,7 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-api-report
           path: webapp/playwright-report/
