@@ -65,7 +65,7 @@ export function LoginForm() {
     >
       {oauthGoogleEnabled && (
         <Button asChild type="button" variant="secondary">
-          <a href="/api/auth/oauth/google/start">{t("oauthGoogleCta")}</a>
+          <Link href="/api/auth/oauth/google/start">{t("oauthGoogleCta")}</Link>
         </Button>
       )}
       <div className="flex flex-col gap-2">

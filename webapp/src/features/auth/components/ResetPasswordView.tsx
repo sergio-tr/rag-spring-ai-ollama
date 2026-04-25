@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
@@ -28,20 +28,13 @@ export function ResetPasswordView() {
 
   const zodSchema = useMemo(() => schema(t), [t]);
 
-  const [status, setStatus] = useState<"idle" | "busy" | "ok" | "error">("idle");
-  const [message, setMessage] = useState<string | null>(null);
+  const [status, setStatus] = useState<"idle" | "busy" | "ok" | "error">(() => (token ? "idle" : "error"));
+  const [message, setMessage] = useState<string | null>(() => (token ? null : t("resetPasswordMissingToken")));
 
   const form = useForm<Values>({
     resolver: zodResolver(zodSchema),
     defaultValues: { password: "" },
   });
-
-  useEffect(() => {
-    if (!token) {
-      setStatus("error");
-      setMessage(t("resetPasswordMissingToken"));
-    }
-  }, [token, t]);
 
   async function onSubmit(values: Values) {
     if (!token) return;

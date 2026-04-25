@@ -50,8 +50,15 @@ export default function ChatPage() {
   const searchParams = useSearchParams();
   const active = useAppStore((s) => s.activeProject);
   const projectId = active?.id;
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [convListCollapsed, setConvListCollapsed] = useState(false);
+  const urlConversationId = searchParams.get("conversationId");
+  const [conversationId, setConversationId] = useState<string | null>(() => urlConversationId ?? null);
+  const [convListCollapsed, setConvListCollapsed] = useState(() => {
+    try {
+      return sessionStorage.getItem(CHAT_CONV_LIST_COLLAPSED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -68,20 +75,11 @@ export default function ChatPage() {
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    try {
-      if (sessionStorage.getItem(CHAT_CONV_LIST_COLLAPSED_KEY) === "true") {
-        setConvListCollapsed(true);
-      }
-    } catch {
-      /* sessionStorage unavailable */
-    }
-  }, []);
-
-  const urlConversationId = searchParams.get("conversationId");
-  useEffect(() => {
     if (urlConversationId && urlConversationId !== conversationId) {
-      setConversationId(urlConversationId);
+      const t = setTimeout(() => setConversationId(urlConversationId), 0);
+      return () => clearTimeout(t);
     }
+    return;
   }, [urlConversationId, conversationId]);
 
   function selectConversation(nextId: string) {
@@ -125,16 +123,21 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!activeConv) return;
-    setPresetSelectValue(activeConv.presetId ?? "");
+    const t = setTimeout(() => setPresetSelectValue(activeConv.presetId ?? ""), 0);
     const df = activeConv.documentFilter;
     if (df && df.length > 0) {
-      setLimitDocs(true);
-      setSelectedDocIds([...df]);
+      setTimeout(() => {
+        setLimitDocs(true);
+        setSelectedDocIds([...df]);
+      }, 0);
     } else {
-      setLimitDocs(false);
-      setSelectedDocIds([]);
+      setTimeout(() => {
+        setLimitDocs(false);
+        setSelectedDocIds([]);
+      }, 0);
     }
-  }, [convSyncKey]);
+    return () => clearTimeout(t);
+  }, [convSyncKey, activeConv]);
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
   const setStreamingText = useChatExplainStore((s) => s.setStreamingText);
@@ -169,9 +172,12 @@ export default function ChatPage() {
 
   /** Load persisted draft when opening a conversation. */
   useEffect(() => {
-    setEditingUserMessageId(null);
-    setEditBody("");
-    setEditError(null);
+    const t = setTimeout(() => {
+      setEditingUserMessageId(null);
+      setEditBody("");
+      setEditError(null);
+    }, 0);
+    return () => clearTimeout(t);
   }, [conversationId]);
 
   useEffect(() => {
@@ -180,21 +186,25 @@ export default function ChatPage() {
       lastUserMessageId &&
       editingUserMessageId !== lastUserMessageId
     ) {
-      setEditingUserMessageId(null);
-      setEditBody("");
-      setEditError(null);
+      const t = setTimeout(() => {
+        setEditingUserMessageId(null);
+        setEditBody("");
+        setEditError(null);
+      }, 0);
+      return () => clearTimeout(t);
     }
+    return;
   }, [editingUserMessageId, lastUserMessageId]);
 
   useEffect(() => {
     if (!conversationId) {
-      setInput("");
-      return;
+      const t = setTimeout(() => setInput(""), 0);
+      return () => clearTimeout(t);
     }
     let cancelled = false;
     void apiFetch<ConversationDraftDto>(apiProductPath(`/conversations/${conversationId}/draft`))
       .then((d) => {
-        if (!cancelled) setInput(d.content ?? "");
+        if (!cancelled) setTimeout(() => setInput(d.content ?? ""), 0);
       })
       .catch(() => {});
     return () => {

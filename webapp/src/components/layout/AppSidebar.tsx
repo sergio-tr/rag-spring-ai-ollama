@@ -42,28 +42,34 @@ function isHexColor(s: string | null | undefined): s is string {
   return Boolean(s && /^#([0-9A-Fa-f]{6})$/.test(s));
 }
 
-function getProjectIcon(iconKey: string | null | undefined) {
+type ProjectIconProps = {
+  iconKey: string | null | undefined;
+  className?: string;
+  "aria-hidden"?: boolean;
+};
+
+function ProjectIcon({ iconKey, className, ...rest }: ProjectIconProps) {
   switch (iconKey) {
     case "folder":
-      return Folder;
+      return <Folder className={className} {...rest} />;
     case "briefcase":
-      return Briefcase;
+      return <Briefcase className={className} {...rest} />;
     case "star":
-      return Star;
+      return <Star className={className} {...rest} />;
     case "code":
-      return Code;
+      return <Code className={className} {...rest} />;
     case "rocket":
-      return Rocket;
+      return <Rocket className={className} {...rest} />;
     case "shield":
-      return Shield;
+      return <Shield className={className} {...rest} />;
     case "chat":
-      return MessageSquare;
+      return <MessageSquare className={className} {...rest} />;
     case "lab":
-      return FlaskConical;
+      return <FlaskConical className={className} {...rest} />;
     case "book":
-      return FileText;
+      return <FileText className={className} {...rest} />;
     default:
-      return FolderKanban;
+      return <FolderKanban className={className} {...rest} />;
   }
 }
 
@@ -319,7 +325,6 @@ function SidebarProjectNode({
   searchQuery,
   onSelectConversation,
 }: SidebarProjectNodeProps) {
-  const Icon = getProjectIcon(project.iconKey);
   // Avoid fan-out: only load conversations when expanded or active.
   // Cross-project search loads conversations progressively via the search UI.
   const shouldLoadConversations = expanded || activeProjectId === project.id;
@@ -345,7 +350,7 @@ function SidebarProjectNode({
             }}
             aria-hidden
           />
-          <Icon className="size-4 shrink-0" aria-hidden />
+          <ProjectIcon iconKey={project.iconKey} className="size-4 shrink-0" aria-hidden />
           <span className="truncate">{project.name}</span>
         </button>
         <button
@@ -424,8 +429,8 @@ function SearchChatsBody({
   // This avoids loading every project conversation list at once.
   useEffect(() => {
     if (!q) {
-      setLoadedCount(Math.min(2, prioritizedProjectIds.length));
-      return;
+      const t = setTimeout(() => setLoadedCount(Math.min(2, prioritizedProjectIds.length)), 0);
+      return () => clearTimeout(t);
     }
     if (loadedCount < prioritizedProjectIds.length) {
       const t = setTimeout(() => setLoadedCount((c) => Math.min(c + 1, prioritizedProjectIds.length)), 150);
