@@ -9,7 +9,7 @@ Normative guide for **mocking and stubbing** external dependencies in `rag-servi
 ## Decision table: mock vs fake vs stub HTTP vs `@TestConfiguration`
 
 | Situation | Prefer |
-|-----------|--------|
+| ----------- | -------- |
 | Spring bean with stable contract and many dependents | `@MockBean` / `@MockitoBean` on slices, or `@Primary` `@TestConfiguration` stub (see `TestAiStubConfiguration`) |
 | HTTP client with real JSON request/response shape | **`MockRestServiceServer`** bound to the same `RestTemplate` the client uses (see `ClassifierClientTestSupport`) |
 | Pure logic, no I/O | In-memory fake under `com.uniovi.rag.testsupport` |
@@ -29,7 +29,7 @@ Normative guide for **mocking and stubbing** external dependencies in `rag-servi
 JaCoCo excludes many packages that **eventually** depend on the stack below. This table links **externals** to **typical consumers** (not exhaustive).
 
 | External | Typical Java touchpoints | Excluded areas (orientative) |
-|----------|--------------------------|-------------------------------|
+| ---------- | -------------------------- | ------------------------------- |
 | Ollama / Spring AI | `ChatModel`, `EmbeddingModel`, `ChatClient`, `OllamaApiClient`, `spring.ai.ollama.*` | `tool/**`, `service/analyser/**`, `service/ranker/**`, `service/retriever/**`, `application/service/runtime/**`, … |
 | Classifier HTTP | `ClassifierServiceClient`, `rag.classifier.*` | `service/evaluation/**`, `application/service/evaluation/**`, runtime QU adapters |
 | OTLP / Micrometer | `management.otlp.*`, `management.tracing.*`, `ObservabilitySupport`, `Tracer` | `infrastructure/observability/**` |
@@ -41,7 +41,7 @@ JaCoCo excludes many packages that **eventually** depend on the stack below. Thi
 ## 1. Ollama / Spring AI
 
 | Artifact | Role |
-|----------|------|
+| ---------- | ------ |
 | [`TestAiStubConfiguration`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/TestAiStubConfiguration.java) | `@TestConfiguration` `@Profile("test")`: `@Primary` `ChatModel`, `EmbeddingModel`, `OllamaApiClient.noHttpStub` — **no** outbound Ollama |
 | [`ChatClientTestSupport`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/ChatClientTestSupport.java) | Mockito deep stubs for `ChatClient` fluent API in **unit** tests |
 | `OllamaConnectivityChecker` | **Mock** in service/WebMvc tests that inject it — no live ping |
@@ -58,7 +58,7 @@ JaCoCo excludes many packages that **eventually** depend on the stack below. Thi
 ## 2. Classifier (HTTP)
 
 | Property (main) | Purpose |
-|-----------------|--------|
+| ----------------- | -------- |
 | `rag.classifier.service.url` | Base URL (empty ⇒ client no-op) |
 | `rag.classifier.model-id` | Default model tag |
 | `rag.classifier.service.timeout-ms` | HTTP timeouts |
@@ -66,7 +66,7 @@ JaCoCo excludes many packages that **eventually** depend on the stack below. Thi
 **Test profile:** [`application-test.properties`](../../rag-service/src/test/resources/application-test.properties) sets **`rag.classifier.service.url=`** (empty) so full-context tests do not open TCP to a default localhost classifier unless a test overrides the property.
 
 | Artifact | Role |
-|----------|------|
+| ---------- | ------ |
 | [`ClassifierClientTestSupport`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/ClassifierClientTestSupport.java) | `MockRestServiceServer` + `RestTemplate` + `ClassifierServiceClient` fixture; `defaultBaseUrl()` aligns `requestTo(...)` expectations |
 | [`ClassifierServiceClientTest`](../../rag-service/src/test/java/com/uniovi/rag/infrastructure/classifier/ClassifierServiceClientTest.java) | Reference tests: 200/5xx/invalid body/timeout |
 

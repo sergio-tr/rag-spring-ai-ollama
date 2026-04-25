@@ -3,7 +3,7 @@
 Use this table to avoid duplicating content. Prefer linking here from other `docs/` pages.
 
 | Topic | Canonical doc |
-|-------|----------------|
+| ------- | ---------------- |
 | Backend build, profiles, smoke | [rag-service/README.md](../../rag-service/README.md) |
 | Webapp dev, env, tests | [webapp/README.md](../../webapp/README.md) |
 | Classifier train/infer | [classifier-service/README.md](../../classifier-service/README.md) |

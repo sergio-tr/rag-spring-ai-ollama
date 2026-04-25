@@ -5,7 +5,7 @@
 **Conventions:** This table avoids internal work-item identifiers; use stable package names and responsibilities here. Deep HTTP and traceability detail: [rag-runtime-architecture.md](rag-runtime-architecture.md) and [rag-service/README.md](../../rag-service/README.md).
 
 | Package / area | Role |
-|----------------|------|
+| ---------------- | ------ |
 | `application.port` | Hexagonal ports: `ConfigurationSourcePort` (layer loads + raw preset/profile sources), `ConversationRuntimeOverrideLoader`, `RagConfigurationResolver` |
 | `application.port.out` | Outbound ports (interfaces) for use cases |
 | `application.config` | Runtime configuration resolution: `ConfigResolverService`, `RuntimeConfigResolutionInput`, `CompatibilityValidator`, `ReindexImpactAnalyzer`, `SystemPromptComposer` |

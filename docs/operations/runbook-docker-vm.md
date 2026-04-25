@@ -20,7 +20,7 @@
 Application configuration is **not** fully defined in `deploy.yml`; the VM must have consistent `.env` files expected by Compose overlays. Typical layout (adjust to your team):
 
 | File / area | Purpose |
-|-------------|---------|
+| ------------- | --------- |
 | `db/.env` | Postgres credentials and DB name. |
 | `rag-service/.env` | Spring datasource, Ollama URL, JWT, etc. |
 | `classifier-service/.env` | Classifier API keys and model paths. |
@@ -80,6 +80,6 @@ Treat observability as an **optional Compose overlay**; production parity is “
 ## 7. GitHub Actions vs manual
 
 | Method | When |
-|--------|------|
+| -------- | ------ |
 | `workflow_dispatch` on `deploy.yml` | After **`ci.yml`** + **`e2e-fullstack.yml`** are green on the **same SHA** (see [deploy-workflow-audit.md](deploy-workflow-audit.md)). |
 | SSH manual | Hotfix, rollback, or when Actions is unavailable — use the same compose commands as above. |

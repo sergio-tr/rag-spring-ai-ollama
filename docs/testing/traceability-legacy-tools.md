@@ -7,7 +7,7 @@
 ## Where to look
 
 | Concern | Location |
-|---------|----------|
+| --------- | ---------- |
 | Actuator / OpenAPI / readiness | Gatling: `ActuatorHealthSimulation`, `OpenApiAndReadinessSimulation`; Playwright API specs under `webapp/e2e/api/` |
 | Ramps, stress, mixed traffic | Gatling mixed profiles and dedicated simulations (`tests/gatling/README.md`) |
 | Authenticated product API | Gatling: `ProductAuthenticatedSimulation`; Playwright: `webapp/e2e/api/**/*.spec.ts` |

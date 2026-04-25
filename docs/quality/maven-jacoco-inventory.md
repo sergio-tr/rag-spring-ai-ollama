@@ -14,7 +14,7 @@ There is **exactly one** [`pom.xml`](../../rag-service/pom.xml) in this reposito
 ## JaCoCo plugin
 
 | Setting | Value |
-|---------|--------|
+| --------- | -------- |
 | Plugin | `jacoco-maven-plugin` **0.8.12** |
 | `prepare-agent` | default execution |
 | `report` | bound to **`test`** phase → XML for Sonar |
@@ -23,7 +23,7 @@ There is **exactly one** [`pom.xml`](../../rag-service/pom.xml) in this reposito
 ### Bundle rule (global gate)
 
 | Element | Counter | Limit |
-|---------|-----------|--------|
+| --------- | ----------- | -------- |
 | `BUNDLE` | `LINE` / `COVEREDRATIO` | **minimum 0.80** |
 
 ### `<excludes>` (verbatim patterns)

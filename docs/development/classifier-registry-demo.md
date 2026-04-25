@@ -17,7 +17,7 @@
 ## API (same contract as UI)
 
 | Method | Path | Purpose |
-|--------|------|---------|
+| -------- | ------ | --------- |
 | `GET` | `{product}/lab/classifier/models` | List registered models for the current user |
 | `POST` | `{product}/lab/classifier/models/{modelId}/activate` | Body: `{ "projectId": "<uuid>" }` — sets active row and merges `classifierModelId` |
 

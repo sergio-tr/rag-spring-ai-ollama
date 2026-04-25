@@ -7,7 +7,7 @@
 ## Core entities
 
 | Entity | Meaning |
-|--------|---------|
+| -------- | --------- |
 | `CapabilityGroup` | Groups related toggles/capabilities for UX and validation (e.g. retrieval family, tools family). |
 | `Capability` | Atomic feature the runtime can enable when compatible (may map from flags after resolution). |
 | `CompatibilityRule` | Declares valid combinations of capabilities, models, and workflows; rejects or downgrades invalid resolved config. |

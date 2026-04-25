@@ -5,7 +5,7 @@ This document separates **two different numbers** teams often confuse.
 ## Concepts
 
 | Concept | Meaning | Enforcement |
-|---------|---------|-------------|
+| --------- | --------- | ------------- |
 | **Global Java coverage (bundle)** | JaCoCo **LINE** ratio on bytecode **after** `<excludes>` in [`rag-service/pom.xml`](../../rag-service/pom.xml) | **`jacoco:check`** at end of `./mvnw verify` — **minimum 0.80** |
 | **New / changed code (leak period)** | Sonar **New Code** coverage and issues on PRs / quality gate | **Sonar Cloud Quality Gate** (see [sonar-baseline-record.md](sonar-baseline-record.md)) |
 | **Classifier** | pytest-cov aggregate with `fail_under = 80` | [`.coveragerc`](../../classifier-service/.coveragerc) |

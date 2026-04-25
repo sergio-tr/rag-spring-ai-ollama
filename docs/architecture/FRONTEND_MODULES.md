@@ -3,7 +3,7 @@
 **Navigation only** — thesis-friendly map. All setup, scripts, and testing: [webapp/README.md](../../webapp/README.md). API types: TypeDoc (`cd webapp && npm run doc`).
 
 | Area | Path (typical) | Role |
-|------|----------------|------|
+| ------ | ---------------- | ------ |
 | App Router | `src/app/[locale]/` | Pages: auth, projects, chat, settings, lab, admin |
 | UI components | `src/components/` | Shared UI (shadcn-style) |
 | API client | `src/lib/` | `fetch` wrappers, auth headers, `NEXT_PUBLIC_RAG_API_PREFIX` |

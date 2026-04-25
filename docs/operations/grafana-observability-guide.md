@@ -53,7 +53,7 @@ If logs do not show `trace_id`, confirm `SPRING_PROFILES_ACTIVE` includes **`inf
 ## 5. Troubleshooting
 
 | Symptom | What to check |
-|--------|----------------|
+| -------- | ---------------- |
 | No traces in Jaeger | `otel-collector` and `jaeger` up; `OTEL_EXPORTER_OTLP_ENDPOINT` points to collector; backend `MANAGEMENT_OTLP_TRACING_ENDPOINT` ends with `/v1/traces`. |
 | Classifier not in trace | Classifier container up; network from `backend` to `classifier-service`; look for `rag.query.classify` and client HTTP spans. |
 | Grafana panels empty | Prometheus targets **UP**; job label `backend`; time range; traffic generated. |

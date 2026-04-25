@@ -9,7 +9,7 @@
 ## Hostnames and endpoints
 
 | Instead of | Use |
-|------------|-----|
+| ------------ | ----- |
 | Literal public IPv4 in README/runbooks | **DNS name** (Azure DNS, custom domain CNAME to FQDN, or Azure-provided FQDN if enabled) |
 | Fixed private IP in team wiki | **Service name** / **Private DNS zone** / **subnet** documentation |
 
@@ -27,7 +27,7 @@
 ## Secrets and config
 
 | Concern | Practice |
-|---------|----------|
+| --------- | ---------- |
 | Connection strings | Environment variables on VM or **Azure Key Vault** references — not committed |
 | `GHCR_TOKEN` | Short-lived PAT or org token in GitHub **Secrets**; rotate on schedule |
 | TLS | Terminate at **Application Gateway**, **Nginx**, or **Caddy** with certs from Key Vault or Let’s Encrypt — document **hostname**, not IP |

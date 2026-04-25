@@ -1,5 +1,5 @@
 | # | HTTP | Path pattern | Consumes | Produces | Controller |
-|---|------|--------------|----------|----------|------------|
+| --- | ------ | -------------- | ---------- | ---------- | ------------ |
 | 1 | GET | `/runtime-trace-regression-suite-runs` | — | — | RuntimeTraceRegressionSuiteRunController |
 | 2 | GET | `/runtime-trace-regression-suite-runs/{runId}` | — | — | RuntimeTraceRegressionSuiteRunController |
 | 3 | POST | `/runtime-trace-regression-suite-runs` | application/json | — | RuntimeTraceRegressionSuiteRunController |

@@ -17,7 +17,7 @@ This hub records **verified** test execution, **exclusion inventories**, and **n
 Update this table when you re-run the canonical commands on a new release candidate or after major tool changes.
 
 | Commit (short) | Full SHA | Date (UTC) | rag-service `./mvnw clean verify` | classifier `pytest tests/` | webapp `lint` / `typecheck` / `test:coverage` / `build` |
-|----------------|----------|--------------|-------------------------------------|----------------------------|--------------------------------------------------------|
+| ---------------- | ---------- | -------------- | ------------------------------------- | ---------------------------- | -------------------------------------------------------- |
 | `ebd3453` | `ebd3453f9c89360d737df73321da5dac588f1482` | 2026-04-19 | **PASS** (local WSL2); Surefire aggregate **2309** tests, **52** skipped (`@EnabledIf` / env), **0** failures | **PASS** (local; `apt`-installed `python3-pip` then `pip install -r requirements.txt`): **107 passed**, coverage **91.85%** line (`coverage.xml` written) | **PASS** (local **Node v24.14.1** / **npm 11.11.0**): `lint` **0 errors** (4 warnings), `typecheck` OK, `test:coverage` OK (Vitest thresholds), `build` OK |
 | `47e6d0d647` | `47e6d0d647db58e39e3c23157ff27003fb3fb572` | 2026-04-12 | **PASS** (local) | **Not executed** (Python `pip`/`pytest` not available in baseline environment) | **PASS** after mechanical `undefined` guard in [`webapp/src/proxy.ts`](../../webapp/src/proxy.ts) (`localeFromPath`) |
 
@@ -40,7 +40,7 @@ Update this table when you re-run the canonical commands on a new release candid
 Each row is a mechanism that changes what is **measured**, **analyzed**, or **run** — not all are “skipped tests”.
 
 | Mechanism | Scope | What it excludes or filters | Apparent reason | Still valid? | Recommended action |
-|-----------|--------|------------------------------|-----------------|--------------|-------------------|
+| ----------- | -------- | ------------------------------ | ----------------- | -------------- | ------------------- |
 | JaCoCo `<excludes>` in [`rag-service/pom.xml`](../../rag-service/pom.xml) | Coverage bytecode | Many production packages (config, model, large orchestration, **tools**, DTOs, most JPA entities); **`com.uniovi.rag/tool/**` stays excluded** (large surface; would collapse the bundle ratio without a dedicated campaign). **`infrastructure/observability/**`** is excluded (matches Sonar `**/observability/**`; the old `com.uniovi.rag/observability/**` pattern was a no-op). **`ChatMessageApplicationService`** is measured (`ChatMessageApplicationServiceTest` + `AfterCommitTaskScheduler` port with a production `SpringAfterCommitTaskScheduler`). **`ProjectVisualStyleValidator`**: [`ProjectVisualStyleValidatorTest`](../../rag-service/src/test/java/com/uniovi/rag/application/service/account/ProjectVisualStyleValidatorTest.java) (counted in JaCoCo; no longer Sonar-only). **`LabEvaluationRunService`** (under excluded `application/service/evaluation/**`): [`LabEvaluationRunServiceTest`](../../rag-service/src/test/java/com/uniovi/rag/application/service/evaluation/LabEvaluationRunServiceTest.java) for future exclude shrink. **`ToolResult`**: [`ToolResultTest`](../../rag-service/src/test/java/com/uniovi/rag/tool/ToolResultTest.java) (package still JaCoCo-excluded until `tool/**` is narrowed). **Measured when covered** (non-exhaustive): `ConversationApplicationService`, `ProjectDocumentApplicationService`, `application.service.me.*` (unit tests), `AsyncLabTaskRunner`, `api.v5.*Controller`, `ProcessQueryService`, `MessageStreamController`, `LabBenchmarkController`, `MinuteDocumentStructureExpander`, `ConfigProfileController`, `ConfigProfileApplicationService`, `MoveConversationApplicationService`, `PromoteDocumentApplicationService`, `UserAccountPersistenceAdapter`, `AnswerGenerationKernel`, `ChatMessageJobHandler`, `ProjectKnowledgeController`, `ChatStreamChunks`, `ContextPropagatingFutures`, `LegacyCompatibilityValidatorBridge`, `ChatScopedRagConfigResolver`, `LocalBinaryStorageAdapter`, `KnowledgeLegacyBackfillService`, `RuntimeConfigResolutionService`, `MeetingMinutesToolRawResult`, `domain.evaluation` enums / `RagEvaluationLegacy`, nested port records on `BinaryStoragePort` / `EvaluationDatasetStorePort`, `ChatJobCancellationRegistry`, `LocalEvaluationDatasetStorageAdapter`, `AuditApplicationService`, `KnowledgeIndexSnapshotService`, `ProductionSecurityValidator`, `E2eAdminUserSeeder`. **`AuditLogEntity`**: Postgres IT (`AuditLogPersistenceIT`). **`ConversationDraftEntity`**: Postgres IT (`ConversationDraftPersistenceIT`). **Per-package exit contract** (tiers, prerequisites): [`docs/testing/rag-service-heavy-package-coverage-exit-contracts.md`](../testing/rag-service-heavy-package-coverage-exit-contracts.md). | Keep bundle ≥ 80%; focus on testable surfaces | Yes | When touching a package, shrink an exclude only with tests that keep the same bundle gate |
 | `sonar.coverage.exclusions` / `sonar.exclusions` in [`sonar-project.properties`](../../sonar-project.properties) | Sonar metrics / analysis | Aligns with JaCoCo for rag-service Java coverage intent; adds **`**/domain/runtime/functioncalling/**`**, **`**/domain/runtime/retrieval/**`**, **`**/api/v5/dto/**`**, **`**/api/auth/dto/**`** (parity with the POM). **`service/analyser/**`** is **measured** (JaCoCo + Sonar exclusions removed 2026-04-21). Legacy **`domain/entity`** patterns were **removed** (no matching Java sources). **`**/*Configuration.java`** / **`**/*Properties.java`** are **broader** than JaCoCo’s `com.uniovi.rag.configuration/**` (Sonar-only, on purpose). TS/Python noise paths unchanged. | Multi-language Sonar | Yes | When changing JaCoCo `<excludes>`, update `sonar.coverage.exclusions` for the same Java intent; re-run `verify` and a Sonar scan on release candidates |
 | Vitest `coverage.exclude` in [`webapp/vitest.config.ts`](../../webapp/vitest.config.ts) | Frontend coverage gate | App Router pages/layouts, some UI shells, etc. | E2E / manual | Review per file | Document in module README when changing |
@@ -54,7 +54,7 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 ## Normative policies
 
 | ID | Policy |
-|----|--------|
+| ---- | -------- |
 | **FD-single-gate-command** | Backend gate: `cd rag-service && ./mvnw clean verify`. |
 | **FD-api-path-tests** | In Spring tests, build paths from **`rag.api.product-base-path`** (`@TestPropertySource` / `@DynamicPropertySource`) and a **single constant per test class** (e.g. `PRODUCT_BASE`). Do not scatter literals `/api/vN` except tests whose **only** purpose is cross-prefix compatibility (document in test name or comment). |
 | **FD-ollama-mock** | Prefer **mock `OllamaConnectivityChecker`** and stubbed `ChatModel`/`ChatClient` in unit/WebMvc tests; unit tests should not require a live Ollama. |
@@ -94,7 +94,7 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 ## SonarCloud baseline
 
 | Field | Value |
-|-------|--------|
+| ------- | -------- |
 | **Project key** | `sergio-tr_rag-spring-ai-ollama` ([`sonar-project.properties`](../../sonar-project.properties)) |
 | **Organization** | `sergio-tr` |
 | **Dashboard** | [SonarCloud project summary](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama) |
@@ -109,7 +109,7 @@ Each row is a mechanism that changes what is **measured**, **analyzed**, or **ru
 ## Coverage strategy: global vs new code
 
 | Layer | Global target | New / changed code |
-|-------|----------------|-------------------|
+| ------- | ---------------- | ------------------- |
 | **Java (rag-service)** | JaCoCo bundle line ≥ **80%** after configured excludes (`verify`) | Sonar **New Code** metrics; do not drop gate without team decision |
 | **Webapp** | Vitest thresholds **80%** lines/statements/functions/branches on included globs | Same; PR decoration in Sonar for TS |
 | **Classifier** | `fail_under = 80` in [`.coveragerc`](../../classifier-service/.coveragerc) | Align Sonar subset with full pytest expectations |

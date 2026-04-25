@@ -9,7 +9,7 @@
 ### 1.1 Official `docs/` (canonical hub)
 
 | Area | Role |
-|------|------|
+| ------ | ------ |
 | [`docs/README.md`](../README.md) | Hub: tables linking to topics and module READMEs |
 | [`docs/architecture/`](../architecture/) | System shape, DATA_MODEL, integration, deployment concepts |
 | [`docs/domain/`](../domain/) | Conceptual domain |
@@ -52,7 +52,7 @@ docs/
 ## 3. Rules (human contributors)
 
 | Topic | Rule |
-|-------|------|
+| ------- | ------ |
 | **Canonical topic** | Exactly one **official** home in `docs/` **or** one module README, not both with full detail. |
 | **Cross-cutting “what/why”** | `docs/` — short narrative + link to module README for “how”. |
 | **Commands / env / ports** | Module `README.md` only. |
@@ -80,7 +80,7 @@ docs/
 ## 5. Root README vs `docs/README.md`
 
 | File | Role |
-|------|------|
+| ------ | ------ |
 | **Repository root [`README.md`](../../README.md)** | First impression: what the repo is, badges, **one** quick start, table pointing to `docs/README.md` and key module READMEs. |
 | **[`docs/README.md`](../README.md)** | Full documentation **hub**: topic table, platform assumptions, CI table, link to governance. |
 
@@ -99,7 +99,7 @@ docs/
 ## 7. Risks
 
 | Risk | Mitigation |
-|------|------------|
+| ------ | ------------ |
 | Breaking links in PRs | Single migration PR + grep for stale paths |
 | Contributor confusion | Keep the layers table in [documentation-guidelines.md](documentation-guidelines.md) current |
 | Policy drift | Keep [documentation-guidelines.md](documentation-guidelines.md) aligned with repository contribution rules |

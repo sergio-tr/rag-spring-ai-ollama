@@ -143,7 +143,7 @@ erDiagram
 ## 4. Keys and identifiers
 
 | Convention | Detail |
-|------------|--------|
+| ------------ | -------- |
 | **Primary keys** | UUID on business entities (migrations). |
 | **Foreign keys** | `owner_id` / `user_id` → `users.id`; `project_id` → `projects.id`; `conversation_id` → `conversations.id`; `dataset_id` → `evaluation_dataset.id`; `run_id` → `evaluation_run.id`. |
 | **Uniqueness** | User email UK; `allowed_model (name, type)` unique; partial unique indexes on `rag_configuration` for at most one active `USER_DEFAULT` per user and one active `PROJECT` per `(user_id, project_id)` (V5). |
@@ -156,7 +156,7 @@ erDiagram
 **Rule:** stable, filterable, constrained fields in **columns**; evolving RAG feature sets in **JSONB** with application validation (sanitizers / schema).
 
 | Area | Columns | JSONB |
-|------|---------|-------|
+| ------ | --------- | ------- |
 | `rag_configuration`, `default_system_configuration` | `level`, `is_active`, timestamps, `name` | `values` (topK, models, flags, …) |
 | `rag_preset` | name, tags, system flag, ownership | `values` |
 | `conversations` | title, optional model columns | `document_filter` (document IDs); `runtime_override_jsonb` (config only); **`pending_clarification_jsonb`** (P11: versioned clarification loop payload, nullable) |
@@ -206,7 +206,7 @@ This table stores a **reproducible, insert-only** snapshot of **resolved** runti
 This table stores a **reproducible, append-only** persisted trace artefact for one completed orchestrated runtime turn. It is a **bounded projection** of the finalized in-memory `ExecutionTrace` (plus linkage ids), written as a best-effort append step after the turn completes. It is not `messages.execution_metadata` and must not be re-derived by re-running runtime logic.
 
 | Column | Required on product insert | Purpose |
-|--------|----------------------------|---------|
+| -------- | ---------------------------- | --------- |
 | `id`, `created_at` | yes (DB-generated) | Primary key and timestamp. |
 | `payload_jsonb` | yes | Versioned **projection** of transitional `RagConfig` (`toValueMap()` at write time); audit/replay, not the canonical domain model. May include fixed key **`knowledgeBuildProjection`** (nested JSON from `KnowledgeBuildProjectionMapper`, `projectionVersion` ≥ 1) when the row is created for knowledge execute-without-pin. |
 | `capability_set_jsonb` | yes | `CapabilitySet` JSON (mapper-owned shape). |
@@ -230,7 +230,7 @@ This table stores a **reproducible, append-only** persisted trace artefact for o
 These tables persist **reusable suite definitions** (metadata + ordered entries). They do **not** store suite **execution** results, export blobs, or run history. **`RuntimeTraceRegressionSuiteDefinitionService`** (`application.service.runtime.traceregressionsuitedefinition`) is the **only** application owner for writes/reads; it can **materialize** a **`RuntimeTraceRegressionSuiteRequest`** (P30 shape) for the owning user — **read/map only**, without calling **`RuntimeTraceRegressionSuiteService#execute`**. P33 does **not** add HTTP routes for definitions (future phases may add REST on top of this service).
 
 | Table | Role |
-|-------|------|
+| ------- | ------ |
 | `runtime_trace_regression_suite_definition` | `id`, `user_id`, `name` (**UNIQUE** per user), optional `description`, `schema_version`, `created_at`, `updated_at`. |
 | `runtime_trace_regression_suite_definition_entry` | One row per ordered entry (`position` 0…n−1), `entry_kind`, nullable conversation/timestamp/workflow columns per kind; **CHECK** constraints align with P30 entry shapes. |
 | `runtime_trace_regression_suite_definition_entry_trace` | For **BY_TRACE_IDS** entries only: ordered `trace_id` rows (`position`); **no** rows for **BY_CONVERSATION** entries. |
@@ -244,7 +244,7 @@ These tables persist **reusable suite definitions** (metadata + ordered entries)
 These tables persist a **minimal, query-ready snapshot** of a completed **`RuntimeTraceRegressionSuiteResult`** (P30): **no** re-execution, **no** batch payloads, **no** JSONB. **`RuntimeTraceRegressionSuiteRunPersistenceService`** (`application.service.runtime.traceregressionsuiterun`) is the **only** Spring owner for writes/reads to these tables. **`definition_id`** is stored as an opaque UUID when `source_type = SAVED_DEFINITION` (no FK to **`runtime_trace_regression_suite_definition`**). Child **`runtime_trace_regression_suite_run_entry`** rows use **`ON DELETE CASCADE`** from the parent run.
 
 | Table | Role |
-|-------|------|
+| ------- | ------ |
 | `runtime_trace_regression_suite_run` | Run header: `user_id`, `source_type` (**AD_HOC** \| **SAVED_DEFINITION**), optional `definition_id` (required iff **SAVED_DEFINITION**), `suite_outcome`, five suite summary integers mirroring **`RuntimeTraceRegressionSuiteSummary`**, `created_at`; table-level **CHECK**s tie counters together. |
 | `runtime_trace_regression_suite_run_entry` | One row per entry (`entry_order` 0…19): `entry_kind`, capped `selector_echo`, `execution_status` (**BATCH_RETURNED** \| **EXECUTION_FAILED**), either batch outcome + three counts **or** failure kind (+ optional `failure_detail`) per row-shape **CHECK**. |
 
@@ -259,7 +259,7 @@ These tables persist a **minimal, query-ready snapshot** of a completed **`Runti
 **`knowledge_index_snapshot`**
 
 | Column | Required on insert | Notes |
-|--------|-------------------|--------|
+| -------- | ------------------- | -------- |
 | `id` | yes (generated) | PK |
 | `signature_hash` | yes | Immutable after insert; deterministic over index inputs + document ids/checksums |
 | `scope_type` | yes | `PROJECT` \| `CONVERSATION` |
@@ -273,7 +273,7 @@ These tables persist a **minimal, query-ready snapshot** of a completed **`Runti
 **`document_artifact`**
 
 | Column | Required on insert | Notes |
-|--------|-------------------|--------|
+| -------- | ------------------- | -------- |
 | `id` | yes (generated) | PK |
 | `document_id` | yes | FK `project_documents` |
 | `artifact_type` | yes | `PARSED` \| `METADATA` \| `CHUNK` \| `INDEX` |
@@ -284,7 +284,7 @@ These tables persist a **minimal, query-ready snapshot** of a completed **`Runti
 **`reindex_event`**
 
 | Column | Required on insert | Notes |
-|--------|-------------------|--------|
+| -------- | ------------------- | -------- |
 | `id` | yes (generated) | PK |
 | `document_id`, `project_id`, `conversation_id` | optional | Nullable per V22 |
 | `reason` | yes | Short code (e.g. config soft/hard, operator) |
@@ -303,7 +303,7 @@ These tables persist a **minimal, query-ready snapshot** of a completed **`Runti
 ## 7. Storage patterns (datasets, results, ML artifacts)
 
 | Resource | Database | Binary / large payload |
-|----------|----------|-------------------------|
+| ---------- | ---------- | ------------------------- |
 | **Evaluation datasets** | `evaluation_dataset` metadata (`file_name`, `sha256`, `question_count`, …) | File typically **outside** DB (volume, object store); path by convention |
 | **Evaluation results** | `evaluation_result` per question; JSON for snapshots/sources | N/A |
 | **Classifier models** | `classifier_model` row (metrics, `artifact_path`, flags) | Weights/files on **shared filesystem** or object storage |
@@ -326,7 +326,7 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 ## 9. Physical tables (baseline, Flyway V1–V26)
 
 | Table | Migration | Notes |
-|-------|-----------|--------|
+| ------- | ----------- | -------- |
 | `users` | V2 | |
 | `projects` | V3 | |
 | `project_documents` | V4 | |
@@ -363,7 +363,7 @@ Horizontal scaling of workers: external queue or DB lease (outside this relation
 ## 10. `evaluation_run` vs `async_task` (two “run” worlds)
 
 | Aspect | `evaluation_run` (+ `evaluation_result`) | `async_task` |
-|--------|------------------------------------------|--------------|
+| -------- | ------------------------------------------ | -------------- |
 | **Purpose** | Durable **batch evaluation** over an uploaded **dataset**: one run row drives many per-question `evaluation_result` rows (historical reporting, comparisons). | **HTTP 202 async jobs** for Lab (and similar): LLM/RAG eval shortcuts, classifier train/eval, Ollama pull; status and summary JSON in-table. |
 | **Lifecycle** | Tied to `evaluation_dataset`; progress fields; typically long-running batch in product sense. | `QUEUED` → … → terminal; polled via `/lab/jobs/{id}` or SSE (`/events`). |
 | **API mapping** | Product/evaluation flows that upload datasets and record structured evals (“runs” in the batch sense — see [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). | Lab endpoints under `…/lab/…` returning **202** + job id; optional `projectId` query param persists `project_id` when the user owns the project ([ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). |
@@ -383,7 +383,7 @@ Do **not** conflate the two: a Lab “eval LLM” `async_task` is **not** an `ev
 ## 12. Risks and trade-offs
 
 | Risk | Mitigation |
-|------|------------|
+| ------ | ------------ |
 | JSON without strict DB schema | Write-time sanitization; characterization tests for merge; document keys (e.g. configuration schema in application). |
 | Duplicate datasets (same SHA) | Application-level dedup by **`(owner_id, sha256)`** when hashing is available; no mandatory UK in DB for thesis scope ([ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md)). |
 | `artifact_path` not portable | Environment-specific prefixes; avoid hard-coded absolute paths. |

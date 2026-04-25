@@ -46,7 +46,7 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 ### Change-control checklist (FD-p61-protocol-matrix)
 
 | # | Change event | Must revisit / update (order recommended) |
-|---|--------------|------------------------------------------|
+| --- | -------------- | ------------------------------------------ |
 | 1 | Add or remove a handler on any type in **`FD-p59-controller-set`** | P59 tracked inventory file + P59 plan matrix + **`T-P59-*`** expectations; P60 add/remove **`P60-M-xx`** rows and **`FD-p60-arch-inventory`** bindings; re-run **Testing plan gate** (`mvn test` from **`rag-service/`**). |
 | 2 | Change observable HTTP (status, headers, body) without adding/removing handlers | P60 plan (affected **`P60-M-xx`** rows and authoritative `Class#method`); P60 tests; confirm P59 inventory still matches (`consumes` / `produces` cells if registration changed). |
 | 3 | Refactor controllers/packages without changing registered mappings or HTTP observables | P56–P58 Arch tests (still apply); P59 collision / inventory if bean or mapping registration could shift; P60 only if test class locations or imports break. |

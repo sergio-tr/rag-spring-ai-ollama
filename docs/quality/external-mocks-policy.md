@@ -37,7 +37,7 @@ For default `test` runs, **disable push** and avoid real collectors:
 ## Summary
 
 | Dependency | Normative approach |
-|------------|--------------------|
+| ------------ | -------------------- |
 | Ollama | Stubs / test configuration; **no** real network in default `verify` |
 | Classifier | Empty base URL + mock HTTP when exercising the client |
 | OTLP | Properties-first disable; surgical test doubles only when asserting telemetry |

@@ -5,7 +5,7 @@ This repository separates **global, conceptual documentation** (`docs/`) from **
 ## Layers
 
 | Layer | Location | Content |
-|-------|----------|---------|
+| ------- | ---------- | --------- |
 | Global | `docs/` | What the system is, why it is shaped this way, architecture at a high level, domain overview, operational concepts, ADRs. **Summaries and links only.** |
 | Module | `*/README.md` (e.g. `rag-service/`, `webapp/`, `docker/`) | How to build, run, configure, test **that** module: commands, env vars, ports, troubleshooting. |
 
@@ -30,7 +30,7 @@ This repository separates **global, conceptual documentation** (`docs/`) from **
 ## Normative destinations (what goes where)
 
 | Destination | Purpose |
-|-------------|---------|
+| ------------- | --------- |
 | **Repository root [`README.md`](../../README.md)** | First contact: what the repo is, minimal quick start, badges, **one** pointer to [`docs/README.md`](../README.md). Avoid duplicating long CI matrices if the hub already lists them—link instead. |
 | **`docs/architecture/`** | System shape: context diagrams, deployment **concepts**, data model summary, integration narratives, diagram sources (`*.mmd`). Operational command matrices stay in **`docker/`** READMEs—link, do not copy. |
 | **`docs/adr/`** | Structural decisions with long-lived consequences (security boundaries, identity, compatibility model, major data conventions). Format: Context / Decision / Consequences; index in [`docs/adr/README.md`](../adr/README.md). |

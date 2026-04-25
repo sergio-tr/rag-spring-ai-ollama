@@ -25,7 +25,7 @@ Do not remove an exclude and re-add an equivalent pattern under another name. Na
 ## Action classification (per row)
 
 | Class | Meaning |
-|-------|--------|
+| ------- | -------- |
 | **REMOVE_NOW** | 6.01 default: **none** (no POM edit this wave). Future hygiene PRs may use this when a pattern is verified dead. |
 | **REMOVE_LATER** | Scheduled in `target_wave` with tests first, then POM + Sonar. |
 | **KEEP_TEMPORARY** | Max N waves — set review milestone in `removal_blockers`. |
@@ -36,7 +36,7 @@ Do not remove an exclude and re-add an equivalent pattern under another name. Na
 ## Sonar vs JaCoCo parity (Java / rag-service)
 
 | Topic | JaCoCo | Sonar `sonar.coverage.exclusions` | Note |
-|-------|--------|-------------------------------------|------|
+| ------- | -------- | ------------------------------------- | ------ |
 | Configuration | *(removed 6.03 — measured)* | *(removed 6.03 — measured)* | Wave **6.03**: JaCoCo and Sonar no longer blanket-hide `configuration/**` or all `*Configuration.java` / `*Properties.java`. |
 | Properties beans | *(measured)* | *(measured)* | `RagOllamaProperties`, `RagHealthProperties`, and `CompatibilityRulesConfiguration` are now in the measured set with the rest of the wiring. |
 | JPA entities (32 classes) | *(removed 6.04 — measured)* | *(removed 6.04 — measured)* | Wave **6.04**: dropped per-class `jpa/*.java` Sonar lines matching the former JaCoCo list; **no** `**/jpa/**` glob substitute. |
@@ -57,7 +57,7 @@ When changing JaCoCo `<excludes>`, update Sonar for the **same Java intent**; re
 POM comments reference types that are **in** the instrumented bundle (not in the exclude list). Non-exhaustive:
 
 | Area | Examples |
-|------|-----------|
+| ------ | ----------- |
 | Query / chat | `ProcessQueryService`, `SimpleProcessQueryService`, `AnswerGenerationKernel`, `MessageStreamController` |
 | Web / API | `api.v5.*Controller` (product REST), `LabBenchmarkController` |
 | Application | `ChatMessageApplicationService`, `application.service.me.*`, `ConfigProfileApplicationService`, … |
@@ -69,7 +69,7 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 ## Ledger — glob and package excludes
 
 | exclude_id | jacoco_pattern | sonar_pattern | category | historical_rationale | business_value | test_strategy | target_wave | residual_justification | removal_blockers |
-|------------|----------------|---------------|----------|----------------------|----------------|---------------|-------------|------------------------|------------------|
+| ------------ | ---------------- | --------------- | ---------- | ---------------------- | ---------------- | --------------- | ------------- | ------------------------ | ------------------ |
 | EXC-001 | `com/uniovi/Application.class` | `**/Application.java` | Config_wiring | Bootstrap entry | Low | N/A / smoke only | **6.09** | RESIDUAL: single main class; optional tiny smoke | Team may keep minimal exclude for Sonar noise |
 | EXC-002 | `com/uniovi/rag/configuration/**` | `**/*Configuration.java` (+ partial overlap) | Config_wiring | Spring wiring; gate 0.80 | Med | ContextRunner, `@JsonTest`, slices + mocks | **6.03** | — | Sonar wider than JaCoCo — converge in 6.09 |
 | EXC-003 | `com/uniovi/rag/model/**` | `**/model/**` (wider) | DTOs_records_enums | Legacy / thin models | Low | **Verified:** no `com.uniovi.rag.model` package in main — pattern **no-op** | **6.03** | — | Remove JaCoCo line in hygiene wave; fix Sonar `**/model/**` via enumeration |
@@ -104,7 +104,7 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 **Status after wave 6.04:** the **32** per-class JaCoCo `<exclude>` lines and the matching **32** `sonar.coverage.exclusions` rows for `**/infrastructure/persistence/jpa/<Class>.java` were **removed**. The rows below remain a historical census; coverage is enforced by Postgres ITs (when JDBC/Docker is available) plus `JpaHeavyEntityAccessorTest` so `mvn verify` still meets the **0.80** bundle gate when those ITs are skipped.
 
 | exclude_id | jacoco_pattern | sonar_pattern | category | historical_rationale | business_value | test_strategy | target_wave | residual_justification | removal_blockers |
-|------------|----------------|---------------|----------|----------------------|----------------|---------------|-------------|------------------------|------------------|
+| ------------ | ---------------- | --------------- | ---------- | ---------------------- | ---------------- | --------------- | ------------- | ------------------------ | ------------------ |
 | EXC-JPA-01 | `.../EvaluationRunEntity.class` | `**/EvaluationRunEntity.java` | JPA_entities | Gate / getters | High | Postgres IT + repo | **6.04** | — | — |
 | EXC-JPA-02 | `.../EvaluationResultEntity.class` | `**/EvaluationResultEntity.java` | JPA_entities | Gate | High | Postgres IT | **6.04** | — | — |
 | EXC-JPA-03 | `.../EvaluationDatasetEntity.class` | `**/EvaluationDatasetEntity.java` | JPA_entities | Gate | High | Postgres IT | **6.04** | — | — |
@@ -158,7 +158,7 @@ Aligns with project plans 6.02–6.09; adjust dates in PR descriptions.
 ## Wave 6.01 verification record
 
 | Check | Result |
-|-------|--------|
+| ------- | -------- |
 | POM `<excludes>` modified | **No** (6.01) |
 | Ledger complete | **Yes** (all POM rows + JPA classes) |
 | `./mvnw test` (from `rag-service/`; standalone module, no reactor `-pl`) | **PASS** (commit `c21e4ba` workspace) |
@@ -171,7 +171,7 @@ _Update SHA when merging if different._
 ## Wave 6.04 verification record (JPA entity / factory / mapper recovery)
 
 | Check | Result |
-|-------|--------|
+| ------- | -------- |
 | JaCoCo `<excludes>` removed | **Yes** — all **32** per-class lines under `com/uniovi/rag/infrastructure/persistence/jpa/*.class` listed in wave 6.04 plan section 1.1 (including `EvaluationRunEntity` … `UserPreferencesEntity`). **No** compensating `**/jpa/**` or equivalent glob. |
 | Sonar `sonar.coverage.exclusions` | **Aligned** — removed the **32** matching `**/infrastructure/persistence/jpa/<SameName>.java` entries; left all other exclusions unchanged. |
 | Tests | Unit: embeddables, factories, mappers (`JpaEmbeddableAndKeyTest`, `JpaEntityFactoryTest`, `*MapperTest`); accessor coverage `JpaHeavyEntityAccessorTest` for bundle gate when Postgres ITs skip; ITs: `*JpaIT` under `infrastructure/persistence/jpa` with `TestAiStubConfiguration` + `TestcontainersDatasourceConfiguration` + `@EnabledIf(TestEnvironment#isSpringBootPostgresAvailable)`. |
@@ -184,7 +184,7 @@ _Update SHA when merging if different._
 ## Wave 6.05 verification record (runtime orchestration + domain engine recovery)
 
 | Check | Result |
-|-------|--------|
+| ------- | -------- |
 | JaCoCo `<excludes>` removed | **Yes** — `com/uniovi/rag/application/service/runtime/**` and `com/uniovi/rag/domain/runtime/engine/**` (see `rag-service/pom.xml` comment ~L376). **No** compensating globs (e.g. `**/runtime/orchestration/**`). |
 | Sonar `sonar.coverage.exclusions` | **Aligned** — removed `**/application/service/runtime/**` and `**/domain/runtime/engine/**`; parity comment in `sonar-project.properties` (~L111). |
 | Tests | Engine: `EngineRuntimeRecordsTest`; replay: `RuntimeTraceReplayStrategyBranchTest` (success + failure paths, `buildContextAndRunQu`); retrieval: `DenseRetrievalStrategyTest`, `SparseRetrievalStrategyTest`, `MetadataAppendixLoaderTest`; QU: `DefaultQueryIntentResolverTest` heuristics; plus existing `RagExecutionOrchestrator*`, `WorkflowSelectorTest`, `ExecutionContextFactoryTest`, `DefaultQueryUnderstandingPipelineTest`, strategy tests from earlier 6.05 work. |
@@ -198,7 +198,7 @@ _Update SHA when merging if different._
 ## Wave 6.06 verification record (knowledge + retriever + tool + evaluation recovery)
 
 | Check | Result |
-|-------|--------|
+| ------- | -------- |
 | JaCoCo `<excludes>` removed | **Attempted but reverted** — removing `EXC-007`/`EXC-008`/`EXC-009`/`EXC-010`/`EXC-024` dropped bundle LINE to **~0.55** (14403 covered / 26075 total) with large red surface dominated by `com.uniovi.rag.tool.metadata.AbstractMetadataTool` and related tools. Per wave 6.06 failure condition, the five excludes were restored to keep `jacoco:check` green. |
 | Sonar `sonar.coverage.exclusions` | **Reverted in lockstep** — restored the four corresponding Sonar entries (knowledge/retriever/evaluation/tool). |
 | Tests added (preparation for a future 6.06 retry) | `NaiveCorpusContextServiceTest`, expanded `MinuteDocumentContextRetrieverTest` for NER metadata filtering fallbacks, `JudgeScoreParserTest`, `BenchmarkRunOrchestratorTest` (early validation branches), `ProjectKnowledgeApplicationServiceTest`, `MetadataLlmResponseCacheServiceTest`, and `AbstractMetadataToolPrivateLogicTest` (reflection-driven coverage for private parsing/gates). |
@@ -263,7 +263,7 @@ _Update SHA when merging if different._
 ### Residual final allowlist (6.09)
 
 | ID | Location | Exact pattern | Category | Justification | Evidence / ticket | Next review |
-|----|----------|---------------|----------|---------------|-------------------|-------------|
+| ---- | ---------- | --------------- | ---------- | --------------- | ------------------- | ------------- |
 | R-001 | JaCoCo + Sonar | `com/uniovi/Application.class` / `**/Application.java` | BOOTSTRAP | Single entry point; low business logic. | N/A | 6.12 |
 | R-002 | JaCoCo + Sonar | `com/uniovi/rag/service/document/**` / `**/service/document/**` | RESIDUAL_EXCEPTION | Integration-heavy I/O layer; requires dedicated fixture/IT work (tracked for wave 6.07). | Ledger EXC-006 | 6.07/6.09 follow-up |
 | R-003 | JaCoCo + Sonar | `com/uniovi/rag/application/service/knowledge/**` / `**/application/service/knowledge/**` | RESIDUAL_EXCEPTION | Wave 6.06 attempt reverted due to bundle drop; needs deep tool/LLM test strategy first. | Wave 6.06 record | 6.06 retry |
@@ -297,7 +297,7 @@ _Update SHA when merging if different._
 ## Wave 6.03 verification record (coverage recovery)
 
 | Check | Result |
-|-------|--------|
+| ------- | -------- |
 | JaCoCo `<excludes>` removed | **Yes** — legacy no-op (`model`, `exception`, `api/v5/dto`, `api/auth/dto`); `configuration/**`; `application/model/**`; `domain/runtime/{functioncalling,advisor,retrieval}/**`; `interfaces/rest/dto/**`. **No** compensating globs added. |
 | Sonar `sonar.coverage.exclusions` | **Aligned** — dropped `**/*Configuration.java`, `**/*Properties.java`, broad `**/model/**`, `**/exception/**`, `api/*` dto dead paths, `interfaces/rest/dto`, and the three `domain/runtime/*` packs matching JaCoCo; **enumerated** residual model + `domain/exception` paths only. |
 | Tests added | Domain runtime (`FunctionCallingDomainTypesTest`, `AdvisorAndPackingDomainTest`, `RetrievalDomainRecordsTest`), `ApplicationModelTest`, `RestDtoRecordInstantiationCoverageTest` (+ strict Jackson / executor / async / CORS / properties / E2e stub / security slice / `RagConfiguration` / extended `RagQueryConfigurationTest`). |

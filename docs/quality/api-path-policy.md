@@ -5,7 +5,7 @@ Normative decisions are **FD-api-path-tests** in [README.md](README.md) (hub). T
 ## Single source of truth
 
 | Concern | Source |
-|---------|--------|
+| --------- | -------- |
 | Default product base path (runtime + most tests) | [`rag-service/src/main/resources/application.properties`](../../rag-service/src/main/resources/application.properties) (`rag.api.product-base-path`; default **`/api/v5`**) |
 | Test classpath default | [`rag-service/src/test/resources/application.properties`](../../rag-service/src/test/resources/application.properties) |
 | Type-safe URL builder for MockMvc | [`RagApiTestPaths`](../../rag-service/src/test/java/com/uniovi/rag/testsupport/RagApiTestPaths.java) (`path(...)`, `productBasePath()`) |
@@ -17,7 +17,7 @@ Normative decisions are **FD-api-path-tests** in [README.md](README.md) (hub). T
 Counts are **`rg '/api/v5'`** occurrence counts per file (not unique test cases). Purpose: show where defaults and docs still mention the literal.
 
 | Area | Representative files | Role |
-|------|------------------------|------|
+| ------ | ------------------------ | ------ |
 | **Backend config** | `RagApiPathProperties.java`, `application.properties` | Default constant and binder — **expected** |
 | **Backend tests** | `RagApiPathAndAccountAndRuntimePropertiesTest.java`, `RagApiTestPaths.java` | Assertions and fallback for property load — **expected** |
 | **Webapp client** | `webapp/src/lib/api-client.ts` | Default prefix when env unset — **expected** |
