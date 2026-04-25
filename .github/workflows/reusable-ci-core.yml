@@ -20,7 +20,8 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        # Do NOT use `env.*` in `services.<id>.image` (context may be unsupported).
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -179,7 +180,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -269,7 +270,7 @@ jobs:
     timeout-minutes: 35
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -451,7 +452,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -549,7 +550,7 @@ jobs:
     timeout-minutes: 25
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -650,7 +651,7 @@ jobs:
       checks: write
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -739,7 +740,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

@@ -20,7 +20,8 @@ jobs:
     # Same Postgres setup as ci.yml — required for @SpringBootTest and JDBC integration tests during mvn verify.
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        # Do NOT use `env.*` in `services.<id>.image` (context may be unsupported).
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
