@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify pinned Postgres image references
-        run: ./.github/scripts/verify-pinned-postgres-image.sh
+        run: bash ./.github/scripts/verify-pinned-postgres-image.sh
       - uses: actions/setup-java@v4
         with:
           java-version: "21"
