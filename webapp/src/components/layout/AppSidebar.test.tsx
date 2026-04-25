@@ -105,7 +105,7 @@ describe("AppSidebar", () => {
     const projectsToggle = screen.getByRole("button", { name: /^projects$/i });
     expect(projectsToggle).toHaveAttribute("aria-expanded", "true");
 
-    const projectRow = screen.getByRole("button", { name: /project one/i });
+    const projectRow = screen.getByRole("button", { name: /^project one$/i });
     expect(projectRow).toBeInTheDocument();
 
     const expandProject = screen.getByRole("button", { name: /expand chats for project one/i });

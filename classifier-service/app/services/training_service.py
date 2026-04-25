@@ -8,6 +8,7 @@ from app.exceptions import TrainingError, ValidationError
 from app.models.training_result import TrainingResult
 from app.telemetry import record_train_complete
 from app.training.trainer import TrainingPipeline
+import traceback
 
 
 class TrainingService(TracedService):
@@ -90,7 +91,8 @@ class TrainingService(TracedService):
                 "numpy",
                 "ufunc",
             )
-            if any(m in msg.lower() for m in runtime_markers):
+            tb = "".join(traceback.format_exception(type(e), e, e.__traceback__)).lower()
+            if any(m in msg.lower() for m in runtime_markers) or any(m in tb for m in runtime_markers):
                 raise TrainingError("Training failed") from e
             raise ValidationError(msg) from e
         except Exception as e:
