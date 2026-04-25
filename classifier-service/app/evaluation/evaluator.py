@@ -62,7 +62,7 @@ class EvaluationPipeline(Loggable):
         y_true_idx = np.array([label_to_idx[c] for c in y_raw])
         if len(X) == 0:
             # Include keywords so API callers/tests can reliably detect this as a dataset/evaluation issue.
-            raise ValueError("Evaluation dataset invalid: no valid rows after filtering by model labels")
+            raise ValueError("No valid rows in evaluation dataset after filtering by model labels")
 
         y_pred_probs = model.predict(X, verbose=0)
         y_pred_idx = np.argmax(y_pred_probs, axis=1)
