@@ -29,7 +29,10 @@ import static org.junit.jupiter.api.Assertions.*;
         properties = {
                 "rag.jwt.secret=test-secret-key-for-jwt-signing-must-be-long-enough-32",
                 "management.otlp.tracing.endpoint=http://127.0.0.1:4318/v1/traces",
-                "management.otlp.metrics.export.url=http://127.0.0.1:4318/v1/metrics"
+                "management.otlp.metrics.export.url=http://127.0.0.1:4318/v1/metrics",
+                // CI does not seed ACTIVE knowledge snapshots; keep this suite independent from retrieval indexing.
+                "rag.features.use-retrieval=false",
+                "rag.features.use-advisor=false"
         })
 @Import({ TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class })
 @ActiveProfiles("test")

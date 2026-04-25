@@ -6,6 +6,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntityFactory;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
@@ -53,7 +55,12 @@ public class E2eAdminUserSeeder implements ApplicationRunner {
                 UserRole.ADMIN,
                 Instant.now());
         u.setId(E2E_ADMIN_ID);
-        userRepository.save(u);
-        log.info("E2E profile: seeded admin user {}", E2E_ADMIN_EMAIL);
+        try {
+            userRepository.saveAndFlush(u);
+            log.info("E2E profile: seeded admin user {}", E2E_ADMIN_EMAIL);
+        } catch (DataIntegrityViolationException | ObjectOptimisticLockingFailureException e) {
+            // Multiple runners/devtools restarts can race on startup; seeding must be best-effort and never crash the app.
+            log.info("E2E profile: admin user already exists (seed race), continuing");
+        }
     }
 }

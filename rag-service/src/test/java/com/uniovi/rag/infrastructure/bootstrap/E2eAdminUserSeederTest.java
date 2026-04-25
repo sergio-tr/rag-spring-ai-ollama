@@ -45,7 +45,7 @@ class E2eAdminUserSeederTest {
         seeder.run(new DefaultApplicationArguments());
 
         ArgumentCaptor<UserEntity> cap = ArgumentCaptor.forClass(UserEntity.class);
-        verify(userRepository).save(cap.capture());
+        verify(userRepository).saveAndFlush(cap.capture());
         assertEquals(E2eAdminUserSeeder.E2E_ADMIN_ID, cap.getValue().getId());
     }
 }
