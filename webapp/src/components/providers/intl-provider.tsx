@@ -15,7 +15,7 @@ type IntlProviderProps = {
   children: ReactNode;
 };
 
-function onIntlError(error: IntlError) {
+export function onIntlError(error: IntlError) {
   // Belt-and-suspenders: if anything still triggers this (SSR ordering, formatters), avoid crashing logs.
   if (error.code === IntlErrorCode.ENVIRONMENT_FALLBACK) {
     return;

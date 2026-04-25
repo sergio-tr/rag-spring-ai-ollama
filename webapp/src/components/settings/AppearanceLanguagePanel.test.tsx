@@ -33,6 +33,19 @@ describe("AppearanceLanguagePanel", () => {
     expect(setTheme).toHaveBeenCalledWith("dark");
   });
 
+  it("can switch to light and system themes", async () => {
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <AppearanceLanguagePanel />
+      </IntlTestProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /light/i }));
+    expect(setTheme).toHaveBeenCalledWith("light");
+    await user.click(screen.getByRole("button", { name: /system/i }));
+    expect(setTheme).toHaveBeenCalledWith("system");
+  });
+
   it("switches locale via router.replace", async () => {
     const user = userEvent.setup();
     render(
@@ -42,5 +55,16 @@ describe("AppearanceLanguagePanel", () => {
     );
     await user.click(screen.getByRole("button", { name: /^Español$/ }));
     expect(replace).toHaveBeenCalledWith("/settings", { locale: "es" });
+  });
+
+  it("switches back to English when current locale is Spanish", async () => {
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider locale="es">
+        <AppearanceLanguagePanel />
+      </IntlTestProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /^English$/ }));
+    expect(replace).toHaveBeenCalledWith("/settings", { locale: "en" });
   });
 });

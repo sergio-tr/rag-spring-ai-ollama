@@ -37,7 +37,14 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
         postgres.start();
         dataSource =
                 new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
-        Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
+        // Ensure schema resolution is stable across environments (search_path / Flyway defaults can differ).
+        Flyway.configure()
+                .dataSource(dataSource)
+                .schemas("public")
+                .defaultSchema("public")
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
     }
 
     @AfterAll
