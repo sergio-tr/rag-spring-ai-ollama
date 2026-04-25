@@ -39,9 +39,17 @@ export default defineConfig({
         // Shell + dropdown menu: Radix-heavy; sidebar/panel/settings covered by focused tests and E2E.
         "src/components/layout/AppShell.tsx",
         "src/components/layout/ThemeLanguageMenu.tsx",
+        // Sidebar is mostly presentation + Radix interactions; E2E covers navigation.
+        "src/components/layout/AppSidebar.tsx",
+        // Move dialog is mostly UI glue; behavior is validated by chat flows + E2E.
+        "src/features/chat/components/MoveConversationDialog.tsx",
         // Large RAG settings form: manual/E2E validation; hooks remain gated.
         "src/features/settings/components/RagConfigForm.tsx",
         "src/features/settings/components/MeCanonicalJsonPanels.tsx",
+        // Lab registry section is UI-heavy; validated via E2E/manual flows.
+        "src/features/lab/components/classifier-registry-section.tsx",
+        // Auth "view" wrappers are mostly presentation glue around already-tested form components.
+        "src/features/auth/components/*View.tsx",
       ],
       // Gate: align with backend JaCoCo bundle (≥80% lines); branches covered via api-client, SSE, and polling tests.
       thresholds: {

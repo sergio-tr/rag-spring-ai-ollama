@@ -8,6 +8,8 @@ import org.springframework.core.env.MutablePropertySources;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -31,6 +33,7 @@ public final class SafeTestSecretsApplicationContextInitializer
     private static final String JDBC_PROPERTY_SOURCE = "ragTestJdbcEnvironment";
     private static final String SECRETS_PROPERTY_SOURCE = "ragSafeTestSecretsOverride";
     private static final String USE_TC_ENV = "RAG_TEST_USE_TESTCONTAINERS_DATASOURCE";
+    private static final int JDBC_LOGIN_TIMEOUT_SECONDS = 3;
 
     @Override
     public void initialize(ConfigurableApplicationContext context) {
@@ -92,7 +95,11 @@ public final class SafeTestSecretsApplicationContextInitializer
         }
         String url = System.getenv("SPRING_DATASOURCE_URL");
         if (url != null && !url.isBlank()) {
-            return false;
+            String user = firstNonBlankEnv("SPRING_DATASOURCE_USERNAME", "postgres");
+            String pass = firstNonBlankEnv("SPRING_DATASOURCE_PASSWORD", "postgres");
+            // Prefer external DB when reachable (e.g. CI service Postgres),
+            // but fall back to Testcontainers when the URL is set but the service is not yet ready.
+            return !canOpenPostgresJdbc(url, user, pass);
         }
         return true;
     }
@@ -100,5 +107,19 @@ public final class SafeTestSecretsApplicationContextInitializer
     private static String firstNonBlankEnv(String name, String defaultValue) {
         String v = System.getenv(name);
         return (v == null || v.isBlank()) ? defaultValue : v;
+    }
+
+    private static boolean canOpenPostgresJdbc(String url, String user, String pass) {
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        try {
+            DriverManager.setLoginTimeout(JDBC_LOGIN_TIMEOUT_SECONDS);
+            try (Connection c = DriverManager.getConnection(url, user, pass)) {
+                return c.isValid(2);
+            }
+        } catch (Throwable t) {
+            return false;
+        }
     }
 }
