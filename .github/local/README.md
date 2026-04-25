@@ -1,155 +1,58 @@
-# Local CI & Sonar Reproduction (`.github/local`)
+# Local CI parity (`.github/local`)
 
-This directory provides scripts to **replicate GitHub Actions workflows locally**, including:
+Scripts mirror the **CI PR pipeline** ([`reusable-ci-core.yml`](../workflows/reusable-ci-core.yml) via [`ci.yml`](../workflows/ci.yml)): pinned Postgres, same Maven/Playwright/pytest commands as CI where applicable.
 
-* Backend verification with PostgreSQL + pgvector
-* Full multi-service test execution (Java, Python, Web)
-* Coverage generation
-* SonarCloud analysis
+**Canonical Postgres image** (must match Compose and workflows): see [`lib/common.sh`](lib/common.sh) (`RAG_PLATFORM_POSTGRES_IMAGE`).
 
 ---
 
-## Available Scripts
+## Scripts
 
 | Script | Purpose |
 | --- | --- |
-| `ci-like-sonar.sh` | Full pipeline: build + tests + coverage + SonarCloud scan (mirrors `sonar.yml`) |
-| `ci-like-verify.sh` | Backend-only CI replication with PostgreSQL + `mvn verify` (mirrors `ci.yml`) |
-| `ci-postgres-extensions.sql` | Required PostgreSQL extensions setup (`vector`, `hstore`, `uuid-ossp`) |
+| [`lib/common.sh`](lib/common.sh) | Exports pinned image and defaults; sourced by all `run-*.sh`. Optional [`.env.local`](.env.local) for non-image overrides only. |
+| [`run-ci-core.sh`](run-ci-core.sh) | Backend `mvn verify` + javadoc with Docker Postgres (core backend job). |
+| [`run-integration.sh`](run-integration.sh) | Spring `e2e` + pytest stack integration (needs existing Postgres container + `psql` on host). |
+| [`run-e2e-fullstack.sh`](run-e2e-fullstack.sh) | Spring `e2e` + Playwright `@fullstack` (needs Postgres + Node). |
+| [`run-sonar.sh`](run-sonar.sh) | Delegates to `ci-like-sonar.sh` (SonarCloud + coverage). |
+| [`run-pr-dev.sh`](run-pr-dev.sh) | Runs core → integration → e2e → sonar (if `SONAR_TOKEN` set). |
+| [`run-pr-main.sh`](run-pr-main.sh) | Runs `run-pr-dev.sh` then local Gatling smoke + `infra_probe.py` (main/master PR parity). |
+| `ci-like-verify.sh` | **Shim** → `run-ci-core.sh` (deprecated name). |
+| `ci-like-sonar.sh` | Full Sonar local pipeline (called by `run-sonar.sh`). |
+| [`ci-postgres-extensions.sql`](ci-postgres-extensions.sql) | Extensions applied by CI and local scripts. |
 
 ---
 
-## `ci-like-sonar.sh`
-
-Runs the **complete local SonarCloud pipeline**:
-
-* Backend (`rag-service`): Maven + JaCoCo
-* Classifier (`classifier-service`): pytest
-* Webapp (`webapp`): Vitest coverage
-* SonarCloud scan via Docker
-
-### Requirements
-
-* JDK 21
-* Python 3.11 + pip
-* Node.js (see `webapp/package.json`)
-* Docker
-* PostgreSQL 16 with pgvector (or Docker fallback)
-* `SONAR_TOKEN` (from SonarCloud)
-
-### Usage
+## Quick start
 
 ```bash
+# Dev-equivalent gate (Sonar skipped if SONAR_TOKEN unset)
+.github/local/run-pr-dev.sh
+
+# With Sonar
 export SONAR_TOKEN=your_token
-.github/local/ci-like-sonar.sh
+.github/local/run-pr-dev.sh
+
+# Main/master parity (+ performance)
+.github/local/run-pr-main.sh
 ```
 
-### Optional Environment Variables
-
-| Variable | Description |
-| --- | --- |
-| `SONAR_BRANCH_NAME` | Publish analysis for a specific branch |
-| `SKIP_POSTGRES_PREP=1` | Skip DB initialization |
-| `USE_DOCKER_PG_CLIENT=0` | Force native `psql` usage |
-| `SKIP_AUTO_JDK21=1` | Disable automatic JDK 21 detection |
-
----
-
-## `ci-like-verify.sh`
-
-Replicates the backend portion of CI:
-
-* Spins up PostgreSQL (Docker)
-* Applies extensions and test schema
-* Runs `mvn verify`
-
-### Usage
-
-```bash
-.github/local/ci-like-verify.sh
-```
-
-### Options
-
-```bash
---prepare-only   # Only setup DB, skip Maven
---stop-after     # Remove container after execution
-```
-
-### Environment Variables
-
-| Variable | Description |
-| --- | --- |
-| `RAG_CI_POSTGRES_CONTAINER` | Custom container name |
-| `RAG_CI_STOP_CONTAINER=1` | Auto-remove container |
-
----
-
-## PostgreSQL Setup
-
-The scripts ensure:
-
-* `vectordb` → extensions enabled
-* `testdb` → initialized with test schema
-
-If you prefer manual setup:
+### Manual Postgres (optional)
 
 ```bash
 docker run -d -p 5432:5432 \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=vectordb \
-  pgvector/pgvector:pg16
-```
-
-Then apply:
-
-```bash
-psql -U postgres -d vectordb -f ci-postgres-extensions.sql
+  pgvector/pgvector:0.8.2-pg16-bookworm
+psql -U postgres -d vectordb -f .github/local/ci-postgres-extensions.sql
 ```
 
 ---
 
-## Environment Defaults
+## Related docs
 
-Unless overridden:
-
-```bash
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/vectordb
-SPRING_DATASOURCE_USERNAME=postgres
-SPRING_DATASOURCE_PASSWORD=postgres
-INTEGRATION_JDBC_URL=jdbc:postgresql://localhost:5432/testdb
-```
-
----
-
-## Notes
-
-* Full git history is recommended:
-
-  ```bash
-  git fetch --unshallow
-  ```
-* JDK 21 is enforced automatically when possible
-* Docker is used:
-
-  * For Sonar scanner
-  * Optionally as PostgreSQL client fallback
-
----
-
-## Related Docs
-
-* `docs/development/sonar-local-analysis.md`
-* `.github/workflows/sonar.yml`
-* `.github/workflows/ci.yml`
-
----
-
-## Summary
-
-Use this folder when you want to:
-
-* Debug CI failures locally
-* Validate coverage before pushing
-* Run SonarCloud analysis without GitHub Actions
+* [`docs/development/sonar-local-analysis.md`](../../docs/development/sonar-local-analysis.md)
+* [`docs/operations/local-ci-parity.md`](../../docs/operations/local-ci-parity.md)
+* [`.github/workflows/ci.yml`](../workflows/ci.yml)
+* [`.github/workflows/reusable-ci-core.yml`](../workflows/reusable-ci-core.yml)

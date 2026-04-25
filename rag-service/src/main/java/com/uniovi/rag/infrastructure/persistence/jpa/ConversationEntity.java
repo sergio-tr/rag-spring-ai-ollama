@@ -58,6 +58,10 @@ public class ConversationEntity {
     @Column(name = "runtime_override_jsonb", nullable = false, columnDefinition = "jsonb")
     private Map<String, Object> runtimeOverride;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "pending_clarification_jsonb", columnDefinition = "jsonb")
+    private Map<String, Object> pendingClarification;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -126,6 +130,14 @@ public class ConversationEntity {
 
     public void setRuntimeOverride(Map<String, Object> runtimeOverride) {
         this.runtimeOverride = runtimeOverride != null ? new LinkedHashMap<>(runtimeOverride) : new LinkedHashMap<>();
+    }
+
+    public Map<String, Object> getPendingClarification() {
+        return pendingClarification;
+    }
+
+    public void setPendingClarification(Map<String, Object> pendingClarification) {
+        this.pendingClarification = pendingClarification;
     }
 
     public void touchUpdated() {

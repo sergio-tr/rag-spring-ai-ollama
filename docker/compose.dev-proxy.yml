@@ -1,5 +1,5 @@
 # Optional dev entrypoint: nginx routes / -> webapp, /api/* and /actuator/* -> backend-dev.
-# Enable with ./docker/scripts/docker-compose.sh up dev --rag --proxy (default HTTP host port 80).
+# Enable with ./docker/scripts/docker-compose.sh up dev --rag --proxy (adds --profile proxy).
 
 services:
   backend-dev:
@@ -9,10 +9,11 @@ services:
     ports: []
 
   reverse-proxy:
+    profiles:
+      - proxy
     build:
       context: ../reverse-proxy
       dockerfile: Dockerfile
-    container_name: reverse-proxy-dev
     depends_on:
       backend-dev:
         condition: service_started

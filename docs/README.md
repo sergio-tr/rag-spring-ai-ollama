@@ -2,12 +2,14 @@
 
 **Global, conceptual documentation** for this monorepo: what the system is, how pieces relate, and where to find **how-to** detail. Module-specific commands and config live in **README files next to code** (`rag-service/`, `webapp/`, `docker/`, etc.).
 
-**Governance:** [development/documentation-guidelines.md](development/documentation-guidelines.md)
+**Governance:** [development/documentation-guidelines.md](development/documentation-guidelines.md); strategy: [development/documentation-governance-strategy.md](development/documentation-governance-strategy.md); [documentation inventory](development/documentation-inventory.md) (classification).
 
 ## Start here
 
 | Topic | Document |
 | --- | --- |
+| **Architecture freeze (0.1 — target model)** | [architecture/target-architecture.md](architecture/target-architecture.md) — [rag-runtime-architecture.md](architecture/rag-runtime-architecture.md), [configuration-resolution-model.md](architecture/configuration-resolution-model.md), [knowledge-system-model.md](architecture/knowledge-system-model.md), [implementation-roadmap.md](architecture/implementation-roadmap.md); ADRs [0005–0013](adr/README.md) |
+| **Spring AI / RAG modernization** | [ai/README.md](ai/README.md) — inventory, pipeline contracts; [adr/0013](adr/0013-agentic-patterns-adoption-gate.md) |
 | Product scope and boundaries | [overview/README.md](overview/README.md) — [product-context.md](overview/product-context.md), [thesis-scope.md](overview/thesis-scope.md) |
 | System context and diagrams | [architecture/README.md](architecture/README.md), [architecture/system-context.md](architecture/system-context.md) |
 | Deployment (conceptual) | [architecture/deployment-model.md](architecture/deployment-model.md), [operations/README.md](operations/README.md) |
@@ -17,12 +19,14 @@
 | Domain concepts | [domain/README.md](domain/README.md) |
 | Data model (ER) | [architecture/DATA_MODEL.md](architecture/DATA_MODEL.md) |
 | Testing strategy (overview) | [testing/README.md](testing/README.md), [development/e2e-testing-strategy.md](development/e2e-testing-strategy.md) (workflows vs gates), [testing/traceability-legacy-tools.md](testing/traceability-legacy-tools.md) (load-tool mapping) |
+| CI / PR validation and Compose pins | [devops/README.md](devops/README.md) |
 | Coverage reports (paths, Sonar) | [coverage/README.md](coverage/README.md) |
 | SonarCloud scan locally (match `sonar.yml`) | [development/sonar-local-analysis.md](development/sonar-local-analysis.md), [scripts/README.md](../scripts/README.md) |
 | Classifier registry (train → activate) | [development/classifier-registry-demo.md](development/classifier-registry-demo.md) |
 | Performance / load (overview) | [performance/README.md](performance/README.md) |
 | ADRs | [adr/README.md](adr/README.md) |
-| Contributor doc rules | [development/README.md](development/README.md) |
+| Backend refactoring governance (`rag-service`) | [backend/refactoring-governance.md](backend/refactoring-governance.md); ADR [0012](adr/0012-backend-refactoring-governance.md) |
+| Contributor doc rules | [development/README.md](development/README.md), [development/documentation-guidelines.md](development/documentation-guidelines.md) (including [inventory](development/documentation-inventory.md)) |
 
 ## Platform assumptions (Linux-first)
 
@@ -66,7 +70,8 @@
 
 | Workflow | When it runs | Role |
 | --- | --- | --- |
-| [`ci.yml`](../.github/workflows/ci.yml) | PR/push `main`/`master` | **Primary gate**: `mvn verify` (JUnit), classifier `pytest`, webapp lint/typecheck/coverage/build, Playwright **smoke** (excludes `@fullstack`) |
+| [`ci.yml`](../.github/workflows/ci.yml) | PR/push `dev`, `main`, `master` | **Primary gate**: `mvn verify` (JUnit), classifier `pytest`, webapp lint/typecheck/coverage/build, Playwright **smoke** (excludes `@fullstack`), stack integration, **Docker build smoke** (no push), `@fullstack` E2E, Sonar (details: [devops/README.md](devops/README.md)) |
+| [`docker-compose-ci.yml`](../.github/workflows/docker-compose-ci.yml) | PR/push path `docker/**` (branches as above) | `create-env-all.sh`, `compose_guard.py`, `docker compose config` (merge validation) |
 | [`build.yml`](../.github/workflows/build.yml) | PR/push | Fast compile-only (`mvn package -DskipTests`, classifier build) — no tests |
 | [`integration.yml`](../.github/workflows/integration.yml) | PR/push path filter + `workflow_dispatch` | **Stack HTTP integration**: `pytest tests/integration` against Spring **`e2e`** + Postgres (`INTEGRATION_CHECK_OBS=0`; classifier tests skip if no classifier) |
 | [`e2e-fullstack.yml`](../.github/workflows/e2e-fullstack.yml) | PR/push path filter + `workflow_dispatch` | Spring `e2e` + Postgres + Playwright **`@fullstack`** (browser E2E) |

@@ -1,6 +1,6 @@
 # Thesis scope (minimum deliverable and deferred work)
 
-**Purpose:** Single official statement of what the degree project (TFG) commits to deliver versus what remains **out of minimum scope** or **deferred**. This page is the canonical reference for supervisors and reviewers.
+**Purpose:** Single official statement of what the project commits to deliver versus what remains **out of minimum scope** or **deferred**. This page is the canonical reference for supervisors and reviewers.
 
 **Deploy reality (thesis alignment):** Production-style deployment used in this repository is **GitHub Actions** [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml) (manual) → **SSH** to a **Linux VM** → `docker compose` with [`docker/docker-compose.yml`](../../docker/docker-compose.yml) + [`docker/compose.prod.yml`](../../docker/compose.prod.yml). Operator steps and env layout: [../operations/runbook-docker-vm.md](../operations/runbook-docker-vm.md); gate and secrets: [../operations/deploy-workflow-audit.md](../operations/deploy-workflow-audit.md). Azure-specific naming without fixed IPs: [../operations/azure-vm-parameterization.md](../operations/azure-vm-parameterization.md).
 
@@ -8,9 +8,9 @@
 
 ---
 
-## In scope (minimum TFG)
+## In scope (minimum)
 
-- **Platform:** Authenticated **multi-user** product API (see `RAG_API_PRODUCT_BASE_PATH` / `NEXT_PUBLIC_RAG_API_PREFIX` in module READMEs), projects, documents, conversations, streaming chat, layered RAG configuration and presets — as implemented in `rag-service` and `webapp`, consistent with [ADR 0002 — multitenancy assumption](../adr/0002-multitenancy-assumption.md).
+- **Platform:** Authenticated **multi-user** product API (see `RAG_API_PRODUCT_BASE_PATH` / `NEXT_PUBLIC_RAG_API_PREFIX` in module READMEs), projects, documents, conversations, streaming chat, layered RAG configuration and presets — as implemented in `rag-service` and `webapp`, consistent with [ADR 0002 — user/project data isolation](../adr/0002-multitenancy-assumption.md).
 - **Research Lab:** Use of existing Lab endpoints (evaluations, classifier proxy, async jobs) for demonstration; promotion modes per [ADR 0001](../adr/0001-lab-promotion-modes.md) (no silent writes to production config).
 - **Classifier:** Training/evaluation **via BFF** to `classifier-service`; no requirement for a new public REST CRUD for evaluation **datasets** in the minimum scope (see decision below).
 - **Observability:** Stack demonstrable with Compose (`compose.obs.yml`); traces/metrics sufficient for thesis defence narrative, not necessarily full SLO automation.
@@ -21,7 +21,7 @@
 
 ## Explicitly out of minimum scope (unless added by separate decision)
 
-- **Product REST API for evaluation datasets** (`GET/POST {product}/datasets` style): **not** part of the minimum TFG deliverable; evaluation may rely on existing Lab flows or internal loading as described in [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md) and the backend OpenAPI export.
+- **Product REST API for evaluation datasets** (`GET/POST {product}/datasets` style): **not** part of the minimum deliverable; evaluation may rely on existing Lab flows or internal loading as described in [ADR 0003](../adr/0003-evaluation-async-project-scope-and-dataset-dedup.md) and the backend OpenAPI export.
 - **Strong multi-tenant SaaS** isolation (separate DB per tenant, org-wide RLS): out of scope per ADR 0002.
 - **Automatic Lab → production promotion** (modes B/C without UX): out of minimum; explicit actions only.
 

@@ -1,5 +1,5 @@
 # Loki 2.9.x single-binary (aligned with grafana/loki:2.9.x image).
-# Rendered at container start: compose.logs.yml substitutes __LOKI_HTTP_PORT__.
+# Rendered at container start: docker-compose (profile logs) substitutes __LOKI_HTTP_PORT__.
 auth_enabled: false
 
 server:

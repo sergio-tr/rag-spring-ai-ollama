@@ -57,7 +57,15 @@ if [ "$WITH_OBS" = "true" ]; then
   COMPOSE_FILES+=(-f "${DOCKER_DIR}/compose.obs.yml")
 fi
 if [ "$WITH_GPU" = "true" ]; then
-  COMPOSE_FILES+=(-f "${DOCKER_DIR}/compose.ollama-local-gpu.yml")
+  COMPOSE_FILES+=(-f "${DOCKER_DIR}/compose.gpu.yml")
+fi
+
+PROFILE_ARGS=()
+if [ "$WITH_OBS" = "true" ]; then
+  PROFILE_ARGS+=(--profile observability)
+fi
+if [ "$WITH_GPU" = "true" ]; then
+  PROFILE_ARGS+=(--profile ollama)
 fi
 
 ENV_ARGS=(
@@ -71,7 +79,7 @@ fi
 
 cd "$DOCKER_DIR"
 echo "Levantando stack E2E (obs=${WITH_OBS}, gpu=${WITH_GPU}) ..."
-docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" up -d
+docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" up -d
 
 echo "Esperando salud de servicios..."
 wait_for_http "http://localhost:${CLASSIFIER_HOST_PORT}/health" "classifier-service /health"

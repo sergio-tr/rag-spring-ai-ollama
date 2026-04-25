@@ -1,4 +1,5 @@
 import { setAccessToken } from "@/lib/access-token";
+import { setStoredUserRole } from "@/lib/user-role";
 
 /**
  * Persists tokens into httpOnly cookies via Next.js route handlers (same origin).
@@ -21,6 +22,7 @@ export async function commitSessionCookie(tokens: {
 
 export async function clearSessionCookie(): Promise<void> {
   setAccessToken(null);
+  setStoredUserRole(null);
   await fetch("/api/auth/logout", {
     method: "POST",
     credentials: "same-origin",

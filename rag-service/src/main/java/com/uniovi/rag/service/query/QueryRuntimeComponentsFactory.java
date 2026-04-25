@@ -2,7 +2,6 @@ package com.uniovi.rag.service.query;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagRuntimeProperties;
-import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.service.analyser.NERQueryEnricher;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
@@ -13,10 +12,8 @@ import com.uniovi.rag.service.query.pipeline.AnswerGenerationKernel;
 import com.uniovi.rag.service.query.pipeline.ChatRequestSpecFactory;
 import com.uniovi.rag.service.query.pipeline.QueryInputPreparer;
 import com.uniovi.rag.service.query.pipeline.ResponseSynthesisPipeline;
-import com.uniovi.rag.service.query.pipeline.ToolRoutingService;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.service.retriever.NaiveCorpusContextService;
-import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.lang.Nullable;
 
@@ -33,14 +30,12 @@ public final class QueryRuntimeComponentsFactory {
      */
     public static QueryRuntimeComponents create(
             RagFeatureConfiguration featureConfig,
-            RagToolsConfiguration toolsConfig,
             QueryExpander expander,
             QueryAnalyser analyser,
             NERQueryEnricher nerQueryEnricher,
             QueryClassifier classifier,
             ContextRetriever retriever,
             DateExistenceGuard dateExistenceGuard,
-            MeetingMinutesToolsAdapter meetingMinutesToolsAdapter,
             PostRetrievalProcessor postRetrievalProcessor,
             ResponseValidator responseValidator,
             @Nullable QuestionAnswerAdvisor questionAnswerAdvisor,
@@ -48,8 +43,6 @@ public final class QueryRuntimeComponentsFactory {
             @Nullable NaiveCorpusContextService naiveCorpusContextService,
             @Nullable RagRuntimeProperties runtimeProperties) {
         QueryInputPreparer preparer = new QueryInputPreparer(featureConfig, expander, analyser, classifier);
-        ToolRoutingService toolRouting = new ToolRoutingService(
-                featureConfig, toolsConfig, meetingMinutesToolsAdapter, responseValidator, chatRequestSpecFactory);
         boolean legacyAdvisor = runtimeProperties != null && runtimeProperties.isLegacyAdvisorWithPostRetrieval();
         AnswerGenerationKernel kernel =
                 new AnswerGenerationKernel(
@@ -63,8 +56,7 @@ public final class QueryRuntimeComponentsFactory {
                                 chatRequestSpecFactory,
                                 naiveCorpusContextService,
                                 legacyAdvisor));
-        ResponseSynthesisPipeline pipeline = new ResponseSynthesisPipeline(
-                featureConfig, dateExistenceGuard, toolRouting, kernel);
+        ResponseSynthesisPipeline pipeline = new ResponseSynthesisPipeline(featureConfig, dateExistenceGuard, kernel);
         return new QueryRuntimeComponents(preparer, pipeline);
     }
 }

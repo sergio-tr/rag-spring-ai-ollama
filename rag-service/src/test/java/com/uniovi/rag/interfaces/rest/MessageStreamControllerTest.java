@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ChatMessageApplicationService;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.interfaces.rest.dto.ChatMessageAcceptedDto;
@@ -60,7 +62,7 @@ class MessageStreamControllerTest {
         jobId = UUID.randomUUID();
         userMsgId = UUID.randomUUID();
         asstId = UUID.randomUUID();
-        when(apiPathProperties.getProductBasePath()).thenReturn("/api/v5");
+        when(apiPathProperties.getProductBasePath()).thenReturn(path(""));
         when(chatMessageApplicationService.enqueueMessage(eq(userId), eq(conversationId), any()))
                 .thenReturn(new ChatMessageAcceptedDto(jobId, userMsgId, asstId));
         RagPrincipal testPrincipal = new RagPrincipal(userId, "u@test", "USER");
@@ -77,12 +79,12 @@ class MessageStreamControllerTest {
     @Test
     void postMessage_returns202WithJob() throws Exception {
         mockMvc.perform(
-                        post("/api/v5/conversations/{id}/messages", conversationId)
+                        post(path("/conversations/{id}/messages"), conversationId)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"content\":\"Hi there\"}"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.jobId").value(jobId.toString()))
-                .andExpect(jsonPath("$.pollPath").value("/api/v5/lab/jobs/" + jobId))
-                .andExpect(jsonPath("$.streamPath").value("/api/v5/lab/jobs/" + jobId + "/events"));
+                .andExpect(jsonPath("$.pollPath").value(path("/lab/jobs/") + jobId))
+                .andExpect(jsonPath("$.streamPath").value(path("/lab/jobs/") + jobId + "/events"));
     }
 }

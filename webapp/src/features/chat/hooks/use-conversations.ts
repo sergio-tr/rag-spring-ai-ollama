@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
+import { useAppStore } from "@/store/app.store";
 import type { ConversationDto, MessageDto, PatchConversationBody } from "@/types/api";
 
 const convKey = (projectId: string) => ["conversations", projectId] as const;
@@ -51,6 +52,51 @@ export function usePatchConversation(projectId: string | undefined) {
       }),
     onSuccess: () => {
       if (projectId) void qc.invalidateQueries({ queryKey: convKey(projectId) });
+    },
+  });
+}
+
+export type MoveConversationVariables = {
+  sourceProjectId: string;
+  conversationId: string;
+  destinationProjectId: string;
+  destinationProjectName: string;
+};
+
+/** POST `/projects/{sourceProjectId}/conversations/{conversationId}/move`; keeps UX aligned when the active project was the source. */
+export function useMoveConversation() {
+  const qc = useQueryClient();
+  const setActiveProject = useAppStore((s) => s.setActiveProject);
+
+  return useMutation({
+    mutationFn: ({
+      sourceProjectId,
+      conversationId,
+      destinationProjectId,
+    }: MoveConversationVariables) => {
+      const qs = new URLSearchParams({ destinationProjectId });
+      return apiFetch<void>(
+        apiProductPath(
+          `/projects/${sourceProjectId}/conversations/${conversationId}/move?${qs.toString()}`,
+        ),
+        { method: "POST" },
+      );
+    },
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: convKey(vars.sourceProjectId) });
+      void qc.invalidateQueries({ queryKey: convKey(vars.destinationProjectId) });
+      void qc.invalidateQueries({ queryKey: msgKey(vars.conversationId) });
+      void qc.invalidateQueries({ queryKey: ["project-documents", vars.sourceProjectId] });
+      void qc.invalidateQueries({ queryKey: ["project-documents", vars.destinationProjectId] });
+      void qc.invalidateQueries({ queryKey: ["config", "project", vars.destinationProjectId] });
+      void qc.invalidateQueries({ queryKey: ["config", "project", vars.sourceProjectId] });
+      void qc.invalidateQueries({ queryKey: ["projects"] });
+      if (useAppStore.getState().activeProject?.id === vars.sourceProjectId) {
+        setActiveProject({
+          id: vars.destinationProjectId,
+          name: vars.destinationProjectName,
+        });
+      }
     },
   });
 }

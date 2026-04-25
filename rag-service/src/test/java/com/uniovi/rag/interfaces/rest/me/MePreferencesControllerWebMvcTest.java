@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest.me;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.me.UserMePreferenceService;
 import com.uniovi.rag.interfaces.rest.dto.me.MePreferencesResponse;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -65,7 +67,7 @@ class MePreferencesControllerWebMvcTest {
         when(userMePreferenceService.get(eq(userId)))
                 .thenReturn(new MePreferencesResponse(1, Map.of("locale", "en")));
 
-        mockMvc.perform(get("/api/v5/me/preferences"))
+        mockMvc.perform(get(path("/me/preferences")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.schemaVersion").value(1))
                 .andExpect(jsonPath("$.preferences.locale").value("en"));
@@ -77,7 +79,7 @@ class MePreferencesControllerWebMvcTest {
                 .thenReturn(new MePreferencesResponse(1, Map.of("locale", "es")));
 
         mockMvc.perform(
-                        put("/api/v5/me/preferences")
+                        put(path("/me/preferences"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"preferences\":{\"locale\":\"es\"}}"))
                 .andExpect(status().isOk())

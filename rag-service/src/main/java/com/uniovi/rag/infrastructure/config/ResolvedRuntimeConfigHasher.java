@@ -3,21 +3,20 @@ package com.uniovi.rag.infrastructure.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.uniovi.rag.domain.config.prompt.PromptFragment;
-import com.uniovi.rag.domain.config.prompt.PromptStack;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
  * SHA-256 over canonical JSON of {@link ResolvedRuntimeConfig} for {@code resolved_config_snapshot.config_hash}.
- * Key order is fixed for stable hashes.
+ * Key order is fixed for stable hashes. The digest includes at minimum: resolved core ({@code RagConfig} value map),
+ * {@code CapabilitySet}, compatibility result, {@code SystemPromptLayers}, effective system prompt, provenance,
+ * reindex impact, and legacy projection. Do not remove fields from {@link #toOrderedMap} in a way that narrows the
+ * fingerprint without a major version bump of snapshot schema.
  */
 public final class ResolvedRuntimeConfigHasher {
 
@@ -30,8 +29,20 @@ public final class ResolvedRuntimeConfigHasher {
     private ResolvedRuntimeConfigHasher() {}
 
     public static String sha256Hex(ResolvedRuntimeConfig r) {
+        return sha256Hex(r, null);
+    }
+
+    /**
+     * When {@code knowledgeBuildProjection} is non-empty, it is appended to the ordered map so {@code config_hash}
+     * covers the persisted knowledge slice.
+     */
+    public static String sha256Hex(ResolvedRuntimeConfig r, Map<String, Object> knowledgeBuildProjection) {
         try {
-            byte[] utf8 = CANONICAL_JSON.writeValueAsString(toOrderedMap(r)).getBytes(StandardCharsets.UTF_8);
+            Map<String, Object> body = toOrderedMap(r);
+            if (knowledgeBuildProjection != null && !knowledgeBuildProjection.isEmpty()) {
+                body.put("knowledgeBuildProjection", knowledgeBuildProjection);
+            }
+            byte[] utf8 = CANONICAL_JSON.writeValueAsString(body).getBytes(StandardCharsets.UTF_8);
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] digest = md.digest(utf8);
             return HexFormat.of().formatHex(digest);
@@ -48,31 +59,19 @@ public final class ResolvedRuntimeConfigHasher {
         m.put(
                 "compatibilityResult",
                 r.compatibility() != null ? CANONICAL_JSON.convertValue(r.compatibility(), Map.class) : Map.of());
-        m.put("promptStack", promptStackToMap(r.promptStack()));
+        m.put(
+                "systemPromptLayers",
+                r.systemPromptLayers() != null ? CANONICAL_JSON.convertValue(r.systemPromptLayers(), Map.class) : Map.of());
+        m.put("effectiveSystemPrompt", r.effectiveSystemPrompt() != null ? r.effectiveSystemPrompt() : "");
         m.put(
                 "provenance",
                 r.provenance() != null ? CANONICAL_JSON.convertValue(r.provenance(), Map.class) : Map.of());
         m.put(
-                "reindexPreview",
-                r.reindexPreview() != null ? CANONICAL_JSON.convertValue(r.reindexPreview(), Map.class) : Map.of());
+                "reindexImpact",
+                r.reindexImpact() != null ? CANONICAL_JSON.convertValue(r.reindexImpact(), Map.class) : Map.of());
         m.put(
                 "legacyProjection",
                 r.legacyProjection() != null ? r.legacyProjection().toValueMap() : Map.of());
         return m;
-    }
-
-    private static Map<String, Object> promptStackToMap(PromptStack stack) {
-        if (stack == null || stack.fragments() == null) {
-            return Map.of("fragments", List.of());
-        }
-        List<Map<String, String>> rows = new ArrayList<>();
-        for (PromptFragment f : stack.fragments()) {
-            Map<String, String> row = new LinkedHashMap<>();
-            row.put("role", f.role() != null ? f.role().name() : "");
-            row.put("sourceLabel", f.sourceLabel() != null ? f.sourceLabel() : "");
-            row.put("text", f.text() != null ? f.text() : "");
-            rows.add(row);
-        }
-        return Map.of("fragments", rows);
     }
 }

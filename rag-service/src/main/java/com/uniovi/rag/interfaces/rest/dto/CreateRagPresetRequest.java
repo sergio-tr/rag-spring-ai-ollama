@@ -10,4 +10,5 @@ public record CreateRagPresetRequest(
         @NotBlank @Size(max = 255) String name,
         @Size(max = 4000) String description,
         List<String> tags,
-        Map<String, Object> values) {}
+        Map<String, Object> values,
+        List<PresetProfileRefDto> profileRefs) {}

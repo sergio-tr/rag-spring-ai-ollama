@@ -2,21 +2,36 @@ package com.uniovi.rag.application.usecase.auth;
 
 import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
+import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
+import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.RefreshRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.ResendConfirmationRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.domain.UserRole;
+import com.uniovi.rag.infrastructure.persistence.EmailConfirmationTokenRepository;
+import com.uniovi.rag.infrastructure.persistence.MailOutboxRepository;
+import com.uniovi.rag.infrastructure.persistence.PasswordResetTokenRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntityFactory;
+import com.uniovi.rag.infrastructure.persistence.jpa.EmailConfirmationTokenEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.MailOutboxEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.PasswordResetTokenEntity;
 import com.uniovi.rag.security.JwtService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.UUID;
 
 @Service
@@ -25,11 +40,47 @@ public class AuthService {
 	private final UserAccountPort userAccountPort;
 	private final PasswordEncoder passwordEncoder;
 	private final JwtService jwtService;
+	private final EmailConfirmationTokenRepository emailConfirmationTokenRepository;
+	private final PasswordResetTokenRepository passwordResetTokenRepository;
+	private final MailOutboxRepository mailOutboxRepository;
 
-	public AuthService(UserAccountPort userAccountPort, PasswordEncoder passwordEncoder, JwtService jwtService) {
+	private final boolean emailConfirmationEnabled;
+	private final boolean passwordResetEnabled;
+	private final boolean mailEnabled;
+	private final String mailFrom;
+	private final String webappBaseUrl;
+	private final long emailConfirmationTtlSeconds;
+	private final long passwordResetTtlSeconds;
+
+	private final SecureRandom secureRandom = new SecureRandom();
+
+	public AuthService(
+			UserAccountPort userAccountPort,
+			PasswordEncoder passwordEncoder,
+			JwtService jwtService,
+			EmailConfirmationTokenRepository emailConfirmationTokenRepository,
+			PasswordResetTokenRepository passwordResetTokenRepository,
+			MailOutboxRepository mailOutboxRepository,
+			@Value("${rag.auth.email-confirmation.enabled:false}") boolean emailConfirmationEnabled,
+			@Value("${rag.auth.password-reset.enabled:false}") boolean passwordResetEnabled,
+			@Value("${rag.auth.mail.enabled:false}") boolean mailEnabled,
+			@Value("${rag.auth.mail.from:no-reply@local.test}") String mailFrom,
+			@Value("${rag.auth.webapp-base-url:http://localhost:3000}") String webappBaseUrl,
+			@Value("${rag.auth.email-confirmation.token-ttl-seconds:3600}") long emailConfirmationTtlSeconds,
+			@Value("${rag.auth.password-reset.token-ttl-seconds:3600}") long passwordResetTtlSeconds) {
 		this.userAccountPort = userAccountPort;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtService = jwtService;
+		this.emailConfirmationTokenRepository = emailConfirmationTokenRepository;
+		this.passwordResetTokenRepository = passwordResetTokenRepository;
+		this.mailOutboxRepository = mailOutboxRepository;
+		this.emailConfirmationEnabled = emailConfirmationEnabled;
+		this.passwordResetEnabled = passwordResetEnabled;
+		this.mailEnabled = mailEnabled;
+		this.mailFrom = mailFrom != null ? mailFrom : "no-reply@local.test";
+		this.webappBaseUrl = normalizeBaseUrl(webappBaseUrl);
+		this.emailConfirmationTtlSeconds = emailConfirmationTtlSeconds;
+		this.passwordResetTtlSeconds = passwordResetTtlSeconds;
 	}
 
 	@Transactional
@@ -41,7 +92,14 @@ public class AuthService {
 				req.email().trim().toLowerCase(),
 				req.name().trim(),
 				passwordEncoder.encode(req.password()));
+		if (emailConfirmationEnabled) {
+			u.setEmailVerified(false);
+			u.setEmailVerifiedAt(null);
+		}
 		u = userAccountPort.save(u);
+		if (emailConfirmationEnabled) {
+			issueEmailConfirmation(u);
+		}
 		return tokensForUser(u);
 	}
 
@@ -69,11 +127,148 @@ public class AuthService {
 		return tokensForUser(u);
 	}
 
+	@Transactional
+	public void confirmEmail(ConfirmEmailRequest req) {
+		if (!emailConfirmationEnabled) {
+			return;
+		}
+		String hash = sha256Hex(req.token().trim());
+		EmailConfirmationTokenEntity tok = emailConfirmationTokenRepository.findByTokenHash(hash)
+				.orElseThrow(InvalidCredentialsException::new);
+		if (tok.getConsumedAt() != null) {
+			throw new InvalidCredentialsException();
+		}
+		if (tok.getExpiresAt().isBefore(Instant.now())) {
+			throw new InvalidCredentialsException();
+		}
+		tok.setConsumedAt(Instant.now());
+		emailConfirmationTokenRepository.save(tok);
+		UserEntity u = tok.getUser();
+		u.setEmailVerified(true);
+		u.setEmailVerifiedAt(Instant.now());
+		userAccountPort.save(u);
+	}
+
+	@Transactional
+	public void resendConfirmation(ResendConfirmationRequest req) {
+		if (!emailConfirmationEnabled) {
+			return;
+		}
+		userAccountPort.findByEmailIgnoreCase(req.email().trim().toLowerCase())
+				.ifPresent(u -> {
+					if (!u.isEmailVerified()) {
+						issueEmailConfirmation(u);
+					}
+				});
+	}
+
+	@Transactional
+	public void forgotPassword(ForgotPasswordRequest req) {
+		if (!passwordResetEnabled) {
+			return;
+		}
+		userAccountPort.findByEmailIgnoreCase(req.email().trim().toLowerCase())
+				.ifPresent(this::issuePasswordReset);
+	}
+
+	@Transactional
+	public void resetPassword(ResetPasswordRequest req) {
+		if (!passwordResetEnabled) {
+			throw new InvalidCredentialsException();
+		}
+		String hash = sha256Hex(req.token().trim());
+		PasswordResetTokenEntity tok = passwordResetTokenRepository.findByTokenHash(hash)
+				.orElseThrow(InvalidCredentialsException::new);
+		if (tok.getConsumedAt() != null) {
+			throw new InvalidCredentialsException();
+		}
+		if (tok.getExpiresAt().isBefore(Instant.now())) {
+			throw new InvalidCredentialsException();
+		}
+		tok.setConsumedAt(Instant.now());
+		passwordResetTokenRepository.save(tok);
+		UserEntity u = tok.getUser();
+		u.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+		userAccountPort.save(u);
+	}
+
 	private LoginResponse tokensForUser(UserEntity u) {
 		String roleName = u.getRole() != null ? u.getRole().name() : UserRole.USER.name();
 		String access = jwtService.createAccessToken(u.getId(), u.getEmail(), roleName);
 		String refresh = jwtService.createRefreshToken(u.getId());
 		AuthUserDto dto = new AuthUserDto(u.getId(), u.getEmail(), u.getName(), roleName);
 		return new LoginResponse(access, refresh, dto);
+	}
+
+	private void issueEmailConfirmation(UserEntity u) {
+		String raw = randomToken();
+		String hash = sha256Hex(raw);
+		EmailConfirmationTokenEntity tok = new EmailConfirmationTokenEntity();
+		tok.setUser(u);
+		tok.setTokenHash(hash);
+		tok.setCreatedAt(Instant.now());
+		tok.setExpiresAt(Instant.now().plusSeconds(Math.max(60, emailConfirmationTtlSeconds)));
+		emailConfirmationTokenRepository.save(tok);
+		if (mailEnabled) {
+			String link = webappBaseUrl + "/en/confirm-email?token=" + urlEncode(raw);
+			saveOutbox("EMAIL_CONFIRMATION", u.getEmail(), "Confirm your email", "Confirm your email: " + link);
+		}
+	}
+
+	private void issuePasswordReset(UserEntity u) {
+		String raw = randomToken();
+		String hash = sha256Hex(raw);
+		PasswordResetTokenEntity tok = new PasswordResetTokenEntity();
+		tok.setUser(u);
+		tok.setTokenHash(hash);
+		tok.setCreatedAt(Instant.now());
+		tok.setExpiresAt(Instant.now().plusSeconds(Math.max(60, passwordResetTtlSeconds)));
+		passwordResetTokenRepository.save(tok);
+		if (mailEnabled) {
+			String link = webappBaseUrl + "/en/reset-password?token=" + urlEncode(raw);
+			saveOutbox("PASSWORD_RESET", u.getEmail(), "Reset your password", "Reset your password: " + link);
+		}
+	}
+
+	private void saveOutbox(String purpose, String recipient, String subject, String bodyText) {
+		MailOutboxEntity e = new MailOutboxEntity();
+		e.setCreatedAt(Instant.now());
+		e.setPurpose(purpose);
+		e.setRecipient(recipient);
+		e.setSubject(subject);
+		e.setBodyText("From: " + mailFrom + "\n\n" + bodyText);
+		mailOutboxRepository.save(e);
+	}
+
+	private String randomToken() {
+		byte[] b = new byte[32];
+		secureRandom.nextBytes(b);
+		return Base64.getUrlEncoder().withoutPadding().encodeToString(b);
+	}
+
+	private static String sha256Hex(String s) {
+		try {
+			MessageDigest md = MessageDigest.getInstance("SHA-256");
+			byte[] dig = md.digest(s.getBytes(StandardCharsets.UTF_8));
+			StringBuilder sb = new StringBuilder(dig.length * 2);
+			for (byte bb : dig) {
+				sb.append(String.format("%02x", bb));
+			}
+			return sb.toString();
+		} catch (Exception e) {
+			throw new IllegalStateException("sha256 unavailable", e);
+		}
+	}
+
+	private static String normalizeBaseUrl(String raw) {
+		String s = raw != null ? raw.trim() : "";
+		if (s.endsWith("/")) {
+			s = s.substring(0, s.length() - 1);
+		}
+		return s.isEmpty() ? "http://localhost:3000" : s;
+	}
+
+	private static String urlEncode(String raw) {
+		return java.net.URLEncoder.encode(raw, StandardCharsets.UTF_8);
 	}
 }

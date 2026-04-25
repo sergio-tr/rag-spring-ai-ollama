@@ -2,6 +2,7 @@ package com.uniovi.rag.domain.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,6 +23,9 @@ class RagConfigApplyJsonOverridesTest {
                 true,
                 true,
                 true,
+                false,
+                false,
+                false,
                 10,
                 0.35,
                 "llm-main",
@@ -29,7 +33,9 @@ class RagConfigApplyJsonOverridesTest {
                 "cls-main",
                 "cot",
                 false,
-                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS);
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
     }
 
     @Test
@@ -103,6 +109,14 @@ class RagConfigApplyJsonOverridesTest {
     }
 
     @Test
+    void applyJsonOverrides_updatesMaterializationStrategy() throws Exception {
+        RagConfig base = sampleBase();
+        JsonNode node = MAPPER.readTree("{\"materializationStrategy\": \"DOCUMENT_LEVEL\"}");
+        RagConfig out = RagConfig.applyJsonOverrides(base, node);
+        assertThat(out.materializationStrategy()).isEqualTo(MaterializationStrategy.DOCUMENT_LEVEL);
+    }
+
+    @Test
     void applyJsonOverrides_supportsClassifierModelAndEmbedding() throws Exception {
         RagConfig base = sampleBase();
         JsonNode node =
@@ -110,5 +124,14 @@ class RagConfigApplyJsonOverridesTest {
         RagConfig out = RagConfig.applyJsonOverrides(base, node);
         assertThat(out.embeddingModel()).isEqualTo("e2");
         assertThat(out.classifierModelId()).isEqualTo("c2");
+    }
+
+    @Test
+    void applyJsonOverrides_updatesClarificationEnabled() throws Exception {
+        RagConfig base = sampleBase();
+        assertThat(base.clarificationEnabled()).isFalse();
+        JsonNode node = MAPPER.readTree("{\"clarificationEnabled\": true}");
+        RagConfig out = RagConfig.applyJsonOverrides(base, node);
+        assertThat(out.clarificationEnabled()).isTrue();
     }
 }

@@ -2,6 +2,7 @@ package com.uniovi.rag.domain.runtime;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -21,6 +22,14 @@ public record RagConfig(
         boolean functionCallingEnabled,
         boolean useRetrieval,
         boolean useAdvisor,
+        /** P11: deterministic clarification loop; requires persistable conversation scope to store pending state. */
+        boolean clarificationEnabled,
+        /** P12: bounded conversational memory stage (runtime-owned, default off). */
+        boolean memoryEnabled,
+        /** P13: deterministic adaptive routing stage (runtime-owned, default off). */
+        boolean adaptiveRoutingEnabled,
+        /** P14: post-answer judge stage (runtime-owned, default off). */
+        boolean judgeEnabled,
         int topK,
         double similarityThreshold,
         String llmModel,
@@ -32,10 +41,125 @@ public record RagConfig(
          * {@code vector_store} chunks for that project (capped by {@link #naiveFullCorpusMaxChars()}) instead of similarity search.
          */
         boolean naiveFullCorpusInPromptEnabled,
-        int naiveFullCorpusMaxChars
+        int naiveFullCorpusMaxChars,
+        /** Max characters for extractive curated retrieval context (advanced pipeline). */
+        int advancedRetrievalMaxContextChars,
+        MaterializationStrategy materializationStrategy
 ) {
 
     public static final int DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS = 24_000;
+    public static final int DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS = 24_000;
+
+    /**
+     * Backwards-compatible constructor for call sites that predate P13.
+     * Defaults {@code adaptiveRoutingEnabled=false}.
+     */
+    public RagConfig(
+            boolean expansionEnabled,
+            boolean nerEnabled,
+            boolean toolsEnabled,
+            boolean metadataEnabled,
+            boolean reasoningEnabled,
+            boolean rankerEnabled,
+            boolean postRetrievalEnabled,
+            boolean functionCallingEnabled,
+            boolean useRetrieval,
+            boolean useAdvisor,
+            boolean clarificationEnabled,
+            boolean memoryEnabled,
+            int topK,
+            double similarityThreshold,
+            String llmModel,
+            String embeddingModel,
+            String classifierModelId,
+            String reasoningStrategy,
+            boolean naiveFullCorpusInPromptEnabled,
+            int naiveFullCorpusMaxChars,
+            int advancedRetrievalMaxContextChars,
+            MaterializationStrategy materializationStrategy
+    ) {
+        this(
+                expansionEnabled,
+                nerEnabled,
+                toolsEnabled,
+                metadataEnabled,
+                reasoningEnabled,
+                rankerEnabled,
+                postRetrievalEnabled,
+                functionCallingEnabled,
+                useRetrieval,
+                useAdvisor,
+                clarificationEnabled,
+                memoryEnabled,
+                false,
+                false,
+                topK,
+                similarityThreshold,
+                llmModel,
+                embeddingModel,
+                classifierModelId,
+                reasoningStrategy,
+                naiveFullCorpusInPromptEnabled,
+                naiveFullCorpusMaxChars,
+                advancedRetrievalMaxContextChars,
+                materializationStrategy);
+    }
+
+    /**
+     * Backwards-compatible constructor for call sites that predate P14.
+     * Defaults {@code judgeEnabled=false}.
+     */
+    public RagConfig(
+            boolean expansionEnabled,
+            boolean nerEnabled,
+            boolean toolsEnabled,
+            boolean metadataEnabled,
+            boolean reasoningEnabled,
+            boolean rankerEnabled,
+            boolean postRetrievalEnabled,
+            boolean functionCallingEnabled,
+            boolean useRetrieval,
+            boolean useAdvisor,
+            boolean clarificationEnabled,
+            boolean memoryEnabled,
+            boolean adaptiveRoutingEnabled,
+            int topK,
+            double similarityThreshold,
+            String llmModel,
+            String embeddingModel,
+            String classifierModelId,
+            String reasoningStrategy,
+            boolean naiveFullCorpusInPromptEnabled,
+            int naiveFullCorpusMaxChars,
+            int advancedRetrievalMaxContextChars,
+            MaterializationStrategy materializationStrategy
+    ) {
+        this(
+                expansionEnabled,
+                nerEnabled,
+                toolsEnabled,
+                metadataEnabled,
+                reasoningEnabled,
+                rankerEnabled,
+                postRetrievalEnabled,
+                functionCallingEnabled,
+                useRetrieval,
+                useAdvisor,
+                clarificationEnabled,
+                memoryEnabled,
+                adaptiveRoutingEnabled,
+                false,
+                topK,
+                similarityThreshold,
+                llmModel,
+                embeddingModel,
+                classifierModelId,
+                reasoningStrategy,
+                naiveFullCorpusInPromptEnabled,
+                naiveFullCorpusMaxChars,
+                advancedRetrievalMaxContextChars,
+                materializationStrategy);
+    }
 
     public static RagConfig fromFeatureConfiguration(
             RagFeatureConfiguration features,
@@ -56,6 +180,10 @@ public record RagConfig(
                 features.isFunctionCallingEnabled(),
                 features.isUseRetrieval(),
                 features.isUseAdvisor(),
+                features.isClarificationEnabled(),
+                features.isMemoryEnabled(),
+                features.isAdaptiveRoutingEnabled(),
+                features.isJudgeEnabled(),
                 topK,
                 similarityThreshold,
                 llmModel,
@@ -63,7 +191,9 @@ public record RagConfig(
                 classifierModelId,
                 reasoningStrategy,
                 false,
-                DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS
+                DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL
         );
     }
 
@@ -77,6 +207,8 @@ public record RagConfig(
         }
         int maxChars = readInt(json, "naiveFullCorpusMaxChars", base.naiveFullCorpusMaxChars);
         maxChars = Math.clamp(maxChars, 1024, 500_000);
+        int advMax = readInt(json, "advancedRetrievalMaxContextChars", base.advancedRetrievalMaxContextChars);
+        advMax = Math.clamp(advMax, 1024, 500_000);
         return new RagConfig(
                 readBool(json, "expansionEnabled", base.expansionEnabled),
                 readBool(json, "nerEnabled", base.nerEnabled),
@@ -88,6 +220,10 @@ public record RagConfig(
                 readBool(json, "functionCallingEnabled", base.functionCallingEnabled),
                 readBool(json, "useRetrieval", base.useRetrieval),
                 readBool(json, "useAdvisor", base.useAdvisor),
+                readBool(json, "clarificationEnabled", base.clarificationEnabled),
+                readBool(json, "memoryEnabled", base.memoryEnabled),
+                readBool(json, "adaptiveRoutingEnabled", base.adaptiveRoutingEnabled),
+                readBool(json, "judgeEnabled", base.judgeEnabled),
                 readInt(json, "topK", base.topK),
                 readDouble(json, "similarityThreshold", base.similarityThreshold),
                 readText(json, "llmModel", base.llmModel),
@@ -95,8 +231,21 @@ public record RagConfig(
                 readText(json, "classifierModelId", base.classifierModelId),
                 readText(json, "reasoningStrategy", base.reasoningStrategy),
                 readBool(json, "naiveFullCorpusInPromptEnabled", base.naiveFullCorpusInPromptEnabled),
-                maxChars
+                maxChars,
+                advMax,
+                readMaterializationStrategy(json, base.materializationStrategy)
         );
+    }
+
+    private static MaterializationStrategy readMaterializationStrategy(JsonNode json, MaterializationStrategy base) {
+        if (json == null || !json.hasNonNull("materializationStrategy") || !json.get("materializationStrategy").isTextual()) {
+            return base;
+        }
+        try {
+            return MaterializationStrategy.valueOf(json.get("materializationStrategy").asText().trim());
+        } catch (IllegalArgumentException e) {
+            return base;
+        }
     }
 
     private static boolean readBool(JsonNode json, String field, boolean defaultValue) {
@@ -130,6 +279,10 @@ public record RagConfig(
         m.put("functionCallingEnabled", functionCallingEnabled);
         m.put("useRetrieval", useRetrieval);
         m.put("useAdvisor", useAdvisor);
+        m.put("clarificationEnabled", clarificationEnabled);
+        m.put("memoryEnabled", memoryEnabled);
+        m.put("adaptiveRoutingEnabled", adaptiveRoutingEnabled);
+        m.put("judgeEnabled", judgeEnabled);
         m.put("topK", topK);
         m.put("similarityThreshold", similarityThreshold);
         m.put("llmModel", llmModel);
@@ -138,6 +291,8 @@ public record RagConfig(
         m.put("reasoningStrategy", reasoningStrategy);
         m.put("naiveFullCorpusInPromptEnabled", naiveFullCorpusInPromptEnabled);
         m.put("naiveFullCorpusMaxChars", naiveFullCorpusMaxChars);
+        m.put("advancedRetrievalMaxContextChars", advancedRetrievalMaxContextChars);
+        m.put("materializationStrategy", materializationStrategy.name());
         return m;
     }
 }

@@ -2,6 +2,12 @@
 
 **Workflows vs gates (canonical):** [../development/e2e-testing-strategy.md](../development/e2e-testing-strategy.md).
 
+**CI jobs, branch protection names, Docker/Compose gates:** [../devops/README.md](../devops/README.md).
+
+**Quality baseline, exclusions, Sonar baseline, and test policies:** [../quality/README.md](../quality/README.md).
+
+**External test harness (Ollama / classifier HTTP / OTLP mocks, Wave 6.02):** [external-test-harness.md](external-test-harness.md).
+
 ## Quality gates before deploy (VM)
 
 [`deploy.yml`](../../.github/workflows/deploy.yml) runs only on **`workflow_dispatch`** and **requires** successful runs of the following workflows on the **same commit SHA** as the deploy job (see [../operations/deploy-workflow-audit.md](../operations/deploy-workflow-audit.md)):
@@ -13,7 +19,7 @@
 
 **Not blocking deploy by default:** `integration.yml`, `sonar.yml`, `gatling.yml`, `micro-benchmark.yml`, `system-checks.yml`, `build-images.yml`, `e2e.yml`. Promote any of these only if release policy demands it.
 
-**Operational smoke after deploy:** manual checks (health, login/chat) are documented in [../operations/runbook-docker-vm.md](../operations/runbook-docker-vm.md) and [docker/README.md](../../docker/README.md) § Deployment runbook — not automated in `deploy.yml` today.
+**Operational smoke after deploy:** manual checks (health, login/chat) are documented in [../operations/runbook-docker-vm.md](../operations/runbook-docker-vm.md) and the Deployment runbook section in [docker/README.md](../../docker/README.md) — not automated in `deploy.yml` today.
 
 ## Principles
 
@@ -26,6 +32,7 @@
 
 | Layer | Purpose | Location | Typical CI |
 | --- | --- | --- | --- |
+| Compose YAML policy | Structural `compose_guard`, env generation | `docker/scripts`, `docker/*.yml` | [`ci.yml`](../../.github/workflows/ci.yml) job **Compose structural guard**; merge validation in [`docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml) when `docker/**` changes |
 | Unit | Fast, isolated | JUnit, classifier pytest, Vitest | [`ci.yml`](../../.github/workflows/ci.yml) |
 | Integration (service) | Spring `@WebMvcTest`, JDBC | `rag-service/src/test` | `ci.yml` (`mvn verify`) |
 | Stack integration (HTTP) | Auth, product API, lab jobs, optional classifier/obs | `tests/integration` | [`integration.yml`](../../.github/workflows/integration.yml) |
@@ -40,7 +47,9 @@
 
 | Layer | Canonical doc |
 | --- | --- |
+| **Baseline runbook** (exact local + CI commands for rag-service, classifier, webapp, Sonar inputs) | [baseline-runbook.md](baseline-runbook.md) |
 | Backend verify (Surefire + JaCoCo) | [../../rag-service/README.md](../../rag-service/README.md) |
+| External dependency mocks (rag-service testsupport) | [external-test-harness.md](external-test-harness.md) |
 | Classifier pytest + coverage | [../../classifier-service/README.md](../../classifier-service/README.md) |
 | Webapp unit / Playwright UI + API | [../../webapp/README.md](../../webapp/README.md), [../../webapp/e2e/api/README.md](../../webapp/e2e/api/README.md) |
 | Integration (stack running) | [../../tests/integration/README.md](../../tests/integration/README.md) |
@@ -52,6 +61,10 @@
 ## CI
 
 Authoritative workflow table: [../README.md](../README.md) (CI workflows section).
+
+### CI parity (commands and policy)
+
+Use the same commands locally that the reusable workflow runs (`./mvnw verify`, `pytest tests/`, `npm run test:coverage`, etc.). **Which jobs are blocking for merge**, how **fork PRs** interact with **SonarCloud**, and where **Compose / `NEXT_PUBLIC_*` defaults** are defined are documented in **[`docs/devops/README.md`](../devops/README.md)**.
 
 ### Coverage gates (commands, thresholds, CI artifacts)
 

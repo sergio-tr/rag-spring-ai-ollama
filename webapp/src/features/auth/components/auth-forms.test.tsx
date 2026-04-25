@@ -78,6 +78,15 @@ describe("LoginForm", () => {
     await user.click(screen.getByRole("button", { name: /^Continue$/i }));
     await vi.waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
   });
+
+  it("renders forgot password link", async () => {
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("link", { name: /forgot password/i })).toBeInTheDocument();
+  });
 });
 
 describe("RegisterForm", () => {

@@ -2,6 +2,8 @@
 
 Query-type classification service for the RAG backend. It exposes an HTTP API used by the RAG service to classify user questions (e.g. `COUNT_DOCUMENTS`, `SUMMARIZE_MEETING`).
 
+**Target architecture (frozen model):** [Classifier System](../docs/architecture/target-architecture.md).
+
 ## Architecture
 
 - **Domain models** (`app/models/`): `ClassificationResult`, `ModelMetadata`, `TrainingResult`, `ErrorDetail` — value objects for responses and errors.

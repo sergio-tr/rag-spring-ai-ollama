@@ -1,15 +1,24 @@
 package com.uniovi.rag.infrastructure.config;
 
 import com.uniovi.rag.application.port.ConfigurationSourcePort;
+import com.uniovi.rag.application.port.PresetProfileCompositionSources;
 import com.uniovi.rag.domain.RagConfigurationLevel;
 import com.uniovi.rag.infrastructure.persistence.DefaultSystemConfigurationRepository;
 import com.uniovi.rag.infrastructure.persistence.RagConfigurationRepository;
+import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.UserPersonalizationRepository;
 import com.uniovi.rag.infrastructure.persistence.UserPreferencesRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.ConfigProfileEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagConfigurationEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetProfileRefEntity;
+import com.uniovi.rag.service.preset.PresetService;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -26,16 +35,22 @@ public class JpaConfigurationSourceAdapter implements ConfigurationSourcePort {
     private final RagConfigurationRepository ragConfigurationRepository;
     private final UserPreferencesRepository userPreferencesRepository;
     private final UserPersonalizationRepository userPersonalizationRepository;
+    private final PresetService presetService;
+    private final RagPresetRepository ragPresetRepository;
 
     public JpaConfigurationSourceAdapter(
             DefaultSystemConfigurationRepository defaultSystemRepository,
             RagConfigurationRepository ragConfigurationRepository,
             UserPreferencesRepository userPreferencesRepository,
-            UserPersonalizationRepository userPersonalizationRepository) {
+            UserPersonalizationRepository userPersonalizationRepository,
+            PresetService presetService,
+            RagPresetRepository ragPresetRepository) {
         this.defaultSystemRepository = defaultSystemRepository;
         this.ragConfigurationRepository = ragConfigurationRepository;
         this.userPreferencesRepository = userPreferencesRepository;
         this.userPersonalizationRepository = userPersonalizationRepository;
+        this.presetService = presetService;
+        this.ragPresetRepository = ragPresetRepository;
     }
 
     @Override
@@ -73,5 +88,27 @@ public class JpaConfigurationSourceAdapter implements ConfigurationSourcePort {
                 .findFirstByUser_IdAndProject_IdAndLevelAndActiveIsTrue(
                         userId, projectId, RagConfigurationLevel.PROJECT)
                 .map(RagConfigurationEntity::getValues);
+    }
+
+    @Override
+    public Optional<PresetProfileCompositionSources> loadPresetProfileCompositionSources(UUID userId, UUID presetId) {
+        presetService.requireVisiblePreset(userId, presetId);
+        RagPresetEntity preset =
+                ragPresetRepository.findByIdWithProfileRefs(presetId).orElseThrow();
+        Map<String, Object> values =
+                preset.getValues() != null ? new LinkedHashMap<>(preset.getValues()) : new LinkedHashMap<>();
+        List<RagPresetProfileRefEntity> refs =
+                preset.getProfileRefs() != null ? new ArrayList<>(preset.getProfileRefs()) : new ArrayList<>();
+        refs.sort(Comparator.comparingInt(RagPresetProfileRefEntity::getOrdinal));
+        List<Map<String, Object>> payloads = new ArrayList<>();
+        List<UUID> profileIds = new ArrayList<>();
+        for (RagPresetProfileRefEntity ref : refs) {
+            ConfigProfileEntity profile = ref.getProfile();
+            profileIds.add(profile.getId());
+            Map<String, Object> payload =
+                    profile.getPayload() != null ? new LinkedHashMap<>(profile.getPayload()) : Map.of();
+            payloads.add(payload);
+        }
+        return Optional.of(new PresetProfileCompositionSources(values, payloads, profileIds));
     }
 }

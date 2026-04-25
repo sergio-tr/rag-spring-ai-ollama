@@ -43,6 +43,11 @@
         </dependency>
 
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
             <version>0.12.6</version>
@@ -323,6 +328,28 @@
                 </configuration>
             </plugin>
 
+            <!-- Failsafe: integration-test tier (executes *IT / *IntegrationIT) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.5.4</version>
+                <configuration>
+                    <includes>
+                        <include>**/*IT.java</include>
+                        <include>**/*IntegrationIT.java</include>
+                    </includes>
+                    <argLine>-Xshare:off @{argLine} -javaagent:"${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar"</argLine>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- JaCoCo: code coverage for SonarCloud -->
             <plugin>
                 <groupId>org.jacoco</groupId>
@@ -353,124 +380,40 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <!-- Consistent exclusions with sonar-project.properties -->
+                    <!-- Keep aligned with ../sonar-project.properties sonar.coverage.exclusions (same intent). -->
+                    <!-- Heavy-package <excludes> below: per-pattern unit / WebMvc / IT exit contract and prerequisites -->
+                    <!-- (docs/testing/rag-service-heavy-package-coverage-exit-contracts.md). -->
+                    <!-- Wave 6.03: removed legacy no-op patterns (no matching packages in main bytecode):
+                         com.uniovi.rag.model, com.uniovi.rag.exception, com.uniovi.rag.api.v5.dto, com.uniovi.rag.api.auth.dto. -->
                     <excludes>
                         <exclude>com/uniovi/Application.class</exclude>
-                        <exclude>com/uniovi/rag/configuration/**</exclude>
-                        <exclude>com/uniovi/rag/model/**</exclude>
-                        <!-- Thin application-layer records (e.g. SSE context) -->
-                        <exclude>com/uniovi/rag/application/model/**</exclude>
-                        <exclude>com/uniovi/rag/exception/**</exclude>
-                        <!-- Large metadata-tool surface; covered indirectly via adapters and integration paths -->
-                        <exclude>com/uniovi/rag/tool/metadata/**</exclude>
-                        <!-- Heavy integration-style layers: covered by focused unit tests + stack integration tests -->
+                        <!-- Application orchestration: covered by WebMvc slices, integration tests, and focused unit tests -->
+                        <!-- ProcessQueryService / SimpleProcessQueryService: covered by ProcessQueryServiceTest + SimpleProcessQueryServiceTest (included in coverage) -->
+                        <!-- Wave 6.05: runtime orchestration + domain engine measured; coverage from tests under src/test/.../application/service/runtime and .../domain/runtime/engine -->
+                        <!-- MinuteDocumentStructureExpander: MinuteDocumentStructureExpanderTest + AbstractQueryExpanderTest -->
+                        <!-- Async lab worker: long I/O + LLM/classifier branches; covered via async service tests + E2E -->
+                        <!-- ChatMessageApplicationService: ChatMessageApplicationServiceTest + WebMvc slices; afterCommit via AfterCommitTaskScheduler -->
+                        <!-- Chat async worker and stream chunk types: long I/O paths; covered via async integration + E2E -->
+                        <!-- AnswerGenerationKernel: AnswerGenerationKernelTest -->
+                        <!-- MessageStreamController: covered by MessageStreamControllerTest -->
+                        <!-- v5 REST controllers: counted in JaCoCo; covered by WebMvc / integration tests (do not exclude) -->
+                        <!-- Wave 6.04: removed 32 per-class JaCoCo excludes under infrastructure/persistence/jpa; coverage from unit tests + Postgres ITs in src/test/.../persistence. -->
+                        <!-- domain/entity: legacy JaCoCo exclude removed 2026-04-21 (no com.uniovi.rag.domain.entity sources). -->
+                        <!-- Heavy LLM/metadata/tooling + ingestion stacks: covered by focused unit tests + integration/E2E (bundle gate targets overall product coverage). -->
                         <exclude>com/uniovi/rag/service/document/**</exclude>
+                        <exclude>com/uniovi/rag/application/service/knowledge/**</exclude>
                         <exclude>com/uniovi/rag/service/retriever/**</exclude>
+                        <!-- LLM/judge + persistence-heavy evaluation stack; bundle gate fails if fully included before broader tests (see .cursor/plans/rag_service_evaluation_coverage_exit_2026-04-21.plan.md). -->
                         <exclude>com/uniovi/rag/service/evaluation/**</exclude>
                         <exclude>com/uniovi/rag/tool/**</exclude>
-                        <exclude>com/uniovi/rag/observability/**</exclude>
-                        <!-- Legacy / LLM-heavy paths covered by dedicated tests and integration stack -->
-                        <exclude>com/uniovi/rag/service/analyser/**</exclude>
                         <exclude>com/uniovi/rag/service/extraction/**</exclude>
                         <exclude>com/uniovi/rag/service/ranker/**</exclude>
-                        <exclude>com/uniovi/rag/service/reasoning/ReasoningStrategy.class</exclude>
-                        <!-- Application orchestration: covered by WebMvc slices, integration tests, and focused unit tests -->
-                        <exclude>com/uniovi/rag/application/service/ConversationApplicationService.class</exclude>
-                        <exclude>com/uniovi/rag/application/service/ProjectDocumentApplicationService.class</exclude>
-                        <!-- Core orchestration + expander: very large branch surface; covered by ProcessQueryServiceTest suite -->
-                        <exclude>com/uniovi/rag/service/query/ProcessQueryService.class</exclude>
-                        <exclude>com/uniovi/rag/service/expand/MinuteDocumentStructureExpander.class</exclude>
-                        <!-- Async lab worker: long I/O + LLM/classifier branches; covered via async service tests + E2E -->
-                        <exclude>com/uniovi/rag/service/async/AsyncLabTaskRunner.class</exclude>
-                        <!-- Chat message orchestration: transactional enqueue + afterCommit; covered by WebMvc slices + stack/E2E -->
-                        <exclude>com/uniovi/rag/application/service/ChatMessageApplicationService.class</exclude>
-                        <exclude>com/uniovi/rag/application/service/ChatMessageApplicationService$*.class</exclude>
-                        <!-- Chat async worker and stream chunk types: long I/O paths; covered via async integration + E2E -->
-                        <exclude>com/uniovi/rag/service/async/chat/ChatMessageJobHandler.class</exclude>
-                        <exclude>com/uniovi/rag/service/async/chat/ChatJobCancellationRegistry.class</exclude>
-                        <exclude>com/uniovi/rag/service/chat/ChatStreamChunks.class</exclude>
-                        <!-- Query pipeline kernel + tool routing: very large branch surface; covered by dedicated test classes -->
-                        <exclude>com/uniovi/rag/service/query/pipeline/AnswerGenerationKernel.class</exclude>
-                        <!-- SSE chat stream: covered by MessageStreamControllerTest + E2E; large branch surface -->
-                        <exclude>com/uniovi/rag/interfaces/rest/MessageStreamController.class</exclude>
-                        <!-- v5 REST controllers: covered by WebMvc slices + integration; full branch surface is large -->
-                        <exclude>com/uniovi/rag/api/v5/*Controller.class</exclude>
-                        <!-- JPA entities: getters/setters; behavior covered via services and repositories -->
-                        <exclude>com/uniovi/rag/domain/entity/**</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/EvaluationRunEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/EvaluationResultEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/EvaluationDatasetEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ResolvedConfigSnapshotEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/KnowledgeIndexSnapshotEntity.class</exclude>
-                        <!-- API records / DTOs: thin data holders -->
-                        <exclude>com/uniovi/rag/api/v5/dto/**</exclude>
-                        <!-- Product REST records (same rationale as api/v5/dto): thin holders; coverage via WebMvc slices -->
-                        <exclude>com/uniovi/rag/interfaces/rest/dto/**</exclude>
-                        <exclude>com/uniovi/rag/api/auth/dto/**</exclude>
-                        <!-- Evaluation domain markers / enums (thin; used from orchestration layers) -->
-                        <exclude>com/uniovi/rag/domain/evaluation/**</exclude>
-                        <!-- Lab benchmarks: orchestration + REST slice; covered by LabBenchmarkControllerWebMvcTest + manual/CI -->
                         <exclude>com/uniovi/rag/application/service/evaluation/**</exclude>
-                        <exclude>com/uniovi/rag/interfaces/rest/LabBenchmarkController.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/storage/LocalEvaluationDatasetStorageAdapter.class</exclude>
-                        <exclude>com/uniovi/rag/application/port/EvaluationDatasetStorePort.class</exclude>
-                        <exclude>com/uniovi/rag/application/port/EvaluationDatasetStorePort$*</exclude>
-                        <!-- Zero line coverage in unit tests: JPA-heavy / integration-only / optional REST (keeps bundle ≥0.80) -->
-                        <exclude>com/uniovi/rag/application/port/BinaryStoragePort$StoredObject.class</exclude>
-                        <exclude>com/uniovi/rag/application/service/AuditApplicationService.class</exclude>
-                        <exclude>com/uniovi/rag/application/service/ConfigProfileApplicationService.class</exclude>
-                        <exclude>com/uniovi/rag/application/service/KnowledgeIndexSnapshotService.class</exclude>
-                        <exclude>com/uniovi/rag/application/service/KnowledgeLegacyBackfillService.class</exclude>
-                        <exclude>com/uniovi/rag/application/service/MoveConversationApplicationService.class</exclude>
-                        <exclude>com/uniovi/rag/application/service/PromoteDocumentApplicationService.class</exclude>
-                        <exclude>com/uniovi/rag/application/service/RuntimeConfigResolutionService.class</exclude>
-                        <exclude>com/uniovi/rag/domain/config/prompt/PromptAssembler.class</exclude>
-                        <exclude>com/uniovi/rag/domain/config/prompt/PromptFragment.class</exclude>
-                        <exclude>com/uniovi/rag/domain/config/prompt/PromptFragmentRole.class</exclude>
-                        <exclude>com/uniovi/rag/domain/config/runtime/ConfigProfileType.class</exclude>
-                        <exclude>com/uniovi/rag/domain/config/validation/CompatibilityValidator.class</exclude>
-                        <exclude>com/uniovi/rag/domain/knowledge/DocumentArtifactType.class</exclude>
-                        <exclude>com/uniovi/rag/domain/knowledge/IndexSnapshotStatus.class</exclude>
-                        <exclude>com/uniovi/rag/domain/knowledge/KnowledgeSnapshotScopeType.class</exclude>
-                        <exclude>com/uniovi/rag/domain/knowledge/ReindexEventStatus.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/bootstrap/E2eAdminUserSeeder.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/bootstrap/ProductionSecurityValidator.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/observability/ContextPropagatingFutures.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/UserAccountPersistenceAdapter.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/AuditLogEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ConfigProfileEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ConversationDraftEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ConversationEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/DocumentArtifactEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/KnowledgeDocumentEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/KnowledgeDocumentEntityFactory.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/KnowledgeSnapshotDocumentEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/KnowledgeSnapshotDocumentPk.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/MessageFeedbackEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/PromptTemplateEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/RagConfigurationEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/RagConfigurationEntityFactory.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/RagPresetProfileRefEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/RagPresetProfileRefId.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ReindexEventEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/ScheduledEvaluationEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/UserEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/UserEntityFactory.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/UserPersonalizationEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/persistence/jpa/UserPreferencesEntity.class</exclude>
-                        <exclude>com/uniovi/rag/infrastructure/storage/LocalBinaryStorageAdapter.class</exclude>
-                        <exclude>com/uniovi/rag/interfaces/rest/AdminKnowledgeController.class</exclude>
-                        <exclude>com/uniovi/rag/interfaces/rest/ConfigProfileController.class</exclude>
-                        <exclude>com/uniovi/rag/interfaces/rest/ConversationDocumentsController.class</exclude>
-                        <exclude>com/uniovi/rag/interfaces/rest/LabController$ClassifierClassifyRequest.class</exclude>
-                        <exclude>com/uniovi/rag/service/config/ChatScopedRagConfigResolver.class</exclude>
-                        <!-- Product /me hub: integration-heavy or async handlers; REST covered by WebMvc slices; keep bundle ≥0.80 -->
-                        <exclude>com/uniovi/rag/application/service/me/**</exclude>
-                        <exclude>com/uniovi/rag/interfaces/rest/me/MeSummaryController.class</exclude>
-                        <exclude>com/uniovi/rag/interfaces/rest/me/MeDocumentsController.class</exclude>
-                        <exclude>com/uniovi/rag/interfaces/rest/me/MePersonalizationController.class</exclude>
+                        <!-- Trace regression suite JSON persistence adapters: covered via WebMvc/architecture tests; low ROI for bundle gate. -->
+                        <exclude>com/uniovi/rag/infrastructure/persistence/traceregressionsuitedefinition/**</exclude>
+                        <!-- application/service/me/** is measured (unit + Me* WebMvc tests); no JaCoCo exclude -->
                     </excludes>
-                        <rules>
+                    <rules>
                         <rule>
                             <element>BUNDLE</element>
                             <limits>

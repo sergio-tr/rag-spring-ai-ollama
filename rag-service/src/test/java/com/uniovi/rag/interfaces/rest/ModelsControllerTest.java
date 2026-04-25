@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.interfaces.rest.dto.AllowlistModelEntryDto;
 import com.uniovi.rag.interfaces.rest.dto.ModelsCatalogResponseDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -41,7 +43,7 @@ class ModelsControllerTest {
                         List.of("gemma3:4b"),
                         List.of(new AllowlistModelEntryDto("gemma3:4b", AllowedModelType.LLM, true, true))));
 
-        mockMvc.perform(get("/api/v5/models"))
+        mockMvc.perform(get(path("/models")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ollamaReachable").value(true))
                 .andExpect(jsonPath("$.installedModelNames[0]").value("gemma3:4b"))

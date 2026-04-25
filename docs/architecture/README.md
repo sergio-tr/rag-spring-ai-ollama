@@ -25,6 +25,8 @@
 
 ### Docker and Compose
 
+**CI vs Compose pins and PR job policy:** [../devops/README.md](../devops/README.md).
+
 | Diagram | File | What it shows |
 | --- | --- | --- |
 | Overlay tree from base | [compose-overlays.mmd](compose-overlays.mmd) | Files under `docker/` that layer on `docker-compose.yml` |
@@ -52,13 +54,35 @@
 
 | Diagram | File | What it shows |
 | --- | --- | --- |
-| RAG flow | [rag-request-flow.mmd](rag-request-flow.mmd) | Product vs legacy config pipeline Ollama classifier |
+| RAG flow | [rag-request-flow.mmd](rag-request-flow.mmd) | Resolution, orchestration, query path, Ollama, optional classifier |
+| Backend layers | [backend-logical-layers.mmd](backend-logical-layers.mmd) | High-level `com.uniovi.rag` package families (see [BACKEND_PACKAGES.md](BACKEND_PACKAGES.md)) |
 | Security | [security-api-boundaries.mmd](security-api-boundaries.mmd) | Public vs JWT vs admin indicative |
+
+## Mermaid maintenance backlog
+
+Review higher-priority diagrams first when runtime or Compose behaviour changes. Prefer **one main message** per file and **node IDs without spaces** (see [Mermaid flowchart syntax](https://mermaid.js.org/syntax/flowchart.html)).
+
+| Priority | Diagrams | Status | Notes |
+| --- | --- | --- | --- |
+| 1 | [context-level.mmd](context-level.mmd), [deployment-compose.mmd](deployment-compose.mmd) | **Done** (orientation pass) | System context and container topology; matches Linux-first stack narrative. |
+| 2 | [service-runtime-integrations.mmd](service-runtime-integrations.mmd), [security-api-boundaries.mmd](security-api-boundaries.mmd) | **Queued** | Revisit on JWT or admin boundary changes. |
+| 3 | [rag-request-flow.mmd](rag-request-flow.mmd), [backend-logical-layers.mmd](backend-logical-layers.mmd) | **Queued** | Align with product vs legacy paths and package map. |
+| 4 | [webapp-edge-routing.mmd](webapp-edge-routing.mmd), [docker-build-contexts.mmd](docker-build-contexts.mmd) | **Queued** | Align legends with `NEXT_PUBLIC_*` and Docker contexts. |
+| 5 | [compose-overlays.mmd](compose-overlays.mmd), [observability-pipeline.mmd](observability-pipeline.mmd), [ollama-topology.mmd](ollama-topology.mmd) | **Queued** | Revisit on Compose profiles or OTLP ports. |
+
+## Backend refactoring governance
+
+Incremental refactors of `rag-service` (naming, layers, statics, ArchUnit gates, slice template): **[`docs/backend/refactoring-governance.md`](../backend/refactoring-governance.md)** — formal pointer [ADR 0012](../adr/0012-backend-refactoring-governance.md).
 
 ## Narrative pages (short, link out)
 
 | File | Role |
 | --- | --- |
+| [target-architecture.md](target-architecture.md) | Target subsystems, global rules, thesis domain pointer |
+| [rag-runtime-architecture.md](rag-runtime-architecture.md) | Canonical RAG runtime vocabulary (orchestration, pipelines, judges) |
+| [configuration-resolution-model.md](configuration-resolution-model.md) | Capabilities, resolution, snapshots, prompt composition |
+| [knowledge-system-model.md](knowledge-system-model.md) | Workspace documents, artefacts, snapshots, materialization |
+| [implementation-roadmap.md](implementation-roadmap.md) | Canonical implementation blocks (1–13) after freeze |
 | [system-context.md](system-context.md) | Text wrapper around context diagrams |
 | [deployment-model.md](deployment-model.md) | Deployment concepts + links to `docker/` |
 | [integration-flows.md](integration-flows.md) | Auth, RAG, SSE at integration level |
@@ -69,6 +93,7 @@
 | File | Role |
 | --- | --- |
 | [BACKEND_PACKAGES.md](BACKEND_PACKAGES.md) | `com.uniovi.rag.*` one-liner map |
+| [docs/backend/README.md](../backend/README.md) | Backend norms index: [refactoring-governance.md](../backend/refactoring-governance.md) |
 | [FRONTEND_MODULES.md](FRONTEND_MODULES.md) | Next.js areas |
 | [DATA_MODEL.md](DATA_MODEL.md) | ER summary aligned with Flyway |
 
@@ -80,6 +105,7 @@
 ## Related
 
 - Documentation hub: [../README.md](../README.md)
+- Quality baseline (tests, exclusions, Sonar): [../quality/README.md](../quality/README.md)
 - ADR index: [../adr/README.md](../adr/README.md)
 - Docker operations: [../../docker/README.md](../../docker/README.md)
 - Observability configuration: [../../observability/README.md](../../observability/README.md)

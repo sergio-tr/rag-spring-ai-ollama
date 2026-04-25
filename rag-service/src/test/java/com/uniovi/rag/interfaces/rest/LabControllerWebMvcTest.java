@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -82,7 +84,7 @@ class LabControllerWebMvcTest {
         when(evaluationService.getQuestionsAndAnswers()).thenReturn(Map.of());
         when(classifierLabClient.isConfigured()).thenReturn(true);
 
-        mockMvc.perform(get("/api/v5/lab/status"))
+        mockMvc.perform(get(path("/lab/status")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").exists())
                 .andExpect(jsonPath("$.datasets.questionCount").value(0));
@@ -92,7 +94,7 @@ class LabControllerWebMvcTest {
     void evaluateRag_sync_returnsBodyFromService() throws Exception {
         when(evaluationService.evaluate()).thenReturn(Map.of("evaluation_summary", Map.of()));
 
-        mockMvc.perform(post("/api/v5/lab/evaluations/rag").param("sync", "true"))
+        mockMvc.perform(post(path("/lab/evaluations/rag")).param("sync", "true"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.evaluation_summary").exists());
     }
@@ -102,7 +104,7 @@ class LabControllerWebMvcTest {
         UUID job = UUID.randomUUID();
         when(asyncTaskService.submitEvalRag(eq(userId), isNull())).thenReturn(job);
 
-        mockMvc.perform(post("/api/v5/lab/evaluations/rag"))
+        mockMvc.perform(post(path("/lab/evaluations/rag")))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.jobId").value(job.toString()))
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
@@ -124,7 +126,7 @@ class LabControllerWebMvcTest {
         when(ragFeatureConfiguration.isUseAdvisor()).thenReturn(true);
         when(evaluationService.evaluateWithConfiguration(any(), any())).thenReturn(Map.of("mode", "llm"));
 
-        mockMvc.perform(post("/api/v5/lab/evaluations/llm").param("sync", "true"))
+        mockMvc.perform(post(path("/lab/evaluations/llm")).param("sync", "true"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.mode").value("llm"));
     }

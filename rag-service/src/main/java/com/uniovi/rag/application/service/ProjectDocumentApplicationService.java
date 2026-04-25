@@ -3,11 +3,8 @@ package com.uniovi.rag.application.service;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
-import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntityFactory;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
-import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,15 +26,15 @@ public class ProjectDocumentApplicationService {
     private static final String DEFAULT_ORIGINAL_FILENAME = "upload";
 
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
-    private final ProjectDocumentIngestionService ingestionService;
+    private final KnowledgeIngestionService knowledgeIngestionService;
     private final ProjectAccessService projectAccessService;
 
     public ProjectDocumentApplicationService(
             KnowledgeDocumentRepository knowledgeDocumentRepository,
-            ProjectDocumentIngestionService ingestionService,
+            KnowledgeIngestionService knowledgeIngestionService,
             ProjectAccessService projectAccessService) {
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
-        this.ingestionService = ingestionService;
+        this.knowledgeIngestionService = knowledgeIngestionService;
         this.projectAccessService = projectAccessService;
     }
 
@@ -50,42 +47,11 @@ public class ProjectDocumentApplicationService {
 
     public ProjectDocumentDto uploadConversationOverlay(
             UUID userId, UUID projectId, UUID conversationId, MultipartFile file) throws IOException {
-        projectAccessService.requireOwnedProject(userId, projectId);
-        ConversationEntity conv = projectAccessService.requireConversationForUser(userId, conversationId);
-        if (!conv.getProject().getId().equals(projectId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        }
-        if (file == null || file.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        }
-        String original =
-                file.getOriginalFilename() != null ? file.getOriginalFilename() : DEFAULT_ORIGINAL_FILENAME;
-        String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
-        KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newChatLocalIngesting(conv.getProject(), conv, original);
-        row = knowledgeDocumentRepository.save(row);
-        Path temp = Files.createTempFile("rag-doc-overlay-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
-        file.transferTo(temp.toFile());
-        ingestionService.ingestFromTempFile(projectId, row.getId(), temp, original, ct);
-        return toDto(row);
+        return knowledgeIngestionService.uploadConversationOverlay(userId, projectId, conversationId, file);
     }
 
     public ProjectDocumentDto uploadDocument(UUID userId, UUID projectId, MultipartFile file) throws IOException {
-        ProjectEntity project = projectAccessService.requireOwnedProject(userId, projectId);
-        if (file == null || file.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        }
-        String original =
-                file.getOriginalFilename() != null ? file.getOriginalFilename() : DEFAULT_ORIGINAL_FILENAME;
-        String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
-
-        KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newIngesting(project, original);
-        row = knowledgeDocumentRepository.save(row);
-
-        Path temp = Files.createTempFile("rag-doc-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
-        file.transferTo(temp.toFile());
-
-        ingestionService.ingestFromTempFile(projectId, row.getId(), temp, original, ct);
-        return toDto(row);
+        return knowledgeIngestionService.uploadProjectDocument(userId, projectId, file);
     }
 
     public void deleteDocument(UUID userId, UUID projectId, UUID documentId) {
@@ -94,7 +60,7 @@ public class ProjectDocumentApplicationService {
         if (doc.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-        ingestionService.deleteVectorChunksForProjectDocument(documentId);
+        knowledgeIngestionService.deleteVectorChunksForDocument(documentId);
         knowledgeDocumentRepository.delete(doc.get());
     }
 
@@ -118,7 +84,7 @@ public class ProjectDocumentApplicationService {
         String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
         Path temp = Files.createTempFile("rag-reindex-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
         file.transferTo(temp.toFile());
-        ingestionService.ingestFromTempFile(projectId, documentId, temp, original, ct);
+        knowledgeIngestionService.ingestFromTempFile(userId, projectId, documentId, temp, original, ct);
         return toDto(row);
     }
 

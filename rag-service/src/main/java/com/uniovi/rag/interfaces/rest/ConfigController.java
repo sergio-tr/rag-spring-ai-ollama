@@ -3,9 +3,15 @@ package com.uniovi.rag.interfaces.rest;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
+import com.uniovi.rag.application.config.RuntimeConfigResolutionInput;
+import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
+import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.runtime.ConfigProfileType;
+import com.uniovi.rag.interfaces.rest.dto.CreateResolvedConfigSnapshotRequest;
+import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotCreatedResponse;
+import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotResponse;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedRuntimeConfigResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigPreviewRequest;
 import com.uniovi.rag.security.RagPrincipal;
@@ -23,10 +29,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -40,16 +48,19 @@ public class ConfigController {
     private final ConfigurationSchemaProvider configurationSchemaProvider;
     private final UserProjectConfigurationService userProjectConfigurationService;
     private final RuntimeConfigResolutionService runtimeConfigResolutionService;
+    private final ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
     private final ObjectMapper objectMapper;
 
     public ConfigController(
             ConfigurationSchemaProvider configurationSchemaProvider,
             UserProjectConfigurationService userProjectConfigurationService,
             RuntimeConfigResolutionService runtimeConfigResolutionService,
+            ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService,
             ObjectMapper objectMapper) {
         this.configurationSchemaProvider = configurationSchemaProvider;
         this.userProjectConfigurationService = userProjectConfigurationService;
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
+        this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
         this.objectMapper = objectMapper;
     }
 
@@ -73,9 +84,42 @@ public class ConfigController {
                 body.baselineCapabilitySnapshot() != null
                         ? body.baselineCapabilitySnapshot().toCapabilitySet()
                         : null;
-        return ResolvedRuntimeConfigResponseDto.fromDomain(
-                runtimeConfigResolutionService.preview(
-                        principal.userId(), body.projectId(), override, touched, baseline));
+        RuntimeConfigResolutionInput input =
+                new RuntimeConfigResolutionInput(
+                        principal.userId(),
+                        body.projectId(),
+                        Optional.ofNullable(body.conversationId()),
+                        Optional.ofNullable(body.presetId()),
+                        Optional.empty(),
+                        Optional.ofNullable(override),
+                        touched,
+                        Optional.ofNullable(baseline),
+                        Optional.empty(),
+                        Optional.empty());
+        ResolvedRuntimeConfig resolved = runtimeConfigResolutionService.preview(input);
+        if (!resolved.compatibility().valid()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Configuration preview failed compatibility: "
+                            + resolved.compatibility().errors().getFirst().message());
+        }
+        return ResolvedRuntimeConfigResponseDto.fromDomain(resolved);
+    }
+
+    @Operation(summary = "Persist a resolved configuration snapshot for Lab/benchmark reproducibility")
+    @PostMapping("/resolved-snapshots")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ResolvedConfigSnapshotCreatedResponse createResolvedSnapshot(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @Valid @RequestBody CreateResolvedConfigSnapshotRequest body) {
+        return resolvedConfigSnapshotApplicationService.createFromRequest(principal.userId(), body);
+    }
+
+    @Operation(summary = "Fetch a resolved configuration snapshot created by the current user")
+    @GetMapping("/resolved-snapshots/{id}")
+    public ResolvedConfigSnapshotResponse getResolvedSnapshot(
+            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID id) {
+        return resolvedConfigSnapshotApplicationService.getByIdForUser(principal.userId(), id);
     }
 
     private static Set<ConfigProfileType> parseTouchedProfileTypes(List<String> raw) {

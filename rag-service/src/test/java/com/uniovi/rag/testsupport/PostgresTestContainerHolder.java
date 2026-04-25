@@ -17,7 +17,7 @@ public final class PostgresTestContainerHolder {
         if (container == null) {
             synchronized (PostgresTestContainerHolder.class) {
                 if (container == null) {
-                    PostgreSQLContainer<?> c = new PostgreSQLContainer<>("pgvector/pgvector:pg16")
+                    PostgreSQLContainer<?> c = new PostgreSQLContainer<>("pgvector/pgvector:0.8.2-pg16-bookworm")
                             .withDatabaseName("vectordb")
                             .withUsername("postgres")
                             .withPassword("postgres")

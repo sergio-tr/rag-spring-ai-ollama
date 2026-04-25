@@ -2,6 +2,9 @@ package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
@@ -11,6 +14,7 @@ import com.uniovi.rag.service.ranker.ResponseRanker;
 import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
+import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
@@ -38,6 +42,9 @@ class RagEvaluationConfigurationTest {
         MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
         ModelCatalogPort modelCatalogPort = mock(ModelCatalogPort.class);
         ChatScopedRagConfigResolver chatScopedRagConfigResolver = mock(ChatScopedRagConfigResolver.class);
+        ExecutionContextFactory executionContextFactory = mock(ExecutionContextFactory.class);
+        RagExecutionOrchestrator ragExecutionOrchestrator = mock(RagExecutionOrchestrator.class);
+        RuntimeTracePersistenceService runtimeTracePersistenceService = mock(RuntimeTracePersistenceService.class);
         ReasoningStrategy reasoningStrategy = mock(ReasoningStrategy.class);
         ResponseRanker responseRanker = mock(ResponseRanker.class);
         PostRetrievalProcessor postRetrievalProcessor = mock(PostRetrievalProcessor.class);
@@ -50,7 +57,7 @@ class RagEvaluationConfigurationTest {
                 jdbcTemplate,
                 10,
                 0.7,
-                "http://localhost:8000",
+                ClassifierClientTestSupport.defaultBaseUrl(),
                 "default",
                 5000,
                 400,
@@ -66,6 +73,9 @@ class RagEvaluationConfigurationTest {
                 metadataLlmResponseCacheService,
                 modelCatalogPort,
                 chatScopedRagConfigResolver,
+                executionContextFactory,
+                ragExecutionOrchestrator,
+                runtimeTracePersistenceService,
                 reasoningStrategy,
                 responseRanker,
                 postRetrievalProcessor,

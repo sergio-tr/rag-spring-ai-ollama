@@ -6,9 +6,9 @@ import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.application.model.ReasoningPreOutput;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import org.json.JSONObject;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -28,20 +28,18 @@ class ResponseSynthesisPipelineTest {
     private DateExistenceGuard dateExistenceGuard;
 
     @Mock
-    private ToolRoutingService toolRouting;
-
-    @Mock
     private AnswerGenerationKernel kernel;
 
-    @InjectMocks
     private ResponseSynthesisPipeline pipeline;
+
+    @BeforeEach
+    void setUp() {
+        pipeline = new ResponseSynthesisPipeline(featureConfig, dateExistenceGuard, kernel);
+    }
 
     @Test
     void synthesizeCore_usesLlmFallback_whenNoGuardOrTool() {
         when(featureConfig.isMetadataEnabled()).thenReturn(false);
-        when(toolRouting.tryPreferToolForDate(any(), any(), any())).thenReturn(java.util.Optional.empty());
-        when(toolRouting.tryMainToolsBlock(any(), any())).thenReturn(java.util.Optional.empty());
-        when(toolRouting.tryToolRoute(any(), any(), any())).thenReturn(null);
         when(kernel.askModel(eq("q"), isNull(), eq(QueryType.FIND_PARAGRAPH))).thenReturn("final");
 
         PreparedQuery pq = new PreparedQuery("q", null, QueryType.FIND_PARAGRAPH);
@@ -54,9 +52,6 @@ class ResponseSynthesisPipelineTest {
     @Test
     void synthesizeCore_usesKernelWithPreStep_whenReasoningPrePresent() {
         when(featureConfig.isMetadataEnabled()).thenReturn(false);
-        when(toolRouting.tryPreferToolForDate(any(), any(), any())).thenReturn(java.util.Optional.empty());
-        when(toolRouting.tryMainToolsBlock(any(), any())).thenReturn(java.util.Optional.empty());
-        when(toolRouting.tryToolRoute(any(), any(), any())).thenReturn(null);
         DraftAndContext d = new DraftAndContext("with-plan", "with-plan");
         when(kernel.askModelWithPreStep(eq("q"), isNull(), eq(QueryType.COUNT_DOCUMENTS), eq("plan")))
                 .thenReturn(d);
@@ -72,9 +67,6 @@ class ResponseSynthesisPipelineTest {
     @Test
     void synthesizeCore_treatsNullModelAnswer_asEmptyDraft() {
         when(featureConfig.isMetadataEnabled()).thenReturn(false);
-        when(toolRouting.tryPreferToolForDate(any(), any(), any())).thenReturn(java.util.Optional.empty());
-        when(toolRouting.tryMainToolsBlock(any(), any())).thenReturn(java.util.Optional.empty());
-        when(toolRouting.tryToolRoute(any(), any(), any())).thenReturn(null);
         when(kernel.askModel(eq("q"), any(JSONObject.class), isNull())).thenReturn(null);
 
         PreparedQuery pq = new PreparedQuery("q", new JSONObject(), null);

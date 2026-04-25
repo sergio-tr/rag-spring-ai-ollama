@@ -73,6 +73,11 @@ public class PromoteDocumentApplicationService {
             Files.copy(in, temp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         }
         ingestionService.ingestFromTempFile(
-                project.getId(), promoted.getId(), temp, src.getFileName(), src.getMimeType() != null ? src.getMimeType() : "application/octet-stream");
+                userId,
+                project.getId(),
+                promoted.getId(),
+                temp,
+                src.getFileName(),
+                src.getMimeType() != null ? src.getMimeType() : "application/octet-stream");
     }
 }

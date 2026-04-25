@@ -1,4 +1,8 @@
 -- Flyway migration for initial application schema (documents + vector_store).
+-- Extensions must exist before uuid_generate_v4() / vector columns (Docker db/init also creates them on first boot).
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS hstore;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS documents (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,

@@ -16,7 +16,7 @@
 #   --rag: Spring backend in Docker (volume + mvn compile + DevTools), in addition to infra.
 #   With command "up":   --down / --volumes tear down the dev stack (same as "down dev").
 #   With command "down": same flags as "up dev --down".
-#   --gpu and --ollama are aliases: both add compose.ollama-gpu.yml (Ollama in Docker with NVIDIA GPU only).
+#   --gpu and --ollama are aliases: both enable profile "ollama" in docker-compose.yml (NVIDIA GPU + ollama/.env).
 #   --all  = --gpu --obs --classifier --logs --infra --rag
 #
 # prod:
@@ -199,15 +199,35 @@ if [ "$MODE" = dev ]; then
   fi
 
   COMPOSE_FILES=(-f "docker-compose.yml")
-  # compose.dev.yml: classifier hot-reload and/or backend-dev definition (--rag)
   if [ "$WITH_CLASSIFIER" = true ] || [ "$WITH_RAG_BACKEND" = true ]; then
     COMPOSE_FILES+=(-f "compose.dev.yml")
   fi
-  [ "$WITH_OBS" = true ]        && COMPOSE_FILES+=(-f "compose.obs.yml")
-  [ "$WITH_LOGS" = true ]       && COMPOSE_FILES+=(-f "compose.logs.yml")
-  [ "$WITH_INFRA" = true ]      && COMPOSE_FILES+=(-f "compose.infra.yml")
-  [ "$WITH_GPU" = true ]        && COMPOSE_FILES+=(-f "compose.ollama-gpu.yml")
+  # webapp ordering dependency is now part of compose.dev.yml
+  [ "$WITH_OBS" = true ] && COMPOSE_FILES+=(-f "compose.obs.yml")
   [ "$WITH_RAG_BACKEND" = true ] && [ "$WITH_OBS" = true ] && COMPOSE_FILES+=(-f "compose.rag-dev-obs.yml")
+
+  has_nvidia_runtime() {
+    docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'
+  }
+  if has_nvidia_runtime; then
+    WITH_NVIDIA=true
+  else
+    if [ "$WITH_GPU" = true ]; then
+      echo "Warning: NVIDIA runtime not available on this Docker host; skipping Ollama container." >&2
+    fi
+    WITH_NVIDIA=false
+  fi
+
+  [ "$WITH_NVIDIA" = true ] && COMPOSE_FILES+=(-f "compose.gpu.yml")
+
+  PROFILE_ARGS=()
+  [ "$WITH_OBS" = true ] && PROFILE_ARGS+=(--profile observability)
+  [ "$WITH_LOGS" = true ] && PROFILE_ARGS+=(--profile logs)
+  [ "$WITH_INFRA" = true ] && PROFILE_ARGS+=(--profile infra)
+  if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ]; then
+    PROFILE_ARGS+=(--profile ollama)
+  fi
+  [ "$WITH_RAG_BACKEND" = true ] && PROFILE_ARGS+=(--profile rag)
 
   ENV_ARGS=()
   add_env_file() {
@@ -228,12 +248,12 @@ if [ "$MODE" = dev ]; then
     add_env_file "$ROOT_DIR/ollama/.env"
   fi
   [ "$WITH_RAG_BACKEND" = true ] && add_env_file "$ROOT_DIR/rag-service/.env"
+  [ "$WITH_RAG_BACKEND" = true ] && add_env_file "$ROOT_DIR/webapp/.env"
 
   cd "$DOCKER_DIR"
 
   if [ "$ACTION" = down ]; then
-    DOWN_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}")
-    [ "$WITH_RAG_BACKEND" = true ] && DOWN_ARGS+=(--profile rag)
+    DOWN_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}")
     DOWN_ARGS+=(down)
     [ "$WITH_VOLUMES" = true ] && DOWN_ARGS+=(-v)
     docker compose "${DOWN_ARGS[@]}"
@@ -243,8 +263,7 @@ if [ "$MODE" = dev ]; then
 
   if [ "$ACTION" = build ]; then
     maybe_run_env_setup build
-    BUILD_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}")
-    [ "$WITH_RAG_BACKEND" = true ] && BUILD_ARGS+=(--profile rag)
+    BUILD_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}")
     BUILD_ARGS+=(build)
     docker compose "${BUILD_ARGS[@]}"
     echo "Dev images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, classifier=$WITH_CLASSIFIER, rag_backend=$WITH_RAG_BACKEND, logs=$WITH_LOGS, infra=$WITH_INFRA)."
@@ -253,20 +272,17 @@ if [ "$MODE" = dev ]; then
 
   maybe_run_env_setup up
 
-  PROFILE_ARGS=()
-  [ "$WITH_RAG_BACKEND" = true ] && PROFILE_ARGS+=(--profile rag)
-
   SERVICES=(postgres)
-  if [ "$WITH_GPU" = true ]; then
+  if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ]; then
     SERVICES+=(ollama)
   fi
   [ "$WITH_OBS" = true ]        && SERVICES+=(otel-collector jaeger prometheus grafana)
   [ "$WITH_LOGS" = true ]       && SERVICES+=(loki promtail)
-  [ "$WITH_INFRA" = true ]      && SERVICES+=(node-exporter cadvisor)
+  [ "$WITH_INFRA" = true ]      && SERVICES+=(node-exporter)
   [ "$WITH_CLASSIFIER" = true ] && SERVICES+=(classifier-service)
   if [ "$WITH_RAG_BACKEND" = true ]; then
     [ "$WITH_CLASSIFIER" = false ] && SERVICES+=(classifier-service)
-    SERVICES+=(backend-dev)
+    SERVICES+=(backend-dev webapp)
   fi
 
   docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" up -d "${SERVICES[@]}"
@@ -304,7 +320,7 @@ if [ "$MODE" = dev ]; then
   [ "$WITH_OBS" = true ] && echo "Grafana available at:   localhost:${GRAFANA_PORT:-3000}"
   [ "$WITH_OBS" = true ] && echo "Jaeger available at:    localhost:${JAEGER_UI_PORT:-16686}"
   [ "$WITH_LOGS" = true ] && echo "Loki / Promtail:        host ports from observability/.env (LOKI_HOST_PORT, PROMTAIL_HOST_PORT)"
-  [ "$WITH_INFRA" = true ] && echo "node-exporter / cAdvisor: NODE_EXPORTER_HOST_PORT, CADVISOR_HOST_PORT in observability/.env"
+  [ "$WITH_INFRA" = true ] && echo "node-exporter: NODE_EXPORTER_HOST_PORT in observability/.env (cAdvisor: --profile cadvisor)"
   exit 0
 fi
 
@@ -344,10 +360,31 @@ fi
 
 COMPOSE_FILES=(-f "docker-compose.yml")
 [ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.obs.yml")
-[ "$WITH_LOGS" = true ]  && COMPOSE_FILES+=(-f "compose.logs.yml")
-[ "$WITH_INFRA" = true ] && COMPOSE_FILES+=(-f "compose.infra.yml")
-[ "$WITH_GPU" = true ]   && COMPOSE_FILES+=(-f "compose.ollama-gpu.yml")
 COMPOSE_FILES+=(-f "compose.prod.yml")
+[ "$WITH_OBS" = true ]   && COMPOSE_FILES+=(-f "compose.prod-obs.yml")
+
+PROFILE_ARGS=()
+[ "$WITH_OBS" = true ] && PROFILE_ARGS+=(--profile observability)
+[ "$WITH_LOGS" = true ] && PROFILE_ARGS+=(--profile logs)
+[ "$WITH_INFRA" = true ] && PROFILE_ARGS+=(--profile infra)
+
+has_nvidia_runtime() {
+  docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"'
+}
+
+if has_nvidia_runtime; then
+  WITH_NVIDIA=true
+else
+  if [ "$WITH_GPU" = true ]; then
+    echo "Warning: NVIDIA runtime not available on this Docker host; skipping Ollama container." >&2
+  fi
+  WITH_NVIDIA=false
+fi
+
+[ "$WITH_NVIDIA" = true ] && COMPOSE_FILES+=(-f "compose.gpu.yml")
+if [ "$WITH_GPU" = true ] && [ "$WITH_NVIDIA" = true ]; then
+  PROFILE_ARGS+=(--profile ollama)
+fi
 
 ENV_ARGS=()
 add_env_file() {
@@ -362,6 +399,7 @@ add_env_file() {
 add_env_file "$ROOT_DIR/db/.env"
 add_env_file "$ROOT_DIR/classifier-service/.env"
 add_env_file "$ROOT_DIR/rag-service/.env"
+add_env_file "$ROOT_DIR/webapp/.env"
 if [ "$WITH_OBS" = true ] || [ "$WITH_LOGS" = true ] || [ "$WITH_INFRA" = true ]; then
   add_env_file "$ROOT_DIR/observability/.env"
 fi
@@ -372,7 +410,7 @@ fi
 cd "$DOCKER_DIR"
 
 if [ "$CMD" = down ]; then
-  DOWN_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" down)
+  DOWN_ARGS=("${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" down)
   if [ "$WITH_VOLUMES" = true ]; then
     DOWN_ARGS=( "${DOWN_ARGS[@]}" -v )
   fi
@@ -383,12 +421,12 @@ fi
 
 if [ "$CMD" = build ]; then
   maybe_run_env_setup build
-  docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" build
+  docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" build
   echo "Prod local images built (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA)."
   exit 0
 fi
 
 maybe_run_env_setup up
-docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" up -d
+docker compose "${COMPOSE_FILES[@]}" "${ENV_ARGS[@]}" "${PROFILE_ARGS[@]}" up -d
 
 echo "Prod local started (obs=$WITH_OBS, ollama_gpu=$WITH_GPU, logs=$WITH_LOGS, infra=$WITH_INFRA)."

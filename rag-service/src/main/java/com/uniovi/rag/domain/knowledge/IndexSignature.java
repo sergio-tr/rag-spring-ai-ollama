@@ -6,18 +6,20 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
 /**
- * Canonical index fingerprint for embeddings + chunk layout. Hash order is fixed for golden tests.
+ * Canonical index fingerprint for embeddings + chunk layout + materialization. Hash order is fixed for golden tests.
  *
  * @param embeddingModelId   embedding model identifier (e.g. Ollama model name)
  * @param chunkMaxChars      chunking policy size
  * @param normalizationVersion normalizer revision
  * @param indexLayoutMode    reserved; {@code CHUNK} in current delivery
+ * @param materializationStrategy how corpus is materialized for indexing
  */
 public record IndexSignature(
         String embeddingModelId,
         int chunkMaxChars,
         String normalizationVersion,
-        String indexLayoutMode
+        String indexLayoutMode,
+        MaterializationStrategy materializationStrategy
 ) {
 
     public static final String DEFAULT_NORMALIZATION_VERSION = "1";
@@ -28,7 +30,20 @@ public record IndexSignature(
                 embeddingModelId,
                 chunkMaxChars,
                 DEFAULT_NORMALIZATION_VERSION,
-                LAYOUT_CHUNK);
+                LAYOUT_CHUNK,
+                MaterializationStrategy.CHUNK_LEVEL);
+    }
+
+    public static IndexSignature forStrategy(
+            String embeddingModelId,
+            int chunkMaxChars,
+            MaterializationStrategy strategy) {
+        return new IndexSignature(
+                embeddingModelId,
+                chunkMaxChars,
+                DEFAULT_NORMALIZATION_VERSION,
+                LAYOUT_CHUNK,
+                strategy);
     }
 
     /**
@@ -39,7 +54,8 @@ public record IndexSignature(
                 embeddingModelId != null ? embeddingModelId : "",
                 Integer.toString(chunkMaxChars),
                 normalizationVersion != null ? normalizationVersion : "",
-                indexLayoutMode != null ? indexLayoutMode : "");
+                indexLayoutMode != null ? indexLayoutMode : "",
+                materializationStrategy != null ? materializationStrategy.name() : "");
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] digest = md.digest(canonical.getBytes(StandardCharsets.UTF_8));

@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest.me;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.domain.AccountExportArtifactStatus;
 import com.uniovi.rag.infrastructure.persistence.AccountExportArtifactRepository;
@@ -69,7 +71,7 @@ class MeAccountControllerWebMvcTest {
     @BeforeEach
     void setUser() {
         userId = UUID.randomUUID();
-        when(apiPathProperties.getProductBasePath()).thenReturn("/api/v5");
+        when(apiPathProperties.getProductBasePath()).thenReturn(path(""));
         RagPrincipal principal = new RagPrincipal(userId, "u@test", "USER");
         SecurityContextHolder.getContext()
                 .setAuthentication(
@@ -87,10 +89,10 @@ class MeAccountControllerWebMvcTest {
         UUID job = UUID.randomUUID();
         when(asyncTaskService.submitAccountExport(eq(userId))).thenReturn(job);
 
-        mockMvc.perform(post("/api/v5/me/account/export"))
+        mockMvc.perform(post(path("/me/account/export")))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.jobId").value(job.toString()))
-                .andExpect(jsonPath("$.pollPath").value("/api/v5/me/account/jobs/" + job));
+                .andExpect(jsonPath("$.pollPath").value(path("/me/account/jobs/") + job));
     }
 
     @Test
@@ -111,7 +113,7 @@ class MeAccountControllerWebMvcTest {
                                 Instant.parse("2025-01-01T00:00:02Z"),
                                 Instant.parse("2025-01-01T00:00:03Z")));
 
-        mockMvc.perform(get("/api/v5/me/account/jobs/{id}", taskId))
+        mockMvc.perform(get(path("/me/account/jobs/{id}"), taskId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.taskType").value("ACCOUNT_EXPORT"));
     }
@@ -136,7 +138,7 @@ class MeAccountControllerWebMvcTest {
         when(accountExportArtifactRepository.findByIdAndUser_Id(eq(exportId), eq(userId)))
                 .thenReturn(Optional.of(a));
 
-        mockMvc.perform(get("/api/v5/me/account/export/{id}/download", exportId))
+        mockMvc.perform(get(path("/me/account/export/{id}/download"), exportId))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("attachment")));
     }
@@ -150,7 +152,7 @@ class MeAccountControllerWebMvcTest {
         when(asyncTaskService.submitAccountDeletion(eq(userId))).thenReturn(job);
 
         mockMvc.perform(
-                        post("/api/v5/me/account/deletion")
+                        post(path("/me/account/deletion"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         "{\"confirm\":\"DELETE_ACCOUNT_AND_ALL_DATA\",\"email\":\"u@test\"}"))

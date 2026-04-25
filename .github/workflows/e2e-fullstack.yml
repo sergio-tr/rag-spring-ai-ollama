@@ -9,16 +9,12 @@ on:
       - "webapp/**"
       - "rag-service/**"
       - ".github/workflows/e2e-fullstack.yml"
-  pull_request:
-    branches: [main, master]
-    paths:
-      - "webapp/**"
-      - "rag-service/**"
-      - ".github/workflows/e2e-fullstack.yml"
-
 concurrency:
   group: e2e-fullstack-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  POSTGRES_SERVICE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
 
 jobs:
   playwright-fullstack:
@@ -27,7 +23,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -101,6 +97,11 @@ jobs:
           npm run build
           npx playwright install --with-deps chromium
           npm run test:e2e:fullstack
+
+      - name: Stop Spring Boot
+        if: always()
+        run: |
+          if [ -f /tmp/spring-e2e.pid ]; then kill "$(cat /tmp/spring-e2e.pid)" 2>/dev/null || true; fi
 
       - name: Upload Spring log on failure
         if: failure()

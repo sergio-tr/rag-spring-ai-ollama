@@ -13,4 +13,5 @@ public record RagPresetDto(
         Map<String, Object> values,
         boolean system,
         Instant createdAt,
-        Instant updatedAt) {}
+        Instant updatedAt,
+        List<PresetProfileRefDto> profileRefs) {}

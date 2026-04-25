@@ -36,7 +36,7 @@ public class ReindexEventEntity {
     @JoinColumn(name = "conversation_id")
     private ConversationEntity conversation;
 
-    @Column(nullable = false, length = 64)
+    @Column(name = "reason", nullable = false, length = 64)
     private String reason;
 
     @Column(name = "target_signature_hash", nullable = false, length = 128)
@@ -46,9 +46,11 @@ public class ReindexEventEntity {
     @Column(nullable = false, length = 32)
     private ReindexEventStatus status;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "async_task_id")
-    private AsyncTaskEntity asyncTask;
+    @Column(name = "async_task_id")
+    private UUID asyncTaskId;
+
+    @Column(name = "resolved_config_snapshot_id", nullable = false)
+    private UUID resolvedConfigSnapshotId;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -56,7 +58,34 @@ public class ReindexEventEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    protected ReindexEventEntity() {
+    protected ReindexEventEntity() {}
+
+    /**
+     * New pending reindex row (application layer constructs lifecycle fields).
+     */
+    public static ReindexEventEntity newPending(
+            ProjectEntity project,
+            ConversationEntity conversation,
+            KnowledgeDocumentEntity documentOrNull,
+            String reason,
+            String targetSignatureHash,
+            ReindexEventStatus initialStatus,
+            UUID resolvedConfigSnapshotId) {
+        Instant now = Instant.now();
+        ReindexEventEntity e = new ReindexEventEntity();
+        e.setProject(project);
+        e.setConversation(conversation);
+        e.setDocument(documentOrNull);
+        e.setReason(reason);
+        e.setTargetSignatureHash(targetSignatureHash);
+        e.setStatus(initialStatus);
+        if (resolvedConfigSnapshotId == null) {
+            throw new IllegalArgumentException("resolvedConfigSnapshotId required");
+        }
+        e.setResolvedConfigSnapshotId(resolvedConfigSnapshotId);
+        e.setCreatedAt(now);
+        e.setUpdatedAt(now);
+        return e;
     }
 
     public UUID getId() {
@@ -111,12 +140,20 @@ public class ReindexEventEntity {
         this.status = status;
     }
 
-    public AsyncTaskEntity getAsyncTask() {
-        return asyncTask;
+    public UUID getAsyncTaskId() {
+        return asyncTaskId;
     }
 
-    public void setAsyncTask(AsyncTaskEntity asyncTask) {
-        this.asyncTask = asyncTask;
+    public void setAsyncTaskId(UUID asyncTaskId) {
+        this.asyncTaskId = asyncTaskId;
+    }
+
+    public UUID getResolvedConfigSnapshotId() {
+        return resolvedConfigSnapshotId;
+    }
+
+    public void setResolvedConfigSnapshotId(UUID resolvedConfigSnapshotId) {
+        this.resolvedConfigSnapshotId = resolvedConfigSnapshotId;
     }
 
     public Instant getCreatedAt() {

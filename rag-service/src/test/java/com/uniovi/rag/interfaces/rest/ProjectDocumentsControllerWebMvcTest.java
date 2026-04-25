@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.PromoteDocumentApplicationService;
 import com.uniovi.rag.application.service.ProjectDocumentApplicationService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -65,7 +67,7 @@ class ProjectDocumentsControllerWebMvcTest {
     void list_returnsOkAndEmptyArray() throws Exception {
         when(projectDocumentApplicationService.listDocuments(eq(userId), eq(projectId))).thenReturn(List.of());
 
-        mockMvc.perform(get("/api/v5/projects/{projectId}/documents", projectId))
+        mockMvc.perform(get(path("/projects/{projectId}/documents"), projectId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$.length()").value(0));

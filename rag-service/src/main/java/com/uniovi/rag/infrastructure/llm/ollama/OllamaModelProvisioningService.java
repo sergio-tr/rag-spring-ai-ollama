@@ -103,7 +103,7 @@ public class OllamaModelProvisioningService {
                 installed.add(model);
             }
             state.set(State.READY);
-            log.info("Ollama: aprovisionamiento de modelos completado.");
+            log.info("Ollama: model provisioning completed.");
         } catch (Exception e) {
             lastError = e.getMessage();
             // WARN + message: degraded state (Ollama down); full stack only at DEBUG to avoid noisy CI / default logs.

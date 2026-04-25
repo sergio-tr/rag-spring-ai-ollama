@@ -1,20 +1,17 @@
 name: SonarCloud Analysis
 
-# Triggers:
-#   - Push to main or dev (full branch analysis)
-#   - Pull Requests targeting main or dev (PR decoration + gate check)
+# Manual / ad-hoc only. PR and push analysis run inside ci.yml → reusable-ci-core.yml (sonar job).
 on:
-  push:
-    branches: [main, master, dev]
-  pull_request:
-    branches: [main, master, dev]
-    types: [opened, synchronize, reopened]
+  workflow_dispatch: {}
 
 # Required permissions for SonarCloud PR decoration
 permissions:
   contents: read
   pull-requests: read   # Read PR metadata for inline PR decoration
   checks: write         # Write check-run status badge on PRs
+
+env:
+  POSTGRES_SERVICE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
 
 jobs:
   sonar:
@@ -23,7 +20,7 @@ jobs:
     # Same Postgres setup as ci.yml — required for @SpringBootTest and JDBC integration tests during mvn verify.
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -134,7 +131,7 @@ jobs:
           npm run test:coverage
 
       # ─── SonarCloud scan ──────────────────────────────────────────────────
-      # Local parity: docs/development/sonar-local-analysis.md + .github/local/sonar-local.sh
+      # Local parity: docs/development/sonar-local-analysis.md + .github/local/run-sonar.sh / ci-like-sonar.sh
       # Reads sonar-project.properties from the repository root.
       # All coverage artifacts must exist before this step runs.
       #

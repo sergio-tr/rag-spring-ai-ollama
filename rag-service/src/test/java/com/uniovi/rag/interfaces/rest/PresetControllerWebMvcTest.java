@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.interfaces.rest.dto.RagPresetDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
@@ -74,9 +76,10 @@ class PresetControllerWebMvcTest {
                                 Map.of("topK", 5),
                                 false,
                                 Instant.parse("2025-01-01T00:00:00Z"),
-                                Instant.parse("2025-01-01T00:00:00Z"))));
+                                Instant.parse("2025-01-01T00:00:00Z"),
+                                List.of())));
 
-        mockMvc.perform(get("/api/v5/presets"))
+        mockMvc.perform(get(path("/presets")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value("Default"))
                 .andExpect(jsonPath("$[0].id").value(pid.toString()));
@@ -95,10 +98,11 @@ class PresetControllerWebMvcTest {
                                 Map.of(),
                                 false,
                                 Instant.parse("2025-01-01T00:00:00Z"),
-                                Instant.parse("2025-01-01T00:00:00Z")));
+                                Instant.parse("2025-01-01T00:00:00Z"),
+                                List.of()));
 
         mockMvc.perform(
-                        post("/api/v5/presets")
+                        post(path("/presets"))
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"name\":\"P\",\"values\":{\"topK\":3}}"))
                 .andExpect(status().isCreated())

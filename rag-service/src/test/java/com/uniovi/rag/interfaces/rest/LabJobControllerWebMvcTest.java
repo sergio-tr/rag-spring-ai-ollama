@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ChatMessageApplicationService;
 import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
 import com.uniovi.rag.configuration.LabAsyncConfiguration;
@@ -81,7 +83,7 @@ class LabJobControllerWebMvcTest {
                                 Instant.parse("2025-01-01T00:00:02Z"),
                                 null));
 
-        mockMvc.perform(get("/api/v5/lab/jobs/{id}", taskId))
+        mockMvc.perform(get(path("/lab/jobs/{id}"), taskId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(taskId.toString()))
                 .andExpect(jsonPath("$.status").value("RUNNING"))

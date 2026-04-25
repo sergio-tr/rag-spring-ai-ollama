@@ -18,7 +18,7 @@ public class RagFeatureConfiguration {
 
     private boolean expansionEnabled;
     private boolean nerEnabled;
-    /** Manual tools: deterministic {@link com.uniovi.rag.service.query.pipeline.ToolRoutingService} path + tool registry. */
+    /** Manual tools: deterministic tools path in {@link com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator} + {@link com.uniovi.rag.configuration.RagToolsConfiguration} registry. */
     private boolean toolsEnabled;
     private boolean metadataEnabled;
     private boolean reasoningEnabled;
@@ -28,6 +28,14 @@ public class RagFeatureConfiguration {
     private boolean functionCallingEnabled;
     private boolean useRetrieval = true;
     private boolean useAdvisor = true;
+    /** P11 clarification loop core (default off). */
+    private boolean clarificationEnabled;
+    /** P12 conversational memory stage (default off). */
+    private boolean memoryEnabled;
+    /** P13 adaptive routing core (default off). */
+    private boolean adaptiveRoutingEnabled;
+    /** P14 judge core (default off). */
+    private boolean judgeEnabled;
 
     public boolean isExpansionEnabled() { return expansionEnabled; }
     public void setExpansionEnabled(boolean expansionEnabled) { this.expansionEnabled = expansionEnabled; }
@@ -59,6 +67,38 @@ public class RagFeatureConfiguration {
     public boolean isUseAdvisor() { return useAdvisor; }
     public void setUseAdvisor(boolean useAdvisor) { this.useAdvisor = useAdvisor; }
 
+    public boolean isClarificationEnabled() {
+        return clarificationEnabled;
+    }
+
+    public void setClarificationEnabled(boolean clarificationEnabled) {
+        this.clarificationEnabled = clarificationEnabled;
+    }
+
+    public boolean isMemoryEnabled() {
+        return memoryEnabled;
+    }
+
+    public void setMemoryEnabled(boolean memoryEnabled) {
+        this.memoryEnabled = memoryEnabled;
+    }
+
+    public boolean isAdaptiveRoutingEnabled() {
+        return adaptiveRoutingEnabled;
+    }
+
+    public void setAdaptiveRoutingEnabled(boolean adaptiveRoutingEnabled) {
+        this.adaptiveRoutingEnabled = adaptiveRoutingEnabled;
+    }
+
+    public boolean isJudgeEnabled() {
+        return judgeEnabled;
+    }
+
+    public void setJudgeEnabled(boolean judgeEnabled) {
+        this.judgeEnabled = judgeEnabled;
+    }
+
     public Map<String, Boolean> getConfiguration() {
         Map<String, Boolean> config = new HashMap<>();
         config.put("expansion", expansionEnabled);
@@ -71,6 +111,10 @@ public class RagFeatureConfiguration {
         config.put("function-calling", functionCallingEnabled);
         config.put("use-retrieval", useRetrieval);
         config.put("use-advisor", useAdvisor);
+        config.put("clarification", clarificationEnabled);
+        config.put("memory", memoryEnabled);
+        config.put("adaptive-routing", adaptiveRoutingEnabled);
+        config.put("judge", judgeEnabled);
         return config;
     }
 }

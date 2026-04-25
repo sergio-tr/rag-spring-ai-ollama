@@ -4,6 +4,8 @@ Stack configuration and Dockerfiles. **Ports and credentials are defined in one 
 
 **See also:** [RUNBOOK.md](RUNBOOK.md) (traces, classifier down, readiness). [Grafana observability guide](../docs/operations/grafana-observability-guide.md) — dashboards, traces, and operator walkthrough aligned with this stack.
 
+**Target architecture (frozen model):** [Platform & Ops](../docs/architecture/target-architecture.md).
+
 ## Production / VM (where to read what)
 
 **Rule:** Observability **procedures, ports, and dashboards** stay in **this file** and the linked Grafana/Jaeger/Loki guide. **Deploy, SSH, GitHub Actions gates, and VM env layout** belong under **`docs/operations/`** — do not duplicate them here.
@@ -38,7 +40,7 @@ After pulling updates, if `.env.example` gains new variables, copy them manually
 | PostgreSQL (collector) | `OBS_PG_ENDPOINT`, `OBS_PG_EXPORTER_*`, `OBS_PG_DB` | Collector `postgresql` receiver (align with `db/init`) |
 | Jaeger (traces) | `OBS_OTEL_EXPORT_JAEGER_ENDPOINT` | Collector OTLP gRPC destination (e.g. `jaeger:4317`) |
 
-`docker/compose.obs.yml`, `compose.logs.yml`, and `compose.infra.yml` should be run with:
+`docker/compose.obs.yml` plus **`docker-compose.yml` profiles** (`observability`, `logs`, `infra`, `cadvisor`) should be run with:
 
 ```bash
 --env-file ../observability/.env
@@ -74,7 +76,7 @@ Optional: `./docker/scripts/set-env.sh` or `./docker/scripts/up.sh dev --env obs
 - **OTEL Collector** (`otel-collector/config.yaml`): `${env:...}` substitution from Compose-injected variables.
 - **Prometheus** (`prometheus/prometheus.yml.template`): entrypoint replaces placeholders and starts Prometheus with `--web.listen-address` matching `OBS_INTERNAL_PROMETHEUS`.
 - **Grafana** (`grafana/docker-entrypoint.sh` + `datasources.yml.template`): generates datasources with URLs like `http://prometheus:PORT` from `.env`.
-- **Loki / Promtail** (`*.yml.template` + `compose.logs.yml`): `sed` at startup with `.env` values.
+- **Loki / Promtail** (`*.yml.template` + profile **`logs`** in `docker-compose.yml`): `sed` at startup with `.env` values.
 
 ## Layout
 

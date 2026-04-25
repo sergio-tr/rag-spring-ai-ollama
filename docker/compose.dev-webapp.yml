@@ -1,7 +1,0 @@
-# Dev full stack (--rag): start webapp after backend-dev (see docker/scripts/docker-compose.sh).
-
-services:
-  webapp:
-    depends_on:
-      backend-dev:
-        condition: service_started

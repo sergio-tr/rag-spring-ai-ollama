@@ -1,5 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ProjectDocumentApplicationService;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
@@ -77,7 +79,7 @@ class DocumentStatusControllerWebMvcTest {
                 false);
         when(projectDocumentApplicationService.documentStatus(eq(userId), eq(docId))).thenReturn(dto);
 
-        mockMvc.perform(get("/api/v5/documents/{documentId}/status", docId))
+        mockMvc.perform(get(path("/documents/{documentId}/status"), docId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(docId.toString()))
                 .andExpect(jsonPath("$.fileName").value("notes.pdf"))

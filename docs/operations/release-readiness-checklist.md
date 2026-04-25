@@ -10,7 +10,7 @@
 
 | # | Criterion | How to verify |
 |---|-----------|----------------|
-| P1 | **System deployable** with Docker Compose on a Linux VM (same compose chain as [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)). | [runbook-docker-vm.md](runbook-docker-vm.md) §3–4; containers healthy. |
+| P1 | **System deployable** with Docker Compose on a Linux VM (same compose chain as [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)). | [runbook-docker-vm.md](runbook-docker-vm.md) sections [3](runbook-docker-vm.md#3-compose-command-matches-deploy-workflow)–[4](runbook-docker-vm.md#4-verify-after-deploy); containers healthy. |
 | P2 | **Login** functional (authenticated session against the product). | Manual or Playwright smoke path; webapp + backend JWT flow. |
 | P3 | **Chat** functional (RAG/chat path usable end-to-end with configured LLM/embeddings). | Smoke query or UI chat; backend health includes Ollama/models as configured. |
 | P4 | **Observability operational** when the optional stack is enabled (`compose.obs.yml` per [observability README](../../observability/README.md)). | Traces/metrics checklist in [observability/README.md](../../observability/README.md); operator guide: [grafana-observability-guide.md](grafana-observability-guide.md). |
@@ -24,12 +24,12 @@
 |------|-------------------|
 | Release checklist | This file |
 | `deploy.yml` audit — gates, secrets, limitations | [deploy-workflow-audit.md](deploy-workflow-audit.md) |
-| Runbook Docker VM + env | [runbook-docker-vm.md](runbook-docker-vm.md); [docker/README.md](../../docker/README.md) § Deployment runbook |
+| Runbook Docker VM + env | [runbook-docker-vm.md](runbook-docker-vm.md); [docker/README.md](../../docker/README.md) — [Deployment runbook](../../docker/README.md#deployment-runbook) |
 | Azure / cloud parameterization (no fixed IPs) | [azure-vm-parameterization.md](azure-vm-parameterization.md) |
-| Workflows vs quality gates | [../testing/README.md](../testing/README.md) § Quality gates before deploy; [../development/e2e-testing-strategy.md](../development/e2e-testing-strategy.md) |
+| Workflows vs quality gates | [../testing/README.md](../testing/README.md#quality-gates-before-deploy-vm); [../development/e2e-testing-strategy.md](../development/e2e-testing-strategy.md) |
 | Documentation governance | [../development/documentation-guidelines.md](../development/documentation-guidelines.md); hub: [../README.md](../README.md); [documentation-governance-audit.md](documentation-governance-audit.md) |
 | Product / thesis alignment | [../overview/thesis-scope.md](../overview/thesis-scope.md), [../overview/product-context.md](../overview/product-context.md) |
-| Observability on VM | [observability README](../../observability/README.md) § Production / VM; deploy/ops: this folder |
+| Observability on VM | [observability README](../../observability/README.md#production--vm-where-to-read-what); deploy/ops: this folder |
 | Tag + release notes procedure | [release-notes-template.md](release-notes-template.md) |
 
 ---

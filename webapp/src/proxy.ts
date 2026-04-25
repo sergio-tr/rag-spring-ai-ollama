@@ -3,7 +3,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { AUTH_ACCESS_COOKIE_NAME } from "@/lib/auth-cookie";
 import { routing } from "@/i18n/routing";
 
-const handleI18n = createMiddleware(routing);
+// Force default locale to routing.defaultLocale (ignore Accept-Language).
+const handleI18n = createMiddleware({ ...routing, localeDetection: false });
 
 function stripLocale(pathname: string): string {
   const segments = pathname.split("/").filter(Boolean);
@@ -18,7 +19,10 @@ function stripLocale(pathname: string): string {
 
 function localeFromPath(pathname: string): string {
   const first = pathname.split("/").find((s) => s.length > 0);
-  if (routing.locales.includes(first as "en" | "es")) {
+  if (
+    first !== undefined &&
+    routing.locales.includes(first as "en" | "es")
+  ) {
     return first;
   }
   return routing.defaultLocale;

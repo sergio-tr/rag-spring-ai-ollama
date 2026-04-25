@@ -10,7 +10,7 @@ Runs **all** automated checks in order:
 
 1. `rag-service`: `./mvnw verify` (JaCoCo line coverage ≥ 80%). Uses the **same image definition as the backend**: `docker build --target build -f rag-service/Dockerfile` (JDK from `RAG_JAVA_JDK_BASE_IMAGE` in `rag-service/.env`), then a container with the repo mounted runs `mvnw verify` (named volume `rag-m2-cache` for `~/.m2`). No JDK on the host unless you force local Maven: `MAVEN_ON_HOST=1`. Build-stage tag: `RAG_BUILD_IMAGE_TAG` (default `rag-service-build:local`).
 2. `classifier-service`: `pytest tests/` (coverage ≥ 80% per `pytest.ini`).
-3. Docker: `docker compose` with `docker-compose.yml` + `compose.obs.yml` + `compose.logs.yml` + `compose.gpu.yml` (classifier GPU; optional `compose.ollama-local-gpu.yml` when `--gpu` and no `--ollama-remote`).
+3. Docker: `docker-compose.yml` + `compose.obs.yml` + `compose.gpu.yml` and **profiles** `observability`, `logs`, `ollama` (and `infra` when enabled), matching `./docker/scripts/up.sh` full stack.
 4. `tests/integration`: `INTEGRATION_CHECK_OBS=1 pytest tests/integration` (requires observability URLs on localhost).
 
 **JaCoCo:** `rag-service/target/site/jacoco/index.html` shows **code coverage**, not a test list. Packages excluded in `rag-service/pom.xml` (e.g. `tool/**`) do not appear in that report. Use the HTML report for **≥80% lines per package**.
@@ -28,7 +28,7 @@ SKIP_DOCKER=1 ./tests/full-stack-verify.sh
 MAVEN_ON_HOST=1 ./tests/full-stack-verify.sh   # host mvnw (JDK 21)
 ```
 
-**Note:** `compose.infra.yml` (node-exporter, cAdvisor) and `compose.gpu.yml` (classifier GPU) are optional; local Ollama with GPU uses `compose.ollama-local-gpu.yml`. They target **Linux** host semantics. The flow above uses **base + observability + Loki/Promtail** as the default “full” stack on Linux runners.
+**Note:** Optional tiers use **Compose profiles** in `docker-compose.yml` (`observability`, `logs`, `infra`, `ollama`, `cadvisor`). `compose.gpu.yml` adds NVIDIA to the classifier when the runtime is available. They target **Linux** host semantics.
 
 ## Create default .env
 
@@ -36,13 +36,13 @@ Scripts in **this directory** (`create-env-*.sh`, `create-env-all.sh`).
 
 | Script | Creates | Purpose |
 | --- | --- | --- |
-| `create-env-db.sh` | `db/.env` | Postgres (port, user, password, DB), base image (POSTGRES_BASE_IMAGE). Used by main compose. |
+| `create-env-db.sh` | `db/.env` | Postgres (port, user, password, DB). Used by main compose. |
 | `create-env-observability.sh` | `observability/.env` | Base images (OTEL, Jaeger, Prometheus, Grafana), Grafana password, ports. Used by `compose.obs.yml`. |
 | `create-env-rag-service.sh` | `rag-service/.env` | Backend: base images (RAG_JAVA_*), SERVER_PORT, BACKEND_PORT, DB URL, Ollama, classifier URL. For build and local runs. |
 | `create-env-classifier-service.sh` | `classifier-service/.env` | Classifier: base image, PORT, MODELS_DIR, DATA_DIR, CLASSIFIER_SERVICE_PORT. For build and local runs. |
-| `create-env-ollama.sh` | `ollama/.env` | Ollama in Docker: base image (OLLAMA_BASE_IMAGE), OLLAMA_PORT. Used when starting `ollama` via `compose.ollama-local-gpu.yml` (`--gpu`). |
+| `create-env-ollama.sh` | `ollama/.env` | Ollama in Docker: base image (OLLAMA_BASE_IMAGE), OLLAMA_PORT. Used with **`--profile ollama`** (`--gpu` / `--ollama`). |
 | `create-env-webapp.sh` | `webapp/.env` | Next.js public env and API base URL for local/Docker runs. |
-| `create-env-all.sh` | All of the above | Runs every `create-env-*.sh` in this folder. |
+| `create-env-all.sh` | All of the above | Runs every `create-env-*.sh` in this folder, then `sync_env_from_examples.py`. |
 
 Example:
 
@@ -57,6 +57,34 @@ If a `.env` already exists, it is not overwritten. Use `--force` to overwrite:
 ```
 
 Default values are in each component's `.env.example`. After creating the `.env` files, edit them to change ports, URLs, or secrets.
+
+### Sync missing keys from `.env.example`
+
+[`sync_env_from_examples.py`](sync_env_from_examples.py) appends any `KEY=value` present in `.env.example` but missing from an existing `.env` (does not overwrite values). Use `--dry-run` to preview.
+
+```bash
+python3 ./docker/scripts/sync_env_from_examples.py
+python3 ./docker/scripts/sync_env_from_examples.py --dry-run
+```
+
+Requires **Python 3** and **PyYAML** (same as the compose helpers below).
+
+### Compose inventory and policy guard
+
+| Script | Role |
+| --- | --- |
+| [`compose_inventory.py`](compose_inventory.py) | Lists every `docker/*.yml` and each service with `image` vs `build` (per-file, not merged stacks). |
+| [`compose_guard.py`](compose_guard.py) | Policy rules: no `image:` in `docker/*.yml`, valid `build:` blocks, optional env/port/healthcheck strictness. Full run may report **violations** for `environment_literal` / `healthcheck_*` during migration. **CI** uses `--only-rules image_forbidden,yaml_error,build_invalid,build_missing_context,build_missing_dockerfile` (see [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml)). |
+
+```bash
+python3 ./docker/scripts/compose_inventory.py
+python3 ./docker/scripts/compose_inventory.py --format markdown
+python3 ./docker/scripts/compose_guard.py
+python3 ./docker/scripts/compose_guard.py --only-rules image_forbidden,yaml_error,build_invalid,build_missing_context,build_missing_dockerfile
+python3 ./docker/scripts/compose_guard.py --json
+```
+
+Exit code of `compose_guard.py` is **1** when any **enforced** rule fails (default: all rules).
 
 ## Interactive .env creation: `set-env.sh`
 
@@ -102,11 +130,11 @@ Env setup runs **before** `compose up`, not before `dev --down`.
 ./docker/scripts/up.sh prod --env all --no-env-prompt
 ```
 
-**Hybrid dev infra**: `./docker/scripts/up.sh dev [options]`. **`--all`** enables `--gpu --obs --classifier --logs --infra --rag` (Loki/Promtail + node-exporter/cAdvisor + **backend-dev** en Docker). Use `./docker/scripts/up.sh dev --all --down` to stop and remove volumes (`-v`).
+**Hybrid dev infra**: `./docker/scripts/up.sh dev [options]`. **`--all`** enables `--gpu --obs --classifier --logs --infra --rag` (Loki/Promtail + node-exporter + **backend-dev** en Docker; cAdvisor is opt-in **`--profile cadvisor`**). Use `./docker/scripts/up.sh dev --all --down` to stop and remove volumes (`-v`).
 
 **`--rag` (dev only):** arranca **`backend-dev`** y la **`webapp`** en Docker (además de `classifier-service` si hace falta): volumen `rag-service/`, recompilación en bucle y **Spring Boot DevTools**. **`--proxy`** (solo con `--rag`): publica **nginx** como en prod (`/` → webapp, `/api/*` → backend-dev); HTTP por defecto en el host **`80`** (`REVERSE_PROXY_DEV_HTTP_PORT`). Sin `--proxy`, la web usa **`WEBAPP_HTTP_PORT` por defecto 80** (`80:3000`); Grafana usa **`GRAFANA_PORT` por defecto 3000**. Con **`--proxy`**, deja esa URL vacía para mismo origen vía nginx. **`prod`** siempre incluye `reverse-proxy` (`compose.prod.yml`). Ajusta **`SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434`** con Ollama en compose (`--gpu`). Variable opcional: **`RAG_DEV_POLL_INTERVAL`**.
 
-**Compose files** (see `docker/`): `compose.dev.yml`, `compose.dev-webapp.yml` (`--rag`), `compose.dev-proxy.yml` (`--rag --proxy`), `compose.obs.yml`, `compose.logs.yml`, `compose.infra.yml`, `compose.gpu.yml`, `compose.ollama-local-gpu.yml` / `compose.ollama-local-gpu.dev.yml`, `compose.ollama-remote.yml` / `compose.ollama-remote.dev.yml`, `compose.rag-dev-obs.yml`, `compose.prod.yml` (siempre nginx).
+**Compose layout:** `docker-compose.yml` (core + optional services behind **profiles**: `observability`, `logs`, `infra`, `ollama`, `cadvisor`, and **`rag`** for `backend-dev`). Overlays: `compose.dev.yml` (includes webapp ordering for `--rag`), `compose.dev-proxy.yml` (`--rag --proxy`, adds **`--profile proxy`**), `compose.obs.yml` (Spring OTLP for `backend` / `classifier-service`), `compose.gpu.yml`, `compose.rag-dev-obs.yml` (`--rag --obs`), `compose.prod.yml` (+ `compose.prod-obs.yml` with `--obs`). Ollama HTTP URL is always from **`rag-service/.env`**; **`--ollama-remote`** only affects whether the **`ollama`** profile is started together with **`--gpu`/`--ollama`**.
 
 **Flags**: `dev`: `--all`, `--gpu`, `--ollama`, `--obs`, `--classifier`, `--logs`, `--infra`, `--rag`, **`--proxy`**, `--down`, `--volumes`. `prod`: `--all`, `--obs`, `--gpu`, `--ollama`, `--logs`, `--infra` (nginx siempre). **`down.sh`**: mismos flags que `up` para `dev` o `prod`. For **`down dev`** / **`build dev`**, pass the **same** flags as `up dev` (including `--rag`, **`--proxy`**, `--all`).
 
@@ -115,8 +143,8 @@ Env setup runs **before** `compose up`, not before `dev --down`.
 From `docker/` (env files are optional; compose uses defaults if a file is missing):
 
 - Main stack: `docker compose --env-file ../db/.env --env-file ../classifier-service/.env --env-file ../rag-service/.env up -d`
-- With observability: add `-f compose.obs.yml` and `--env-file ../observability/.env`
-- With Ollama in Docker (GPU): add `-f compose.gpu.yml -f compose.ollama-local-gpu.yml` and `--env-file ../ollama/.env` (see `ollama/README.md`), or use `./docker/scripts/up.sh prod --gpu`.
+- With observability: add `-f compose.obs.yml`, **`--profile observability`**, and `--env-file ../observability/.env`
+- With Ollama in Docker (GPU): add `-f compose.gpu.yml`, **`--profile ollama`**, and `--env-file ../ollama/.env` (see `ollama/README.md`), or use `./docker/scripts/up.sh prod --gpu`.
 
 ## Prod local (hardening) — `up` / `down` / `build`
 
@@ -127,9 +155,9 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 - Stop: `./docker/scripts/down.sh` with the **same** flags you used for `up` (e.g. `--all` = obs + GPU + logs + infra + `-v`)
 
 Notes:
-- **`--obs`** adds `compose.obs.yml` (opt-in). Plain `up.sh prod` is base + `compose.prod.yml` only (reverse proxy, hardened ports).
-- `--gpu` and `--ollama` → same: starts `ollama` (NVIDIA GPU) if the Docker host supports it.
-- `--logs` → Loki + Promtail; `--infra` → node-exporter + cAdvisor (host paths; see `docker/README.md`).
+- **`--obs`** adds `compose.obs.yml` and **`--profile observability`** (opt-in). Plain `up.sh prod` is base + `compose.prod.yml` only (reverse proxy, hardened ports).
+- `--gpu` and `--ollama` → same: **`--profile ollama`** if the Docker host has the NVIDIA runtime.
+- `--logs` → **`--profile logs`** (Loki + Promtail); `--infra` → **`--profile infra`** (node-exporter). cAdvisor: **`--profile cadvisor`** (see `docker/README.md`).
 
 ## Database backup / restore
 
@@ -198,7 +226,7 @@ If the DB is empty or Ollama is down, the backend may still return 200 with an e
 
 Before tagging a release or thesis snapshot, capture evidence for:
 
-1. **Compose syntax:** `docker compose … config -q` for `compose.logs.yml`, for `docker-compose.yml` + `compose.obs.yml`, and for `docker-compose.yml` + `compose.prod.yml` (same env-file pattern as CI — see [`.github/workflows/observability-smoke.yml`](../../.github/workflows/observability-smoke.yml)).
+1. **Compose syntax:** `docker compose … config -q` for `docker-compose.yml` with **`--profile logs`** (and other profiles as needed), for `docker-compose.yml` + `compose.obs.yml` + **`--profile observability`**, and for `docker-compose.yml` + `compose.prod.yml` (same env-file pattern as CI — see [`.github/workflows/observability-smoke.yml`](../../.github/workflows/observability-smoke.yml)).
 2. **Runtime:** [`rag-service/scripts/smoke-test.sh`](../../rag-service/scripts/smoke-test.sh) against the running backend; Actuator health/readiness.
 3. **Deep stack (optional / nightly):** [`tests/full-stack-verify.sh`](../../tests/full-stack-verify.sh) — heavy; run manually or on a scheduled runner if not part of PR CI.
 

@@ -6,23 +6,29 @@ import com.uniovi.rag.interfaces.rest.auth.dto.LoginRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.RefreshRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.domain.UserRole;
+import com.uniovi.rag.infrastructure.persistence.EmailConfirmationTokenRepository;
+import com.uniovi.rag.infrastructure.persistence.MailOutboxRepository;
+import com.uniovi.rag.infrastructure.persistence.PasswordResetTokenRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.PasswordResetTokenEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.security.JwtService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -39,8 +45,48 @@ class AuthServiceTest {
 	@Mock
 	private JwtService jwtService;
 
-	@InjectMocks
-	private AuthService authService;
+	@Mock
+	private EmailConfirmationTokenRepository emailConfirmationTokenRepository;
+
+	@Mock
+	private PasswordResetTokenRepository passwordResetTokenRepository;
+
+	@Mock
+	private MailOutboxRepository mailOutboxRepository;
+
+	private AuthService newService() {
+		return new AuthService(
+				userAccountPort,
+				passwordEncoder,
+				jwtService,
+				emailConfirmationTokenRepository,
+				passwordResetTokenRepository,
+				mailOutboxRepository,
+				false,
+				false,
+				false,
+				"no-reply@local.test",
+				"http://localhost:3000",
+				3600,
+				3600);
+	}
+
+	private AuthService newServicePasswordResetEnabled() {
+		return new AuthService(
+				userAccountPort,
+				passwordEncoder,
+				jwtService,
+				emailConfirmationTokenRepository,
+				passwordResetTokenRepository,
+				mailOutboxRepository,
+				false,
+				true,
+				false,
+				"no-reply@local.test",
+				"http://localhost:3000",
+				3600,
+				3600);
+	}
 
 	@Test
 	void login_success_returnsTokens() {
@@ -58,7 +104,7 @@ class AuthServiceTest {
 		when(jwtService.createRefreshToken(any())).thenReturn("ref");
 		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-		LoginResponse res = authService.login(new LoginRequest("a@b.com", "pw"));
+		LoginResponse res = newService().login(new LoginRequest("a@b.com", "pw"));
 
 		assertThat(res.accessToken()).isEqualTo("acc");
 		assertThat(res.user().email()).isEqualTo("a@b.com");
@@ -72,7 +118,7 @@ class AuthServiceTest {
 		when(userAccountPort.findByEmailIgnoreCase("a@b.com")).thenReturn(Optional.of(u));
 		when(passwordEncoder.matches("bad", "encoded")).thenReturn(false);
 
-		assertThatThrownBy(() -> authService.login(new LoginRequest("a@b.com", "bad")))
+		assertThatThrownBy(() -> newService().login(new LoginRequest("a@b.com", "bad")))
 				.isInstanceOf(InvalidCredentialsException.class);
 	}
 
@@ -81,7 +127,7 @@ class AuthServiceTest {
 		when(userAccountPort.findByEmailIgnoreCase("a@b.com")).thenReturn(Optional.of(mock(UserEntity.class)));
 
 		assertThatThrownBy(() ->
-						authService.register(new RegisterRequest("N", "a@b.com", "password123")))
+						newService().register(new RegisterRequest("N", "a@b.com", "password123")))
 				.isInstanceOf(DuplicateEmailException.class);
 	}
 
@@ -89,7 +135,7 @@ class AuthServiceTest {
 	void refresh_invalidToken_throws() {
 		when(jwtService.parseRefreshTokenUserId("bad")).thenThrow(new RuntimeException());
 
-		assertThatThrownBy(() -> authService.refresh(new RefreshRequest("bad")))
+		assertThatThrownBy(() -> newService().refresh(new RefreshRequest("bad")))
 				.isInstanceOf(InvalidCredentialsException.class);
 	}
 
@@ -106,8 +152,34 @@ class AuthServiceTest {
 		when(jwtService.createAccessToken(any(), any(), any())).thenReturn("a");
 		when(jwtService.createRefreshToken(any())).thenReturn("r");
 
-		LoginResponse res = authService.refresh(new RefreshRequest("rt"));
+		LoginResponse res = newService().refresh(new RefreshRequest("rt"));
 
 		assertThat(res.accessToken()).isEqualTo("a");
+	}
+
+	@Test
+	void resetPassword_disabled_throws() {
+		assertThatThrownBy(() -> newService().resetPassword(new ResetPasswordRequest("t", "password123")))
+				.isInstanceOf(InvalidCredentialsException.class);
+	}
+
+	@Test
+	void resetPassword_valid_updatesPasswordAndConsumesToken() {
+		UserEntity u = mock(UserEntity.class);
+		PasswordResetTokenEntity tok = new PasswordResetTokenEntity();
+		tok.setUser(u);
+		tok.setTokenHash("h");
+		tok.setCreatedAt(Instant.now());
+		tok.setExpiresAt(Instant.now().plusSeconds(300));
+
+		when(passwordResetTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
+		when(passwordEncoder.encode("password123")).thenReturn("encoded");
+		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+		newServicePasswordResetEnabled().resetPassword(new ResetPasswordRequest("raw", "password123"));
+
+		verify(passwordResetTokenRepository).save(any());
+		verify(userAccountPort).save(eq(u));
+		verify(passwordEncoder).encode("password123");
 	}
 }

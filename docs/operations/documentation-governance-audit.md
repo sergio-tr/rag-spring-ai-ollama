@@ -8,7 +8,7 @@
 |------|-------------------|--------|
 | Documentation entry | [docs/README.md](../README.md) | Tables for workflows, links to `docs/operations/`, [testing overview](../testing/README.md), ADRs. |
 | Operational deploy / VM | [runbook-docker-vm.md](runbook-docker-vm.md), [deploy-workflow-audit.md](deploy-workflow-audit.md), [docker/README.md](../../docker/README.md) | **Single story** for SSH + Compose; avoid parallel narratives. |
-| Observability stack | [observability/README.md](../../observability/README.md) | Metrics, traces, Compose overlays; **not** duplicate VM deploy (see § Production / VM there). |
+| Observability stack | [observability/README.md](../../observability/README.md) | Metrics, traces, Compose overlays; **not** duplicate VM deploy (see [Production / VM](../../observability/README.md#production--vm-where-to-read-what) there). |
 
 ## Rules
 

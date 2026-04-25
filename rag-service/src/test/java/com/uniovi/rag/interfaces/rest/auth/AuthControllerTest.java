@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -57,5 +58,41 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"not-an-email\",\"password\":\"secret\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void confirmEmail_valid_returnsOk() throws Exception {
+        doNothing().when(authService).confirmEmail(any());
+        mockMvc.perform(post("/api/auth/confirm-email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"t\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void resendConfirmation_valid_returnsOk() throws Exception {
+        doNothing().when(authService).resendConfirmation(any());
+        mockMvc.perform(post("/api/auth/resend-confirmation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"a@b.com\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void forgotPassword_valid_returnsOk() throws Exception {
+        doNothing().when(authService).forgotPassword(any());
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"a@b.com\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void resetPassword_valid_returnsOk() throws Exception {
+        doNothing().when(authService).resetPassword(any());
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"t\",\"newPassword\":\"password123\"}"))
+                .andExpect(status().isOk());
     }
 }

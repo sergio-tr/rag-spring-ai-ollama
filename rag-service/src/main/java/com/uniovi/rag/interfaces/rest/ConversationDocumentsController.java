@@ -1,6 +1,6 @@
 package com.uniovi.rag.interfaces.rest;
 
-import com.uniovi.rag.application.service.ProjectDocumentApplicationService;
+import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.security.RagPrincipal;
 import org.springframework.http.HttpStatus;
@@ -21,10 +21,10 @@ import java.util.UUID;
 @RequestMapping("${rag.api.product-base-path}/projects/{projectId}/conversations/{conversationId}/documents")
 public class ConversationDocumentsController {
 
-    private final ProjectDocumentApplicationService projectDocumentApplicationService;
+    private final KnowledgeIngestionService knowledgeIngestionService;
 
-    public ConversationDocumentsController(ProjectDocumentApplicationService projectDocumentApplicationService) {
-        this.projectDocumentApplicationService = projectDocumentApplicationService;
+    public ConversationDocumentsController(KnowledgeIngestionService knowledgeIngestionService) {
+        this.knowledgeIngestionService = knowledgeIngestionService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -37,7 +37,7 @@ public class ConversationDocumentsController {
             return ResponseEntity.badRequest().build();
         }
         ProjectDocumentDto dto =
-                projectDocumentApplicationService.uploadConversationOverlay(
+                knowledgeIngestionService.uploadConversationOverlay(
                         principal.userId(), projectId, conversationId, file);
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }

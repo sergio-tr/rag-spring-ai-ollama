@@ -41,8 +41,39 @@ import httpx
 import pytest
 
 
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def integration_strict() -> bool:
+    """
+    Strict mode turns connectivity skips into hard failures.
+
+    Enable in CI lanes to avoid false-green runs when a required service is unreachable.
+    """
+    return _truthy_env("INTEGRATION_STRICT") or _truthy_env("INTEGRATION_FAIL_ON_UNREACHABLE")
+
+
+def integration_require_classifier() -> bool:
+    """
+    Require classifier reachability (connectivity) in this run.
+
+    Note: model-loaded is intentionally NOT required by default; see INTEGRATION_REQUIRE_CLASSIFIER_MODEL.
+    """
+    return _truthy_env("INTEGRATION_REQUIRE_CLASSIFIER")
+
+
+def integration_require_classifier_model() -> bool:
+    """
+    Require classifier model to be loaded for classify-path assertions.
+    """
+    return _truthy_env("INTEGRATION_REQUIRE_CLASSIFIER_MODEL")
+
+
 def _skip_if_unreachable(exc: Exception) -> None:
     if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+        if integration_strict():
+            pytest.fail(f"Service unreachable (strict mode): {exc}")
         pytest.skip(f"Service unreachable: {exc}")
 
 
@@ -129,6 +160,11 @@ class TestClassifierService:
         try:
             r = http_client.get(f"{classifier_base}/models")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            if integration_require_classifier():
+                pytest.fail(
+                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
+                    f"{classifier_base} ({e})"
+                )
             _skip_if_unreachable(e)
             raise
         assert r.status_code == 200, r.text
@@ -145,6 +181,11 @@ class TestClassifierService:
                 headers={"Content-Type": "application/json"},
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            if integration_require_classifier():
+                pytest.fail(
+                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
+                    f"{classifier_base} ({e})"
+                )
             _skip_if_unreachable(e)
             raise
         assert r.status_code == 400, r.text
@@ -153,6 +194,11 @@ class TestClassifierService:
         try:
             r = http_client.get(f"{classifier_base}/health")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            if integration_require_classifier():
+                pytest.fail(
+                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
+                    f"{classifier_base} ({e})"
+                )
             _skip_if_unreachable(e)
             raise
         assert r.status_code == 200, r.text
@@ -163,10 +209,19 @@ class TestClassifierService:
         try:
             h = http_client.get(f"{classifier_base}/health")
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            if integration_require_classifier():
+                pytest.fail(
+                    "Classifier is required (INTEGRATION_REQUIRE_CLASSIFIER=1) but unreachable: "
+                    f"{classifier_base} ({e})"
+                )
             _skip_if_unreachable(e)
             raise
         assert h.status_code == 200
         if h.json().get("model") != "loaded":
+            if integration_require_classifier_model():
+                pytest.fail(
+                    "Classifier model is required (INTEGRATION_REQUIRE_CLASSIFIER_MODEL=1) but /health reports model != loaded."
+                )
             pytest.skip(
                 "Keras model not loaded in classifier-service (/health → model != loaded). "
                 "Check MODEL_PATH and files under models/."

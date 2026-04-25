@@ -39,6 +39,12 @@ public class UserEntity {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified = true;
+
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
     protected UserEntity() {
     }
 
@@ -96,5 +102,21 @@ public class UserEntity {
 
     public void setLastLoginAt(Instant lastLoginAt) {
         this.lastLoginAt = lastLoginAt;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public void setEmailVerified(boolean emailVerified) {
+        this.emailVerified = emailVerified;
+    }
+
+    public Instant getEmailVerifiedAt() {
+        return emailVerifiedAt;
+    }
+
+    public void setEmailVerifiedAt(Instant emailVerifiedAt) {
+        this.emailVerifiedAt = emailVerifiedAt;
     }
 }

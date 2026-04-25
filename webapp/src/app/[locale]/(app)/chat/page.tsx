@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { MoveConversationDialog } from "@/features/chat/components/MoveConversationDialog";
 import {
   useConversationMessages,
   useConversations,
@@ -16,6 +17,7 @@ import { useProjectDocuments } from "@/features/documents/hooks/use-project-docu
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { cn } from "@/lib/utils";
+import { useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
 import { useChatExplainStore } from "@/store/chat-explain.store";
 import type {
@@ -24,8 +26,12 @@ import type {
   PatchUserMessageBody,
   PostMessageBody,
 } from "@/types/api";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
 
 async function cancelChatJob(jobId: string, signal?: AbortSignal): Promise<void> {
   await apiFetch<void>(apiProductPath(`/lab/jobs/${jobId}/cancel`), {
@@ -40,9 +46,12 @@ function isAssistantRetryable(status: string | null | undefined): boolean {
 
 export default function ChatPage() {
   const t = useTranslations("Chat");
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const active = useAppStore((s) => s.activeProject);
   const projectId = active?.id;
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [convListCollapsed, setConvListCollapsed] = useState(false);
   const [input, setInput] = useState("");
   const [sendError, setSendError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
@@ -57,6 +66,37 @@ export default function ChatPage() {
   const activeJobIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(CHAT_CONV_LIST_COLLAPSED_KEY) === "true") {
+        setConvListCollapsed(true);
+      }
+    } catch {
+      /* sessionStorage unavailable */
+    }
+  }, []);
+
+  const urlConversationId = searchParams.get("conversationId");
+  useEffect(() => {
+    if (urlConversationId && urlConversationId !== conversationId) {
+      setConversationId(urlConversationId);
+    }
+  }, [urlConversationId, conversationId]);
+
+  function selectConversation(nextId: string) {
+    setConversationId(nextId);
+    router.push(`/chat?conversationId=${encodeURIComponent(nextId)}`);
+  }
+
+  function persistConvListCollapsed(next: boolean) {
+    setConvListCollapsed(next);
+    try {
+      sessionStorage.setItem(CHAT_CONV_LIST_COLLAPSED_KEY, next ? "true" : "false");
+    } catch {
+      /* ignore */
+    }
+  }
 
   const { data: convs } = useConversations(projectId);
   const createConv = useCreateConversation(projectId);
@@ -369,35 +409,65 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-[calc(100dvh-7rem)] min-h-[420px] flex-col gap-3 md:flex-row">
-      <aside className="flex w-full shrink-0 flex-col gap-2 border-border border-b pb-3 md:w-52 md:border-b-0 md:border-r md:pb-0 md:pr-3">
-        <Button
-          type="button"
-          size="sm"
-          className="w-full"
-          disabled={createConv.isPending}
-          onClick={async () => {
-            const c = await createConv.mutateAsync();
-            setConversationId(c.id);
-            void refetchMessages();
-          }}
-        >
-          {t("newConversation")}
-        </Button>
-        <div className="flex max-h-48 flex-col gap-1 overflow-y-auto md:max-h-none md:flex-1">
-          {convs?.map((c) => (
-            <Button
-              key={c.id}
-              type="button"
-              variant={conversationId === c.id ? "secondary" : "ghost"}
-              size="sm"
-              className="h-auto justify-start py-2 text-left"
-              onClick={() => setConversationId(c.id)}
-            >
-              <span className="line-clamp-2 text-xs">{c.title}</span>
-            </Button>
-          ))}
+      {convListCollapsed ? (
+        <div className="flex w-full shrink-0 flex-col items-stretch gap-2 border-border border-b pb-2 md:w-auto md:border-b-0 md:border-r md:pb-0 md:pr-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className="shrink-0 self-start"
+            aria-expanded={false}
+            aria-label={t("sidebarExpand")}
+            onClick={() => persistConvListCollapsed(false)}
+          >
+            <PanelLeftOpen className="size-4" />
+          </Button>
+          <p className="text-muted-foreground hidden text-xs md:block md:max-w-[7rem]">{t("sidebarCollapsedHint")}</p>
         </div>
-      </aside>
+      ) : (
+        <aside className="flex w-full shrink-0 flex-col gap-2 border-border border-b pb-3 md:w-52 md:border-b-0 md:border-r md:pb-0 md:pr-3">
+          <div className="flex items-center justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-expanded={true}
+              aria-label={t("sidebarCollapse")}
+              onClick={() => persistConvListCollapsed(true)}
+            >
+              <PanelLeftClose className="size-4" />
+            </Button>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="w-full"
+            disabled={createConv.isPending}
+            onClick={async () => {
+              const c = await createConv.mutateAsync();
+              selectConversation(c.id);
+              void refetchMessages();
+            }}
+          >
+            {t("newConversation")}
+          </Button>
+          <MoveConversationDialog sourceProjectId={projectId} conversationId={conversationId} />
+          <div className="flex max-h-48 flex-col gap-1 overflow-y-auto md:max-h-none md:flex-1">
+            {convs?.map((c) => (
+              <Button
+                key={c.id}
+                type="button"
+                variant={conversationId === c.id ? "secondary" : "ghost"}
+                size="sm"
+                className="h-auto justify-start py-2 text-left"
+                onClick={() => selectConversation(c.id)}
+              >
+                <span className="line-clamp-2 text-xs">{c.title}</span>
+              </Button>
+            ))}
+          </div>
+        </aside>
+      )}
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         {conversationId && (
           <div className="flex flex-col gap-3 rounded-lg border bg-card/20 p-3 text-sm md:flex-row md:flex-wrap md:items-end md:gap-4">

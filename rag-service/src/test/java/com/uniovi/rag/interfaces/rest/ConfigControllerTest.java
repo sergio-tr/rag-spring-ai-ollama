@@ -1,6 +1,9 @@
 package com.uniovi.rag.interfaces.rest;
 
+
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
+import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.service.config.UserProjectConfigurationService;
@@ -32,9 +35,12 @@ class ConfigControllerTest {
     @MockitoBean
     private RuntimeConfigResolutionService runtimeConfigResolutionService;
 
+    @MockitoBean
+    private ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
+
     @Test
     void schema_returnsVersionAndFields() throws Exception {
-        mockMvc.perform(get("/api/v5/config/schema"))
+        mockMvc.perform(get(path("/config/schema")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(1))
                 .andExpect(jsonPath("$.fields[0].key").exists());

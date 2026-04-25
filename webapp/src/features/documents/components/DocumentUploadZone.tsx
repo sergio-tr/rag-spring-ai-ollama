@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useUploadProjectDocument } from "@/features/documents/hooks/use-project-documents";
+import { ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 type DocumentUploadZoneProps = {
@@ -15,6 +16,33 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
   const upload = useUploadProjectDocument(projectId);
   const inputRef = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
+
+  const uploadErrorDetail = (() => {
+    const err = upload.error;
+    if (!err) return null;
+    if (err instanceof ApiError) {
+      if (err.status === 503) return t("uploadErrorOllamaNotReady");
+      if (err.status === 409) return t("uploadErrorDuplicate");
+      if (err.status === 401 || err.status === 403) return t("uploadErrorUnauthorized");
+      try {
+        const parsed = JSON.parse(err.message) as {
+          message?: string;
+          detail?: string;
+          error?: { message?: string; detail?: string };
+        };
+        return (
+          parsed?.detail ||
+          parsed?.message ||
+          parsed?.error?.detail ||
+          parsed?.error?.message ||
+          null
+        );
+      } catch {
+        return err.message || null;
+      }
+    }
+    return err instanceof Error ? err.message : null;
+  })();
 
   const onFiles = useCallback(
     (files: FileList | null) => {
@@ -61,7 +89,7 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
       </Button>
       {upload.isError && (
         <p className="text-destructive text-xs" role="alert">
-          {t("uploadError")}
+          {t("uploadError")} {uploadErrorDetail ?? ""}
         </p>
       )}
     </div>

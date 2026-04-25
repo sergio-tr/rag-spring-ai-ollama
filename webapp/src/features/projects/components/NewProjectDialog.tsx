@@ -27,7 +27,12 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export function NewProjectDialog() {
+type NewProjectDialogProps = {
+  /** Optional extra classes for the dialog trigger button. */
+  triggerClassName?: string;
+};
+
+export function NewProjectDialog({ triggerClassName }: Readonly<NewProjectDialogProps>) {
   const t = useTranslations("Projects");
   const [open, setOpen] = useState(false);
   const create = useCreateProject();
@@ -52,7 +57,7 @@ export function NewProjectDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger type="button" className={cn(buttonVariants())}>
+      <DialogTrigger type="button" className={cn(buttonVariants(), triggerClassName)}>
         {t("newProject")}
       </DialogTrigger>
       <DialogContent>

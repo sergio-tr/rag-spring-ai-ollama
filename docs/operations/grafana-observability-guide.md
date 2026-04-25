@@ -44,7 +44,7 @@ Use **Graph** vs **Table** to verify labels and cardinality stay bounded (no unb
 
 ## 4. Logs and Loki (trace correlation)
 
-1. With `compose.logs.yml` (or full stack including Loki/Promtail), open Grafana → **Explore** → **Loki**.
+1. With profile **`logs`** in `docker-compose.yml` (Loki/Promtail), open Grafana → **Explore** → **Loki**.
 2. Backend logs (profile **`infra`**) include MDC-style fields in the pattern: `trace_id=...` and `span_id=...` from `application-infra.properties` logging patterns.
 3. In Explore, filter with LogQL, e.g. `{job="backend"}` plus a line filter on a **trace_id** value you copied from Jaeger.
 

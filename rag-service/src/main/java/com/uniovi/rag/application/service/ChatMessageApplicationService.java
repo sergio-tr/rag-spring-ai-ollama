@@ -4,6 +4,7 @@ import com.uniovi.rag.domain.AsyncTaskStatus;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.MessageProcessingStatus;
 import com.uniovi.rag.domain.MessageRole;
+import com.uniovi.rag.application.port.AfterCommitTaskScheduler;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.ConversationDraftRepository;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
@@ -26,8 +27,6 @@ import com.uniovi.rag.service.project.ProjectAccessService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -49,6 +48,7 @@ public class ChatMessageApplicationService {
     private final UserRepository userRepository;
     private final AsyncTaskRepository asyncTaskRepository;
     private final AsyncLabTaskRunner asyncLabTaskRunner;
+    private final AfterCommitTaskScheduler afterCommitTaskScheduler;
     private final ChatJobCancellationRegistry chatJobCancellationRegistry;
     private final AsyncTaskMutationService asyncTaskMutationService;
     private final ChatMessageWorkService chatMessageWorkService;
@@ -61,6 +61,7 @@ public class ChatMessageApplicationService {
             UserRepository userRepository,
             AsyncTaskRepository asyncTaskRepository,
             AsyncLabTaskRunner asyncLabTaskRunner,
+            AfterCommitTaskScheduler afterCommitTaskScheduler,
             ChatJobCancellationRegistry chatJobCancellationRegistry,
             AsyncTaskMutationService asyncTaskMutationService,
             ChatMessageWorkService chatMessageWorkService) {
@@ -71,6 +72,7 @@ public class ChatMessageApplicationService {
         this.userRepository = userRepository;
         this.asyncTaskRepository = asyncTaskRepository;
         this.asyncLabTaskRunner = asyncLabTaskRunner;
+        this.afterCommitTaskScheduler = afterCommitTaskScheduler;
         this.chatJobCancellationRegistry = chatJobCancellationRegistry;
         this.asyncTaskMutationService = asyncTaskMutationService;
         this.chatMessageWorkService = chatMessageWorkService;
@@ -133,13 +135,7 @@ public class ChatMessageApplicationService {
                 AsyncTaskEntity.queued(user, project, AsyncTaskType.CHAT_MESSAGE, payload, Instant.now());
         asyncTaskRepository.save(task);
         UUID taskId = task.getId();
-        TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        asyncLabTaskRunner.execute(taskId);
-                    }
-                });
+        afterCommitTaskScheduler.scheduleAfterCommit(() -> asyncLabTaskRunner.execute(taskId));
         return new ChatMessageAcceptedDto(taskId, userMsg.getId(), asst.getId());
     }
 
@@ -194,13 +190,7 @@ public class ChatMessageApplicationService {
         AsyncTaskEntity task = AsyncTaskEntity.queued(user, project, AsyncTaskType.CHAT_MESSAGE, payload, Instant.now());
         asyncTaskRepository.save(task);
         UUID taskId = task.getId();
-        TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        asyncLabTaskRunner.execute(taskId);
-                    }
-                });
+        afterCommitTaskScheduler.scheduleAfterCommit(() -> asyncLabTaskRunner.execute(taskId));
         return new ChatMessageAcceptedDto(taskId, userMsg.getId(), asst.getId());
     }
 

@@ -1,4 +1,4 @@
-# ADR 0002 — Multi-tenancy and data isolation assumption
+# ADR 0002 — User/project isolation (single database); not SaaS-grade multi-tenancy
 
 ## Status
 
@@ -20,7 +20,12 @@ The platform serves multiple **users** with **projects**, **documents**, and **c
    Role **ADMIN** can manage global policies (e.g. allowlist) via `/api/admin/**`. That is **role-based** access, not a second tenant dimension in the data model.
 
 4. **Configuration resolution**  
-   Effective RAG parameters are computed from system → user → project layers (see [DATA_MODEL.md §6](../architecture/DATA_MODEL.md)); this remains **per authenticated user and owned project**, consistent with the isolation above.
+   Effective RAG parameters are computed from system → user → project layers (see [DATA_MODEL.md — Section 6](../architecture/DATA_MODEL.md#6-active-configuration-resolution)); this remains **per authenticated user and owned project**, consistent with the isolation above.
+
+### Preferred terminology (documentation and READMEs)
+
+- Use **multi-user**, **project-scoped data**, or **logical isolation** for the implemented model (one PostgreSQL database, FK-scoped rows).
+- Reserve **“multi-tenancy”** only when explicitly **qualifying** that this is **not** SaaS-grade isolation (separate DB per customer, mandatory org-wide RLS), or avoid the term in favour of **“data isolation model”**.
 
 ## Consequences
 
@@ -31,5 +36,4 @@ The platform serves multiple **users** with **projects**, **documents**, and **c
 ## References
 
 - [DATA_MODEL.md](../architecture/DATA_MODEL.md)
-- [conceptual-model.md](../domain/conceptual-model.md)
-- [conceptual-model.md](../domain/conceptual-model.md) (identity and project containers)
+- [conceptual-model.md](../domain/conceptual-model.md) (identity and project containers; same isolation model)

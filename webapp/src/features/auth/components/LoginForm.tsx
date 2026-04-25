@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { Link } from "@/navigation";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
+import { setStoredUserRole } from "@/lib/user-role";
 import {
   loginSchema,
   type LoginFormValues,
@@ -21,6 +22,7 @@ export function LoginForm() {
   const t = useTranslations("Auth");
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
+  const oauthGoogleEnabled = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === "true";
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -43,6 +45,7 @@ export function LoginForm() {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
       });
+      setStoredUserRole(data.user.role);
       router.push("/projects");
       router.refresh();
     } catch (e) {
@@ -60,6 +63,11 @@ export function LoginForm() {
       onSubmit={form.handleSubmit(onSubmit)}
       noValidate
     >
+      {oauthGoogleEnabled && (
+        <Button asChild type="button" variant="secondary">
+          <a href="/api/auth/oauth/google/start">{t("oauthGoogleCta")}</a>
+        </Button>
+      )}
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">{t("email")}</Label>
         <Input
@@ -102,7 +110,11 @@ export function LoginForm() {
           {t("registerLink")}
         </Link>
       </p>
-      <p className="text-muted-foreground text-center text-xs">{t("forgotPassword")}</p>
+      <p className="text-muted-foreground text-center text-xs">
+        <Link className="text-primary underline-offset-4 hover:underline" href="/forgot-password">
+          {t("forgotPasswordLink")}
+        </Link>
+      </p>
     </form>
   );
 }

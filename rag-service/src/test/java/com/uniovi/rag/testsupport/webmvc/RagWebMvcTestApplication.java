@@ -27,10 +27,6 @@ import org.springframework.test.context.TestPropertySource;
         UserDetailsServiceAutoConfiguration.class
 })
 @EnableConfigurationProperties({RagApiPathProperties.class, RagImplementationProperties.class})
-@TestPropertySource(
-        properties = {
-            "rag.api.product-base-path=/api/v5",
-            "rag.api.legacy-base-path=/api/v4"
-        })
+@TestPropertySource(properties = "rag.api.legacy-base-path=/api/v4")
 public class RagWebMvcTestApplication {
 }

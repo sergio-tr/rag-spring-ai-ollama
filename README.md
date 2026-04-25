@@ -27,7 +27,11 @@
 
 RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring AI**, **Ollama**, and **PostgreSQL + pgvector**. Includes a trainable query-type classifier exposed as an HTTP microservice (FastAPI + TensorFlow).
 
-**Documentation:** global architecture, domain, and governance live in **[`docs/README.md`](docs/README.md)**. Per-module setup and commands live in each folder’s **README** (see table below).
+**Documentation:** global architecture, domain, and governance live in **[`docs/README.md`](docs/README.md)** (policy layers and non-canonical areas: [`docs/development/documentation-governance-strategy.md`](docs/development/documentation-governance-strategy.md)). Per-module setup and commands live in each folder’s **README** (see table below).
+
+**Quality baseline:** canonical commands + CI parity — [`docs/testing/baseline-runbook.md`](docs/testing/baseline-runbook.md); hub (exclusions, policies, Sonar links) — [`docs/quality/README.md`](docs/quality/README.md).
+
+**CI pull requests, job gates, Docker/Compose pins:** [`docs/devops/README.md`](docs/devops/README.md).
 
 **Where it runs:** Repository automation (`docker/scripts/*.sh`, `tests/**/*.sh`, Compose, Gatling via `./gradlew`) and **CI/CD** are designed for **Linux** (local shell or `ubuntu-*` runners). **Docker images** for backend, classifier, databases, and observability are **Linux-based**. For day-to-day parity with CI, develop on Linux or **WSL2**, not raw Windows shells.
 
@@ -57,7 +61,7 @@ cd classifier-service && uvicorn main:app --reload --reload-dir app
 | Backend unit + integration | `cd rag-service && ./mvnw verify` | JaCoCo bundle **≥ 80%** (`jacoco-check`) |
 | Classifier | `cd classifier-service && pytest tests/` | **≥ 80%** via `.coveragerc` `fail_under` + `pytest.ini` |
 | Webapp unit | `cd webapp && npm test` | Vitest (expand coverage over time) |
-| E2E smoke (Playwright) | `cd webapp && npm run build && npm run test:e2e` (excludes `@fullstack`) | **[`.github/workflows/ci.yml`](.github/workflows/ci.yml)** job `webapp-e2e`; optional re-run via [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml) (`workflow_dispatch`) |
+| E2E smoke (Playwright) | `cd webapp && npm run build && npm run test:e2e` (excludes `@fullstack`) | **[`.github/workflows/ci.yml`](.github/workflows/ci.yml)** job `core_webapp_e2e`; optional re-run via [`.github/workflows/e2e.yml`](.github/workflows/e2e.yml) (`workflow_dispatch`) |
 | E2E + API (E2E-01–10 smoke) | `make webapp-e2e-fullstack` (Spring `e2e`: stubs AI + Postgres; SSE `done.sources`) | [`.github/workflows/e2e-fullstack.yml`](.github/workflows/e2e-fullstack.yml) when `webapp/**` or `rag-service/**` change |
 | System / API smoke (canonical) | `cd webapp && npm run test:api` (`API_BASE_URL` = Spring); `make system-checks` | [`.github/workflows/system-checks.yml`](.github/workflows/system-checks.yml) **manual** |
 | Load / stress (Gatling) | `cd tests/gatling && ./gradlew gatlingRun --simulation …`; details: [tests/gatling/README.md](tests/gatling/README.md), overview: [docs/performance/README.md](docs/performance/README.md) | [`.github/workflows/gatling.yml`](.github/workflows/gatling.yml) dispatch / schedule; set `GATLING_BASE_URL` |
@@ -78,10 +82,10 @@ docker compose \
 | Mode | Command | Description |
 | --- | --- | --- |
 | Dev (hybrid) | `./docker/scripts/up.sh dev` | Only infra in Docker; services run locally |
-| Dev (max infra) | `./docker/scripts/up.sh dev --all` | `--gpu --obs --classifier --logs --infra` (GPU Ollama, obs, Loki/Promtail, node-exporter/cAdvisor) |
+| Dev (max infra) | `./docker/scripts/up.sh dev --all` | `--gpu --obs --classifier --logs --infra` (GPU Ollama, obs, Loki/Promtail, node-exporter; cAdvisor is `--profile cadvisor`) |
 | Full compose | `cd docker && docker compose ... up -d` | Everything in Docker |
 | With observability | add `-f compose.obs.yml --env-file ../observability/.env` | + OTEL/Jaeger/Prometheus/Grafana |
-| With GPU | `-f compose.gpu.yml` (+ `-f compose.ollama-local-gpu.yml` for Ollama in Docker) | Classifier on GPU; optional local Ollama on GPU via `docker/scripts` `--gpu` |
+| With GPU | `-f compose.gpu.yml` + `--profile ollama` in `docker-compose.yml` | Classifier on GPU; optional local Ollama on GPU via `docker/scripts` `--gpu` |
 | Prod local | `./docker/scripts/up.sh prod [--obs]` | Hardened: nginx reverse proxy; add `--obs` for OTEL/Jaeger/Prometheus/Grafana |
 
 ## Key API endpoints

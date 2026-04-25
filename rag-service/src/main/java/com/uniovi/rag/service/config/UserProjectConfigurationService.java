@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.persistence.RagConfigurationRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,17 +25,17 @@ import java.util.UUID;
 @Service
 public class UserProjectConfigurationService {
 
-    private final ConfigResolver configResolver;
+    private final ObjectProvider<ConfigResolver> configResolverProvider;
     private final UserRepository userRepository;
     private final RagConfigurationRepository ragConfigurationRepository;
     private final ProjectAccessService projectAccessService;
 
     public UserProjectConfigurationService(
-            ConfigResolver configResolver,
+            ObjectProvider<ConfigResolver> configResolverProvider,
             UserRepository userRepository,
             RagConfigurationRepository ragConfigurationRepository,
             ProjectAccessService projectAccessService) {
-        this.configResolver = configResolver;
+        this.configResolverProvider = configResolverProvider;
         this.userRepository = userRepository;
         this.ragConfigurationRepository = ragConfigurationRepository;
         this.projectAccessService = projectAccessService;
@@ -42,7 +43,7 @@ public class UserProjectConfigurationService {
 
     @Transactional(readOnly = true)
     public Map<String, Object> getEffectiveUserConfig(UUID userId) {
-        RagConfig c = configResolver.resolve(userId, null, null);
+        RagConfig c = configResolverProvider.getObject().resolve(userId, null, null);
         return c.toValueMap();
     }
 
@@ -68,7 +69,7 @@ public class UserProjectConfigurationService {
     @Transactional(readOnly = true)
     public Map<String, Object> getEffectiveProjectConfig(UUID userId, UUID projectId) {
         projectAccessService.requireOwnedProject(userId, projectId);
-        RagConfig c = configResolver.resolve(userId, projectId, null);
+        RagConfig c = configResolverProvider.getObject().resolve(userId, projectId, null);
         return c.toValueMap();
     }
 

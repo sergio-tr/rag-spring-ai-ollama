@@ -182,16 +182,18 @@ if [[ "${SKIP_DOCKER:-0}" != "1" ]]; then
   ensure_env "$ROOT_DIR/webapp/.env.example" "$ROOT_DIR/webapp/.env"
 
   echo ""
-  echo "=== 5) Docker build & up (compose + obs + logs + GPU overrides; includes webapp service) ==="
+  echo "=== 5) Docker build & up (docker-compose.yml + obs + profiles observability/logs + GPU classifier) ==="
   cd "$ROOT_DIR/docker"
-  docker compose -f docker-compose.yml -f compose.obs.yml -f compose.logs.yml -f compose.gpu.yml \
+  docker compose -f docker-compose.yml -f compose.obs.yml -f compose.gpu.yml \
+    --profile observability --profile logs \
     --env-file ../db/.env --env-file ../classifier-service/.env \
-    --env-file ../rag-service/.env --env-file ../observability/.env \
+    --env-file ../rag-service/.env --env-file ../webapp/.env --env-file ../observability/.env \
     build
 
-  docker compose -f docker-compose.yml -f compose.obs.yml -f compose.logs.yml -f compose.gpu.yml \
+  docker compose -f docker-compose.yml -f compose.obs.yml -f compose.gpu.yml \
+    --profile observability --profile logs \
     --env-file ../db/.env --env-file ../classifier-service/.env \
-    --env-file ../rag-service/.env --env-file ../observability/.env \
+    --env-file ../rag-service/.env --env-file ../webapp/.env --env-file ../observability/.env \
     up -d
 
   BACKEND_WAIT_BASE="${API_BASE_URL:-http://127.0.0.1:9000}"

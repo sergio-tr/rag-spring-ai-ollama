@@ -28,7 +28,7 @@ public class RagServiceException extends RuntimeException {
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "The AI inference service (Ollama) is not reachable. "
                         + "Ensure Ollama is running and that spring.ai.ollama.base-url / OLLAMA_BASE_URL points to it "
-                        + "(e.g. http://ollama:11434 in Docker with compose.ollama-local-gpu.yml).",
+                        + "(e.g. http://ollama:11434 in Docker with docker-compose profile ollama).",
                 cause != null ? cause.getClass().getSimpleName() : null,
                 cause
         );
@@ -48,6 +48,34 @@ public class RagServiceException extends RuntimeException {
                 cause != null ? cause.getMessage() : null,
                 cause
         );
+    }
+
+    public static RagServiceException unsupportedRuntimeConfiguration(String detail) {
+        return new RagServiceException(
+                ErrorCode.UNSUPPORTED_RUNTIME_CONFIGURATION,
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "unsupported-runtime-configuration: " + (detail != null ? detail : "configuration not supported in runtime"),
+                detail,
+                null);
+    }
+
+    public static RagServiceException knowledgeSnapshotUnavailable() {
+        return new RagServiceException(
+                ErrorCode.KNOWLEDGE_SNAPSHOT_UNAVAILABLE,
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "knowledge-snapshot-unavailable: no ACTIVE knowledge index snapshot for this request scope",
+                null,
+                null);
+    }
+
+    /** Hybrid sparse leg failed; dense-only fallback is not applied. */
+    public static RagServiceException hybridSparseRetrievalFailed(Throwable cause) {
+        return new RagServiceException(
+                ErrorCode.INTERNAL_ERROR,
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "hybrid sparse retrieval failed",
+                cause != null ? cause.getMessage() : null,
+                cause);
     }
 
     public ErrorCode getErrorCode() {

@@ -7,6 +7,7 @@ import { loginAsE2eAdmin } from "../support/helpers";
 test.describe("Admin product API", () => {
   test("E2E-09 admin health and allowlist table @fullstack", async ({ page }) => {
     await loginAsE2eAdmin(page);
+    await expect(page.getByRole("link", { name: /^admin$/i })).toBeVisible();
     await page.goto("/en/admin");
     await expect(page.getByRole("heading", { name: /administration|administración/i })).toBeVisible({
       timeout: 20_000,

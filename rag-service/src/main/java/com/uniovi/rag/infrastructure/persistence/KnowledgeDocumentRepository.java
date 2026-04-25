@@ -60,11 +60,19 @@ public interface KnowledgeDocumentRepository extends JpaRepository<KnowledgeDocu
 
     List<KnowledgeDocumentEntity> findByProject_IdOrderByUploadedAtDesc(UUID projectId);
 
+    Optional<KnowledgeDocumentEntity> findFirstByProject_IdAndFileNameAndCorpusScopeAndConversationIsNull(
+            UUID projectId, String fileName, CorpusScope corpusScope);
+
+    Optional<KnowledgeDocumentEntity> findFirstByProject_IdAndFileNameAndCorpusScopeAndConversation_Id(
+            UUID projectId, String fileName, CorpusScope corpusScope, UUID conversationId);
+
     Optional<KnowledgeDocumentEntity> findByIdAndProject_Id(UUID id, UUID projectId);
 
     long countByProject_Id(UUID projectId);
 
     List<KnowledgeDocumentEntity> findByConversation_IdAndCorpusScope(UUID conversationId, CorpusScope corpusScope);
+
+    List<KnowledgeDocumentEntity> findByProject_IdAndCorpusScopeOrderByIdAsc(UUID projectId, CorpusScope corpusScope);
 
     @Modifying
     @Query(

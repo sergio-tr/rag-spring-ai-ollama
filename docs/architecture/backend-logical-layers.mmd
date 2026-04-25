@@ -1,0 +1,39 @@
+%% Backend logical view — package families (normative navigation: BACKEND_PACKAGES.md)
+%% API prefixes configurable — see rag-service README
+flowchart TB
+  subgraph interfaces [REST and adapters]
+    REST[interfaces.rest product controllers]
+    LEG[controller legacy RAG surface]
+    ADM[api.admin]
+  end
+
+  subgraph application [Application layer]
+    CFG[application.config ConfigResolver chain]
+    SVC[application.service use cases]
+    RUN[application.service.runtime orchestrator and pipelines]
+    KNOW[application.service.knowledge ingestion and snapshots]
+  end
+
+  subgraph domain [Domain]
+    DOM[domain.* types rules capabilities]
+  end
+
+  subgraph infra [Infrastructure]
+    PERSIST[infrastructure.persistence JPA adapters]
+    CLI[infrastructure.classifier HTTP client]
+  end
+
+  REST --> SVC
+  REST --> KNOW
+  LEG --> SVC
+  ADM --> SVC
+  SVC --> CFG
+  SVC --> RUN
+  KNOW --> RUN
+  CFG --> DOM
+  RUN --> DOM
+  KNOW --> DOM
+  SVC --> PERSIST
+  RUN --> PERSIST
+  KNOW --> PERSIST
+  RUN --> CLI

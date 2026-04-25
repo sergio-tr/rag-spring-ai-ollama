@@ -10,7 +10,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Gate on CI + fullstack E2E (Playwright)
+      - name: Gate on CI pipeline (full DAG)
         uses: actions/github-script@v7
         with:
           script: |
@@ -18,10 +18,8 @@ jobs:
             const repo = context.repo.repo;
             const sha = context.sha;
 
-            const required = [
-              { name: 'CI', path: '.github/workflows/ci.yml' },
-              { name: 'E2E fullstack (Playwright UI + API)', path: '.github/workflows/e2e-fullstack.yml' },
-            ];
+            // ci.yml runs the full DAG (core → integration → e2e_fullstack → sonar → performance on main/master PRs).
+            const required = [{ name: 'CI', path: '.github/workflows/ci.yml' }];
 
             const listWorkflows = await github.rest.actions.listRepoWorkflows({ owner, repo, per_page: 100 });
             const byPath = new Map(listWorkflows.data.workflows.map(w => [w.path, w]));

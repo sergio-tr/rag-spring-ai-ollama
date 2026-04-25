@@ -2,6 +2,8 @@
 
 Product UI for the RAG platform: projects, documents, settings (user/project RAG config, presets), Lab, and admin views. Uses **TanStack Query**, **Zustand** (`src/store/app.store.ts`), and **next-intl**.
 
+**Target architecture (frozen model):** [Platform subsystems — Workspace / Product](../docs/architecture/target-architecture.md).
+
 ## Environment
 
 Copy `.env.example` to `.env` (or use `./scripts/create-env-webapp.sh` from the repo root). Key variables:
@@ -20,6 +22,8 @@ Copy `.env.example` to `.env` (or use `./scripts/create-env-webapp.sh` from the 
 The **Chat** page (`src/app/[locale]/(app)/chat/page.tsx`) loads conversations with `GET {product}/projects/{id}/conversations`, history with `GET {product}/conversations/{id}/messages`, and sends user messages via **`postSseJson`** (`src/lib/sse-post.ts`): `POST {product}/conversations/{id}/messages` with `Accept: text/event-stream` and JSON body `{ content, llmModel? }` (matches `PostMessageRequest` in the backend). Each POST includes a W3C **`traceparent`** header from `src/lib/traceparent.ts` for OpenTelemetry correlation when observability is enabled.
 
 Use **`PATCH {product}/conversations/{id}`** from the same UI for `presetId` / `clearPreset` and `documentFilter` (subset of project document UUIDs). Model and preset dropdowns use **`GET {product}/models`** and **`GET {product}/presets`**.
+
+**Move conversation:** `POST {product}/projects/{sourceProjectId}/conversations/{conversationId}/move?destinationProjectId=` (**204 No Content**) reassigns the chat to another project you own; only **chat-local** corpus documents move with it, not shared project documents. The UI clears the persisted document subset after a move (`MoveConversationDialog`, `useMoveConversation`).
 
 ### Research Lab
 

@@ -61,7 +61,7 @@ class DocumentPersistenceJdbcIntegrationTest {
             return;
         }
         try {
-            postgresContainer = new PostgreSQLContainer<>("pgvector/pgvector:pg16")
+            postgresContainer = new PostgreSQLContainer<>("pgvector/pgvector:0.8.2-pg16-bookworm")
                     .withDatabaseName("testdb")
                     .withUsername("test")
                     .withPassword("test")
