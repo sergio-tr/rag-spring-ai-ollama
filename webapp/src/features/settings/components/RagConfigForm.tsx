@@ -74,7 +74,8 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const configLoading = mode === "user" ? userQ.isLoading : projectQ.isLoading;
   const configError = mode === "user" ? userQ.isError : projectQ.isError;
 
-  const fields = schemaQ.data?.fields ?? [];
+  const schemaFields = schemaQ.data?.fields;
+  const fields = useMemo(() => schemaFields ?? [], [schemaFields]);
   const editableKeys = useMemo(
     () => fields.filter((f) => f.userEditable).map((f) => f.key),
     [fields],

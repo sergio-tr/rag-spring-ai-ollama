@@ -10,6 +10,8 @@ on:
 env:
   NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
   NEXT_PUBLIC_API_BASE_URL: http://localhost:9000
+  # Opt into Node.js 24 for JavaScript-based GitHub Actions (Node 20 deprecation on runners).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   # Must match .github/ci/postgres-service-image.env (verified by verify-pinned-postgres-image.sh).
   POSTGRES_SERVICE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
 
