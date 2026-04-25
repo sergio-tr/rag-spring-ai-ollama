@@ -50,7 +50,7 @@ export default function ChatPage() {
   const searchParams = useSearchParams();
   const active = useAppStore((s) => s.activeProject);
   const projectId = active?.id;
-  const urlConversationId = searchParams.get("conversationId");
+  const urlConversationId = searchParams?.get?.("conversationId") ?? null;
   const [conversationId, setConversationId] = useState<string | null>(() => urlConversationId ?? null);
   const [convListCollapsed, setConvListCollapsed] = useState(() => {
     try {

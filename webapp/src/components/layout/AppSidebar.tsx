@@ -230,12 +230,15 @@ export function AppSidebar() {
           <button
             type="button"
             className="hover:bg-sidebar-accent/80 flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm"
+            aria-label={tNav("projects")}
             aria-expanded={!projectsCollapsed}
             aria-controls="sidebar-projects-tree"
             onClick={toggleProjectsCollapsed}
           >
             <span className="font-medium">{tNav("projects")}</span>
-            <span className="text-muted-foreground text-xs">{projects.length}</span>
+            <span className="text-muted-foreground text-xs" aria-hidden="true">
+              {projects.length}
+            </span>
           </button>
 
           <div id="sidebar-projects-tree" hidden={projectsCollapsed}>
