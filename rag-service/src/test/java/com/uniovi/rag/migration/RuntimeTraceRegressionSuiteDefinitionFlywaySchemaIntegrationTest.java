@@ -11,6 +11,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import javax.sql.DataSource;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -132,6 +133,8 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
     }
 
     private static void insertDefinition(JdbcTemplate jdbc, UUID id, UUID userId, String name, Instant now) {
+        // PgJDBC does not reliably infer java.time.Instant for TIMESTAMPTZ parameters in PreparedStatements.
+        Timestamp ts = Timestamp.from(now);
         jdbc.update(
                 "INSERT INTO runtime_trace_regression_suite_definition "
                         + "(id, user_id, name, description, schema_version, created_at, updated_at) "
@@ -139,7 +142,7 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
                 id,
                 userId,
                 name,
-                now,
-                now);
+                ts,
+                ts);
     }
 }
