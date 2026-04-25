@@ -47,6 +47,11 @@ public class ProcessQueryService implements QueryService, Loggable {
     @Override
     public QueryResponse generateResponse(String query, String chatModel) {
         try {
+            if (query == null || query.trim().isEmpty()) {
+                log().warn("Empty query received");
+                String errorResponse = generateErrorResponse("", new IllegalArgumentException("empty query"));
+                return QueryResponse.fromLLM(errorResponse);
+            }
             ollamaConnectivityChecker.prepareForQuery(chatModel);
             return executeOrchestrated(executionContextFactory.buildForLegacyHttp(query, chatModel));
         } catch (RagServiceException | ResponseStatusException e) {
@@ -81,6 +86,11 @@ public class ProcessQueryService implements QueryService, Loggable {
             List<String> documentFilter,
             UUID userMessageId) {
         try {
+            if (query == null || query.trim().isEmpty()) {
+                log().warn("Empty query received");
+                String errorResponse = generateErrorResponse("", new IllegalArgumentException("empty query"));
+                return QueryResponse.fromLLM(errorResponse);
+            }
             ollamaConnectivityChecker.prepareForQuery(chatModel);
             ExecutionContext ctx =
                     executionContextFactory.buildForChatMessage(
@@ -100,6 +110,11 @@ public class ProcessQueryService implements QueryService, Loggable {
     }
 
     private QueryResponse executeOrchestrated(ExecutionContext ctx) {
+        if (ctx == null) {
+            log().warn("ExecutionContext is null");
+            String errorResponse = generateErrorResponse("", new IllegalArgumentException("missing execution context"));
+            return QueryResponse.fromLLM(errorResponse);
+        }
         if (ctx.userQuery() == null || ctx.userQuery().trim().isEmpty()) {
             log().warn("Empty query received");
             String errorResponse =
