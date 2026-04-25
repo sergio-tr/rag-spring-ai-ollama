@@ -34,6 +34,8 @@ public final class SafeTestSecretsApplicationContextInitializer
     private static final String SECRETS_PROPERTY_SOURCE = "ragSafeTestSecretsOverride";
     private static final String USE_TC_ENV = "RAG_TEST_USE_TESTCONTAINERS_DATASOURCE";
     private static final int JDBC_LOGIN_TIMEOUT_SECONDS = 3;
+    private static final int EXTERNAL_DB_WAIT_SECONDS = 60;
+    private static final int EXTERNAL_DB_WAIT_SLEEP_MILLIS = 2_000;
 
     @Override
     public void initialize(ConfigurableApplicationContext context) {
@@ -88,6 +90,17 @@ public final class SafeTestSecretsApplicationContextInitializer
     private static boolean useTestcontainersPostgres() {
         String explicit = System.getenv(USE_TC_ENV);
         if ("false".equalsIgnoreCase(explicit)) {
+            // CI commonly prefers an externally provisioned Postgres. If the service is still starting,
+            // wait a bit so @SpringBootTest does not fail with "connection refused".
+            String url = System.getenv("SPRING_DATASOURCE_URL");
+            if (url != null && !url.isBlank()) {
+                String user = firstNonBlankEnv("SPRING_DATASOURCE_USERNAME", "postgres");
+                String pass = firstNonBlankEnv("SPRING_DATASOURCE_PASSWORD", "postgres");
+                if (!waitForPostgres(url, user, pass)) {
+                    // External DB not reachable yet. If Docker is available, prefer Testcontainers over failing.
+                    return true;
+                }
+            }
             return false;
         }
         if ("true".equalsIgnoreCase(explicit)) {
@@ -121,5 +134,21 @@ public final class SafeTestSecretsApplicationContextInitializer
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    private static boolean waitForPostgres(String url, String user, String pass) {
+        long deadline = System.currentTimeMillis() + (EXTERNAL_DB_WAIT_SECONDS * 1000L);
+        while (System.currentTimeMillis() < deadline) {
+            if (canOpenPostgresJdbc(url, user, pass)) {
+                return true;
+            }
+            try {
+                Thread.sleep(EXTERNAL_DB_WAIT_SLEEP_MILLIS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
     }
 }

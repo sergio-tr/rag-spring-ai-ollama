@@ -57,7 +57,17 @@ def create_app() -> FastAPI:
         """Normalize HTTPException (400/404/503 from routes) to { success, error }."""
         detail = exc.detail
         if isinstance(detail, dict):
-            error_body = detail
+            # Routes pass ErrorDetail.to_response_dict() as the exception detail ({"code","message",...}).
+            # Depending on where the exception originates, upstream code might already wrap errors
+            # in an envelope. Unwrap common shapes so tests/clients can always rely on error.message.
+            if isinstance(detail.get("message"), str):
+                error_body = detail
+            elif isinstance(detail.get("error"), dict):
+                error_body = detail["error"]
+            elif isinstance(detail.get("detail"), dict):
+                error_body = detail["detail"]
+            else:
+                error_body = {"code": "HTTP_ERROR", "message": str(detail)}
         else:
             error_body = {"code": "HTTP_ERROR", "message": str(detail)}
         return JSONResponse(status_code=exc.status_code, content={"success": False, "error": error_body})
