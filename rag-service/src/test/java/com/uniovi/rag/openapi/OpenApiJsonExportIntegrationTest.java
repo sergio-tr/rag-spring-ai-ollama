@@ -10,9 +10,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -46,14 +49,22 @@ class OpenApiJsonExportIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    @Autowired
+    private ObjectMapper objectMapper;
+
     @Test
     void writesOpenApiDocumentToTarget() throws Exception {
         ResponseEntity<String> res =
                 restTemplate.getForEntity("http://127.0.0.1:" + port + "/v3/api-docs", String.class);
         assertEquals(HttpStatus.OK, res.getStatusCode());
+        assertTrue(
+                res.getHeaders().getContentType() == null
+                        || MediaType.APPLICATION_JSON.isCompatibleWith(res.getHeaders().getContentType()),
+                "response content-type should be JSON");
         String body = res.getBody();
         assertNotNull(body);
-        assertTrue(body.contains("\"openapi\""), "response should be OpenAPI JSON");
+        JsonNode json = objectMapper.readTree(body);
+        assertTrue(json.has("openapi"), "response should be OpenAPI JSON");
         Path out = Path.of("target/openapi.json");
         Files.createDirectories(out.getParent());
         Files.writeString(out, body, StandardCharsets.UTF_8);

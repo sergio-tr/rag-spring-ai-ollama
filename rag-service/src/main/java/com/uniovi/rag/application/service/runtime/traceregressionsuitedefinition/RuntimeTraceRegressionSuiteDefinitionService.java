@@ -70,9 +70,8 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         RuntimeTraceRegressionSuiteDefinitionEntity def =
                 mapper.newDefinitionForInsert(definitionId, userId, name, description.orElse(null), now);
         try {
-            definitionRepository.save(def);
-            // Force unique constraint checks (user_id, name) to fail fast inside the service method.
-            definitionRepository.flush();
+            // Entity has an assigned UUID, so Spring Data JPA may use merge(); keep the managed instance.
+            def = definitionRepository.saveAndFlush(def);
         } catch (DataIntegrityViolationException ex) {
             throw duplicateName(ex);
         }

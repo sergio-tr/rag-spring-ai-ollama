@@ -242,6 +242,7 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
             throw new IllegalArgumentException("userId");
         }
         long deleted = runRepository.deleteByIdAndUserId(runId, userId);
+        runRepository.flush();
         return deleted == 1L;
     }
 
@@ -257,6 +258,7 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
             throw new IllegalArgumentException("definitionId");
         }
         long deleted = runRepository.deleteByIdAndUserIdAndDefinitionId(runId, userId, definitionId);
+        runRepository.flush();
         return deleted == 1L;
     }
 
