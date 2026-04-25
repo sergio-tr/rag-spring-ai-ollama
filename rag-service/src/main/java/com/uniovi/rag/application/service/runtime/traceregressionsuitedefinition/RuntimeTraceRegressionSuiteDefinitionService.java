@@ -71,6 +71,8 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
                 mapper.newDefinitionForInsert(definitionId, userId, name, description.orElse(null), now);
         try {
             definitionRepository.save(def);
+            // Force unique constraint checks (user_id, name) to fail fast inside the service method.
+            definitionRepository.flush();
         } catch (DataIntegrityViolationException ex) {
             throw duplicateName(ex);
         }
@@ -95,6 +97,8 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         mapper.applyDefinitionUpdate(def, name, description.orElse(null), now);
         try {
             definitionRepository.save(def);
+            // Force unique constraint checks (user_id, name) to fail fast inside the service method.
+            definitionRepository.flush();
         } catch (DataIntegrityViolationException ex) {
             throw duplicateName(ex);
         }
@@ -107,6 +111,8 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         RuntimeTraceRegressionSuiteDefinitionEntity def =
                 definitionRepository.findByIdAndUserId(definitionId, userId).orElseThrow(RuntimeTraceRegressionSuiteDefinitionService::notFound);
         definitionRepository.delete(def);
+        // Ensure DELETE executes before callers query via JdbcTemplate in the same transaction.
+        definitionRepository.flush();
     }
 
     @Transactional(readOnly = true)

@@ -83,6 +83,8 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
         run.setBatchNotAttemptedSubcount(s.batchNotAttemptedSubcount());
         run.setCreatedAt(clock.instant());
         runRepository.save(run);
+        // JdbcTemplate assertions in integration tests run in the same transaction; force inserts now.
+        runRepository.flush();
 
         List<RuntimeTraceRegressionSuiteEntryResult> rows = result.entryResults();
         List<RuntimeTraceRegressionSuiteRunEntryEntity> toSave = new ArrayList<>(rows.size());
@@ -104,6 +106,7 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
             toSave.add(mapper.newEntryEntity(UUID.randomUUID(), id, mapped, echo));
         }
         entryRepository.saveAll(toSave);
+        entryRepository.flush();
         return id;
     }
 

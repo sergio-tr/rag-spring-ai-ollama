@@ -22,6 +22,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -180,6 +181,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
         UUID id = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         Instant now = Instant.parse("2026-03-01T00:00:00Z");
+        Timestamp ts = Timestamp.from(now);
         assertThatThrownBy(
                         () ->
                                 jdbcTemplate.update(
@@ -200,7 +202,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
                                         0,
                                         0,
                                         0,
-                                        now))
+                                        ts))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -209,6 +211,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
         UUID runId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         Instant now = Instant.parse("2026-03-02T00:00:00Z");
+        Timestamp ts = Timestamp.from(now);
         jdbcTemplate.update(
                 """
                 INSERT INTO runtime_trace_regression_suite_run
@@ -227,7 +230,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
                 0,
                 0,
                 0,
-                now);
+                ts);
         assertThatThrownBy(
                         () ->
                                 jdbcTemplate.update(
@@ -257,6 +260,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
     void t15_listTieBreakOrderByIdAsc() {
         UUID userId = UUID.randomUUID();
         Instant same = Instant.parse("2026-04-01T12:00:00Z");
+        Timestamp ts = Timestamp.from(same);
         UUID idA =
                 runPersistenceService.createRun(
                         userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
@@ -264,7 +268,7 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
                 runPersistenceService.createRun(
                         userId, RuntimeTraceRegressionSuiteRunSourceType.AD_HOC, Optional.empty(), oneBatchEntry());
         jdbcTemplate.update(
-                "UPDATE runtime_trace_regression_suite_run SET created_at = ? WHERE id IN (?, ?)", same, idA, idB);
+                "UPDATE runtime_trace_regression_suite_run SET created_at = ? WHERE id IN (?, ?)", ts, idA, idB);
 
         UUID idLow = idA.compareTo(idB) < 0 ? idA : idB;
         UUID idHigh = idA.compareTo(idB) < 0 ? idB : idA;
