@@ -11,7 +11,7 @@ A **WorkspaceDocument** is a document **owned by a project** in the product sens
 ## Artefact chain
 
 | Stage | Artefact (conceptual) | Role |
-|-------|------------------------|------|
+| ------- | ------------------------ | ------ |
 | Parse | Parse output | Normalized text / structure from source file. |
 | Metadata | Metadata record | Extracted or computed fields (e.g. meeting attributes) for filtering and tools. |
 | Chunk | Chunk set | Text segments for embedding and retrieval. |
@@ -28,7 +28,7 @@ A **reindex event** records that (re)building indices or embeddings was required
 ## Materialization strategies
 
 | Strategy | When to use (architectural intent) |
-|----------|-----------------------------------|
+| ---------- | ----------------------------------- |
 | **Document-level** | Whole-document embedding or retrieval when chunks are not required or for coarse routing. |
 | **Chunk-level** | Default fine-grained RAG when passages must align to citations. |
 | **Hybrid** | Combines document-level signals (e.g. summary) with chunk retrieval for answer quality. |

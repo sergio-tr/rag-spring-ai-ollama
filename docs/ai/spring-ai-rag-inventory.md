@@ -7,7 +7,7 @@
 ## Component inventory (verified in code)
 
 | Area | Status | Notes |
-|------|--------|--------|
+| ------ | -------- | -------- |
 | Spring AI + Ollama | Present | `spring-ai-ollama-spring-boot-starter`, `ChatClient`, `ChatModel`, `EmbeddingModel`; BOM `spring-ai.version` in `rag-service/pom.xml` |
 | Vector store | Present | `PgVectorStore` via Spring AI; snapshot-bound search in dense retrieval strategies |
 | Orchestrated runtime | Present | `RagExecutionOrchestrator`, route families, `ExecutionTrace` persistence (P15) |
@@ -23,7 +23,7 @@
 Track **before vs after** each increment using the same definitions:
 
 | Metric | Instrument | Interpretation |
-|--------|------------|----------------|
+| -------- | ------------ | ---------------- |
 | Workflow LLM latency | Micrometer timer `rag.ai.llm.invoke` (tag `workflow`) | p95 wall time per workflow class |
 | Knowledge ETL outcomes | Counter `rag.knowledge.etl.events` (tags `stage`, `outcome`) | Volume of ingest starts / successes / failures |
 | Route stability | Existing `ExecutionTrace` fields (`workflow`, `advisorOutcome`, deterministic tool summaries) | Regression detection when behaviour drifts |

@@ -18,7 +18,7 @@ Runs **all** automated checks in order:
 Reintentos acotados (no infinitos): `.\scripts\verify-rag-coverage-loop.ps1` (por defecto 50 intentos).
 
 | Script | Platform |
-|--------|----------|
+| -------- | ---------- |
 | [full-stack-verify.ps1](full-stack-verify.ps1) | Windows PowerShell (repo root) |
 | [full-stack-verify.sh](full-stack-verify.sh) | Linux/macOS/Git Bash |
 
@@ -41,7 +41,7 @@ MAVEN_ON_HOST=1 ./scripts/full-stack-verify.sh   # host mvnw (JDK 21)
 ## Create default .env
 
 | Script | Creates | Purpose |
-|--------|---------|---------|
+| -------- | --------- | --------- |
 | `create-env-db.sh` | `db/.env` | Postgres (port, user, password, DB). Used by main compose. |
 | `create-env-observability.sh` | `observability/.env` | Base images (OTEL, Jaeger, Prometheus, Grafana), Grafana password, ports. Used by `compose.obs.yml`. |
 | `create-env-rag-service.sh` | `rag-service/.env` | Backend: base images (RAG_JAVA_*), SERVER_PORT, BACKEND_PORT, DB URL, Ollama, classifier URL. For build and local runs. |
@@ -127,7 +127,7 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 
 **Prod local** starts the stack with `compose.prod.yml` (reverse proxy + hardened ports for internal services).
 
-- Start: `./scripts/up.sh prod [--all] [--obs] [--gpu|--ollama] [--logs] [--infra]`
+- Start: `./scripts/up.sh prod [--all] [--obs] [--gpu| --ollama] [--logs] [--infra]`
 - Build images: `./scripts/build.sh prod` with the **same** flags as `up prod`
 - Stop: `./scripts/down.sh` with the **same** flags you used for `up` (e.g. `--all` = obs + GPU + logs + infra + `-v`)
 

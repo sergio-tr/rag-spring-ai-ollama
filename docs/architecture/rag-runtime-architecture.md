@@ -7,7 +7,7 @@
 ## Orchestration and context
 
 | Component | Responsibility | Conceptual inputs | Conceptual outputs / effects |
-|-----------|----------------|-------------------|------------------------------|
+| ----------- | ---------------- | ------------------- | ------------------------------ |
 | `ExecutionContext` | Aggregates per-request identity, workspace scope, **resolved runtime configuration**, active policies, and hooks for tracing. | Auth principal, project id, resolved config snapshot | Passed through pipelines and strategies |
 | `PromptStack` | Ordered logical layers of messages/prompts feeding the LLM; aligns with `SystemPromptComposer` and ADR 0008. | Composed prompt layers, history slices | Normalized stack for model call |
 | `RagExecutionOrchestrator` | Top-level coordinator for one RAG execution (product or lab). | `ExecutionContext`, user query | Final answer stream or structured result + `ExecutionTrace` |
@@ -18,7 +18,7 @@
 ## Pipelines
 
 | Component | Responsibility | Typical placement in workflow |
-|-----------|----------------|------------------------------|
+| ----------- | ---------------- | ------------------------------ |
 | `QueryUnderstandingPipeline` | Builds a deterministic, structured `QueryPlan` (normalization → classification → entity extraction → structured rewrite → intent/shape/ambiguity). It is a mandatory runtime stage but has **no routing authority**. | Early stage |
 | `RetrievalPipeline` | Selects strategies (vector, metadata, hybrid) and fetches context from the Knowledge System. **Implemented as** `AdvancedRetrievalPipeline` (single entrypoint for retrieval-capable workflows). | Mid stage |
 | `PostRetrievalPipeline` | Ranks, compresses, or filters context; may invoke judges sufficiency before generation. | After retrieval, before / during generation |
@@ -26,7 +26,7 @@
 ## Tools and policy
 
 | Component | Responsibility |
-|-----------|----------------|
+| ----------- | ---------------- |
 | `DeterministicToolStrategy` | Executes tools with fixed contracts (e.g. meeting-minutes metadata tools) without open-ended model tool loops. Sole deterministic tool entrypoint; invoked only from `RagExecutionOrchestrator` when P13 adaptive routing selects the deterministic-tool route family. |
 | `MeetingMinutesToolExecutionCore` | Shared business execution for the five meeting-minutes `DeterministicToolKind` tools; used by deterministic execution and by P9 function calling after model tool selection (no duplicate semantics in FC). |
 | `FunctionCallingStrategy` | P9: bounded Spring AI function-calling (single tool-enabled round, optional follow-up answer generation without tools). Sole FC entrypoint; invoked only from `RagExecutionOrchestrator` when config and `QueryPlan` gates pass. Final FC trace fields are written only by the orchestrator. |
@@ -36,7 +36,7 @@
 ## Advisor, clarification, memory, routing
 
 | Component | Responsibility |
-|-----------|----------------|
+| ----------- | ---------------- |
 | `AdvisorStrategy` | **P10 (implemented):** sole orchestrated advisor **execution** entrypoint; chains snapshot-bound retrieval (`RetrievalAdvisor` → `AdvancedRetrievalPipeline`) and deterministic packing (`ContextPackingAdvisor` → `PackedContextSet`). Invoked only from `RagExecutionOrchestrator`. |
 | `AdvisorPolicyResolver` | **P10:** policy only (no LLM, no retrieval); produces `AdvisorDecision` for dense workflows when `useAdvisor` and gates pass. |
 | `PackedContextSet` / `PackedContextBlock` | **P10:** immutable advisor-produced packed context; optional on `ExecutionContext` for dense workflows. |
@@ -51,7 +51,7 @@
 ## Judges
 
 | Component | Responsibility |
-|-----------|----------------|
+| ----------- | ---------------- |
 | `JudgeStrategy` / `JudgePolicyResolver` | **P14 (implemented):** runtime-owned, orchestrator-only post-answer judge stage. Runs after the selected route family produces a candidate answer; can accept it or request exactly one bounded repair attempt (workflow candidates only in P14). Does not re-run clarification, memory, QU, or routing; does not change route family. |
 | `JudgeCandidateSource` / `JudgeOutcome` | **P14:** candidate-source classification and closed terminal judge outcome set; summary fields are written only by `RagExecutionOrchestrator` into `ExecutionTrace`. |
 | *(Target) Retrieval judges* | Future optional judges (e.g. retrieval sufficiency, faithfulness) belong as explicit runtime stages under orchestrator ownership, not hidden inside workflows or controllers. |
@@ -94,7 +94,7 @@
 - **P56 runtime trace regression suite run/definition surface compatibility lockdown (implemented, tests + docs only):** **ArchUnit** + **WebMvc** + **`T-P56-global`** freeze **HTTP ownership** and **constructor** shapes for **`RuntimeTraceRegressionSuiteRunController`** (**P42**/**P46**/**P49** under **`…/runtime-trace-regression-suite-runs…`** and conversation **`…/runtime-trace-regression-suite-runs`**, **no** ZIP subpaths, **no** definition-run import/export/preview **`@Service`** dependencies), the three **global** ZIP **`@RestController`** classes (**P43** **`GET …/runs/{runId}/export`**, **P44** **`POST …/runs/import`**, **P45** **`POST …/runs/import/preview`** — each **one** handler; **no** calls to **`exportRunZipForDefinition`** / **`importRunZipForDefinition`** / **`previewImportZipForDefinition`**), and **`RuntimeTraceRegressionSuiteDefinitionController`** (**P47**/**P50**/**P52**/**P53**/**P54**/**P55** under **`…/runtime-trace-regression-suite-definitions/…`** or **`…/conversations/{conversationId}/runtime-trace-regression-suite-definitions/…`**; **no** **`runtime-trace-regression-suite-runs`** as the first path segment). **`RuntimeTraceRegressionSuiteRunExportService#exportRunZip`**, **`RuntimeTraceRegressionSuiteRunImportService#importRunZip`**, and **`RuntimeTraceRegressionSuiteRunImportPreviewService#previewImportZip`** remain the **sole** global ZIP semantics owners; **P43**/**P44**/**P45** fixture observables (including **`RuntimeTraceRegressionSuiteRunExportServiceZipTest`** **`P43_EXPORT_RUN_ZIP_SHA256`**) stay unchanged. Short matrix:
 
 | Phase | Owner | Path anchor (after product base) |
-|-------|--------|----------------------------------|
+| ------- | -------- | ---------------------------------- |
 | **P42**/**P46**/**P49** | **`RuntimeTraceRegressionSuiteRunController`** | **`runtime-trace-regression-suite-runs`** (+ conversation **`…/runs`**) |
 | **P43**/**P44**/**P45** | **`RuntimeTraceRegressionSuiteRunExportController`**, **`RuntimeTraceRegressionSuiteRunImportController`**, **`RuntimeTraceRegressionSuiteRunImportPreviewController`** | **`runtime-trace-regression-suite-runs/...`** (export/import/preview) |
 | **P47**/**P50**/**P52**/**P53**/**P54**/**P55** | **`RuntimeTraceRegressionSuiteDefinitionController`** | **`runtime-trace-regression-suite-definitions/...`** (and conversation-prefixed **`…/runtime-trace-regression-suite-definitions/...`**) |
@@ -102,7 +102,7 @@
 - **P57 runtime trace regression suite definition ZIP surface compatibility lockdown (implemented, tests + docs only):** **ArchUnit** + **WebMvc** (**`T-P57-global`**, **`T-P57-coexistence`**, **`T-P56-carry`**) separate **global definition-document ZIP** (**P38**/**P39**/**P40**) from **definition-scoped run ZIP** (**P53**/**P54**/**P55**) on the same URL prefix. **Sole** HTTP owners: **`RuntimeTraceRegressionSuiteDefinitionExportController`** (**`GET …/runtime-trace-regression-suite-definitions/{definitionId}/export`**), **`RuntimeTraceRegressionSuiteDefinitionImportController`** (**`POST …/runtime-trace-regression-suite-definitions/import`**), **`RuntimeTraceRegressionSuiteDefinitionImportPreviewController`** (**`POST …/runtime-trace-regression-suite-definitions/import/preview`**). **`RuntimeTraceRegressionSuiteDefinitionController`** owns **P47**/**P50**/**P52**/**P53**/**P54**/**P55** and **must not** duplicate those three global paths or inject **`RuntimeTraceRegressionSuiteDefinitionExportService`**, **`RuntimeTraceRegressionSuiteDefinitionImportService`**, or **`RuntimeTraceRegressionSuiteDefinitionImportPreviewService`**. **`FD-route-coexistence`:** global definition ZIP paths **omit** **`/runs/`** before **`export`**/**`import`**; **P53**/**P54**/**P55** run-ZIP paths **include** **`/runs/`** (**`…/definitions/{definitionId}/runs/...`**). **P38**/**P39**/**P40** observables stay stable while **P47**–**P55** WebMvc rows remain green.
 
 | Phase | Surface | Owner | Path anchor (after product base) |
-|-------|---------|--------|----------------------------------|
+| ------- | --------- | -------- | ---------------------------------- |
 | **P38** | Definition document ZIP export | **`RuntimeTraceRegressionSuiteDefinitionExportController`** | **`runtime-trace-regression-suite-definitions/{definitionId}/export`** (**no** **`/runs/`**) |
 | **P39** | Definition document ZIP import | **`RuntimeTraceRegressionSuiteDefinitionImportController`** | **`runtime-trace-regression-suite-definitions/import`** (**no** **`/runs/`**) |
 | **P40** | Definition document ZIP import preview | **`RuntimeTraceRegressionSuiteDefinitionImportPreviewController`** | **`runtime-trace-regression-suite-definitions/import/preview`** (**no** **`/runs/`**) |

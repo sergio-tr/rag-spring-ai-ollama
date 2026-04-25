@@ -9,7 +9,7 @@
 ## Summary table (by area)
 
 | Area | Correct / keep | Outdated | Misleading / internal | Missing |
-|------|----------------|----------|------------------------|---------|
+| ------ | ---------------- | ---------- | ------------------------ | --------- |
 | [`docs/README.md`](../README.md), hub | Yes — central index | CI table must stay aligned with workflows over time | — | Optional pointer to this inventory |
 | [`docs/development/`](README.md) | Guidelines + strategy | — | Older drafts that cited tooling-only paths | Normative policy lives in [`documentation-guidelines.md`](documentation-guidelines.md) |
 | [`docs/adr/`](../adr/) | Index + accepted ADRs | Individual ADRs if implementation drifts | The word “multitenancy” alone can overstate SaaS isolation | Preferred terminology in [ADR 0002](../adr/0002-multitenancy-assumption.md) |
@@ -60,7 +60,7 @@
 ## Diagram catalogue — maintenance status
 
 | Item | Status |
-|------|--------|
+| ------ | -------- |
 | System context (`context-level.mmd`) | Keep aligned with deployment names |
 | Component interactions (`service-runtime-integrations.mmd`) | Current |
 | RAG request path (`rag-request-flow.mmd`) | Includes resolve / orchestration / query path sub-steps |

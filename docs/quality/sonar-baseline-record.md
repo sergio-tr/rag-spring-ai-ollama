@@ -5,7 +5,7 @@ Sonar Cloud is the **authority** for *new code* quality (Quality Gate, PR decora
 ## Project identity
 
 | Field | Value |
-|-------|--------|
+| ------- | -------- |
 | **Project key** | `sergio-tr_rag-spring-ai-ollama` ([`sonar-project.properties`](../../sonar-project.properties)) |
 | **Organization** | `sergio-tr` |
 | **Summary (new code)** | [Sonar Cloud project summary](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama) |
@@ -15,7 +15,7 @@ Sonar Cloud is the **authority** for *new code* quality (Quality Gate, PR decora
 ## Analysis workflows (where the scan runs)
 
 | Trigger | Workflow | Notes |
-|---------|----------|--------|
+| --------- | ---------- | -------- |
 | **Primary (PR / main DAG)** | [`ci.yml`](../../.github/workflows/ci.yml) → [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) job **`sonar`** | Runs after core backend / classifier / webapp steps; uploads coverage inputs listed in [`sonar-project.properties`](../../sonar-project.properties). |
 | **Manual / ad-hoc** | [`sonar.yml`](../../.github/workflows/sonar.yml) (`workflow_dispatch` only) | Comment in file: PR analysis normally runs **inside** CI, not from this file alone. |
 | **Local analyst parity** | [../development/sonar-local-analysis.md](../development/sonar-local-analysis.md) | Optional; does not replace CI. |
@@ -33,7 +33,7 @@ Built by the [baseline runbook](../testing/baseline-runbook.md):
 Copy from the Sonar Cloud **Projects → your project → main branch** (or PR **new code** view). Replace placeholders.
 
 | Metric | Snapshot value | Date (UTC) | Notes |
-|--------|------------------|------------|--------|
+| -------- | ------------------ | ------------ | -------- |
 | Quality Gate | e.g. **Passed** / Failed | — | Org-level gate; see Sonar docs. |
 | Coverage on **new code** | e.g. **\_%** | — | PR / leak period; not the same as JaCoCo bundle. |
 | Bugs | \_ | — | |

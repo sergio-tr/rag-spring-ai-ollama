@@ -7,7 +7,7 @@ Automation and containers target **Linux** (including **WSL2** on developer lapt
 ## Patterns
 
 | Pattern | Meaning |
-|---------|---------|
+| --------- | --------- |
 | **Dev hybrid** | Databases or infra in Docker; Spring and/or Next.js on the host for fast iteration. |
 | **Compose stack** | Services defined under `docker/` run as containers with mounted or built images. |
 | **Prod-local** | Reverse proxy + hardened internal port exposure; still local/staging-oriented. |

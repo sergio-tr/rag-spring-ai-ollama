@@ -5,7 +5,7 @@ Blocking checks are defined in **[`docs/devops/README.md`](../devops/README.md)*
 ## Mandatory local / CI parity (before merge)
 
 | Gate | Command / evidence | Pass | Reject |
-|------|---------------------|------|--------|
+| ------ | --------------------- | ------ | -------- |
 | **G1 Backend** | `cd rag-service && ./mvnw clean verify` | Exit **0**; **`jacoco:check`** passes | Any Surefire failure/error; JaCoCo **LINE** bundle &lt; **0.80** |
 | **G2 Classifier** | `cd classifier-service && pytest tests/` (with deps installed) | Exit **0**; **`coverage.xml`** produced; `fail_under` satisfied | pytest failure; coverage under threshold |
 | **G3 Webapp** | `npm ci && npm run lint && npm run typecheck && npm run test:coverage && npm run build` | Exit **0**; **Vitest** thresholds met; **`webapp/coverage/lcov.info`** exists | ESLint **errors**; type errors; Vitest failure; coverage below thresholds |

@@ -3,7 +3,7 @@
 ## What the diagrams cover
 
 | Topic | Diagram |
-|-------|---------|
+| ------- | --------- |
 | Logical stacking of Compose files | [compose-overlays.mmd](compose-overlays.mmd) |
 | Dev / Ollama / telemetry / prod groupings | [compose-overlay-families.mmd](compose-overlay-families.mmd) |
 | Service → repo folder for `build:` contexts | [docker-build-contexts.mmd](docker-build-contexts.mmd) |

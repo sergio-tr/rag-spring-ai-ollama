@@ -7,7 +7,7 @@ Configuration lives in the repo root [`sonar-project.properties`](../../sonar-pr
 ## Prerequisites
 
 | Requirement | Notes |
-|-------------|--------|
+| ------------- | -------- |
 | **SONAR_TOKEN** | SonarCloud → *My Account → Security* → generate a token. Never commit it. |
 | **Full git history** | Sonar uses blame for new code. If the clone is shallow: `git fetch --unshallow`. |
 | **JDK 21** | Same as CI (`setup-java` in `sonar.yml`). `sonar-local.sh` tries to prepend `/usr/lib/jvm/java-21-*` (and Temurin 21 paths) to `PATH` when the default `java` is older but JDK 21 is installed. Set `SKIP_AUTO_JDK21=1` to disable. If Maven still reports `release version 21 not supported`, see [Troubleshooting](#jdk-21-release-version-21-not-supported). |
@@ -126,7 +126,7 @@ Adjust `JAVA_HOME` if `ls /usr/lib/jvm` lists a different directory (e.g. `java-
 ### Other
 
 | Symptom | Likely cause |
-|---------|----------------|
+| --------- | ---------------- |
 | *Project not found* | Missing or wrong `SONAR_TOKEN`, or `sonar.organization` / `sonar.projectKey` in `sonar-project.properties` does not match your SonarCloud project. |
 | Java analysis noise / unresolved types | Run `mvnw dependency:copy-dependencies` so `rag-service/target/dependency` is populated (the `sonar-local` scripts do this). |
 | *CI analysis while Automatic Analysis is enabled* | In SonarCloud: *Project → Administration → Analysis Method* — use **CI-based** analysis only. |

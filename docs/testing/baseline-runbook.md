@@ -5,7 +5,7 @@ Single place to reproduce the **same gates** CI uses for merge-quality checks. M
 ## Prerequisites
 
 | Tool | Notes |
-|------|--------|
+| ------ | -------- |
 | **JDK 21** | Same as [`ci.yml`](../../.github/workflows/ci.yml) / [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml). |
 | **Maven** | Use `./mvnw` from `rag-service/` (wrapper is authoritative). |
 | **Python 3.11+** | Classifier CI uses 3.11; install dependencies from `classifier-service/requirements.txt` (`pip` / venv). |
@@ -81,7 +81,7 @@ npm run build         # next build
 Sonar does **not** replace local gates; it aggregates reports produced by the steps above.
 
 | Input | Produced by |
-|-------|-------------|
+| ------- | ------------- |
 | `rag-service/target/site/jacoco/jacoco.xml` | `./mvnw verify` |
 | `classifier-service/coverage.xml` | `pytest` with cov |
 | `webapp/coverage/lcov.info` | `npm run test:coverage` |

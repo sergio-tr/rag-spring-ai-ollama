@@ -19,7 +19,7 @@
 ## Workflows vs quality gates
 
 | Workflow | Trigger | Blocks PR merge? | Role |
-|----------|---------|------------------|------|
+| ---------- | --------- | ------------------ | ------ |
 | **`ci.yml`** | PR/push **`dev`**, **`main`**, **`master`** | **Yes** (required check) | Full DAG: backend, classifier, webapp, Playwright smoke, integration, fullstack E2E, Sonar; **+ performance** on PRs to **main/master** only. |
 | `integration.yml` | `push` (paths) + `workflow_dispatch` | No (not on `pull_request`) | Manual / path-filtered stack runs without duplicating the DAG. |
 | `e2e-fullstack.yml` | `push` (paths) + `workflow_dispatch` | No | Manual / path-filtered fullstack runs. |
@@ -41,7 +41,7 @@
 ## Layer mapping (short)
 
 | Layer | Location | Where it runs in CI |
-|-------|----------|---------------------|
+| ------- | ---------- | --------------------- |
 | Unit / service | Modules | `reusable-ci-core` core jobs |
 | Stack integration | `tests/integration` | `integration` job |
 | E2E UI (smoke) | `webapp/e2e` | `core_webapp_e2e` job |

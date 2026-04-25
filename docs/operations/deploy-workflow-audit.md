@@ -24,7 +24,7 @@ The workflow runs on `ubuntu-latest`, **gates** on a successful **`ci.yml`** run
 Implemented in the first step (`actions/github-script@v7`):
 
 | Required workflow file | Role in quality model |
-|------------------------|------------------------|
+| ------------------------ | ------------------------ |
 | `.github/workflows/ci.yml` | Full PR pipeline via `reusable-ci-core.yml`: backend, classifier, webapp, Playwright smoke, stack integration, fullstack E2E, Sonar, and performance on PRs to **main/master**. |
 
 **Mechanics:** For each path, the script resolves the workflow id, lists runs for `head_sha: context.sha`, picks a run whose `head_sha` matches, and requires `status === 'completed'` and `conclusion === 'success'`.
@@ -36,7 +36,7 @@ Implemented in the first step (`actions/github-script@v7`):
 ## Secrets (repository)
 
 | Secret | Use | Notes |
-|--------|-----|--------|
+| -------- | ----- | -------- |
 | `VM_HOST` | SSH target | Prefer **DNS name**, not a literal IP, so Azure/public IP changes do not require doc edits. |
 | `VM_USER` | SSH user | Service account with deploy rights only. |
 | `VM_SSH_KEY` | Private key | Protect key rotation via GitHub **environments** if staging/prod split later. |

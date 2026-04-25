@@ -13,7 +13,7 @@ Manual verification steps and traceability for metrics, traces, and logs. Re-run
 ## Implemented artifacts (traceability)
 
 | Area | Deliverable |
-|------|-------------|
+| ------ | ------------- |
 | Retrieval | `rag_retrieval_documents_total{operation,bucket}` in `TracedContextRetriever` (bucketed counts; no raw document count as label value) |
 | Classifier | `ClassifierInferenceMetricsDecorator`: `rag_classifier_calls_total` with `status` ∈ `success`, `null_result` only |
 | HTTP tracing | `RagQueryConfiguration` + `ClassifierServiceClient` using shared `RestTemplate` for W3C propagation |

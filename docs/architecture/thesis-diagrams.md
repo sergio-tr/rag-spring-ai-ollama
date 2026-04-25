@@ -12,7 +12,7 @@ All **source** diagrams live in this directory as `.mmd` files (Mermaid). They a
 Suggested grouping for the thesis chapter outline: **context** → **services** → **webapp** → **Docker** → **Ollama** → **observability** → **behaviour**.
 
 | File | Use in document |
-|------|-----------------|
+| ------ | ----------------- |
 | [context-level.mmd](context-level.mmd) | System context optional observability |
 | [service-runtime-integrations.mmd](service-runtime-integrations.mmd) | Inter-service protocols |
 | [webapp-edge-routing.mmd](webapp-edge-routing.mmd) | Nginx path split |

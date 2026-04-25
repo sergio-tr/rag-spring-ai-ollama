@@ -21,7 +21,7 @@ flowchart TB
 ```
 
 | Boundary | Owner | Consumes | Produces |
-|----------|-------|----------|----------|
+| ---------- | ------- | ---------- | ---------- |
 | Turn coordination | `RagExecutionOrchestrator` | `ExecutionContext`, `QueryPlan`, routing decisions | `RagExecutionResult`, `ExecutionTrace` |
 | Snapshot-bound retrieval | `AdvancedRetrievalPipeline` | `ExecutionContext`, `QueryPlan`, workflow name | `CuratedContextSet`, substage traces |
 | LLM answer from workflow | `AbstractExecutionWorkflow` (+ subclasses) | `ExecutionContext`, packed or curated text | Assistant text + workflow stage traces |

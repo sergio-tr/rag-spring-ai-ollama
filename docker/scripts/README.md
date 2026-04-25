@@ -150,7 +150,7 @@ From `docker/` (env files are optional; compose uses defaults if a file is missi
 
 **Prod local** starts the stack with `compose.prod.yml` (reverse proxy + hardened ports for internal services).
 
-- Start: `./docker/scripts/up.sh prod [--all] [--obs] [--gpu|--ollama] [--logs] [--infra]`
+- Start: `./docker/scripts/up.sh prod [--all] [--obs] [--gpu| --ollama] [--logs] [--infra]`
 - Build images: `./docker/scripts/build.sh prod` with the **same** flags as `up prod`
 - Stop: `./docker/scripts/down.sh` with the **same** flags you used for `up` (e.g. `--all` = obs + GPU + logs + infra + `-v`)
 

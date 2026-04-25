@@ -5,7 +5,7 @@ Clients use a **browser** with the **Next.js** product UI. Traffic may pass thro
 ## Diagrams
 
 | Focus | Source |
-|-------|--------|
+| ------- | -------- |
 | End-to-end context with optional observability and logs | [context-level.mmd](context-level.mmd) |
 | Protocol-level wiring browser → edge → apps → data | [service-runtime-integrations.mmd](service-runtime-integrations.mmd) |
 | Where Ollama runs (host vs Docker vs remote) | [ollama-topology.mmd](ollama-topology.mmd) |
