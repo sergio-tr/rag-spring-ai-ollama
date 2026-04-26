@@ -58,15 +58,9 @@ class ConversationDraftPersistenceIT {
     void saveAndRoundTrip_persistsDraftRow() {
         Instant now = Instant.now();
         UserEntity user =
-                new UserEntity() {
-                    {
-                        setEmail("it-draft-" + UUID.randomUUID() + "@test.local");
-                        setPasswordHash("x");
-                        setRole(UserRole.USER);
-                        setCreatedAt(now);
-                    }
-                };
-        user = userRepository.save(user);
+                userRepository.save(
+                        UserEntityFactory.newUser(
+                                "it-draft-" + UUID.randomUUID() + "@test.local", "IT Draft", "x", UserRole.USER, now));
 
         ProjectEntity project = new ProjectEntity();
         project.setOwner(user);
@@ -95,15 +89,9 @@ class ConversationDraftPersistenceIT {
     void updateContent_roundTripsUpdatedText() {
         Instant now = Instant.now();
         UserEntity user =
-                new UserEntity() {
-                    {
-                        setEmail("it-draft-upd-" + UUID.randomUUID() + "@test.local");
-                        setPasswordHash("x");
-                        setRole(UserRole.USER);
-                        setCreatedAt(now);
-                    }
-                };
-        user = userRepository.save(user);
+                userRepository.save(
+                        UserEntityFactory.newUser(
+                                "it-draft-upd-" + UUID.randomUUID() + "@test.local", "IT Draft Upd", "x", UserRole.USER, now));
 
         ProjectEntity project = new ProjectEntity();
         project.setOwner(user);
