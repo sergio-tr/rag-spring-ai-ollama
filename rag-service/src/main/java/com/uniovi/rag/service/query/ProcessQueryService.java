@@ -64,7 +64,25 @@ public class ProcessQueryService implements QueryService, Loggable {
         this.runtimeTracePersistenceService = runtimeTracePersistenceService;
         this.chatClient = chatClient;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
-        this.selfProvider = selfProvider;
+        this.selfProvider =
+                selfProvider != null
+                        ? selfProvider
+                        : new ObjectProvider<>() {
+                            @Override
+                            public ProcessQueryService getObject() {
+                                return ProcessQueryService.this;
+                            }
+
+                            @Override
+                            public ProcessQueryService getObject(Object... args) {
+                                return ProcessQueryService.this;
+                            }
+
+                            @Override
+                            public ProcessQueryService getIfAvailable() {
+                                return ProcessQueryService.this;
+                            }
+                        };
     }
 
     @Override
@@ -92,12 +110,9 @@ public class ProcessQueryService implements QueryService, Loggable {
             UUID projectId,
             UUID conversationId,
             List<String> documentFilter) {
-        ProcessQueryService self = selfProvider != null ? selfProvider.getIfAvailable() : null;
-        if (self != null) {
-            return self.generateResponseForChat(
-                    query, chatModel, userId, projectId, conversationId, documentFilter, null);
-        }
-        return generateResponseForChat(query, chatModel, userId, projectId, conversationId, documentFilter, null);
+        ProcessQueryService self = selfProvider.getIfAvailable();
+        return self.generateResponseForChat(
+                query, chatModel, userId, projectId, conversationId, documentFilter, null);
     }
 
     /**

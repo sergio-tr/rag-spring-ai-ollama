@@ -776,6 +776,7 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run test:coverage
+          node scripts/patch-lcov-paths.mjs
       - name: Require SONAR_TOKEN for SonarCloud
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

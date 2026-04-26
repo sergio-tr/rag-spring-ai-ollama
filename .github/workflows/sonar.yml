@@ -131,6 +131,7 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run test:coverage
+          node scripts/patch-lcov-paths.mjs
 
       # ─── SonarCloud scan ──────────────────────────────────────────────────
       # Local parity: docs/development/sonar-local-analysis.md + .github/local/run-sonar.sh / ci-like-sonar.sh
