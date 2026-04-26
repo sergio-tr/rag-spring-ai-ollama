@@ -14,6 +14,8 @@ import com.uniovi.rag.infrastructure.persistence.traceregressionsuitedefinition.
 import com.uniovi.rag.infrastructure.persistence.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionPersistenceMapper;
 import com.uniovi.rag.infrastructure.persistence.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionRepository;
 import com.uniovi.rag.infrastructure.persistence.traceregressionsuitedefinition.SuiteDefinitionEntryKindColumn;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +49,9 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
     private final RuntimeTraceRegressionSuiteDefinitionEntryTraceRepository traceRepository;
     private final RuntimeTraceRegressionSuiteDefinitionPersistenceMapper mapper;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     public RuntimeTraceRegressionSuiteDefinitionService(
             RuntimeTraceRegressionSuiteDefinitionRepository definitionRepository,
             RuntimeTraceRegressionSuiteDefinitionEntryRepository entryRepository,
@@ -75,9 +80,10 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         } catch (DataIntegrityViolationException ex) {
             throw duplicateName(ex);
         }
-        RuntimeTraceRegressionSuiteDefinitionEntity managedDefRef =
-                definitionRepository.getReferenceById(definitionId);
-        mapper.insertEntriesFromCommand(managedDefRef, command, entryRepository, traceRepository);
+        mapper.insertEntriesFromCommand(def, command, entryRepository, traceRepository);
+        // Bulk inserts in the same persistence context can leave managed graphs around; clear to avoid transient-reference
+        // issues when later tests/services mix bulk deletes and explicit flushes in the same transaction.
+        entityManager.clear();
         return definitionId;
     }
 
@@ -88,6 +94,8 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         String name = RuntimeTraceRegressionSuiteDefinitionValidation.normalizeAndValidateName(command.name());
         Optional<String> description = RuntimeTraceRegressionSuiteDefinitionValidation.normalizeDescription(command.description());
 
+        // Avoid stale managed children when using bulk deletes + flush in the same transaction.
+        entityManager.clear();
         RuntimeTraceRegressionSuiteDefinitionEntity def =
                 definitionRepository.findByIdAndUserId(definitionId, userId).orElseThrow(RuntimeTraceRegressionSuiteDefinitionService::notFound);
 
@@ -102,19 +110,22 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         } catch (DataIntegrityViolationException ex) {
             throw duplicateName(ex);
         }
-        RuntimeTraceRegressionSuiteDefinitionEntity managedDefRef =
-                definitionRepository.getReferenceById(definitionId);
-        mapper.insertEntriesFromCommand(managedDefRef, command, entryRepository, traceRepository);
+        mapper.insertEntriesFromCommand(def, command, entryRepository, traceRepository);
+        entityManager.clear();
     }
 
     @Transactional
     public void delete(UUID definitionId, UUID userId) {
         RuntimeTraceRegressionSuiteDefinitionValidation.validateUserId(userId);
+        // This service is often used in @Transactional tests that call create() then delete() in the same transaction.
+        // Ensure no managed child rows remain that point at a detached/transient parent during flush.
+        entityManager.clear();
         RuntimeTraceRegressionSuiteDefinitionEntity def =
                 definitionRepository.findByIdAndUserId(definitionId, userId).orElseThrow(RuntimeTraceRegressionSuiteDefinitionService::notFound);
         definitionRepository.delete(def);
         // Ensure DELETE executes before callers query via JdbcTemplate in the same transaction.
         definitionRepository.flush();
+        entityManager.clear();
     }
 
     @Transactional(readOnly = true)

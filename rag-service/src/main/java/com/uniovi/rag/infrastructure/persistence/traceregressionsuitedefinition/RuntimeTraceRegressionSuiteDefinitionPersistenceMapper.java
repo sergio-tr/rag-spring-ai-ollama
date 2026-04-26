@@ -133,14 +133,15 @@ public class RuntimeTraceRegressionSuiteDefinitionPersistenceMapper {
             RuntimeTraceRegressionSuiteDefinitionEntrySpec spec = specs.get(i);
             RuntimeTraceRegressionSuiteDefinitionEntryEntity entryRow = newEntryEntity(definition, (short) i, spec);
             // Keep INSERT ordering stable: entry must exist before inserting traces referencing it.
-            entryRow = entryRepository.save(entryRow);
-            entryRepository.flush();
+            entryRow = entryRepository.saveAndFlush(entryRow);
             if (spec instanceof RuntimeTraceRegressionSuiteDefinitionEntrySpec.ByTraceIds by) {
                 short tp = 0;
                 for (UUID traceId : by.traceIds()) {
                     RuntimeTraceRegressionSuiteDefinitionEntryTraceEntity traceRow = newTraceEntity(entryRow, tp++, traceId);
                     traceRepository.save(traceRow);
                 }
+                // Ensure traces are persisted while entryRow is managed in this persistence context.
+                traceRepository.flush();
             }
         }
     }

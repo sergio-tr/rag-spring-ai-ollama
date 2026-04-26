@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -34,7 +35,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
         properties = {
                 "rag.jwt.secret=test-secret-key-for-jwt-signing-must-be-long-enough-32",
                 "management.otlp.tracing.endpoint=http://127.0.0.1:4318/v1/traces",
-                "management.otlp.metrics.export.url=http://127.0.0.1:4318/v1/metrics"
+                "management.otlp.metrics.export.url=http://127.0.0.1:4318/v1/metrics",
+                // CI may set SPRINGDOC_API_DOCS_ENABLED=false via environment; force it on for this export test.
+                "springdoc.api-docs.enabled=true"
         })
 @Import({ TestAiStubConfiguration.class, TestcontainersDatasourceConfiguration.class })
 @ActiveProfiles("test")
@@ -63,10 +66,18 @@ class OpenApiJsonExportIntegrationTest {
                 "response content-type should be JSON");
         String body = res.getBody();
         assertNotNull(body);
-        JsonNode json = objectMapper.readTree(body);
-        assertTrue(json.has("openapi"), "response should be OpenAPI JSON");
         Path out = Path.of("target/openapi.json");
         Files.createDirectories(out.getParent());
-        Files.writeString(out, body, StandardCharsets.UTF_8);
+        JsonNode json = objectMapper.readTree(body);
+        String jsonBodyForFile = body;
+        // Some environments return OpenAPI as a base64-encoded JSON string (TextNode) rather than a JSON object.
+        if (json.isTextual()) {
+            byte[] decoded = Base64.getDecoder().decode(json.asText());
+            jsonBodyForFile = new String(decoded, StandardCharsets.UTF_8);
+            json = objectMapper.readTree(jsonBodyForFile);
+        }
+        // Always write the decoded body to disk to make CI/local failures diagnosable.
+        Files.writeString(out, jsonBodyForFile, StandardCharsets.UTF_8);
+        assertTrue(json.has("openapi"), "response should be OpenAPI JSON (see target/openapi.json)");
     }
 }
