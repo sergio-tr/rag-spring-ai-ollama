@@ -15,8 +15,14 @@ test.describe("Project settings", () => {
     await expect(page.getByText(/^Active project$|^Proyecto activo$/i).first()).toBeVisible({
       timeout: 20_000,
     });
+    await expect(page.getByText(/no active project|no hay proyecto activo/i)).toHaveCount(0);
+    // The project settings UI is a schema-driven form, not a JSON editor.
+    // For CI stability, require that the schema resolved (inputs OR empty-schema message).
     await expect(
-      page.getByRole("textbox", { name: /Project configuration JSON|JSON.*proyecto/i }),
+      page
+        .locator('input[id^="cfg-"]')
+        .first()
+        .or(page.getByText(/no configurable fields were returned|no se devolvieron campos configurables/i).first()),
     ).toBeVisible({ timeout: 25_000 });
   });
 });

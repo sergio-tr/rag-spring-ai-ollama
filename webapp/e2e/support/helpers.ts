@@ -51,9 +51,9 @@ export async function createAndActivateProject(page: Page, projectName: string):
   // Project name can appear both in sidebar and in the card title; pick the clickable card entry.
   await page.getByRole("button", { name: projectName, exact: true }).first().waitFor({ state: "visible" });
   const projectCard = page.locator('[data-slot="card"]').filter({ hasText: projectName }).first();
-  await expect(projectCard.getByRole("button", { name: /^(active|activo)$/i })).toBeVisible({
-    timeout: 20_000,
-  });
+  // The grid uses "Open/Abrir" to activate the project, then the button becomes "Active/Activo".
+  await projectCard.getByRole("button", { name: /^(open|abrir|activate|activar)$/i }).click();
+  await expect(projectCard.getByRole("button", { name: /^(active|activo)$/i })).toBeVisible({ timeout: 20_000 });
 }
 
 /** ADMIN user seeded when Spring profile {@code e2e} is active (see E2eAdminUserSeeder). */
