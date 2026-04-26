@@ -6,6 +6,10 @@ import { loginAsE2eAdmin } from "../support/helpers";
  */
 test.describe("Admin product API", () => {
   test("E2E-09 admin health and allowlist table @fullstack", async ({ page }) => {
+    test.skip(
+      process.env.E2E_ADMIN_ENABLED !== "1",
+      "Set E2E_ADMIN_ENABLED=1 when the backend is started with profile=e2e (admin seeded).",
+    );
     await loginAsE2eAdmin(page);
     await expect(page.getByRole("link", { name: /^admin$/i })).toBeVisible();
     await page.goto("/en/admin");

@@ -164,6 +164,7 @@ run_playwright_fullstack() {
     -w /repo/webapp \
     -v "${NPM_CACHE_VOLUME}:/root/.npm" \
     -e E2E_ALLOW_INSECURE_COOKIES="true" \
+    -e E2E_ADMIN_ENABLED="1" \
     -e PLAYWRIGHT_BASE_URL="http://127.0.0.1:3000" \
     -e NEXT_PUBLIC_API_BASE_URL="http://host.docker.internal:9000" \
     -e NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" \

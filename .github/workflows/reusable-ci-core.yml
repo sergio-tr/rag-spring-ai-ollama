@@ -509,6 +509,8 @@ jobs:
       # Browser stack uses loopback IP (workflow default is localhost for Node jobs).
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:9000
       NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
+      # Admin UI smoke requires backend profile=e2e admin seeding.
+      E2E_ADMIN_ENABLED: "1"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
