@@ -3,7 +3,7 @@ Stack integration tests (Compose + optional observability).
 
 Requirements:
   - postgres, classifier-service, backend reachable on configured ports.
-  - For useful RAG answers, Ollama must be available; without it /api/v4/query may still return 200
+  - For useful RAG answers, Ollama must be available; without it /api/v5/query may still return 200
     with an error message in the body.
 
 Observability (Jaeger, Prometheus, OTEL collector, Grafana):
@@ -13,7 +13,7 @@ Observability (Jaeger, Prometheus, OTEL collector, Grafana):
   - INTEGRATION_CHECK_OBS=0: skip all observability tests.
 
 API path drift (aligned with Spring `rag.api.*`):
-  - INTEGRATION_RAG_LEGACY_BASE_PATH (default `/api/v4`) for legacy `GET …/query`.
+  - INTEGRATION_RAG_LEGACY_BASE_PATH (default `/api/v5` or NEXT_PUBLIC_RAG_API_PREFIX) for legacy `GET …/query`.
   - INTEGRATION_RAG_PRODUCT_BASE_PATH (default `/api/v5`) for JWT product tests.
   - INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD — seed user for `POST /api/auth/login` flows
     (default matches Flyway V16: dev@local.test / dev).

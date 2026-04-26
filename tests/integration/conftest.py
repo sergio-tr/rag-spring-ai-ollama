@@ -56,7 +56,9 @@ def backend_base() -> str:
 @pytest.fixture(scope="session")
 def legacy_api_base() -> str:
     """Legacy HTTP prefix only (e.g. /api/v4), aligned with RAG_API_LEGACY_BASE_PATH."""
-    return os.environ.get("INTEGRATION_RAG_LEGACY_BASE_PATH", "/api/v4").strip().rstrip("/") or "/api/v4"
+    # Keep integration tests aligned with the current frontend/api prefix to avoid drift (e.g. v4 → v5).
+    default_prefix = os.environ.get("NEXT_PUBLIC_RAG_API_PREFIX", "/api/v5").strip().rstrip("/") or "/api/v5"
+    return os.environ.get("INTEGRATION_RAG_LEGACY_BASE_PATH", default_prefix).strip().rstrip("/") or default_prefix
 
 
 @pytest.fixture(scope="session")
