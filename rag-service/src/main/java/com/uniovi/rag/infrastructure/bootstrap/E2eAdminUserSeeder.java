@@ -13,7 +13,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -37,27 +37,35 @@ public class E2eAdminUserSeeder implements ApplicationRunner {
     public static final String E2E_ADMIN_PASSWORD = "e2e";
 
     private final UserRepository userRepository;
+    private final TransactionTemplate transactionTemplate;
 
-    public E2eAdminUserSeeder(UserRepository userRepository) {
+    public E2eAdminUserSeeder(UserRepository userRepository, TransactionTemplate transactionTemplate) {
         this.userRepository = userRepository;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @Override
-    @Transactional
     public void run(ApplicationArguments args) {
-        if (userRepository.findByEmailIgnoreCase(E2E_ADMIN_EMAIL).isPresent()) {
-            return;
-        }
-        UserEntity u = UserEntityFactory.newUser(
-                E2E_ADMIN_EMAIL,
-                "E2E Admin",
-                "{noop}" + E2E_ADMIN_PASSWORD,
-                UserRole.ADMIN,
-                Instant.now());
-        u.setId(E2E_ADMIN_ID);
+        // Never run this runner inside an outer transaction: a flush exception can mark it rollback-only
+        // and make Spring fail startup with UnexpectedRollbackException.
         try {
-            userRepository.saveAndFlush(u);
-            log.info("E2E profile: seeded admin user {}", E2E_ADMIN_EMAIL);
+            transactionTemplate.execute(
+                    status -> {
+                        if (userRepository.findByEmailIgnoreCase(E2E_ADMIN_EMAIL).isPresent()) {
+                            return null;
+                        }
+                        UserEntity u =
+                                UserEntityFactory.newUser(
+                                        E2E_ADMIN_EMAIL,
+                                        "E2E Admin",
+                                        "{noop}" + E2E_ADMIN_PASSWORD,
+                                        UserRole.ADMIN,
+                                        Instant.now());
+                        u.setId(E2E_ADMIN_ID);
+                        userRepository.saveAndFlush(u);
+                        log.info("E2E profile: seeded admin user {}", E2E_ADMIN_EMAIL);
+                        return null;
+                    });
         } catch (DataIntegrityViolationException | ObjectOptimisticLockingFailureException e) {
             // Multiple runners/devtools restarts can race on startup; seeding must be best-effort and never crash the app.
             log.info("E2E profile: admin user already exists (seed race), continuing");
