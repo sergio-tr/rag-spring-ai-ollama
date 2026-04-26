@@ -1,25 +1,29 @@
 #!/usr/bin/env bash
-# Local CI parity for .github/workflows/reusable-ci-core.yml job "integration".
-# - Uses the same pgvector image and DB bootstrap (extensions + testdb + test-init.sql)
-# - Starts rag-service with profile "e2e" on :9000
-# - Seeds the ADMIN user used by pytest (admin@e2e.local / e2e)
-# - Runs pytest inside a Linux python:3.11 container (parity with GitHub Actions)
+# Local CI parity for .github/workflows/reusable-ci-core.yml job "e2e_fullstack".
+#
+# Runs:
+# - Postgres (pgvector image, same as CI)
+# - Postgres bootstrap (extensions + testdb + test-init.sql)
+# - rag-service Spring Boot (profile=e2e) on :9000
+# - webapp Next.js build + Playwright @fullstack tests (chromium)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 RAG_SERVICE="${REPO_ROOT}/rag-service"
+WEBAPP_DIR="${REPO_ROOT}/webapp"
 
 POSTGRES_CONTAINER="${RAG_CI_POSTGRES_CONTAINER:-rag-ci-pg}"
 POSTGRES_IMAGE="${RAG_PLATFORM_POSTGRES_IMAGE:-pgvector/pgvector:0.8.2-pg16-bookworm}"
 POSTGRES_PORT="${RAG_LOCAL_POSTGRES_PORT:-5432}"
+STOP_AFTER="${RAG_CI_STOP_CONTAINER:-0}"
 CI_NETWORK="${RAG_CI_NETWORK:-rag-ci}"
 BACKEND_CONTAINER="${RAG_CI_BACKEND_CONTAINER:-rag-ci-backend}"
-CLASSIFIER_CONTAINER="${RAG_CI_CLASSIFIER_CONTAINER:-rag-ci-classifier}"
 MAVEN_CACHE_VOLUME="${RAG_MAVEN_CACHE_VOLUME:-rag-m2-cache}"
-PIP_CACHE_VOLUME="${RAG_PIP_CACHE_VOLUME:-rag-pip-cache}"
 
-STOP_AFTER="${RAG_CI_STOP_CONTAINER:-0}"
+# Playwright runs in a Linux container for parity (browser deps included).
+PLAYWRIGHT_IMAGE="${RAG_PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.59.1-jammy}"
+NPM_CACHE_VOLUME="${RAG_WEBAPP_NPM_CACHE_VOLUME:-rag-webapp-npm-cache}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,10 +37,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 log() { echo "[ci-like] $*"; }
-
-require() {
-  command -v "$1" >/dev/null 2>&1 || { echo "error: missing required command: $1" >&2; exit 1; }
-}
+require() { command -v "$1" >/dev/null 2>&1 || { echo "error: missing required command: $1" >&2; exit 1; }; }
 
 require docker
 require curl
@@ -49,17 +50,8 @@ if [[ ! -f "${RAG_SERVICE}/src/test/resources/test-init.sql" ]]; then
   echo "error: missing rag-service/src/test/resources/test-init.sql" >&2
   exit 1
 fi
-if [[ ! -f "${RAG_SERVICE}/mvnw" && ! -f "${RAG_SERVICE}/mvnw.cmd" ]]; then
-  echo "error: missing rag-service/mvnw (or mvnw.cmd)" >&2
-  exit 1
-fi
 
 docker info >/dev/null 2>&1 || { echo "error: Docker is not running." >&2; exit 1; }
-
-ensure_network() {
-  docker network inspect "${CI_NETWORK}" >/dev/null 2>&1 || docker network create "${CI_NETWORK}" >/dev/null
-  docker network connect "${CI_NETWORK}" "${POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
-}
 
 wait_for_pg() {
   local i=0
@@ -96,6 +88,11 @@ start_postgres() {
     echo "error: Postgres did not become ready on localhost:${POSTGRES_PORT}" >&2
     exit 1
   fi
+}
+
+ensure_network() {
+  docker network inspect "${CI_NETWORK}" >/dev/null 2>&1 || docker network create "${CI_NETWORK}" >/dev/null
+  docker network connect "${CI_NETWORK}" "${POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
 }
 
 prepare_postgres() {
@@ -147,42 +144,31 @@ wait_for_backend() {
   return 1
 }
 
-start_classifier() {
-  log "Starting classifier container (uvicorn) on :8000."
-  docker rm -f "${CLASSIFIER_CONTAINER}" >/dev/null 2>&1 || true
-  docker run -d --name "${CLASSIFIER_CONTAINER}" --network "${CI_NETWORK}" -p 8000:8000 \
-    -v "${REPO_ROOT}:/repo" \
-    -v "${PIP_CACHE_VOLUME}:/root/.cache/pip" \
-    -w /repo/classifier-service \
-    python:3.11-slim bash -lc "pip install -q -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000" \
-    >/dev/null
-}
-
 seed_admin() {
-  log "Seeding e2e admin user (admin@e2e.local)."
+  # Not explicitly done in the e2e_fullstack job, but required if tests hit /api/admin/**.
+  log "Seeding e2e admin user (best-effort)."
   docker exec -e PGPASSWORD=postgres "${POSTGRES_CONTAINER}" \
     psql -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
       INSERT INTO users (id, email, password_hash, name, role, created_at)
       VALUES ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP)
       ON CONFLICT (email) DO NOTHING;
-    " >/dev/null
+    " >/dev/null || true
 }
 
-run_pytest_linux() {
-  log "Running pytest in python:3.11-slim container."
+run_playwright_fullstack() {
+  log "Running Next.js build + Playwright @fullstack in ${PLAYWRIGHT_IMAGE}."
+
+  # Inside the container, the backend is reached via host.docker.internal (parity with runner localhost).
   docker run --rm \
     -v "${REPO_ROOT}:/repo" \
-    -w /repo \
-    -v "${PIP_CACHE_VOLUME}:/root/.cache/pip" \
-    -e INTEGRATION_USE_TESTCONTAINERS="0" \
-    -e INTEGRATION_CHECK_OBS="0" \
-    -e INTEGRATION_BACKEND_URL="http://host.docker.internal:9000" \
-    -e INTEGRATION_CLASSIFIER_URL="http://host.docker.internal:8000" \
-    -e INTEGRATION_ADMIN_EMAIL="${INTEGRATION_ADMIN_EMAIL}" \
-    -e INTEGRATION_ADMIN_PASSWORD="${INTEGRATION_ADMIN_PASSWORD}" \
-    -e INTEGRATION_RAG_PRODUCT_BASE_PATH="/api/v5" \
-    python:3.11-slim bash -lc \
-      "pip install -r tests/integration/requirements.txt >/dev/null && python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py"
+    -w /repo/webapp \
+    -v "${NPM_CACHE_VOLUME}:/root/.npm" \
+    -e E2E_ALLOW_INSECURE_COOKIES="true" \
+    -e PLAYWRIGHT_BASE_URL="http://127.0.0.1:3000" \
+    -e NEXT_PUBLIC_API_BASE_URL="http://host.docker.internal:9000" \
+    -e NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" \
+    "${PLAYWRIGHT_IMAGE}" bash -lc \
+      "npm ci --silent --no-audit --no-fund && npm run build && npm run test:e2e:fullstack"
 }
 
 stop_backend() {
@@ -191,7 +177,6 @@ stop_backend() {
 
 cleanup() {
   stop_backend
-  docker rm -f "${CLASSIFIER_CONTAINER}" >/dev/null 2>&1 || true
   if [[ "${STOP_AFTER}" = "1" ]]; then
     log "Removing Postgres container: ${POSTGRES_CONTAINER}"
     docker rm -f "${POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
@@ -204,8 +189,7 @@ start_postgres
 ensure_network
 prepare_postgres
 start_backend
-start_classifier
 wait_for_backend
 seed_admin
-run_pytest_linux
+run_playwright_fullstack
 

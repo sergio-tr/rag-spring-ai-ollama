@@ -2,7 +2,8 @@ import { z } from "zod";
 
 export const loginSchema = z.object({
   email: z.email(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  // Login must accept the seeded dev password used in CI/local stacks (Flyway seed).
+  password: z.string().min(1, "Password is required"),
 });
 
 export const registerSchema = z.object({

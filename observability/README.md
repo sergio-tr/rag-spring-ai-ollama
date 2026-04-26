@@ -173,7 +173,7 @@ With `compose.obs.yml`, backend and classifier receive `OTEL_EXPORTER_OTLP_ENDPO
 
 ### 4. Quick manual checklist
 
-After issuing a RAG request to the legacy query path (e.g. `GET {legacy}/query` with `{legacy}` = `RAG_API_LEGACY_BASE_PATH`):
+After issuing authenticated product traffic (e.g. `GET {product}/config/schema`):
 
 1. **Traces**
    - In Grafana (Jaeger datasource) or Jaeger UI:
@@ -195,8 +195,9 @@ After issuing a RAG request to the legacy query path (e.g. `GET {legacy}/query` 
 
 1. Start the stack with observability:
    - `./tests/e2e/e2e-technical-compose.sh --obs --keep`
-2. Run a RAG query to generate traces/metrics, e.g. (export `RAG_API_LEGACY_BASE_PATH` to match `rag.api.legacy-base-path` on the backend):
-   - `curl -sf "http://localhost:${BACKEND_PORT:-9000}${RAG_API_LEGACY_BASE_PATH}/query?question=How%20many%20documents%20are%20in%20the%20corpus%3F"`
+2. Generate traces/metrics with stable product endpoints (JWT):
+   - Login: `curl -sf -X POST "http://localhost:${BACKEND_PORT:-9000}/api/auth/login" -H "Content-Type: application/json" -d '{"email":"dev@local.test","password":"dev"}'`
+   - Then: `curl -sf -H "Authorization: Bearer <token>" "http://localhost:${BACKEND_PORT:-9000}/api/v5/config/schema"`
 
 > Note: the response may not be a "perfect" RAG answer if Ollama/data are missing; the point is to generate telemetry for the pipeline.
 

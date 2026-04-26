@@ -7,28 +7,23 @@ import io.gatling.http.Predef._
 import scala.concurrent.duration.DurationInt
 
 /**
- * Realistic mixed workload: weighted mix of legacy RAG queries, login, and admin (or product fallback).
+ * Realistic mixed workload: weighted mix of login and admin (or product fallback).
  *
  * Profiles (see tests/gatling/README.md): {@code smoke}, {@code load}, {@code stress}, {@code spike}, {@code soak}.
- * Default traffic mix: 70% RAG / 20% auth / 10% admin — override with {@code GATLING_MIX_*_PCT}.
+ * Default traffic mix: 70% auth / 30% admin (or product fallback) — override with {@code GATLING_MIX_*_PCT}.
  *
  * Uses [[users.csv]] (multi-row feeder; replace with distinct accounts for realistic isolation) and
- * [[questions.csv]] (simple + complex rows).
+ * stable product reads (no snapshot dependency).
  */
 abstract class MixedRealisticSimulationBase(forcedProfile: Option[String]) extends Simulation {
 
   private val profile: String = forcedProfile.getOrElse(Env.env("GATLING_PROFILE", "load"))
 
-  private val ragW: Double = Env.envDouble("GATLING_MIX_RAG_PCT", 70.0)
-  private val authW: Double = Env.envDouble("GATLING_MIX_AUTH_PCT", 20.0)
-  private val adminW: Double = Env.envDouble("GATLING_MIX_ADMIN_PCT", 10.0)
-  private val wSum: Double = ragW + authW + adminW
+  private val authW: Double = Env.envDouble("GATLING_MIX_AUTH_PCT", 70.0)
+  private val adminW: Double = Env.envDouble("GATLING_MIX_ADMIN_PCT", 30.0)
+  private val wSum: Double = authW + adminW
 
-  private val questionsFeeder = csv("questions.csv").circular
   private val usersFeeder = csv("users.csv").circular
-
-  private val ragBranch: ChainBuilder =
-    feed(questionsFeeder).exec(ScenarioBlocks.legacyRagQuery)
 
   private val authBranch: ChainBuilder =
     feed(usersFeeder).exec(ScenarioBlocks.authLogin)
@@ -39,7 +34,6 @@ abstract class MixedRealisticSimulationBase(forcedProfile: Option[String]) exten
   /** Relative weights for [[randomSwitch]] (sum-normalized). */
   private val mixChain: ChainBuilder =
     randomSwitch(
-      (ragW / wSum) -> ragBranch,
       (authW / wSum) -> authBranch,
       (adminW / wSum) -> adminBranch
     )
@@ -81,8 +75,8 @@ abstract class MixedRealisticSimulationBase(forcedProfile: Option[String]) exten
       )
 
     case "spike" =>
-      val burst = Env.envInt("GATLING_MIX_SPIKE_BURST_USERS", Env.envInt("GATLING_LEGACY_SPIKE_USERS", 30))
-      val pause = Env.envInt("GATLING_MIX_SPIKE_PAUSE_SEC", Env.envInt("GATLING_LEGACY_SPIKE_PAUSE_SEC", 15))
+      val burst = Env.envInt("GATLING_MIX_SPIKE_BURST_USERS", 30)
+      val pause = Env.envInt("GATLING_MIX_SPIKE_PAUSE_SEC", 15)
       val tail = Env.envInt("GATLING_MIX_SPIKE_TAIL_USERS", 8)
       scn.inject(
         atOnceUsers(burst),

@@ -50,8 +50,8 @@ cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 # 4. Classifier with hot-reload (terminal 3)
 cd classifier-service && uvicorn main:app --reload --reload-dir app
 
-# Default HTTP API bases: legacy RAG path + product path (see rag-service application properties).
-# Override with RAG_API_LEGACY_BASE_PATH, RAG_API_PRODUCT_BASE_PATH (Spring) and NEXT_PUBLIC_RAG_API_PREFIX (Next.js).
+# Default HTTP API base (see rag-service application properties).
+# Override with RAG_API_PRODUCT_BASE_PATH (Spring) and NEXT_PUBLIC_RAG_API_PREFIX (Next.js).
 ```
 
 ## Test pyramid & CI/CD
@@ -90,16 +90,10 @@ docker compose \
 
 ## Key API endpoints
 
-Prefixes are **configurable**. Spring: `rag.api.legacy-base-path` (`RAG_API_LEGACY_BASE_PATH`) and `rag.api.product-base-path` (`RAG_API_PRODUCT_BASE_PATH`). Webapp: `NEXT_PUBLIC_RAG_API_PREFIX` must match the product base path (see `webapp/.env.example`). Below, `{legacy}` and `{product}` stand for those configured prefixes.
+Prefix is **configurable**. Spring: `rag.api.product-base-path` (`RAG_API_PRODUCT_BASE_PATH`). Webapp: `NEXT_PUBLIC_RAG_API_PREFIX` must match the product base path (see `webapp/.env.example`). Below, `{product}` stands for that configured prefix.
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `GET` | `{legacy}/query?question=...` | RAG query (JSON: `success` + `data` or `error`; HTTP **503** + `LLM_UNAVAILABLE` if Ollama unreachable) |
-| `POST` | `{legacy}/documents` | Upload document (multipart) |
-| `POST` | `{legacy}/documents/minute` | Add meeting minute (JSON) |
-| `DELETE` | `{legacy}/documents/{id}` | Delete document |
-| `GET` | `{legacy}/evaluate` | Run RAG evaluation |
-| `POST` | `{legacy}/evaluate/custom` | Evaluate with custom config |
 | `GET` | `/actuator/health` | Health check |
 | `GET` | `/actuator/prometheus` | Prometheus metrics |
 | `GET` | `/v3/api-docs` | OpenAPI 3 JSON (springdoc) |

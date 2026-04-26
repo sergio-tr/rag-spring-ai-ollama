@@ -1,7 +1,8 @@
-# Default legacy GET — server global RAG features (YAML / env), not project config.
+# Default product chat — requires BENCHMARK_* env (token + project + conversation).
 name: baseline
-description: Legacy /api/v4/query with default query params (no chatModel override).
-transport: legacy
-legacy:
-  query_path: /api/v4/query
-  query_params: {}
+description: Product chat benchmark with default project config override (no chatModel override).
+transport: product_chat
+product_chat:
+  product_base_path: /api/v5
+  rag_config: {}
+  post_message: {}

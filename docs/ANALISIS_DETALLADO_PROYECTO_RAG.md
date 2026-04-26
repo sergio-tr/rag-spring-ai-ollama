@@ -13,7 +13,7 @@ Este proyecto implementa un sistema RAG (Retrieval-Augmented Generation) basado 
 #### 🎯 **controllers/** - Controladores de la API REST
 
 ##### **RagController.java** - Controlador Principal del Sistema RAG
-- **Endpoint base**: `/api/v4`
+- **Endpoint base**: `/api/v5`
 - **Funcionalidades principales**:
   - `POST /documents`: Subida y procesamiento de documentos
   - `GET /query`: Consulta al sistema RAG

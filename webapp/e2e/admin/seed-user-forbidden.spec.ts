@@ -10,7 +10,7 @@ test.describe("Admin access for seed user", () => {
     await expect(page.getByRole("link", { name: /^admin$/i })).toHaveCount(0);
     await page.goto("/en/admin");
     await expect(page.getByRole("heading", { name: /administration|administración/i })).toBeVisible();
-    await expect(page.getByRole("alert")).toContainText(/forbidden|prohibido/i, {
+    await expect(page.locator('p[role="alert"]')).toContainText(/forbidden|prohibido/i, {
       timeout: 15_000,
     });
   });

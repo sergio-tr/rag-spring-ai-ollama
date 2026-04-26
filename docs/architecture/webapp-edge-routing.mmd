@@ -3,7 +3,6 @@ flowchart TB
   C[Client request]
 
   subgraph nx [Nginx server block]
-    A["/api/v4/*"]
     B["/api/v5/*"]
     AC["/actuator/*"]
     UI["/* default"]
@@ -13,7 +12,6 @@ flowchart TB
   WA[Next.js upstream]
 
   C --> nx
-  A --> BE
   B --> BE
   AC --> BE
   UI --> WA

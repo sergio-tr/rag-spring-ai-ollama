@@ -17,30 +17,14 @@ class StressRampSimulation extends Simulation {
     .acceptHeader("application/json")
     .userAgentHeader("gatling-rag-stress/1.0")
 
-  private val useLegacy = Env.env("GATLING_STRESS_TARGET", "health") == "legacy"
-
-  private val scn = if (useLegacy) {
-    val questions = csv("questions.csv").circular
-    scenario("stress_legacy_query")
-      .feed(questions)
-      .forever {
-        exec(
-          http("stress GET legacy query")
-            .get(s"${RagPaths.legacyPrefix}/query")
-            .queryParam("question", "${question}")
-            .check(status.in(200, 503, 504, 502))
-        )
-      }
-  } else {
-    scenario("stress_actuator")
-      .forever {
-        exec(
-          http("stress GET actuator health")
-            .get("/actuator/health")
-            .check(status.is(200))
-        )
-      }
-  }
+  private val scn = scenario("stress_actuator")
+    .forever {
+      exec(
+        http("stress GET actuator health")
+          .get("/actuator/health")
+          .check(status.is(200))
+      )
+    }
 
   private val peakUsers = Env.envInt("GATLING_STRESS_PEAK_USERS", 80)
   private val rampSec = Env.envInt("GATLING_STRESS_RAMP_SEC", 120)

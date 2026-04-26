@@ -5,8 +5,6 @@ object RagPaths {
 
   val baseUrl: String = Env.stripTrailingSlash(Env.env("GATLING_BASE_URL", "http://localhost:9000"))
 
-  val legacyPrefix: String = Env.stripTrailingSlash(Env.env("GATLING_LEGACY_PREFIX", "/api/v4"))
-
   val productPrefix: String = Env.stripTrailingSlash(Env.env("GATLING_PRODUCT_PREFIX", "/api/v5"))
 
   val loginEmail: String = Env.env("GATLING_LOGIN_EMAIL", "dev@local.test")

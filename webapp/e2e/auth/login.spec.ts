@@ -17,7 +17,8 @@ test.describe("Auth with API", () => {
     await page.getByLabel(/email|correo/i).fill(seedEmail());
     await page.getByLabel(/^password$/i).fill("definitely-wrong-password-xyz");
     await page.getByRole("button", { name: /continue|iniciar|sign in/i }).click();
-    await expect(page.getByRole("alert")).toContainText(
+    // Avoid Next.js route announcer (also role=alert) in strict mode.
+    await expect(page.locator('p[role="alert"]')).toContainText(
       /invalid email|incorrectos/i,
       { timeout: 15_000 },
     );

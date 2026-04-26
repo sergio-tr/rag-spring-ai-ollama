@@ -2,7 +2,12 @@ import { expect, type Page } from "@playwright/test";
 import { adminEmail, adminPassword, seedEmail, seedPassword } from "../fixtures/users";
 
 const apiBase = () =>
-  (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:9000").replace(/\/$/, "");
+  (
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    process.env.API_BASE_URL ??
+    process.env.INTEGRATION_BACKEND_URL ??
+    "http://127.0.0.1:9000"
+  ).replace(/\/$/, "");
 const productPrefix = () =>
   (process.env.NEXT_PUBLIC_RAG_API_PREFIX ?? "/api/v5").replace(/\/$/, "");
 
@@ -27,7 +32,7 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
   await page.getByLabel(/email|correo/i).fill(seedEmail());
   await page.getByLabel(/^password$/i).fill(seedPassword());
   await page.getByRole("button", { name: /continue|iniciar|sign in/i }).click();
-  await expect(page).toHaveURL(/\/en\/projects/);
+  await expect(page).toHaveURL(/\/en\/projects/, { timeout: 30_000 });
   await expect(
     page.getByRole("heading", { name: /^projects$/i }),
   ).toBeVisible({ timeout: 30_000 });
@@ -38,7 +43,7 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
  * Waits until the new card shows the Active / Activo state (no extra click).
  */
 export async function createAndActivateProject(page: Page, projectName: string): Promise<void> {
-  await page.getByRole("button", { name: /new project|nuevo proyecto/i }).click();
+  await page.getByRole("button", { name: /new project|nuevo proyecto/i }).first().click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.locator("#proj-name").fill(projectName);
   await page.getByRole("button", { name: /^(create|crear)$/i }).click();
@@ -56,5 +61,5 @@ export async function loginAsE2eAdmin(page: Page): Promise<void> {
   await page.getByLabel(/email|correo/i).fill(adminEmail());
   await page.getByLabel(/^password$/i).fill(adminPassword());
   await page.getByRole("button", { name: /continue|iniciar|sign in/i }).click();
-  await expect(page).toHaveURL(/\/en\/projects/);
+  await expect(page).toHaveURL(/\/en\/projects/, { timeout: 30_000 });
 }

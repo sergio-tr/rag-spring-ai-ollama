@@ -3,12 +3,12 @@ import { loginSchema, registerSchema } from "./auth-schemas";
 
 describe("loginSchema", () => {
   it("accepts valid credentials", () => {
-    const r = loginSchema.safeParse({ email: "a@b.co", password: "12345678" });
+    const r = loginSchema.safeParse({ email: "a@b.co", password: "dev" });
     expect(r.success).toBe(true);
   });
 
-  it("rejects short password", () => {
-    const r = loginSchema.safeParse({ email: "a@b.co", password: "short" });
+  it("rejects empty password", () => {
+    const r = loginSchema.safeParse({ email: "a@b.co", password: "" });
     expect(r.success).toBe(false);
   });
 });

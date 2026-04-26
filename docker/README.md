@@ -219,7 +219,7 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
    - See [`../docker/scripts/README.md`](../docker/scripts/README.md) (section **Smoke test**) and [`../scripts/README.md`](../scripts/README.md) (layout index), then run the main checks:
      - `curl -s http://<host>:9000/actuator/health`
      - `curl -s http://<host>:8000/health` (if the classifier port is reachable)
-     - `curl -s "http://<host>:<port><legacy-prefix>/query?question=..."` (legacy RAG query path; `<legacy-prefix>` = backend `RAG_API_LEGACY_BASE_PATH`)
+     - Authenticated product smoke (get JWT, then call stable product endpoints like `GET {product}/config/schema` or `GET {product}/presets`)
 
 > Note: if the backend is not exposed directly (only via reverse proxy), use the reverse-proxy published port (`REVERSE_PROXY_HTTP_PORT` defaults to **80** in `compose.prod.yml`; HTTPS uses `REVERSE_PROXY_HTTPS_PORT`, default **8443** until TLS on **443** is wired).
 

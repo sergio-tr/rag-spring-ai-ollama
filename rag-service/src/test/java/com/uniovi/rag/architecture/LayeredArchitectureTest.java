@@ -18,7 +18,7 @@ class LayeredArchitectureTest {
 	static final ArchRule restControllersLiveInHttpAdapterPackages = classes()
 			.that().areAnnotatedWith(RestController.class)
 			.should().resideInAnyPackage("..interfaces.rest..")
-			.because("REST adapters belong under interfaces.rest (product, auth, admin, legacy, support)");
+			.because("REST adapters belong under interfaces.rest (product, auth, admin, support)");
 
 	@ArchTest
 	static final ArchRule productRestControllersDoNotUseRepositories =
@@ -26,13 +26,12 @@ class LayeredArchitectureTest {
 					.that().resideInAnyPackage("com.uniovi.rag.interfaces.rest")
 					.and().areAnnotatedWith(RestController.class)
 					.and().resideOutsideOfPackages(
-							"com.uniovi.rag.interfaces.rest.legacy..",
 							"com.uniovi.rag.interfaces.rest.support..")
 					.should()
 					.dependOnClassesThat()
 					.haveNameMatching(".*Repository")
 					.because(
-							"Product REST adapters use application services for persistence; legacy/support excluded until migrated");
+							"Product REST adapters use application services for persistence; support excluded until migrated");
 
 	@ArchTest
 	static final ArchRule productRestControllersDoNotDependOnPersistenceLayer =
@@ -40,13 +39,12 @@ class LayeredArchitectureTest {
 					.that().resideInAnyPackage("com.uniovi.rag.interfaces.rest")
 					.and().areAnnotatedWith(RestController.class)
 					.and().resideOutsideOfPackages(
-							"com.uniovi.rag.interfaces.rest.legacy..",
 							"com.uniovi.rag.interfaces.rest.support..")
 					.should()
 					.dependOnClassesThat()
 					.resideInAnyPackage("com.uniovi.rag.infrastructure.persistence..")
 					.because(
-							"REST adapters must not depend on JPA entities or persistence packages; use application services (legacy excluded per Phase B0)");
+							"REST adapters must not depend on JPA entities or persistence packages; use application services (support excluded until migrated)");
 
 	@ArchTest
 	static final ArchRule topLevelDomainPackageIsFrameworkFree = classes()

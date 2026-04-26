@@ -72,13 +72,7 @@ public class OllamaProvisioningGateFilter extends OncePerRequestFilter {
     }
 
     private boolean requiresOllama(String path, String method) {
-        String legacy = apiPathProperties.getLegacyBasePath();
         String product = apiPathProperties.getProductBasePath();
-
-        // Legacy query/evaluation call the LLM.
-        if (path.startsWith(legacy + "/query") || path.startsWith(legacy + "/evaluate")) {
-            return true;
-        }
 
         // Chat message execution / retry hits the LLM. Reading messages is fine.
         if (path.startsWith(product + "/conversations/") && path.contains("/messages")) {

@@ -219,7 +219,7 @@ _Update SHA when merging if different._
   - **D — single source of truth**: `rag-service/src/test/resources/application.properties` (`rag.api.product-base-path=/api/v5`).
 - **Fixes applied**:
   - **C — DisplayName**: removed literal `/api/v5` from `RuntimeTraceRegressionSuiteP60EndToEndContractTest` slice display name.
-  - **B — redundant property override**: removed `rag.api.product-base-path=/api/v5` from `OllamaModelControllerTest` (slice uses only legacy base `/api/v4`).
+  - **B — redundant property override**: removed `rag.api.product-base-path=/api/v5` from `OllamaModelControllerTest` (legacy controllers are being removed; prefer product-only tests).
 
 ### Skipped / conditional tests inventory (rag-service)
 

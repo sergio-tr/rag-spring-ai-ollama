@@ -21,7 +21,7 @@ test.describe("Lab classifier", () => {
     await expect
       .poll(
         async () => {
-          const alert = page.getByRole("alert");
+          const alert = page.locator('p[role="alert"]').first();
           const progress = page.locator("pre");
           const alertText = (await alert.textContent().catch(() => "")) ?? "";
           const progressText = (await progress.textContent().catch(() => "")) ?? "";
