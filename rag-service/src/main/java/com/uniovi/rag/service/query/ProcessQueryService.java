@@ -12,6 +12,8 @@ import com.uniovi.rag.infrastructure.observability.Loggable;
 import com.uniovi.rag.interfaces.rest.support.ConnectivityFailureDetector;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -24,12 +26,15 @@ import java.util.UUID;
 public class ProcessQueryService implements QueryService, Loggable {
 
     private static final String LOG_STACK_TRACE = "Stack trace:";
+    private static final String LOG_EMPTY_QUERY_RECEIVED = "Empty query received";
+    private static final String ERR_EMPTY_QUERY = "empty query";
 
     private final ExecutionContextFactory executionContextFactory;
     private final RagExecutionOrchestrator ragExecutionOrchestrator;
     private final RuntimeTracePersistenceService runtimeTracePersistenceService;
     private final ChatClient chatClient;
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
+    private final ObjectProvider<ProcessQueryService> selfProvider;
 
     public ProcessQueryService(
             ExecutionContextFactory executionContextFactory,
@@ -37,16 +42,57 @@ public class ProcessQueryService implements QueryService, Loggable {
             RuntimeTracePersistenceService runtimeTracePersistenceService,
             ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker) {
+        this(
+                executionContextFactory,
+                ragExecutionOrchestrator,
+                runtimeTracePersistenceService,
+                chatClient,
+                ollamaConnectivityChecker,
+                null);
+    }
+
+    @Autowired
+    public ProcessQueryService(
+            ExecutionContextFactory executionContextFactory,
+            RagExecutionOrchestrator ragExecutionOrchestrator,
+            RuntimeTracePersistenceService runtimeTracePersistenceService,
+            ChatClient chatClient,
+            OllamaConnectivityChecker ollamaConnectivityChecker,
+            ObjectProvider<ProcessQueryService> selfProvider) {
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
         this.runtimeTracePersistenceService = runtimeTracePersistenceService;
         this.chatClient = chatClient;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
+        this.selfProvider =
+                selfProvider != null
+                        ? selfProvider
+                        : new ObjectProvider<>() {
+                            @Override
+                            public ProcessQueryService getObject() {
+                                return ProcessQueryService.this;
+                            }
+
+                            @Override
+                            public ProcessQueryService getObject(Object... args) {
+                                return ProcessQueryService.this;
+                            }
+
+                            @Override
+                            public ProcessQueryService getIfAvailable() {
+                                return ProcessQueryService.this;
+                            }
+                        };
     }
 
     @Override
     public QueryResponse generateResponse(String query, String chatModel) {
         try {
+            if (query == null || query.trim().isEmpty()) {
+                log().warn(LOG_EMPTY_QUERY_RECEIVED);
+                String errorResponse = generateErrorResponse("", new IllegalArgumentException(ERR_EMPTY_QUERY));
+                return QueryResponse.fromLLM(errorResponse);
+            }
             ollamaConnectivityChecker.prepareForQuery(chatModel);
             return executeOrchestrated(executionContextFactory.buildForLegacyHttp(query, chatModel));
         } catch (RagServiceException | ResponseStatusException e) {
@@ -64,7 +110,8 @@ public class ProcessQueryService implements QueryService, Loggable {
             UUID projectId,
             UUID conversationId,
             List<String> documentFilter) {
-        return generateResponseForChat(
+        ProcessQueryService self = selfProvider.getIfAvailable();
+        return self.generateResponseForChat(
                 query, chatModel, userId, projectId, conversationId, documentFilter, null);
     }
 
@@ -81,6 +128,11 @@ public class ProcessQueryService implements QueryService, Loggable {
             List<String> documentFilter,
             UUID userMessageId) {
         try {
+            if (query == null || query.trim().isEmpty()) {
+                log().warn(LOG_EMPTY_QUERY_RECEIVED);
+                String errorResponse = generateErrorResponse("", new IllegalArgumentException(ERR_EMPTY_QUERY));
+                return QueryResponse.fromLLM(errorResponse);
+            }
             ollamaConnectivityChecker.prepareForQuery(chatModel);
             ExecutionContext ctx =
                     executionContextFactory.buildForChatMessage(
@@ -100,10 +152,17 @@ public class ProcessQueryService implements QueryService, Loggable {
     }
 
     private QueryResponse executeOrchestrated(ExecutionContext ctx) {
+        if (ctx == null) {
+            log().warn("ExecutionContext is null");
+            String errorResponse = generateErrorResponse("", new IllegalArgumentException("missing execution context"));
+            return QueryResponse.fromLLM(errorResponse);
+        }
         if (ctx.userQuery() == null || ctx.userQuery().trim().isEmpty()) {
-            log().warn("Empty query received");
+            log().warn(LOG_EMPTY_QUERY_RECEIVED);
             String errorResponse =
-                    generateErrorResponse(ctx.userQuery() != null ? ctx.userQuery() : "", new IllegalArgumentException("empty query"));
+                    generateErrorResponse(
+                            ctx.userQuery() != null ? ctx.userQuery() : "",
+                            new IllegalArgumentException(ERR_EMPTY_QUERY));
             return QueryResponse.fromLLM(errorResponse);
         }
         RagExecutionResult result = ragExecutionOrchestrator.execute(ctx);

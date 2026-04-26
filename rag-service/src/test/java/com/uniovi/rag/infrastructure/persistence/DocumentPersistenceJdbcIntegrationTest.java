@@ -1,13 +1,8 @@
 package com.uniovi.rag.infrastructure.persistence;
 
-import com.uniovi.rag.application.evaluation.EvaluationCustomConfigMapper;
-import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.infrastructure.persistence.impl.MinuteDocumentRepositoryImpl;
-import com.uniovi.rag.interfaces.rest.legacy.RagController;
 import com.uniovi.rag.service.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.service.document.SimpleDocumentService;
-import com.uniovi.rag.service.evaluation.EvaluationService;
-import com.uniovi.rag.service.query.QueryService;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -134,33 +129,6 @@ class DocumentPersistenceJdbcIntegrationTest {
 
         int deleted = repository.deleteById(docId);
         assertEquals(2, deleted);
-
-        int remainingVectorStore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM vector_store", Integer.class);
-        int remainingDocs = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documents", Integer.class);
-        assertEquals(0, remainingVectorStore);
-        assertEquals(0, remainingDocs);
-    }
-
-    @Test
-    void ragController_deleteDocumentById_noContent_andActuallyDeletesFromDb() {
-        String docId = "doc-5";
-        insertDocument(docId);
-        insertVectorStoreChunk(Map.of("document_id", docId), 0);
-
-        QueryService queryService = mock(QueryService.class);
-        EvaluationService evaluationService = mock(EvaluationService.class);
-
-        RagController controller = new RagController(
-                documentService,
-                queryService,
-                evaluationService,
-                repository,
-                new EvaluationCustomConfigMapper(new RagImplementationProperties()),
-                null
-        );
-
-        var response = controller.deleteDocumentById(docId);
-        assertEquals(204, response.getStatusCode().value());
 
         int remainingVectorStore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM vector_store", Integer.class);
         int remainingDocs = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documents", Integer.class);

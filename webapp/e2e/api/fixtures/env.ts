@@ -15,23 +15,10 @@ export function productBasePath(): string {
   return p || "/api/v5";
 }
 
-export function legacyBasePath(): string {
-  const raw =
-    process.env.RAG_API_LEGACY_BASE_PATH ?? process.env.INTEGRATION_RAG_LEGACY_BASE_PATH ?? "/api/v4";
-  const p = raw.replace(/\/$/, "");
-  return p || "/api/v4";
-}
-
 /** Full URL for product API path (e.g. `/projects` → `http://host:9000/api/v5/projects`). */
 export function productUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${apiBaseUrl()}${productBasePath()}${p}`;
-}
-
-/** Full URL for legacy API path. */
-export function legacyUrl(path: string): string {
-  const p = path.startsWith("/") ? path : `/${path}`;
-  return `${apiBaseUrl()}${legacyBasePath()}${p}`;
 }
 
 export function integrationCredentials(): { email: string; password: string } {

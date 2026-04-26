@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 
 /**
  * JWT stateless security for the product API prefix ({@link RagApiPathProperties#getProductBasePath()});
- * legacy prefix stays public for tooling/tests when those controllers are active ({@code rag.api.legacy-controllers-enabled=true}).
+ * actuator and auth endpoints are public.
  */
 @Configuration
 public class SecurityConfiguration {
@@ -35,7 +35,6 @@ public class SecurityConfiguration {
             CorsConfigurationSource corsConfigurationSource,
             RagApiPathProperties ragApiPathProperties)
             throws Exception {
-        String legacyPrefix = ragApiPathProperties.getLegacyBasePath() + "/**";
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(c -> c.configurationSource(corsConfigurationSource))
@@ -45,7 +44,6 @@ public class SecurityConfiguration {
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus")
                         .permitAll()
-                        .requestMatchers(legacyPrefix).permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())

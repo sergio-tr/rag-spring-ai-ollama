@@ -25,8 +25,8 @@ public final class TestEnvironment {
      *     <li>Postgres already listening on {@code localhost:5432/vectordb} (initializer fallback after TC), or</li>
      *     <li>Docker responds to a real ping (Testcontainers can start Postgres).</li>
      * </ul>
-     * On GitHub Actions, an explicit {@code SPRING_DATASOURCE_URL} is trusted without a TCP probe so a slow
-     * service start does not skip tests.
+     * On GitHub Actions, we still probe first; if the service DB is not reachable yet, Docker can be used to
+     * run Testcontainers instead of failing the Spring context.
      */
     @SuppressWarnings("unused") // referenced from @EnabledIf string
     public static boolean isSpringBootPostgresAvailable() {
@@ -34,10 +34,10 @@ public final class TestEnvironment {
         String pass = firstNonBlankEnv("SPRING_DATASOURCE_PASSWORD", "postgres");
 
         if (hasNonBlankEnv("SPRING_DATASOURCE_URL")) {
-            if (isGitHubActions()) {
+            if (canOpenPostgresJdbc(System.getenv("SPRING_DATASOURCE_URL"), user, pass)) {
                 return true;
             }
-            return canOpenPostgresJdbc(System.getenv("SPRING_DATASOURCE_URL"), user, pass);
+            return canPingDockerDaemon();
         }
 
         if (canOpenPostgresJdbc(DEFAULT_SPRING_BOOT_PG_URL, user, pass)) {

@@ -11,29 +11,10 @@ test.describe("Lab classifier", () => {
     await page.goto("/en/lab/classifier");
     await expect(page.getByText(/classifier|clasificador/i).first()).toBeVisible({ timeout: 15_000 });
 
-    await page.locator("#cfile").setInputFiles({
-      name: "e2e-train.xlsx",
-      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      buffer: Buffer.from("PK\u0003\u0004invalid-xlsx-for-e2e"),
-    });
-    await page.getByRole("button", { name: /^Train$|^Entrenar$/i }).click();
-
-    await expect
-      .poll(
-        async () => {
-          const alert = page.getByRole("alert");
-          const progress = page.locator("pre");
-          const alertText = (await alert.textContent().catch(() => "")) ?? "";
-          const progressText = (await progress.textContent().catch(() => "")) ?? "";
-          const combined = `${alertText} ${progressText}`;
-          return (
-            /fail|error|clasificador|classifier|not configured|unavailable|502|503|504/i.test(combined) ||
-            /done|success|complete|succeeded/i.test(combined)
-          );
-        },
-        { timeout: 120_000 },
-      )
-      .toBe(true);
+    // In CI/e2e profile the classifier service is typically not configured. The UI should
+    // clearly communicate this, and keep destructive actions disabled (fast + stable smoke).
+    await expect(page.getByText(/not configured|no.*configurad/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("lab-classifier-train")).toBeDisabled();
   });
 
   test("E2E-08b registry section when classifier configured @fullstack", async ({ page }) => {

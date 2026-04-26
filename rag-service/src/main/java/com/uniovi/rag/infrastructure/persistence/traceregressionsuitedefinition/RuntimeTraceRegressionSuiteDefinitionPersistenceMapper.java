@@ -56,7 +56,7 @@ public class RuntimeTraceRegressionSuiteDefinitionPersistenceMapper {
                 def.getId(),
                 def.getName(),
                 def.getDescription(),
-                (int) def.getSchemaVersion(),
+                def.getSchemaVersion(),
                 def.getCreatedAt(),
                 def.getUpdatedAt(),
                 snapshots);
@@ -132,13 +132,16 @@ public class RuntimeTraceRegressionSuiteDefinitionPersistenceMapper {
         for (int i = 0; i < specs.size(); i++) {
             RuntimeTraceRegressionSuiteDefinitionEntrySpec spec = specs.get(i);
             RuntimeTraceRegressionSuiteDefinitionEntryEntity entryRow = newEntryEntity(definition, (short) i, spec);
-            entryRepository.save(entryRow);
+            // Keep INSERT ordering stable: entry must exist before inserting traces referencing it.
+            entryRow = entryRepository.saveAndFlush(entryRow);
             if (spec instanceof RuntimeTraceRegressionSuiteDefinitionEntrySpec.ByTraceIds by) {
                 short tp = 0;
                 for (UUID traceId : by.traceIds()) {
                     RuntimeTraceRegressionSuiteDefinitionEntryTraceEntity traceRow = newTraceEntity(entryRow, tp++, traceId);
                     traceRepository.save(traceRow);
                 }
+                // Ensure traces are persisted while entryRow is managed in this persistence context.
+                traceRepository.flush();
             }
         }
     }
@@ -169,7 +172,7 @@ public class RuntimeTraceRegressionSuiteDefinitionPersistenceMapper {
     }
 
     private static String workflowForDatabase(Optional<String> workflowName) {
-        if (workflowName == null || workflowName.isEmpty()) {
+        if (workflowName.isEmpty()) {
             return null;
         }
         String trimmed = workflowName.get().trim();

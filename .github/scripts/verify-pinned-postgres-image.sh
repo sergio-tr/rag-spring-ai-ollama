@@ -37,10 +37,32 @@ while IFS= read -r line; do
   fi
 done < <(git grep -n 'pgvector/pgvector:' -- . "${PATHSPECS[@]}" 2>/dev/null || true)
 
-# Reusable workflow must define the same pin under env.POSTGRES_SERVICE_IMAGE for job services.
+# Reusable workflow must define the same pin under env.POSTGRES_SERVICE_IMAGE for job services
+# (used in build args / runtime env). Service container images must use vars.POSTGRES_SERVICE_IMAGE.
 if ! grep -q "POSTGRES_SERVICE_IMAGE: ${PINNED}" "$ROOT/.github/workflows/reusable-ci-core.yml"; then
   echo "::error::reusable-ci-core.yml must set env POSTGRES_SERVICE_IMAGE to match .github/ci/postgres-service-image.env (${PINNED})."
   exit 1
 fi
+
+# Forbidden: using env context in service image fields (GitHub may reject env in this position).
+if git grep -nE '^\s*image:\s*\$\{\{\s*env\.POSTGRES_SERVICE_IMAGE\s*\}\}' -- .github/workflows 2>/dev/null | grep -q .; then
+  echo "::error::Forbidden: env.POSTGRES_SERVICE_IMAGE used in services.*.image. Use vars.POSTGRES_SERVICE_IMAGE instead."
+  git grep -nE '^\s*image:\s*\$\{\{\s*env\.POSTGRES_SERVICE_IMAGE\s*\}\}' -- .github/workflows || true
+  exit 1
+fi
+
+# Required: use vars.POSTGRES_SERVICE_IMAGE for service image fields to avoid invalid workflows.
+required_files=(
+  ".github/workflows/reusable-ci-core.yml"
+  ".github/workflows/integration.yml"
+  ".github/workflows/sonar.yml"
+  ".github/workflows/e2e-fullstack.yml"
+)
+for f in "${required_files[@]}"; do
+  if [[ -f "$ROOT/$f" ]] && ! grep -q '\${{[[:space:]]*vars\.POSTGRES_SERVICE_IMAGE[[:space:]]*}}' "$ROOT/$f"; then
+    echo "::error::Expected vars.POSTGRES_SERVICE_IMAGE reference missing in $f"
+    exit 1
+  fi
+done
 
 echo "Postgres image references OK (canonical ${PINNED})."

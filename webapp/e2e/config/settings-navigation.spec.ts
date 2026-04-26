@@ -9,12 +9,16 @@ test.describe("Settings", () => {
     await loginAsSeedUser(page);
     await page.getByRole("link", { name: /settings|ajustes/i }).click();
     await expect(page).toHaveURL(/\/en\/settings/);
-    await expect(page.getByText(/Appearance|Apariencia/i)).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByRole("main").getByText(/Appearance|Apariencia/i).first(),
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("E2E-12 settings user config page loads @fullstack", async ({ page }) => {
     await loginAsSeedUser(page);
     await page.goto("/en/settings/user");
-    await expect(page.getByText(/User defaults|Valores por defecto/i)).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByRole("main").getByText(/User defaults|Valores por defecto/i).first(),
+    ).toBeVisible({ timeout: 15_000 });
   });
 });

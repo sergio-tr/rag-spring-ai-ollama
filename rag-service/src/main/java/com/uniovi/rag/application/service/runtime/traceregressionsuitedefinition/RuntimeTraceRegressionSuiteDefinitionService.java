@@ -16,6 +16,7 @@ import com.uniovi.rag.infrastructure.persistence.traceregressionsuitedefinition.
 import com.uniovi.rag.infrastructure.persistence.traceregressionsuitedefinition.SuiteDefinitionEntryKindColumn;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Constructor;
@@ -58,7 +59,7 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         this.mapper = mapper;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public UUID create(UUID userId, CreateDefinitionCommand command) {
         RuntimeTraceRegressionSuiteDefinitionValidation.validateUserId(userId);
         RuntimeTraceRegressionSuiteDefinitionValidation.validateEntryList(command.entries());
@@ -70,7 +71,8 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         RuntimeTraceRegressionSuiteDefinitionEntity def =
                 mapper.newDefinitionForInsert(definitionId, userId, name, description.orElse(null), now);
         try {
-            definitionRepository.save(def);
+            // Entity has an assigned UUID, so Spring Data JPA may use merge(); keep the managed instance.
+            def = definitionRepository.saveAndFlush(def);
         } catch (DataIntegrityViolationException ex) {
             throw duplicateName(ex);
         }
@@ -78,7 +80,7 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         return definitionId;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void update(UUID definitionId, UUID userId, UpdateDefinitionCommand command) {
         RuntimeTraceRegressionSuiteDefinitionValidation.validateUserId(userId);
         RuntimeTraceRegressionSuiteDefinitionValidation.validateEntryList(command.entries());
@@ -94,19 +96,22 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         Instant now = Instant.now();
         mapper.applyDefinitionUpdate(def, name, description.orElse(null), now);
         try {
-            definitionRepository.save(def);
+            // Entity has an assigned UUID; keep the managed instance (avoid merge returning a different instance).
+            def = definitionRepository.saveAndFlush(def);
         } catch (DataIntegrityViolationException ex) {
             throw duplicateName(ex);
         }
         mapper.insertEntriesFromCommand(def, command, entryRepository, traceRepository);
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void delete(UUID definitionId, UUID userId) {
         RuntimeTraceRegressionSuiteDefinitionValidation.validateUserId(userId);
         RuntimeTraceRegressionSuiteDefinitionEntity def =
                 definitionRepository.findByIdAndUserId(definitionId, userId).orElseThrow(RuntimeTraceRegressionSuiteDefinitionService::notFound);
         definitionRepository.delete(def);
+        // Ensure DELETE executes before callers query via JdbcTemplate in the same transaction.
+        definitionRepository.flush();
     }
 
     @Transactional(readOnly = true)

@@ -19,6 +19,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetProfileRefEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.UserEntityFactory;
 import com.uniovi.rag.infrastructure.persistence.mapper.ResolvedConfigSnapshotEntityMapper;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
 import com.uniovi.rag.testsupport.TestEnvironment;
@@ -87,15 +88,9 @@ class RuntimeConfigPersistenceIntegrationIT {
     void loadPresetProfileCompositionSources_returnsRawMapsWithoutMerge() {
         Instant now = Instant.now();
         UserEntity user =
-                new UserEntity() {
-                    {
-                        setEmail("it-preset-" + UUID.randomUUID() + "@test.local");
-                        setPasswordHash("x");
-                        setRole(UserRole.USER);
-                        setCreatedAt(now);
-                    }
-                };
-        user = userRepository.save(user);
+                userRepository.save(
+                        UserEntityFactory.newUser(
+                                "it-preset-" + UUID.randomUUID() + "@test.local", "IT Preset", "x", UserRole.USER, now));
 
         ConfigProfileEntity p1 =
                 ConfigProfileEntity.newDraft(

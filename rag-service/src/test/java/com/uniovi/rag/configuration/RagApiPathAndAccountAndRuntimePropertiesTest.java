@@ -19,8 +19,6 @@ class RagApiPathAndAccountAndRuntimePropertiesTest {
         assertEquals("/v5/x", p.getProductBasePath());
         p.setProductBasePath("/api/v5/");
         assertEquals("/api/v5", p.getProductBasePath());
-        p.setLegacyBasePath("v4/");
-        assertEquals("/v4", p.getLegacyBasePath());
     }
 
     @Test

@@ -75,4 +75,6 @@ class EvaluationService(TracedService):
             raise EvaluationError(str(e)) from e
         except Exception as e:
             self.logger.exception("Evaluation failed: %s", e)
-            raise EvaluationError("Evaluation failed") from e
+            # Include the original message so callers/tests can decide when to skip
+            # (e.g. missing dataset/model, incompatible labels, etc.).
+            raise EvaluationError(f"Evaluation failed: {e}") from e

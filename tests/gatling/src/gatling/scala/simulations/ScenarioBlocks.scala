@@ -5,7 +5,7 @@ import io.gatling.core.structure.ChainBuilder
 import io.gatling.http.Predef._
 
 /**
- * Reusable HTTP fragments for realistic mix scenarios (legacy RAG query, auth, admin/product).
+ * Reusable HTTP fragments for realistic mix scenarios (auth + admin/product).
  * Feeders must be applied in the [[io.gatling.core.structure.ScenarioBuilder]] before these chains
  * when the chain uses session attributes (e.g. {@code ${email}}, {@code ${question}}).
  */
@@ -17,15 +17,6 @@ object ScenarioBlocks {
     .shareConnections
     .acceptHeader("application/json")
     .userAgentHeader("gatling-rag-mixed/1.0")
-
-  /** GET legacy RAG query — requires {@code question} in session (from questions feeder). */
-  def legacyRagQuery: ChainBuilder =
-    exec(
-      http("mix GET legacy query")
-        .get(s"${RagPaths.legacyPrefix}/query")
-        .queryParam("question", "${question}")
-        .check(status.in(200, 503, 504, 502))
-    )
 
   /** POST /api/auth/login — requires {@code email} and {@code password} (users feeder). */
   def authLogin: ChainBuilder =

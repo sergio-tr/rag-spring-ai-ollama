@@ -23,7 +23,8 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        # Do NOT use `env.*` in `services.<id>.image` (context may be unsupported).
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -44,10 +45,10 @@ jobs:
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: "temurin"
@@ -81,9 +82,10 @@ jobs:
         uses: ./.github/actions/cache-npm-webapp
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
 
       - name: Install, build Next.js, run @fullstack Playwright
         working-directory: webapp
@@ -105,7 +107,7 @@ jobs:
 
       - name: Upload Spring log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: spring-e2e-log
           path: /tmp/spring-e2e.log
@@ -113,7 +115,7 @@ jobs:
 
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-fullstack-report
           path: webapp/playwright-report/

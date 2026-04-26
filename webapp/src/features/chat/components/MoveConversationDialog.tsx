@@ -33,7 +33,7 @@ export function MoveConversationDialog({
 
   const { data: projectData } = useProjectList(0, 64);
   const destinations = useMemo(
-    () => projectData?.items.filter((p) => p.id !== sourceProjectId) ?? [],
+    () => projectData?.items?.filter((p) => p.id !== sourceProjectId) ?? [],
     [projectData?.items, sourceProjectId],
   );
 

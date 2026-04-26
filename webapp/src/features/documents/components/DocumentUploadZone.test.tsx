@@ -3,11 +3,13 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { DocumentUploadZone } from "./DocumentUploadZone";
+import { ApiError } from "@/lib/api-client";
 
 const uploadHook = vi.hoisted(() => ({
   mutateAsync: vi.fn().mockResolvedValue(undefined),
   isError: false,
   isPending: false,
+  error: null as unknown,
 }));
 
 vi.mock("@/features/documents/hooks/use-project-documents", () => ({
@@ -15,7 +17,7 @@ vi.mock("@/features/documents/hooks/use-project-documents", () => ({
     mutateAsync: uploadHook.mutateAsync,
     isError: uploadHook.isError,
     isPending: uploadHook.isPending,
-    error: null,
+    error: uploadHook.error,
   }),
 }));
 
@@ -24,6 +26,7 @@ describe("DocumentUploadZone", () => {
     uploadHook.mutateAsync.mockClear();
     uploadHook.isError = false;
     uploadHook.isPending = false;
+    uploadHook.error = null;
   });
 
   it("uploads a file via browse control", async () => {
@@ -60,6 +63,66 @@ describe("DocumentUploadZone", () => {
       </IntlTestProvider>,
     );
     expect(screen.getByRole("alert")).toHaveTextContent(/Upload failed/i);
+  });
+
+  it("renders friendly error messages for common ApiError status codes", () => {
+    uploadHook.isError = true;
+    uploadHook.error = new ApiError(503, "x");
+    const { rerender } = render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert").textContent?.toLowerCase()).toContain("ollama");
+
+    uploadHook.error = new ApiError(409, "x");
+    rerender(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert").textContent?.toLowerCase()).toContain("same filename");
+
+    uploadHook.error = new ApiError(401, "x");
+    rerender(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert").textContent?.toLowerCase()).toContain("not authorized");
+  });
+
+  it("extracts error detail from JSON in ApiError message", () => {
+    uploadHook.isError = true;
+    uploadHook.error = new ApiError(500, JSON.stringify({ error: { message: "boom" } }));
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("boom");
+  });
+
+  it("falls back to raw ApiError message when JSON parsing fails", () => {
+    uploadHook.isError = true;
+    uploadHook.error = new ApiError(500, "{not json");
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("{not json");
+  });
+
+  it("renders non-ApiError errors via their message", () => {
+    uploadHook.isError = true;
+    uploadHook.error = new Error("nope");
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("nope");
   });
 
   it("uploads files dropped on the zone", () => {

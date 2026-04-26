@@ -250,7 +250,7 @@ async def evaluate_endpoint(
             span.record_exception(e)
         raise HTTPException(
             status_code=400,
-            detail=ErrorDetail(code=e.code, message=e.message).to_response_dict(),
+            detail=ErrorDetail(code=e.code, message=f"Evaluation error: {e.message}").to_response_dict(),
         ) from e
     finally:
         if span:
@@ -280,7 +280,7 @@ def evaluate_report_image(model_id: str, container: ServiceContainer = Depends(g
     except EvaluationError as e:
         raise HTTPException(
             status_code=400,
-            detail=ErrorDetail(code=e.code, message=e.message).to_response_dict(),
+            detail=ErrorDetail(code=e.code, message=f"Evaluation error: {e.message}").to_response_dict(),
         ) from e
 
 
@@ -305,5 +305,5 @@ def evaluate_confusion_image(model_id: str, container: ServiceContainer = Depend
     except EvaluationError as e:
         raise HTTPException(
             status_code=400,
-            detail=ErrorDetail(code=e.code, message=e.message).to_response_dict(),
+            detail=ErrorDetail(code=e.code, message=f"Evaluation error: {e.message}").to_response_dict(),
         ) from e

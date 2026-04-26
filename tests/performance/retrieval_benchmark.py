@@ -2,7 +2,6 @@
 """
 RAG micro-benchmark (retrieval / LLM families): low concurrency, latency + estimated tokens.
 
-- legacy: GET {legacy}/query?question=...&chatModel=...
 - product_chat: optional PUT project RAG config, then POST chat message + poll lab job (requires BENCHMARK_* env).
 
 Does not replace Gatling load tests. See docs/performance/README.md and API_RESPONSE_AUDIT.md.
@@ -284,7 +283,6 @@ def _load_questions(path: str) -> list[str]:
 
 
 def main(default_family: str | None = None) -> int:
-    default_path = os.environ.get("RAG_LEGACY_QUERY_PATH", "/api/v4/query")
     default_product = os.environ.get("RAG_PRODUCT_BASE_PATH", "/api/v5")
     fam_default = default_family or "retrieval"
     p = argparse.ArgumentParser(description="RAG micro-benchmark (schema v1)")
@@ -296,7 +294,7 @@ def main(default_family: str | None = None) -> int:
         help="retrieval: emphasize path latency; llm: same HTTP path, emphasize token estimates in report.",
     )
     p.add_argument("--scenario", default="baseline", help="Name of scenarios/*.yaml (without dir) or path to YAML")
-    p.add_argument("--query-path", default=default_path, help="Legacy query path (transport legacy)")
+    p.add_argument("--query-path", default="", help="Unused (legacy transport removed by migration plan).")
     p.add_argument("--product-base-path", default=default_product)
     p.add_argument("--questions-file", default=None)
     p.add_argument("--questions", default=None, help="JSON array of question strings")
@@ -310,7 +308,7 @@ def main(default_family: str | None = None) -> int:
     args = p.parse_args()
 
     scenario = _load_scenario(args.scenario)
-    transport = str(scenario.get("transport") or "legacy").strip().lower()
+    transport = str(scenario.get("transport") or "product_chat").strip().lower()
     if transport not in ("legacy", "product_chat"):
         print("Invalid scenario transport", transport, file=sys.stderr)
         return 2

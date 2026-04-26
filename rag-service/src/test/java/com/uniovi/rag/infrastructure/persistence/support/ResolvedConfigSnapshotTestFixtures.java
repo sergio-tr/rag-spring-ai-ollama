@@ -89,7 +89,6 @@ public final class ResolvedConfigSnapshotTestFixtures {
                         Optional.empty(),
                         Optional.ofNullable(projectId),
                         null);
-        e.setId(snapshotId);
         return e;
     }
 }

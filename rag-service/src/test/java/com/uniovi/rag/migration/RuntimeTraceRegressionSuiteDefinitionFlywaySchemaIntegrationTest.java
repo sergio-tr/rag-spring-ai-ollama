@@ -5,12 +5,13 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import javax.sql.DataSource;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -37,7 +38,29 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
         postgres.start();
         dataSource =
                 new DriverManagerDataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
-        Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
+        // Ensure schema resolution is stable across environments (search_path / Flyway defaults can differ).
+        Flyway.configure()
+                .dataSource(dataSource)
+                .schemas("public")
+                .defaultSchema("public")
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        // Defensive diagnostics for CI: if schema resolution differs, fail early with actionable context.
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        String currentSchema = jdbc.queryForObject("SELECT current_schema()", String.class);
+        String searchPath = jdbc.queryForObject("SHOW search_path", String.class);
+        Integer defTableCount = jdbc.queryForObject(
+                "SELECT COUNT(*)::int FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'runtime_trace_regression_suite_definition'",
+                Integer.class);
+        if (defTableCount == null || defTableCount != 1) {
+            throw new IllegalStateException(
+                    "Flyway migrations completed but expected table was not found. "
+                            + "current_schema=" + currentSchema
+                            + ", search_path=" + searchPath
+                            + ", public.runtime_trace_regression_suite_definition count=" + defTableCount);
+        }
     }
 
     @AfterAll
@@ -110,6 +133,8 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
     }
 
     private static void insertDefinition(JdbcTemplate jdbc, UUID id, UUID userId, String name, Instant now) {
+        // PgJDBC does not reliably infer java.time.Instant for TIMESTAMPTZ parameters in PreparedStatements.
+        Timestamp ts = Timestamp.from(now);
         jdbc.update(
                 "INSERT INTO runtime_trace_regression_suite_definition "
                         + "(id, user_id, name, description, schema_version, created_at, updated_at) "
@@ -117,7 +142,7 @@ class RuntimeTraceRegressionSuiteDefinitionFlywaySchemaIntegrationTest {
                 id,
                 userId,
                 name,
-                now,
-                now);
+                ts,
+                ts);
     }
 }

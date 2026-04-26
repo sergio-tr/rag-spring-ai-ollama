@@ -63,6 +63,11 @@ vi.mock("@/features/chat/hooks/use-conversations", () => ({
   }),
   useConversationMessages: () => ({ data: mockMessages, refetch: vi.fn() }),
   usePatchConversation: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useMoveConversation: () => ({
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+    isError: false,
+  }),
 }));
 
 vi.mock("@/features/documents/hooks/use-project-documents", () => ({

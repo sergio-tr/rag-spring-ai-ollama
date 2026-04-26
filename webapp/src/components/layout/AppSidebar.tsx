@@ -17,7 +17,7 @@ import {
 import { useTranslations } from "next-intl";
 import { usePathname, Link, useRouter } from "@/navigation";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useState } from "react";
@@ -42,28 +42,34 @@ function isHexColor(s: string | null | undefined): s is string {
   return Boolean(s && /^#([0-9A-Fa-f]{6})$/.test(s));
 }
 
-function getProjectIcon(iconKey: string | null | undefined) {
+type ProjectIconProps = Readonly<{
+  iconKey: string | null | undefined;
+  className?: string;
+  "aria-hidden"?: boolean;
+}>;
+
+function ProjectIcon({ iconKey, className, ...rest }: ProjectIconProps) {
   switch (iconKey) {
     case "folder":
-      return Folder;
+      return <Folder className={className} {...rest} />;
     case "briefcase":
-      return Briefcase;
+      return <Briefcase className={className} {...rest} />;
     case "star":
-      return Star;
+      return <Star className={className} {...rest} />;
     case "code":
-      return Code;
+      return <Code className={className} {...rest} />;
     case "rocket":
-      return Rocket;
+      return <Rocket className={className} {...rest} />;
     case "shield":
-      return Shield;
+      return <Shield className={className} {...rest} />;
     case "chat":
-      return MessageSquare;
+      return <MessageSquare className={className} {...rest} />;
     case "lab":
-      return FlaskConical;
+      return <FlaskConical className={className} {...rest} />;
     case "book":
-      return FileText;
+      return <FileText className={className} {...rest} />;
     default:
-      return FolderKanban;
+      return <FolderKanban className={className} {...rest} />;
   }
 }
 
@@ -183,11 +189,16 @@ export function AppSidebar() {
               if (!o) setSearchText("");
             }}
           >
-            <DialogTrigger asChild>
-              <Button type="button" size="sm" variant="outline">
-                <Search className="mr-2 size-4" aria-hidden />
-                Search chat
-              </Button>
+            <DialogTrigger
+              render={
+                <button
+                  type="button"
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                />
+              }
+            >
+              <Search className="mr-2 size-4" aria-hidden />
+              Search chat
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -218,12 +229,15 @@ export function AppSidebar() {
           <button
             type="button"
             className="hover:bg-sidebar-accent/80 flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm"
+            aria-label={tNav("projects")}
             aria-expanded={!projectsCollapsed}
             aria-controls="sidebar-projects-tree"
             onClick={toggleProjectsCollapsed}
           >
             <span className="font-medium">{tNav("projects")}</span>
-            <span className="text-muted-foreground text-xs">{projects.length}</span>
+            <span className="text-muted-foreground text-xs" aria-hidden="true">
+              {projects.length}
+            </span>
           </button>
 
           <div id="sidebar-projects-tree" hidden={projectsCollapsed}>
@@ -261,24 +275,24 @@ export function AppSidebar() {
           {primaryLinks
             .filter((l) => (l.key === "admin" ? canSeeAdmin : true))
             .map((item) => {
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors",
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "hover:bg-sidebar-accent/80",
-                )}
-              >
-                <Icon className="size-4 shrink-0" aria-hidden />
-                <span className="truncate">{tNav(item.key)}</span>
-              </Link>
-            );
-          })}
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors",
+                    active
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "hover:bg-sidebar-accent/80",
+                  )}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden />
+                  <span className="truncate">{tNav(item.key)}</span>
+                </Link>
+              );
+            })}
         </nav>
       </div>
 
@@ -300,7 +314,7 @@ export function AppSidebar() {
   );
 }
 
-type SidebarProjectNodeProps = {
+type SidebarProjectNodeProps = Readonly<{
   project: ProjectSummary;
   expanded: boolean;
   toggleExpanded: () => void;
@@ -308,7 +322,7 @@ type SidebarProjectNodeProps = {
   activateProject: (p: ProjectSummary) => Promise<void>;
   searchQuery: string;
   onSelectConversation: (conversationId: string) => void;
-};
+}>;
 
 function SidebarProjectNode({
   project,
@@ -319,7 +333,6 @@ function SidebarProjectNode({
   searchQuery,
   onSelectConversation,
 }: SidebarProjectNodeProps) {
-  const Icon = getProjectIcon(project.iconKey);
   // Avoid fan-out: only load conversations when expanded or active.
   // Cross-project search loads conversations progressively via the search UI.
   const shouldLoadConversations = expanded || activeProjectId === project.id;
@@ -345,7 +358,7 @@ function SidebarProjectNode({
             }}
             aria-hidden
           />
-          <Icon className="size-4 shrink-0" aria-hidden />
+          <ProjectIcon iconKey={project.iconKey} className="size-4 shrink-0" aria-hidden />
           <span className="truncate">{project.name}</span>
         </button>
         <button
@@ -387,14 +400,14 @@ function SidebarProjectNode({
   );
 }
 
-type SearchChatsBodyProps = {
+type SearchChatsBodyProps = Readonly<{
   projects: ProjectSummary[];
   activeProjectId: string | null;
   expandedProjectIds: string[];
   query: string;
   activateProject: (p: ProjectSummary) => Promise<void>;
   onPickConversation: (projectId: string, conversationId: string) => void;
-};
+}>;
 
 function SearchChatsBody({
   projects,
@@ -424,14 +437,13 @@ function SearchChatsBody({
   // This avoids loading every project conversation list at once.
   useEffect(() => {
     if (!q) {
-      setLoadedCount(Math.min(2, prioritizedProjectIds.length));
-      return;
+      const t = setTimeout(() => setLoadedCount(Math.min(2, prioritizedProjectIds.length)), 0);
+      return () => clearTimeout(t);
     }
     if (loadedCount < prioritizedProjectIds.length) {
       const t = setTimeout(() => setLoadedCount((c) => Math.min(c + 1, prioritizedProjectIds.length)), 150);
       return () => clearTimeout(t);
     }
-    return;
   }, [q, loadedCount, prioritizedProjectIds.length]);
 
   if (!q) {
@@ -468,13 +480,13 @@ function SearchChatsBody({
   );
 }
 
-type SearchProjectGroupProps = {
+type SearchProjectGroupProps = Readonly<{
   project: ProjectSummary;
   query: string;
   activeProjectId: string | null;
   activateProject: (p: ProjectSummary) => Promise<void>;
   onPickConversation: (projectId: string, conversationId: string) => void;
-};
+}>;
 
 function SearchProjectGroup({
   project,

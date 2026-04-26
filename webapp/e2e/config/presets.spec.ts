@@ -9,6 +9,6 @@ test.describe("Settings presets", () => {
     await loginAsSeedUser(page);
     await page.goto("/en/settings/presets");
     await expect(page.getByRole("heading", { name: /^settings|ajustes$/i })).toBeVisible();
-    await expect(page.getByText(/^presets$/i)).toBeVisible();
+    await expect(page.getByText(/^presets$/i).first()).toBeVisible({ timeout: 15_000 });
   });
 });

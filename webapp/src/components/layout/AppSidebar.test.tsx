@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
+import type { ProjectSummary } from "@/types/api";
 import { AppSidebar } from "./AppSidebar";
 
 vi.mock("@/lib/user-role", () => ({
@@ -21,28 +22,34 @@ vi.mock("@/navigation", () => ({
 }));
 
 vi.mock("@/features/projects/hooks/use-projects", () => ({
-  useProjectList: () => ({
-    data: {
-      items: [
-        {
-          id: "p1",
-          name: "Project One",
-          docCount: 0,
-          convCount: 0,
-          updatedAt: "2026-01-01T00:00:00Z",
-          colorHex: "#ff0000",
-          iconKey: "folder",
-        },
-      ],
-      total: 1,
-    },
-    isLoading: false,
-    isError: false,
-  }),
+  useProjectList: () => mockProjectsState,
   useActivateProject: () => ({
     mutateAsync: vi.fn(async () => {}),
   }),
 }));
+
+const mockProjectsState: {
+  data: { items: ProjectSummary[]; total: number } | null;
+  isLoading: boolean;
+  isError: boolean;
+} = {
+  data: {
+    items: [
+      {
+        id: "p1",
+        name: "Project One",
+        docCount: 0,
+        convCount: 0,
+        updatedAt: "2026-01-01T00:00:00Z",
+        colorHex: "#ff0000",
+        iconKey: "folder",
+      },
+    ],
+    total: 1,
+  },
+  isLoading: false,
+  isError: false,
+};
 
 vi.mock("@/features/projects/components/NewProjectDialog", () => ({
   NewProjectDialog: ({ triggerClassName }: { triggerClassName?: string }) => (
@@ -62,6 +69,25 @@ vi.mock("@/features/chat/hooks/use-conversations", () => ({
 }));
 
 describe("AppSidebar", () => {
+  beforeEach(() => {
+    mockProjectsState.data = {
+      items: [
+        {
+          id: "p1",
+          name: "Project One",
+          docCount: 0,
+          convCount: 0,
+          updatedAt: "2026-01-01T00:00:00Z",
+          colorHex: "#ff0000",
+          iconKey: "folder",
+        },
+      ],
+      total: 1,
+    };
+    mockProjectsState.isLoading = false;
+    mockProjectsState.isError = false;
+  });
+
   it("renders primary links and pinned settings", () => {
     render(
       <IntlTestProvider>
@@ -105,7 +131,7 @@ describe("AppSidebar", () => {
     const projectsToggle = screen.getByRole("button", { name: /^projects$/i });
     expect(projectsToggle).toHaveAttribute("aria-expanded", "true");
 
-    const projectRow = screen.getByRole("button", { name: /project one/i });
+    const projectRow = screen.getByRole("button", { name: /^project one$/i });
     expect(projectRow).toBeInTheDocument();
 
     const expandProject = screen.getByRole("button", { name: /expand chats for project one/i });
@@ -116,5 +142,39 @@ describe("AppSidebar", () => {
 
     await user.click(projectsToggle);
     expect(projectsToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("shows loading and error states for project list", () => {
+    mockProjectsState.data = null;
+    mockProjectsState.isLoading = true;
+    render(
+      <IntlTestProvider>
+        <AppSidebar />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+  });
+
+  it("shows project list error message when hook errors", () => {
+    mockProjectsState.data = null;
+    mockProjectsState.isLoading = false;
+    mockProjectsState.isError = true;
+    render(
+      <IntlTestProvider>
+        <AppSidebar />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByText(/failed to load projects/i)).toBeInTheDocument();
+  });
+
+  it("opens the search dialog", async () => {
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <AppSidebar />
+      </IntlTestProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /search chat/i }));
+    expect(screen.getByText(/search chats/i)).toBeInTheDocument();
   });
 });

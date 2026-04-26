@@ -8,6 +8,8 @@ import org.springframework.core.env.MutablePropertySources;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -31,6 +33,9 @@ public final class SafeTestSecretsApplicationContextInitializer
     private static final String JDBC_PROPERTY_SOURCE = "ragTestJdbcEnvironment";
     private static final String SECRETS_PROPERTY_SOURCE = "ragSafeTestSecretsOverride";
     private static final String USE_TC_ENV = "RAG_TEST_USE_TESTCONTAINERS_DATASOURCE";
+    private static final int JDBC_LOGIN_TIMEOUT_SECONDS = 3;
+    private static final int EXTERNAL_DB_WAIT_SECONDS = 60;
+    private static final int EXTERNAL_DB_WAIT_SLEEP_MILLIS = 2_000;
 
     @Override
     public void initialize(ConfigurableApplicationContext context) {
@@ -85,6 +90,17 @@ public final class SafeTestSecretsApplicationContextInitializer
     private static boolean useTestcontainersPostgres() {
         String explicit = System.getenv(USE_TC_ENV);
         if ("false".equalsIgnoreCase(explicit)) {
+            // CI commonly prefers an externally provisioned Postgres. If the service is still starting,
+            // wait a bit so @SpringBootTest does not fail with "connection refused".
+            String url = System.getenv("SPRING_DATASOURCE_URL");
+            if (url != null && !url.isBlank()) {
+                String user = firstNonBlankEnv("SPRING_DATASOURCE_USERNAME", "postgres");
+                String pass = firstNonBlankEnv("SPRING_DATASOURCE_PASSWORD", "postgres");
+                if (!waitForPostgres(url, user, pass)) {
+                    // External DB not reachable yet. If Docker is available, prefer Testcontainers over failing.
+                    return true;
+                }
+            }
             return false;
         }
         if ("true".equalsIgnoreCase(explicit)) {
@@ -92,7 +108,11 @@ public final class SafeTestSecretsApplicationContextInitializer
         }
         String url = System.getenv("SPRING_DATASOURCE_URL");
         if (url != null && !url.isBlank()) {
-            return false;
+            String user = firstNonBlankEnv("SPRING_DATASOURCE_USERNAME", "postgres");
+            String pass = firstNonBlankEnv("SPRING_DATASOURCE_PASSWORD", "postgres");
+            // Prefer external DB when reachable (e.g. CI service Postgres),
+            // but fall back to Testcontainers when the URL is set but the service is not yet ready.
+            return !canOpenPostgresJdbc(url, user, pass);
         }
         return true;
     }
@@ -100,5 +120,35 @@ public final class SafeTestSecretsApplicationContextInitializer
     private static String firstNonBlankEnv(String name, String defaultValue) {
         String v = System.getenv(name);
         return (v == null || v.isBlank()) ? defaultValue : v;
+    }
+
+    private static boolean canOpenPostgresJdbc(String url, String user, String pass) {
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        try {
+            DriverManager.setLoginTimeout(JDBC_LOGIN_TIMEOUT_SECONDS);
+            try (Connection c = DriverManager.getConnection(url, user, pass)) {
+                return c.isValid(2);
+            }
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private static boolean waitForPostgres(String url, String user, String pass) {
+        long deadline = System.currentTimeMillis() + (EXTERNAL_DB_WAIT_SECONDS * 1000L);
+        while (System.currentTimeMillis() < deadline) {
+            if (canOpenPostgresJdbc(url, user, pass)) {
+                return true;
+            }
+            try {
+                Thread.sleep(EXTERNAL_DB_WAIT_SLEEP_MILLIS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return false;
     }
 }

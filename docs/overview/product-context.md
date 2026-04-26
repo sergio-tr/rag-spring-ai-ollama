@@ -6,7 +6,7 @@ This monorepo implements a **RAG (Retrieval-Augmented Generation)** product: Spr
 
 ## In scope (repository)
 
-- A **product** HTTP API namespace (`RAG_API_PRODUCT_BASE_PATH` / `NEXT_PUBLIC_RAG_API_PREFIX`) alongside a separate **legacy RAG query** surface (`RAG_API_LEGACY_BASE_PATH`); defaults are defined in Spring configuration and `webapp/.env.example`. (The word *product* here refers to the **URL path family**, not a separate database tenant.)
+- A single **product** HTTP API namespace (`RAG_API_PRODUCT_BASE_PATH` / `NEXT_PUBLIC_RAG_API_PREFIX`); defaults are defined in Spring configuration and `webapp/.env.example`. (The word *product* here refers to the **URL path family**, not a separate database tenant.)
 - Optional **observability** (OpenTelemetry, Jaeger, Prometheus, Grafana) when Compose profiles include it.
 - **Webapp** (Next.js) for authenticated product workflows; static and runtime configuration must stay aligned with Spring path properties.
 

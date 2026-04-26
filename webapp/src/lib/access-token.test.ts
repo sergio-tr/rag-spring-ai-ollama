@@ -6,6 +6,14 @@ describe("access-token", () => {
   afterEach(() => {
     sessionStorage.clear();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("returns null and no-ops when window is undefined (SSR)", () => {
+    vi.stubGlobal("window", undefined as unknown as Window);
+    expect(getAccessToken()).toBeNull();
+    expect(() => setAccessToken("abc")).not.toThrow();
+    expect(() => setAccessToken(null)).not.toThrow();
   });
 
   it("returns null when getItem throws (private mode / quota)", () => {

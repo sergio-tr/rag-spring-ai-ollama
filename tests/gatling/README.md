@@ -1,6 +1,6 @@
 # Gatling load and stress tests
 
-Gradle module (Scala 2.13 + Gatling 3.13) aligned with Spring path properties (`rag.api.legacy-base-path`, `rag.api.product-base-path`) via environment variables.
+Gradle module (Scala 2.13 + Gatling 3.13) aligned with the active product API base path (`rag.api.product-base-path`) via environment variables.
 
 **Platform:** Run from **Linux** (local or CI) with `./gradlew`. **`gradlew.bat`** is only for occasional Windows desktops and is outside the supported Linux **CI/production** workflow; prefer **WSL2** + `./gradlew` for parity with [.github/workflows/gatling.yml](../../.github/workflows/gatling.yml).
 
@@ -12,7 +12,7 @@ Answers below are **canonical for this repo** (do not duplicate long rationale i
 | --- | --- |
 | **LLM target** | **Real Ollama** for **load / stress / spike** profiles. **CI / smoke:** controlled settings (small model, low top-k) as set on the backend. **Soak:** optional, **manual only** (cost). |
 | **Users** | **Feeder CSV** [`src/gatling/resources/users.csv`](src/gatling/resources/users.csv) with **multiple rows** — default uses repeated seed user; **replace with distinct accounts** for realistic isolation. |
-| **API mix** | Default **70%** legacy RAG (`GET {legacy}/query`), **20%** auth (`POST /api/auth/login`), **10%** admin (`GET /api/admin/*` when `GATLING_ADMIN_EMAIL` is set, else `GET` product `/projects`). Override with `GATLING_MIX_*_PCT`. |
+| **API mix** | Default mix focuses on authenticated product reads + optional admin. Override with `GATLING_MIX_*_PCT`. |
 | **Queries** | [`questions.csv`](src/gatling/resources/questions.csv) includes **simple** and **complex** rows (`complexity` column) for heavier prompts. |
 | **Phases** | **Stage 1:** one configurable simulation family: `MixedRealistic*` + `GATLING_PROFILE`. **Stage 2:** profile-specific classes (`MixedRealisticSmokeSimulation`, …) for workflow dropdowns. |
 | **Execution** | **smoke + load** suitable for **CI** (with conservative env). **stress + spike + soak** → **manual** (or dedicated runners / long timeout). |
@@ -20,7 +20,7 @@ Answers below are **canonical for this repo** (do not duplicate long rationale i
 ## Prerequisites
 
 - JDK **21+** on `PATH`
-- A running RAG Spring Boot instance (for real runs). For **mixed** simulations, **legacy** `/query` and **Ollama** must be acceptable targets — see [docs/performance/README.md](../../docs/performance/README.md).
+- A running RAG Spring Boot instance (for real runs). For mixed simulations, ensure Ollama capacity is acceptable — see [docs/performance/README.md](../../docs/performance/README.md).
 
 ## Commands
 
@@ -33,11 +33,9 @@ chmod +x gradlew
 
 # Pick one simulation (class name includes package):
 ./gradlew gatlingRun --simulation simulations.ActuatorHealthSimulation
-./gradlew gatlingRun --simulation simulations.LegacyQueryLoadSimulation
 ./gradlew gatlingRun --simulation simulations.ProductAuthenticatedSimulation
 ./gradlew gatlingRun --simulation simulations.StressRampSimulation
 ./gradlew gatlingRun --simulation simulations.ActuatorThroughputTiersSimulation
-./gradlew gatlingRun --simulation simulations.LegacyQuerySpikeSimulation
 ./gradlew gatlingRun --simulation simulations.ChatSseSimulation
 ./gradlew gatlingRun --simulation simulations.OpenApiAndReadinessSimulation
 ./gradlew gatlingRun --simulation simulations.ProductUnauthenticatedSimulation
@@ -94,7 +92,6 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GATLING_BASE_URL` | `http://localhost:9000` | Spring base URL (no trailing slash). |
-| `GATLING_LEGACY_PREFIX` | *(match `rag.api.legacy-base-path`)* | Legacy API prefix (`RAG_API_LEGACY_BASE_PATH`). |
 | `GATLING_PRODUCT_PREFIX` | *(match `rag.api.product-base-path`)* | Product API prefix (`RAG_API_PRODUCT_BASE_PATH`). |
 | `GATLING_LOGIN_EMAIL` | `dev@local.test` | Product auth simulation. |
 | `GATLING_LOGIN_PASSWORD` | `dev` | Product auth simulation. |
@@ -102,12 +99,8 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 | `GATLING_P99_MS` | `15000` | Assertion: global p99 latency (ms). |
 | `GATLING_HEALTH_USERS` | `5` | `ActuatorHealthSimulation` ramp users. |
 | `GATLING_HEALTH_DURATION_SEC` | `15` | Ramp duration window (seconds). |
-| `GATLING_LEGACY_RPS` | `0` | If &gt; 0, inject `constantUsersPerSec` for legacy query. |
-| `GATLING_LEGACY_VUS` | `10` | Legacy steady users when RPS mode off. |
-| `GATLING_LEGACY_DURATION_SEC` | `60` | Legacy scenario duration. |
 | `GATLING_PRODUCT_VUS` | `8` | Authenticated product scenario users. |
 | `GATLING_PRODUCT_ITERATION_SEC` | `30` | Loop duration after login. |
-| `GATLING_STRESS_TARGET` | `health` | `health` or `legacy` for `StressRampSimulation`. |
 | `GATLING_STRESS_PEAK_USERS` | `80` | Stress ramp peak users. |
 | `GATLING_STRESS_RAMP_SEC` | `120` | Stress ramp duration. |
 | `GATLING_STRESS_HOLD_SEC` | `60` | Hold phase duration. |
@@ -124,7 +117,7 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 
 ## Feeders
 
-- `src/gatling/resources/questions.csv` — `question` (+ optional `complexity`) for legacy query and mixed RAG branch.
+- `src/gatling/resources/questions.csv` — `question` (+ optional `complexity`) for mixed workloads (when applicable).
 - `src/gatling/resources/users.csv` — `email`, `password` for multi-row login feeders (**replace rows** with real distinct users when load-testing tenancy).
 
 ## Simulations (summary)
@@ -132,17 +125,15 @@ Stress/spike reuse `GATLING_STRESS_*` / `GATLING_SPIKE_*` where noted in [`Mixed
 | Class | Purpose |
 | --- | --- |
 | `ActuatorHealthSimulation` | Short actuator check / warmup. |
-| `LegacyQueryLoadSimulation` | `GET {legacy}/query` with feeder; optional RPS-style injection. |
 | `ProductAuthenticatedSimulation` | `POST /api/auth/login` then `GET` projects and config schema. |
-| `StressRampSimulation` | Ramp on actuator (default) or legacy query; breakpoint-style runs. |
+| `StressRampSimulation` | Ramp on actuator health; breakpoint-style runs. |
 | `ActuatorThroughputTiersSimulation` | Several constant-RPS plateaus on actuator in one run. |
-| `LegacyQuerySpikeSimulation` | Sudden user burst on legacy query + tail ramp. |
 | `ChatSseSimulation` | Login + create project/conversation + **POST** message; asserts **200 or 202**. |
 | `OpenApiAndReadinessSimulation` | `/v3/api-docs`, readiness, liveness (low cost). |
 | `ProductUnauthenticatedSimulation` | `GET` presets + `/config/schema` without JWT (**401 or 403**). |
 | `AuthLoginNegativeSimulation` | Wrong login, invalid email login, invalid refresh (**401/400**). |
 | `AdminApiSimulation` | `/api/admin` unauthenticated + USER **403**; optional ADMIN **200** if `GATLING_ADMIN_EMAIL` set. |
-| `MixedRealisticSimulation` | Weighted **RAG + auth + admin** mix; profile from `GATLING_PROFILE`. |
+| `MixedRealisticSimulation` | Weighted **auth + admin/product** mix; profile from `GATLING_PROFILE`. |
 | `MixedRealisticSmokeSimulation` | **Smoke** profile — few VUs, short duration. |
 | `MixedRealisticLoadSimulation` | **Load** profile — ramp + hold. |
 | `MixedRealisticStressSimulation` | **Stress** profile — higher ramp / lenient SLAs. |

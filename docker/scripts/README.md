@@ -199,13 +199,13 @@ By default the script brings the stack up and then tears it down; use `--keep` t
   `curl -s -X POST http://localhost:8000/classify -H "Content-Type: application/json" -d "{\"query\": \"How many documents are there?\"}"`  
   → should return something like `{"queryType":"COUNT_DOCUMENTS"}` (or another valid type).
 
-### 3. RAG query
+### 3. Authenticated product smoke
 
-Set `RAG_API_LEGACY_BASE_PATH` in your shell to the same value as `rag.api.legacy-base-path` in the running backend (see `rag-service` configuration).
-
-- **Backend (classification happens internally):**  
-  `curl -s "http://localhost:9000${RAG_API_LEGACY_BASE_PATH}/query?question=How%20many%20documents%20are%20there?"`  
-  → should return 200 and a response body. If the classifier is unavailable, the backend may still respond using an LLM fallback.
+- Login to obtain a JWT:
+  `curl -s -X POST http://localhost:9000/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"dev@local.test\",\"password\":\"dev\"}"`
+- Use the JWT to call stable product endpoints (non-snapshot-dependent):
+  - `GET /api/v5/config/schema`
+  - `GET /api/v5/presets`
 
 ### Optional script (from repo root, stack running)
 
@@ -216,11 +216,15 @@ curl -sf http://localhost:8000/health && echo " classifier-service OK"
 # Classify
 curl -sf -X POST http://localhost:8000/classify -H "Content-Type: application/json" -d '{"query":"How many documents?"}' && echo " Classify OK"
 
-# Backend query (needs DB data and Ollama for a full answer)
-curl -sf -o /dev/null -w "%{http_code}" "http://localhost:9000${RAG_API_LEGACY_BASE_PATH}/query?question=test" && echo " Backend query OK"
+# Authenticated product smoke (non-snapshot-dependent)
+TOKEN="$(curl -sf -X POST http://localhost:9000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"dev@local.test","password":"dev"}' | python -c 'import sys,json; print(json.load(sys.stdin)["accessToken"])')"
+curl -sf -H "Authorization: Bearer ${TOKEN}" "http://localhost:9000/api/v5/config/schema" >/dev/null && echo " Backend schema OK"
+curl -sf -H "Authorization: Bearer ${TOKEN}" "http://localhost:9000/api/v5/presets" >/dev/null && echo " Backend presets OK"
 ```
 
-If the DB is empty or Ollama is down, the backend may still return 200 with an error message in the body; the minimum smoke check is HTTP 200.
+Avoid using query paths as the basic connectivity smoke; keep smoke checks non-snapshot-dependent and authenticated.
 
 ## Pre-release validation pack (operator)
 

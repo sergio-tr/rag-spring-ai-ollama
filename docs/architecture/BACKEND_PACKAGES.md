@@ -16,7 +16,7 @@
 | `api.admin` | `ROLE_ADMIN`: allowlist, Ollama pull orchestration |
 | `interfaces.rest` | Product REST for projects, documents, conversations, knowledge (ingest, rebuild, snapshots), SSE, presets, lab jobs, product config schema. Runtime trace and regression-suite routes (replay, comparison, suite definitions, runs, ZIP import/export); **contract inventory**: [rag-runtime-architecture.md](rag-runtime-architecture.md), [rag-service/README.md](../../rag-service/README.md). |
 | `interfaces.rest.dto.knowledge` | Snapshot responses; `KnowledgeIngestRequest` / `KnowledgeReindexRequest` (query-parameter shapes for knowledge routes) |
-| `controller` | Legacy RAG HTTP surface (`RagController`, Ollama helpers) — prefix from `rag.api.legacy-base-path` |
+| `controller` | Product HTTP surface (JWT) — prefix from `rag.api.product-base-path` |
 | `configuration` | Spring Security, CORS, feature flags, path properties (`RagApiPathProperties`), beans wiring; **`RegressionSuiteDefinitionMutationJacksonConfiguration`** (**`definitionMutationStrictObjectMapper`**) for suite-definition mutation JSON |
 | `security` | JWT filter, `JwtService`, `RagPrincipal` |
 | `bootstrap` | Startup seeders (e.g. e2e admin), safety validators |

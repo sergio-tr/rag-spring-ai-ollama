@@ -50,16 +50,32 @@ def create_app() -> FastAPI:
             message="Request validation failed",
             details={"errors": errors},
         ).to_response_dict()
-        return JSONResponse(status_code=422, content={"success": False, "error": err})
+        return JSONResponse(
+            status_code=422,
+            content={"success": False, "error": err, "message": err.get("message")},
+        )
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
         """Normalize HTTPException (400/404/503 from routes) to { success, error }."""
         detail = exc.detail
         if isinstance(detail, dict):
-            error_body = detail
+            # Routes pass ErrorDetail.to_response_dict() as the exception detail ({"code","message",...}).
+            # Depending on where the exception originates, upstream code might already wrap errors
+            # in an envelope. Unwrap common shapes so tests/clients can always rely on error.message.
+            if isinstance(detail.get("message"), str):
+                error_body = detail
+            elif isinstance(detail.get("error"), dict):
+                error_body = detail["error"]
+            elif isinstance(detail.get("detail"), dict):
+                error_body = detail["detail"]
+            else:
+                error_body = {"code": "HTTP_ERROR", "message": str(detail)}
         else:
             error_body = {"code": "HTTP_ERROR", "message": str(detail)}
-        return JSONResponse(status_code=exc.status_code, content={"success": False, "error": error_body})
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"success": False, "error": error_body, "message": error_body.get("message")},
+        )
 
     return app

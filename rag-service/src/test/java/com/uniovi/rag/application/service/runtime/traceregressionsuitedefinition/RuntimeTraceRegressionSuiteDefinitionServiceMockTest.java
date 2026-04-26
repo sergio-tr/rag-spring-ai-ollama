@@ -86,7 +86,7 @@ class RuntimeTraceRegressionSuiteDefinitionServiceMockTest {
     @Test
     void create_duplicateName_mapsToIllegalState() {
         UUID userId = UUID.randomUUID();
-        when(definitionRepository.save(any(RuntimeTraceRegressionSuiteDefinitionEntity.class)))
+        when(definitionRepository.saveAndFlush(any(RuntimeTraceRegressionSuiteDefinitionEntity.class)))
                 .thenThrow(new DataIntegrityViolationException("unique", null));
         var cmd =
                 new CreateDefinitionCommand(
@@ -98,7 +98,7 @@ class RuntimeTraceRegressionSuiteDefinitionServiceMockTest {
                 .hasMessageContaining("already exists");
         ArgumentCaptor<RuntimeTraceRegressionSuiteDefinitionEntity> cap =
                 ArgumentCaptor.forClass(RuntimeTraceRegressionSuiteDefinitionEntity.class);
-        verify(definitionRepository).save(cap.capture());
+        verify(definitionRepository).saveAndFlush(cap.capture());
         assertThat(cap.getValue().getName()).isEqualTo("unique-name");
     }
 

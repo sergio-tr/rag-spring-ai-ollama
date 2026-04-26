@@ -83,6 +83,8 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
         run.setBatchNotAttemptedSubcount(s.batchNotAttemptedSubcount());
         run.setCreatedAt(clock.instant());
         runRepository.save(run);
+        // JdbcTemplate assertions in integration tests run in the same transaction; force inserts now.
+        runRepository.flush();
 
         List<RuntimeTraceRegressionSuiteEntryResult> rows = result.entryResults();
         List<RuntimeTraceRegressionSuiteRunEntryEntity> toSave = new ArrayList<>(rows.size());
@@ -104,6 +106,7 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
             toSave.add(mapper.newEntryEntity(UUID.randomUUID(), id, mapped, echo));
         }
         entryRepository.saveAll(toSave);
+        entryRepository.flush();
         return id;
     }
 
@@ -112,8 +115,23 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
             RuntimeTraceRegressionSuiteRunSourceType sourceType,
             Optional<UUID> definitionId,
             RuntimeTraceRegressionSuiteResult result) {
+        validateCreateInputs(userId, sourceType, definitionId, result);
+        validateOutcome(result);
+        RuntimeTraceRegressionSuiteSummary sum = result.summary();
+        validateSummary(sum, result.entryResults().size());
+        validateEntryOrders(result.entryResults());
+    }
+
+    private static void validateCreateInputs(
+            UUID userId,
+            RuntimeTraceRegressionSuiteRunSourceType sourceType,
+            Optional<UUID> definitionId,
+            RuntimeTraceRegressionSuiteResult result) {
         if (userId == null) {
             throw new IllegalArgumentException("userId");
+        }
+        if (result == null) {
+            throw new IllegalArgumentException("result");
         }
         if (sourceType == RuntimeTraceRegressionSuiteRunSourceType.SAVED_DEFINITION && definitionId.isEmpty()) {
             throw new IllegalArgumentException("definitionId required for SAVED_DEFINITION");
@@ -121,9 +139,9 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
         if (sourceType == RuntimeTraceRegressionSuiteRunSourceType.AD_HOC && definitionId.isPresent()) {
             throw new IllegalArgumentException("definitionId must be absent for AD_HOC");
         }
-        if (result == null) {
-            throw new IllegalArgumentException("result");
-        }
+    }
+
+    private static void validateOutcome(RuntimeTraceRegressionSuiteResult result) {
         if (result.suiteOutcome() == RuntimeTraceRegressionSuiteOutcome.NOT_ATTEMPTED
                 && !result.entryResults().isEmpty()) {
             throw new IllegalArgumentException("NOT_ATTEMPTED result must not contain entry results");
@@ -132,7 +150,9 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
                 && !result.entryResults().isEmpty()) {
             throw new IllegalArgumentException("EMPTY_SUITE result must not contain entry results");
         }
-        RuntimeTraceRegressionSuiteSummary sum = result.summary();
+    }
+
+    private static void validateSummary(RuntimeTraceRegressionSuiteSummary sum, int actualEntryCount) {
         if (sum.requestedEntryCount() < 0
                 || sum.processedEntryCount() < 0
                 || sum.batchReturnedCount() < 0
@@ -140,10 +160,12 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
                 || sum.batchNotAttemptedSubcount() < 0) {
             throw new IllegalArgumentException("result summary invalid");
         }
-        if (result.entryResults().size() != sum.requestedEntryCount()) {
+        if (actualEntryCount != sum.requestedEntryCount()) {
             throw new IllegalArgumentException("result entryResults size mismatch");
         }
-        List<RuntimeTraceRegressionSuiteEntryResult> rows = result.entryResults();
+    }
+
+    private static void validateEntryOrders(List<RuntimeTraceRegressionSuiteEntryResult> rows) {
         for (int i = 0; i < rows.size(); i++) {
             RuntimeTraceRegressionSuiteEntryResult row = rows.get(i);
             int order =
@@ -239,6 +261,9 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
             throw new IllegalArgumentException("userId");
         }
         long deleted = runRepository.deleteByIdAndUserId(runId, userId);
+        if (deleted == 1L) {
+            runRepository.flush();
+        }
         return deleted == 1L;
     }
 
@@ -254,6 +279,9 @@ public class RuntimeTraceRegressionSuiteRunPersistenceService {
             throw new IllegalArgumentException("definitionId");
         }
         long deleted = runRepository.deleteByIdAndUserIdAndDefinitionId(runId, userId, definitionId);
+        if (deleted == 1L) {
+            runRepository.flush();
+        }
         return deleted == 1L;
     }
 

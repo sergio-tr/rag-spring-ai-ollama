@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { authHeaders, loginAndGetToken } from "../fixtures/auth";
-import { apiBaseUrl, integrationCredentials, legacyUrl, productUrl } from "../fixtures/env";
+import { apiBaseUrl, integrationCredentials, productUrl } from "../fixtures/env";
 
 /**
  * Serial HTTP smoke chain for operators. Tag `@system` allows `npm run test:api -- --grep @system`.
@@ -63,14 +63,5 @@ test.describe.serial("System smoke chain @api @system", () => {
     expect([200, 503]).toContain(res.status());
   });
 
-  test("legacy query envelope when exposed", async ({ request }) => {
-    const res = await request.get(`${legacyUrl("/query")}?question=healthcheck`);
-    const code = res.status();
-    const text = await res.text();
-    if (code === 404) {
-      return;
-    }
-    expect([200, 503]).toContain(code);
-    expect(text).toMatch(/success|LLM_UNAVAILABLE|error/i);
-  });
+  // Legacy query smoke intentionally removed (product-only).
 });

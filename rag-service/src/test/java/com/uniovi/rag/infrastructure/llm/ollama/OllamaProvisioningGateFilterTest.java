@@ -57,6 +57,31 @@ class OllamaProvisioningGateFilterTest {
     }
 
     @Test
+    void shouldNotFilter_whenNotReady_blocksRuntimeTraceReplay() {
+        when(provisioningService.isReadyForApiTraffic()).thenReturn(false);
+        MockHttpServletRequest req =
+                new MockHttpServletRequest("POST", path("/runtime-traces/abc/replay"));
+        assertFalse(filter.shouldNotFilter(req));
+    }
+
+    @Test
+    void shouldNotFilter_whenNotReady_blocksRuntimeTraceReplayComparison() {
+        when(provisioningService.isReadyForApiTraffic()).thenReturn(false);
+        MockHttpServletRequest req =
+                new MockHttpServletRequest("POST", path("/runtime-traces/abc/replay-comparison"));
+        assertFalse(filter.shouldNotFilter(req));
+    }
+
+    @Test
+    void shouldNotFilter_whenNotReady_allowsRuntimeTraceRead() {
+        when(provisioningService.isReadyForApiTraffic()).thenReturn(false);
+        MockHttpServletRequest req =
+                new MockHttpServletRequest("GET", path("/runtime-traces/abc"));
+        assertTrue(filter.shouldNotFilter(req));
+        verify(provisioningService, never()).isReadyForApiTraffic();
+    }
+
+    @Test
     void doFilterInternal_pending_returns503Json() throws Exception {
         when(provisioningService.getState()).thenReturn(OllamaModelProvisioningService.State.PENDING);
         when(provisioningService.getLastError()).thenReturn(null);

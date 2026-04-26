@@ -10,6 +10,8 @@ on:
 env:
   NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
   NEXT_PUBLIC_API_BASE_URL: http://localhost:9000
+  # Opt into Node.js 24 for JavaScript-based GitHub Actions (Node 20 deprecation on runners).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   # Must match .github/ci/postgres-service-image.env (verified by verify-pinned-postgres-image.sh).
   POSTGRES_SERVICE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
 
@@ -20,7 +22,8 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        # Do NOT use `env.*` in `services.<id>.image` (context may be unsupported).
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -40,10 +43,10 @@ jobs:
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Verify pinned Postgres image references
-        run: ./.github/scripts/verify-pinned-postgres-image.sh
-      - uses: actions/setup-java@v4
+        run: bash ./.github/scripts/verify-pinned-postgres-image.sh
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -56,7 +59,7 @@ jobs:
           ./mvnw -B clean verify
       - name: Upload Maven test reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rag-service-maven-test-reports
           path: |
@@ -74,8 +77,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Install dependencies
@@ -88,7 +91,7 @@ jobs:
           pytest tests/ -v
       - name: Upload Python coverage.xml
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: classifier-coverage-xml
           path: classifier-service/coverage.xml
@@ -103,11 +106,12 @@ jobs:
       run:
         working-directory: webapp
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/cache-npm-webapp
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
       - run: npm install --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
@@ -124,7 +128,7 @@ jobs:
           fi
       - name: Upload coverage report
         if: ${{ always() && (steps.vitest_coverage.outcome == 'success' || steps.vitest_coverage.outcome == 'failure') }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: webapp-coverage
           path: webapp/coverage/
@@ -142,11 +146,12 @@ jobs:
       run:
         working-directory: webapp
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/cache-npm-webapp
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
       - name: Install and build
         run: |
           npm install --no-audit --no-fund
@@ -158,7 +163,7 @@ jobs:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-smoke-report
           path: webapp/playwright-report/
@@ -179,7 +184,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -199,15 +204,17 @@ jobs:
       RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
       RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      RAG_API_PRODUCT_BASE_PATH: /api/v5
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
       INTEGRATION_CHECK_OBS: "0"
       INTEGRATION_BACKEND_URL: http://127.0.0.1:9000
       INTEGRATION_CLASSIFIER_URL: http://127.0.0.1:8000
       INTEGRATION_ADMIN_EMAIL: admin@e2e.local
       INTEGRATION_ADMIN_PASSWORD: e2e
+      INTEGRATION_RAG_PRODUCT_BASE_PATH: /api/v5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -232,6 +239,15 @@ jobs:
           echo "--- spring log (tail) ---"
           tail -n 200 /tmp/spring-integration.log || true
           exit 1
+      - name: Seed e2e admin user (for pytest)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
+            INSERT INTO users (id, email, password_hash, name, role, created_at)
+            VALUES ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP)
+            ON CONFLICT (email) DO NOTHING;
+          "
       - name: Readiness check (informational; 200 or 503)
         run: |
           code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/actuator/health/readiness || true)"
@@ -240,7 +256,7 @@ jobs:
           else
             echo "Readiness status: HTTP $code"
           fi
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Install integration test deps
@@ -253,7 +269,7 @@ jobs:
           if [ -f /tmp/spring-integration.pid ]; then kill "$(cat /tmp/spring-integration.pid)" 2>/dev/null || true; fi
       - name: Upload Spring log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: spring-integration-log
           path: /tmp/spring-integration.log
@@ -269,7 +285,7 @@ jobs:
     timeout-minutes: 35
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -289,6 +305,7 @@ jobs:
       RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
       RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      RAG_API_PRODUCT_BASE_PATH: /api/v5
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
       INTEGRATION_CHECK_OBS: "0"
       INTEGRATION_BACKEND_URL: http://127.0.0.1:9000
@@ -299,12 +316,13 @@ jobs:
       INTEGRATION_REQUIRE_CLASSIFIER: "1"
       # Model-loaded is NOT required in CI by default (connectivity is the primary gate).
       INTEGRATION_REQUIRE_CLASSIFIER_MODEL: "0"
+      INTEGRATION_RAG_PRODUCT_BASE_PATH: /api/v5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -329,25 +347,42 @@ jobs:
       - name: Wait for backend + classifier health
         run: |
           set -euo pipefail
+          backend_ok=0
           for i in $(seq 1 90); do
             if curl -fsS http://127.0.0.1:9000/actuator/health >/dev/null 2>&1; then
               echo "Backend healthy"
+              backend_ok=1
               break
             fi
             sleep 2
           done
+          classifier_ok=0
           for i in $(seq 1 90); do
             if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
               echo "Classifier healthy"
-              exit 0
+              classifier_ok=1
+              break
             fi
             sleep 2
           done
+          if [ "$backend_ok" = "1" ] && [ "$classifier_ok" = "1" ]; then
+            echo "Backend + classifier healthy"
+            exit 0
+          fi
           echo "--- backend log (tail) ---"
           tail -n 200 /tmp/spring-integration-classifier.log || true
           echo "--- classifier log (tail) ---"
           tail -n 200 /tmp/classifier-service.log || true
           exit 1
+      - name: Seed e2e admin user (for pytest)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
+            INSERT INTO users (id, email, password_hash, name, role, created_at)
+            VALUES ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP)
+            ON CONFLICT (email) DO NOTHING;
+          "
 
       - name: Install integration test deps
         run: pip install -r tests/integration/requirements.txt
@@ -363,7 +398,7 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: stack-integration-classifier-required-logs
           path: |
@@ -384,7 +419,7 @@ jobs:
     needs: [core_done]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v3
       - name: Build rag-service image
         uses: docker/build-push-action@v6
@@ -424,7 +459,7 @@ jobs:
     needs: [core_done]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install PyYAML for compose_guard
         run: python3 -m pip install --user -q pyyaml
       - name: Create .env files
@@ -437,7 +472,7 @@ jobs:
             2>&1 | tee /tmp/compose-structural-guard.log
       - name: Upload compose guard log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: compose-structural-guard-log
           path: /tmp/compose-structural-guard.log
@@ -451,7 +486,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -474,9 +509,11 @@ jobs:
       # Browser stack uses loopback IP (workflow default is localhost for Node jobs).
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:9000
       NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
+      # Admin UI smoke requires backend profile=e2e admin seeding.
+      E2E_ADMIN_ENABLED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -501,6 +538,25 @@ jobs:
           echo "--- spring log (tail) ---"
           tail -n 200 /tmp/spring-e2e.log || true
           exit 1
+      - name: Wait for e2e admin login to be available
+        env:
+          E2E_ADMIN_EMAIL: admin@e2e.local
+          E2E_ADMIN_PASSWORD: e2e
+        run: |
+          for i in $(seq 1 45); do
+            code="$(
+              curl -sS -o /dev/null -w '%{http_code}' \
+                -H 'Content-Type: application/json' \
+                -d "{\"email\":\"${E2E_ADMIN_EMAIL}\",\"password\":\"${E2E_ADMIN_PASSWORD}\"}" \
+                http://127.0.0.1:9000/api/auth/login || true
+            )"
+            if [ "$code" = "200" ]; then
+              echo "Admin login OK"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::warning::Admin login not ready after waiting; admin UI test may fail."
       - name: Readiness check (informational; 200 or 503)
         run: |
           code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/actuator/health/readiness || true)"
@@ -510,9 +566,10 @@ jobs:
             echo "Readiness status: HTTP $code"
           fi
       - uses: ./.github/actions/cache-npm-webapp
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
       - name: Install, build Next.js, run @fullstack Playwright
         working-directory: webapp
         env:
@@ -529,14 +586,14 @@ jobs:
           if [ -f /tmp/spring-e2e.pid ]; then kill "$(cat /tmp/spring-e2e.pid)" 2>/dev/null || true; fi
       - name: Upload Spring log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: spring-e2e-log
           path: /tmp/spring-e2e.log
           retention-days: 7
       - name: Upload Playwright report on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-fullstack-report
           path: webapp/playwright-report/
@@ -549,7 +606,7 @@ jobs:
     timeout-minutes: 25
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -575,8 +632,8 @@ jobs:
       INTEGRATION_LOGIN_EMAIL: dev@local.test
       INTEGRATION_LOGIN_PASSWORD: dev
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -607,9 +664,10 @@ jobs:
       - name: Cache npm (webapp)
         uses: ./.github/actions/cache-npm-webapp
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
       - name: Install webapp dependencies
         working-directory: webapp
         run: npm install --no-audit --no-fund
@@ -627,7 +685,7 @@ jobs:
 
       - name: Upload logs/reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-api-smoke-artifacts
           path: |
@@ -650,7 +708,7 @@ jobs:
       checks: write
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -670,10 +728,10 @@ jobs:
       RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -681,7 +739,7 @@ jobs:
       - name: Ensure Maven wrapper is executable
         working-directory: rag-service
         run: chmod +x mvnw
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -709,14 +767,16 @@ jobs:
           MODELS_DIR: ./models
           DATA_DIR: ./data
       - uses: ./.github/actions/cache-npm-webapp
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: webapp/package.json
+          package-manager-cache: false
       - name: Install webapp dependencies and generate LCOV
         working-directory: webapp
         run: |
           npm install --no-audit --no-fund
           npm run test:coverage
+          node scripts/patch-lcov-paths.mjs
       - name: Require SONAR_TOKEN for SonarCloud
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -739,7 +799,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: ${{ env.POSTGRES_SERVICE_IMAGE }}
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -760,8 +820,8 @@ jobs:
       INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
       RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
         with:
           java-version: "21"
           distribution: temurin
@@ -797,7 +857,7 @@ jobs:
         run: |
           set -e
           ./gradlew --no-daemon gatlingRun --simulation simulations.ActuatorHealthSimulation
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Infra micro-benchmark (actuator health probe)
@@ -819,7 +879,7 @@ jobs:
         run: tail -n 200 /tmp/spring-perf.log || true
       - name: Upload Gatling reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gatling-reports-pr
           path: tests/gatling/build/reports/gatling/

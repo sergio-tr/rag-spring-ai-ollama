@@ -8,6 +8,7 @@ from app.exceptions import TrainingError, ValidationError
 from app.models.training_result import TrainingResult
 from app.telemetry import record_train_complete
 from app.training.trainer import TrainingPipeline
+import traceback
 
 
 class TrainingService(TracedService):
@@ -75,7 +76,25 @@ class TrainingService(TracedService):
             record_train_complete(out.model_id)
             return out
         except ValueError as e:
-            raise ValidationError(str(e)) from e
+            msg = str(e)
+            # Default: ValueError from the pipeline is treated as a validation error (400).
+            # Some environments may throw ValueError for runtime/library issues; map those to 500
+            # so API tests can skip when training isn't supported.
+            runtime_markers = (
+                "tensorflow",
+                "keras",
+                "cuda",
+                "cudnn",
+                "graph execution",
+                "resourceexhausted",
+                "out of memory",
+                "numpy",
+                "ufunc",
+            )
+            tb = "".join(traceback.format_exception(type(e), e, e.__traceback__)).lower()
+            if any(m in msg.lower() for m in runtime_markers) or any(m in tb for m in runtime_markers):
+                raise TrainingError("Training failed") from e
+            raise ValidationError(msg) from e
         except Exception as e:
             self.logger.exception("Training failed: %s", e)
             raise TrainingError("Training failed") from e

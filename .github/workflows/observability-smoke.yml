@@ -20,7 +20,7 @@ jobs:
     name: No removed compose fragments under docker/
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Fail if merged/removed compose files reappear
         run: |
