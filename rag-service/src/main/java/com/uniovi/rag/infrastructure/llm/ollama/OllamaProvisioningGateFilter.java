@@ -95,11 +95,8 @@ public class OllamaProvisioningGateFilter extends OncePerRequestFilter {
         }
 
         // Trace replay/comparison can call the LLM.
-        if (path.startsWith(product + "/runtime-traces/") && (path.contains("/replay") || path.contains("replay-comparison"))) {
-            return true;
-        }
-
-        return false;
+        return path.startsWith(product + "/runtime-traces/")
+                && (path.contains("/replay") || path.contains("replay-comparison"));
     }
 
     @Override

@@ -79,7 +79,6 @@ function ChatPageInner() {
       const t = setTimeout(() => setConversationId(urlConversationId), 0);
       return () => clearTimeout(t);
     }
-    return;
   }, [urlConversationId, conversationId]);
 
   function selectConversation(nextId: string) {
@@ -193,7 +192,6 @@ function ChatPageInner() {
       }, 0);
       return () => clearTimeout(t);
     }
-    return;
   }, [editingUserMessageId, lastUserMessageId]);
 
   useEffect(() => {

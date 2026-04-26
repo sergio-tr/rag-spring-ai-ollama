@@ -15,7 +15,6 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,6 +23,8 @@ import java.util.UUID;
 public class ProcessQueryService implements QueryService, Loggable {
 
     private static final String LOG_STACK_TRACE = "Stack trace:";
+    private static final String LOG_EMPTY_QUERY_RECEIVED = "Empty query received";
+    private static final String ERR_EMPTY_QUERY = "empty query";
 
     private final ExecutionContextFactory executionContextFactory;
     private final RagExecutionOrchestrator ragExecutionOrchestrator;
@@ -48,8 +49,8 @@ public class ProcessQueryService implements QueryService, Loggable {
     public QueryResponse generateResponse(String query, String chatModel) {
         try {
             if (query == null || query.trim().isEmpty()) {
-                log().warn("Empty query received");
-                String errorResponse = generateErrorResponse("", new IllegalArgumentException("empty query"));
+                log().warn(LOG_EMPTY_QUERY_RECEIVED);
+                String errorResponse = generateErrorResponse("", new IllegalArgumentException(ERR_EMPTY_QUERY));
                 return QueryResponse.fromLLM(errorResponse);
             }
             ollamaConnectivityChecker.prepareForQuery(chatModel);
@@ -69,8 +70,7 @@ public class ProcessQueryService implements QueryService, Loggable {
             UUID projectId,
             UUID conversationId,
             List<String> documentFilter) {
-        return generateResponseForChat(
-                query, chatModel, userId, projectId, conversationId, documentFilter, null);
+        return generateResponseForChat(query, chatModel, userId, projectId, conversationId, documentFilter, null);
     }
 
     /**
@@ -87,8 +87,8 @@ public class ProcessQueryService implements QueryService, Loggable {
             UUID userMessageId) {
         try {
             if (query == null || query.trim().isEmpty()) {
-                log().warn("Empty query received");
-                String errorResponse = generateErrorResponse("", new IllegalArgumentException("empty query"));
+                log().warn(LOG_EMPTY_QUERY_RECEIVED);
+                String errorResponse = generateErrorResponse("", new IllegalArgumentException(ERR_EMPTY_QUERY));
                 return QueryResponse.fromLLM(errorResponse);
             }
             ollamaConnectivityChecker.prepareForQuery(chatModel);
@@ -116,9 +116,11 @@ public class ProcessQueryService implements QueryService, Loggable {
             return QueryResponse.fromLLM(errorResponse);
         }
         if (ctx.userQuery() == null || ctx.userQuery().trim().isEmpty()) {
-            log().warn("Empty query received");
+            log().warn(LOG_EMPTY_QUERY_RECEIVED);
             String errorResponse =
-                    generateErrorResponse(ctx.userQuery() != null ? ctx.userQuery() : "", new IllegalArgumentException("empty query"));
+                    generateErrorResponse(
+                            ctx.userQuery() != null ? ctx.userQuery() : "",
+                            new IllegalArgumentException(ERR_EMPTY_QUERY));
             return QueryResponse.fromLLM(errorResponse);
         }
         RagExecutionResult result = ragExecutionOrchestrator.execute(ctx);

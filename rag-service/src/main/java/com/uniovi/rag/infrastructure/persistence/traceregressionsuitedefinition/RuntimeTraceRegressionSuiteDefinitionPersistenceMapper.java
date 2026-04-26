@@ -56,7 +56,7 @@ public class RuntimeTraceRegressionSuiteDefinitionPersistenceMapper {
                 def.getId(),
                 def.getName(),
                 def.getDescription(),
-                (int) def.getSchemaVersion(),
+                def.getSchemaVersion(),
                 def.getCreatedAt(),
                 def.getUpdatedAt(),
                 snapshots);
@@ -172,7 +172,7 @@ public class RuntimeTraceRegressionSuiteDefinitionPersistenceMapper {
     }
 
     private static String workflowForDatabase(Optional<String> workflowName) {
-        if (workflowName == null || workflowName.isEmpty()) {
+        if (workflowName.isEmpty()) {
             return null;
         }
         String trimmed = workflowName.get().trim();

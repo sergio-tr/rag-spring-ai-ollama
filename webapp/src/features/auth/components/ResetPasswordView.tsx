@@ -78,12 +78,12 @@ export function ResetPasswordView() {
           )}
         </div>
         {message && (
-          <p
+          <output
             className={status === "error" ? "text-destructive text-sm" : "text-muted-foreground text-sm"}
             role={status === "error" ? "alert" : "status"}
           >
             {message}
-          </p>
+          </output>
         )}
         <Button type="submit" disabled={status === "busy" || !token}>
           {t("resetPasswordCta")}

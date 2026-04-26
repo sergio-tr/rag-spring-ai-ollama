@@ -17,8 +17,7 @@ import {
 import { useTranslations } from "next-intl";
 import { usePathname, Link, useRouter } from "@/navigation";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useState } from "react";
@@ -43,11 +42,11 @@ function isHexColor(s: string | null | undefined): s is string {
   return Boolean(s && /^#([0-9A-Fa-f]{6})$/.test(s));
 }
 
-type ProjectIconProps = {
+type ProjectIconProps = Readonly<{
   iconKey: string | null | undefined;
   className?: string;
   "aria-hidden"?: boolean;
-};
+}>;
 
 function ProjectIcon({ iconKey, className, ...rest }: ProjectIconProps) {
   switch (iconKey) {
@@ -276,24 +275,24 @@ export function AppSidebar() {
           {primaryLinks
             .filter((l) => (l.key === "admin" ? canSeeAdmin : true))
             .map((item) => {
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors",
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "hover:bg-sidebar-accent/80",
-                )}
-              >
-                <Icon className="size-4 shrink-0" aria-hidden />
-                <span className="truncate">{tNav(item.key)}</span>
-              </Link>
-            );
-          })}
+              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors",
+                    active
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "hover:bg-sidebar-accent/80",
+                  )}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden />
+                  <span className="truncate">{tNav(item.key)}</span>
+                </Link>
+              );
+            })}
         </nav>
       </div>
 
@@ -315,7 +314,7 @@ export function AppSidebar() {
   );
 }
 
-type SidebarProjectNodeProps = {
+type SidebarProjectNodeProps = Readonly<{
   project: ProjectSummary;
   expanded: boolean;
   toggleExpanded: () => void;
@@ -323,7 +322,7 @@ type SidebarProjectNodeProps = {
   activateProject: (p: ProjectSummary) => Promise<void>;
   searchQuery: string;
   onSelectConversation: (conversationId: string) => void;
-};
+}>;
 
 function SidebarProjectNode({
   project,
@@ -401,14 +400,14 @@ function SidebarProjectNode({
   );
 }
 
-type SearchChatsBodyProps = {
+type SearchChatsBodyProps = Readonly<{
   projects: ProjectSummary[];
   activeProjectId: string | null;
   expandedProjectIds: string[];
   query: string;
   activateProject: (p: ProjectSummary) => Promise<void>;
   onPickConversation: (projectId: string, conversationId: string) => void;
-};
+}>;
 
 function SearchChatsBody({
   projects,
@@ -445,7 +444,6 @@ function SearchChatsBody({
       const t = setTimeout(() => setLoadedCount((c) => Math.min(c + 1, prioritizedProjectIds.length)), 150);
       return () => clearTimeout(t);
     }
-    return;
   }, [q, loadedCount, prioritizedProjectIds.length]);
 
   if (!q) {
@@ -482,13 +480,13 @@ function SearchChatsBody({
   );
 }
 
-type SearchProjectGroupProps = {
+type SearchProjectGroupProps = Readonly<{
   project: ProjectSummary;
   query: string;
   activeProjectId: string | null;
   activateProject: (p: ProjectSummary) => Promise<void>;
   onPickConversation: (projectId: string, conversationId: string) => void;
-};
+}>;
 
 function SearchProjectGroup({
   project,
