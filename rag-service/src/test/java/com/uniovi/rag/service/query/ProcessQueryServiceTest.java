@@ -24,6 +24,7 @@ import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.client.ResourceAccessException;
 
 import java.net.ConnectException;
@@ -234,5 +235,29 @@ class ProcessQueryServiceTest {
 
         QueryResponse r = service.generateResponseForChat("q", null, uid, pid, conv, List.of());
         assertEquals("a", r.getAnswer());
+    }
+
+    @Test
+    void generateResponseForChat_usesSelfProviderWhenAvailable() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<ProcessQueryService> provider = mock(ObjectProvider.class);
+        ProcessQueryService self =
+                spy(new ProcessQueryService(
+                        executionContextFactory,
+                        ragExecutionOrchestrator,
+                        runtimeTracePersistenceService,
+                        chatClient,
+                        ollamaConnectivityChecker,
+                        provider));
+        when(provider.getIfAvailable()).thenReturn(self);
+
+        // We only care that the delegating overload calls through the provider.
+        doReturn(QueryResponse.fromLLM("x"))
+                .when(self)
+                .generateResponseForChat(any(), any(), any(), any(), any(), any(), isNull());
+
+        QueryResponse r = self.generateResponseForChat("q", null, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), List.of());
+        assertEquals("x", r.getAnswer());
+        verify(provider).getIfAvailable();
     }
 }

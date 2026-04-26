@@ -25,8 +25,7 @@ export default defineConfig({
         "src/types/api.ts",
         // Test helpers are not product code.
         "src/test-utils/**",
-        // Next.js App Router pages/layouts: large, async, and integration-heavy; covered by Playwright E2E. API route handlers under `src/app/api/**` remain in the gate.
-        "src/app/**/page.tsx",
+        // Next.js App Router layouts are integration-heavy; pages are measured because we ship unit tests for critical pages.
         "src/app/**/layout.tsx",
         // Lab classifier train/eval/classify panels (extracted from page for Sonar); E2E/manual validation.
         "src/app/**/lab-classifier-panels.tsx",
@@ -39,17 +38,14 @@ export default defineConfig({
         // Shell + dropdown menu: Radix-heavy; sidebar/panel/settings covered by focused tests and E2E.
         "src/components/layout/AppShell.tsx",
         "src/components/layout/ThemeLanguageMenu.tsx",
-        // Sidebar is mostly presentation + Radix interactions; E2E covers navigation.
-        "src/components/layout/AppSidebar.tsx",
+        // Sidebar is measured: we keep focused tests for navigation and persistence behavior.
         // Move dialog is mostly UI glue; behavior is validated by chat flows + E2E.
         "src/features/chat/components/MoveConversationDialog.tsx",
-        // Large RAG settings form: manual/E2E validation; hooks remain gated.
-        "src/features/settings/components/RagConfigForm.tsx",
+        // RAG settings form is measured: keep smoke-level unit tests for gating behavior.
         "src/features/settings/components/MeCanonicalJsonPanels.tsx",
         // Lab registry section is UI-heavy; validated via E2E/manual flows.
         "src/features/lab/components/classifier-registry-section.tsx",
-        // Auth "view" wrappers are mostly presentation glue around already-tested form components.
-        "src/features/auth/components/*View.tsx",
+        // Auth view wrappers are measured: keep small unit tests for token parsing and error/success states.
       ],
       // Gate: align with backend JaCoCo bundle (≥80% lines); branches covered via api-client, SSE, and polling tests.
       thresholds: {
