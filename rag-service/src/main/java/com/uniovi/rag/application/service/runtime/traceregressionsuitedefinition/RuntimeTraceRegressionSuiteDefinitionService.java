@@ -95,9 +95,8 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         Instant now = Instant.now();
         mapper.applyDefinitionUpdate(def, name, description.orElse(null), now);
         try {
-            definitionRepository.save(def);
-            // Force unique constraint checks (user_id, name) to fail fast inside the service method.
-            definitionRepository.flush();
+            // Entity has an assigned UUID; keep the managed instance (avoid merge returning a different instance).
+            def = definitionRepository.saveAndFlush(def);
         } catch (DataIntegrityViolationException ex) {
             throw duplicateName(ex);
         }
