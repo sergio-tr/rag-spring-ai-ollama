@@ -270,24 +270,35 @@ class RuntimeTraceRegressionSuiteRunPersistenceIntegrationTest {
         jdbcTemplate.update(
                 "UPDATE runtime_trace_regression_suite_run SET created_at = ? WHERE id IN (?, ?)", ts, idA, idB);
 
-        UUID idLow = idA.compareTo(idB) < 0 ? idA : idB;
-        UUID idHigh = idA.compareTo(idB) < 0 ? idB : idA;
-        assertThat(idLow.compareTo(idHigh)).isLessThan(0);
+        // Postgres UUID ordering (ORDER BY id) is not guaranteed to match Java UUID.compareTo().
+        // Verify against the actual DB sort we require: created_at DESC, id ASC.
+        List<UUID> dbOrdered =
+                jdbcTemplate.queryForList(
+                        "SELECT id FROM runtime_trace_regression_suite_run WHERE user_id = ? ORDER BY created_at DESC, id ASC",
+                        UUID.class,
+                        userId);
+        assertThat(dbOrdered).contains(idA, idB);
 
         var list = runPersistenceService.listSummariesForUser(userId);
-        int idxLow = -1;
-        int idxHigh = -1;
+        int idxA = -1;
+        int idxB = -1;
         for (int i = 0; i < list.size(); i++) {
-            if (list.get(i).id().value().equals(idLow)) {
-                idxLow = i;
+            if (list.get(i).id().value().equals(idA)) {
+                idxA = i;
             }
-            if (list.get(i).id().value().equals(idHigh)) {
-                idxHigh = i;
+            if (list.get(i).id().value().equals(idB)) {
+                idxB = i;
             }
         }
-        assertThat(idxLow).isGreaterThanOrEqualTo(0);
-        assertThat(idxHigh).isGreaterThanOrEqualTo(0);
-        assertThat(idxLow).isLessThan(idxHigh);
+        assertThat(idxA).isGreaterThanOrEqualTo(0);
+        assertThat(idxB).isGreaterThanOrEqualTo(0);
+        if (dbOrdered.get(0).equals(idA)) {
+            assertThat(idxA).isLessThan(idxB);
+        } else if (dbOrdered.get(0).equals(idB)) {
+            assertThat(idxB).isLessThan(idxA);
+        } else {
+            throw new IllegalStateException("unexpected db ordering for inserted runs");
+        }
     }
 
     @Test
