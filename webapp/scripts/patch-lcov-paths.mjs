@@ -23,7 +23,12 @@ const raw = fs.readFileSync(lcovPath, "utf8");
 const next = raw
   .split("\n")
   .map((line) => {
+    // Linux runners write "SF:src/..." while local Windows runs may write "SF:src\...".
     if (line.startsWith("SF:src/")) return `SF:webapp/${line.slice("SF:".length)}`;
+    if (line.startsWith("SF:src\\")) {
+      const rel = line.slice("SF:src\\".length).replaceAll("\\", "/");
+      return `SF:webapp/src/${rel}`;
+    }
     return line;
   })
   .join("\n");
