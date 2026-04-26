@@ -54,12 +54,6 @@ def backend_base() -> str:
 
 
 @pytest.fixture(scope="session")
-def legacy_api_base() -> str:
-    """Legacy HTTP prefix only (e.g. /api/v4), aligned with RAG_API_LEGACY_BASE_PATH."""
-    return os.environ.get("INTEGRATION_RAG_LEGACY_BASE_PATH", "/api/v4").strip().rstrip("/") or "/api/v4"
-
-
-@pytest.fixture(scope="session")
 def product_api_base() -> str:
     """Product API prefix (e.g. /api/v5), aligned with RAG_API_PRODUCT_BASE_PATH."""
     return os.environ.get("INTEGRATION_RAG_PRODUCT_BASE_PATH", "/api/v5").strip().rstrip("/") or "/api/v5"

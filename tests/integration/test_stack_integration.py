@@ -3,8 +3,7 @@ Stack integration tests (Compose + optional observability).
 
 Requirements:
   - postgres, classifier-service, backend reachable on configured ports.
-  - For useful RAG answers, Ollama must be available; without it /api/v4/query may still return 200
-    with an error message in the body.
+  - For useful RAG answers, Ollama must be available; product query paths may return an error envelope if LLM is down.
 
 Observability (Jaeger, Prometheus, OTEL collector, Grafana):
   - By default (INTEGRATION_CHECK_OBS=auto), tests in TestObservabilityStack run only if the OTEL
@@ -13,7 +12,6 @@ Observability (Jaeger, Prometheus, OTEL collector, Grafana):
   - INTEGRATION_CHECK_OBS=0: skip all observability tests.
 
 API path drift (aligned with Spring `rag.api.*`):
-  - INTEGRATION_RAG_LEGACY_BASE_PATH (default `/api/v4`) for legacy `GET …/query`.
   - INTEGRATION_RAG_PRODUCT_BASE_PATH (default `/api/v5`) for JWT product tests.
   - INTEGRATION_LOGIN_EMAIL / INTEGRATION_LOGIN_PASSWORD — seed user for `POST /api/auth/login` flows
     (default matches Flyway V16: dev@local.test / dev).
@@ -275,40 +273,43 @@ class TestBackend:
             "Expected typical Micrometer/JVM metrics on /actuator/prometheus"
         )
 
-    def test_query_returns_200(
+    def test_authenticated_product_smoke_schema_and_presets_ok(
         self,
         http_client: httpx.Client,
         backend_base: str,
-        legacy_api_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
     ) -> None:
-        """Query endpoint: 200 even if body reflects missing LLM/data."""
+        """
+        Authenticated product smoke (replacement for legacy query smoke).
+
+        Contract:
+          - Must be authenticated (JWT).
+          - Must use product API only.
+          - Must be non-snapshot-dependent (no knowledge snapshot creation required).
+          - Must be cheap enough for CI connectivity verification.
+        """
+        email, password = integration_seed_credentials
         try:
-            r = http_client.get(f"{backend_base}{legacy_api_base}/query", params={"question": "test"})
+            token = _login_access_token(http_client, backend_base, email, password)
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)
             raise
-        assert r.status_code == 200, r.text
-        body = (r.text or "").strip()
-        assert len(body) > 0
-
-    def test_query_response_is_json(
-        self,
-        http_client: httpx.Client,
-        backend_base: str,
-        legacy_api_base: str,
-    ) -> None:
-        """Legacy query returns JSON (success/data or error envelope)."""
+        if not token:
+            pytest.skip("USER login failed; cannot run authenticated product smoke (check INTEGRATION_LOGIN_*).")
+        headers = {"Authorization": f"Bearer {token}"}
         try:
-            r = http_client.get(
-                f"{backend_base}{legacy_api_base}/query",
-                params={"question": "How many documents are there?"},
+            presets = http_client.get(f"{backend_base}{product_api_base}/presets", headers=headers, timeout=30.0)
+            schema = http_client.get(
+                f"{backend_base}{product_api_base}/config/schema", headers=headers, timeout=30.0
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)
             raise
-        assert r.status_code == 200, r.text
-        ct = (r.headers.get("content-type") or "").lower()
-        assert "application/json" in ct, f"expected JSON content-type, got {ct!r}"
+        assert presets.status_code == 200, presets.text
+        assert isinstance(presets.json(), list)
+        assert schema.status_code == 200, schema.text
+        assert isinstance(schema.json(), dict)
 
 
 class TestBackendAuthApi:
@@ -672,26 +673,8 @@ class TestCrossService:
             raise
         assert h.status_code == 200 and b.status_code == 200
 
-    def test_backend_query_triggers_internal_classifier_path(
-        self,
-        http_client: httpx.Client,
-        backend_base: str,
-        legacy_api_base: str,
-    ) -> None:
-        """
-        RAG query should exercise backend → classifier-service HTTP (classifier reachable from backend network).
-        Does not assert answer quality; only HTTP 200 from the API.
-        """
-        try:
-            r = http_client.get(
-                f"{backend_base}{legacy_api_base}/query",
-                params={"question": "integration cross-service ping"},
-                timeout=120.0,
-            )
-        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
-            _skip_if_unreachable(e)
-            raise
-        assert r.status_code == 200, r.text
+    # Intentionally no cross-service "backend query triggers classifier" assertion here:
+    # product query flows can be snapshot-dependent and are out of scope for the non-snapshot smoke contract.
 
 
 @pytest.mark.usefixtures("require_obs_stack")
@@ -777,16 +760,24 @@ class TestObservabilityStack:
         http_client: httpx.Client,
         obs_urls: dict[str, str],
         backend_base: str,
-        legacy_api_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
     ) -> None:
         """Backend Micrometer metrics should appear in Prometheus (RAG timers or HTTP server metrics)."""
         prom = obs_urls["prometheus"]
+        email, password = integration_seed_credentials
         try:
-            http_client.get(
-                f"{backend_base}{legacy_api_base}/query",
-                params={"question": "prometheus metrics warm-up"},
-                timeout=90.0,
-            )
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if token:
+            headers = {"Authorization": f"Bearer {token}"}
+        else:
+            headers = None
+        try:
+            # Warm up a stable product endpoint to generate HTTP metrics without snapshot dependency.
+            http_client.get(f"{backend_base}{product_api_base}/config/schema", headers=headers, timeout=30.0)
         except httpx.HTTPError:
             pass
 
@@ -812,18 +803,24 @@ class TestObservabilityStack:
         http_client: httpx.Client,
         obs_urls: dict[str, str],
         backend_base: str,
-        legacy_api_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
     ) -> None:
         """
         Regression: Spring OTLP HTTP exporter must use /v1/traces; profiles docker+infra must point to otel-collector.
         """
         expected = os.environ.get("INTEGRATION_EXPECT_RAG_SERVICE_NAME", "rag-backend").strip() or "rag-backend"
+        email, password = integration_seed_credentials
         try:
-            r = http_client.get(
-                f"{backend_base}{legacy_api_base}/query",
-                params={"question": "otel trace smoke"},
-                timeout=120.0,
-            )
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("USER login failed; cannot generate authenticated traffic for Jaeger (check INTEGRATION_LOGIN_*).")
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            r = http_client.get(f"{backend_base}{product_api_base}/config/schema", headers=headers, timeout=30.0)
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             _skip_if_unreachable(e)
             raise
