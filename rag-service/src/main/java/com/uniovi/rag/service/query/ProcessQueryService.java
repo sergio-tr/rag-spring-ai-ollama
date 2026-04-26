@@ -12,9 +12,11 @@ import com.uniovi.rag.infrastructure.observability.Loggable;
 import com.uniovi.rag.interfaces.rest.support.ConnectivityFailureDetector;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -31,6 +33,7 @@ public class ProcessQueryService implements QueryService, Loggable {
     private final RuntimeTracePersistenceService runtimeTracePersistenceService;
     private final ChatClient chatClient;
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
+    private final ObjectProvider<ProcessQueryService> selfProvider;
 
     public ProcessQueryService(
             ExecutionContextFactory executionContextFactory,
@@ -38,11 +41,28 @@ public class ProcessQueryService implements QueryService, Loggable {
             RuntimeTracePersistenceService runtimeTracePersistenceService,
             ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker) {
+        this(
+                executionContextFactory,
+                ragExecutionOrchestrator,
+                runtimeTracePersistenceService,
+                chatClient,
+                ollamaConnectivityChecker,
+                null);
+    }
+
+    public ProcessQueryService(
+            ExecutionContextFactory executionContextFactory,
+            RagExecutionOrchestrator ragExecutionOrchestrator,
+            RuntimeTracePersistenceService runtimeTracePersistenceService,
+            ChatClient chatClient,
+            OllamaConnectivityChecker ollamaConnectivityChecker,
+            ObjectProvider<ProcessQueryService> selfProvider) {
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
         this.runtimeTracePersistenceService = runtimeTracePersistenceService;
         this.chatClient = chatClient;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
+        this.selfProvider = selfProvider;
     }
 
     @Override
@@ -70,6 +90,11 @@ public class ProcessQueryService implements QueryService, Loggable {
             UUID projectId,
             UUID conversationId,
             List<String> documentFilter) {
+        ProcessQueryService self = selfProvider != null ? selfProvider.getIfAvailable() : null;
+        if (self != null) {
+            return self.generateResponseForChat(
+                    query, chatModel, userId, projectId, conversationId, documentFilter, null);
+        }
         return generateResponseForChat(query, chatModel, userId, projectId, conversationId, documentFilter, null);
     }
 
