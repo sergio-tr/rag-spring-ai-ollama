@@ -538,6 +538,25 @@ jobs:
           echo "--- spring log (tail) ---"
           tail -n 200 /tmp/spring-e2e.log || true
           exit 1
+      - name: Wait for e2e admin login to be available
+        env:
+          E2E_ADMIN_EMAIL: admin@e2e.local
+          E2E_ADMIN_PASSWORD: e2e
+        run: |
+          for i in $(seq 1 45); do
+            code="$(
+              curl -sS -o /dev/null -w '%{http_code}' \
+                -H 'Content-Type: application/json' \
+                -d "{\"email\":\"${E2E_ADMIN_EMAIL}\",\"password\":\"${E2E_ADMIN_PASSWORD}\"}" \
+                http://127.0.0.1:9000/api/auth/login || true
+            )"
+            if [ "$code" = "200" ]; then
+              echo "Admin login OK"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::warning::Admin login not ready after waiting; admin UI test may fail."
       - name: Readiness check (informational; 200 or 503)
         run: |
           code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/actuator/health/readiness || true)"

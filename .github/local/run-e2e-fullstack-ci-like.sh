@@ -144,6 +144,24 @@ wait_for_backend() {
   return 1
 }
 
+wait_for_admin_login() {
+  log "Waiting for e2e admin login to be available."
+  for _ in $(seq 1 45); do
+    code="$(
+      curl -sS -o /dev/null -w '%{http_code}' \
+        -H 'Content-Type: application/json' \
+        -d '{"email":"admin@e2e.local","password":"e2e"}' \
+        http://127.0.0.1:9000/api/auth/login || true
+    )"
+    if [[ "${code}" == "200" ]]; then
+      log "Admin login OK."
+      return 0
+    fi
+    sleep 2
+  done
+  log "Admin login not ready; continuing (admin UI test may fail)."
+}
+
 seed_admin() {
   # Not explicitly done in the e2e_fullstack job, but required if tests hit /api/admin/**.
   log "Seeding e2e admin user (best-effort)."
@@ -192,5 +210,6 @@ prepare_postgres
 start_backend
 wait_for_backend
 seed_admin
+wait_for_admin_login
 run_playwright_fullstack
 
