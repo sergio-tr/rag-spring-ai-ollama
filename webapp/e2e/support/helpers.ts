@@ -48,7 +48,8 @@ export async function createAndActivateProject(page: Page, projectName: string):
   await page.locator("#proj-name").fill(projectName);
   await page.getByRole("button", { name: /^(create|crear)$/i }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 20_000 });
-  await page.getByText(projectName, { exact: true }).waitFor({ state: "visible" });
+  // Project name can appear both in sidebar and in the card title; pick the clickable card entry.
+  await page.getByRole("button", { name: projectName, exact: true }).first().waitFor({ state: "visible" });
   const projectCard = page.locator('[data-slot="card"]').filter({ hasText: projectName }).first();
   await expect(projectCard.getByRole("button", { name: /^(active|activo)$/i })).toBeVisible({
     timeout: 20_000,

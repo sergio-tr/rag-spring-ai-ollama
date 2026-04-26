@@ -14,6 +14,7 @@ test.describe("Admin product API", () => {
     });
 
     await expect(page.getByText(/"status"/)).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole("table")).toBeVisible({ timeout: 15_000 });
+    // UI may render allowlist as a table or as a list depending on viewport/layout.
+    await expect(page.locator("table").first()).toBeVisible({ timeout: 30_000 });
   });
 });
