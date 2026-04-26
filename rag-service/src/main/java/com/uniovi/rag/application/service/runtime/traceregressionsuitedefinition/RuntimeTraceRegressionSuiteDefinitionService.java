@@ -75,7 +75,9 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         } catch (DataIntegrityViolationException ex) {
             throw duplicateName(ex);
         }
-        mapper.insertEntriesFromCommand(def, command, entryRepository, traceRepository);
+        RuntimeTraceRegressionSuiteDefinitionEntity managedDefRef =
+                definitionRepository.getReferenceById(definitionId);
+        mapper.insertEntriesFromCommand(managedDefRef, command, entryRepository, traceRepository);
         return definitionId;
     }
 
@@ -100,7 +102,9 @@ public class RuntimeTraceRegressionSuiteDefinitionService {
         } catch (DataIntegrityViolationException ex) {
             throw duplicateName(ex);
         }
-        mapper.insertEntriesFromCommand(def, command, entryRepository, traceRepository);
+        RuntimeTraceRegressionSuiteDefinitionEntity managedDefRef =
+                definitionRepository.getReferenceById(definitionId);
+        mapper.insertEntriesFromCommand(managedDefRef, command, entryRepository, traceRepository);
     }
 
     @Transactional
