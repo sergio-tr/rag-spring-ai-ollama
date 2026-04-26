@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
@@ -15,13 +15,20 @@ vi.mock("@/navigation", () => ({
   useRouter: () => ({ replace }),
 }));
 
+let mockToken = "";
 vi.mock("next/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(""),
+  useSearchParams: () => new URLSearchParams(mockToken ? `token=${encodeURIComponent(mockToken)}` : ""),
 }));
 
 import { ResetPasswordView } from "./ResetPasswordView";
 
 describe("ResetPasswordView", () => {
+  beforeEach(() => {
+    mockToken = "";
+    apiFetch.mockReset();
+    replace.mockReset();
+  });
+
   it("shows missing token message and disables submit", () => {
     render(
       <IntlTestProvider>
@@ -33,16 +40,13 @@ describe("ResetPasswordView", () => {
   });
 
   it("submits when token exists and redirects to login", async () => {
-    vi.doMock("next/navigation", () => ({
-      useSearchParams: () => new URLSearchParams("token=t1"),
-    }));
-    const { ResetPasswordView: ViewWithToken } = await import("./ResetPasswordView");
+    mockToken = "t1";
     apiFetch.mockResolvedValueOnce({});
 
     const user = userEvent.setup();
     render(
       <IntlTestProvider>
-        <ViewWithToken />
+        <ResetPasswordView />
       </IntlTestProvider>,
     );
     await user.type(screen.getByLabelText(/^password$/i), "12345678");
