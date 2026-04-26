@@ -1,19 +1,42 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
 
+const putUser = vi.fn();
+const putProject = vi.fn();
+const delProject = vi.fn();
+const mockSchemaState: any = { isLoading: false, isError: false, data: { fields: [] } };
+const mockUserState: any = { isLoading: false, isError: false, data: {} };
+const mockProjectState: any = { isLoading: false, isError: false, data: {} };
+
 vi.mock("@/features/settings/hooks/use-rag-config", () => ({
-  useConfigSchemaQuery: () => ({ isLoading: false, isError: false, data: { fields: [] } }),
-  useUserRagConfigQuery: () => ({ isLoading: false, isError: false, data: {} }),
-  useProjectRagConfigQuery: () => ({ isLoading: false, isError: false, data: {} }),
-  usePutUserRagConfig: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false }),
-  usePutProjectRagConfig: () => ({ mutateAsync: vi.fn(), isPending: false, isError: false }),
-  useDeleteProjectRagConfig: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useConfigSchemaQuery: () => mockSchemaState,
+  useUserRagConfigQuery: () => mockUserState,
+  useProjectRagConfigQuery: () => mockProjectState,
+  usePutUserRagConfig: () => ({ mutateAsync: putUser, isPending: false, isError: false }),
+  usePutProjectRagConfig: () => ({ mutateAsync: putProject, isPending: false, isError: false }),
+  useDeleteProjectRagConfig: () => ({ mutateAsync: delProject, isPending: false }),
 }));
 
 import { RagConfigForm } from "./RagConfigForm";
 
 describe("RagConfigForm", () => {
+  beforeEach(() => {
+    putUser.mockReset();
+    putProject.mockReset();
+    delProject.mockReset();
+    mockSchemaState.isLoading = false;
+    mockSchemaState.isError = false;
+    mockSchemaState.data = { fields: [] };
+    mockUserState.isLoading = false;
+    mockUserState.isError = false;
+    mockUserState.data = {};
+    mockProjectState.isLoading = false;
+    mockProjectState.isError = false;
+    mockProjectState.data = {};
+  });
+
   it("renders no-active-project message in project mode without projectId", () => {
     render(
       <IntlTestProvider>
@@ -21,6 +44,32 @@ describe("RagConfigForm", () => {
       </IntlTestProvider>,
     );
     expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("submits user config form when schema has editable fields", async () => {
+    mockSchemaState.data = {
+      fields: [
+        { key: "topK", type: "integer", userEditable: true, min: 1, max: 50 },
+        { key: "enableFoo", type: "boolean", userEditable: true },
+      ],
+    };
+    mockUserState.data = { topK: 5, enableFoo: false };
+    putUser.mockResolvedValueOnce({});
+
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <RagConfigForm mode="user" />
+      </IntlTestProvider>,
+    );
+
+    const topK = screen.getByLabelText("topK");
+    await user.clear(topK);
+    await user.type(topK, "7");
+    await user.click(screen.getByLabelText("enableFoo"));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(putUser).toHaveBeenCalled();
   });
 });
 
