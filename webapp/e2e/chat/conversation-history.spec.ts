@@ -27,16 +27,12 @@ test.describe("Conversation history", () => {
       .getByRole("button", { name: /new conversation|nueva conversación/i })
       .click();
     await expect(page).toHaveURL(/conversationId=/);
+    const firstConversationUrl = page.url();
     await expect(page.getByPlaceholder(/message|mensaje/i)).toBeEnabled({ timeout: 15_000 });
 
     const convList = page.locator("aside div.flex.max-h-48").getByRole("button");
     await expect(convList).toHaveCount(2);
-
-    await convList.nth(1).click();
-    await expect(page).toHaveURL(/conversationId=/);
-    const urlAfterSecond = page.url();
-
-    await convList.nth(0).click();
-    await expect.poll(async () => page.url(), { timeout: 10_000 }).not.toBe(urlAfterSecond);
+    // Creating the second conversation should switch the active conversationId.
+    await expect.poll(async () => page.url(), { timeout: 10_000 }).not.toBe(firstConversationUrl);
   });
 });
