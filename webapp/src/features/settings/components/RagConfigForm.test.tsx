@@ -6,9 +6,28 @@ import { IntlTestProvider } from "@/test-utils/intl";
 const putUser = vi.fn();
 const putProject = vi.fn();
 const delProject = vi.fn();
-const mockSchemaState: any = { isLoading: false, isError: false, data: { fields: [] } };
-const mockUserState: any = { isLoading: false, isError: false, data: {} };
-const mockProjectState: any = { isLoading: false, isError: false, data: {} };
+
+type ConfigField = {
+  key: string;
+  type: "integer" | "number" | "boolean" | "string";
+  userEditable: boolean;
+  min?: number;
+  max?: number;
+};
+
+type QueryState<T> = {
+  isLoading: boolean;
+  isError: boolean;
+  data: T;
+};
+
+const mockSchemaState: QueryState<{ fields: ConfigField[] }> = {
+  isLoading: false,
+  isError: false,
+  data: { fields: [] },
+};
+const mockUserState: QueryState<Record<string, unknown>> = { isLoading: false, isError: false, data: {} };
+const mockProjectState: QueryState<Record<string, unknown>> = { isLoading: false, isError: false, data: {} };
 
 vi.mock("@/features/settings/hooks/use-rag-config", () => ({
   useConfigSchemaQuery: () => mockSchemaState,

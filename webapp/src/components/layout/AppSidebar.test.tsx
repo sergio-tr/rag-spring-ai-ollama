@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
+import type { ProjectSummary } from "@/types/api";
 import { AppSidebar } from "./AppSidebar";
 
 vi.mock("@/lib/user-role", () => ({
@@ -28,7 +29,7 @@ vi.mock("@/features/projects/hooks/use-projects", () => ({
 }));
 
 const mockProjectsState: {
-  data: { items: any[]; total: number } | null;
+  data: { items: ProjectSummary[]; total: number } | null;
   isLoading: boolean;
   isError: boolean;
 } = {
