@@ -2,7 +2,7 @@
 
 **Audience:** Operators deploying the stack from this repository to a **Linux VM** (e.g. Azure VM) using the same compose files as local **prod-style** runs.
 
-**Related:** [deploy-workflow-audit.md](deploy-workflow-audit.md), [azure-vm-parameterization.md](azure-vm-parameterization.md), [../../docker/README.md](../../docker/README.md), [../../scripts/README.md](../../scripts/README.md).
+**Related:** [deploy-workflow-audit.md](deploy-workflow-audit.md), [azure-vm-parameterization.md](azure-vm-parameterization.md), [../../docker/README.md](../../docker/README.md), [../../docker/scripts/README.md](../../docker/scripts/README.md).
 
 ---
 

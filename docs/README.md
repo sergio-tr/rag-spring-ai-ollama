@@ -21,7 +21,7 @@
 | Testing strategy (overview) | [testing/README.md](testing/README.md), [development/e2e-testing-strategy.md](development/e2e-testing-strategy.md) (workflows vs gates), [testing/traceability-legacy-tools.md](testing/traceability-legacy-tools.md) (load-tool mapping) |
 | CI / PR validation and Compose pins | [devops/README.md](devops/README.md) |
 | Coverage reports (paths, Sonar) | [coverage/README.md](coverage/README.md) |
-| SonarCloud scan locally (match `sonar.yml`) | [development/sonar-local-analysis.md](development/sonar-local-analysis.md), [scripts/README.md](../scripts/README.md) |
+| SonarCloud scan locally (match `sonar.yml`) | [development/sonar-local-analysis.md](development/sonar-local-analysis.md), [docker/scripts/README.md](../docker/scripts/README.md) |
 | Classifier registry (train → activate) | [development/classifier-registry-demo.md](development/classifier-registry-demo.md) |
 | Performance / load (overview) | [performance/README.md](performance/README.md) |
 | ADRs | [adr/README.md](adr/README.md) |
@@ -45,7 +45,7 @@
 | Database | `db/` | [db/README.md](../db/README.md) |
 | Ollama (image / stack) | `ollama/` | [ollama/README.md](../ollama/README.md) |
 | Observability | `observability/` | [observability/README.md](../observability/README.md) |
-| Automation index (Markdown) | `scripts/` | [scripts/README.md](../scripts/README.md) |
+| Automation (Compose + env) | `docker/scripts/` | [docker/scripts/README.md](../docker/scripts/README.md) |
 
 **Topic-to-README lookup:** [architecture/references.md](architecture/references.md)
 

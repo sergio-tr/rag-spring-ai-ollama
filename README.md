@@ -115,7 +115,7 @@ Classifier endpoints: `POST /classify`, `GET /models`, `POST /train`, `POST /eva
 
 Analysis is driven by [`sonar-project.properties`](sonar-project.properties) and [`.github/workflows/sonar.yml`](.github/workflows/sonar.yml). Set `sonar.projectKey` and `sonar.organization` to match your SonarCloud project, and add a **`SONAR_TOKEN`** repository secret (SonarCloud → *My Account → Security*).
 
-**Local scan (same steps as CI):** [`docs/development/sonar-local-analysis.md`](docs/development/sonar-local-analysis.md) — scripts [`.github/local/sonar-local.sh`](scripts/sonar-local.sh). Requires Postgres + Docker for the scanner image; set `SONAR_TOKEN` in the environment.
+**Local scan (same steps as CI):** [`docs/development/sonar-local-analysis.md`](docs/development/sonar-local-analysis.md) — script [`.github/local/sonar-local.sh`](.github/local/sonar-local.sh). Requires Postgres + Docker for the scanner image; set `SONAR_TOKEN` in the environment.
 
 **Branches:** pushes and PRs to `main` / `dev` trigger analysis. In SonarCloud, set the main branch to `main` (*Project → Administration → Branches and Pull Requests*) so **New Code** is computed correctly.
 
@@ -165,7 +165,7 @@ Production credentials must always come from environment / `.env` files, not fro
 | [rag-service/README.md](rag-service/README.md) | Backend build, variables, Compose, smoke test link |
 | [classifier-service/README.md](classifier-service/README.md) | Classifier API, run locally, regression testing |
 | [docker/README.md](docker/README.md) | Compose usage, execution modes, deployment runbook |
-| [scripts/README.md](scripts/README.md) | Index of shell automation (no duplicate `.sh` here); canonical paths in `docker/scripts/`, `db/scripts/`, etc. |
+| [docker/scripts/README.md](docker/scripts/README.md) | Canonical operator scripts: Compose orchestration + `.env` generation |
 | [db/README.md](db/README.md) | Database setup |
 | [ollama/README.md](ollama/README.md) | Ollama / GPU stack |
 | [observability/README.md](observability/README.md) | Observability stack (OTEL, Jaeger, Prometheus, Grafana) |

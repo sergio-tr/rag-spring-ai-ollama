@@ -216,7 +216,7 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
    - **Build from sources:** `docker compose -f docker/docker-compose.yml -f docker/compose.prod.yml build` then `up -d` (or `up -d --build`).
    - **Pull prebuilt tags** only if you use an operator override or image-backed workflow that references GHCR; otherwise `docker compose pull` may no-op. The [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) step keeps `pull || true` for mixed environments.
 3. Verification (smoke test):
-   - See [`../docker/scripts/README.md`](../docker/scripts/README.md) (section **Smoke test**) and [`../scripts/README.md`](../scripts/README.md) (layout index), then run the main checks:
+   - See [`../docker/scripts/README.md`](../docker/scripts/README.md) (section **Smoke test**), then run the main checks:
      - `curl -s http://<host>:9000/actuator/health`
      - `curl -s http://<host>:8000/health` (if the classifier port is reachable)
      - Authenticated product smoke (get JWT, then call stable product endpoints like `GET {product}/config/schema` or `GET {product}/presets`)

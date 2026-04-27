@@ -13,19 +13,19 @@
 #
 # Usage (from repo root):
 #   export SONAR_TOKEN=your_token
-#   ./scripts/sonar-local.sh
+#   ./.github/local/sonar-local.sh
 #
 # Skip DB bootstrap if you already applied ci-postgres-extensions.sql + testdb (e.g. ci-like-verify):
-#   SKIP_POSTGRES_PREP=1 ./scripts/sonar-local.sh
+#   SKIP_POSTGRES_PREP=1 ./.github/local/sonar-local.sh
 #
 # Force native client only (fail if psql missing, even when Docker is installed):
-#   USE_DOCKER_PG_CLIENT=0 ./scripts/sonar-local.sh
+#   USE_DOCKER_PG_CLIENT=0 ./.github/local/sonar-local.sh
 #
 # Disable auto-pick of /usr/lib/jvm/java-21-* when default java is older:
-#   SKIP_AUTO_JDK21=1 ./scripts/sonar-local.sh
+#   SKIP_AUTO_JDK21=1 ./.github/local/sonar-local.sh
 #
 # Optional — publish analysis for the current branch (matches local branch name in SonarCloud):
-#   SONAR_BRANCH_NAME=$(git branch --show-current) ./scripts/sonar-local.sh
+#   SONAR_BRANCH_NAME=$(git branch --show-current) ./.github/local/sonar-local.sh
 
 set -euo pipefail
 

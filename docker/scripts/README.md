@@ -236,6 +236,6 @@ Before tagging a release or thesis snapshot, capture evidence for:
 
 Canonical orchestration remains **`./docker/scripts/up.sh`** and **`./docker/scripts/docker-compose.sh`**; do not maintain one-off compose examples that diverge from those scripts ([`../README.md`](../README.md)).
 
-## Repo layout note (`scripts/` at root)
+## Repo layout note
 
-The top-level [`../../scripts/README.md`](../../scripts/README.md) indexes automation entry points. Prefer **`docker/scripts/`** for Compose. The file [`../../rag-service/scripts/up.sh`](../../rag-service/scripts/up.sh) **delegates** to `docker/scripts/up.sh` — it is not a second source of compose flags.
+`docker/scripts/` is the canonical location for Compose orchestration and `.env` generation. The file [`../../rag-service/scripts/up.sh`](../../rag-service/scripts/up.sh) **delegates** to `docker/scripts/up.sh` — it is not a second source of compose flags.

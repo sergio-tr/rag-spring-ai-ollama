@@ -6,7 +6,7 @@ Product UI for the RAG platform: projects, documents, settings (user/project RAG
 
 ## Environment
 
-Copy `.env.example` to `.env` (or use `./scripts/create-env-webapp.sh` from the repo root). Key variables:
+Copy `.env.example` to `.env` (or use `./docker/scripts/create-env-webapp.sh` from the repo root). Key variables:
 
 | Variable | Role |
 | --- | --- |

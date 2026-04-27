@@ -12,7 +12,7 @@ Use this table to avoid duplicating content. Prefer linking here from other `doc
 | Postgres image, init | [db/README.md](../../db/README.md) |
 | Ollama GPU stack folder | [ollama/README.md](../../ollama/README.md) |
 | OTEL / metrics / Grafana | [observability/README.md](../../observability/README.md) |
-| Shell entrypoints index | [scripts/README.md](../../scripts/README.md) |
+| Operator scripts (Compose + env) | [docker/scripts/README.md](../../docker/scripts/README.md) |
 | Integration pytest | [tests/integration/README.md](../../tests/integration/README.md) |
 | Load tests (Gatling) | [tests/gatling/README.md](../../tests/gatling/README.md) |
 | Full verification script | [tests/full-stack-verify.sh](../../tests/full-stack-verify.sh) |

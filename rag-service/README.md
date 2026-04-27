@@ -228,7 +228,7 @@ If the LLM backend (Ollama) cannot be reached, the service returns **503** with 
 
 ## Smoke test
 
-With the stack running, see [docker/scripts/README.md](../docker/scripts/README.md) (section **Smoke test**) or [scripts/README.md](../scripts/README.md) (index), or run `./rag-service/scripts/smoke-test.sh` (checks classifier, then `/actuator/health`; product endpoints require JWT).
+With the stack running, see [docker/scripts/README.md](../docker/scripts/README.md) (section **Smoke test**) or run `./rag-service/scripts/smoke-test.sh` (checks classifier, then `/actuator/health`; product endpoints require JWT).
 
 ## Observability (optional)
 

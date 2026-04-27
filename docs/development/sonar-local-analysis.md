@@ -111,7 +111,7 @@ java -version   # should show 21.x
 export JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(which java)")")")"
 ```
 
-Then re-run `./scripts/sonar-local.sh`.
+Then re-run `./.github/local/sonar-local.sh`.
 
 If **`java -version` still shows 11** after installing `openjdk-21-jdk`, your `PATH` prefers the old JDK. For one terminal session:
 
