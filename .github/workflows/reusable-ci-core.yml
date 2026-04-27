@@ -420,19 +420,19 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build rag-service image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./rag-service
           push: false
       - name: Build classifier-service image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./classifier-service
           push: false
       - name: Build webapp image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./webapp
           push: false
@@ -441,14 +441,14 @@ jobs:
             NEXT_PUBLIC_RAG_API_PREFIX=/api/v5
             NEXT_PUBLIC_TIMEZONE=UTC
       - name: Build db image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./db
           push: false
           build-args: |
             POSTGRES_BASE_IMAGE=${{ env.POSTGRES_SERVICE_IMAGE }}
       - name: Build reverse-proxy image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./reverse-proxy
           push: false
@@ -528,13 +528,21 @@ jobs:
           echo $! > /tmp/spring-e2e.pid
       - name: Wait for Actuator health
         run: |
-          for i in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:9000/actuator/health >/dev/null 2>&1; then
-              echo "Backend healthy"
+          set -euo pipefail
+          # Readiness is a better gate than generic /health for auth-dependent E2E.
+          for i in $(seq 1 120); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/actuator/health/readiness || true)"
+            if [ "$code" = "200" ]; then
+              echo "Backend ready"
               exit 0
             fi
             sleep 2
           done
+          echo "--- readiness never became 200; diagnostics ---"
+          curl -sS http://127.0.0.1:9000/actuator/health || true
+          echo ""
+          curl -sS http://127.0.0.1:9000/actuator/health/readiness || true
+          echo ""
           echo "--- spring log (tail) ---"
           tail -n 200 /tmp/spring-e2e.log || true
           exit 1
@@ -543,7 +551,8 @@ jobs:
           E2E_ADMIN_EMAIL: admin@e2e.local
           E2E_ADMIN_PASSWORD: e2e
         run: |
-          for i in $(seq 1 45); do
+          set -euo pipefail
+          for i in $(seq 1 90); do
             code="$(
               curl -sS -o /dev/null -w '%{http_code}' \
                 -H 'Content-Type: application/json' \
@@ -556,7 +565,16 @@ jobs:
             fi
             sleep 2
           done
-          echo "::warning::Admin login not ready after waiting; admin UI test may fail."
+          echo "::error::Admin login not ready after waiting."
+          echo "--- backend health (diagnostic) ---"
+          curl -sS http://127.0.0.1:9000/actuator/health || true
+          echo ""
+          echo "--- backend readiness (diagnostic; 200 or 503) ---"
+          curl -sS http://127.0.0.1:9000/actuator/health/readiness || true
+          echo ""
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-e2e.log || true
+          exit 1
       - name: Readiness check (informational; 200 or 503)
         run: |
           code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/actuator/health/readiness || true)"
