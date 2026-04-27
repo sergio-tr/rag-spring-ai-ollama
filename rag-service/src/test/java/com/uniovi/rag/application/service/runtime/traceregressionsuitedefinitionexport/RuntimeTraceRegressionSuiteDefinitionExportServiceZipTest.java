@@ -7,6 +7,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntrySnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSnapshot;
+import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionDetailDto;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -65,7 +66,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportServiceZipTest {
             ZipEntry e1 = zin.getNextEntry();
             assertThat(e1.getName()).isEqualTo("manifest.json");
             assertThat(e1.getMethod()).isEqualTo(ZipEntry.STORED);
-            byte[] manBytes = zin.readNBytes((int) e1.getSize());
+            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L);
             JsonNode man = om.readTree(manBytes);
             assertThat(man.get("zipSizeBytes").asLong()).isEqualTo(art.content().length);
             assertThat(man.get("truncated").asBoolean()).isFalse();
@@ -76,7 +77,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportServiceZipTest {
             ZipEntry e2 = zin.getNextEntry();
             assertThat(e2.getName()).isEqualTo("definition.json");
             assertThat(e2.getMethod()).isEqualTo(ZipEntry.STORED);
-            byte[] defBytes = zin.readNBytes((int) e2.getSize());
+            byte[] defBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L);
             assertThat(om.readValue(defBytes, RuntimeTraceRegressionSuiteDefinitionDetailDto.class))
                     .isEqualTo(RuntimeTraceRegressionSuiteDefinitionDetailDto.fromSnapshot(snapshot));
             assertThat(zin.getNextEntry()).isNull();
@@ -95,7 +96,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportServiceZipTest {
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(zip))) {
             ZipEntry e1 = zin.getNextEntry();
             assertThat(e1.getName()).isEqualTo("manifest.json");
-            byte[] manBytes = zin.readNBytes((int) e1.getSize());
+            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L);
             JsonNode man = fd4ObjectMapper().readTree(manBytes);
             assertThat(man.get("zipSizeBytes").asLong()).isEqualTo(zip.length);
             ZipEntry e2 = zin.getNextEntry();

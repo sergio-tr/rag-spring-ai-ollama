@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -105,7 +107,7 @@ public class KnowledgeIngestionService {
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newIngesting(project, original);
         row = knowledgeDocumentRepository.save(row);
 
-        Path temp = Files.createTempFile("rag-doc-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
+        Path temp = createPrivateTempFile("rag-doc-", original);
         file.transferTo(temp.toFile());
 
         projectDocumentIngestionService.ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
@@ -137,10 +139,51 @@ public class KnowledgeIngestionService {
 
         KnowledgeDocumentEntity row = KnowledgeDocumentEntityFactory.newChatLocalIngesting(conv.getProject(), conv, original);
         row = knowledgeDocumentRepository.save(row);
-        Path temp = Files.createTempFile("rag-doc-overlay-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
+        Path temp = createPrivateTempFile("rag-doc-overlay-", original);
         file.transferTo(temp.toFile());
         projectDocumentIngestionService.ingestFromTempFile(userId, projectId, row.getId(), temp, original, ct);
         return toDto(row);
+    }
+
+    private static Path createPrivateTempFile(String prefix, String originalFilename) throws IOException {
+        String original =
+                originalFilename != null && !originalFilename.isBlank() ? originalFilename : DEFAULT_ORIGINAL_FILENAME;
+        String safeSuffix = "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_");
+
+        // Create a private temp directory (0700 on POSIX) and put the file inside it to avoid any
+        // ambiguity around publicly writable shared temp directories.
+        Path dir = createPrivateTempDir(prefix);
+        Path p = Files.createTempFile(dir, prefix, safeSuffix, posix0600IfSupported());
+        p.toFile().deleteOnExit();
+        return p;
+    }
+
+    private static Path createPrivateTempDir(String prefix) throws IOException {
+        Path dir = Files.createTempDirectory(prefix, posix0700IfSupported());
+        dir.toFile().deleteOnExit();
+        return dir;
+    }
+
+    private static FileAttribute<?>[] posix0700IfSupported() {
+        try {
+            return new FileAttribute<?>[] {
+                PosixFilePermissions.asFileAttribute(
+                        PosixFilePermissions.fromString("rwx------"))
+            };
+        } catch (UnsupportedOperationException ex) {
+            return new FileAttribute<?>[0];
+        }
+    }
+
+    private static FileAttribute<?>[] posix0600IfSupported() {
+        try {
+            return new FileAttribute<?>[] {
+                PosixFilePermissions.asFileAttribute(
+                        PosixFilePermissions.fromString("rw-------"))
+            };
+        } catch (UnsupportedOperationException ex) {
+            return new FileAttribute<?>[0];
+        }
     }
 
     private static ProjectDocumentDto toDto(KnowledgeDocumentEntity e) {

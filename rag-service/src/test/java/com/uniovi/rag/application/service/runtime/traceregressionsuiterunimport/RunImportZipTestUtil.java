@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
 
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayInputStream;
@@ -35,10 +36,10 @@ public final class RunImportZipTestUtil {
     public static byte[] extractRunJsonBytes(byte[] zip) throws IOException {
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(zip))) {
             ZipEntry e1 = zin.getNextEntry();
-            zin.readNBytes((int) e1.getSize());
+            ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L);
             zin.closeEntry();
             ZipEntry e2 = zin.getNextEntry();
-            return zin.readNBytes((int) e2.getSize());
+            return ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L);
         }
     }
 

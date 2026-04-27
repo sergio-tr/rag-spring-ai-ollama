@@ -14,6 +14,7 @@ import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegression
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteRequest;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteResult;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteSummary;
+import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuite.RuntimeTraceRegressionSuiteResponseDto;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -65,7 +66,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportServiceZipTest {
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(art.content()))) {
             ZipEntry e1 = zin.getNextEntry();
             assertThat(e1.getName()).isEqualTo("manifest.json");
-            byte[] manBytes = zin.readNBytes((int) e1.getSize());
+            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L);
             JsonNode man = om.readTree(manBytes);
             assertThat(man.get("exportKind").asText())
                     .isEqualTo(RuntimeTraceRegressionSuiteDefinitionExecutionExportService.EXPORT_KIND);
@@ -74,7 +75,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportServiceZipTest {
 
             ZipEntry e2 = zin.getNextEntry();
             assertThat(e2.getName()).isEqualTo("suite.json");
-            byte[] suiteBytes = zin.readNBytes((int) e2.getSize());
+            byte[] suiteBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L);
             JsonNode suiteTree = om.readTree(suiteBytes);
             assertThat(suiteTree).isEqualTo(expectedSuiteTree);
             assertThat(zin.getNextEntry()).isNull();

@@ -23,6 +23,8 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
+
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -174,10 +176,10 @@ class RuntimeTraceRegressionSuiteRunImportPreviewControllerWebMvcTest {
         byte[] run;
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(good))) {
             var e1 = zin.getNextEntry();
-            man = zin.readNBytes((int) e1.getSize());
+            man = ZipIoGuards.readStoredEntryBytes(zin, e1, RuntimeTraceRegressionSuiteRunImportPreviewService.MAX_PREVIEW_ZIP_BYTES);
             zin.closeEntry();
             var e2 = zin.getNextEntry();
-            run = zin.readNBytes((int) e2.getSize());
+            run = ZipIoGuards.readStoredEntryBytes(zin, e2, RuntimeTraceRegressionSuiteRunImportPreviewService.MAX_PREVIEW_ZIP_BYTES);
         }
         mockMvc.perform(
                         post(previewPath())

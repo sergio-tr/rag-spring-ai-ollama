@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
+
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -38,6 +40,9 @@ public class RuntimeTraceRegressionSuiteDefinitionImportPreviewService {
      * Parses a P38-strict definition ZIP and returns a preview DTO (no persistence).
      */
     public RuntimeTraceRegressionSuiteDefinitionImportPreviewResponseDto previewImportZip(byte[] zipBytes) {
+        if (zipBytes == null || zipBytes.length == 0 || zipBytes.length > MAX_PREVIEW_ZIP_BYTES) {
+            throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip");
+        }
         byte[][] parts = readManifestAndDefinitionBytes(zipBytes);
         byte[] manifestBytes = parts[0];
         byte[] definitionBytes = parts[1];
@@ -89,20 +94,30 @@ public class RuntimeTraceRegressionSuiteDefinitionImportPreviewService {
             if (e1 == null || e1.isDirectory() || entryNameIsDirectory(e1.getName())) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip");
             }
+            try {
+                ZipIoGuards.requireSafeEntryName(e1.getName());
+            } catch (IOException ex) {
+                throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip", ex);
+            }
             if (!"manifest.json".equals(e1.getName()) || e1.getMethod() != ZipEntry.STORED) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip");
             }
-            byte[] manifestBytes = readStoredEntryBytes(zin, e1);
+            byte[] manifestBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, MAX_PREVIEW_ZIP_BYTES);
             zin.closeEntry();
 
             ZipEntry e2 = zin.getNextEntry();
             if (e2 == null || e2.isDirectory() || entryNameIsDirectory(e2.getName())) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip");
             }
+            try {
+                ZipIoGuards.requireSafeEntryName(e2.getName());
+            } catch (IOException ex) {
+                throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip", ex);
+            }
             if (!"definition.json".equals(e2.getName()) || e2.getMethod() != ZipEntry.STORED) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip");
             }
-            byte[] definitionBytes = readStoredEntryBytes(zin, e2);
+            byte[] definitionBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, MAX_PREVIEW_ZIP_BYTES);
             zin.closeEntry();
 
             ZipEntry e3 = zin.getNextEntry();
@@ -117,13 +132,5 @@ public class RuntimeTraceRegressionSuiteDefinitionImportPreviewService {
 
     private static boolean entryNameIsDirectory(String name) {
         return name != null && name.endsWith("/");
-    }
-
-    private static byte[] readStoredEntryBytes(ZipInputStream zin, ZipEntry entry) throws IOException {
-        long size = entry.getSize();
-        if (size < 0 || size > Integer.MAX_VALUE) {
-            throw new IOException("invalid entry size");
-        }
-        return zin.readNBytes((int) size);
     }
 }
