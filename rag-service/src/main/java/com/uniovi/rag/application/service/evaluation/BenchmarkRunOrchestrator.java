@@ -81,8 +81,7 @@ public class BenchmarkRunOrchestrator {
             UUID userId,
             String roleName,
             BenchmarkKind kind,
-            StartBenchmarkRunRequest request)
-            throws IOException {
+            StartBenchmarkRunRequest request) {
         validateRunKind(roleName, request.runKind());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);

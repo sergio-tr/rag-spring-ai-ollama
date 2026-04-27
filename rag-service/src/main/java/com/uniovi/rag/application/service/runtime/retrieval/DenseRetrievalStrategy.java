@@ -133,7 +133,7 @@ public class DenseRetrievalStrategy {
         Map<String, Object> meta = d.getMetadata();
         Object cs = meta.get("corpusScope");
         if ("CHAT_LOCAL".equalsIgnoreCase(String.valueOf(cs))) {
-            if (ctx == null || ctx.conversationId() == null) {
+            if (ctx.conversationId() == null) {
                 return false;
             }
             Object conv = meta.get("conversationId");

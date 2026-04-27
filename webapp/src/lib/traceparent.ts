@@ -4,8 +4,8 @@
  */
 export function createTraceparent(): string {
   const version = "00";
-  const traceId = crypto.randomUUID().replace(/-/g, "");
-  const parentId = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+  const traceId = crypto.randomUUID().replaceAll("-", "");
+  const parentId = crypto.randomUUID().replaceAll("-", "").slice(0, 16);
   const flags = "01";
   return `${version}-${traceId}-${parentId}-${flags}`;
 }

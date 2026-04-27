@@ -109,6 +109,7 @@ public class EvaluationRunEntity {
     private Map<String, Object> aggregatesJson;
 
     public EvaluationRunEntity() {
+        // JPA requires a no-arg constructor for entity instantiation.
     }
 
     public UUID getId() {

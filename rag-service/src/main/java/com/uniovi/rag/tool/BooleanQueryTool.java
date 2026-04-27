@@ -165,8 +165,10 @@ public class BooleanQueryTool extends AbstractTool {
      * Generates evidence message with proper formatting
      */
     private String generateEvidenceMessage(String date, String fragment) {
-        return String.format("Yes, evidence found in the meeting of %s:\n%s", 
-                           date != null ? date : "unknown date", fragment);
+        return String.format(
+                "Yes, evidence found in the meeting of %s:%n%s",
+                date != null ? date : "unknown date",
+                fragment);
     }
 
     /**

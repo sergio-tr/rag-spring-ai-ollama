@@ -9,7 +9,6 @@ import com.uniovi.rag.domain.knowledge.KnowledgeBuildProjection;
 import com.uniovi.rag.domain.knowledge.KnowledgeOperationKind;
 import com.uniovi.rag.domain.knowledge.KnowledgeReindexDecision;
 import com.uniovi.rag.domain.knowledge.KnowledgeReindexKind;
-import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -31,21 +30,18 @@ public class KnowledgeConfigurationIntegrationService {
     private final ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService;
     private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
     private final ReindexService reindexService;
-    private final KnowledgeSnapshotService knowledgeSnapshotService;
 
     public KnowledgeConfigurationIntegrationService(
             ConfigResolverService configResolverService,
             KnowledgeBuildProjectionMapper knowledgeBuildProjectionMapper,
             ResolvedConfigSnapshotApplicationService resolvedConfigSnapshotApplicationService,
             KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
-            ReindexService reindexService,
-            KnowledgeSnapshotService knowledgeSnapshotService) {
+            ReindexService reindexService) {
         this.configResolverService = configResolverService;
         this.knowledgeBuildProjectionMapper = knowledgeBuildProjectionMapper;
         this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
         this.reindexService = reindexService;
-        this.knowledgeSnapshotService = knowledgeSnapshotService;
     }
 
     @Transactional(readOnly = true)
@@ -56,13 +52,11 @@ public class KnowledgeConfigurationIntegrationService {
         }
         ResolvedRuntimeConfig resolved = configResolverService.preview(input.toRuntimeConfigResolutionInput());
         KnowledgeBuildProjection projection = knowledgeBuildProjectionMapper.fromResolvedRuntimeConfig(resolved);
-        Optional<String> activeHash = findActiveSnapshotConfigHash(input);
         KnowledgeReindexDecision decision =
                 computeReindexDecision(
                         projection,
                         input.corpusScope(),
                         input.conversationId(),
-                        activeHash.orElse(null),
                         input.projectId());
         return new KnowledgeRebuildPreviewResult(projection, decision);
     }
@@ -86,7 +80,6 @@ public class KnowledgeConfigurationIntegrationService {
             KnowledgeBuildProjection projection,
             CorpusScope corpusScope,
             UUID conversationId,
-            String activeSnapshotConfigHashOrNull,
             UUID projectId) {
         if (projection.reindexImpact() == null
                 || projection.reindexImpact().level() == ReindexImpactLevel.NO_REINDEX) {
@@ -129,13 +122,11 @@ public class KnowledgeConfigurationIntegrationService {
         KnowledgeBuildProjection projection =
                 knowledgeBuildProjectionMapper.fromResolvedRuntimeConfigAndSnapshotIds(
                         resolved, entity.getId(), entity.getConfigHash());
-        Optional<String> activeHash = findActiveSnapshotConfigHash(input);
         KnowledgeReindexDecision decision =
                 computeReindexDecision(
                         projection,
                         input.corpusScope(),
                         input.conversationId(),
-                        activeHash.orElse(null),
                         input.projectId());
         KnowledgeReindexExecutionResult exec =
                 reindexService.executeKnowledgeReindexDecision(
@@ -154,13 +145,11 @@ public class KnowledgeConfigurationIntegrationService {
                 resolvedConfigSnapshotApplicationService.getValidatedSnapshotForKnowledgePin(
                         input.projectId(), input.userId(), snapshotId);
         KnowledgeBuildProjection projection = knowledgeBuildProjectionMapper.fromPersistedSnapshot(entity);
-        Optional<String> activeHash = findActiveSnapshotConfigHash(input);
         KnowledgeReindexDecision decision =
                 computeReindexDecision(
                         projection,
                         input.corpusScope(),
                         input.conversationId(),
-                        activeHash.orElse(null),
                         input.projectId());
         KnowledgeReindexExecutionResult exec =
                 reindexService.executeKnowledgeReindexDecision(
@@ -171,20 +160,6 @@ public class KnowledgeConfigurationIntegrationService {
                         input.conversationId(),
                         entity.getId());
         return KnowledgeRebuildExecuteResult.of(entity.getId(), exec.knowledgeSnapshotId(), exec.reindexEventId());
-    }
-
-    private Optional<String> findActiveSnapshotConfigHash(KnowledgeConfigurationOperationInput input) {
-        if (input.corpusScope() == CorpusScope.PROJECT_SHARED) {
-            return knowledgeSnapshotService
-                    .findActiveProjectSnapshot(input.projectId())
-                    .map(KnowledgeIndexSnapshotEntity::getResolvedConfigHash);
-        }
-        if (input.conversationId() == null) {
-            return Optional.empty();
-        }
-        return knowledgeSnapshotService
-                .findActiveConversationSnapshot(input.conversationId())
-                .map(KnowledgeIndexSnapshotEntity::getResolvedConfigHash);
     }
 
     private static void validateCorpusInput(KnowledgeConfigurationOperationInput input) {

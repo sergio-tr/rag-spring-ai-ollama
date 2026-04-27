@@ -74,7 +74,9 @@ public class MessageEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    public MessageEntity() {}
+    public MessageEntity() {
+        // JPA requires a no-arg constructor for entity instantiation.
+    }
 
     public UUID getId() {
         return id;

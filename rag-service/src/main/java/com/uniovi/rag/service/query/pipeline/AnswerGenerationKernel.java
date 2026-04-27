@@ -21,6 +21,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.lang.Nullable;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Core LLM + retrieval generation used by {@link com.uniovi.rag.service.query.ProcessQueryService}
@@ -74,6 +75,11 @@ public final class AnswerGenerationKernel {
     private static final int MAX_RETRIES = 2;
     private static final long RETRY_DELAY_MS = 500;
 
+    private static final String QUERY_TYPE_FALLBACK_UNKNOWN = "UNKNOWN";
+
+    /** Second argument to {@link ResponseValidator#validateAndClean} for tracing sources from this pipeline. */
+    private static final String VALIDATOR_SOURCE_PROCESS_QUERY_SERVICE = "ProcessQueryService";
+
     private final RagFeatureConfiguration featureConfig;
     private final NERQueryEnricher nerQueryEnricher;
     private final ContextRetriever retriever;
@@ -115,28 +121,11 @@ public final class AnswerGenerationKernel {
 
     public DraftAndContext askModelWithPreStep(String query, JSONObject nerEntities, QueryType queryType, String preStepThought) {
         if (!RagEffectiveFeatures.useRetrieval(featureConfig)) {
-            try {
-                String response = chatRequestSpecFactory.spec().user(query).call().content();
-                String validated = response != null ? responseValidator.validateAndClean(response, "ProcessQueryService-NoContext") : null;
-                return new DraftAndContext(validated != null ? validated : generateNoContextResponse(query), "");
-            } catch (Exception e) {
-                log.warn("LLM call without context failed in reasoning path: {}", e.getMessage());
-                return new DraftAndContext(generateNoContextResponse(query), "");
-            }
+            return preStepDraftWithoutRetrieval(query);
         }
-        if (GeneralKnowledgeQueryDetector.likelyGeneralKnowledgeOnly(query)) {
-            try {
-                String response = chatRequestSpecFactory.spec().user(query).call().content();
-                String validated = response != null
-                        ? responseValidator.validateAndClean(response, "ProcessQueryService-ReasoningDirect")
-                        : null;
-                if (validated != null && !validated.trim().isEmpty()) {
-                    log.info("Reasoning path: direct LLM (general-knowledge routing), skipping retrieval");
-                    return new DraftAndContext(validated, "");
-                }
-            } catch (Exception e) {
-                log.warn("Direct general-knowledge LLM failed in reasoning path, falling back: {}", e.getMessage());
-            }
+        Optional<DraftAndContext> generalKnowledgeDraft = tryPreStepGeneralKnowledgeDraft(query);
+        if (generalKnowledgeDraft.isPresent()) {
+            return generalKnowledgeDraft.get();
         }
         String naiveCtx = buildNaiveCorpusContextIfActive();
         if (naiveCtx != null) {
@@ -150,12 +139,12 @@ public final class AnswerGenerationKernel {
             }
             String prompt = String.format(
                     DEFAULT_PROMPT_TEMPLATE,
-                    queryType != null ? queryType.name() : "UNKNOWN",
+                    queryTypeOrUnknown(queryType),
                     query,
                     contextWithReasoning);
             try {
                 String response = chatRequestSpecFactory.spec().user(prompt).call().content();
-                String validated = responseValidator.validateAndClean(response, "ProcessQueryService");
+                String validated = responseValidator.validateAndClean(response, processQueryValidatorLabel(""));
                 if (validated != null) {
                     log.info("Reasoning path: response from naive full-corpus context (length {})", naiveCtx.length());
                     return new DraftAndContext(validated, naiveCtx);
@@ -193,12 +182,12 @@ public final class AnswerGenerationKernel {
             contextWithReasoning = "<Reasoning>\n" + preStepThought.trim() + "\n</Reasoning>\n\n" + context;
         }
         String prompt = String.format(DEFAULT_PROMPT_TEMPLATE,
-                queryType != null ? queryType.name() : "UNKNOWN",
+                queryTypeOrUnknown(queryType),
                 query,
                 contextWithReasoning);
         try {
             String response = chatRequestSpecFactory.spec().user(prompt).call().content();
-            String validated = responseValidator.validateAndClean(response, "ProcessQueryService");
+            String validated = responseValidator.validateAndClean(response, processQueryValidatorLabel(""));
             if (validated != null) {
                 return new DraftAndContext(validated, context);
             }
@@ -210,109 +199,25 @@ public final class AnswerGenerationKernel {
 
     public String askModel(String query, JSONObject nerEntities, QueryType queryType) {
         if (!RagEffectiveFeatures.useRetrieval(featureConfig)) {
-            try {
-                String rawContent = chatRequestSpecFactory.spec().user(query).call().content();
-                String validated = rawContent != null ? responseValidator.validateAndClean(rawContent, "ProcessQueryService-NoContext") : null;
-                if (validated != null && !validated.trim().isEmpty()) {
-                    log.info("Response generated without context (use-retrieval=false)");
-                    return validated;
-                }
-            } catch (Exception e) {
-                log.warn("LLM call without context failed: {}", e.getMessage());
-            }
-            return generateNoContextResponse(query);
+            return askModelDirectWithoutRetrieval(query);
         }
 
-        if (GeneralKnowledgeQueryDetector.likelyGeneralKnowledgeOnly(query)) {
-            try {
-                String rawContent = chatRequestSpecFactory.spec().user(query).call().content();
-                String validated = rawContent != null
-                        ? responseValidator.validateAndClean(rawContent, "ProcessQueryService-DirectGeneral")
-                        : null;
-                if (validated != null && !validated.trim().isEmpty()) {
-                    log.info("Direct LLM (general-knowledge routing), skipping retrieval");
-                    return validated;
-                }
-            } catch (Exception e) {
-                log.warn("Direct general-knowledge LLM failed, falling back to RAG path: {}", e.getMessage());
-            }
+        Optional<String> generalKnowledge = tryAskModelGeneralKnowledgeDirect(query);
+        if (generalKnowledge.isPresent()) {
+            return generalKnowledge.get();
         }
 
-        String naiveCtx = buildNaiveCorpusContextIfActive();
-        if (naiveCtx != null) {
-            if (naiveCtx.isEmpty()) {
-                log.warn("Naive full-corpus mode active but no chunks found for project scope");
-                return generateNoContextResponse(query);
-            }
-            log.info("Using naive full-corpus context ({} chars), skipping advisor and vector similarity", naiveCtx.length());
-            return callLlmWithPromptContext(query, queryType, naiveCtx);
+        String naiveAnswer = tryAskModelNaiveCorpus(query, queryType);
+        if (naiveAnswer != null) {
+            return naiveAnswer;
         }
 
-        if (canUseStockQuestionAnswerAdvisorFastPath()) {
-            String advisorQuery = effectiveQueryForAdvisor(query, nerEntities);
-            if (!advisorQuery.equals(query)) {
-                log.debug("QuestionAnswerAdvisor: NER-enriched query for embedding search ({} vs {} chars)",
-                        advisorQuery.length(), query.length());
-            }
-            try {
-                String rawContent = chatRequestSpecFactory.spec()
-                        .user(advisorQuery)
-                        .advisors(questionAnswerAdvisor)
-                        .call()
-                        .content();
-                String validated = rawContent != null ? responseValidator.validateAndClean(rawContent, "ProcessQueryService-Advisor") : null;
-                if (validated != null && !validated.trim().isEmpty()) {
-                    log.info("Response generated via QuestionAnswerAdvisor (askModel path)");
-                    return validated;
-                }
-            } catch (Exception e) {
-                log.warn("QuestionAnswerAdvisor path failed, falling back to manual retrieve+createContext: {}", e.getMessage());
-            }
+        Optional<String> advisorAnswer = tryAskModelAdvisorPath(query, nerEntities);
+        if (advisorAnswer.isPresent()) {
+            return advisorAnswer.get();
         }
 
-        boolean isProblematicConfig =
-                RagEffectiveFeatures.metadataEnabled(featureConfig)
-                        && RagEffectiveFeatures.nerEnabled(featureConfig)
-                        && !RagEffectiveFeatures.toolsEnabled(featureConfig);
-
-        String retrievalQuery = (RagEffectiveFeatures.nerEnabled(featureConfig) && nerQueryEnricher != null && nerEntities != null
-                && !nerEntities.isEmpty())
-                ? nerQueryEnricher.buildEnrichedQueryForRetrieval(query, nerEntities)
-                : query;
-        if (!retrievalQuery.equals(query)) {
-            log.debug("Using NER-enriched query for retrieval (length {} vs {} chars)", retrievalQuery.length(), query.length());
-        }
-        List<Document> docs;
-        try {
-            if (retriever instanceof AbstractContextRetriever acr && nerEntities != null && !nerEntities.isEmpty()) {
-                if (isProblematicConfig) {
-                    log.debug("Attempting retrieval with metadata filters and NER entities");
-                }
-                docs = acr.retrieveWithMetadataFilters(retrievalQuery, nerEntities);
-                log.info("Using optimized retrieval with metadata filters, retrieved {} documents", docs.size());
-            } else {
-                if (isProblematicConfig) {
-                    log.debug("Using standard retrieval (no metadata filters or NER)");
-                }
-                docs = retriever.retrieve(retrievalQuery);
-            }
-        } catch (NullPointerException e) {
-            log.error("NullPointerException during document retrieval (config: metadata={}, ner={}): {}",
-                    RagEffectiveFeatures.metadataEnabled(featureConfig),
-                    RagEffectiveFeatures.nerEnabled(featureConfig),
-                    e.getMessage(), e);
-            throw e;
-        } catch (Exception e) {
-            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
-                log.warn("Document retrieval failed (connectivity): {}", e.getMessage());
-            } else {
-                log.error("Exception during document retrieval (config: metadata={}, ner={}): {}",
-                        RagEffectiveFeatures.metadataEnabled(featureConfig),
-                        RagEffectiveFeatures.nerEnabled(featureConfig),
-                        e.getMessage(), e);
-            }
-            throw e;
-        }
+        List<Document> docs = retrieveDocumentsForAskModel(query, nerEntities);
 
         if (RagEffectiveFeatures.postRetrievalEnabled(featureConfig) && postRetrievalProcessor != null) {
             docs = postRetrievalProcessor.process(docs, query);
@@ -336,6 +241,135 @@ public final class AnswerGenerationKernel {
         return callLlmWithPromptContext(query, queryType, context);
     }
 
+    /** useRetrieval=false: single LLM call without vector context. */
+    private String askModelDirectWithoutRetrieval(String query) {
+        try {
+            String rawContent = chatRequestSpecFactory.spec().user(query).call().content();
+            String validated =
+                    rawContent != null ? responseValidator.validateAndClean(rawContent, processQueryValidatorLabel("-NoContext")) : null;
+            if (validated != null && !validated.trim().isEmpty()) {
+                log.info("Response generated without context (use-retrieval=false)");
+                return validated;
+            }
+        } catch (Exception e) {
+            log.warn("LLM call without context failed: {}", e.getMessage());
+        }
+        return generateNoContextResponse(query);
+    }
+
+    /** Fast path when the query looks like general knowledge only; empty if the pipeline should continue. */
+    private Optional<String> tryAskModelGeneralKnowledgeDirect(String query) {
+        if (!GeneralKnowledgeQueryDetector.likelyGeneralKnowledgeOnly(query)) {
+            return Optional.empty();
+        }
+        try {
+            String rawContent = chatRequestSpecFactory.spec().user(query).call().content();
+            String validated =
+                    rawContent != null
+                            ? responseValidator.validateAndClean(rawContent, processQueryValidatorLabel("-DirectGeneral"))
+                            : null;
+            if (validated != null && !validated.trim().isEmpty()) {
+                log.info("Direct LLM (general-knowledge routing), skipping retrieval");
+                return Optional.of(validated);
+            }
+        } catch (Exception e) {
+            log.warn("Direct general-knowledge LLM failed, falling back to RAG path: {}", e.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Naive full-corpus context path; {@code null} means feature off or caller should fall through (no naive mode).
+     */
+    private String tryAskModelNaiveCorpus(String query, QueryType queryType) {
+        String naiveCtx = buildNaiveCorpusContextIfActive();
+        if (naiveCtx == null) {
+            return null;
+        }
+        if (naiveCtx.isEmpty()) {
+            log.warn("Naive full-corpus mode active but no chunks found for project scope");
+            return generateNoContextResponse(query);
+        }
+        log.info("Using naive full-corpus context ({} chars), skipping advisor and vector similarity", naiveCtx.length());
+        return callLlmWithPromptContext(query, queryType, naiveCtx);
+    }
+
+    private Optional<String> tryAskModelAdvisorPath(String query, JSONObject nerEntities) {
+        if (!canUseStockQuestionAnswerAdvisorFastPath()) {
+            return Optional.empty();
+        }
+        String advisorQuery = effectiveQueryForAdvisor(query, nerEntities);
+        if (!advisorQuery.equals(query)) {
+            log.debug(
+                    "QuestionAnswerAdvisor: NER-enriched query for embedding search ({} vs {} chars)",
+                    advisorQuery.length(),
+                    query.length());
+        }
+        try {
+            String rawContent =
+                    chatRequestSpecFactory.spec().user(advisorQuery).advisors(questionAnswerAdvisor).call().content();
+            String validated =
+                    rawContent != null ? responseValidator.validateAndClean(rawContent, processQueryValidatorLabel("-Advisor")) : null;
+            if (validated != null && !validated.trim().isEmpty()) {
+                log.info("Response generated via QuestionAnswerAdvisor (askModel path)");
+                return Optional.of(validated);
+            }
+        } catch (Exception e) {
+            log.warn("QuestionAnswerAdvisor path failed, falling back to manual retrieve+createContext: {}", e.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    private List<Document> retrieveDocumentsForAskModel(String query, JSONObject nerEntities) {
+        boolean isProblematicConfig =
+                RagEffectiveFeatures.metadataEnabled(featureConfig)
+                        && RagEffectiveFeatures.nerEnabled(featureConfig)
+                        && !RagEffectiveFeatures.toolsEnabled(featureConfig);
+
+        String retrievalQuery =
+                (RagEffectiveFeatures.nerEnabled(featureConfig) && nerQueryEnricher != null && nerEntities != null
+                        && !nerEntities.isEmpty())
+                        ? nerQueryEnricher.buildEnrichedQueryForRetrieval(query, nerEntities)
+                        : query;
+        if (!retrievalQuery.equals(query)) {
+            log.debug("Using NER-enriched query for retrieval (length {} vs {} chars)", retrievalQuery.length(), query.length());
+        }
+        try {
+            if (retriever instanceof AbstractContextRetriever acr && nerEntities != null && !nerEntities.isEmpty()) {
+                if (isProblematicConfig) {
+                    log.debug("Attempting retrieval with metadata filters and NER entities");
+                }
+                List<Document> docs = acr.retrieveWithMetadataFilters(retrievalQuery, nerEntities);
+                log.info("Using optimized retrieval with metadata filters, retrieved {} documents", docs.size());
+                return docs;
+            }
+            if (isProblematicConfig) {
+                log.debug("Using standard retrieval (no metadata filters or NER)");
+            }
+            return retriever.retrieve(retrievalQuery);
+        } catch (NullPointerException e) {
+            log.error(
+                    "NullPointerException during document retrieval (config: metadata={}, ner={}): {}",
+                    RagEffectiveFeatures.metadataEnabled(featureConfig),
+                    RagEffectiveFeatures.nerEnabled(featureConfig),
+                    e.getMessage(),
+                    e);
+            throw e;
+        } catch (Exception e) {
+            if (ConnectivityFailureDetector.isConnectivityFailure(e)) {
+                log.warn("Document retrieval failed (connectivity): {}", e.getMessage());
+            } else {
+                log.error(
+                        "Exception during document retrieval (config: metadata={}, ner={}): {}",
+                        RagEffectiveFeatures.metadataEnabled(featureConfig),
+                        RagEffectiveFeatures.nerEnabled(featureConfig),
+                        e.getMessage(),
+                        e);
+            }
+            throw e;
+        }
+    }
+
     @Nullable
     private String buildNaiveCorpusContextIfActive() {
         if (naiveCorpusContextService == null) {
@@ -347,7 +381,7 @@ public final class AnswerGenerationKernel {
     private String callLlmWithPromptContext(String query, QueryType queryType, String context) {
         String prompt = String.format(
                 DEFAULT_PROMPT_TEMPLATE,
-                queryType != null ? queryType.name() : "UNKNOWN",
+                queryTypeOrUnknown(queryType),
                 query,
                 context
         );
@@ -365,7 +399,7 @@ public final class AnswerGenerationKernel {
                         .call()
                         .content();
 
-                String validatedResponse = responseValidator.validateAndClean(response, "ProcessQueryService");
+                String validatedResponse = responseValidator.validateAndClean(response, processQueryValidatorLabel(""));
 
                 if (validatedResponse != null) {
                     log.info("Successfully generated response on attempt {}", attempt + 1);
@@ -438,5 +472,45 @@ public final class AnswerGenerationKernel {
             return nerQueryEnricher.buildEnrichedQueryForRetrieval(query, nerEntities);
         }
         return query;
+    }
+
+    private DraftAndContext preStepDraftWithoutRetrieval(String query) {
+        try {
+            String response = chatRequestSpecFactory.spec().user(query).call().content();
+            String validated =
+                    response != null ? responseValidator.validateAndClean(response, processQueryValidatorLabel("-NoContext")) : null;
+            return new DraftAndContext(validated != null ? validated : generateNoContextResponse(query), "");
+        } catch (Exception e) {
+            log.warn("LLM call without context failed in reasoning path: {}", e.getMessage());
+            return new DraftAndContext(generateNoContextResponse(query), "");
+        }
+    }
+
+    private Optional<DraftAndContext> tryPreStepGeneralKnowledgeDraft(String query) {
+        if (!GeneralKnowledgeQueryDetector.likelyGeneralKnowledgeOnly(query)) {
+            return Optional.empty();
+        }
+        try {
+            String response = chatRequestSpecFactory.spec().user(query).call().content();
+            String validated =
+                    response != null ? responseValidator.validateAndClean(response, processQueryValidatorLabel("-ReasoningDirect")) : null;
+            if (validated != null && !validated.trim().isEmpty()) {
+                log.info("Reasoning path: direct LLM (general-knowledge routing), skipping retrieval");
+                return Optional.of(new DraftAndContext(validated, ""));
+            }
+        } catch (Exception e) {
+            log.warn("Direct general-knowledge LLM failed in reasoning path, falling back: {}", e.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    private static String processQueryValidatorLabel(String suffix) {
+        return suffix.isEmpty()
+                ? VALIDATOR_SOURCE_PROCESS_QUERY_SERVICE
+                : VALIDATOR_SOURCE_PROCESS_QUERY_SERVICE + suffix;
+    }
+
+    private static String queryTypeOrUnknown(QueryType queryType) {
+        return queryType != null ? queryType.name() : QUERY_TYPE_FALLBACK_UNKNOWN;
     }
 }

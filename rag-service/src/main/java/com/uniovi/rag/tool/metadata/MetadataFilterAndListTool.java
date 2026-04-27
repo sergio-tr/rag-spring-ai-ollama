@@ -5,7 +5,6 @@ import com.uniovi.rag.domain.model.FilterResult;
 import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
-import com.uniovi.rag.domain.model.Cluster;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 
@@ -430,8 +429,10 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         // Fallback: "¿Cuándo (y en qué reuniones) asistió Alejandro Torres Rojas?" (§4 Alejandro → ACTA 1, 3, 6)
         if ((personName == null || personName.trim().isEmpty()) && query != null) {
             java.util.regex.Matcher m = java.util.regex.Pattern.compile(
-                "(?:asistió|asistieron|participó|participaron)\\s+([\\p{L}]+(?:\\s+[\\p{L}]+)+)\\s*\\??",
-                java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE
+                "(?:asistió|asistieron|participó|participaron)\\s+([\\p{L}]{1,128}(?:\\s+[\\p{L}]{1,128}){1,24})\\s*\\??",
+                java.util.regex.Pattern.CASE_INSENSITIVE
+                        | java.util.regex.Pattern.UNICODE_CASE
+                        | java.util.regex.Pattern.UNICODE_CHARACTER_CLASS
             ).matcher(query);
             if (m.find()) {
                 personName = m.group(1).trim();
@@ -595,73 +596,117 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         // Topic synonyms so minute wording matches (e.g. ascensor <-> elevator for minute 24 Feb 2025)
         List<String> topicTerms = topicTermsForMatch(normalizedTopic);
         
-        List<Minute> filtered = minutes.stream()
-                .filter(minute -> {
-                    // Check topic condition (in topics, decisions, or summary); allow synonyms
-                    boolean topicMatches = false;
-                    if (minute.topics() != null) {
-                        topicMatches = minute.topics().stream()
-                                .anyMatch(t -> t != null && topicTerms.stream().anyMatch(term -> normalizePersonName(t).contains(term)));
-                    }
-                    if (!topicMatches && minute.decisions() != null) {
-                        topicMatches = minute.decisions().stream()
-                                .anyMatch(d -> d != null && topicTerms.stream().anyMatch(term -> normalizePersonName(d).contains(term)));
-                    }
-                    if (!topicMatches && minute.summary() != null) {
-                        String summaryNorm = normalizePersonName(minute.summary());
-                        topicMatches = topicTerms.stream().anyMatch(term -> summaryNorm.contains(term));
-                    }
-                    
-                    if (!topicMatches) {
-                        log().debug("Minute {} filtered out: topic '{}' not found in topics/decisions/summary", 
-                                  minute.id(), topic);
-                        return false; // Topic doesn't match - AND logic requires both
-                    }
-                    
-                    // Check person condition (president or secretary) - BOTH topic AND person must match (AND logic)
-                    boolean personMatches = false;
-                    if (filterByPresident && minute.president() != null) {
-                        String presidentNormalized = normalizePersonName(minute.president());
-                        // More robust matching: check if normalized names contain each other or are equal
-                        personMatches = presidentNormalized.equals(normalizedPersonName) ||
-                                       presidentNormalized.contains(normalizedPersonName) ||
-                                       normalizedPersonName.contains(presidentNormalized);
-                        if (personMatches) {
-                            log().debug("Minute {} person match (president): '{}' matches '{}'", 
-                                      minute.id(), minute.president(), personName);
-                        }
-                    }
-                    if (!personMatches && filterBySecretary && minute.secretary() != null) {
-                        String secretaryNormalized = normalizePersonName(minute.secretary());
-                        personMatches = secretaryNormalized.equals(normalizedPersonName) ||
-                                       secretaryNormalized.contains(normalizedPersonName) ||
-                                       normalizedPersonName.contains(secretaryNormalized);
-                        if (personMatches) {
-                            log().debug("Minute {} person match (secretary): '{}' matches '{}'", 
-                                      minute.id(), minute.secretary(), personName);
-                        }
-                    }
-                    
-                    if (!personMatches) {
-                        log().debug("Minute {} filtered out: person '{}' not found as president/secretary. " +
-                                  "President: '{}', Secretary: '{}'", 
-                                  minute.id(), personName, 
-                                  minute.president() != null ? minute.president() : "null",
-                                  minute.secretary() != null ? minute.secretary() : "null");
-                        return false; // Person doesn't match
-                    }
-                    
-                    // Both topic AND person match
-                    log().debug("Minute {} passed both filters: topic '{}' AND person '{}'", 
-                              minute.id(), topic, personName);
-                    return true;
-                })
-                .collect(Collectors.toList());
+        List<Minute> filtered =
+                minutes.stream()
+                        .filter(
+                                minute ->
+                                        minutePassesTopicAndPersonFilters(
+                                                minute,
+                                                topic,
+                                                personName,
+                                                topicTerms,
+                                                normalizedPersonName,
+                                                filterByPresident,
+                                                filterBySecretary))
+                        .collect(Collectors.toList());
         
         log().info("Topic+person filtering result: {} minutes passed (out of {}). Topic: '{}', Person: '{}'", 
                   filtered.size(), minutes.size(), topic, personName);
         
         return filtered;
+    }
+
+    private boolean minutePassesTopicAndPersonFilters(
+            Minute minute,
+            String topicLabel,
+            String personName,
+            List<String> topicTerms,
+            String normalizedPersonName,
+            boolean filterByPresident,
+            boolean filterBySecretary) {
+        if (!minuteTopicMatchesTerms(minute, topicTerms)) {
+            log().debug(
+                    "Minute {} filtered out: topic '{}' not found in topics/decisions/summary",
+                    minute.id(),
+                    topicLabel);
+            return false;
+        }
+        if (!minutePersonMatchesRoles(
+                minute, filterByPresident, filterBySecretary, normalizedPersonName, personName)) {
+            log().debug(
+                    "Minute {} filtered out: person '{}' not found as president/secretary. President: '{}', Secretary: '{}'",
+                    minute.id(),
+                    personName,
+                    minute.president() != null ? minute.president() : "null",
+                    minute.secretary() != null ? minute.secretary() : "null");
+            return false;
+        }
+        log().debug("Minute {} passed both filters: topic '{}' AND person '{}'", minute.id(), topicLabel, personName);
+        return true;
+    }
+
+    private boolean minuteTopicMatchesTerms(Minute minute, List<String> topicTerms) {
+        if (minute.topics() != null
+                && minute.topics().stream()
+                        .anyMatch(
+                                t ->
+                                        t != null
+                                                && topicTerms.stream()
+                                                        .anyMatch(term -> normalizePersonName(t).contains(term)))) {
+            return true;
+        }
+        if (minute.decisions() != null
+                && minute.decisions().stream()
+                        .anyMatch(
+                                d ->
+                                        d != null
+                                                && topicTerms.stream()
+                                                        .anyMatch(term -> normalizePersonName(d).contains(term)))) {
+            return true;
+        }
+        if (minute.summary() != null) {
+            String summaryNorm = normalizePersonName(minute.summary());
+            return topicTerms.stream().anyMatch(summaryNorm::contains);
+        }
+        return false;
+    }
+
+    private boolean minutePersonMatchesRoles(
+            Minute minute,
+            boolean filterByPresident,
+            boolean filterBySecretary,
+            String normalizedPersonName,
+            String personNameForLog) {
+        boolean personMatches = false;
+        if (filterByPresident && minute.president() != null) {
+            String presidentNormalized = normalizePersonName(minute.president());
+            personMatches =
+                    presidentNormalized.equals(normalizedPersonName)
+                            || presidentNormalized.contains(normalizedPersonName)
+                            || normalizedPersonName.contains(presidentNormalized);
+            if (personMatches) {
+                log().debug(
+                        "Minute {} person match (president): '{}' matches '{}'",
+                        minute.id(),
+                        minute.president(),
+                        personNameForLog);
+            }
+        }
+        if (!personMatches && filterBySecretary && minute.secretary() != null) {
+            String secretaryNormalized = normalizePersonName(minute.secretary());
+            personMatches =
+                    secretaryNormalized.equals(normalizedPersonName)
+                            || secretaryNormalized.contains(normalizedPersonName)
+                            || normalizedPersonName.contains(secretaryNormalized);
+            if (personMatches) {
+                log().debug(
+                        "Minute {} person match (secretary): '{}' matches '{}'",
+                        minute.id(),
+                        minute.secretary(),
+                        personNameForLog);
+            }
+        }
+        return personMatches;
     }
     
     /** Topic key terms including synonyms for matching (e.g. ascensor / elevator). */

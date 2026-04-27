@@ -13,6 +13,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -21,6 +22,8 @@ import java.util.Set;
 @Component
 @Profile("!test")
 public class OllamaApiClient {
+
+    private static final String JSON_FIELD_ERROR = "error";
 
     private final String baseUrl;
     private final RagHealthProperties healthProperties;
@@ -35,6 +38,7 @@ public class OllamaApiClient {
      * Subclasses used only by {@link #noHttpStub(RagHealthProperties)}; {@code httpClient} stays null (overrides do not use it).
      */
     private OllamaApiClient(InternalNoHttpStub ignored, RagHealthProperties healthProperties) {
+        Objects.requireNonNull(ignored, "stub discriminator");
         this.baseUrl = OllamaUrlUtils.stripTrailingSlash("http://127.0.0.1:1");
         this.healthProperties = healthProperties;
         this.httpClient = null;
@@ -126,8 +130,8 @@ public class OllamaApiClient {
         if (respBody != null && !respBody.isBlank()) {
             try {
                 JSONObject o = new JSONObject(respBody);
-                if (o.has("error") && !o.isNull("error")) {
-                    String err = o.optString("error", "");
+                if (o.has(JSON_FIELD_ERROR) && !o.isNull(JSON_FIELD_ERROR)) {
+                    String err = o.optString(JSON_FIELD_ERROR, "");
                     if (!err.isEmpty()) {
                         throw new IOException("Ollama pull error for '" + modelName + "': " + err);
                     }

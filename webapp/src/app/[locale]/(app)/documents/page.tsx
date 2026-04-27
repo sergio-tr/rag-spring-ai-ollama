@@ -27,10 +27,10 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     if (!projectId || !hasIngesting) return;
-    const id = window.setInterval(() => {
+    const id = globalThis.setInterval(() => {
       void qc.invalidateQueries({ queryKey: ["project-documents", projectId] });
     }, 2000);
-    return () => window.clearInterval(id);
+    return () => globalThis.clearInterval(id);
   }, [hasIngesting, projectId, qc]);
 
   if (!projectId) {
@@ -50,10 +50,10 @@ export default function DocumentsPage() {
           {t("loadError")}
         </p>
       )}
-      {data && data.length === 0 && !isLoading && (
+      {data?.length === 0 && !isLoading && (
         <p className="text-muted-foreground text-sm">{t("empty")}</p>
       )}
-      {data && data.length > 0 && (
+      {(data?.length ?? 0) > 0 && (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-left text-sm">
             <thead className="border-b bg-muted/40">

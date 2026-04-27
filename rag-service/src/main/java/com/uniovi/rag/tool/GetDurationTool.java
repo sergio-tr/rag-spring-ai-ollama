@@ -168,23 +168,21 @@ public class GetDurationTool extends AbstractTool {
         }
         // Try metadata first (documents may have startTime/endTime from MetadataMinuteDocumentService)
         Map<String, Object> meta = doc.getMetadata();
-        if (meta != null) {
-            Object startObj = meta.get("startTime");
-            Object endObj = meta.get("endTime");
-            if (startObj != null && endObj != null) {
-                String startTime = startObj.toString().trim();
-                String endTime = endObj.toString().trim();
-                if (!startTime.isEmpty() && !endTime.isEmpty()) {
-                    int durationMinutes = durationMinutesFromTimes(startTime, endTime);
-                    if (durationMinutes > 0 && durationMinutes <= 24 * 60) {
-                        String date = null;
-                        if (meta.containsKey("date_iso")) date = meta.get("date_iso").toString().trim();
-                        else if (meta.containsKey("date")) date = meta.get("date").toString().trim();
-                        if (date == null || date.isEmpty()) date = "Unknown date";
-                        log().debug("Extracted duration from metadata for document {}: {} minutes ({} - {})",
-                                doc.getId(), durationMinutes, startTime, endTime);
-                        return new MeetingDuration(date, startTime, endTime, durationMinutes);
-                    }
+        Object startObj = meta.get("startTime");
+        Object endObj = meta.get("endTime");
+        if (startObj != null && endObj != null) {
+            String startTime = startObj.toString().trim();
+            String endTime = endObj.toString().trim();
+            if (!startTime.isEmpty() && !endTime.isEmpty()) {
+                int durationMinutes = durationMinutesFromTimes(startTime, endTime);
+                if (durationMinutes > 0 && durationMinutes <= 24 * 60) {
+                    String date = null;
+                    if (meta.containsKey("date_iso")) date = meta.get("date_iso").toString().trim();
+                    else if (meta.containsKey("date")) date = meta.get("date").toString().trim();
+                    if (date == null || date.isEmpty()) date = "Unknown date";
+                    log().debug("Extracted duration from metadata for document {}: {} minutes ({} - {})",
+                            doc.getId(), durationMinutes, startTime, endTime);
+                    return new MeetingDuration(date, startTime, endTime, durationMinutes);
                 }
             }
         }

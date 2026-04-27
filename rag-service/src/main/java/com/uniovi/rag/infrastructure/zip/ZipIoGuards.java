@@ -1,5 +1,6 @@
 package com.uniovi.rag.infrastructure.zip;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -8,9 +9,11 @@ import java.util.zip.ZipInputStream;
  * Guard rails for reading ZIP payloads safely (zip-slip / zip-bomb protection).
  *
  * <p>This repository accepts only tiny, strict ZIPs with fixed entry names; this helper adds structural validation and
- * enforces size invariants before reading entry bytes.
+ * enforces size invariants while reading entry bytes from the stream (not from forged headers alone).
  */
 public final class ZipIoGuards {
+
+    private static final int READ_BUFFER_SIZE = 8192;
 
     private ZipIoGuards() {}
 
@@ -24,7 +27,12 @@ public final class ZipIoGuards {
         }
     }
 
-    public static byte[] readStoredEntryBytes(ZipInputStream zin, ZipEntry entry, long maxBytes) throws IOException {
+    /**
+     * Reads a STORED entry by measuring actual bytes from the stream (S5042); use {@link ZipExpansionBudget} to cap
+     * cumulative expansion across the whole archive.
+     */
+    public static byte[] readStoredEntryBytes(
+            ZipInputStream zin, ZipEntry entry, long maxBytesPerEntry, ZipExpansionBudget budget) throws IOException {
         if (entry == null) {
             throw new IOException("missing zip entry");
         }
@@ -35,32 +43,52 @@ public final class ZipIoGuards {
         if (entry.getMethod() != ZipEntry.STORED) {
             throw new IOException("zip entry must be STORED");
         }
-
-        long size = entry.getSize();
-        if (size < 0) {
-            throw new IOException("zip entry size is unknown");
-        }
-        if (size > maxBytes) {
-            throw new IOException("zip entry too large");
-        }
-        if (size > Integer.MAX_VALUE) {
-            throw new IOException("zip entry too large for memory");
-        }
-
-        // STORED entries should have compressedSize == size when known.
-        long compressedSize = entry.getCompressedSize();
-        if (compressedSize >= 0 && compressedSize != size) {
-            throw new IOException("zip entry size mismatch");
-        }
         if (entry.getCrc() < 0) {
             throw new IOException("zip entry CRC missing");
         }
 
-        byte[] bytes = zin.readNBytes((int) size);
-        if (bytes.length != (int) size) {
-            throw new IOException("zip entry truncated");
+        budget.beginEntry();
+
+        long declaredSize = entry.getSize();
+        long declaredCompressed = entry.getCompressedSize();
+        // Reject absurd headers before spending work; actual size is still verified after reading.
+        if (declaredSize >= 0 && declaredSize > maxBytesPerEntry) {
+            throw new IOException("zip entry too large");
         }
-        return bytes;
+        if (declaredSize > Integer.MAX_VALUE) {
+            throw new IOException("zip entry too large for memory");
+        }
+        if (declaredCompressed >= 0 && declaredCompressed > maxBytesPerEntry) {
+            throw new IOException("zip entry too large");
+        }
+
+        int initialCapacity =
+                declaredSize >= 0 && declaredSize <= maxBytesPerEntry
+                        ? (int) Math.min(declaredSize, READ_BUFFER_SIZE)
+                        : READ_BUFFER_SIZE;
+        ByteArrayOutputStream out = new ByteArrayOutputStream(initialCapacity);
+        byte[] buf = new byte[READ_BUFFER_SIZE];
+        long totalForEntry = 0L;
+        int n;
+        while ((n = zin.read(buf)) > 0) {
+            long nextTotal = Math.addExact(totalForEntry, n);
+            if (nextTotal > maxBytesPerEntry) {
+                throw new IOException("zip entry too large");
+            }
+            budget.recordUncompressedBytes(n);
+            out.write(buf, 0, n);
+            totalForEntry = nextTotal;
+        }
+
+        byte[] result = out.toByteArray();
+
+        if (declaredSize >= 0 && result.length != declaredSize) {
+            throw new IOException("zip entry size mismatch");
+        }
+        if (declaredCompressed >= 0 && result.length != declaredCompressed) {
+            throw new IOException("zip entry size mismatch");
+        }
+
+        return result;
     }
 }
-

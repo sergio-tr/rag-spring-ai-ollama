@@ -29,6 +29,8 @@ public class ProcessQueryService implements QueryService, Loggable {
     private static final String LOG_EMPTY_QUERY_RECEIVED = "Empty query received";
     private static final String ERR_EMPTY_QUERY = "empty query";
 
+    private static final String LOG_REQUIRED_OLLAMA_MODEL_MISSING = "Required Ollama model missing: {}";
+
     private final ExecutionContextFactory executionContextFactory;
     private final RagExecutionOrchestrator ragExecutionOrchestrator;
     private final RuntimeTracePersistenceService runtimeTracePersistenceService;
@@ -182,7 +184,7 @@ public class ProcessQueryService implements QueryService, Loggable {
             throw RagServiceException.llmUnavailable(e);
         }
         if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
-            log().warn("Required Ollama model missing: {}", e.getMessage());
+            log().warn(LOG_REQUIRED_OLLAMA_MODEL_MISSING, e.getMessage());
             throw RagServiceException.ollamaModelNotInstalled(e);
         }
         log().error("Unexpected error processing query: {}", query, e);

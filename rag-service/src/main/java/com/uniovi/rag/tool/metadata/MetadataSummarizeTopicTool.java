@@ -399,14 +399,7 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             }
         }
         // Fallback for estado de cuentas / presupuesto (item 8): if 0 minutes passed, include any minute with estado de cuentas/presupuesto/cuentas in topics/summary/agenda
-        String topicNormForFallback;
-        if (topicLower != null) {
-            topicNormForFallback = topicLower;
-        } else if (topic != null) {
-            topicNormForFallback = normalizePersonName(topic);
-        } else {
-            topicNormForFallback = "";
-        }
+        String topicNormForFallback = topicLower == null ? "" : topicLower;
         if (filtered.isEmpty() && (topicNormForFallback.contains("estado de cuentas") || topicNormForFallback.contains(TOPIC_PRESUPUESTO) || topicNormForFallback.contains(TOPIC_PRESUPUESTO_ANUAL))) {
             List<String> cuentaTerms = List.of("estado de cuentas", TOPIC_PRESUPUESTO, TOPIC_PRESUPUESTO_ANUAL, "cuentas");
             filtered = minutes.stream()

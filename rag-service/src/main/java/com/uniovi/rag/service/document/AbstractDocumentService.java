@@ -182,11 +182,11 @@ public abstract class AbstractDocumentService implements DocumentService {
             // Normalize the extracted text to improve subsequent extraction
             String normalized = normalizeExtractedText(rawText);
             
-            log().info("After normalization: {} characters (filename length: {})", normalized.length(), filename != null ? filename.length() : 0);
+            log().info("After normalization: {} characters (filename length: {})", normalized.length(), filename.length());
             
             // Validate minimum length
             if (normalized.length() < 20) {
-                log().warn("Normalized text is very short ({} chars; filename length: {})", normalized.length(), filename != null ? filename.length() : 0);
+                log().warn("Normalized text is very short ({} chars; filename length: {})", normalized.length(), filename.length());
             }
             
             return normalized;

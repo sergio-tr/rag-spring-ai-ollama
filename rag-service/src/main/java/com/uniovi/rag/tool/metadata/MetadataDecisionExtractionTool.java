@@ -23,6 +23,11 @@ import java.util.stream.Collectors;
  */
 public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
 
+    /** Substring cue for topic / mention style queries (Spanish). */
+    private static final String TOPIC_TOKEN_MENCION = "mencion";
+
+    private static final String TOPIC_PHRASE_ZONAS_COMUNES = "zonas comunes";
+
     public MetadataDecisionExtractionTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -195,8 +200,9 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         if (query == null || query.isBlank()) return false;
         String q = query.toLowerCase();
         return q.contains("qué se comentó") || q.contains("qué se dijo") || q.contains("what was said")
-                || q.contains("respecto a") || (q.contains("sobre") && (q.contains("coment") || q.contains("mencion")))
-                || (q.contains("ocasiones") && (q.contains("mencion") || q.contains("mencionó") || q.contains("menciono")));
+                || q.contains("respecto a") || (q.contains("sobre") && (q.contains("coment") || q.contains(TOPIC_TOKEN_MENCION)))
+                || (q.contains("ocasiones")
+                        && (q.contains(TOPIC_TOKEN_MENCION) || q.contains("mencionó") || q.contains("menciono")));
     }
 
     /** Message when the requested topic is not mentioned in any decision (§4 e.g. gas leak). */
@@ -290,58 +296,70 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         if (decisionText == null || decisionText.isBlank()) {
             return "OTHER";
         }
-        
         String text = decisionText.toLowerCase();
-        
-        // APPROVAL patterns
-        if (text.contains("aprob") || text.contains("aprobar") || text.contains("acept") ||
-            text.contains("aceptar") || text.contains("autoriz") || text.contains("autorizar") ||
-            text.contains("ratific") || text.contains("ratificar")) {
+        if (matchesApprovalDecisionKeywords(text)) {
             return "APPROVAL";
         }
-        
-        // REJECTION patterns
-        if (text.contains("rechaz") || text.contains("deneg") || text.contains("denegar") ||
-            text.contains("desestim") || text.contains("desestimar")) {
+        if (matchesRejectionDecisionKeywords(text)) {
             return "REJECTION";
         }
-        
-        // ASSIGNMENT patterns
-        if (text.contains("asign") || text.contains("asignar") || text.contains("encarg") ||
-            text.contains("encargar") || text.contains("deleg") || text.contains("delegar") ||
-            text.contains("responsabil") || text.contains("responsable")) {
+        if (matchesAssignmentDecisionKeywords(text)) {
             return "ASSIGNMENT";
         }
-        
-        // SCHEDULING patterns
-        if (text.contains("fecha") || text.contains("plazo") || text.contains("program") ||
-            text.contains("programar") || text.contains("agend") || text.contains("agendar") ||
-            text.contains("convoc") || text.contains("convocar")) {
+        if (matchesSchedulingDecisionKeywords(text)) {
             return "SCHEDULING";
         }
-        
-        // POLICY patterns
-        if (text.contains("norma") || text.contains("reglamento") || text.contains("política") ||
-            text.contains("política") || text.contains("regulación") || text.contains("estatuto")) {
+        if (matchesPolicyDecisionKeywords(text)) {
             return "POLICY";
         }
-        
-        // FINANCIAL patterns
-        if (text.contains("presupuesto") || text.contains("presupuest") || text.contains("financi") ||
-            text.contains("pago") || text.contains("gasto") || text.contains("ingreso") ||
-            text.contains("€") || text.contains("euro") || text.contains("coste") ||
-            text.contains("costo") || text.contains("tarifa") || text.contains("cuota")) {
+        if (matchesFinancialDecisionKeywords(text)) {
             return "FINANCIAL";
         }
-        
-        // PERSONNEL patterns
-        if (text.contains("personal") || text.contains("empleado") || text.contains("trabajador") ||
-            text.contains("contrat") || text.contains("contratar") || text.contains("nombramiento") ||
-            text.contains("design") || text.contains("designar") || text.contains("cargo")) {
+        if (matchesPersonnelDecisionKeywords(text)) {
             return "PERSONNEL";
         }
-        
         return "OTHER";
+    }
+
+    private static boolean matchesApprovalDecisionKeywords(String text) {
+        return text.contains("aprob") || text.contains("aprobar") || text.contains("acept")
+                || text.contains("aceptar") || text.contains("autoriz") || text.contains("autorizar")
+                || text.contains("ratific") || text.contains("ratificar");
+    }
+
+    private static boolean matchesRejectionDecisionKeywords(String text) {
+        return text.contains("rechaz") || text.contains("deneg") || text.contains("denegar")
+                || text.contains("desestim") || text.contains("desestimar");
+    }
+
+    private static boolean matchesAssignmentDecisionKeywords(String text) {
+        return text.contains("asign") || text.contains("asignar") || text.contains("encarg")
+                || text.contains("encargar") || text.contains("deleg") || text.contains("delegar")
+                || text.contains("responsabil") || text.contains("responsable");
+    }
+
+    private static boolean matchesSchedulingDecisionKeywords(String text) {
+        return text.contains("fecha") || text.contains("plazo") || text.contains("program")
+                || text.contains("programar") || text.contains("agend") || text.contains("agendar")
+                || text.contains("convoc") || text.contains("convocar");
+    }
+
+    private static boolean matchesPolicyDecisionKeywords(String text) {
+        return text.contains("norma") || text.contains("reglamento") || text.contains("política")
+                || text.contains("regulación") || text.contains("estatuto");
+    }
+
+    private static boolean matchesFinancialDecisionKeywords(String text) {
+        return text.contains("presupuesto") || text.contains("presupuest") || text.contains("financi")
+                || text.contains("pago") || text.contains("gasto") || text.contains("ingreso")
+                || text.contains("€") || text.contains("euro") || text.contains("coste")
+                || text.contains("costo") || text.contains("tarifa") || text.contains("cuota");
+    }
+
+    private static boolean matchesPersonnelDecisionKeywords(String text) {
+        return text.contains("personal") || text.contains("empleado") || text.contains("trabajador")
+                || text.contains("contrat") || text.contains("contratar") || text.contains("nombramiento")
+                || text.contains("design") || text.contains("designar") || text.contains("cargo");
     }
 
     /**
@@ -465,13 +483,20 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         
         String decisionSummary = formatDecisionSummary(decisions, clusters);
         
-        boolean asksOccasionsForTopic = query != null && (query.toLowerCase().contains("ocasiones") && query.toLowerCase().contains("mencion")
-                || query.toLowerCase().contains("occasions") && query.toLowerCase().contains("mention"));
+        String ql = query != null ? query.toLowerCase() : "";
+        boolean asksOccasionsForTopic =
+                query != null
+                        && ((ql.contains("ocasiones") && ql.contains(TOPIC_TOKEN_MENCION))
+                                || (ql.contains("occasions") && ql.contains("mention")));
         String topicInstruction = asksOccasionsForTopic
                 ? " When the user asks about occasions when a topic was mentioned, list each meeting/act where it was mentioned and explicitly link each decision to that topic (e.g. 'En relación con la iluminación: en la reunión X se…; en la reunión Y se…'). Do NOT say that the topic was not mentioned if you are listing decisions that do mention it."
                 : "";
         if (topic != null && !topic.isBlank()) {
-            topicInstruction += String.format(" The user asked about the topic \"%s\". In your answer, link each decision to this topic (e.g. 'En relación con la iluminación: …', 'mejoras junto a seguridad', 'reforzar su uso en zonas comunes').", topic);
+            topicInstruction +=
+                    String.format(
+                            " The user asked about the topic \"%s\". In your answer, link each decision to this topic (e.g. 'En relación con la iluminación: …', 'mejoras junto a seguridad', 'reforzar su uso en %s').",
+                            topic,
+                            TOPIC_PHRASE_ZONAS_COMUNES);
         }
 
         String prompt = String.format("""
@@ -577,12 +602,12 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         // Lighting (items 14, 15): include zones/security context so phrases about improvements near security, common areas, reinforcement match
         if (t.contains("iluminacion") || t.contains("iluminación")) {
             terms.add("iluminacion"); terms.add("iluminación"); terms.add("alumbrado"); terms.add("luz");
-            terms.add("zonas comunes"); terms.add("iluminación de zonas"); terms.add("iluminacion de zonas");
+            terms.add(TOPIC_PHRASE_ZONAS_COMUNES); terms.add("iluminación de zonas"); terms.add("iluminacion de zonas");
             terms.add("mejoras junto a seguridad"); terms.add("reforzar");
         }
         // Limpieza / zonas comunes (item 40)
-        if (t.contains("limpieza") || t.contains("zonas comunes")) {
-            terms.add("limpieza"); terms.add("zonas comunes"); terms.add("servicio de limpieza");
+        if (t.contains("limpieza") || t.contains(TOPIC_PHRASE_ZONAS_COMUNES)) {
+            terms.add("limpieza"); terms.add(TOPIC_PHRASE_ZONAS_COMUNES); terms.add("servicio de limpieza");
             terms.add("cleaning"); terms.add("common areas"); terms.add("cleanliness");
         }
         return terms;

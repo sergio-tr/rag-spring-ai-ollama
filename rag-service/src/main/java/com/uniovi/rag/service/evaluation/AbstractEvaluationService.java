@@ -42,6 +42,12 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
     private static final String JSON_KEY_CORRECT_ANSWER = "correct_answer";
 
+    private static final String JSON_KEY_GENERATED_ANSWER = "generated_answer";
+
+    private static final String JSON_KEY_RETRIEVED_DOCUMENT_IDS = "retrieved_document_ids";
+
+    private static final String JSON_KEY_RELEVANT_DOCUMENT_IDS = "relevant_document_ids";
+
     private static final String KEY_MEAN_CONTEXT_SUFFICIENCY = "mean_context_sufficiency";
 
     /** Descriptor for a single feature flag: label, setter and getter on RagFeatureConfiguration. */
@@ -270,29 +276,10 @@ public abstract class AbstractEvaluationService implements EvaluationService {
             String correctAnswer = entry.getValue() != null ? entry.getValue() : "";
             QueryResponse queryResponse = queryServiceToUse.generateResponse(question);
             String llmResponse = queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
-
             String evaluation = evaluateResponse(question, correctAnswer, llmResponse);
-
-            Map<String, Object> result = new HashMap<>();
-            result.put("question", question);
-            result.put(JSON_KEY_CORRECT_ANSWER, correctAnswer);
-            result.put("generated_answer", llmResponse);
-            result.put("llm_evaluation", evaluation);
-            
-            // Add tool metadata for traceability
-            result.put("tool_used", queryResponse != null ? queryResponse.getToolUsed() : null);
-            result.put("query_type", queryResponse != null && queryResponse.getQueryType() != null ? queryResponse.getQueryType().name() : null);
-            result.put("used_tool", queryResponse != null && queryResponse.isUsedTool());
-
+            Map<String, Object> result = buildEvalQuestionResult(question, correctAnswer, llmResponse, evaluation, queryResponse);
             resultsForPrompt.add(result);
-
-            log().info(
-                "Question: {} | Tool: {} | QueryType: {} | UsedTool: {}", 
-                question, queryResponse != null ? queryResponse.getToolUsed() : null, 
-                queryResponse != null ? queryResponse.getQueryType() : null, 
-                queryResponse != null && queryResponse.isUsedTool()
-            );
-            log().info(result.toString());
+            logEvalQuestion(question, queryResponse, result);
         }
 
         results.put("results", resultsForPrompt);
@@ -300,6 +287,33 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         Map<String, Object> evaluationSummary = buildEvaluationSummary(resultsForPrompt);
         results.put("evaluation_summary", evaluationSummary);
         return results;
+    }
+
+    private Map<String, Object> buildEvalQuestionResult(
+            String question,
+            String correctAnswer,
+            String llmResponse,
+            String evaluation,
+            QueryResponse queryResponse) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("question", question);
+        result.put(JSON_KEY_CORRECT_ANSWER, correctAnswer);
+        result.put(JSON_KEY_GENERATED_ANSWER, llmResponse);
+        result.put("llm_evaluation", evaluation);
+        result.put("tool_used", queryResponse != null ? queryResponse.getToolUsed() : null);
+        result.put("query_type", queryResponse != null && queryResponse.getQueryType() != null ? queryResponse.getQueryType().name() : null);
+        result.put("used_tool", queryResponse != null && queryResponse.isUsedTool());
+        return result;
+    }
+
+    private void logEvalQuestion(String question, QueryResponse queryResponse, Map<String, Object> result) {
+        log().info(
+                "Question: {} | Tool: {} | QueryType: {} | UsedTool: {}",
+                question,
+                queryResponse != null ? queryResponse.getToolUsed() : null,
+                queryResponse != null ? queryResponse.getQueryType() : null,
+                queryResponse != null && queryResponse.isUsedTool());
+        log().info(result.toString());
     }
 
     /**
@@ -493,7 +507,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         if (text == null || text.isBlank()) return List.of();
         List<String> out = new ArrayList<>();
         for (String w : text.toLowerCase().trim().split("\\s+")) {
-            String t = w.replaceAll("^[^a-záéíóúñ0-9]+|[^a-záéíóúñ0-9]+$", "");
+            String t = w.replaceAll("(?:^[^a-záéíóúñ0-9]+|[^a-záéíóúñ0-9]+$)", "");
             if (!t.isEmpty()) out.add(t);
         }
         return out;
@@ -505,7 +519,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         int count = 0;
         for (Map<String, Object> r : results) {
             String ref = getString(r, JSON_KEY_CORRECT_ANSWER);
-            String hyp = getString(r, "generated_answer");
+            String hyp = getString(r, JSON_KEY_GENERATED_ANSWER);
             if (ref == null && hyp == null) continue;
             List<String> refTok = tokenize(ref != null ? ref : "");
             List<String> hypTok = tokenize(hyp != null ? hyp : "");
@@ -550,7 +564,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         int count = 0;
         for (Map<String, Object> r : results) {
             String ref = getString(r, JSON_KEY_CORRECT_ANSWER);
-            String hyp = getString(r, "generated_answer");
+            String hyp = getString(r, JSON_KEY_GENERATED_ANSWER);
             if (ref == null && hyp == null) continue;
             List<String> refTok = tokenize(ref != null ? ref : "");
             List<String> hypTok = tokenize(hyp != null ? hyp : "");
@@ -590,7 +604,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         int count = 0;
         for (Map<String, Object> r : results) {
             String ref = getString(r, JSON_KEY_CORRECT_ANSWER);
-            String hyp = getString(r, "generated_answer");
+            String hyp = getString(r, JSON_KEY_GENERATED_ANSWER);
             if (ref == null && hyp == null) continue;
             List<String> refTok = tokenize(ref != null ? ref : "");
             List<String> hypTok = tokenize(hyp != null ? hyp : "");
@@ -652,8 +666,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         double sum = 0;
         int count = 0;
         for (Map<String, Object> r : results) {
-            List<String> retrieved = getStringList(r, "retrieved_document_ids");
-            List<String> relevant = getStringList(r, "relevant_document_ids");
+            List<String> retrieved = getStringList(r, JSON_KEY_RETRIEVED_DOCUMENT_IDS);
+            List<String> relevant = getStringList(r, JSON_KEY_RELEVANT_DOCUMENT_IDS);
             if (retrieved != null && !retrieved.isEmpty() && relevant != null && !relevant.isEmpty()) {
                 Set<String> relSet = new HashSet<>(relevant);
                 int atK = Math.min(k, retrieved.size());
@@ -672,8 +686,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         double sum = 0;
         int count = 0;
         for (Map<String, Object> r : results) {
-            List<String> retrieved = getStringList(r, "retrieved_document_ids");
-            List<String> relevant = getStringList(r, "relevant_document_ids");
+            List<String> retrieved = getStringList(r, JSON_KEY_RETRIEVED_DOCUMENT_IDS);
+            List<String> relevant = getStringList(r, JSON_KEY_RELEVANT_DOCUMENT_IDS);
             if (retrieved != null && !retrieved.isEmpty() && relevant != null && !relevant.isEmpty()) {
                 Set<String> relSet = new HashSet<>(relevant);
                 int atK = Math.min(k, retrieved.size());
@@ -692,8 +706,8 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         double sum = 0;
         int count = 0;
         for (Map<String, Object> r : results) {
-            List<String> retrieved = getStringList(r, "retrieved_document_ids");
-            List<String> relevant = getStringList(r, "relevant_document_ids");
+            List<String> retrieved = getStringList(r, JSON_KEY_RETRIEVED_DOCUMENT_IDS);
+            List<String> relevant = getStringList(r, JSON_KEY_RELEVANT_DOCUMENT_IDS);
             if (retrieved == null || retrieved.isEmpty() || relevant == null || relevant.isEmpty()) continue;
             Set<String> relSet = new HashSet<>(relevant);
             for (int i = 0; i < retrieved.size(); i++) {

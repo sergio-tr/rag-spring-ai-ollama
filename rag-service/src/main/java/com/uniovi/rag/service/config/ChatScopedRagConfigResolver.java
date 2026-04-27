@@ -88,7 +88,7 @@ public class ChatScopedRagConfigResolver {
                 .findByIdWithConfigAndPreset(conversationId)
                 .map(this::mergeConversationConfigLayers)
                 .filter(m -> !m.isEmpty())
-                .map(m -> (JsonNode) objectMapper.valueToTree(m))
+                .map(m -> objectMapper.convertValue(m, JsonNode.class))
                 .orElse(null);
     }
 

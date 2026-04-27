@@ -22,7 +22,7 @@ public class SimpleDocumentService extends AbstractDocumentService {
     }
 
     public void processDocument(MultipartFile file) {
-        log().info("SIMPLE: Processing file" + file.getName());
+        log().info("SIMPLE: Processing uploaded document");
         String content = extractContent(file);
         if (content == null || content.isEmpty()) {
             throw new IllegalArgumentException("Document content does not exist");
@@ -65,6 +65,6 @@ public class SimpleDocumentService extends AbstractDocumentService {
         String base = (filename != null ? filename : "unknown") + "_" + 
                      (content != null ? String.valueOf(content.hashCode()) : "0");
         // Use a simple hash to create a consistent ID
-        return String.valueOf(Math.abs(base.hashCode()));
+        return Integer.toUnsignedString(base.hashCode());
     }
 }

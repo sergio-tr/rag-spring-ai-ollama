@@ -1,8 +1,8 @@
 package com.uniovi.rag.infrastructure.bootstrap;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.DefaultApplicationArguments;
@@ -22,11 +22,17 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class E2eAdminUserSeederTest {
 
+    private static final String E2E_PLAIN_PASSWORD = "e2e";
+
     @Mock
     private JdbcTemplate jdbcTemplate;
 
-    @InjectMocks
     private E2eAdminUserSeeder seeder;
+
+    @BeforeEach
+    void setUp() {
+        seeder = new E2eAdminUserSeeder(jdbcTemplate, E2E_PLAIN_PASSWORD);
+    }
 
     @Test
     void run_whenUpdateTouchesRow_skipsInsert() {
@@ -80,7 +86,7 @@ class E2eAdminUserSeederTest {
                         contains("INSERT INTO users"),
                         eq(E2eAdminUserSeeder.E2E_ADMIN_ID),
                         eq(E2eAdminUserSeeder.E2E_ADMIN_EMAIL),
-                        eq("{noop}" + E2eAdminUserSeeder.E2E_ADMIN_PASSWORD),
+                        eq("{noop}" + E2E_PLAIN_PASSWORD),
                         any(),
                         any());
     }

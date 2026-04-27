@@ -27,14 +27,14 @@ export function useJobPolling<T>({
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
-    const id = window.setInterval(async () => {
+    const id = globalThis.setInterval(async () => {
       tick.current += 1;
       try {
         const data = await fetcher();
         if (cancelled) return;
         onUpdate?.(data);
         if (stopWhen?.(data)) {
-          window.clearInterval(id);
+          globalThis.clearInterval(id);
         }
       } catch {
         /* caller may surface via fetcher */
@@ -42,7 +42,7 @@ export function useJobPolling<T>({
     }, intervalMs);
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      globalThis.clearInterval(id);
     };
   }, [enabled, intervalMs, fetcher, onUpdate, stopWhen]);
 }

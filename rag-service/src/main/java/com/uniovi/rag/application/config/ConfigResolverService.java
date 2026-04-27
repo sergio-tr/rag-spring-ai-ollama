@@ -138,11 +138,11 @@ public class ConfigResolverService {
     }
 
     private JsonNode loadConversationRuntimeOverride(RuntimeConfigResolutionInput input) {
-        if (input.userId() == null || input.conversationId().isEmpty()) {
+        if (input.userId() == null) {
             return null;
         }
-        return conversationRuntimeOverrideLoader
-                .loadRuntimeOverride(input.userId(), input.conversationId().get())
+        return input.conversationId()
+                .flatMap(cid -> conversationRuntimeOverrideLoader.loadRuntimeOverride(input.userId(), cid))
                 .orElse(null);
     }
 
@@ -151,21 +151,17 @@ public class ConfigResolverService {
      * {@code presetPayload} (legacy preview).
      */
     private static JsonNode resolveRequestRuntimeOverrideNode(RuntimeConfigResolutionInput input) {
-        if (input.runtimeOverride().isPresent()) {
-            return input.runtimeOverride().get();
-        }
-        if (input.presetId().isEmpty()) {
-            return input.presetPayload().orElse(null);
-        }
-        return null;
+        return input.runtimeOverride()
+                .or(() -> input.presetId().isEmpty() ? input.presetPayload() : Optional.empty())
+                .orElse(null);
     }
 
     private List<UUID> resolveProfileIdsForProvenance(RuntimeConfigResolutionInput input) {
-        if (input.userId() == null || input.presetId().isEmpty()) {
+        if (input.userId() == null) {
             return List.of();
         }
-        return configurationSourcePort
-                .loadPresetProfileCompositionSources(input.userId(), input.presetId().get())
+        return input.presetId()
+                .flatMap(pid -> configurationSourcePort.loadPresetProfileCompositionSources(input.userId(), pid))
                 .map(PresetProfileCompositionSources::profileIds)
                 .orElse(List.of());
     }

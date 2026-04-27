@@ -51,6 +51,6 @@ public final class KnowledgeChunkMetadataFactory {
     public static String legacyContentHashId(String filename, String content, UUID projectDocumentId) {
         String base = (filename != null ? filename : "unknown") + "_" + projectDocumentId + "_"
                 + (content != null ? String.valueOf(content.hashCode()) : "0");
-        return String.valueOf(Math.abs(base.hashCode()));
+        return Integer.toUnsignedString(base.hashCode());
     }
 }

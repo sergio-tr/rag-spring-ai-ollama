@@ -36,21 +36,8 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
         String boundedQuery = RegexSafety.truncateString(query, RegexSafety.MAX_QUERY_TEXT_FOR_REGEX);
         String cleanedQuery = boundedQuery.replaceAll("[^\\p{L}\\p{Nd}\\s]", "").toLowerCase();
         String[] keywords = extractSignificantKeywords(cleanedQuery).toArray(new String[0]);
-        int bestMatchIdx = -1;
-        int maxHits = 0;
         String contentLower = boundedContent.toLowerCase();
-        for (int i = 0; i < contentLower.length(); i++) {
-            int hits = 0;
-            for (String word : keywords) {
-                if (i + word.length() <= contentLower.length() && contentLower.substring(i).startsWith(word)) {
-                    hits++;
-                }
-            }
-            if (hits > maxHits) {
-                maxHits = hits;
-                bestMatchIdx = i;
-            }
-        }
+        int bestMatchIdx = indexOfBestKeywordMatch(contentLower, keywords);
         if (bestMatchIdx == -1) {
             return boundedContent.length() > 300 ? boundedContent.substring(0, 300) + "..." : boundedContent;
         }
@@ -148,9 +135,13 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
             return null;
         }
         String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
-        Matcher matcher = Pattern.compile("(?i)Orden del d[íi]a:\\s*(.+?)(?=\\n\\n|Ruegos y preguntas|No habiendo más)", Pattern.DOTALL).matcher(c);
+        Matcher matcher =
+                Pattern.compile(
+                                "(?i)Orden del d[íi]a:\\s*(.+?)(?=\\n\\n|Ruegos y preguntas|No habiendo más)",
+                                Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS)
+                        .matcher(c);
         if (matcher.find()) {
-            return matcher.group(1).trim().replaceAll("•", "-").replaceAll("\\n+", "\n- ");
+            return matcher.group(1).trim().replace("•", "-").replaceAll("\\n+", "\n- ");
         }
         return null;
     }
@@ -161,7 +152,9 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
             return 0;
         }
         String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
-        Matcher matcher = Pattern.compile("(?i)(propuesta|se plantea|se acuerda|se discute)").matcher(c);
+        Matcher matcher =
+                Pattern.compile("(?i)(propuesta|se plantea|se acuerda|se discute)", Pattern.UNICODE_CHARACTER_CLASS)
+                        .matcher(c);
         int count = 0;
         while (matcher.find()) count++;
         return count;
@@ -173,7 +166,11 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
             return 0;
         }
         String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
-        Matcher matcher = Pattern.compile("(?i)Orden del d[íi]a:\\s*(.+?)(?=\\n\\n|Ruegos y preguntas|No habiendo más)", Pattern.DOTALL).matcher(c);
+        Matcher matcher =
+                Pattern.compile(
+                                "(?i)Orden del d[íi]a:\\s*(.+?)(?=\\n\\n|Ruegos y preguntas|No habiendo más)",
+                                Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS)
+                        .matcher(c);
         if (matcher.find()) {
             String agenda = matcher.group(1);
             return (int) agenda.lines().filter(line -> line.strip().startsWith("•") || line.strip().startsWith("-")).count();
@@ -187,7 +184,8 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
             return 0;
         }
         String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
-        Matcher matcher = Pattern.compile("(?i)Ruegos y preguntas").matcher(c);
+        Matcher matcher =
+                Pattern.compile("(?i)Ruegos y preguntas", Pattern.UNICODE_CHARACTER_CLASS).matcher(c);
         int count = 0;
         while (matcher.find()) count++;
         return count;
@@ -220,6 +218,29 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
             }
         }
         return clusters;
+    }
+
+    private static int keywordHitsAt(String contentLower, int index, String[] keywords) {
+        int hits = 0;
+        for (String word : keywords) {
+            if (contentLower.startsWith(word, index)) {
+                hits++;
+            }
+        }
+        return hits;
+    }
+
+    private static int indexOfBestKeywordMatch(String contentLower, String[] keywords) {
+        int bestMatchIdx = -1;
+        int maxHits = 0;
+        for (int i = 0; i < contentLower.length(); i++) {
+            int hits = keywordHitsAt(contentLower, i, keywords);
+            if (hits > maxHits) {
+                maxHits = hits;
+                bestMatchIdx = i;
+            }
+        }
+        return bestMatchIdx;
     }
 
     private static String match(String content, String regex) {

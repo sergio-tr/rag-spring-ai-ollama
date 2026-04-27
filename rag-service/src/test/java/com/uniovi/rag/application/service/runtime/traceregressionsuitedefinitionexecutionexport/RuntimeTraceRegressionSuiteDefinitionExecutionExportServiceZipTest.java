@@ -14,6 +14,7 @@ import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegression
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteRequest;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteResult;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteSummary;
+import com.uniovi.rag.infrastructure.zip.ZipExpansionBudget;
 import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuite.RuntimeTraceRegressionSuiteResponseDto;
 import org.junit.jupiter.api.Test;
@@ -64,9 +65,10 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportServiceZipTest {
                 om.readTree(om.writeValueAsBytes(RuntimeTraceRegressionSuiteResponseDto.fromResult(mockResult)));
 
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(art.content()))) {
+            ZipExpansionBudget budget = ZipExpansionBudget.forUploadedZip(2097152L);
             ZipEntry e1 = zin.getNextEntry();
             assertThat(e1.getName()).isEqualTo("manifest.json");
-            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L);
+            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L, budget);
             JsonNode man = om.readTree(manBytes);
             assertThat(man.get("exportKind").asText())
                     .isEqualTo(RuntimeTraceRegressionSuiteDefinitionExecutionExportService.EXPORT_KIND);
@@ -75,7 +77,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportServiceZipTest {
 
             ZipEntry e2 = zin.getNextEntry();
             assertThat(e2.getName()).isEqualTo("suite.json");
-            byte[] suiteBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L);
+            byte[] suiteBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L, budget);
             JsonNode suiteTree = om.readTree(suiteBytes);
             assertThat(suiteTree).isEqualTo(expectedSuiteTree);
             assertThat(zin.getNextEntry()).isNull();

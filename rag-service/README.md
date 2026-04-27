@@ -169,6 +169,7 @@ For **degree-project** experimentation (hypotheses, freeze protocol, ablation ma
 | `application.properties` | **Application:** RAG/AI/features, DB, actuator defaults, OTLP off by default; profile **`dev`** (DevTools, logs, CORS, JPA `update`) |
 | `application-infra.properties` | **Environment / infra:** profile **`docker`** (no OTLP inside container by default), profile **`infra`** (OTLP on, collector URLs, relaxed container health, probes) |
 | `application-test.properties` | Test profile only (no real Ollama/OTLP) |
+| `application-e2e.properties` | Profile **`e2e`:** Playwright/CI-only stubs, no real Ollama/classifier. Sets `rag.e2e.admin-password` (seeded admin for E2E; default `e2e`, not for production) |
 
 Edit **`application.properties`** for product behaviour; **`application-infra.properties`** for Docker/OTLP/actuator wiring. Override with environment variables (e.g. `SPRING_DATASOURCE_URL`, `OTEL_EXPORTER_OTLP_ENDPOINT`) or extra profiles.
 

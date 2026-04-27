@@ -43,7 +43,7 @@ class KnowledgeIndexingServiceTest {
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
-        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo, 400);
+        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -59,14 +59,15 @@ class KnowledgeIndexingServiceTest {
         when(ingestionService.extractContent(any())).thenReturn("hello world");
 
         sut.processDocument(
-                doc,
-                tempFile,
-                "ignored.txt",
-                "text/plain",
-                snapshot,
-                "abc123",
-                MaterializationStrategy.STRUCTURED_SEARCH,
-                123);
+                new KnowledgeDocumentIndexingRequest(
+                        doc,
+                        tempFile,
+                        "ignored.txt",
+                        "text/plain",
+                        snapshot,
+                        "abc123",
+                        MaterializationStrategy.STRUCTURED_SEARCH,
+                        123));
 
         ArgumentCaptor<DocumentArtifactEntity> captor = ArgumentCaptor.forClass(DocumentArtifactEntity.class);
         verify(artifactRepo, org.mockito.Mockito.times(3)).save(captor.capture());
@@ -89,7 +90,7 @@ class KnowledgeIndexingServiceTest {
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
-        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo, 400);
+        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -106,14 +107,15 @@ class KnowledgeIndexingServiceTest {
         when(ingestionService.extractContent(any())).thenReturn("hello world");
 
         sut.processDocument(
-                doc,
-                tempFile,
-                "ignored.txt",
-                "text/plain",
-                snapshot,
-                "abc123",
-                MaterializationStrategy.DOCUMENT_LEVEL,
-                100);
+                new KnowledgeDocumentIndexingRequest(
+                        doc,
+                        tempFile,
+                        "ignored.txt",
+                        "text/plain",
+                        snapshot,
+                        "abc123",
+                        MaterializationStrategy.DOCUMENT_LEVEL,
+                        100));
 
         ArgumentCaptor<DocumentArtifactEntity> captor = ArgumentCaptor.forClass(DocumentArtifactEntity.class);
         verify(artifactRepo, org.mockito.Mockito.times(3)).save(captor.capture());
@@ -134,7 +136,7 @@ class KnowledgeIndexingServiceTest {
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
-        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo, 400);
+        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -152,14 +154,15 @@ class KnowledgeIndexingServiceTest {
         when(ingestionService.splitContentIntoChunks("hello world", 5)).thenReturn(List.of("a", "b", "c"));
 
         sut.processDocument(
-                doc,
-                tempFile,
-                "ignored.txt",
-                "text/plain",
-                snapshot,
-                "abc123",
-                MaterializationStrategy.HYBRID,
-                5);
+                new KnowledgeDocumentIndexingRequest(
+                        doc,
+                        tempFile,
+                        "ignored.txt",
+                        "text/plain",
+                        snapshot,
+                        "abc123",
+                        MaterializationStrategy.HYBRID,
+                        5));
 
         ArgumentCaptor<DocumentArtifactEntity> captor = ArgumentCaptor.forClass(DocumentArtifactEntity.class);
         verify(artifactRepo, org.mockito.Mockito.times(4)).save(captor.capture());
@@ -180,7 +183,7 @@ class KnowledgeIndexingServiceTest {
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
-        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo, 400);
+        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -192,14 +195,15 @@ class KnowledgeIndexingServiceTest {
         assertThatThrownBy(
                         () ->
                                 sut.processDocument(
-                                        doc,
-                                        tempFile,
-                                        "ignored.txt",
-                                        "text/plain",
-                                        snapshot,
-                                        "abc123",
-                                        MaterializationStrategy.DOCUMENT_LEVEL,
-                                        100))
+                                        new KnowledgeDocumentIndexingRequest(
+                                                doc,
+                                                tempFile,
+                                                "ignored.txt",
+                                                "text/plain",
+                                                snapshot,
+                                                "abc123",
+                                                MaterializationStrategy.DOCUMENT_LEVEL,
+                                                100)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("empty content");
     }
@@ -211,7 +215,7 @@ class KnowledgeIndexingServiceTest {
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
-        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo, 400);
+        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
@@ -227,14 +231,15 @@ class KnowledgeIndexingServiceTest {
         when(ingestionService.extractContent(any())).thenReturn("hello");
 
         sut.processDocument(
-                doc,
-                null,
-                "name.txt",
-                "text/plain",
-                snapshot,
-                "abc123",
-                MaterializationStrategy.DOCUMENT_LEVEL,
-                100);
+                new KnowledgeDocumentIndexingRequest(
+                        doc,
+                        null,
+                        "name.txt",
+                        "text/plain",
+                        snapshot,
+                        "abc123",
+                        MaterializationStrategy.DOCUMENT_LEVEL,
+                        100));
 
         verify(storagePort).openStream("mem://doc");
         verify(vectorStore).add(any());
@@ -247,7 +252,7 @@ class KnowledgeIndexingServiceTest {
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
-        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo, 400);
+        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
         UUID docId = UUID.randomUUID();
         DocumentArtifactEntity parsed = mock(DocumentArtifactEntity.class);
@@ -269,7 +274,7 @@ class KnowledgeIndexingServiceTest {
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
-        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo, 400);
+        KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
         when(doc.getStorageUri()).thenReturn("  ");
@@ -277,14 +282,15 @@ class KnowledgeIndexingServiceTest {
         assertThatThrownBy(
                         () ->
                                 sut.processDocument(
-                                        doc,
-                                        null,
-                                        "name.txt",
-                                        "text/plain",
-                                        mock(KnowledgeIndexSnapshotEntity.class),
-                                        "abc123",
-                                        MaterializationStrategy.DOCUMENT_LEVEL,
-                                        100))
+                                        new KnowledgeDocumentIndexingRequest(
+                                                doc,
+                                                null,
+                                                "name.txt",
+                                                "text/plain",
+                                                mock(KnowledgeIndexSnapshotEntity.class),
+                                                "abc123",
+                                                MaterializationStrategy.DOCUMENT_LEVEL,
+                                                100)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("missing storage URI");
     }

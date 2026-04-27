@@ -26,6 +26,27 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
 
     private static final String META_FIELD_SECRETARY = "secretary";
 
+    private static final String META_FIELD_DATE = "date";
+
+    private static final String META_FIELD_PLACE = "place";
+
+    private static final String META_FIELD_DECISIONS = "decisions";
+
+    private static final String META_FIELD_SUMMARY = "summary";
+
+    private static final String META_FIELD_ATTENDEES = "attendees";
+
+    private static final String[] ENTITY_RETRIEVAL_FIELD_NAMES = {
+        META_FIELD_DATE,
+        META_FIELD_PLACE,
+        META_FIELD_TOPICS,
+        META_FIELD_DECISIONS,
+        META_FIELD_SUMMARY,
+        META_FIELD_PRESIDENT,
+        META_FIELD_SECRETARY,
+        META_FIELD_ATTENDEES
+    };
+
     public MetadataExtractEntitiesTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -35,70 +56,20 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
-        
+
         log().info("Executing entity extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
-        
-        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
-        List<Document> docs = retrieveDocumentsWithFallback(
-            query, 
-            new String[] {"date", "place", "topics", "decisions", "summary", "president", "secretary", "attendees"},
-            ner
-        );
-        
-        if (docs.isEmpty()) {
-            log().info("No documents found for entity extraction query: {}", query);
+
+        LoadedCorpus corpus = loadDocumentsAndRelevantMinutes(query, ner);
+        if (corpus == null) {
             return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
         }
 
-        // Step 2: Extract minutes in parallel
-        List<Minute> minutes = extractMinutesInParallel(docs);
-        if (minutes.isEmpty()) {
-            log().info("No valid minutes found for entity extraction query: {}", query);
-            return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
+        ToolResult shortcut = tryMetadataShortcutResponses(query, ner, corpus);
+        if (shortcut != null) {
+            return shortcut;
         }
 
-        // Step 3: Filter relevant minutes based on NER or query relevance
-        List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        if (relevantMinutes.isEmpty()) {
-            log().info("No relevant minutes found for entity extraction query: {}", query);
-            return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
-        }
-        
-        // When query asks for "quién presidió" or "quién fue la secretaria", return only that role (no attendee list)
-        if (asksForPresidentOrSecretaryOnly(query)) {
-            String requestedDate = extractDateFromQuery(query, ner);
-            List<Minute> forDate = requestedDate != null ? filterMinutesByDate(query, ner, relevantMinutes) : relevantMinutes;
-            if (!forDate.isEmpty()) {
-                Minute target = forDate.get(0);
-                String roleValue = asksForPresidentOnly(query) ? target.president() : target.secretary();
-                if (roleValue != null && !roleValue.isBlank()) {
-                    log().info("Returning single role (president/secretary) for query: {}", query);
-                    return ToolResult.from(formatResponse(roleValue, query), getClass());
-                }
-            }
-        }
-
-        // When query asks for "list all X" (dates, places, presidents, secretaries, topics, decisions, attendees), return from metadata (no LLM)
-        ListableEntity listType = getRequestedListableEntity(query);
-        if (listType != null) {
-            List<String> items = buildListFromMinutes(listType, relevantMinutes);
-            if (!items.isEmpty()) {
-                String answer = formatListAnswer(items, listType);
-                log().info("Returning list of {} {} for query (no entity extraction)", items.size(), listType);
-                return ToolResult.from(formatResponse(answer, query), getClass());
-            }
-        }
-
-        // When query asks for sections/structure of the minute (not persons), return from metadata (date, place, agenda, etc.)
-        if (asksForSectionsOrStructure(query)) {
-            List<Minute> forDate = filterMinutesByDate(query, ner, relevantMinutes);
-            List<Minute> target = forDate.isEmpty() ? relevantMinutes : forDate;
-            if (!target.isEmpty()) {
-                String sectionsAnswer = buildSectionsAnswerFromMinute(target.get(0));
-                log().info("Returning minute sections/structure for query (no entity extraction)");
-                return ToolResult.from(formatResponse(sectionsAnswer, query), getClass());
-            }
-        }
+        List<Minute> relevantMinutes = corpus.relevantMinutes();
 
         // Step 3.5: Additional filtering by topic + person if query requires it
         // Example: "Dime qué actas mencionan el ascensor y fueron presididas por Juan Pérez Gutiérrez"
@@ -110,7 +81,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         }
 
         // Step 4: Extract entities in parallel (prioritize metadata)
-        List<Entity> entities = extractEntitiesInParallel(query, relevantMinutes, docs);
+        List<Entity> entities = extractEntitiesInParallel(query, relevantMinutes, corpus.docs());
         if (entities.isEmpty()) {
             log().info("No relevant entities found for query: {}", query);
             return ToolResult.from(formatResponse(generateEntityNotFoundMessage(query), query), getClass());
@@ -130,6 +101,64 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
         return ToolResult.from(formatResponse(answer, query), getClass());
     }
 
+    private record LoadedCorpus(List<Document> docs, List<Minute> relevantMinutes) {}
+
+    private LoadedCorpus loadDocumentsAndRelevantMinutes(String query, JSONObject ner) {
+        List<Document> docs = retrieveDocumentsWithFallback(query, ENTITY_RETRIEVAL_FIELD_NAMES, ner);
+        if (docs.isEmpty()) {
+            log().info("No documents found for entity extraction query: {}", query);
+            return null;
+        }
+        List<Minute> minutes = extractMinutesInParallel(docs);
+        if (minutes.isEmpty()) {
+            log().info("No valid minutes found for entity extraction query: {}", query);
+            return null;
+        }
+        List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
+        if (relevantMinutes.isEmpty()) {
+            log().info("No relevant minutes found for entity extraction query: {}", query);
+            return null;
+        }
+        return new LoadedCorpus(docs, relevantMinutes);
+    }
+
+    /**
+     * Fast paths that only need metadata (role, lists, sections); {@code null} means continue with full extraction.
+     */
+    private ToolResult tryMetadataShortcutResponses(String query, JSONObject ner, LoadedCorpus corpus) {
+        List<Minute> relevantMinutes = corpus.relevantMinutes();
+        if (asksForPresidentOrSecretaryOnly(query)) {
+            String requestedDate = extractDateFromQuery(query, ner);
+            List<Minute> forDate = requestedDate != null ? filterMinutesByDate(query, ner, relevantMinutes) : relevantMinutes;
+            if (!forDate.isEmpty()) {
+                Minute target = forDate.get(0);
+                String roleValue = asksForPresidentOnly(query) ? target.president() : target.secretary();
+                if (roleValue != null && !roleValue.isBlank()) {
+                    log().info("Returning single role (president/secretary) for query: {}", query);
+                    return ToolResult.from(formatResponse(roleValue, query), getClass());
+                }
+            }
+        }
+        ListableEntity listType = getRequestedListableEntity(query);
+        if (listType != null) {
+            List<String> items = buildListFromMinutes(listType, relevantMinutes);
+            if (!items.isEmpty()) {
+                String answer = formatListAnswer(items, listType);
+                log().info("Returning list of {} {} for query (no entity extraction)", items.size(), listType);
+                return ToolResult.from(formatResponse(answer, query), getClass());
+            }
+        }
+        if (asksForSectionsOrStructure(query)) {
+            List<Minute> forDate = filterMinutesByDate(query, ner, relevantMinutes);
+            List<Minute> target = forDate.isEmpty() ? relevantMinutes : forDate;
+            if (!target.isEmpty()) {
+                String sectionsAnswer = buildSectionsAnswerFromMinute(target.get(0));
+                log().info("Returning minute sections/structure for query (no entity extraction)");
+                return ToolResult.from(formatResponse(sectionsAnswer, query), getClass());
+            }
+        }
+        return null;
+    }
 
     /**
      * Extracts entities in parallel, prioritizing metadata from documents

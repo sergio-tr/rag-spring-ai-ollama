@@ -45,10 +45,8 @@ public final class ConnectivityFailureDetector {
             if (cur instanceof java.net.http.HttpTimeoutException) {
                 return true;
             }
-            if (cur instanceof UncheckedIOException uio) {
-                if (uio.getCause() instanceof IOException) {
-                    return true;
-                }
+            if (cur instanceof UncheckedIOException uio && uio.getCause() instanceof IOException) {
+                return true;
             }
             if (cur instanceof IOException && !(cur instanceof java.io.FileNotFoundException)) {
                 // Generic I/O to remote — often broken pipe / reset

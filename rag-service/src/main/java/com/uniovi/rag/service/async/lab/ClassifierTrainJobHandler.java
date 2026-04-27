@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.async.lab;
 
 import com.uniovi.rag.application.port.ClassifierLabPort;
+import com.uniovi.rag.application.port.ClassifierTrainBytesCommand;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
@@ -12,7 +13,9 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -47,10 +50,11 @@ class ClassifierTrainJobHandler implements LabJobHandler {
                         ? Path.of(String.valueOf(payload.get(LabJobPayloadKeys.LABELS_PATH)))
                         : null;
         try {
-            byte[] train = readTrainBytes(taskId, trainPath, mutation);
-            if (train == null) {
+            Optional<byte[]> trainOpt = readTrainBytes(taskId, trainPath, mutation);
+            if (trainOpt.isEmpty()) {
                 return;
             }
+            byte[] train = trainOpt.get();
             LabelsRead labelsRead = readLabelsBytesWhenPresent(taskId, labelsPath, mutation);
             if (!labelsRead.ok()) {
                 return;
@@ -60,14 +64,15 @@ class ClassifierTrainJobHandler implements LabJobHandler {
             mutation.appendProgressLine(taskId, "Calling classifier-service /train…");
             Map<String, Object> res =
                     classifierLab.trainBytes(
-                            train,
-                            trainPath.getFileName().toString(),
-                            parsed.modelName(),
-                            parsed.labelsJson(),
-                            labelsBytes,
-                            labelsBytes != null ? labelsPath.getFileName().toString() : null,
-                            parsed.epochs(),
-                            parsed.batchSize());
+                            new ClassifierTrainBytesCommand(
+                                    train,
+                                    trainPath.getFileName().toString(),
+                                    parsed.modelName(),
+                                    parsed.labelsJson(),
+                                    labelsBytes,
+                                    labelsBytes != null ? labelsPath.getFileName().toString() : null,
+                                    parsed.epochs(),
+                                    parsed.batchSize()));
             mutation.markSucceeded(taskId, res);
             registerModelAfterTrain(task, taskId, parsed.modelName(), res, parsed.epochs(), parsed.batchSize());
         } finally {
@@ -78,12 +83,12 @@ class ClassifierTrainJobHandler implements LabJobHandler {
         }
     }
 
-    private byte[] readTrainBytes(UUID taskId, Path trainPath, AsyncTaskMutationService mutation) {
+    private Optional<byte[]> readTrainBytes(UUID taskId, Path trainPath, AsyncTaskMutationService mutation) {
         try {
-            return Files.readAllBytes(trainPath);
+            return Optional.of(Files.readAllBytes(trainPath));
         } catch (IOException e) {
             mutation.markFailed(taskId, "Could not read training file: " + e.getMessage());
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -106,6 +111,25 @@ class ClassifierTrainJobHandler implements LabJobHandler {
 
         static LabelsRead failed() {
             return new LabelsRead(false, null);
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            return obj instanceof LabelsRead other && ok == other.ok && Arrays.equals(bytes, other.bytes);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * Boolean.hashCode(ok) + Arrays.hashCode(bytes);
+        }
+
+        @Override
+        public String toString() {
+            return "LabelsRead[ok="
+                    + ok
+                    + ", bytesLength="
+                    + (bytes == null ? -1 : bytes.length)
+                    + "]";
         }
     }
 

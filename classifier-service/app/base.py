@@ -26,6 +26,7 @@ class BaseService(Loggable):
     """
 
     def __init__(self) -> None:
+        # No-op by design: anchors the service hierarchy; subclasses may override without forcing super init logic.
         pass
 
     @property

@@ -2,10 +2,12 @@ package com.uniovi.rag.infrastructure.classifier;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ClassifierLabPort;
+import com.uniovi.rag.application.port.ClassifierTrainBytesCommand;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -35,6 +37,9 @@ import java.util.Map;
 public class ClassifierLabClient implements ClassifierLabPort {
 
     private static final Logger log = LoggerFactory.getLogger(ClassifierLabClient.class);
+
+    private static final ParameterizedTypeReference<Map<String, Object>> MAP_OF_STRING_OBJECT =
+            new ParameterizedTypeReference<>() {};
 
     private final String baseUrl;
     private final RestTemplate restTemplate;
@@ -87,14 +92,15 @@ public class ClassifierLabClient implements ClassifierLabPort {
                             ? labelsFile.getOriginalFilename()
                             : "labels.txt";
             return trainBytes(
-                    file.getBytes(),
-                    file.getOriginalFilename() != null ? file.getOriginalFilename() : "dataset.xlsx",
-                    modelName,
-                    labelsJson,
-                    labelsBytes,
-                    labelsBytes != null ? labelsFilename : null,
-                    epochs,
-                    batchSize);
+                    new ClassifierTrainBytesCommand(
+                            file.getBytes(),
+                            file.getOriginalFilename() != null ? file.getOriginalFilename() : "dataset.xlsx",
+                            modelName,
+                            labelsJson,
+                            labelsBytes,
+                            labelsBytes != null ? labelsFilename : null,
+                            epochs,
+                            batchSize));
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Could not read upload: " + e.getMessage());
         }
@@ -103,15 +109,16 @@ public class ClassifierLabClient implements ClassifierLabPort {
     /**
      * Same as multipart {@link #train} but for background jobs that materialized uploads to byte arrays.
      */
-    public Map<String, Object> trainBytes(
-            byte[] fileContent,
-            String datasetFilename,
-            String modelName,
-            String labelsJson,
-            byte[] labelsFileContent,
-            String labelsFilename,
-            int epochs,
-            int batchSize) {
+    @Override
+    public Map<String, Object> trainBytes(ClassifierTrainBytesCommand cmd) {
+        byte[] fileContent = cmd.fileContent();
+        String datasetFilename = cmd.datasetFilename();
+        String modelName = cmd.modelName();
+        String labelsJson = cmd.labelsJson();
+        byte[] labelsFileContent = cmd.labelsFileContent();
+        String labelsFilename = cmd.labelsFilename();
+        int epochs = cmd.epochs();
+        int batchSize = cmd.batchSize();
         requireConfigured();
         if (fileContent == null || fileContent.length == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Training file is required");
@@ -140,8 +147,8 @@ public class ClassifierLabClient implements ClassifierLabPort {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
             HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<>(body, headers);
-            ResponseEntity<Map> resp =
-                    restTemplate.postForEntity(baseUrl + "/train", entity, Map.class);
+            ResponseEntity<Map<String, Object>> resp =
+                    restTemplate.exchange(baseUrl + "/train", HttpMethod.POST, entity, MAP_OF_STRING_OBJECT);
             return bodyAsMap(resp);
         } catch (HttpStatusCodeException e) {
             throw mapClassifierError(e);
@@ -185,12 +192,12 @@ public class ClassifierLabClient implements ClassifierLabPort {
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.MULTIPART_FORM_DATA);
                 HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<>(body, headers);
-                ResponseEntity<Map> resp =
-                        restTemplate.exchange(url.toString(), HttpMethod.POST, entity, Map.class);
+                ResponseEntity<Map<String, Object>> resp =
+                        restTemplate.exchange(url.toString(), HttpMethod.POST, entity, MAP_OF_STRING_OBJECT);
                 return bodyAsMap(resp);
             }
-            ResponseEntity<Map> resp =
-                    restTemplate.exchange(url.toString(), HttpMethod.POST, HttpEntity.EMPTY, Map.class);
+            ResponseEntity<Map<String, Object>> resp =
+                    restTemplate.exchange(url.toString(), HttpMethod.POST, HttpEntity.EMPTY, MAP_OF_STRING_OBJECT);
             return bodyAsMap(resp);
         } catch (HttpStatusCodeException e) {
             throw mapClassifierError(e);
@@ -208,7 +215,8 @@ public class ClassifierLabClient implements ClassifierLabPort {
             Map<String, String> payload =
                     Map.of("query", query != null ? query : "", "modelId", modelId != null ? modelId : "default");
             HttpEntity<Map<String, String>> entity = new HttpEntity<>(payload, headers);
-            ResponseEntity<Map> resp = restTemplate.postForEntity(baseUrl + "/classify", entity, Map.class);
+            ResponseEntity<Map<String, Object>> resp =
+                    restTemplate.exchange(baseUrl + "/classify", HttpMethod.POST, entity, MAP_OF_STRING_OBJECT);
             return bodyAsMap(resp);
         } catch (HttpStatusCodeException e) {
             throw mapClassifierError(e);
@@ -229,13 +237,12 @@ public class ClassifierLabClient implements ClassifierLabPort {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> bodyAsMap(ResponseEntity<Map> resp) {
-        Map<?, ?> body = resp.getBody();
+    private Map<String, Object> bodyAsMap(ResponseEntity<Map<String, Object>> resp) {
+        Map<String, Object> body = resp.getBody();
         if (body == null) {
             return Map.of();
         }
-        return (Map<String, Object>) body;
+        return body;
     }
 
     private ResponseStatusException mapClassifierError(HttpStatusCodeException e) {

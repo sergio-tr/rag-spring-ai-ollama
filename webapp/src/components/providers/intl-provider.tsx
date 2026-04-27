@@ -34,7 +34,7 @@ export function IntlProviderClient({
   nowMs,
   children,
 }: IntlProviderProps) {
-  const zone = (timeZone && timeZone.trim()) || "UTC";
+  const zone = timeZone?.trim() || "UTC";
   return (
     <IntlProvider
       locale={locale}

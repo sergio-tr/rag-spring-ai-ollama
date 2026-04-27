@@ -100,7 +100,7 @@ public class ProjectService {
         }
         if (req.projectPrompt() != null) {
             p.setProjectPrompt(req.projectPrompt().isBlank() ? null : req.projectPrompt());
-            auditApplicationService.record(
+            auditApplicationService.persistAuditEntry(
                     userId,
                     "PROJECT_PROMPT_UPDATE",
                     "project",

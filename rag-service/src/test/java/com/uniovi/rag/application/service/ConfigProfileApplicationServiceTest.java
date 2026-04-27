@@ -122,7 +122,7 @@ class ConfigProfileApplicationServiceTest {
         ConfigProfileResponseDto out = service.create(userId, "USER", req);
         assertEquals("INDEX", out.profileType());
         verify(auditApplicationService)
-                .record(eq(userId), eq("CONFIG_PROFILE_CREATE"), eq("config_profile"), any(), any());
+                .persistAuditEntry(eq(userId), eq("CONFIG_PROFILE_CREATE"), eq("config_profile"), any(), any());
     }
 
     @Test

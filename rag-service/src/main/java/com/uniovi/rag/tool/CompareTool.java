@@ -208,7 +208,9 @@ public class CompareTool extends AbstractTool {
             if (parts.length >= 2) {
                 return parts[1].toLowerCase();
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+            // Unexpected split failure; return original date string unchanged.
+        }
         return date;
     }
 

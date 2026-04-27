@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.async.lab;
 
 import com.uniovi.rag.application.port.ClassifierLabPort;
+import com.uniovi.rag.application.port.ClassifierTrainBytesCommand;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
@@ -9,19 +10,18 @@ import com.uniovi.rag.service.classifier.ClassifierModelRegistryService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -82,14 +82,15 @@ class ClassifierTrainJobHandlerTest {
                         "null");
         Map<String, Object> labOut = Map.of("status", "ok");
         when(classifierLab.trainBytes(
-                        any(),
-                        eq("data.zip"),
-                        eq("m1"),
-                        isNull(),
-                        isNull(),
-                        isNull(),
-                        eq(50),
-                        eq(8)))
+                        argThat(
+                                (ClassifierTrainBytesCommand c) ->
+                                        "data.zip".equals(c.datasetFilename())
+                                                && "m1".equals(c.modelName())
+                                                && c.labelsJson() == null
+                                                && c.labelsFileContent() == null
+                                                && c.labelsFilename() == null
+                                                && c.epochs() == 50
+                                                && c.batchSize() == 8)))
                 .thenReturn(labOut);
         AsyncTaskEntity task = task(taskId, payload, user(uid));
 
@@ -118,31 +119,31 @@ class ClassifierTrainJobHandlerTest {
                         LabJobPayloadKeys.BATCH_SIZE,
                         4);
         when(classifierLab.trainBytes(
-                        any(),
-                        eq("t.zip"),
-                        eq("model"),
-                        isNull(),
-                        any(),
-                        eq("l.json"),
-                        eq(2),
-                        eq(4)))
+                        argThat(
+                                (ClassifierTrainBytesCommand c) ->
+                                        "t.zip".equals(c.datasetFilename())
+                                                && "model".equals(c.modelName())
+                                                && c.labelsJson() == null
+                                                && "{}".equals(new String(c.labelsFileContent(), StandardCharsets.UTF_8))
+                                                && "l.json".equals(c.labelsFilename())
+                                                && c.epochs() == 2
+                                                && c.batchSize() == 4)))
                 .thenReturn(Map.of());
         AsyncTaskEntity task = task(taskId, payload, user(UUID.randomUUID()));
 
         new ClassifierTrainJobHandler(classifierLab, classifierModelRegistryService).run(task, mutation);
 
-        ArgumentCaptor<byte[]> labelsBytes = ArgumentCaptor.forClass(byte[].class);
         verify(classifierLab)
                 .trainBytes(
-                        any(),
-                        eq("t.zip"),
-                        eq("model"),
-                        isNull(),
-                        labelsBytes.capture(),
-                        eq("l.json"),
-                        eq(2),
-                        eq(4));
-        assertThat(labelsBytes.getValue()).asString().isEqualTo("{}");
+                        argThat(
+                                (ClassifierTrainBytesCommand c) ->
+                                        "t.zip".equals(c.datasetFilename())
+                                                && "model".equals(c.modelName())
+                                                && c.labelsJson() == null
+                                                && "{}".equals(new String(c.labelsFileContent(), StandardCharsets.UTF_8))
+                                                && "l.json".equals(c.labelsFilename())
+                                                && c.epochs() == 2
+                                                && c.batchSize() == 4));
     }
 
     @Test

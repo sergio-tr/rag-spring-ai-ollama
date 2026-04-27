@@ -72,7 +72,10 @@ public class OllamaModelProvisioningService {
 
     /**
      * Invoked at startup: pulls chat and embedding models if missing.
+     * <p>When {@link InterruptedException} is caught, {@link Thread#interrupt()} is invoked to preserve the
+     * interrupted status; the method does not rethrow so application startup can complete in a degraded mode.
      */
+    @SuppressWarnings("java:S2142")
     public void ensureConfiguredModelsAtStartup() {
         if (!healthProperties.isOllamaEnabled() || !ollamaProperties.isAutoPullEnabled()) {
             return;
@@ -104,6 +107,14 @@ public class OllamaModelProvisioningService {
             }
             state.set(State.READY);
             log.info("Ollama: model provisioning completed.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            lastError = e.getMessage();
+            log.warn(
+                    "Ollama: model provisioning interrupted; /api/** may stay degraded until restart. Cause: {}",
+                    e.getMessage());
+            log.debug("Ollama model provisioning interrupted", e);
+            state.set(State.FAILED);
         } catch (Exception e) {
             lastError = e.getMessage();
             // WARN + message: degraded state (Ollama down); full stack only at DEBUG to avoid noisy CI / default logs.

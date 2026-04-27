@@ -120,7 +120,7 @@ public class LabBenchmarkController {
     }
 
     @GetMapping(value = "/runs/{runId}/export")
-    public ResponseEntity<?> exportRun(
+    public ResponseEntity<Object> exportRun(
             @AuthenticationPrincipal RagPrincipal principal,
             @PathVariable UUID runId,
             @RequestParam(name = "format", defaultValue = "csv") String format) {

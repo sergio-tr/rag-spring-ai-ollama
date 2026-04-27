@@ -24,8 +24,8 @@ public class MinuteDocumentStructureExpander extends AbstractQueryExpander {
 
     /** Sentences/phrases to strip from CoT output before using as expansion (paper: "The final answer:", etc.). */
     private static final Pattern COT_FINAL_ANSWER_PATTERN = Pattern.compile(
-            "(?i)(\\s*(?:the\\s+final\\s+answer|so\\s+the\\s+final\\s+answer is|la\\s+respuesta\\s+final|así que\\s+la\\s+respuesta\\s+es)\\s*:?\\s*[^.]*\\.?)\\s*$"
-    );    
+            "(?iu)(\\s*(?:the\\s+final\\s+answer|so\\s+the\\s+final\\s+answer is|la\\s+respuesta\\s+final|así que\\s+la\\s+respuesta\\s+es)\\s*:?\\s*[^.]*\\.?)\\s*$",
+            Pattern.UNICODE_CHARACTER_CLASS);
 
     private final ExpansionStrategy strategy;
     private final int originalQueryRepeatCount;

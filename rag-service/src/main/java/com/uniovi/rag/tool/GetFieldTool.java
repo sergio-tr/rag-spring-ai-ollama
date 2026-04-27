@@ -77,7 +77,7 @@ public class GetFieldTool extends AbstractTool {
                 continue;
             }
             matchedCount++;
-            String value = extractLiteralFieldByIntent(query, ner, doc.getText());
+            String value = extractLiteralFieldByIntent(query, doc.getText());
             if (value != null && !value.isBlank()) {
                 long totalTime = System.currentTimeMillis() - startTime;
                 log().info(LOG_FOUND_FIELD, query, doc.getId(), totalTime);
@@ -100,7 +100,7 @@ public class GetFieldTool extends AbstractTool {
             if (!isRelevantByLLM(doc.getText(), query)) {
                 continue;
             }
-            String value = extractLiteralFieldByIntent(query, null, doc.getText());
+            String value = extractLiteralFieldByIntent(query, doc.getText());
             if (value != null && !value.isBlank()) {
                 long totalTime = System.currentTimeMillis() - startTime;
                 log().info(LOG_FOUND_FIELD, query, doc.getId(), totalTime);
@@ -169,7 +169,7 @@ public class GetFieldTool extends AbstractTool {
                 && (q.contains("presidente") || q.contains("president") || q.contains("secretaria") || q.contains("secretary"));
     }
 
-    private String extractLiteralFieldByIntent(String query, JSONObject ner, String content) {
+    private String extractLiteralFieldByIntent(String query, String content) {
         // When user asks for "date of the acta where X was president", extract date only (not president name)
         String detectedField = asksForDateOfActaWherePerson(query) ? "date" : classifyLiteralIntentWithLLM(query);
         switch (detectedField) {

@@ -85,10 +85,10 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
         String promptContent = truncateForPrompt(contentWithPrefix, DEFAULT_MAX_PROMPT_CHARS);
 
         try {
-            String filterPrompt = entities == null || entities.isEmpty() ?
-                    String.format(PROMPT_TEMPLATE, promptContent, query) :
-                    String.format(NER_PROMPT_TEMPLATE, promptContent, query, 
-                                 entities != null ? entities.toString(2) : "{}");
+            String filterPrompt =
+                    entities == null || entities.isEmpty()
+                            ? String.format(PROMPT_TEMPLATE, promptContent, query)
+                            : String.format(NER_PROMPT_TEMPLATE, promptContent, query, entities.toString(2));
 
             String rawContent = chatClient
                     .prompt()
@@ -98,7 +98,7 @@ public class FilteredContextRetriever extends AbstractContextRetriever {
             String filteredContent = rawContent != null ? rawContent.trim() : "";
 
             // Validate filtered content
-            if (filteredContent == null || filteredContent.isEmpty()) {
+            if (filteredContent.isEmpty()) {
                 log().info("Filtered content is empty for document: {}", doc.getId());
                 return "";
             }

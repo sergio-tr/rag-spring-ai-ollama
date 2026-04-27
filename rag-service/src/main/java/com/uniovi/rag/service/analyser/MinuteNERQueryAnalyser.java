@@ -353,7 +353,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
      */
     private String cleanJsonResponse(String response) {
         return response
-                .replaceAll("(?s)```.*?\\n", "")  // Remove ```json\n or similar
+                .replaceAll("```[^\\n]*+\\n", "")  // Remove ```json\n or similar
                 .replace("```", "")
                 .replace("'", "\"")  // Convert single quotes to double quotes
                 .replaceAll("(?m)^\\s*//.*$", "")  // Remove comments

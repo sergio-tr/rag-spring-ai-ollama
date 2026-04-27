@@ -18,6 +18,10 @@ public final class TracedDocumentContentExtractor implements DocumentContentExtr
 
     private static final String METRIC_KEY_RESULT = "result";
 
+    private static final String METRIC_EXTRACTION_CALLS = "rag.extraction.calls";
+
+    private static final String ATTR_CONTENT_LENGTH = "contentLength";
+
     private final DocumentContentExtractor delegate;
     private final ObservabilitySupport observability;
 
@@ -28,14 +32,14 @@ public final class TracedDocumentContentExtractor implements DocumentContentExtr
 
     @Override
     public String extractDate(String content) {
-        return traced("extractDate", Map.of("contentLength", String.valueOf(content != null ? content.length() : 0)),
+        return traced("extractDate", Map.of(ATTR_CONTENT_LENGTH, String.valueOf(content != null ? content.length() : 0)),
                 () -> delegate.extractDate(content));
     }
 
     @Override
     public String extractRelevantFragment(String content, String query) {
         return traced("extractRelevantFragment",
-                Map.of("contentLength", String.valueOf(content != null ? content.length() : 0), "query", truncate(query)),
+                Map.of(ATTR_CONTENT_LENGTH, String.valueOf(content != null ? content.length() : 0), "query", truncate(query)),
                 () -> delegate.extractRelevantFragment(content, query));
     }
 
@@ -47,17 +51,17 @@ public final class TracedDocumentContentExtractor implements DocumentContentExtr
 
     @Override
     public int extractAttendeeCount(String content) {
-        observability.recordCounter("rag.extraction.calls", METRIC_KEY_OPERATION, "extractAttendeeCount");
+        observability.recordCounter(METRIC_EXTRACTION_CALLS, METRIC_KEY_OPERATION, "extractAttendeeCount");
         return observability.runWithSpan("rag.extraction.extractAttendeeCount",
-                Map.of("contentLength", String.valueOf(content != null ? content.length() : 0)),
-                "result", () -> delegate.extractAttendeeCount(content));
+                Map.of(ATTR_CONTENT_LENGTH, String.valueOf(content != null ? content.length() : 0)),
+                METRIC_KEY_RESULT, () -> delegate.extractAttendeeCount(content));
     }
 
     @Override
     public int calculateDuration(String content) {
-        observability.recordCounter("rag.extraction.calls", METRIC_KEY_OPERATION, "calculateDuration");
+        observability.recordCounter(METRIC_EXTRACTION_CALLS, METRIC_KEY_OPERATION, "calculateDuration");
         return observability.runWithSpan("rag.extraction.calculateDuration",
-                Map.of("contentLength", String.valueOf(content != null ? content.length() : 0)),
+                Map.of(ATTR_CONTENT_LENGTH, String.valueOf(content != null ? content.length() : 0)),
                 METRIC_KEY_RESULT, () -> delegate.calculateDuration(content));
     }
 
@@ -69,45 +73,45 @@ public final class TracedDocumentContentExtractor implements DocumentContentExtr
 
     @Override
     public List<String> extractAttendees(String content) {
-        observability.recordCounter("rag.extraction.calls", METRIC_KEY_OPERATION, "extractAttendees");
+        observability.recordCounter(METRIC_EXTRACTION_CALLS, METRIC_KEY_OPERATION, "extractAttendees");
         return observability.runWithSpan("rag.extraction.extractAttendees",
-                Map.of("contentLength", String.valueOf(content != null ? content.length() : 0)),
+                Map.of(ATTR_CONTENT_LENGTH, String.valueOf(content != null ? content.length() : 0)),
                 (String) null, () -> delegate.extractAttendees(content));
     }
 
     @Override
     public String extractAgenda(String content) {
-        return traced("extractAgenda", Map.of("contentLength", String.valueOf(content != null ? content.length() : 0)),
+        return traced("extractAgenda", Map.of(ATTR_CONTENT_LENGTH, String.valueOf(content != null ? content.length() : 0)),
                 () -> delegate.extractAgenda(content));
     }
 
     @Override
     public int countProposals(String content) {
-        observability.recordCounter("rag.extraction.calls", METRIC_KEY_OPERATION, "countProposals");
+        observability.recordCounter(METRIC_EXTRACTION_CALLS, METRIC_KEY_OPERATION, "countProposals");
         return observability.runWithSpan("rag.extraction.countProposals",
-                Map.of("contentLength", String.valueOf(content != null ? content.length() : 0)),
+                Map.of(ATTR_CONTENT_LENGTH, String.valueOf(content != null ? content.length() : 0)),
                 METRIC_KEY_RESULT, () -> delegate.countProposals(content));
     }
 
     @Override
     public int countAgendaItems(String content) {
-        observability.recordCounter("rag.extraction.calls", METRIC_KEY_OPERATION, "countAgendaItems");
+        observability.recordCounter(METRIC_EXTRACTION_CALLS, METRIC_KEY_OPERATION, "countAgendaItems");
         return observability.runWithSpan("rag.extraction.countAgendaItems",
-                Map.of("contentLength", String.valueOf(content != null ? content.length() : 0)),
+                Map.of(ATTR_CONTENT_LENGTH, String.valueOf(content != null ? content.length() : 0)),
                 METRIC_KEY_RESULT, () -> delegate.countAgendaItems(content));
     }
 
     @Override
     public int countQuestions(String content) {
-        observability.recordCounter("rag.extraction.calls", METRIC_KEY_OPERATION, "countQuestions");
+        observability.recordCounter(METRIC_EXTRACTION_CALLS, METRIC_KEY_OPERATION, "countQuestions");
         return observability.runWithSpan("rag.extraction.countQuestions",
-                Map.of("contentLength", String.valueOf(content != null ? content.length() : 0)),
+                Map.of(ATTR_CONTENT_LENGTH, String.valueOf(content != null ? content.length() : 0)),
                 METRIC_KEY_RESULT, () -> delegate.countQuestions(content));
     }
 
     @Override
     public boolean containsAnyKeyword(String text, String[] keywords) {
-        observability.recordCounter("rag.extraction.calls", METRIC_KEY_OPERATION, "containsAnyKeyword");
+        observability.recordCounter(METRIC_EXTRACTION_CALLS, METRIC_KEY_OPERATION, "containsAnyKeyword");
         return observability.runWithSpan("rag.extraction.containsAnyKeyword",
                 Map.of("textLength", String.valueOf(text != null ? text.length() : 0)),
                 METRIC_KEY_RESULT, () -> delegate.containsAnyKeyword(text, keywords));
@@ -116,14 +120,14 @@ public final class TracedDocumentContentExtractor implements DocumentContentExtr
     @Override
     public <T> List<Cluster<T>> clusterItems(List<T> items, Function<T, String> contentExtractor,
                                                Function<T, String> typeExtractor, double similarityThreshold) {
-        observability.recordCounter("rag.extraction.calls", METRIC_KEY_OPERATION, "clusterItems");
+        observability.recordCounter(METRIC_EXTRACTION_CALLS, METRIC_KEY_OPERATION, "clusterItems");
         return observability.runWithSpan("rag.extraction.clusterItems",
                 Map.of("itemCount", String.valueOf(items != null ? items.size() : 0)),
                 (String) null, () -> delegate.clusterItems(items, contentExtractor, typeExtractor, similarityThreshold));
     }
 
     private String traced(String operation, Map<String, String> attrs, java.util.function.Supplier<String> supplier) {
-        observability.recordCounter("rag.extraction.calls", METRIC_KEY_OPERATION, operation);
+        observability.recordCounter(METRIC_EXTRACTION_CALLS, METRIC_KEY_OPERATION, operation);
         Map<String, String> full = new java.util.HashMap<>(attrs);
         full.put(METRIC_KEY_OPERATION, operation);
         return observability.runWithSpan("rag.extraction." + operation, full, METRIC_KEY_RESULT, supplier);

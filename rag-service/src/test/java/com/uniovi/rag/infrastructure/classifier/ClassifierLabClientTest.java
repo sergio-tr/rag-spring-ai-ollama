@@ -1,6 +1,7 @@
 package com.uniovi.rag.infrastructure.classifier;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.port.ClassifierTrainBytesCommand;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -42,14 +43,22 @@ class ClassifierLabClientTest {
 
     @Test
     void trainBytes_requiresNonEmptyFile() {
-        assertThatThrownBy(() -> client.trainBytes(null, "d.xlsx", "m", null, null, null, 1, 8))
+        assertThatThrownBy(
+                        () ->
+                                client.trainBytes(
+                                        new ClassifierTrainBytesCommand(
+                                                null, "d.xlsx", "m", null, null, null, 1, 8)))
                 .isInstanceOf(ResponseStatusException.class);
     }
 
     @Test
     void trainBytes_notConfigured_throws503() {
         ClassifierLabClient noUrl = new ClassifierLabClient("", 5000, new ObjectMapper(), restTemplate);
-        assertThatThrownBy(() -> noUrl.trainBytes(new byte[] {1}, "d.xlsx", "m", null, null, null, 1, 8))
+        assertThatThrownBy(
+                        () ->
+                                noUrl.trainBytes(
+                                        new ClassifierTrainBytesCommand(
+                                                new byte[] {1}, "d.xlsx", "m", null, null, null, 1, 8)))
                 .isInstanceOf(ResponseStatusException.class);
     }
 
@@ -59,7 +68,10 @@ class ClassifierLabClientTest {
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("{\"job\":\"ok\"}", MediaType.APPLICATION_JSON));
 
-        Map<String, Object> body = client.trainBytes(new byte[] {1, 2}, "d.xlsx", "my", null, null, null, 3, 16);
+        Map<String, Object> body =
+                client.trainBytes(
+                        new ClassifierTrainBytesCommand(
+                                new byte[] {1, 2}, "d.xlsx", "my", null, null, null, 3, 16));
 
         server.verify();
         assertThat(body).containsEntry("job", "ok");
@@ -110,7 +122,11 @@ class ClassifierLabClientTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .body("{\"error\":{\"message\":\"bad dataset\"}}"));
 
-        assertThatThrownBy(() -> client.trainBytes(new byte[] {1}, "d.xlsx", "m", null, null, null, 1, 1))
+        assertThatThrownBy(
+                        () ->
+                                client.trainBytes(
+                                        new ClassifierTrainBytesCommand(
+                                                new byte[] {1}, "d.xlsx", "m", null, null, null, 1, 1)))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(
                         ex -> assertThat(((ResponseStatusException) ex).getBody().getDetail()).contains("bad dataset"));
@@ -123,7 +139,10 @@ class ClassifierLabClientTest {
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess());
 
-        Map<String, Object> body = client.trainBytes(new byte[] {1}, "d.xlsx", "m", null, null, null, 1, 1);
+        Map<String, Object> body =
+                client.trainBytes(
+                        new ClassifierTrainBytesCommand(
+                                new byte[] {1}, "d.xlsx", "m", null, null, null, 1, 1));
 
         server.verify();
         assertThat(body).isEmpty();

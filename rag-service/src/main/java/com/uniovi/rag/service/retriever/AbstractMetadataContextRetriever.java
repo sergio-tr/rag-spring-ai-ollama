@@ -9,17 +9,30 @@ import org.springframework.ai.vectorstore.SearchRequest;
 
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
 public abstract class AbstractMetadataContextRetriever extends AbstractContextRetriever {
 
-    public AbstractMetadataContextRetriever(PgVectorStore vectorStore, ChatClient chatClient, int topK, double similarityThreshold) {
+    private static final int MONTH_NAME_FLAGS =
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ;
+    private static final Pattern MONTH_NAMES_ES =
+            Pattern.compile(
+                    "(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)",
+                    MONTH_NAME_FLAGS);
+    private static final Pattern MONTH_NAMES_EN =
+            Pattern.compile(
+                    "(january|february|march|april|may|june|july|august|september|october|november|december)",
+                    MONTH_NAME_FLAGS);
+
+    protected AbstractMetadataContextRetriever(PgVectorStore vectorStore, ChatClient chatClient, int topK, double similarityThreshold) {
         super(vectorStore, chatClient, topK, similarityThreshold);
     }
 
-    public AbstractMetadataContextRetriever(
+    protected AbstractMetadataContextRetriever(
             PgVectorStore vectorStore,
             ChatClient chatClient,
             int topK,
@@ -101,7 +114,7 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
                 .filter(doc -> matchesDocumentMetadataLenient(doc, ner))
                 .toList();
     }
-    
+
     /**
      * Lenient version of metadata matching that only filters by date if it's clearly wrong.
      * More permissive to avoid filtering out all documents.
@@ -110,88 +123,81 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
         if (doc == null || ner == null || ner.isEmpty()) {
             return true;
         }
-        
         Map<String, Object> metadata = doc.getMetadata();
         if (metadata == null || metadata.isEmpty()) {
-            return true; // No metadata to filter on
+            return true;
         }
-        
-        // Only filter by date if there's a clear mismatch (different year)
-        if (ner.has("date") && !ner.getJSONArray("date").isEmpty()) {
-            String docDate = getMetadataDate(metadata);
-            if (docDate != null && !docDate.trim().isEmpty()) {
-                JSONArray nerDates = ner.getJSONArray("date");
-                boolean hasYearMatch = false;
-                
-                // Extract years and check if any match
-                String docYear = metadata.get("year") instanceof Number number
+        return lenientDateNerPasses(metadata, ner)
+                && lenientPersonNerPasses(metadata, ner)
+                && lenientPlaceNerPasses(metadata, ner);
+    }
+
+    private boolean lenientDateNerPasses(Map<String, Object> metadata, JSONObject ner) {
+        if (!ner.has("date") || ner.getJSONArray("date").isEmpty()) {
+            return true;
+        }
+        String docDate = getMetadataDate(metadata);
+        if (docDate == null || docDate.trim().isEmpty()) {
+            return true;
+        }
+        JSONArray nerDates = ner.getJSONArray("date");
+        boolean hasYearMatch = false;
+        String docYear =
+                metadata.get("year") instanceof Number number
                         ? String.valueOf(number.intValue())
                         : extractYearFromDate(docDate);
-                for (int i = 0; i < nerDates.length(); i++) {
-                    String nerDate = nerDates.getString(i);
-                    String nerYear = extractYearFromDate(nerDate);
-                    
-                    if (docYear != null && nerYear != null && docYear.equals(nerYear)) {
-                        hasYearMatch = true;
-                        // If years match, check if dates are similar
-                        if (normalizedDateMatches(docDate, nerDate)) {
-                            return true; // Exact or close match
-                        }
-                    }
-                }
-                
-                // If no year match at all, filter out
-                if (!hasYearMatch) {
-                    log().info("Document filtered out by year mismatch: docDate={}, nerDates={}", docDate, nerDates);
-                    return false;
-                }
-                
-            }
-        }
-        
-        // For other filters (person, place), use same logic as strict matching
-        // Check person matching with normalization
-        if (ner.has("person") && !ner.getJSONArray("person").isEmpty()) {
-            String docPresident = (String) metadata.get("president");
-            String docSecretary = (String) metadata.get("secretary");
-            JSONArray nerPersons = ner.getJSONArray("person");
-            
-            boolean personMatches = false;
-            for (int i = 0; i < nerPersons.length(); i++) {
-                String nerPerson = nerPersons.getString(i);
-                if ((docPresident != null && normalizedNameMatches(docPresident, nerPerson)) ||
-                    (docSecretary != null && normalizedNameMatches(docSecretary, nerPerson))) {
-                    personMatches = true;
-                    break;
-                }
-            }
-            if (!personMatches) {
-                return false;
-            }
-        }
-        
-        // Check place more leniently (contains)
-        if (ner.has("place") && !ner.getJSONArray("place").isEmpty()) {
-            String docPlace = (String) metadata.get("place");
-            if (docPlace != null && !docPlace.trim().isEmpty()) {
-                JSONArray nerPlaces = ner.getJSONArray("place");
-                boolean placeMatches = false;
-                for (int i = 0; i < nerPlaces.length(); i++) {
-                    String nerPlace = nerPlaces.getString(i);
-                    if (docPlace.toLowerCase().contains(nerPlace.toLowerCase())) {
-                        placeMatches = true;
-                        break;
-                    }
-                }
-                if (!placeMatches) {
-                    return false;
+        for (int i = 0; i < nerDates.length(); i++) {
+            String nerDate = nerDates.getString(i);
+            String nerYear = extractYearFromDate(nerDate);
+            if (docYear != null && nerYear != null && docYear.equals(nerYear)) {
+                hasYearMatch = true;
+                if (normalizedDateMatches(docDate, nerDate)) {
+                    return true;
                 }
             }
         }
-        
-        return true; // Passed all filters
+        if (!hasYearMatch) {
+            log().info("Document filtered out by year mismatch: docDate={}, nerDates={}", docDate, nerDates);
+            return false;
+        }
+        return true;
     }
-    
+
+    private boolean lenientPersonNerPasses(Map<String, Object> metadata, JSONObject ner) {
+        if (!ner.has("person") || ner.getJSONArray("person").isEmpty()) {
+            return true;
+        }
+        String docPresident = (String) metadata.get("president");
+        String docSecretary = (String) metadata.get("secretary");
+        JSONArray nerPersons = ner.getJSONArray("person");
+        for (int i = 0; i < nerPersons.length(); i++) {
+            String nerPerson = nerPersons.getString(i);
+            if ((docPresident != null && normalizedNameMatches(docPresident, nerPerson))
+                    || (docSecretary != null && normalizedNameMatches(docSecretary, nerPerson))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean lenientPlaceNerPasses(Map<String, Object> metadata, JSONObject ner) {
+        if (!ner.has("place") || ner.getJSONArray("place").isEmpty()) {
+            return true;
+        }
+        String docPlace = (String) metadata.get("place");
+        if (docPlace == null || docPlace.trim().isEmpty()) {
+            return true;
+        }
+        JSONArray nerPlaces = ner.getJSONArray("place");
+        for (int i = 0; i < nerPlaces.length(); i++) {
+            String nerPlace = nerPlaces.getString(i);
+            if (docPlace.toLowerCase().contains(nerPlace.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Checks if a document's metadata matches NER entities.
      */
@@ -199,77 +205,68 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
         if (doc == null || ner == null || ner.isEmpty()) {
             return true;
         }
-        
         Map<String, Object> metadata = doc.getMetadata();
         if (metadata == null || metadata.isEmpty()) {
-            return true; // No metadata to filter on
+            return true;
         }
-        
-        // Check date matching with normalization
-        if (ner.has("date") && !ner.getJSONArray("date").isEmpty()) {
-            String docDate = getMetadataDate(metadata);
-            if (docDate != null && !docDate.trim().isEmpty()) {
-                JSONArray nerDates = ner.getJSONArray("date");
-                boolean dateMatches = false;
-                for (int i = 0; i < nerDates.length(); i++) {
-                    String nerDate = nerDates.getString(i);
-                    if (normalizedDateMatches(docDate, nerDate)) {
-                        dateMatches = true;
-                        break;
-                    }
-                }
-                if (!dateMatches) {
-                    log().info("Document filtered out by date mismatch: docDate={}, nerDates={}", docDate, nerDates);
-                    return false;
-                }
-            } else {
-                // If document has no date but NER requires date, be more lenient
-                // Don't filter out - let other filters decide
-                log().info("Document has no date metadata, skipping date filter");
+        return strictDateNerPasses(metadata, ner)
+                && strictPersonNerPasses(metadata, ner)
+                && strictPlaceNerPasses(metadata, ner);
+    }
+
+    private boolean strictDateNerPasses(Map<String, Object> metadata, JSONObject ner) {
+        if (!ner.has("date") || ner.getJSONArray("date").isEmpty()) {
+            return true;
+        }
+        String docDate = getMetadataDate(metadata);
+        if (docDate == null || docDate.trim().isEmpty()) {
+            log().info("Document has no date metadata, skipping date filter");
+            return true;
+        }
+        JSONArray nerDates = ner.getJSONArray("date");
+        for (int i = 0; i < nerDates.length(); i++) {
+            if (normalizedDateMatches(docDate, nerDates.getString(i))) {
+                return true;
             }
         }
-        
-        // Check person matching with normalization
-        if (ner.has("person") && !ner.getJSONArray("person").isEmpty()) {
-            String docPresident = (String) metadata.get("president");
-            String docSecretary = (String) metadata.get("secretary");
-            JSONArray nerPersons = ner.getJSONArray("person");
-            
-            boolean personMatches = false;
-            for (int i = 0; i < nerPersons.length(); i++) {
-                String nerPerson = nerPersons.getString(i);
-                if ((docPresident != null && normalizedNameMatches(docPresident, nerPerson)) ||
-                    (docSecretary != null && normalizedNameMatches(docSecretary, nerPerson))) {
-                    personMatches = true;
-                    break;
-                }
-            }
-            if (!personMatches) {
-                return false;
+        log().info("Document filtered out by date mismatch: docDate={}, nerDates={}", docDate, nerDates);
+        return false;
+    }
+
+    private boolean strictPersonNerPasses(Map<String, Object> metadata, JSONObject ner) {
+        if (!ner.has("person") || ner.getJSONArray("person").isEmpty()) {
+            return true;
+        }
+        String docPresident = (String) metadata.get("president");
+        String docSecretary = (String) metadata.get("secretary");
+        JSONArray nerPersons = ner.getJSONArray("person");
+        for (int i = 0; i < nerPersons.length(); i++) {
+            String nerPerson = nerPersons.getString(i);
+            if ((docPresident != null && normalizedNameMatches(docPresident, nerPerson))
+                    || (docSecretary != null && normalizedNameMatches(docSecretary, nerPerson))) {
+                return true;
             }
         }
-        
-        // Check place matching
-        if (ner.has("place") && !ner.getJSONArray("place").isEmpty()) {
-            String docPlace = (String) metadata.get("place");
-            if (docPlace != null && !docPlace.trim().isEmpty()) {
-                JSONArray nerPlaces = ner.getJSONArray("place");
-                boolean placeMatches = false;
-                for (int i = 0; i < nerPlaces.length(); i++) {
-                    String nerPlace = nerPlaces.getString(i);
-                    if (docPlace.toLowerCase().contains(nerPlace.toLowerCase())) {
-                        placeMatches = true;
-                        break;
-                    }
-                }
-                if (!placeMatches) {
-                    log().info("Document filtered out by place mismatch: docPlace={}, nerPlaces={}", docPlace, nerPlaces);
-                    return false;
-                }
+        return false;
+    }
+
+    private boolean strictPlaceNerPasses(Map<String, Object> metadata, JSONObject ner) {
+        if (!ner.has("place") || ner.getJSONArray("place").isEmpty()) {
+            return true;
+        }
+        String docPlace = (String) metadata.get("place");
+        if (docPlace == null || docPlace.trim().isEmpty()) {
+            return true;
+        }
+        JSONArray nerPlaces = ner.getJSONArray("place");
+        for (int i = 0; i < nerPlaces.length(); i++) {
+            String nerPlace = nerPlaces.getString(i);
+            if (docPlace.toLowerCase().contains(nerPlace.toLowerCase())) {
+                return true;
             }
         }
-        
-        return true; // Passed all filters
+        log().info("Document filtered out by place mismatch: docPlace={}, nerPlaces={}", docPlace, nerPlaces);
+        return false;
     }
 
     /**
@@ -366,18 +363,17 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
     }
     
     private String extractMonthDay(String date) {
-        // Extract month name or number
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-            "(?i)(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december)");
-        java.util.regex.Matcher matcher = pattern.matcher(date);
-        if (matcher.find()) {
-            return matcher.group(1).toLowerCase();
+        Matcher m = MONTH_NAMES_ES.matcher(date);
+        if (m.find()) {
+            return m.group(1).toLowerCase();
         }
-        // Try to extract day number
-        pattern = java.util.regex.Pattern.compile("\\b(\\d{1,2})\\b");
-        matcher = pattern.matcher(date);
-        if (matcher.find()) {
-            return matcher.group(1);
+        m = MONTH_NAMES_EN.matcher(date);
+        if (m.find()) {
+            return m.group(1).toLowerCase();
+        }
+        Matcher day = Pattern.compile("\\b(\\d{1,2})\\b").matcher(date);
+        if (day.find()) {
+            return day.group(1);
         }
         return null;
     }

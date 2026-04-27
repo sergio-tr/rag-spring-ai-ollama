@@ -32,13 +32,23 @@ public class ModelsCatalogService {
         this.ollamaApiClient = ollamaApiClient;
     }
 
+    /**
+     * When Ollama listing is interrupted, the interrupt flag is restored and an empty installed set is returned
+     * so the UI can still load the allowlist without failing the request.
+     */
     @Transactional(readOnly = true)
+    @SuppressWarnings("java:S2142")
     public ModelsCatalogResponseDto buildCatalog() {
         Set<String> installed;
         boolean reachable;
         try {
             installed = ollamaApiClient.listModelNames();
             reachable = true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Ollama tags unavailable (interrupted): {}", e.getMessage());
+            installed = Collections.emptySet();
+            reachable = false;
         } catch (Exception e) {
             log.warn("Ollama tags unavailable: {}", e.getMessage());
             installed = Collections.emptySet();

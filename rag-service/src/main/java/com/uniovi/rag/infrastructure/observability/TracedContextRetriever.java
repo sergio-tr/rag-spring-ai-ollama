@@ -24,6 +24,15 @@ public final class TracedContextRetriever implements ContextRetriever {
     /** Counters bucketed to avoid high-cardinality labels (no raw document counts as tag values). */
     private static final String METRIC_RETRIEVAL_DOCS = "rag_retrieval_documents_total";
 
+    private static final String TAG_OPERATION = "operation";
+
+    private static final String ATTR_QUERY = "query";
+
+    private static final String ATTR_TOP_K = "rag.top_k";
+
+    /** Span name aligned with document search domain vocabulary. */
+    private static final String SPAN_DOCUMENT_SEARCH = "rag.documents.search";
+
     private final ContextRetriever delegate;
     private final ObservabilitySupport observability;
 
@@ -34,17 +43,17 @@ public final class TracedContextRetriever implements ContextRetriever {
 
     @Override
     public List<Document> retrieve(String query) {
-        observability.recordCounter(METRIC_RETRIEVER_CALLS, "operation", "retrieve");
+        observability.recordCounter(METRIC_RETRIEVER_CALLS, TAG_OPERATION, "retrieve");
         List<Document> result =
                 observability.recordTimer(
                         "rag.retriever.retrieve",
                         () ->
                                 observability.runWithSpan(
                                         // Domain convention: retrieval is part of document search
-                                        "rag.documents.search",
+                                        SPAN_DOCUMENT_SEARCH,
                                         Map.of(
-                                                "query", truncate(query != null ? query : ""),
-                                                "rag.top_k", String.valueOf(delegate.getTopK())
+                                                ATTR_QUERY, truncate(query != null ? query : ""),
+                                                ATTR_TOP_K, String.valueOf(delegate.getTopK())
                                         ),
                                         (String) null,
                                         () -> delegate.retrieve(query)));
@@ -54,19 +63,19 @@ public final class TracedContextRetriever implements ContextRetriever {
 
     @Override
     public List<Document> retrieveWithMetadataFilters(String query, JSONObject nerEntities) {
-        observability.recordCounter(METRIC_RETRIEVER_CALLS, "operation", "retrieveWithMetadataFilters");
+        observability.recordCounter(METRIC_RETRIEVER_CALLS, TAG_OPERATION, "retrieveWithMetadataFilters");
         List<Document> result =
                 observability.recordTimer(
                         "rag.retriever.retrieveWithMetadataFilters",
                         () ->
                                 observability.runWithSpan(
                                         // Domain convention: retrieval is part of document search
-                                        "rag.documents.search",
+                                        SPAN_DOCUMENT_SEARCH,
                                         Map.of(
-                                                "query", truncate(query != null ? query : ""),
+                                                ATTR_QUERY, truncate(query != null ? query : ""),
                                                 "hasEntities",
                                                 String.valueOf(nerEntities != null && !nerEntities.isEmpty()),
-                                                "rag.top_k", String.valueOf(delegate.getTopK())
+                                                ATTR_TOP_K, String.valueOf(delegate.getTopK())
                                         ),
                                         (String) null,
                                         () -> delegate.retrieveWithMetadataFilters(query, nerEntities)));
@@ -76,19 +85,19 @@ public final class TracedContextRetriever implements ContextRetriever {
 
     @Override
     public String createContext(List<Document> documents, String query, JSONObject entities) {
-        observability.recordCounter(METRIC_RETRIEVER_CALLS, "operation", "createContext");
+        observability.recordCounter(METRIC_RETRIEVER_CALLS, TAG_OPERATION, "createContext");
         String ctx =
                 observability.recordTimer(
                         "rag.retriever.createContext",
                         () ->
                                 observability.runWithSpan(
                                         // Domain convention: retrieval stage (documents -> context)
-                                        "rag.documents.search",
+                                        SPAN_DOCUMENT_SEARCH,
                                         Map.of(
-                                                "query", truncate(query != null ? query : ""),
+                                                ATTR_QUERY, truncate(query != null ? query : ""),
                                                 "rag.docs.count",
                                                 String.valueOf(documents != null ? documents.size() : 0),
-                                                "rag.top_k", String.valueOf(delegate.getTopK())
+                                                ATTR_TOP_K, String.valueOf(delegate.getTopK())
                                         ),
                                         (String) null,
                                         () -> delegate.createContext(documents, query, entities)));
@@ -132,7 +141,7 @@ public final class TracedContextRetriever implements ContextRetriever {
     private void recordRetrievalDocuments(String operation, List<Document> documents) {
         int n = documents == null ? 0 : documents.size();
         String bucket = sizeBucket(n);
-        observability.recordCounter(METRIC_RETRIEVAL_DOCS, "operation", operation, "bucket", bucket);
+        observability.recordCounter(METRIC_RETRIEVAL_DOCS, TAG_OPERATION, operation, "bucket", bucket);
     }
 
     static String sizeBucket(int n) {

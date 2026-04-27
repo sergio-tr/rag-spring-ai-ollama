@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import com.uniovi.rag.infrastructure.zip.ZipExpansionBudget;
 import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
 
 import java.util.UUID;
@@ -101,6 +102,7 @@ public class RuntimeTraceRegressionSuiteDefinitionImportService {
 
     private static byte[][] readManifestAndDefinitionBytes(byte[] body) {
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(body))) {
+            ZipExpansionBudget budget = ZipExpansionBudget.forUploadedZip(MAX_IMPORT_ZIP_BYTES);
             ZipEntry e1 = zin.getNextEntry();
             if (e1 == null || e1.isDirectory() || entryNameIsDirectory(e1.getName())) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportRejectedException("invalid zip");
@@ -113,7 +115,7 @@ public class RuntimeTraceRegressionSuiteDefinitionImportService {
             if (!"manifest.json".equals(e1.getName()) || e1.getMethod() != ZipEntry.STORED) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportRejectedException("invalid zip");
             }
-            byte[] manifestBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, MAX_IMPORT_ZIP_BYTES);
+            byte[] manifestBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, MAX_IMPORT_ZIP_BYTES, budget);
             zin.closeEntry();
 
             ZipEntry e2 = zin.getNextEntry();
@@ -128,7 +130,7 @@ public class RuntimeTraceRegressionSuiteDefinitionImportService {
             if (!"definition.json".equals(e2.getName()) || e2.getMethod() != ZipEntry.STORED) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportRejectedException("invalid zip");
             }
-            byte[] definitionBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, MAX_IMPORT_ZIP_BYTES);
+            byte[] definitionBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, MAX_IMPORT_ZIP_BYTES, budget);
             zin.closeEntry();
 
             ZipEntry e3 = zin.getNextEntry();

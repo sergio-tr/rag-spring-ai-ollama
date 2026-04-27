@@ -37,6 +37,7 @@ public class MailOutboxEntity {
     private Instant sentAt;
 
     public MailOutboxEntity() {
+        // JPA requires a no-arg constructor; not used by application code.
     }
 
     public UUID getId() {

@@ -102,7 +102,7 @@ class EvaluationPipeline(Loggable):
         if not cols:
             cols = report_df.columns.tolist()
         data = report_df.loc[rows, cols].astype(float)
-        fig, ax = plt.subplots(figsize=(10, max(4, len(data) * 0.5)))
+        _, ax = plt.subplots(figsize=(10, max(4, len(data) * 0.5)))
         sns.heatmap(data, annot=True, fmt=".2f", cmap="Greens", ax=ax)
         ax.set_title("Classification Report")
         plt.tight_layout()
@@ -114,7 +114,7 @@ class EvaluationPipeline(Loggable):
 
     def _build_confusion_matrix_image(self, conf_matrix: np.ndarray, class_names: list[str]) -> bytes:
         """Build PNG heatmap of confusion matrix (Blues) like the legacy trainer."""
-        fig, ax = plt.subplots(figsize=(12, 8))
+        _, ax = plt.subplots(figsize=(12, 8))
         sns.heatmap(
             conf_matrix,
             annot=True,

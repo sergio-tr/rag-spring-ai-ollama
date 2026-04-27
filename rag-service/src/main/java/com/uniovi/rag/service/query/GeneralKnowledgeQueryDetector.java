@@ -13,9 +13,9 @@ public final class GeneralKnowledgeQueryDetector {
      * If these appear, the question likely refers to stored minutes — do not bypass RAG.
      */
     private static final Pattern DOCUMENT_SCOPE = Pattern.compile(
-            "\\b(acta|actas|reuni[oó]n|reunion|minuta|minutas|orden del d[ií]a|documentos?|"
-                    + "asistentes|asistencia|propuesta|acuerdos?|votaci[oó]n|votacion|"
-                    + "comparecencia|convocatoria|aprobaci[oó]n|aprobacion)\\b",
+            "\\b(acta|actas|reuni[oó]n|minuta|minutas|orden del d[ií]a|documentos?|"
+                    + "asistentes|asistencia|propuesta|acuerdos?|votaci[oó]n|"
+                    + "comparecencia|convocatoria|aprobaci[oó]n)\\b",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     /**
@@ -23,7 +23,7 @@ public final class GeneralKnowledgeQueryDetector {
      */
     private static final Pattern GENERAL_OR_CONVERSATIONAL = Pattern.compile(
             "\\b(chiste|chistes|broma|bromas|joke|jokes|hazme re[ií]r|hazme reir|"
-                    + "cu[eé]ntame un chiste|cuentame un chiste|cu[eé]ntame una broma|cuentame una broma|"
+                    + "cu[eé]ntame un chiste|cu[eé]ntame una broma|"
                     + "tell me a joke|make me laugh)\\b",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 

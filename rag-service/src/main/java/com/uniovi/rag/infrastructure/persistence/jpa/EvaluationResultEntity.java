@@ -68,6 +68,7 @@ public class EvaluationResultEntity {
     private Map<String, Object> metricsPayload;
 
     public EvaluationResultEntity() {
+        // JPA requires a no-arg constructor for entity instantiation.
     }
 
     public UUID getId() {

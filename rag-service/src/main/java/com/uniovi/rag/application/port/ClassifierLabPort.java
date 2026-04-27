@@ -19,15 +19,7 @@ public interface ClassifierLabPort {
             int batchSize)
             throws IOException;
 
-    Map<String, Object> trainBytes(
-            byte[] fileContent,
-            String datasetFilename,
-            String modelName,
-            String labelsJson,
-            byte[] labelsFileContent,
-            String labelsFilename,
-            int epochs,
-            int batchSize);
+    Map<String, Object> trainBytes(ClassifierTrainBytesCommand command);
 
     Map<String, Object> evaluate(String modelId, boolean includeImages, MultipartFile datasetFile) throws IOException;
 

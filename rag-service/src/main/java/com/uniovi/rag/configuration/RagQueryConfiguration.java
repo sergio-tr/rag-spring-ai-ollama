@@ -63,6 +63,9 @@ import java.time.Duration;
 @Configuration
 public class RagQueryConfiguration {
 
+    /** Prefix for Spring Cache keys produced by {@code nerCacheKeyGenerator}. */
+    private static final String NER_CACHE_KEY_PREFIX = "ner::";
+
     @Bean
     public QuestionAnswerAdvisor questionAnswerAdvisor(
             PgVectorStore vectorStore,
@@ -209,12 +212,12 @@ public class RagQueryConfiguration {
                     for (int i = 0; i < Math.min(8, hash.length); i++) {
                         hex.append(String.format("%02x", hash[i]));
                     }
-                    return "ner::" + hex;
+                    return NER_CACHE_KEY_PREFIX + hex;
                 } catch (Exception e) {
-                    return "ner::" + q.hashCode();
+                    return NER_CACHE_KEY_PREFIX + q.hashCode();
                 }
             }
-            return "ner::" + java.util.Arrays.hashCode(params);
+            return NER_CACHE_KEY_PREFIX + java.util.Arrays.hashCode(params);
         };
     }
 

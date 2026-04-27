@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
+import com.uniovi.rag.infrastructure.zip.ZipExpansionBudget;
 import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteEntryKind;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteOutcome;
@@ -113,10 +114,11 @@ class RuntimeTraceRegressionSuiteRunExportServiceZipTest {
         ObjectMapper om = fd4ObjectMapper();
 
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(art.content()))) {
+            ZipExpansionBudget budget = ZipExpansionBudget.forUploadedZip(2097152L);
             ZipEntry e1 = zin.getNextEntry();
             assertThat(e1.getName()).isEqualTo("manifest.json");
             assertThat(e1.getMethod()).isEqualTo(ZipEntry.STORED);
-            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L);
+            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L, budget);
             JsonNode man = om.readTree(manBytes);
             assertThat(man.get("zipSizeBytes").asLong()).isEqualTo(art.content().length);
             assertThat(man.get("truncated").asBoolean()).isFalse();
@@ -127,7 +129,7 @@ class RuntimeTraceRegressionSuiteRunExportServiceZipTest {
             ZipEntry e2 = zin.getNextEntry();
             assertThat(e2.getName()).isEqualTo("run.json");
             assertThat(e2.getMethod()).isEqualTo(ZipEntry.STORED);
-            byte[] runBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L);
+            byte[] runBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L, budget);
             assertThat(om.readValue(runBytes, RuntimeTraceRegressionSuiteRunDetailDto.class))
                     .isEqualTo(RuntimeTraceRegressionSuiteRunDetailDto.fromSnapshot(snap));
             assertThat(zin.getNextEntry()).isNull();
@@ -152,9 +154,10 @@ class RuntimeTraceRegressionSuiteRunExportServiceZipTest {
                         runJsonUtf8);
 
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(zip))) {
+            ZipExpansionBudget budget = ZipExpansionBudget.forUploadedZip(2097152L);
             ZipEntry e1 = zin.getNextEntry();
             assertThat(e1.getName()).isEqualTo("manifest.json");
-            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L);
+            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L, budget);
             JsonNode man = fd4ObjectMapper().readTree(manBytes);
             assertThat(man.get("zipSizeBytes").asLong()).isEqualTo(zip.length);
             ZipEntry e2 = zin.getNextEntry();
@@ -180,10 +183,11 @@ class RuntimeTraceRegressionSuiteRunExportServiceZipTest {
 
         ObjectMapper om = fd4ObjectMapper();
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(art.content()))) {
+            ZipExpansionBudget budget = ZipExpansionBudget.forUploadedZip(2097152L);
             ZipEntry e1 = zin.getNextEntry();
             assertThat(e1.getName()).isEqualTo("manifest.json");
             assertThat(e1.getMethod()).isEqualTo(ZipEntry.STORED);
-            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L);
+            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L, budget);
             JsonNode man = om.readTree(manBytes);
             assertThat(man.get("selectorType").asText()).isEqualTo("SAVED_DEFINITION_SCOPED_RUN");
             assertThat(man.get("scope").get("definitionId").asText()).isEqualTo(definitionId.toString());
@@ -208,10 +212,11 @@ class RuntimeTraceRegressionSuiteRunExportServiceZipTest {
         ObjectMapper om = fd4ObjectMapper();
 
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(art.content()))) {
+            ZipExpansionBudget budget = ZipExpansionBudget.forUploadedZip(2097152L);
             ZipEntry e1 = zin.getNextEntry();
             assertThat(e1.getName()).isEqualTo("manifest.json");
             assertThat(e1.getMethod()).isEqualTo(ZipEntry.STORED);
-            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L);
+            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L, budget);
             JsonNode man = om.readTree(manBytes);
             assertThat(man.get("exportKind").asText()).isEqualTo("REGRESSION_SUITE_RUN");
             assertThat(man.get("selectorType").asText()).isEqualTo("SAVED_RUN_BY_ID");
@@ -221,7 +226,7 @@ class RuntimeTraceRegressionSuiteRunExportServiceZipTest {
             ZipEntry e2 = zin.getNextEntry();
             assertThat(e2.getName()).isEqualTo("run.json");
             assertThat(e2.getMethod()).isEqualTo(ZipEntry.STORED);
-            byte[] runBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L);
+            byte[] runBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L, budget);
             assertThat(om.readValue(runBytes, RuntimeTraceRegressionSuiteRunDetailDto.class))
                     .isEqualTo(RuntimeTraceRegressionSuiteRunDetailDto.fromSnapshot(snap));
             assertThat(zin.getNextEntry()).isNull();
@@ -239,10 +244,11 @@ class RuntimeTraceRegressionSuiteRunExportServiceZipTest {
         byte[] zip = svc.exportRunZip(runId, userId).content();
 
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(zip))) {
+            ZipExpansionBudget budget = ZipExpansionBudget.forUploadedZip(2097152L);
             for (int i = 0; i < 2; i++) {
                 ZipEntry entry = zin.getNextEntry();
                 assertThat(entry.getMethod()).isEqualTo(ZipEntry.STORED);
-                byte[] payload = ZipIoGuards.readStoredEntryBytes(zin, entry, 2097152L);
+                byte[] payload = ZipIoGuards.readStoredEntryBytes(zin, entry, 2097152L, budget);
                 CRC32 crc = new CRC32();
                 crc.update(payload);
                 assertThat(entry.getCrc()).isEqualTo(crc.getValue());

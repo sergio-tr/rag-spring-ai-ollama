@@ -10,6 +10,7 @@ import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegression
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteRequest;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteResult;
 import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteSummary;
+import com.uniovi.rag.infrastructure.zip.ZipExpansionBudget;
 import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuite.RuntimeTraceRegressionSuiteConversationExecuteRequestDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuite.RuntimeTraceRegressionSuiteExecuteRequestDto;
@@ -61,9 +62,10 @@ class RuntimeTraceRegressionSuiteExportServiceTest {
         assertThat(art.sizeBytes()).isEqualTo(art.content().length);
 
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(art.content()))) {
+            ZipExpansionBudget budget = ZipExpansionBudget.forUploadedZip(2097152L);
             ZipEntry e1 = zin.getNextEntry();
             assertThat(e1.getName()).isEqualTo("manifest.json");
-            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L);
+            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, e1, 2097152L, budget);
             JsonNode man = new ObjectMapper().readTree(manBytes);
             assertThat(man.get("exportKind").asText()).isEqualTo(RuntimeTraceRegressionSuiteExportService.EXPORT_KIND);
             assertThat(man.get("schemaVersion").asInt()).isEqualTo(1);
@@ -72,7 +74,7 @@ class RuntimeTraceRegressionSuiteExportServiceTest {
 
             ZipEntry e2 = zin.getNextEntry();
             assertThat(e2.getName()).isEqualTo("suite.json");
-            byte[] suiteBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L);
+            byte[] suiteBytes = ZipIoGuards.readStoredEntryBytes(zin, e2, 2097152L, budget);
             String suiteJson = new String(suiteBytes, StandardCharsets.UTF_8);
             assertThat(suiteJson).contains("COMPLETED_ALL_BATCH_RETURNS");
             assertThat(zin.getNextEntry()).isNull();
@@ -120,8 +122,9 @@ class RuntimeTraceRegressionSuiteExportServiceTest {
         var req = new RuntimeTraceRegressionSuiteRequest(uid, List.of());
         RuntimeTraceRegressionSuiteExportArtifact art = svc.exportConversationScoped(uid, req, cid, convBody);
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(art.content()))) {
+            ZipExpansionBudget budget = ZipExpansionBudget.forUploadedZip(2097152L);
             ZipEntry m = zin.getNextEntry();
-            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, m, 2097152L);
+            byte[] manBytes = ZipIoGuards.readStoredEntryBytes(zin, m, 2097152L, budget);
             JsonNode man = new ObjectMapper().readTree(manBytes);
             assertThat(man.get("selectorType").asText())
                     .isEqualTo(RuntimeTraceRegressionSuiteExportService.SELECTOR_CONVERSATION_SCOPED_SUITE);

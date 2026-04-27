@@ -43,6 +43,9 @@ class ReindexServiceTest {
     @Mock
     private KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
 
+    @Mock
+    private ReindexEventStatusUpdater reindexEventStatusUpdater;
+
     @InjectMocks
     private ReindexService reindexService;
 

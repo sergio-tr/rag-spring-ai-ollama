@@ -26,6 +26,7 @@ public class KnowledgeSnapshotDocumentEntity {
     private KnowledgeDocumentEntity document;
 
     public KnowledgeSnapshotDocumentEntity() {
+        // JPA requires a no-arg constructor for entity instantiation.
     }
 
     public KnowledgeSnapshotDocumentPk getId() {

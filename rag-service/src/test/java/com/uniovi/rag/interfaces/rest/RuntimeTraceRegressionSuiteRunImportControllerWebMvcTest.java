@@ -28,6 +28,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.uniovi.rag.infrastructure.zip.ZipExpansionBudget;
 import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
 
 import java.io.ByteArrayInputStream;
@@ -166,11 +167,13 @@ class RuntimeTraceRegressionSuiteRunImportControllerWebMvcTest {
         byte[] man;
         byte[] run;
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(good))) {
+            ZipExpansionBudget budget =
+                    ZipExpansionBudget.forUploadedZip(RuntimeTraceRegressionSuiteRunImportService.MAX_IMPORT_ZIP_BYTES);
             var e1 = zin.getNextEntry();
-            man = ZipIoGuards.readStoredEntryBytes(zin, e1, RuntimeTraceRegressionSuiteRunImportService.MAX_IMPORT_ZIP_BYTES);
+            man = ZipIoGuards.readStoredEntryBytes(zin, e1, RuntimeTraceRegressionSuiteRunImportService.MAX_IMPORT_ZIP_BYTES, budget);
             zin.closeEntry();
             var e2 = zin.getNextEntry();
-            run = ZipIoGuards.readStoredEntryBytes(zin, e2, RuntimeTraceRegressionSuiteRunImportService.MAX_IMPORT_ZIP_BYTES);
+            run = ZipIoGuards.readStoredEntryBytes(zin, e2, RuntimeTraceRegressionSuiteRunImportService.MAX_IMPORT_ZIP_BYTES, budget);
         }
         byte[] deflated = RunImportZipTestUtil.buildZipWithDeflatedFirstEntry(man, run);
         mockMvc.perform(post(productBase() + "/runtime-trace-regression-suite-runs/import").contentType("application/zip").content(deflated))

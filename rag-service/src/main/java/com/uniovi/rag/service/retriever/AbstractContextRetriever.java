@@ -18,6 +18,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.regex.Pattern;
@@ -46,11 +47,11 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     /** Metadata key for ISO date (vector store / chunk metadata). */
     private static final String META_DATE_ISO = "date_iso";
 
-    public AbstractContextRetriever(PgVectorStore vectorStore, ChatClient chatClient, int topK, double similarityThreshold) {
+    protected AbstractContextRetriever(PgVectorStore vectorStore, ChatClient chatClient, int topK, double similarityThreshold) {
         this(vectorStore, chatClient, topK, similarityThreshold, false);
     }
 
-    public AbstractContextRetriever(
+    protected AbstractContextRetriever(
             PgVectorStore vectorStore,
             ChatClient chatClient,
             int topK,
@@ -117,15 +118,12 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     }
 
     private boolean passesProjectMetadata(Document d, String projectId, RagExecutionContext ctx) {
-        if (d.getMetadata() == null) {
-            return true;
-        }
         Map<String, Object> meta = d.getMetadata();
         Object cs = meta.get("corpusScope");
-        if ("CHAT_LOCAL".equalsIgnoreCase(String.valueOf(cs))) {
-            if (!knowledgeChatOverlayEnabled || ctx == null || ctx.conversationId() == null) {
-                return false;
-            }
+            if ("CHAT_LOCAL".equalsIgnoreCase(String.valueOf(cs))) {
+                if (!knowledgeChatOverlayEnabled || ctx.conversationId() == null) {
+                    return false;
+                }
             Object conv = meta.get("conversationId");
             return ctx.conversationId().equals(String.valueOf(conv));
         }
@@ -137,9 +135,6 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     }
 
     private static boolean passesDocumentAllowlist(Document d, Set<String> allowed) {
-        if (d.getMetadata() == null) {
-            return false;
-        }
         Object id = d.getMetadata().get("document_id");
         if (id == null) {
             id = d.getMetadata().get("documentId");
@@ -160,7 +155,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         }
 
         return documents.stream()
-                .filter(doc -> doc != null) 
+                .filter(Objects::nonNull)
                 .filter(doc -> {
                     String text = doc.getText();
                     return text != null && !text.trim().isEmpty();
@@ -213,11 +208,15 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return content != null ? content : "";
         }
         Map<String, Object> meta = doc.getMetadata();
-        if (meta == null || meta.isEmpty()) {
+        if (meta.isEmpty()) {
             return content != null ? content : "";
         }
-        String date = meta.containsKey(META_DATE_ISO) ? String.valueOf(meta.get(META_DATE_ISO))
-                : (meta.containsKey("date") ? String.valueOf(meta.get("date")) : null);
+        String date = null;
+        if (meta.containsKey(META_DATE_ISO)) {
+            date = String.valueOf(meta.get(META_DATE_ISO));
+        } else if (meta.containsKey("date")) {
+            date = String.valueOf(meta.get("date"));
+        }
         String president = meta.containsKey("president") ? String.valueOf(meta.get("president")) : null;
         Object topicsObj = meta.get("topics");
         String topicsStr = null;
@@ -271,7 +270,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
     }
 
     private String getDocumentDateFromMetadata(Document doc) {
-        if (doc == null || doc.getMetadata() == null) return null;
+        if (doc == null) return null;
         Map<String, Object> m = doc.getMetadata();
         Object dateIso = m.get(META_DATE_ISO);
         if (dateIso != null && !dateIso.toString().trim().isEmpty()) return dateIso.toString().trim();
@@ -346,10 +345,13 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         if (parsed1 != null && parsed2 != null) {
             // Both dates parsed successfully, compare directly
             boolean matches = parsed1.equals(parsed2);
-            if (!matches) {
-                log().debug("Date comparison: {} ({}) vs {} ({}) - no match", 
-                          date1, parsed1.format(DateTimeFormatter.ISO_LOCAL_DATE),
-                          date2, parsed2.format(DateTimeFormatter.ISO_LOCAL_DATE));
+            if (!matches && log().isDebugEnabled()) {
+                log().debug(
+                        "Date comparison: {} ({}) vs {} ({}) - no match",
+                        date1,
+                        parsed1.format(DateTimeFormatter.ISO_LOCAL_DATE),
+                        date2,
+                        parsed2.format(DateTimeFormatter.ISO_LOCAL_DATE));
             }
             return matches;
         }
@@ -395,6 +397,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         try {
             return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
         } catch (DateTimeParseException ignored) {
+            // Not ISO after lowercasing; continue with locale-specific formatters below.
         }
         
         // Try Spanish formats with quotes
@@ -648,7 +651,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
      * Gets the chunk index from document metadata.
      */
     private Integer getChunkIndex(Document doc) {
-        if (doc == null || doc.getMetadata() == null) {
+        if (doc == null) {
             return null;
         }
         Object chunkIndex = doc.getMetadata().get("chunk_index");

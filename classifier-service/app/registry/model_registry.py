@@ -6,7 +6,7 @@ import json
 import os
 import shutil
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app.base import Loggable
@@ -99,7 +99,7 @@ class ModelRegistry(Loggable):
             shutil.copy2(labels_path, dest_labels)
         meta = {
             "name": name,
-            "createdAt": datetime.utcnow().isoformat() + "Z",
+            "createdAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             **(metadata or {}),
         }
         with open(dir_path / METADATA_FILENAME, "w", encoding="utf-8") as f:

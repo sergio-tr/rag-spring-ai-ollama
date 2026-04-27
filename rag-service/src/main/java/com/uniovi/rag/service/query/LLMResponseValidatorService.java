@@ -52,7 +52,7 @@ public class LLMResponseValidatorService implements ResponseValidator {
         if (response == null) return "";
         String cleaned = response
                 .replaceAll("(?s)```.*?```", "")
-                .replaceAll("(?s)```.*?\\n", "")
+                .replaceAll("```[^\\n]*+\\n", "")
                 .replace("```", "")
                 .replaceAll("(?m)^\\s*//.*$", "")
                 .replaceAll("(?m)^\\s*#.*$", "")
@@ -80,12 +80,11 @@ public class LLMResponseValidatorService implements ResponseValidator {
         if (NO_ERROR_PHRASE.matcher(lower).matches()) return false;
         if (NO_HAY_ERROR.matcher(lower).matches()) return false;
         if (NO_ERROR_ENCONTRADO.matcher(lower).matches()) return false;
-        if (lower.startsWith("error:") || lower.startsWith("exception:")) return true;
-        if (lower.contains("error occurred") || lower.contains("an error occurred")) return true;
-        if (lower.contains("processing error") || lower.contains("processing exception")) return true;
-        if (looksLikeExceptionTrace(lower)) return true;
-        if (lower.contains("failed to process") || lower.contains("failed to retrieve")) return true;
-        return false;
+        return (lower.startsWith("error:") || lower.startsWith("exception:"))
+                || (lower.contains("error occurred") || lower.contains("an error occurred"))
+                || (lower.contains("processing error") || lower.contains("processing exception"))
+                || looksLikeExceptionTrace(lower)
+                || (lower.contains("failed to process") || lower.contains("failed to retrieve"));
     }
 
     private static boolean looksLikeExceptionTrace(String lower) {

@@ -13,7 +13,7 @@ public record PendingClarificationLoad(
         boolean invalidJsonOrVersion) {
 
     public PendingClarificationLoad {
-        state = state == null ? Optional.empty() : state;
+        state = Objects.requireNonNullElse(state, Optional.empty());
     }
 
     public static PendingClarificationLoad empty() {

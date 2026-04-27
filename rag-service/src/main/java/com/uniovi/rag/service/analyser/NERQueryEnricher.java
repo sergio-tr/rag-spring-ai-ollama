@@ -67,7 +67,9 @@ public final class NERQueryEnricher {
                 String v = arr.optString(0, "").trim();
                 if (!v.isEmpty() && !out.contains(v)) out.add(v);
             }
-        } catch (Exception ignored) { }
+        } catch (Exception ignored) {
+            // Value is present but not a JSONArray (unexpected NER shape); skip this key.
+        }
     }
 
     private static void addUpTo(JSONObject ner, String key, int max, List<String> out) {
@@ -78,6 +80,8 @@ public final class NERQueryEnricher {
                 String v = arr.optString(i, "").trim();
                 if (!v.isEmpty() && !out.contains(v)) out.add(v);
             }
-        } catch (Exception ignored) { }
+        } catch (Exception ignored) {
+            // Value is present but not a JSONArray (unexpected NER shape); skip this key.
+        }
     }
 }

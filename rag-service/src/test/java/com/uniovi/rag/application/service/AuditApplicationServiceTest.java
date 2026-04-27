@@ -37,7 +37,7 @@ class AuditApplicationServiceTest {
         UserEntity actor = org.mockito.Mockito.mock(UserEntity.class);
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
 
-        service.record(actorId, "UPDATE", "RagConfiguration", resourceId, Map.of("k", 1));
+        service.persistAuditEntry(actorId, "UPDATE", "RagConfiguration", resourceId, Map.of("k", 1));
 
         verify(userRepository).findById(actorId);
         verify(auditLogRepository).save(any());
@@ -46,7 +46,7 @@ class AuditApplicationServiceTest {
     @Test
     void record_nullActor_savesWithoutUser() {
         UUID resourceId = UUID.randomUUID();
-        service.record(null, "DELETE", "Preset", resourceId, Map.of());
+        service.persistAuditEntry(null, "DELETE", "Preset", resourceId, Map.of());
 
         verify(userRepository, never()).findById(any());
         verify(auditLogRepository).save(any());

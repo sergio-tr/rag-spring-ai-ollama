@@ -30,6 +30,10 @@ public final class ToolRoutingService {
     private static final int MAX_RETRIES = 2;
     private static final long RETRY_DELAY_MS = 500;
 
+    private static final String TOOL_VALIDATOR_LABEL_PREFIX = "Tool-";
+
+    private static final String TOOL_VALIDATOR_LABEL_FUNCTION_CALLING = "Tool-function-calling";
+
     private final RagFeatureConfiguration featureConfig;
     private final RagToolsConfiguration toolsConfig;
     private final MeetingMinutesToolsAdapter meetingMinutesToolsAdapter;
@@ -72,7 +76,7 @@ public final class ToolRoutingService {
             if (RagEffectiveFeatures.toolsEnabled(featureConfig) && toolQueryType != null) {
                 ToolResult adapterResult = meetingMinutesToolsAdapter.execute(toolQueryType, expandedQuery);
                 if (adapterResult != null && adapterResult.result() != null && !adapterResult.result().trim().isEmpty()) {
-                    String validated = responseValidator.validateAndClean(adapterResult.result(), "Tool-" + queryType);
+                    String validated = responseValidator.validateAndClean(adapterResult.result(), TOOL_VALIDATOR_LABEL_PREFIX + queryType);
                     if (validated != null && !validated.trim().isEmpty()) {
                         log.info("Response generated via tool (prefer-tool path for date-scoped query)");
                         return Optional.of(QueryResponse.fromTool(validated, adapterResult.source() != null ? adapterResult.source() : "tool", toolQueryType));
@@ -106,7 +110,7 @@ public final class ToolRoutingService {
             try {
                 ToolResult adapterResult = meetingMinutesToolsAdapter.execute(toolQueryType, expandedQuery);
                 if (adapterResult != null && adapterResult.result() != null && !adapterResult.result().trim().isEmpty()) {
-                    String validated = responseValidator.validateAndClean(adapterResult.result(), "Tool-" + queryType);
+                    String validated = responseValidator.validateAndClean(adapterResult.result(), TOOL_VALIDATOR_LABEL_PREFIX + queryType);
                     if (validated != null && !validated.trim().isEmpty()) {
                         log.info("Response generated via tool adapter (deterministic path)");
                         return Optional.of(QueryResponse.fromTool(validated, adapterResult.source() != null ? adapterResult.source() : "tool", toolQueryType));
@@ -127,7 +131,7 @@ public final class ToolRoutingService {
                     .call()
                     .content();
             if (content != null && !content.trim().isEmpty()) {
-                String toolResponse = responseValidator.validateAndClean(content, "Tool-function-calling");
+                String toolResponse = responseValidator.validateAndClean(content, TOOL_VALIDATOR_LABEL_FUNCTION_CALLING);
                 if (toolResponse != null && !toolResponse.trim().isEmpty()) {
                     log.info("Response generated via ChatClient.tools(adapter) (function-calling path, {})", logTag);
                     return Optional.of(QueryResponse.fromTool(toolResponse, "function-calling", toolQueryType));
@@ -148,7 +152,7 @@ public final class ToolRoutingService {
                 queryType, originalResult.length(), attempt + 1,
                 originalResult.length() > 100 ? originalResult.substring(0, 100) + "..." : originalResult);
 
-        String validatedResult = responseValidator.validateAndClean(originalResult, "Tool-" + queryType);
+        String validatedResult = responseValidator.validateAndClean(originalResult, TOOL_VALIDATOR_LABEL_PREFIX + queryType);
         if (validatedResult != null && !validatedResult.trim().isEmpty()) {
             log.info("Successfully executed tool {} on attempt {} (execution time: {} ms). "
                             + "Result length: {} chars, validated length: {} chars",

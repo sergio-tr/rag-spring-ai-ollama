@@ -16,6 +16,13 @@ public final class TracedDocumentService implements DocumentService {
 
     private static final int MAX_ATTR = 500;
 
+    private static final String METRIC_DOCUMENT_CALLS = "rag.document.calls";
+
+    private static final String TAG_OPERATION = "operation";
+
+    /** Span name for document ingestion / loading operations. */
+    private static final String SPAN_DOCUMENTS_LOAD = "rag.documents.load";
+
     private final DocumentService delegate;
     private final ObservabilitySupport observability;
 
@@ -27,11 +34,11 @@ public final class TracedDocumentService implements DocumentService {
     @Override
     public void processDocument(MultipartFile file) {
         String filename = file != null && file.getOriginalFilename() != null ? file.getOriginalFilename() : "null";
-        observability.recordCounter("rag.document.calls", "operation", "processDocument");
+        observability.recordCounter(METRIC_DOCUMENT_CALLS, TAG_OPERATION, "processDocument");
         observability.recordTimer("rag.document.processDocument", () -> {
             observability.runWithSpan(
                     // Domain convention: document ingestion/loading
-                    "rag.documents.load",
+                    SPAN_DOCUMENTS_LOAD,
                     Map.of("filename", truncate(filename)),
                     () -> delegate.processDocument(file)
             );
@@ -42,11 +49,11 @@ public final class TracedDocumentService implements DocumentService {
     @Override
     public void add(List<Document> documents) {
         int count = documents != null ? documents.size() : 0;
-        observability.recordCounter("rag.document.calls", "operation", "add");
+        observability.recordCounter(METRIC_DOCUMENT_CALLS, TAG_OPERATION, "add");
         observability.recordTimer("rag.document.add", () -> {
             observability.runWithSpan(
                     // Domain convention: document ingestion/loading
-                    "rag.documents.load",
+                    SPAN_DOCUMENTS_LOAD,
                     Map.of("documentCount", String.valueOf(count)),
                     () -> delegate.add(documents)
             );
@@ -56,13 +63,13 @@ public final class TracedDocumentService implements DocumentService {
 
     @Override
     public void clearDatabase() {
-        observability.recordCounter("rag.document.calls", "operation", "clearDatabase");
+        observability.recordCounter(METRIC_DOCUMENT_CALLS, TAG_OPERATION, "clearDatabase");
         observability.recordTimer("rag.document.clearDatabase", () -> {
             observability.runWithSpan(
                     // Domain convention: ingestion/loading is the closest operation bucket
-                    "rag.documents.load",
-                    Map.of("operation", "clearDatabase"),
-                    () -> delegate.clearDatabase()
+                    SPAN_DOCUMENTS_LOAD,
+                    Map.of(TAG_OPERATION, "clearDatabase"),
+                    delegate::clearDatabase
             );
             return null;
         });
@@ -70,10 +77,10 @@ public final class TracedDocumentService implements DocumentService {
 
     @Override
     public boolean hasDocuments() {
-        observability.recordCounter("rag.document.calls", "operation", "hasDocuments");
+        observability.recordCounter(METRIC_DOCUMENT_CALLS, TAG_OPERATION, "hasDocuments");
         return observability.runWithSpan(
                 // Domain convention: document ingestion/loading
-                "rag.documents.load",
+                SPAN_DOCUMENTS_LOAD,
                 Map.of(),
                 "result",
                 delegate::hasDocuments);
@@ -81,10 +88,10 @@ public final class TracedDocumentService implements DocumentService {
 
     @Override
     public int deleteDocumentByDocumentId(String documentId) {
-        observability.recordCounter("rag.document.calls", "operation", "deleteDocumentByDocumentId");
+        observability.recordCounter(METRIC_DOCUMENT_CALLS, TAG_OPERATION, "deleteDocumentByDocumentId");
         return observability.recordTimer("rag.document.deleteDocumentByDocumentId", () ->
                 observability.runWithSpan(
-                        "rag.documents.load",
+                        SPAN_DOCUMENTS_LOAD,
                         Map.of("documentId", truncate(documentId != null ? documentId : "")),
                         "deletedCount",
                         () -> delegate.deleteDocumentByDocumentId(documentId)
@@ -93,9 +100,9 @@ public final class TracedDocumentService implements DocumentService {
 
     @Override
     public boolean hasDocumentWithId(String documentId) {
-        observability.recordCounter("rag.document.calls", "operation", "hasDocumentWithId");
+        observability.recordCounter(METRIC_DOCUMENT_CALLS, TAG_OPERATION, "hasDocumentWithId");
         return observability.runWithSpan(
-                "rag.documents.load",
+                SPAN_DOCUMENTS_LOAD,
                 Map.of("documentId", truncate(documentId != null ? documentId : "")),
                 "result",
                 () -> delegate.hasDocumentWithId(documentId)

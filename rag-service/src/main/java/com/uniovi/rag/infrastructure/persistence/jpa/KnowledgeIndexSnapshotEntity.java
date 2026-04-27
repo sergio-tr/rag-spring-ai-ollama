@@ -57,6 +57,7 @@ public class KnowledgeIndexSnapshotEntity {
     private Instant updatedAt;
 
     public KnowledgeIndexSnapshotEntity() {
+        // JPA requires a no-arg constructor for entity instantiation.
     }
 
     public UUID getId() {

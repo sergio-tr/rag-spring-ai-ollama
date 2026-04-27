@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * Project document listing, upload, delete, and reindex for the product REST API.
@@ -24,6 +25,10 @@ import java.util.UUID;
 public class ProjectDocumentApplicationService {
 
     private static final String DEFAULT_ORIGINAL_FILENAME = "upload";
+
+    private static final String MIME_APPLICATION_OCTET_STREAM = "application/octet-stream";
+
+    private static final Pattern FILENAME_SANITIZE_PATTERN = Pattern.compile("[^a-zA-Z0-9._-]");
 
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeIngestionService knowledgeIngestionService;
@@ -81,8 +86,8 @@ public class ProjectDocumentApplicationService {
 
         String original =
                 file.getOriginalFilename() != null ? file.getOriginalFilename() : DEFAULT_ORIGINAL_FILENAME;
-        String ct = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
-        Path temp = Files.createTempFile("rag-reindex-", "-" + original.replaceAll("[^a-zA-Z0-9._-]", "_"));
+        String ct = file.getContentType() != null ? file.getContentType() : MIME_APPLICATION_OCTET_STREAM;
+        Path temp = Files.createTempFile("rag-reindex-", "-" + FILENAME_SANITIZE_PATTERN.matcher(original).replaceAll("_"));
         file.transferTo(temp.toFile());
         knowledgeIngestionService.ingestFromTempFile(userId, projectId, documentId, temp, original, ct);
         return toDto(row);

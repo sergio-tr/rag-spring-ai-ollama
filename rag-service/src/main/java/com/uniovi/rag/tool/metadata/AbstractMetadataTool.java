@@ -34,7 +34,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     /** Case-insensitive matching for Latin extended names (Sonar: UNICODE_CASE for non-ASCII letters). */
     private static final int UNICODE_CASE_INSENSITIVE =
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ;
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ | Pattern.UNICODE_CHARACTER_CLASS;
 
     private static final String NER_KEY_FILTERS = "filters";
 
@@ -73,7 +73,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /** Spring-injected proxy so {@code @Cacheable} methods are not invoked via {@code this} (self-invocation). */
     private AbstractMetadataTool cacheableSelf;
 
-    public AbstractMetadataTool(
+    protected AbstractMetadataTool(
             ChatClient chatClient,
             ContextRetriever retriever,
             DocumentContentExtractor extractor,
@@ -87,7 +87,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         this.cacheableSelf = cacheableSelf;
     }
 
-    private AbstractMetadataTool cacheable() {
+    /** Used by subclasses when calling {@code @Cacheable} methods to avoid self-invocation. */
+    protected AbstractMetadataTool cacheable() {
         return cacheableSelf != null ? cacheableSelf : this;
     }
 
@@ -546,21 +547,21 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     }
 
     private boolean passesMentionedEntitiesGate(Minute minute, JSONObject ner) {
-        if (ner.has(NER_KEY_MENTIONED_ENTITIES) && !ner.getJSONArray(NER_KEY_MENTIONED_ENTITIES).isEmpty()) {
-            if (!matchesMentionedEntities(minute, ner)) {
-                log().info("Minute {} filtered out by mentionedEntities mismatch", minute.id());
-                return false;
-            }
+        if (ner.has(NER_KEY_MENTIONED_ENTITIES)
+                && !ner.getJSONArray(NER_KEY_MENTIONED_ENTITIES).isEmpty()
+                && !matchesMentionedEntities(minute, ner)) {
+            log().info("Minute {} filtered out by mentionedEntities mismatch", minute.id());
+            return false;
         }
         return true;
     }
 
     private boolean passesAgendaNerGate(Minute minute, JSONObject ner) {
-        if (ner.has(METADATA_KEY_AGENDA) && !ner.getJSONArray(METADATA_KEY_AGENDA).isEmpty()) {
-            if (!matchesAgendaItems(minute, ner)) {
-                log().info("Minute {} filtered out by agenda items mismatch", minute.id());
-                return false;
-            }
+        if (ner.has(METADATA_KEY_AGENDA)
+                && !ner.getJSONArray(METADATA_KEY_AGENDA).isEmpty()
+                && !matchesAgendaItems(minute, ner)) {
+            log().info("Minute {} filtered out by agenda items mismatch", minute.id());
+            return false;
         }
         return true;
     }
@@ -1968,7 +1969,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         docs = validateDateMatchIfPresent(docs, query, ner);
         
         // Always return a list (never null), even if empty
-        return docs != null ? docs : new ArrayList<>();
+        return docs;
     }
 
     /**
@@ -2327,8 +2328,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String q = query == null ? "" : query.toLowerCase().trim();
         String qNorm = java.text.Normalizer.normalize(q, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
         if (qNorm.contains("menos de diez") || qNorm.contains("menos de 10")
-                || q.contains("menos de diez") || q.contains("menos de 10")
-                || q.contains("menos de diez personas") || q.contains("menos de 10 personas")) {
+                || qNorm.contains("menos de diez personas") || qNorm.contains("menos de 10 personas")) {
             log().info("Attendees count query fallback: detected 'menos de diez' (or variant), using less_than 10");
             return new AttendeesCountQueryInfo("less_than", 10);
         }
@@ -2525,7 +2525,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // Pattern 7: "When and in which meetings did [Name] attend" - capture name after "attend"
             Pattern.compile(
                 "asistió\\s+([\\p{L}]+(?:\\s+[\\p{L}]+){2,4})\\s*\\??",
-                UNICODE_CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS
+                UNICODE_CASE_INSENSITIVE
             )
         };
         

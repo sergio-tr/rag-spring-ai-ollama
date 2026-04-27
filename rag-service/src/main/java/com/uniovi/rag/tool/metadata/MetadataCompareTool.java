@@ -682,7 +682,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             
             // Count mentions of the topic in this minute; use binary per-minute value (1 if any mention, 0 otherwise)
             // For "seguridad" topic: require at least two security-related terms to avoid false positives (item 9)
-            String topicLower = topic != null ? topic.toLowerCase().trim() : "";
+            String topicLower = topic.toLowerCase().trim();
             boolean isSecurityTopic = topicLower.contains(TOPIC_SEGURIDAD);
             int mentionCount = countTopicMentions(minute, topic);
             int valueForMonth;

@@ -23,6 +23,15 @@ import java.util.stream.Collectors;
 /**
  * JWT stateless security for the product API prefix ({@link RagApiPathProperties#getProductBasePath()});
  * actuator and auth endpoints are public.
+ *
+ * <p><strong>CSRF:</strong> Spring Security enables CSRF by default for cookie-backed sessions. This application
+ * uses {@link SessionCreationPolicy#STATELESS} and authenticates API calls via {@code Authorization: Bearer &lt;jwt&gt;}
+ * ({@link com.uniovi.rag.security.JwtAuthenticationFilter}). The browser does not attach that header to cross-site
+ * requests automatically (unlike session cookies), so classic CSRF against “logged-in browser sessions” does not apply.
+ * Disabling CSRF follows Spring Security guidance for non-browser clients / token APIs; if cookie-based login were added
+ * later, CSRF would need to be re-evaluated for those endpoints.
+ *
+ * @see <a href="https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html">Spring Security CSRF</a>
  */
 @Configuration
 public class SecurityConfiguration {
@@ -36,6 +45,7 @@ public class SecurityConfiguration {
             RagApiPathProperties ragApiPathProperties)
             throws Exception {
         http
+                // Stateless Bearer JWT — see class Javadoc (CSRF targets automatic cookie submission).
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(c -> c.configurationSource(corsConfigurationSource))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

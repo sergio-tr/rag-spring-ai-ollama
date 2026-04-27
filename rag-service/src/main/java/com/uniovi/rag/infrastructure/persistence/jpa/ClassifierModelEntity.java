@@ -67,6 +67,7 @@ public class ClassifierModelEntity {
     private ClassifierModelStatus status;
 
     public ClassifierModelEntity() {
+        // JPA requires a no-arg constructor for entity instantiation.
     }
 
     public UUID getId() {

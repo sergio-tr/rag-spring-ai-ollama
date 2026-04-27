@@ -28,6 +28,8 @@ import java.util.zip.ZipOutputStream;
 @Service
 public class AccountExportApplicationService {
 
+    private static final String EXPORT_JSON_ITEMS_KEY = "items";
+
     private final AccountExportSnapshotLoader snapshotLoader;
     private final AccountExportArtifactRegistrar artifactRegistrar;
     private final RagAccountProperties accountProperties;
@@ -94,9 +96,9 @@ public class AccountExportApplicationService {
             putJson(zos, "profile.json", profile);
             putJson(zos, "preferences.json", prefs);
             putJson(zos, "personalization.json", pers);
-            putJson(zos, "projects.json", Map.of("items", projects));
-            putJson(zos, "conversations.json", Map.of("items", conversations));
-            putJson(zos, "documents.json", Map.of("items", documents));
+            putJson(zos, "projects.json", Map.of(EXPORT_JSON_ITEMS_KEY, projects));
+            putJson(zos, "conversations.json", Map.of(EXPORT_JSON_ITEMS_KEY, conversations));
+            putJson(zos, "documents.json", Map.of(EXPORT_JSON_ITEMS_KEY, documents));
         }
     }
 

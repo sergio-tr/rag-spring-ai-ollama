@@ -15,7 +15,6 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ReindexEventEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -28,16 +27,19 @@ public class ReindexService {
     private final ProjectRepository projectRepository;
     private final ConversationRepository conversationRepository;
     private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
+    private final ReindexEventStatusUpdater reindexEventStatusUpdater;
 
     public ReindexService(
             ReindexEventRepository reindexEventRepository,
             ProjectRepository projectRepository,
             ConversationRepository conversationRepository,
-            KnowledgePipelineOrchestrator knowledgePipelineOrchestrator) {
+            KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
+            ReindexEventStatusUpdater reindexEventStatusUpdater) {
         this.reindexEventRepository = reindexEventRepository;
         this.projectRepository = projectRepository;
         this.conversationRepository = conversationRepository;
         this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
+        this.reindexEventStatusUpdater = reindexEventStatusUpdater;
     }
 
     /**
@@ -77,28 +79,16 @@ public class ReindexService {
                         resolvedConfigSnapshotId);
         ev = reindexEventRepository.save(ev);
         try {
-            updateReindexEventStatus(ev.getId(), ReindexEventStatus.RUNNING);
+            reindexEventStatusUpdater.update(ev.getId(), ReindexEventStatus.RUNNING);
             UUID knowledgeSnapshotId =
                     knowledgePipelineOrchestrator.rebuildScope(
                             projectId, corpusScope, conversationId, projection, resolvedConfigSnapshotId);
-            updateReindexEventStatus(ev.getId(), ReindexEventStatus.COMPLETED);
+            reindexEventStatusUpdater.update(ev.getId(), ReindexEventStatus.COMPLETED);
             return new KnowledgeReindexExecutionResult(ev.getId(), knowledgeSnapshotId);
         } catch (RuntimeException e) {
-            updateReindexEventStatus(ev.getId(), ReindexEventStatus.FAILED);
+            reindexEventStatusUpdater.update(ev.getId(), ReindexEventStatus.FAILED);
             throw e;
         }
-    }
-
-    @Transactional
-    public void updateReindexEventStatus(UUID eventId, ReindexEventStatus status) {
-        reindexEventRepository
-                .findById(eventId)
-                .ifPresent(
-                        ev -> {
-                            ev.setStatus(status);
-                            ev.setUpdatedAt(Instant.now());
-                            reindexEventRepository.save(ev);
-                        });
     }
 
     private ConversationEntity resolveConversation(CorpusScope corpusScope, UUID conversationId) {

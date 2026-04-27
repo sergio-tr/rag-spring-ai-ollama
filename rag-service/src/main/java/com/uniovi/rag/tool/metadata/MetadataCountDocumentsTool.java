@@ -11,6 +11,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -28,6 +29,10 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             "january", "february", "march", "april", "may", "june",
             "july", "august", "september", "october", "november", "december"
     };
+
+    /** Heuristic: query contains typical Spanish diacritics — used for bilingual response templates. */
+    private static final Pattern QUERY_SEEMS_SPANISH =
+            Pattern.compile("(?iu).*\\p{IsAlphabetic}.*[áéíóúüñ].*", Pattern.UNICODE_CHARACTER_CLASS);
 
     public MetadataCountDocumentsTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
@@ -115,7 +120,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for count query: {}", query);
             String zeroMsg = (topic != null)
-                ? (query != null && query.matches("(?i).*\\p{IsAlphabetic}.*[áéíóúñ].*")
+                ? (query != null && QUERY_SEEMS_SPANISH.matcher(query).matches()
                     ? "No se encontraron actas que cumplan con ese criterio."
                     : "No meeting minutes match the specified criteria.")
                 : generateNotFoundMessage(query);
@@ -443,7 +448,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
      */
     private String generateCountZeroMessage(String query, AttendeesCountQueryInfo queryInfo) {
         if (query == null || queryInfo == null) return "0 actas.";
-        String lang = query.matches("(?i).*\\p{IsAlphabetic}.*[áéíóúñ].*") ? "es" : "en";
+        String lang = QUERY_SEEMS_SPANISH.matcher(query).matches() ? "es" : "en";
         if ("less_than".equals(queryInfo.operator)) {
             return lang.equals("es")
                 ? String.format("Ninguna acta cumple el criterio (menos de %d personas).", queryInfo.threshold)

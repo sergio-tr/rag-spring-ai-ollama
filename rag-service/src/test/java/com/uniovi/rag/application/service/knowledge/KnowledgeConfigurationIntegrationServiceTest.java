@@ -22,7 +22,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -49,9 +48,6 @@ class KnowledgeConfigurationIntegrationServiceTest {
 
     @Mock
     private ReindexService reindexService;
-
-    @Mock
-    private KnowledgeSnapshotService knowledgeSnapshotService;
 
     @InjectMocks
     private KnowledgeConfigurationIntegrationService knowledgeConfigurationIntegrationService;
@@ -87,7 +83,6 @@ class KnowledgeConfigurationIntegrationServiceTest {
                         null,
                         "abc");
         when(knowledgeBuildProjectionMapper.fromResolvedRuntimeConfig(resolved)).thenReturn(projection);
-        when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId)).thenReturn(Optional.empty());
 
         KnowledgeRebuildPreviewResult result = knowledgeConfigurationIntegrationService.previewRebuild(input);
 

@@ -41,8 +41,9 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     private static final String METADATA_KEY_DATE_ISO = "date_iso";
 
     /** Fallback: bullet/numbered block after Orden|Agenda|Puntos (complexity isolated for static analysis). */
+    /** Bounded repetition limits backtracking depth on very long agenda-like blocks. */
     private static final Pattern AGENDA_LIKE_BULLET_BLOCK_PATTERN = Pattern.compile(
-            "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]+(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]+)*)",
+            "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]{1,4000}(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]{0,4000}){0,2000})",
             Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ);
 
     /** Filters descriptive attendee lines (not person names) using Unicode-aware matching. */
@@ -63,7 +64,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
      */
     private static final Pattern ENTITY_CAPITALIZED_WORDS_PATTERN = Pattern.compile(
             "\\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]++(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]++){0,15})\\b",
-            Pattern.MULTILINE);
+            Pattern.MULTILINE | Pattern.UNICODE_CHARACTER_CLASS);
 
     private static final String SPANISH_MONTH_AGOSTO = "agosto";
 
@@ -195,7 +196,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     @Override
     protected Minute extractModel(String content, String filename) {
         if (content == null || content.trim().isEmpty()) {
-            log().error("Content is null or empty for file: {}", filename);
+            log().error("Document content is null or empty");
             throw new IllegalArgumentException("Document content is null or empty. The PDF may be corrupted, protected, or contain only images.");
         }
         
@@ -225,25 +226,25 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         CompletableFuture<List<String>> decisionsFuture =
             supplyAsync(() -> ext.extractWithPrompt(content, PROMPT_DECISIONS))
                 .exceptionally(e -> {
-                    log().error("Error extracting decisions for file: {}", filename, e);
+                    log().error("Error extracting decisions from document", e);
                     return new ArrayList<>();
                 });
         CompletableFuture<List<String>> entitiesFuture =
             supplyAsync(() -> ext.extractWithPrompt(content, PROMPT_ENTITIES))
                 .exceptionally(e -> {
-                    log().error("Error extracting entities for file: {}", filename, e);
+                    log().error("Error extracting entities from document", e);
                     return new ArrayList<>();
                 });
         CompletableFuture<List<String>> topicsFuture =
             supplyAsync(() -> ext.extractWithPrompt(content, PROMPT_TOPICS))
                 .exceptionally(e -> {
-                    log().error("Error extracting topics for file: {}", filename, e);
+                    log().error("Error extracting topics from document", e);
                     return new ArrayList<>();
                 });
         CompletableFuture<String> summaryFuture =
             supplyAsync(() -> ext.extractSummaryWithPrompt(content, PROMPT_SUMMARY))
                 .exceptionally(e -> {
-                    log().error("Error extracting summary for file: {}", filename, e);
+                    log().error("Error extracting summary from document", e);
                     return generateFallbackSummary(content);
                 });
 
@@ -274,14 +275,31 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         if (date == null && place == null && attendees.isEmpty() && decisions.isEmpty() && (topics == null || topics.isEmpty())) {
-            log().warn("Failed to extract critical fields from document: {} (date: {}, place: {}, attendees: {}, decisions: {}, topics: {})", 
-                      filename, date != null, place != null, attendees.size(), decisions.size(), topics != null ? topics.size() : 0);
+            log().warn(
+                    "Failed to extract critical fields (datePresent: {}, placePresent: {}, attendeeCount: {}, decisionCount: {}, topicCount: {})",
+                    date != null,
+                    place != null,
+                    attendees.size(),
+                    decisions.size(),
+                    topics != null ? topics.size() : 0);
         }
 
-        // Log the extracted fields
-        log().info("Extracted fields for file: {} - Date: {}, Place: {}, Start Time: {}, End Time: {}, President: {}, Secretary: {}, Attendees: {}, Decisions: {}, Mentioned Entities: {}, Topics: {}, Summary: {}",
-                      filename, date, place, startTime, endTime, president, secretary, attendees.size(), decisions.size(), 
-                      mentionedEntities != null ? mentionedEntities.size() : 0, topics != null ? topics.size() : 0, summary);
+        // Log counts and presence flags only — avoid logging upload names or extracted document text.
+        log().info(
+                "Extracted minute fields (datePresent: {}, placePresent: {}, startTimePresent: {}, endTimePresent: {}, "
+                        + "presidentPresent: {}, secretaryPresent: {}, attendeeCount: {}, decisionCount: {}, "
+                        + "mentionedEntityCount: {}, topicCount: {}, summaryLen: {})",
+                date != null,
+                place != null,
+                startTime != null,
+                endTime != null,
+                president != null,
+                secretary != null,
+                attendees.size(),
+                decisions.size(),
+                mentionedEntities != null ? mentionedEntities.size() : 0,
+                topics != null ? topics.size() : 0,
+                summary != null ? summary.length() : 0);
 
         return sanitizeMinute(new Minute(
                 UUID.randomUUID().toString(),
@@ -445,8 +463,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Pattern for common decision phrases in Spanish
         Pattern decisionPattern = Pattern.compile(
             "(?i)(?:se\\s+acordó|se\\s+decidió|se\\s+aprobó|se\\s+resolvió|se\\s+decide|se\\s+acuerda|se\\s+aprueba)[:.]?\\s*(.+?)(?:\\.|$|\\n)",
-            Pattern.MULTILINE | Pattern.DOTALL | Pattern.UNICODE_CASE
-        );
+            Pattern.MULTILINE | Pattern.DOTALL | Pattern.UNICODE_CASE | Pattern.UNICODE_CHARACTER_CLASS);
         
         Matcher matcher = decisionPattern.matcher(bounded);
         while (matcher.find()) {
@@ -666,15 +683,14 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         warnIfMissingOptionalContent(metadata);
-        validateSignalPresence(metadata, minute.filename());
+        validateSignalPresence(metadata);
         
         try {
             String minuteJson = objectMapper.writeValueAsString(minute);
             metadata.put("minute", minuteJson);
             log().info("Minute object stored in metadata as JSON for document: {}", minute.id());
         } catch (Exception e) {
-            log().warn("Failed to serialize Minute object to JSON for document: {}. Error: {}", 
-                      minute.id(), e.getMessage());
+            log().warn("Failed to serialize Minute object to JSON for document: {}", minute.id(), e);
         }
         
         log().info("Metadata extracted for document: {} with {} fields (document_id: {})", 
@@ -819,20 +835,20 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         List<?> topics = metadata.get("topics") instanceof List ? (List<?>) metadata.get("topics") : List.of();
 
         if (agenda.isEmpty()) {
-            log().warn("Agenda is empty for document: {}", metadata.get("filename"));
+            log().warn("Agenda is empty for extracted metadata");
         }
         if (decisions.isEmpty()) {
-            log().warn("Decisions are empty for document: {}", metadata.get("filename"));
+            log().warn("Decisions are empty for extracted metadata");
         }
         if (topics.isEmpty()) {
-            log().warn("Topics are empty for document: {}", metadata.get("filename"));
+            log().warn("Topics are empty for extracted metadata");
         }
     }
 
     /**
      * Validates that the document has at least one key signal to avoid empty shells.
      */
-    private void validateSignalPresence(Map<String, Object> metadata, String filename) {
+    private void validateSignalPresence(Map<String, Object> metadata) {
         boolean hasDate = isNotBlank(metadata.get("date"));
         boolean hasPlace = isNotBlank(metadata.get("place"));
         boolean hasSummary = isNotBlank(metadata.get("summary"));
@@ -840,7 +856,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         boolean hasDecisions = metadata.get("decisions") instanceof List<?> l2 && !l2.isEmpty();
 
         if (!hasDate && !hasPlace && !hasSummary && !hasTopics && !hasDecisions) {
-            throw new IllegalArgumentException("Document " + filename + " has no meaningful signal (date/place/summary/topics/decisions)");
+            throw new IllegalArgumentException(
+                    "Document has no meaningful signal (date/place/summary/topics/decisions)");
         }
     }
 
@@ -1112,7 +1129,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         try {
             // If already in format "day of month of year", normalize to lowercase
-            if (date.matches("(?i)\\d{1,2}\\s+de\\s+[a-záéíóúñ]+\\s+de\\s+\\d{4}")) {
+            if (date.matches("(?iu)\\d{1,2}\\s+de\\s+\\p{L}+\\s+de\\s+\\d{4}")) {
                 return normalizeToLowercaseDate(date);
             }
             
@@ -1129,7 +1146,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return date.toLowerCase();
         } catch (Exception e) {
             log().warn("Error normalizing date: {}", date, e);
-            return date != null ? date.toLowerCase() : null;
+            return date.toLowerCase();
         }
     }
     
@@ -2008,8 +2025,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         // Pattern 5: Search for any block with numbered or bulleted items that seems to be agenda
-        pattern = AGENDA_LIKE_BULLET_BLOCK_PATTERN;
-        matcher = pattern.matcher(normalized);
+        matcher = RegexSafety.matcher(AGENDA_LIKE_BULLET_BLOCK_PATTERN, normalized, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
         if (matcher.find()) {
             String block = matcher.group(1).trim();
             if (!block.isEmpty() && block.length() > 10) {

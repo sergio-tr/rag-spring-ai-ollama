@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.junit.jupiter.api.BeforeEach;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -55,6 +56,11 @@ class PresetServiceTest {
     private PresetService presetService;
 
     private static final Instant T0 = Instant.parse("2026-01-01T00:00:00Z");
+
+    @BeforeEach
+    void wireTransactionalSelfProxy() {
+        ReflectionTestUtils.setField(presetService, "self", presetService);
+    }
 
     @Test
     void list_mapsVisiblePresets() {

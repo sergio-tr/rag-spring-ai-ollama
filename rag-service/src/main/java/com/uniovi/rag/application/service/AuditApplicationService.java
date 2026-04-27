@@ -27,7 +27,7 @@ public class AuditApplicationService {
     }
 
     @Transactional
-    public void record(
+    public void persistAuditEntry(
             UUID actorUserId, String action, String resourceType, UUID resourceId, Map<String, Object> payload) {
         Optional<UserEntity> actor = actorUserId != null ? userRepository.findById(actorUserId) : Optional.empty();
         Instant now = Instant.now();

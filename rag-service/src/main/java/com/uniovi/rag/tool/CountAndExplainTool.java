@@ -25,6 +25,8 @@ import java.util.stream.Collectors;
  */
 public class CountAndExplainTool extends AbstractTool {
 
+    private static final int FECHA_LINE_FLAGS = Pattern.MULTILINE | Pattern.UNICODE_CHARACTER_CLASS;
+
     public CountAndExplainTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
         super(chatClient, retriever, extractor);
     }
@@ -43,7 +45,7 @@ public class CountAndExplainTool extends AbstractTool {
         List<String> explanations = new ArrayList<>();
         List<String> matchedIds = new ArrayList<>();
 
-        if (docs == null || docs.isEmpty()) {
+        if (docs.isEmpty()) {
             long totalTime = System.currentTimeMillis() - startTime;
             log().info("No documents found for count and explain query: '{}' (execution time: {} ms)", query, totalTime);
             String response = generateFinalAnswerWithLLM(query, List.of(), List.of());
@@ -142,7 +144,7 @@ public class CountAndExplainTool extends AbstractTool {
 
     private String extractMinuteIdentifier(Document doc) {
         if (doc == null) return null;
-        Object filename = doc.getMetadata() != null ? doc.getMetadata().get("filename") : null;
+        Object filename = doc.getMetadata().get("filename");
         if (filename != null && !filename.toString().isBlank()) {
             return filename.toString();
         }
@@ -157,12 +159,14 @@ public class CountAndExplainTool extends AbstractTool {
 
     private String extractDateFromContent(String content) {
         if (content == null) return null;
-        Matcher m = Pattern.compile("(?i)\\bFecha\\s*:\\s*(.+)$", Pattern.MULTILINE).matcher(content);
+        Matcher m = Pattern.compile("(?iu)\\bFecha\\s*:\\s*(.+)$", FECHA_LINE_FLAGS).matcher(content);
         if (m.find()) {
             String v = m.group(1).trim().replaceAll("\\s{2,}", " ").trim();
             return v.length() > 60 ? v.substring(0, 60).trim() : v;
         }
-        Matcher m2 = Pattern.compile("(?i)(\\d{1,2}\\s+de\\s+[a-záéíóú]+\\s+de\\s+\\d{4})").matcher(content);
+        Matcher m2 =
+                Pattern.compile("(?iu)(\\d{1,2}\\s+de\\s+[\\p{L}]+\\s+de\\s+\\d{4})", FECHA_LINE_FLAGS)
+                        .matcher(content);
         if (m2.find()) return m2.group(1).trim();
         return null;
     }

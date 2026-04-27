@@ -30,10 +30,10 @@ export default function ProjectsPage() {
           {t("loadError")}
         </p>
       )}
-      {!isLoading && !isError && data && data.items.length === 0 && (
+      {!isLoading && !isError && data?.items?.length === 0 && (
         <p className="text-muted-foreground text-sm">{t("empty")}</p>
       )}
-      {!isLoading && !isError && data && data.items.length > 0 && (
+      {!isLoading && !isError && (data?.items?.length ?? 0) > 0 && (
         <ProjectGrid items={data.items} />
       )}
     </div>

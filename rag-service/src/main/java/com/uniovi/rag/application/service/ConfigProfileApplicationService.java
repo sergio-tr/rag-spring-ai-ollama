@@ -76,7 +76,7 @@ public class ConfigProfileApplicationService {
         ConfigProfileEntity entity =
                 ConfigProfileEntity.newDraft(type, req.version(), req.label(), req.payload(), owner, actor, now);
         entity = configProfileRepository.save(entity);
-        auditApplicationService.record(
+        auditApplicationService.persistAuditEntry(
                 userId,
                 "CONFIG_PROFILE_CREATE",
                 "config_profile",
@@ -109,7 +109,7 @@ public class ConfigProfileApplicationService {
             e.setPayload(req.payload());
         }
         e = configProfileRepository.save(e);
-        auditApplicationService.record(
+        auditApplicationService.persistAuditEntry(
                 userId, "CONFIG_PROFILE_UPDATE", "config_profile", e.getId(), Map.of("patchedFields", req.nonNullFieldNames()));
         return toDto(e);
     }

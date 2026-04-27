@@ -25,6 +25,8 @@ import java.util.stream.Collectors;
  */
 public class CountDocumentsTool extends AbstractTool {
 
+    private static final int FECHA_LINE_FLAGS = Pattern.MULTILINE | Pattern.UNICODE_CHARACTER_CLASS;
+
     public CountDocumentsTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
         super(chatClient, retriever, extractor);
     }
@@ -56,13 +58,14 @@ public class CountDocumentsTool extends AbstractTool {
         List<String> matchedIds = new java.util.ArrayList<>();
 
         for (Document doc : candidateDocs) {
-            if (doc != null && doc.getText() != null && !doc.getText().trim().isEmpty()) {
-                if (ner == null || nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    String id = extractMinuteIdentifier(doc);
-                    String fragment = extractor.extractRelevantFragment(doc.getText(), query);
-                    if (matchesQueryWithLLM(query, id, fragment)) {
-                        matchedIds.add(id);
-                    }
+            if (doc != null
+                    && doc.getText() != null
+                    && !doc.getText().trim().isEmpty()
+                    && (ner == null || nerHandler.matchesDocumentWithNER(doc, ner))) {
+                String id = extractMinuteIdentifier(doc);
+                String fragment = extractor.extractRelevantFragment(doc.getText(), query);
+                if (matchesQueryWithLLM(query, id, fragment)) {
+                    matchedIds.add(id);
                 }
             }
         }
@@ -153,7 +156,7 @@ public class CountDocumentsTool extends AbstractTool {
 
     private String extractMinuteIdentifier(Document doc) {
         if (doc == null) return null;
-        Object filename = doc.getMetadata() != null ? doc.getMetadata().get("filename") : null;
+        Object filename = doc.getMetadata().get("filename");
         if (filename != null && !filename.toString().isBlank()) {
             return filename.toString();
         }
@@ -168,7 +171,7 @@ public class CountDocumentsTool extends AbstractTool {
 
     private String extractDateFromContent(String content) {
         if (content == null) return null;
-        Matcher m = Pattern.compile("(?i)\\bFecha\\s*:\\s*(.+)$", Pattern.MULTILINE).matcher(content);
+        Matcher m = Pattern.compile("(?iu)\\bFecha\\s*:\\s*(.+)$", FECHA_LINE_FLAGS).matcher(content);
         if (m.find()) {
             String v = m.group(1).trim();
             // stop at line breaks or labels
@@ -176,7 +179,9 @@ public class CountDocumentsTool extends AbstractTool {
             return v.length() > 60 ? v.substring(0, 60).trim() : v;
         }
         // fallback Spanish canonical used in PDFs
-        Matcher m2 = Pattern.compile("(?i)(\\d{1,2}\\s+de\\s+[a-záéíóú]+\\s+de\\s+\\d{4})").matcher(content);
+        Matcher m2 =
+                Pattern.compile("(?iu)(\\d{1,2}\\s+de\\s+[\\p{L}]+\\s+de\\s+\\d{4})", FECHA_LINE_FLAGS)
+                        .matcher(content);
         if (m2.find()) return m2.group(1).trim();
         return null;
     }

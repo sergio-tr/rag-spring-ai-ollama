@@ -55,21 +55,21 @@ class TrainingPipeline(Loggable):
             if df.empty:
                 raise ValueError("No rows left after filtering by class_names")
             label_to_idx = {c: i for i, c in enumerate(class_names)}
-            y_idx = df["QueryType"].astype(str).map(label_to_idx).values
+            y_idx = df["QueryType"].astype(str).map(label_to_idx).to_numpy()
             y = tf.keras.utils.to_categorical(y_idx, num_classes=len(class_names))
         else:
             y_raw = pd.get_dummies(df["QueryType"])
-            y = y_raw.values
+            y = y_raw.to_numpy()
             class_names = y_raw.columns.tolist()
-        X = df["Question"].astype(str).values
+        X = df["Question"].astype(str).to_numpy()
 
         try:
-            X_train, X_val, y_train, y_val = train_test_split(
+            x_train, x_val, y_train, y_val = train_test_split(
                 X, y, test_size=validation_fraction, random_state=42, stratify=y
             )
         except ValueError:
             # Too few samples per class for stratification (e.g. tiny test datasets).
-            X_train, X_val, y_train, y_val = train_test_split(
+            x_train, x_val, y_train, y_val = train_test_split(
                 X, y, test_size=validation_fraction, random_state=42
             )
 
@@ -78,7 +78,7 @@ class TrainingPipeline(Loggable):
             output_mode="int",
             output_sequence_length=sequence_length,
         )
-        vectorizer.adapt(X_train)
+        vectorizer.adapt(x_train)
 
         model = tf.keras.Sequential([
             vectorizer,
@@ -101,10 +101,10 @@ class TrainingPipeline(Loggable):
         )
 
         model.fit(
-            X_train, y_train,
+            x_train, y_train,
             epochs=epochs,
             batch_size=batch_size,
-            validation_data=(X_val, y_val),
+            validation_data=(x_val, y_val),
             callbacks=[early_stop],
             verbose=0,
         )

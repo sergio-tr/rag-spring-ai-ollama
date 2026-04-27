@@ -115,7 +115,7 @@ public class LabController {
     }
 
     @PostMapping(value = "/classifier/train", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> classifierTrain(
+    public ResponseEntity<Object> classifierTrain(
             @AuthenticationPrincipal RagPrincipal principal,
             @RequestParam(name = "projectId", required = false) UUID projectId,
             @RequestParam(name = "sync", defaultValue = "false") boolean sync,

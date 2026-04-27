@@ -97,7 +97,7 @@ public class AdminController {
     }
 
     @PostMapping("/ollama/pull")
-    public ResponseEntity<?> pullModel(
+    public ResponseEntity<Object> pullModel(
             @AuthenticationPrincipal RagPrincipal principal,
             @Valid @RequestBody PullOllamaModelRequest body,
             @RequestParam(name = "sync", defaultValue = "false") boolean sync) {

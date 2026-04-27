@@ -12,7 +12,6 @@ import com.uniovi.rag.service.document.KnowledgeChunkMetadataFactory;
 import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -33,46 +32,44 @@ import java.util.Map;
 @Service
 public class KnowledgeIndexingService {
 
+    private static final String JSON_KEY_SCHEMA_VERSION = "schemaVersion";
+    private static final int ARTIFACT_SCHEMA_VERSION = 1;
+    private static final String UNKNOWN_FILENAME_LABEL = "unknown";
+
     private final PgVectorStore vectorStore;
     private final ProjectDocumentIngestionService projectDocumentIngestionService;
     private final BinaryStoragePort binaryStoragePort;
     private final DocumentArtifactRepository documentArtifactRepository;
-    private final int chunkMaxChars;
 
     public KnowledgeIndexingService(
             PgVectorStore vectorStore,
             @Lazy ProjectDocumentIngestionService projectDocumentIngestionService,
             BinaryStoragePort binaryStoragePort,
-            DocumentArtifactRepository documentArtifactRepository,
-            @Value("${rag.chunk.max-chars:400}") int chunkMaxChars) {
+            DocumentArtifactRepository documentArtifactRepository) {
         this.vectorStore = vectorStore;
         this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.binaryStoragePort = binaryStoragePort;
         this.documentArtifactRepository = documentArtifactRepository;
-        this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
     }
 
     /**
      * Runs parse → metadata → optional chunk → embed → index artifact + vectors per §8 matrix.
      */
-    public void processDocument(
-            KnowledgeDocumentEntity doc,
-            Path tempFileOverride,
-            String originalFilename,
-            String contentType,
-            KnowledgeIndexSnapshotEntity snapshot,
-            String indexSigHex,
-            MaterializationStrategy strategy,
-            int effectiveChunkMaxChars)
-            throws IOException {
+    public void processDocument(KnowledgeDocumentIndexingRequest req) throws IOException {
+        KnowledgeDocumentEntity doc = req.doc();
+        Path tempFileOverride = req.tempFileOverride();
+        KnowledgeIndexSnapshotEntity snapshot = req.snapshot();
+        MaterializationStrategy strategy = req.strategy();
+        int effectiveChunkMaxChars = req.effectiveChunkMaxChars();
+        String indexSigHex = req.indexSigHex();
         byte[] bytes = loadBytes(doc, tempFileOverride);
-        String name = coalesce(doc.getFileName(), originalFilename);
-        String ct = coalesce(doc.getMimeType(), contentType);
+        String name = coalesce(doc.getFileName(), req.originalFilename());
+        String ct = coalesce(doc.getMimeType(), req.contentType());
         String content = extractRequiredContent(bytes, name, ct);
 
         Instant now = Instant.now();
         Map<String, Object> parsed = new LinkedHashMap<>();
-        parsed.put("schemaVersion", 1);
+        parsed.put(JSON_KEY_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION);
         parsed.put("normalizedText", content);
         parsed.put("mimeType", ct != null ? ct : "");
         saveArtifact(doc, DocumentArtifactType.PARSED, parsed, now);
@@ -95,20 +92,16 @@ public class KnowledgeIndexingService {
 
         if (strategy != MaterializationStrategy.DOCUMENT_LEVEL) {
             Map<String, Object> chunkPayload = new LinkedHashMap<>();
-            chunkPayload.put("schemaVersion", 1);
+            chunkPayload.put(JSON_KEY_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION);
             chunkPayload.put("chunkCount", chunks.size());
             chunkPayload.put("chunks", chunks);
             saveArtifact(doc, DocumentArtifactType.CHUNK, chunkPayload, now);
         }
 
         List<Document> vectorDocs = new ArrayList<>();
+        String displayName = name != null ? name : UNKNOWN_FILENAME_LABEL;
         String legacyHash = KnowledgeChunkMetadataFactory.legacyContentHashId(name, content, doc.getId());
-        int totalVectors =
-                strategy == MaterializationStrategy.HYBRID
-                        ? chunks.size() + 1
-                        : strategy == MaterializationStrategy.DOCUMENT_LEVEL
-                                ? 1
-                                : chunks.size();
+        int totalVectors = computeTotalVectorCount(strategy, chunks);
 
         if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
             Map<String, Object> vm =
@@ -119,7 +112,7 @@ public class KnowledgeIndexingService {
                             doc.getConversation() != null ? doc.getConversation().getId() : null,
                             snapshot.getId(),
                             indexSigHex,
-                            name != null ? name : "unknown",
+                            displayName,
                             0,
                             1,
                             legacyHash);
@@ -134,7 +127,7 @@ public class KnowledgeIndexingService {
                                 doc.getConversation() != null ? doc.getConversation().getId() : null,
                                 snapshot.getId(),
                                 indexSigHex,
-                                name != null ? name : "unknown",
+                                displayName,
                                 i,
                                 totalVectors,
                                 legacyHash);
@@ -155,7 +148,7 @@ public class KnowledgeIndexingService {
                             doc.getConversation() != null ? doc.getConversation().getId() : null,
                             snapshot.getId(),
                             indexSigHex,
-                            name != null ? name : "unknown",
+                            displayName,
                             chunks.size(),
                             totalVectors,
                             legacyHash);
@@ -167,10 +160,20 @@ public class KnowledgeIndexingService {
         }
 
         Map<String, Object> indexPayload = new LinkedHashMap<>();
-        indexPayload.put("schemaVersion", 1);
+        indexPayload.put(JSON_KEY_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION);
         indexPayload.put("vectorChunkCount", vectorDocs.size());
         indexPayload.put("indexSignatureHash", indexSigHex);
         saveArtifact(doc, DocumentArtifactType.INDEX, indexPayload, now);
+    }
+
+    private static int computeTotalVectorCount(MaterializationStrategy strategy, List<String> chunks) {
+        if (strategy == MaterializationStrategy.HYBRID) {
+            return chunks.size() + 1;
+        }
+        if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
+            return 1;
+        }
+        return chunks.size();
     }
 
     private byte[] loadBytes(KnowledgeDocumentEntity doc, Path tempFileOverride) throws IOException {
@@ -220,7 +223,7 @@ public class KnowledgeIndexingService {
 
     private Map<String, Object> structuredSearchIndexPayload() {
         Map<String, Object> indexPayload = new LinkedHashMap<>();
-        indexPayload.put("schemaVersion", 1);
+        indexPayload.put(JSON_KEY_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION);
         indexPayload.put("vectorChunkCount", 0);
         indexPayload.put("vectorRefs", List.of());
         return indexPayload;
@@ -228,12 +231,12 @@ public class KnowledgeIndexingService {
 
     private Map<String, Object> buildMetadataPayload(MaterializationStrategy strategy, String content, String filename) {
         Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("schemaVersion", 1);
+        meta.put(JSON_KEY_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION);
         meta.put("fileName", filename != null ? filename : "");
         meta.put("textLength", content.length());
         if (strategy == MaterializationStrategy.STRUCTURED_SEARCH) {
             Map<String, Object> proj = new LinkedHashMap<>();
-            proj.put("schemaVersion", 1);
+            proj.put(JSON_KEY_SCHEMA_VERSION, ARTIFACT_SCHEMA_VERSION);
             proj.put("sourceFile", filename != null ? filename : "");
             proj.put("charLength", content.length());
             meta.put("structuredSearchProjection", proj);

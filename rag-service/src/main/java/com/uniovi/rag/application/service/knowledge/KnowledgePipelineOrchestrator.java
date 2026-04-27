@@ -11,14 +11,12 @@ import com.uniovi.rag.domain.knowledge.SnapshotSignatureHasher;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
-import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +44,6 @@ public class KnowledgePipelineOrchestrator {
     private static final Logger log = LoggerFactory.getLogger(KnowledgePipelineOrchestrator.class);
 
     private final JdbcTemplate jdbcTemplate;
-    private final ProjectDocumentIngestionService projectDocumentIngestionService;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final BinaryStoragePort binaryStoragePort;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
@@ -58,7 +55,6 @@ public class KnowledgePipelineOrchestrator {
 
     public KnowledgePipelineOrchestrator(
             JdbcTemplate jdbcTemplate,
-            @Lazy ProjectDocumentIngestionService projectDocumentIngestionService,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
             BinaryStoragePort binaryStoragePort,
             KnowledgeSnapshotService knowledgeSnapshotService,
@@ -68,7 +64,6 @@ public class KnowledgePipelineOrchestrator {
             @Value("${rag.knowledge.materialization-strategy:CHUNK_LEVEL}") String materializationStrategyRaw,
             @Autowired(required = false) MeterRegistry meterRegistry) {
         this.jdbcTemplate = jdbcTemplate;
-        this.projectDocumentIngestionService = projectDocumentIngestionService;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.binaryStoragePort = binaryStoragePort;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
@@ -159,14 +154,15 @@ public class KnowledgePipelineOrchestrator {
             MaterializationStrategy strategy = materializationStrategy;
             for (KnowledgeDocumentEntity doc : scopeDocs) {
                 knowledgeIndexingService.processDocument(
-                        doc,
-                        doc.getId().equals(projectDocumentId) ? tempFile : null,
-                        originalFilename,
-                        contentType,
-                        building,
-                        indexSigHex,
-                        strategy,
-                        chunkMaxChars);
+                        new KnowledgeDocumentIndexingRequest(
+                                doc,
+                                doc.getId().equals(projectDocumentId) ? tempFile : null,
+                                originalFilename,
+                                contentType,
+                                building,
+                                indexSigHex,
+                                strategy,
+                                chunkMaxChars));
             }
 
             knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
@@ -318,14 +314,15 @@ public class KnowledgePipelineOrchestrator {
             MaterializationStrategy strategy = projection.materializationStrategy();
             for (KnowledgeDocumentEntity doc : scopeDocs) {
                 knowledgeIndexingService.processDocument(
-                        doc,
-                        null,
-                        doc.getFileName(),
-                        doc.getMimeType(),
-                        building,
-                        indexSigHex,
-                        strategy,
-                        projection.chunkMaxChars());
+                        new KnowledgeDocumentIndexingRequest(
+                                doc,
+                                null,
+                                doc.getFileName(),
+                                doc.getMimeType(),
+                                building,
+                                indexSigHex,
+                                strategy,
+                                projection.chunkMaxChars()));
             }
 
             knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);

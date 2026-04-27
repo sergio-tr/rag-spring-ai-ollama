@@ -66,7 +66,7 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
         // Step 3.5: Create map of minute ID to document for content access
         Map<String, Document> minuteIdToDoc = new HashMap<>();
         for (Document doc : docs) {
-            Minute minute = getMinuteFromMetadata(doc);
+            Minute minute = cacheable().getMinuteFromMetadata(doc);
             if (minute != null && relevantMinutes.contains(minute)) {
                 minuteIdToDoc.put(minute.id(), doc);
             }

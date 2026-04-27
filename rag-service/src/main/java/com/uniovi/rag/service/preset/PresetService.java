@@ -14,6 +14,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.application.service.AuditApplicationService;
 import com.uniovi.rag.service.config.RagConfigValueSanitizer;
 import com.uniovi.rag.service.config.UserProjectConfigurationService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,11 +38,16 @@ import java.util.UUID;
 @Service
 public class PresetService {
 
+    private static final String AUDIT_RESOURCE_TYPE_RAG_PRESET = "rag_preset";
+
     private final RagPresetRepository ragPresetRepository;
     private final UserRepository userRepository;
     private final UserProjectConfigurationService userProjectConfigurationService;
     private final AuditApplicationService auditApplicationService;
     private final ConfigProfileRepository configProfileRepository;
+
+    /** Lazy self-reference so {@link #requireVisiblePreset} hits the Spring proxy when invoked from this bean. */
+    private PresetService self;
 
     public PresetService(
             RagPresetRepository ragPresetRepository,
@@ -55,6 +62,11 @@ public class PresetService {
         this.configProfileRepository = configProfileRepository;
     }
 
+    @Autowired
+    void setTransactionalSelf(@Lazy PresetService self) {
+        this.self = self;
+    }
+
     @Transactional(readOnly = true)
     public List<RagPresetDto> list(UUID userId) {
         List<RagPresetEntity> rows = new ArrayList<>(ragPresetRepository.findVisibleForUserWithProfileRefs(userId));
@@ -66,7 +78,7 @@ public class PresetService {
 
     @Transactional(readOnly = true)
     public RagPresetDto get(UUID userId, UUID presetId) {
-        requireVisiblePreset(userId, presetId);
+        self.requireVisiblePreset(userId, presetId);
         RagPresetEntity e =
                 ragPresetRepository.findByIdWithProfileRefs(presetId).orElseThrow(() ->
                         new ResponseStatusException(HttpStatus.NOT_FOUND, "Preset not found"));
@@ -92,7 +104,7 @@ public class PresetService {
             e.setCompositionVersion(1);
         }
         e = ragPresetRepository.save(e);
-        auditApplicationService.record(userId, "RAG_PRESET_CREATE", "rag_preset", e.getId(), Map.of("name", e.getName()));
+        auditApplicationService.persistAuditEntry(userId, "RAG_PRESET_CREATE", AUDIT_RESOURCE_TYPE_RAG_PRESET, e.getId(), Map.of("name", e.getName()));
         return toDto(refreshWithRefs(e.getId()));
     }
 
@@ -121,7 +133,7 @@ public class PresetService {
         }
         e.setUpdatedAt(Instant.now());
         e = ragPresetRepository.save(e);
-        auditApplicationService.record(userId, "RAG_PRESET_UPDATE", "rag_preset", e.getId(), Map.of("name", e.getName()));
+        auditApplicationService.persistAuditEntry(userId, "RAG_PRESET_UPDATE", AUDIT_RESOURCE_TYPE_RAG_PRESET, e.getId(), Map.of("name", e.getName()));
         return toDto(refreshWithRefs(e.getId()));
     }
 
@@ -134,7 +146,7 @@ public class PresetService {
         }
         UUID id = e.getId();
         ragPresetRepository.delete(e);
-        auditApplicationService.record(userId, "RAG_PRESET_DELETE", "rag_preset", id, Map.of());
+        auditApplicationService.persistAuditEntry(userId, "RAG_PRESET_DELETE", AUDIT_RESOURCE_TYPE_RAG_PRESET, id, Map.of());
     }
 
     /**
@@ -142,7 +154,7 @@ public class PresetService {
      */
     @Transactional
     public void applyInitialPresetToProject(UUID userId, UUID projectId, UUID presetId) {
-        RagPresetEntity preset = requireVisiblePreset(userId, presetId);
+        RagPresetEntity preset = self.requireVisiblePreset(userId, presetId);
         userProjectConfigurationService.putProjectConfig(
                 userId, projectId, RagConfigValueSanitizer.sanitize(preset.getValues()));
     }

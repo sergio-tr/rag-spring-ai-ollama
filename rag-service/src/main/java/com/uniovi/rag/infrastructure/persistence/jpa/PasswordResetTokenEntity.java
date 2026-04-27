@@ -43,6 +43,7 @@ public class PasswordResetTokenEntity {
     private String requestUserAgent;
 
     public PasswordResetTokenEntity() {
+        // JPA requires a no-arg constructor; not used by application code.
     }
 
     public UUID getId() {
