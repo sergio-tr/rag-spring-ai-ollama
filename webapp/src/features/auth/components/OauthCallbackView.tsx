@@ -19,11 +19,8 @@ export function OauthCallbackView({ provider }: { provider: "google" }) {
   useEffect(() => {
     let cancelled = false;
     async function run() {
-      if (!code) {
-        setMessage(t("oauthCallbackMissingCode"));
-        return;
-      }
-      setMessage(t("oauthCallbackWorking"));
+      setMessage(code ? t("oauthCallbackWorking") : t("oauthCallbackMissingCode"));
+      if (!code) return;
       try {
         const data = await apiFetch<LoginResponse>("/api/auth/oauth/exchange", {
           method: "POST",

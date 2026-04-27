@@ -37,8 +37,31 @@ import com.uniovi.rag.service.retriever.FilteredContextRetriever;
 import com.uniovi.rag.service.retriever.MinuteDocumentContextRetriever;
 import com.uniovi.rag.domain.model.ExpansionStrategy;
 import com.uniovi.rag.tool.Tool;
-import com.uniovi.rag.tool.*;
-import com.uniovi.rag.tool.metadata.*;
+import com.uniovi.rag.tool.BooleanQueryTool;
+import com.uniovi.rag.tool.CompareTool;
+import com.uniovi.rag.tool.CountAndExplainTool;
+import com.uniovi.rag.tool.CountDocumentsTool;
+import com.uniovi.rag.tool.DecisionExtractionTool;
+import com.uniovi.rag.tool.ExtractEntitiesTool;
+import com.uniovi.rag.tool.FilterAndListTool;
+import com.uniovi.rag.tool.FindParagraphTool;
+import com.uniovi.rag.tool.GetDurationTool;
+import com.uniovi.rag.tool.GetFieldTool;
+import com.uniovi.rag.tool.SummarizeMeetingTool;
+import com.uniovi.rag.tool.SummarizeTopicTool;
+import com.uniovi.rag.tool.metadata.MetadataBooleanQueryTool;
+import com.uniovi.rag.tool.metadata.MetadataCompareTool;
+import com.uniovi.rag.tool.metadata.MetadataCountAndExplainTool;
+import com.uniovi.rag.tool.metadata.MetadataCountDocumentsTool;
+import com.uniovi.rag.tool.metadata.MetadataDecisionExtractionTool;
+import com.uniovi.rag.tool.metadata.MetadataExtractEntitiesTool;
+import com.uniovi.rag.tool.metadata.MetadataFilterAndListTool;
+import com.uniovi.rag.tool.metadata.MetadataFindParagraphTool;
+import com.uniovi.rag.tool.metadata.MetadataGetDurationTool;
+import com.uniovi.rag.tool.metadata.MetadataGetFieldTool;
+import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
+import com.uniovi.rag.tool.metadata.MetadataSummarizeMeetingTool;
+import com.uniovi.rag.tool.metadata.MetadataSummarizeTopicTool;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,23 +76,27 @@ import java.util.Map;
  */
 public class EvaluationServiceFactory {
 
+    public record Settings(
+            int topK,
+            double similarityThreshold,
+            String classifierServiceUrl,
+            String classifierModelId,
+            int classifierTimeoutMs,
+            int chunkMaxChars,
+            String expansionStrategy,
+            int expansionOriginalRepeat,
+            int expansionMaxExpansionChars,
+            int expansionMaxQueryTotalChars,
+            int expansionMaxQueryLengthForLlm,
+            int expansionRetryQueryLength,
+            boolean knowledgeChatOverlayEnabled
+    ) {}
+
     private final ChatClient chatClient;
     private final PgVectorStore vectorStore;
     private final JdbcTemplate jdbcTemplate;
-    private final int topK;
-    private final double similarityThreshold;
-    private final String classifierServiceUrl;
-    private final String classifierModelId;
-    private final int classifierTimeoutMs;
-    private final int chunkMaxChars;
     private final ResponseValidator responseValidator;
     private final DocumentContentExtractor documentContentExtractor;
-    private final String expansionStrategy;
-    private final int expansionOriginalRepeat;
-    private final int expansionMaxExpansionChars;
-    private final int expansionMaxQueryTotalChars;
-    private final int expansionMaxQueryLengthForLlm;
-    private final int expansionRetryQueryLength;
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
     private final MetadataLlmResponseCacheService metadataLlmResponseCacheService;
     private final ModelCatalogPort modelCatalogPort;
@@ -79,29 +106,18 @@ public class EvaluationServiceFactory {
     private final ResponseRanker responseRanker;
     private final PostRetrievalProcessor postRetrievalProcessor;
     private final QueryDateExtractor queryDateExtractor;
-    private final boolean knowledgeChatOverlayEnabled;
     private final ExecutionContextFactory executionContextFactory;
     private final RagExecutionOrchestrator ragExecutionOrchestrator;
     private final RuntimeTracePersistenceService runtimeTracePersistenceService;
+    private final Settings settings;
 
     public EvaluationServiceFactory(
         ChatClient chatClient,
         PgVectorStore vectorStore,
         JdbcTemplate jdbcTemplate,
-        int topK,
-        double similarityThreshold,
-        String classifierServiceUrl,
-        String classifierModelId,
-        int classifierTimeoutMs,
-        int chunkMaxChars,
+        Settings settings,
         ResponseValidator responseValidator,
         DocumentContentExtractor documentContentExtractor,
-        String expansionStrategy,
-        int expansionOriginalRepeat,
-        int expansionMaxExpansionChars,
-        int expansionMaxQueryTotalChars,
-        int expansionMaxQueryLengthForLlm,
-        int expansionRetryQueryLength,
         OllamaConnectivityChecker ollamaConnectivityChecker,
         MetadataLlmResponseCacheService metadataLlmResponseCacheService,
         ModelCatalogPort modelCatalogPort,
@@ -119,20 +135,9 @@ public class EvaluationServiceFactory {
         this.chatClient = chatClient;
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
-        this.topK = topK;
-        this.similarityThreshold = similarityThreshold;
-        this.classifierServiceUrl = classifierServiceUrl != null ? classifierServiceUrl : "http://localhost:8000";
-        this.classifierModelId = (classifierModelId != null && !classifierModelId.isBlank()) ? classifierModelId : "default";
-        this.classifierTimeoutMs = classifierTimeoutMs > 0 ? classifierTimeoutMs : 5000;
-        this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
+        this.settings = normalizeSettings(settings, knowledgeChatOverlayEnabled);
         this.responseValidator = responseValidator;
         this.documentContentExtractor = documentContentExtractor;
-        this.expansionStrategy = expansionStrategy != null ? expansionStrategy : "COT";
-        this.expansionOriginalRepeat = expansionOriginalRepeat > 0 ? Math.min(5, expansionOriginalRepeat) : 1;
-        this.expansionMaxExpansionChars = expansionMaxExpansionChars > 0 ? expansionMaxExpansionChars : 350;
-        this.expansionMaxQueryTotalChars = expansionMaxQueryTotalChars > 0 ? expansionMaxQueryTotalChars : 512;
-        this.expansionMaxQueryLengthForLlm = expansionMaxQueryLengthForLlm > 0 ? expansionMaxQueryLengthForLlm : 500;
-        this.expansionRetryQueryLength = expansionRetryQueryLength > 0 ? expansionRetryQueryLength : 200;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
         this.metadataLlmResponseCacheService = metadataLlmResponseCacheService;
         this.modelCatalogPort = modelCatalogPort;
@@ -141,11 +146,43 @@ public class EvaluationServiceFactory {
         this.responseRanker = responseRanker;
         this.postRetrievalProcessor = postRetrievalProcessor;
         this.queryDateExtractor = queryDateExtractor;
-        this.knowledgeChatOverlayEnabled = knowledgeChatOverlayEnabled;
         this.ragRuntimeProperties = ragRuntimeProperties;
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
         this.runtimeTracePersistenceService = runtimeTracePersistenceService;
+    }
+
+    private static Settings normalizeSettings(Settings in, boolean knowledgeChatOverlayEnabled) {
+        Settings base = in != null ? in : new Settings(
+                80,
+                0.25,
+                "http://localhost:8000",
+                "default",
+                5000,
+                400,
+                "COT",
+                1,
+                350,
+                512,
+                500,
+                200,
+                knowledgeChatOverlayEnabled
+        );
+        return new Settings(
+                base.topK(),
+                base.similarityThreshold(),
+                base.classifierServiceUrl() != null ? base.classifierServiceUrl() : "http://localhost:8000",
+                (base.classifierModelId() != null && !base.classifierModelId().isBlank()) ? base.classifierModelId() : "default",
+                base.classifierTimeoutMs() > 0 ? base.classifierTimeoutMs() : 5000,
+                base.chunkMaxChars() > 0 ? base.chunkMaxChars() : 400,
+                base.expansionStrategy() != null ? base.expansionStrategy() : "COT",
+                base.expansionOriginalRepeat() > 0 ? Math.min(5, base.expansionOriginalRepeat()) : 1,
+                base.expansionMaxExpansionChars() > 0 ? base.expansionMaxExpansionChars() : 350,
+                base.expansionMaxQueryTotalChars() > 0 ? base.expansionMaxQueryTotalChars() : 512,
+                base.expansionMaxQueryLengthForLlm() > 0 ? base.expansionMaxQueryLengthForLlm() : 500,
+                base.expansionRetryQueryLength() > 0 ? base.expansionRetryQueryLength() : 200,
+                knowledgeChatOverlayEnabled
+        );
     }
 
     /**
@@ -156,36 +193,39 @@ public class EvaluationServiceFactory {
         RagImplementationProperties impl = implProps != null ? implProps : new RagImplementationProperties();
         ExpansionStrategy strategy;
         try {
-            strategy = ExpansionStrategy.valueOf((expansionStrategy != null ? expansionStrategy : "COT").toUpperCase());
+            strategy = ExpansionStrategy.valueOf(settings.expansionStrategy().toUpperCase());
         } catch (Exception e) {
             strategy = ExpansionStrategy.COT;
         }
         QueryExpander expander = new MinuteDocumentStructureExpander(
                 chatClient,
                 strategy,
-                expansionOriginalRepeat,
-                expansionMaxExpansionChars,
-                expansionMaxQueryTotalChars,
-                expansionMaxQueryLengthForLlm,
-                expansionRetryQueryLength
+                settings.expansionOriginalRepeat(),
+                settings.expansionMaxExpansionChars(),
+                settings.expansionMaxQueryTotalChars(),
+                settings.expansionMaxQueryLengthForLlm(),
+                settings.expansionRetryQueryLength()
         );
         String analyserImpl = impl.getAnalyserImpl() != null ? impl.getAnalyserImpl().trim().toLowerCase() : "minute-ner";
         QueryAnalyser analyser = "no-op".equals(analyserImpl) ? new NoOpQueryAnalyser() : new MinuteNERQueryAnalyser(chatClient);
-        QueryClassifier classifier = new ClassifierServiceClient(classifierServiceUrl, classifierModelId, classifierTimeoutMs);
+        QueryClassifier classifier = new ClassifierServiceClient(
+                settings.classifierServiceUrl(),
+                settings.classifierModelId(),
+                settings.classifierTimeoutMs());
         String retrieverImpl = impl.getRetrieverImpl() != null ? impl.getRetrieverImpl().trim().toLowerCase() : "basic";
         ContextRetriever retriever;
         switch (retrieverImpl) {
             case "filtered":
                 retriever = new FilteredContextRetriever(
-                        vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
+                        vectorStore, chatClient, settings.topK(), settings.similarityThreshold(), settings.knowledgeChatOverlayEnabled());
                 break;
             case "minute-document":
                 retriever = new MinuteDocumentContextRetriever(
-                        vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
+                        vectorStore, chatClient, settings.topK(), settings.similarityThreshold(), settings.knowledgeChatOverlayEnabled());
                 break;
             default:
                 retriever = new BasicContextRetriever(
-                        vectorStore, chatClient, topK, similarityThreshold, knowledgeChatOverlayEnabled);
+                        vectorStore, chatClient, settings.topK(), settings.similarityThreshold(), settings.knowledgeChatOverlayEnabled());
                 break;
         }
         String queryServiceImpl = impl.getQueryServiceImpl() != null ? impl.getQueryServiceImpl().trim().toLowerCase() : "process";
@@ -212,9 +252,9 @@ public class EvaluationServiceFactory {
      */
     public DocumentService createDocumentService(RagFeatureConfiguration featureConfig) {
         if (featureConfig.isMetadataEnabled()) {
-            return new MetadataMinuteDocumentService(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
+            return new MetadataMinuteDocumentService(vectorStore, chatClient, jdbcTemplate, settings.chunkMaxChars());
         }
-        return new SimpleDocumentService(vectorStore, chatClient, jdbcTemplate, chunkMaxChars);
+        return new SimpleDocumentService(vectorStore, chatClient, jdbcTemplate, settings.chunkMaxChars());
     }
 
     /**

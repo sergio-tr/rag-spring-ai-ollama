@@ -36,6 +36,11 @@ export function AppSubnavSectionLayout({
   const pathname = usePathname();
   const root = sectionRootHref ?? tabs[0]?.href ?? "";
 
+  const isActive = (href: string) => {
+    if (href === root) return pathname === href;
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -50,8 +55,7 @@ export function AppSubnavSectionLayout({
         aria-label={navAriaLabel}
       >
         {tabs.map((tab) => {
-          const active =
-            tab.href === root ? pathname === tab.href : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+          const active = isActive(tab.href);
           return (
             <Link
               key={tab.href}

@@ -119,16 +119,7 @@ public class KnowledgePipelineOrchestrator {
         KnowledgeIndexSnapshotEntity building = null;
         try {
             recordEtlEvent("ingest_temp_file", "started");
-            try (InputStream in = Files.newInputStream(tempFile)) {
-                long size = Files.size(tempFile);
-                BinaryStoragePort.StoredObject stored =
-                        binaryStoragePort.store(in, size, projectId + "/" + projectDocumentId + "/source.bin");
-                row.setStorageUri(stored.relativeUri());
-                row.setContentChecksum(stored.sha256Hex());
-                row.setByteSize(size);
-                row.setMimeType(contentType);
-            }
-            knowledgeDocumentRepository.save(row);
+            persistBinaryAndUpdateRow(projectId, projectDocumentId, tempFile, contentType, row);
             final KnowledgeDocumentEntity rowReloaded =
                     knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
 
@@ -163,9 +154,7 @@ public class KnowledgePipelineOrchestrator {
                             resolvedConfigHash);
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
-            for (KnowledgeDocumentEntity d : scopeDocs) {
-                deleteVectorChunksForDocument(d.getId());
-            }
+            deleteVectorsForScopeDocs(scopeDocs);
 
             MaterializationStrategy strategy = materializationStrategy;
             for (KnowledgeDocumentEntity doc : scopeDocs) {
@@ -207,6 +196,30 @@ public class KnowledgePipelineOrchestrator {
             }
         } finally {
             deleteTempQuietly(tempFile);
+        }
+    }
+
+    private void persistBinaryAndUpdateRow(
+            UUID projectId,
+            UUID projectDocumentId,
+            Path tempFile,
+            String contentType,
+            KnowledgeDocumentEntity row) throws IOException {
+        try (InputStream in = Files.newInputStream(tempFile)) {
+            long size = Files.size(tempFile);
+            BinaryStoragePort.StoredObject stored =
+                    binaryStoragePort.store(in, size, projectId + "/" + projectDocumentId + "/source.bin");
+            row.setStorageUri(stored.relativeUri());
+            row.setContentChecksum(stored.sha256Hex());
+            row.setByteSize(size);
+            row.setMimeType(contentType);
+        }
+        knowledgeDocumentRepository.save(row);
+    }
+
+    private void deleteVectorsForScopeDocs(List<KnowledgeDocumentEntity> scopeDocs) {
+        for (KnowledgeDocumentEntity d : scopeDocs) {
+            deleteVectorChunksForDocument(d.getId());
         }
     }
 

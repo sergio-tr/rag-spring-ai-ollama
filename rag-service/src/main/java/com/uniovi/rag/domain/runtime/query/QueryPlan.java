@@ -34,10 +34,9 @@ public record QueryPlan(
     public static final String VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1 = "P12_MEMORY_CONVERSATIONAL_FLOW_V1";
 
     public QueryPlan {
-        queryPlanVersion = Objects.requireNonNull(queryPlanVersion, "queryPlanVersion");
+        queryPlanVersion = requireSupportedQueryPlanVersion(queryPlanVersion);
         rawUserQuery = Objects.requireNonNull(rawUserQuery, "rawUserQuery");
-        effectivePlanningInputText =
-                Objects.requireNonNull(effectivePlanningInputText, "effectivePlanningInputText");
+        effectivePlanningInputText = Objects.requireNonNull(effectivePlanningInputText, "effectivePlanningInputText");
         normalizedQueryText = Objects.requireNonNull(normalizedQueryText, "normalizedQueryText");
         rewrittenQueryText = Objects.requireNonNull(rewrittenQueryText, "rewrittenQueryText");
         classifierLabel = Objects.requireNonNull(classifierLabel, "classifierLabel");
@@ -54,12 +53,16 @@ public record QueryPlan(
         correlationId = Objects.requireNonNull(correlationId, "correlationId");
         classifierModelIdUsed = Objects.requireNonNull(classifierModelIdUsed, "classifierModelIdUsed");
         pipelineNotes = List.copyOf(Objects.requireNonNull(pipelineNotes, "pipelineNotes"));
+    }
 
-        if (!VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1.equals(queryPlanVersion)
-                && !VERSION_P11_QU_CLARIFICATION_CORE_V1.equals(queryPlanVersion)
-                && !VERSION_P6_QU_CORE_V1.equals(queryPlanVersion)) {
-            throw new IllegalArgumentException("Unsupported queryPlanVersion: " + queryPlanVersion);
+    private static String requireSupportedQueryPlanVersion(String queryPlanVersion) {
+        String v = Objects.requireNonNull(queryPlanVersion, "queryPlanVersion");
+        if (VERSION_P12_MEMORY_CONVERSATIONAL_FLOW_V1.equals(v)
+                || VERSION_P11_QU_CLARIFICATION_CORE_V1.equals(v)
+                || VERSION_P6_QU_CORE_V1.equals(v)) {
+            return v;
         }
+        throw new IllegalArgumentException("Unsupported queryPlanVersion: " + v);
     }
 }
 

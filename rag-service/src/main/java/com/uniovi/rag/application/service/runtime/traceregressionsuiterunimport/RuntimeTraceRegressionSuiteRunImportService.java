@@ -115,166 +115,74 @@ public class RuntimeTraceRegressionSuiteRunImportService {
     }
 
     private void validateManifestDefinitionScoped(JsonNode root, int bodyLength, UUID pathDefinitionId) {
-        if (!root.hasNonNull("exportKind")
-                || !root.get("exportKind").isTextual()
-                || !"REGRESSION_SUITE_RUN".equals(root.get("exportKind").asText())) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        RuntimeTraceRegressionSuiteRunImportRejectedException invalidManifest =
+                new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireExportKindRegressionSuiteRun(root, invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireSchemaVersion1(root, invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireTruncatedFalse(root, invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireZipSizeBytes(root, bodyLength, invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireSelectorType(
+                root, "SAVED_DEFINITION_SCOPED_RUN", invalidManifest);
+
+        JsonNode scope =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireObject(root, "scope", invalidManifest);
+        UUID scopeRunId =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidTextInObject(scope, "runId", invalidManifest);
+        UUID scopeDefinitionId =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidTextInObject(scope, "definitionId", invalidManifest);
+        if (!scopeDefinitionId.toString().equals(pathDefinitionId.toString())) {
+            throw invalidManifest;
         }
-        if (!root.has("schemaVersion")
-                || !root.get("schemaVersion").isIntegralNumber()
-                || root.get("schemaVersion").intValue() != 1) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+
+        UUID rootRunId = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidText(root, "runId", invalidManifest);
+        if (!scopeRunId.equals(rootRunId)) {
+            throw invalidManifest;
         }
-        if (!root.has("truncated")
-                || !root.get("truncated").isBoolean()
-                || root.get("truncated").booleanValue()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        UUID rootDefinitionId =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidText(root, "definitionId", invalidManifest);
+        if (!scopeDefinitionId.equals(rootDefinitionId)) {
+            throw invalidManifest;
         }
-        if (!root.has("zipSizeBytes")
-                || !root.get("zipSizeBytes").isIntegralNumber()
-                || root.get("zipSizeBytes").longValue() != (long) bodyLength) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.hasNonNull("selectorType")
-                || !root.get("selectorType").isTextual()
-                || !"SAVED_DEFINITION_SCOPED_RUN".equals(root.get("selectorType").asText())) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.has("scope") || !root.get("scope").isObject()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        JsonNode scope = root.get("scope");
-        if (!scope.hasNonNull("runId") || !scope.get("runId").isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        try {
-            UUID.fromString(scope.get("runId").asText());
-        } catch (IllegalArgumentException ex) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!scope.hasNonNull("definitionId") || !scope.get("definitionId").isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        try {
-            UUID.fromString(scope.get("definitionId").asText());
-        } catch (IllegalArgumentException ex) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!scope.get("definitionId").asText().equals(pathDefinitionId.toString())) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.hasNonNull("runId") || !root.get("runId").isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        try {
-            UUID.fromString(root.get("runId").asText());
-        } catch (IllegalArgumentException ex) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!scope.get("runId").asText().equals(root.get("runId").asText())) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.hasNonNull("definitionId") || !root.get("definitionId").isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        try {
-            UUID.fromString(root.get("definitionId").asText());
-        } catch (IllegalArgumentException ex) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.get("definitionId").asText().equals(scope.get("definitionId").asText())) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.hasNonNull("sourceType") || !root.get("sourceType").isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.hasNonNull("suiteOutcome") || !root.get("suiteOutcome").isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!manifestHasIntegralCount(root, "requestedEntryCount")
-                || !manifestHasIntegralCount(root, "processedEntryCount")
-                || !manifestHasIntegralCount(root, "batchReturnedCount")
-                || !manifestHasIntegralCount(root, "executionFailedCount")
-                || !manifestHasIntegralCount(root, "batchNotAttemptedSubcount")) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
+
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(root, "sourceType", invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(root, "suiteOutcome", invalidManifest);
+        requireCounts(root, invalidManifest);
     }
 
     private void validateManifest(JsonNode root, int bodyLength) {
-        if (!root.hasNonNull("exportKind")
-                || !root.get("exportKind").isTextual()
-                || !"REGRESSION_SUITE_RUN".equals(root.get("exportKind").asText())) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+        RuntimeTraceRegressionSuiteRunImportRejectedException invalidManifest =
+                new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
+
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireExportKindRegressionSuiteRun(root, invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireSchemaVersion1(root, invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireTruncatedFalse(root, invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireZipSizeBytes(root, bodyLength, invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireSelectorType(root, "SAVED_RUN_BY_ID", invalidManifest);
+
+        JsonNode scope =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireObject(root, "scope", invalidManifest);
+        UUID scopeRunId =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidTextInObject(scope, "runId", invalidManifest);
+        UUID rootRunId = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidText(root, "runId", invalidManifest);
+        if (!scopeRunId.equals(rootRunId)) {
+            throw invalidManifest;
         }
-        if (!root.has("schemaVersion")
-                || !root.get("schemaVersion").isIntegralNumber()
-                || root.get("schemaVersion").intValue() != 1) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.has("truncated")
-                || !root.get("truncated").isBoolean()
-                || root.get("truncated").booleanValue()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.has("zipSizeBytes")
-                || !root.get("zipSizeBytes").isIntegralNumber()
-                || root.get("zipSizeBytes").longValue() != (long) bodyLength) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.hasNonNull("selectorType")
-                || !root.get("selectorType").isTextual()
-                || !"SAVED_RUN_BY_ID".equals(root.get("selectorType").asText())) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.has("scope") || !root.get("scope").isObject()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        JsonNode scope = root.get("scope");
-        if (!scope.hasNonNull("runId") || !scope.get("runId").isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        try {
-            UUID.fromString(scope.get("runId").asText());
-        } catch (IllegalArgumentException ex) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.hasNonNull("runId") || !root.get("runId").isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!scope.get("runId").asText().equals(root.get("runId").asText())) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.hasNonNull("sourceType") || !root.get("sourceType").isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!root.has("definitionId")) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        JsonNode defId = root.get("definitionId");
-        if (!defId.isNull() && !defId.isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (defId.isTextual()) {
-            try {
-                UUID.fromString(defId.asText());
-            } catch (IllegalArgumentException ex) {
-                throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-            }
-        }
-        if (!root.hasNonNull("suiteOutcome") || !root.get("suiteOutcome").isTextual()) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
-        if (!manifestHasIntegralCount(root, "requestedEntryCount")
-                || !manifestHasIntegralCount(root, "processedEntryCount")
-                || !manifestHasIntegralCount(root, "batchReturnedCount")
-                || !manifestHasIntegralCount(root, "executionFailedCount")
-                || !manifestHasIntegralCount(root, "batchNotAttemptedSubcount")) {
-            throw new RuntimeTraceRegressionSuiteRunImportRejectedException("invalid manifest");
-        }
+
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(root, "sourceType", invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.optionalUuidTextOrNull(root, "definitionId", invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(root, "suiteOutcome", invalidManifest);
+        requireCounts(root, invalidManifest);
     }
 
-    private static boolean manifestHasIntegralCount(JsonNode root, String field) {
-        return root.has(field) && root.get(field).isIntegralNumber();
+    private static void requireCounts(JsonNode root, RuntimeException invalidManifest) {
+        if (!RuntimeTraceRegressionSuiteRunImportManifestValidators.hasIntegralCount(root, "requestedEntryCount")
+                || !RuntimeTraceRegressionSuiteRunImportManifestValidators.hasIntegralCount(root, "processedEntryCount")
+                || !RuntimeTraceRegressionSuiteRunImportManifestValidators.hasIntegralCount(root, "batchReturnedCount")
+                || !RuntimeTraceRegressionSuiteRunImportManifestValidators.hasIntegralCount(root, "executionFailedCount")
+                || !RuntimeTraceRegressionSuiteRunImportManifestValidators.hasIntegralCount(root, "batchNotAttemptedSubcount")) {
+            throw invalidManifest;
+        }
     }
 
     private void assertManifestMatchesDetail(JsonNode m, RuntimeTraceRegressionSuiteRunDetailDto detail) {

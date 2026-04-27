@@ -65,17 +65,10 @@ public class KnowledgeIndexingService {
             MaterializationStrategy strategy,
             int effectiveChunkMaxChars)
             throws IOException {
-        byte[] bytes =
-                tempFileOverride != null
-                        ? Files.readAllBytes(tempFileOverride)
-                        : readAllBytesFromStorage(doc);
-        String name = doc.getFileName() != null ? doc.getFileName() : originalFilename;
-        String ct = doc.getMimeType() != null ? doc.getMimeType() : contentType;
-        MultipartFile mf = new ByteArrayMultipartFile("file", name, ct, bytes);
-        String content = projectDocumentIngestionService.extractContent(mf);
-        if (content == null || content.isEmpty()) {
-            throw new IllegalArgumentException("empty content");
-        }
+        byte[] bytes = loadBytes(doc, tempFileOverride);
+        String name = coalesce(doc.getFileName(), originalFilename);
+        String ct = coalesce(doc.getMimeType(), contentType);
+        String content = extractRequiredContent(bytes, name, ct);
 
         Instant now = Instant.now();
         Map<String, Object> parsed = new LinkedHashMap<>();
@@ -178,6 +171,29 @@ public class KnowledgeIndexingService {
         indexPayload.put("vectorChunkCount", vectorDocs.size());
         indexPayload.put("indexSignatureHash", indexSigHex);
         saveArtifact(doc, DocumentArtifactType.INDEX, indexPayload, now);
+    }
+
+    private byte[] loadBytes(KnowledgeDocumentEntity doc, Path tempFileOverride) throws IOException {
+        if (tempFileOverride != null) {
+            return Files.readAllBytes(tempFileOverride);
+        }
+        return readAllBytesFromStorage(doc);
+    }
+
+    private static String coalesce(String preferred, String fallback) {
+        if (preferred != null && !preferred.isBlank()) {
+            return preferred;
+        }
+        return fallback;
+    }
+
+    private String extractRequiredContent(byte[] bytes, String name, String contentType) {
+        MultipartFile mf = new ByteArrayMultipartFile("file", name, contentType, bytes);
+        String content = projectDocumentIngestionService.extractContent(mf);
+        if (content == null || content.isEmpty()) {
+            throw new IllegalArgumentException("empty content");
+        }
+        return content;
     }
 
     public int computeChunkCountForDoc(java.util.UUID documentId) {

@@ -55,24 +55,28 @@ class EvaluationServiceFactoryTest {
         QueryDateExtractor queryDateExtractor = mock(QueryDateExtractor.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
+        EvaluationServiceFactory.Settings settings =
+                new EvaluationServiceFactory.Settings(
+                        10,
+                        0.7,
+                        ClassifierClientTestSupport.defaultBaseUrl(),
+                        "default",
+                        5000,
+                        400,
+                        "COT",
+                        1,
+                        350,
+                        512,
+                        500,
+                        200,
+                        false);
         factory = new EvaluationServiceFactory(
                 chatClient,
                 vectorStore,
                 jdbcTemplate,
-                10,
-                0.7,
-                ClassifierClientTestSupport.defaultBaseUrl(),
-                "default",
-                5000,
-                400,
+                settings,
                 responseValidator,
                 documentContentExtractor,
-                "COT",
-                1,
-                350,
-                512,
-                500,
-                200,
                 ollamaConnectivityChecker,
                 metadataLlmResponseCacheService,
                 modelCatalogPort,

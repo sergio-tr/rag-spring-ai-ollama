@@ -74,10 +74,23 @@ public class RagEvaluationConfiguration {
         @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
         @Autowired(required = false) RagRuntimeProperties ragRuntimeProperties
     ) {
-        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, topK, similarityThreshold,
-                classifierServiceUrl, classifierModelId, classifierTimeoutMs, chunkMaxChars, responseValidator, documentContentExtractor,
-                expansionStrategy, expansionOriginalRepeat, expansionMaxExpansionChars, expansionMaxQueryTotalChars,
-                expansionMaxQueryLengthForLlm, expansionRetryQueryLength, ollamaConnectivityChecker,
+        EvaluationServiceFactory.Settings settings =
+                new EvaluationServiceFactory.Settings(
+                        topK,
+                        similarityThreshold,
+                        classifierServiceUrl,
+                        classifierModelId,
+                        classifierTimeoutMs,
+                        chunkMaxChars,
+                        expansionStrategy,
+                        expansionOriginalRepeat,
+                        expansionMaxExpansionChars,
+                        expansionMaxQueryTotalChars,
+                        expansionMaxQueryLengthForLlm,
+                        expansionRetryQueryLength,
+                        knowledgeChatOverlayEnabled);
+        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, settings,
+                responseValidator, documentContentExtractor, ollamaConnectivityChecker,
                 metadataLlmResponseCacheService, modelCatalogPort, chatScopedRagConfigResolver,
                 executionContextFactory, ragExecutionOrchestrator, runtimeTracePersistenceService,
                 reasoningStrategy, responseRanker, postRetrievalProcessor, queryDateExtractor, knowledgeChatOverlayEnabled,
