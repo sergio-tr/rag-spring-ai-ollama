@@ -34,9 +34,9 @@ describe("proxy middleware", () => {
 
   it("allows app routes when access cookie is present", async () => {
     const { default: proxy } = await import("./proxy");
-    const req = new NextRequest(new URL("http://localhost/en/projects"), {
-      headers: { cookie: `${AUTH_ACCESS_COOKIE_NAME}=tok` },
-    });
+    const req = new NextRequest(new URL("http://localhost/en/projects"));
+    // NextRequest cookie parsing can vary by runtime; set it explicitly.
+    req.cookies.set(AUTH_ACCESS_COOKIE_NAME, "tok");
     const res = proxy(req);
     expect(handleI18n).toHaveBeenCalled();
     expect(res.status).toBe(200);

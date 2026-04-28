@@ -1,25 +1,29 @@
-import { defineConfig } from "vite";
-import path from "node:path";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import path, { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Vitest extends Vite `UserConfig` with `test`; this file is excluded from `tsconfig.json` because the published `vitest/config` types stub is circular and breaks `tsc`.
+ * Vitest config as ESM to avoid CJS `require()` of ESM-only deps.
  *
- * Coverage gate: all application source under `src/**` (see `coverage.include`), excluding test files and type-only modules.
+ * Coverage gate: all application source under `src/**` (see `coverage.include`),
+ * excluding test files and type-only modules.
  */
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: "jsdom",
+    environment: "happy-dom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: true,
     coverage: {
-      provider: "v8",
+      provider: "istanbul",
       reporter: ["text", "json-summary", "lcov", "html"],
       all: true,
-      include: ["src/**/*.{ts,tsx}"],
+      include: ["src/**"],
       exclude: [
         "**/*.test.{ts,tsx}",
         // Type-only barrel (no runtime statements to instrument meaningfully).
@@ -61,7 +65,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(here, "./src"),
     },
   },
 });
+
