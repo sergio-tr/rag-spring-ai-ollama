@@ -47,8 +47,9 @@ public class DevUsersSeeder implements ApplicationRunner {
             VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP)
             """;
 
-    public static final UUID DEV_ADMIN_ID = UUID.fromString("deva11d0-0000-4000-8000-000000000001");
-    public static final UUID DEV_USER_ID = UUID.fromString("deu50000-0000-4000-8000-000000000001");
+    // Must be valid UUIDs (hex digits only).
+    public static final UUID DEV_ADMIN_ID = UUID.fromString("de0a11d0-0000-4000-8000-000000000001");
+    public static final UUID DEV_USER_ID = UUID.fromString("de050000-0000-4000-8000-000000000001");
 
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;

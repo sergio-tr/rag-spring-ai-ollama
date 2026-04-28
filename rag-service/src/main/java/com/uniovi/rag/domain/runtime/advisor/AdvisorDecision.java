@@ -22,7 +22,7 @@ public record AdvisorDecision(
         executableKinds = List.copyOf(Objects.requireNonNull(executableKinds, "executableKinds"));
         canonicalQueryText = canonicalQueryText != null ? canonicalQueryText : "";
         reasons = List.copyOf(Objects.requireNonNull(reasons, "reasons"));
-        suppressionReason = Objects.requireNonNull(suppressionReason, "suppressionReason");
+        suppressionReason = suppressionReason == null ? Optional.empty() : suppressionReason;
         if (selected && !executableKinds.equals(EXECUTABLE_KINDS_5_2)) {
             throw new IllegalArgumentException("When selected, executableKinds must be [RETRIEVAL_ADVISOR, CONTEXT_PACKING_ADVISOR]");
         }

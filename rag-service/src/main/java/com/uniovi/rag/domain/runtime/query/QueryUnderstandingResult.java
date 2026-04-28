@@ -24,7 +24,7 @@ public record QueryUnderstandingResult(
     public QueryUnderstandingResult {
         normalizedQuery = Objects.requireNonNull(normalizedQuery, "normalizedQuery");
         classifierLabel = Objects.requireNonNull(classifierLabel, "classifierLabel");
-        classifierQueryType = Objects.requireNonNull(classifierQueryType, "classifierQueryType");
+        classifierQueryType = classifierQueryType == null ? Optional.empty() : classifierQueryType;
         classifierStatus = Objects.requireNonNull(classifierStatus, "classifierStatus");
         entities = Objects.requireNonNull(entities, "entities");
         rewrite = Objects.requireNonNull(rewrite, "rewrite");

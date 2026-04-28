@@ -5,7 +5,6 @@ import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.Objects;
 
 /**
  * Final immutable trace for one turn, assembled only by {@code RagExecutionOrchestrator}.
@@ -67,8 +66,9 @@ public record ExecutionTrace(
     public ExecutionTrace {
         stages = List.copyOf(stages);
         usedKnowledgeSnapshotIds = List.copyOf(usedKnowledgeSnapshotIds);
-        usedResolvedConfigSnapshotId = Objects.requireNonNull(usedResolvedConfigSnapshotId, "usedResolvedConfigSnapshotId");
-        usedConfigHash = Objects.requireNonNull(usedConfigHash, "usedConfigHash");
+        usedResolvedConfigSnapshotId =
+                usedResolvedConfigSnapshotId == null ? Optional.empty() : usedResolvedConfigSnapshotId;
+        usedConfigHash = usedConfigHash == null ? Optional.empty() : usedConfigHash;
         queryPlanVersion = queryPlanVersion == null ? "" : queryPlanVersion;
         classifierStatus = classifierStatus == null ? "" : classifierStatus;
         classifierLabel = classifierLabel == null ? "" : classifierLabel;
@@ -84,7 +84,7 @@ public record ExecutionTrace(
         deterministicToolDetail = deterministicToolDetail == null ? "" : deterministicToolDetail;
         functionCallingOutcome = functionCallingOutcome == null ? "" : functionCallingOutcome;
         functionCallingToolKind = functionCallingToolKind == null ? "" : functionCallingToolKind;
-        retrievalDiagnostics = Objects.requireNonNull(retrievalDiagnostics, "retrievalDiagnostics");
+        retrievalDiagnostics = retrievalDiagnostics == null ? Optional.empty() : retrievalDiagnostics;
         advisorKindsExecuted = advisorKindsExecuted == null ? "" : advisorKindsExecuted;
         advisorOutcome = advisorOutcome == null ? "" : advisorOutcome;
         judgeCandidateSource = judgeCandidateSource == null ? "" : judgeCandidateSource;

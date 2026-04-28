@@ -40,7 +40,7 @@ public record QueryPlan(
         normalizedQueryText = Objects.requireNonNull(normalizedQueryText, "normalizedQueryText");
         rewrittenQueryText = Objects.requireNonNull(rewrittenQueryText, "rewrittenQueryText");
         classifierLabel = Objects.requireNonNull(classifierLabel, "classifierLabel");
-        classifierQueryType = Objects.requireNonNull(classifierQueryType, "classifierQueryType");
+        classifierQueryType = classifierQueryType == null ? Optional.empty() : classifierQueryType;
         classifierStatus = Objects.requireNonNull(classifierStatus, "classifierStatus");
         queryIntent = Objects.requireNonNull(queryIntent, "queryIntent");
         slots = Map.copyOf(Objects.requireNonNull(slots, "slots"));

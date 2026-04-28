@@ -10,7 +10,6 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -79,24 +78,28 @@ public record ExecutionContext(
 
     public ExecutionContext {
         documentFilter = List.copyOf(documentFilter);
-        configHash = Objects.requireNonNull(configHash, "configHash");
-        pinnedResolvedConfigSnapshotId = Objects.requireNonNull(pinnedResolvedConfigSnapshotId, "pinnedResolvedConfigSnapshotId");
-        chatModelOverride = Objects.requireNonNull(chatModelOverride, "chatModelOverride");
-        queryPlan = Objects.requireNonNull(queryPlan, "queryPlan");
-        advisorPackedContextSet = Objects.requireNonNull(advisorPackedContextSet, "advisorPackedContextSet");
+        configHash = configHash == null ? Optional.empty() : configHash;
+        pinnedResolvedConfigSnapshotId =
+                pinnedResolvedConfigSnapshotId == null ? Optional.empty() : pinnedResolvedConfigSnapshotId;
+        chatModelOverride = chatModelOverride == null ? Optional.empty() : chatModelOverride;
+        queryPlan = queryPlan == null ? Optional.empty() : queryPlan;
+        advisorPackedContextSet = advisorPackedContextSet == null ? Optional.empty() : advisorPackedContextSet;
         preMemoryPlanningInputText = preMemoryPlanningInputText != null ? preMemoryPlanningInputText : "";
         effectivePlanningInputText =
                 effectivePlanningInputText != null ? effectivePlanningInputText : "";
-        memorySlice = Objects.requireNonNull(memorySlice, "memorySlice");
+        memorySlice = memorySlice == null ? Optional.empty() : memorySlice;
         memoryOutcome = memoryOutcome == null ? ConversationMemoryOutcome.DISABLED_BY_CONFIG : memoryOutcome;
         memoryStageTraces = List.copyOf(memoryStageTraces == null ? List.of() : memoryStageTraces);
-        clarificationDisableReason = Objects.requireNonNull(clarificationDisableReason, "clarificationDisableReason");
-        originatingUserMessageId = Objects.requireNonNull(originatingUserMessageId, "originatingUserMessageId");
+        clarificationDisableReason =
+                clarificationDisableReason == null ? Optional.empty() : clarificationDisableReason;
+        originatingUserMessageId =
+                originatingUserMessageId == null ? Optional.empty() : originatingUserMessageId;
         routingOutcome =
                 routingOutcome == null ? AdaptiveRoutingOutcome.DISABLED_BY_CONFIG : routingOutcome;
         routingRouteKind =
                 routingRouteKind == null ? AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE : routingRouteKind;
-        routingFallbackRouteKind = Objects.requireNonNull(routingFallbackRouteKind, "routingFallbackRouteKind");
+        routingFallbackRouteKind =
+                routingFallbackRouteKind == null ? Optional.empty() : routingFallbackRouteKind;
         routingStageTraces = List.copyOf(routingStageTraces == null ? List.of() : routingStageTraces);
     }
 

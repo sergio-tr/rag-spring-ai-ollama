@@ -128,7 +128,7 @@ public class RuntimeTraceReplayEligibilityResolver {
 
     public record RuntimeTraceReplayEligibility(RuntimeTraceReplayDecision decision, Optional<PinnedReplayExecutionSpec> pin) {
         public RuntimeTraceReplayEligibility {
-            pin = java.util.Objects.requireNonNull(pin, "pin");
+            pin = pin == null ? Optional.empty() : pin;
         }
     }
 }

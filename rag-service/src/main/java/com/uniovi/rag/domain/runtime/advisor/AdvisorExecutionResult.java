@@ -15,7 +15,7 @@ public record AdvisorExecutionResult(
 
     public AdvisorExecutionResult {
         traceNotes = List.copyOf(Objects.requireNonNull(traceNotes, "traceNotes"));
-        packedContextSet = Objects.requireNonNull(packedContextSet, "packedContextSet");
+        packedContextSet = packedContextSet == null ? Optional.empty() : packedContextSet;
     }
 
     public static AdvisorExecutionResult success(PackedContextSet packed) {
