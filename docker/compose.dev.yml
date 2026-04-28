@@ -72,6 +72,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-collation-bootstrap:
+        condition: service_completed_successfully
       classifier-service:
         condition: service_healthy
       ollama:
