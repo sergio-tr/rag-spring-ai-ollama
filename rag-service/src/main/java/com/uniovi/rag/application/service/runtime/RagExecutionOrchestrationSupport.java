@@ -75,6 +75,7 @@ public final class RagExecutionOrchestrationSupport {
 				boolean fbApplied,
 				Optional<AdaptiveRouteKind> fbKind,
 				boolean workflowSelectorInvoked) {
+			java.util.Objects.requireNonNull(fbKind, "fbKind");
 			return new RoutingSnapshot(
 					routeKind,
 					fallbackWorkflowRouteKind,
@@ -82,7 +83,7 @@ public final class RagExecutionOrchestrationSupport {
 					routingAttempted,
 					outcome,
 					fbApplied,
-					fbKind == null ? Optional.empty() : fbKind,
+					fbKind,
 					workflowSelectorInvoked);
 		}
 

@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
+import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -10,18 +11,19 @@ import com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-@Component
-public class ChunkDenseMetadataWorkflow extends AbstractExecutionWorkflow {
+/**
+ * Shared implementation for dense workflows that differ only by {@link #workflowName()}.
+ */
+abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
 
     private final AdvancedRetrievalPipeline advancedRetrievalPipeline;
 
-    public ChunkDenseMetadataWorkflow(
+    protected AbstractDenseRagWorkflow(
             ChatClient chatClient,
             AdvancedRetrievalPipeline advancedRetrievalPipeline,
             @Autowired(required = false) ObservabilitySupport observability) {
@@ -34,7 +36,8 @@ public class ChunkDenseMetadataWorkflow extends AbstractExecutionWorkflow {
         QueryPlan plan = ctx.queryPlan().orElseThrow(() -> new IllegalStateException("QueryPlan required"));
         String q = canonicalGenerationQuery(ctx);
         long tLlm = System.nanoTime();
-        Optional<com.uniovi.rag.domain.runtime.advisor.PackedContextSet> packed = ctx.advisorPackedContextSet();
+
+        Optional<PackedContextSet> packed = ctx.advisorPackedContextSet();
         if (packed.isPresent()) {
             String user = RuntimeAnswerPrompts.ragUserTurn(q, packed.get().promptContextText());
             String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
@@ -44,12 +47,13 @@ public class ChunkDenseMetadataWorkflow extends AbstractExecutionWorkflow {
                     answer,
                     workflowName(),
                     true,
-                    true,
+                    false,
                     ctx.knowledgeSnapshotSelection().orderedSnapshotIds(),
                     null,
                     Optional.empty(),
                     stages);
         }
+
         CuratedContextSet curated = advancedRetrievalPipeline.retrieve(ctx, plan, workflowName());
         List<ExecutionStageTrace> stages = new ArrayList<>(curated.retrievalStageTraces());
         String user = RuntimeAnswerPrompts.ragUserTurn(q, curated.promptContextText());
@@ -59,15 +63,11 @@ public class ChunkDenseMetadataWorkflow extends AbstractExecutionWorkflow {
                 answer,
                 workflowName(),
                 true,
-                true,
+                false,
                 ctx.knowledgeSnapshotSelection().orderedSnapshotIds(),
                 null,
                 Optional.ofNullable(curated.diagnostics()),
                 stages);
     }
-
-    @Override
-    public String workflowName() {
-        return "ChunkDenseMetadataWorkflow";
-    }
 }
+

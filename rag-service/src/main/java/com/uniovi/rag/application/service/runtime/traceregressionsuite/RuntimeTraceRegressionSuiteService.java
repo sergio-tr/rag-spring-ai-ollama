@@ -124,7 +124,7 @@ public class RuntimeTraceRegressionSuiteService {
     }
 
     private static Optional<String> normalizeWorkflowName(Optional<String> workflowName) {
-        if (workflowName == null || workflowName.isEmpty()) {
+        if (workflowName.isEmpty()) {
             return Optional.empty();
         }
         String trimmed = workflowName.get().trim();

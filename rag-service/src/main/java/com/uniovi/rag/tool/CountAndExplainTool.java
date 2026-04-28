@@ -26,6 +26,10 @@ import java.util.stream.Collectors;
 public class CountAndExplainTool extends AbstractTool {
 
     private static final int FECHA_LINE_FLAGS = Pattern.MULTILINE | Pattern.UNICODE_CHARACTER_CLASS;
+    private static final Pattern FECHA_LABEL_LINE_PATTERN =
+            Pattern.compile(
+                    "^\\s*Fecha\\s*:\\s*([^\\r\\n]{1,200})",
+                    FECHA_LINE_FLAGS | Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     public CountAndExplainTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor) {
         super(chatClient, retriever, extractor);
@@ -159,7 +163,7 @@ public class CountAndExplainTool extends AbstractTool {
 
     private String extractDateFromContent(String content) {
         if (content == null) return null;
-        Matcher m = Pattern.compile("(?iu)\\bFecha\\s*:\\s*(.+)$", FECHA_LINE_FLAGS).matcher(content);
+        Matcher m = FECHA_LABEL_LINE_PATTERN.matcher(content);
         if (m.find()) {
             String v = m.group(1).trim().replaceAll("\\s{2,}", " ").trim();
             return v.length() > 60 ? v.substring(0, 60).trim() : v;

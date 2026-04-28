@@ -507,10 +507,30 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         if (text == null || text.isBlank()) return List.of();
         List<String> out = new ArrayList<>();
         for (String w : text.toLowerCase().trim().split("\\s+")) {
-            String t = w.replaceAll("(?:^[^a-záéíóúñ0-9]+|[^a-záéíóúñ0-9]+$)", "");
+            String t = stripOuterNonTokenChars(w);
             if (!t.isEmpty()) out.add(t);
         }
         return out;
+    }
+
+    /**
+     * Strips leading/trailing characters that are not part of our token alphabet.
+     *
+     * <p>Implemented without regex to avoid super-linear behavior on adversarial inputs.
+     */
+    static String stripOuterNonTokenChars(String s) {
+        if (s == null || s.isEmpty()) return "";
+        int start = 0;
+        int end = s.length();
+        while (start < end && !isTokenChar(s.charAt(start))) start++;
+        while (end > start && !isTokenChar(s.charAt(end - 1))) end--;
+        return start == 0 && end == s.length() ? s : s.substring(start, end);
+    }
+
+    private static boolean isTokenChar(char c) {
+        if (c >= '0' && c <= '9') return true;
+        if (c >= 'a' && c <= 'z') return true;
+        return c == 'á' || c == 'é' || c == 'í' || c == 'ó' || c == 'ú' || c == 'ñ';
     }
 
     protected Double computeBLEU(List<Map<String, Object>> results) {

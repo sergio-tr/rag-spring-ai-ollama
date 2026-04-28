@@ -13,11 +13,16 @@ public class DefaultExpectedAnswerShapeResolver implements ExpectedAnswerShapeRe
 
     @Override
     public ExpectedAnswerShape resolve(Optional<QueryType> classifierQueryType, EntityExtractionResult entities) {
-        if (classifierQueryType != null && classifierQueryType.isPresent()) {
-            return mapClassifierType(classifierQueryType.get());
+        Optional<QueryType> cqt = classifierQueryType == null ? Optional.empty() : classifierQueryType;
+        if (cqt.isPresent()) {
+            return mapClassifierType(cqt.get());
         }
-        if (entities != null && entities.answerTypeHint().isPresent()) {
-            String hint = entities.answerTypeHint().get().toLowerCase(Locale.ROOT);
+        if (entities != null) {
+            var hintOpt = entities.answerTypeHint();
+            if (hintOpt.isEmpty()) {
+                return ExpectedAnswerShape.UNKNOWN;
+            }
+            String hint = hintOpt.get().toLowerCase(Locale.ROOT);
             if (hint.contains("boolean")) {
                 return ExpectedAnswerShape.SCALAR_BOOLEAN;
             }
@@ -39,6 +44,7 @@ public class DefaultExpectedAnswerShapeResolver implements ExpectedAnswerShapeRe
             if (hint.contains("text")) {
                 return ExpectedAnswerShape.PARAGRAPH;
             }
+            return ExpectedAnswerShape.UNKNOWN;
         }
         return ExpectedAnswerShape.UNKNOWN;
     }

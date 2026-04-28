@@ -30,11 +30,12 @@ public class DefaultDeterministicToolExecutor implements DeterministicToolExecut
     @Override
     public DeterministicToolExecutionResult execute(
             DeterministicToolDecision decision, ExecutionContext ctx, QueryPlan plan) {
-        if (!decision.selected() || decision.selectedToolKind().isEmpty()) {
+        Optional<DeterministicToolKind> kindOpt = decision.selectedToolKind();
+        if (!decision.selected() || kindOpt.isEmpty()) {
             return DeterministicToolExecutionResult.skipped(
                     decision.outcome(), decision.reasons(), Optional.empty());
         }
-        DeterministicToolKind kind = decision.selectedToolKind().get();
+        DeterministicToolKind kind = kindOpt.get();
         QueryType queryType = DeterministicToolKindMappings.toQueryType(kind);
         MeetingMinutesToolRawResult raw = meetingMinutesToolExecutionCore.execute(kind, ctx, plan);
         if (raw.status() == MeetingMinutesToolRawResult.Status.MISSING_TOOL) {

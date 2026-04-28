@@ -41,8 +41,9 @@ public class ConversationQuestionCondensor {
 
         // Low temperature to reduce variance (when supported).
         spec = spec.options(OllamaOptions.builder().temperature(0.0).build());
-        if (ctx.chatModelOverride().isPresent()) {
-            String m = ctx.chatModelOverride().get().trim();
+        var chatModelOverride = ctx.chatModelOverride();
+        if (chatModelOverride.isPresent()) {
+            String m = chatModelOverride.get().trim();
             if (!m.isBlank()) {
                 spec = spec.options(OllamaOptions.builder().model(m).temperature(0.0).build());
             }

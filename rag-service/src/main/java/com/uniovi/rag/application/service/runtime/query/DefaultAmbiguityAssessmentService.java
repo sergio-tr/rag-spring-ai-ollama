@@ -26,14 +26,15 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
             StructuredRewriteResult rewrite,
             EntityExtractionResult entities) {
 
+        Optional<QueryType> cqt = classifierQueryType == null ? Optional.empty() : classifierQueryType;
         List<String> reasons = new ArrayList<>();
         List<String> missing = new ArrayList<>();
 
         // Conflict signal: classifier (when OK) vs rewrite targetAction (when present)
-        if (classifierStatus == ClassifierStatus.OK && classifierQueryType != null && classifierQueryType.isPresent()
+        if (classifierStatus == ClassifierStatus.OK && cqt.isPresent()
                 && rewrite != null && rewrite.targetAction().isPresent()) {
             String action = rewrite.targetAction().get().trim().toUpperCase(Locale.ROOT);
-            String classifier = classifierQueryType.get().name().toUpperCase(Locale.ROOT);
+            String classifier = cqt.get().name().toUpperCase(Locale.ROOT);
             if (!action.isBlank() && !classifier.isBlank() && !classifier.contains(action)) {
                 reasons.add("CONFLICT: classifier=" + classifier + " rewriteAction=" + action);
                 return new AmbiguityAssessment(AmbiguityStatus.CONFLICTING_CUES, reasons, List.of());

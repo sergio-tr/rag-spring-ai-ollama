@@ -41,8 +41,9 @@ public final class RagExecutionTraceSupport {
 	}
 
 	public static String clarifyResolveMessage(ExecutionContext ctx) {
-		if (ctx.clarificationDisableReason().isPresent()) {
-			return "disable_reason=" + ctx.clarificationDisableReason().get();
+		var disableReason = ctx.clarificationDisableReason();
+		if (disableReason.isPresent()) {
+			return "disable_reason=" + disableReason.get();
 		}
 		if (ctx.invalidPendingRecoveredThisTurn()) {
 			return "invalid_pending_state_recovered";

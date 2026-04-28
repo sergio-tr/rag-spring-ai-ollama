@@ -69,8 +69,9 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
         // Fixed low-temperature to reduce variance (when supported by the client/model).
         spec = spec.options(OllamaOptions.builder().temperature(0.0).build());
 
-        if (ctx.chatModelOverride().isPresent()) {
-            String m = ctx.chatModelOverride().get().trim();
+        var chatModelOverride = ctx.chatModelOverride();
+        if (chatModelOverride.isPresent()) {
+            String m = chatModelOverride.get().trim();
             if (!m.isBlank()) {
                 spec = spec.options(OllamaOptions.builder().model(m).temperature(0.0).build());
             }
@@ -86,6 +87,7 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
             ClassifierStatus classifierStatus,
             EntityExtractionResult entities) {
 
+        Optional<QueryType> cqt = classifierQueryType == null ? Optional.empty() : classifierQueryType;
         String dates = String.join(", ", entities.dates());
         String people = String.join(", ", entities.people());
         String locations = String.join(", ", entities.locations());
@@ -126,7 +128,7 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
                 escape(normalized.normalizedText()),
                 classifierStatus,
                 escape(classifierLabel),
-                classifierQueryType != null && classifierQueryType.isPresent() ? classifierQueryType.get().name() : "null",
+                cqt.isPresent() ? cqt.get().name() : "null",
                 escape(dates),
                 escape(people),
                 escape(locations),

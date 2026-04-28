@@ -727,8 +727,9 @@ public class RagExecutionOrchestrator {
             }
         }
         ExecutionContext out = ctx;
-        if (result.outcome() == AdvisorOutcome.EXECUTED_SUCCESS && result.packedContextSet().isPresent()) {
-            out = executionContextFactory.attachAdvisorPackedContextSet(ctx, result.packedContextSet().get());
+        var packed = result.packedContextSet();
+        if (result.outcome() == AdvisorOutcome.EXECUTED_SUCCESS && packed.isPresent()) {
+            out = executionContextFactory.attachAdvisorPackedContextSet(ctx, packed.get());
         }
         return new AdvisorPhaseResult(out, AdvisorSnapshot.fromExecution(stages, result));
     }

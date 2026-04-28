@@ -33,8 +33,9 @@ public class ClarificationPolicyResolver {
                     null,
                     "invalid_pending_cleared_before_qu");
         }
-        if (ctx.clarificationDisableReason().isPresent()) {
-            String d = ctx.clarificationDisableReason().get();
+        Optional<String> disableReason = ctx.clarificationDisableReason();
+        if (disableReason.isPresent()) {
+            String d = disableReason.get();
             return new ClarificationDecision(
                     false, ClarificationOutcome.DISABLED_BY_CONFIG, null, "disable_reason=" + d);
         }

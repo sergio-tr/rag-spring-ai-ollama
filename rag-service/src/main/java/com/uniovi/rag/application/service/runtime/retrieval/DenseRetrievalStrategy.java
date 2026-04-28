@@ -82,10 +82,8 @@ public class DenseRetrievalStrategy {
     }
 
     private static UUID parseSnapshotId(Document d) {
-        if (d.getMetadata() == null) {
-            return null;
-        }
-        Object sid = d.getMetadata().get("indexSnapshotId");
+        Map<String, Object> meta = d.getMetadata();
+        Object sid = meta.get("indexSnapshotId");
         if (sid == null) {
             return null;
         }
@@ -97,10 +95,8 @@ public class DenseRetrievalStrategy {
     }
 
     private static boolean snapshotMatches(Document d, Set<String> allowedSnapshotIdStrings) {
-        if (d.getMetadata() == null) {
-            return false;
-        }
-        Object sid = d.getMetadata().get("indexSnapshotId");
+        Map<String, Object> meta = d.getMetadata();
+        Object sid = meta.get("indexSnapshotId");
         if (sid == null) {
             return false;
         }
@@ -127,9 +123,6 @@ public class DenseRetrievalStrategy {
     }
 
     private static boolean passesProjectMetadata(Document d, String projectId, RagExecutionContext ctx) {
-        if (d.getMetadata() == null) {
-            return true;
-        }
         Map<String, Object> meta = d.getMetadata();
         Object cs = meta.get("corpusScope");
         if ("CHAT_LOCAL".equalsIgnoreCase(String.valueOf(cs))) {
@@ -147,15 +140,13 @@ public class DenseRetrievalStrategy {
     }
 
     private static boolean passesDocumentAllowlist(Document d, Set<String> allowed) {
-        if (d.getMetadata() == null) {
-            return false;
-        }
-        Object id = d.getMetadata().get("document_id");
+        Map<String, Object> meta = d.getMetadata();
+        Object id = meta.get("document_id");
         if (id == null) {
-            id = d.getMetadata().get("documentId");
+            id = meta.get("documentId");
         }
         if (id == null) {
-            id = d.getMetadata().get("projectDocumentId");
+            id = meta.get("projectDocumentId");
         }
         if (id == null) {
             return false;
@@ -172,14 +163,12 @@ public class DenseRetrievalStrategy {
     }
 
     private static double extractDenseScore(Document d) {
-        if (d.getMetadata() == null) {
-            return Double.NaN;
-        }
-        Object dist = d.getMetadata().get("distance");
+        Map<String, Object> meta = d.getMetadata();
+        Object dist = meta.get("distance");
         if (dist instanceof Number n) {
             return n.doubleValue();
         }
-        Object score = d.getMetadata().get("score");
+        Object score = meta.get("score");
         if (score instanceof Number n) {
             return n.doubleValue();
         }

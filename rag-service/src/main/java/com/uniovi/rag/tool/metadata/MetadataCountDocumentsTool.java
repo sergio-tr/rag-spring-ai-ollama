@@ -11,7 +11,6 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
 import java.util.*;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -29,10 +28,6 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             "january", "february", "march", "april", "may", "june",
             "july", "august", "september", "october", "november", "december"
     };
-
-    /** Heuristic: query contains typical Spanish diacritics — used for bilingual response templates. */
-    private static final Pattern QUERY_SEEMS_SPANISH =
-            Pattern.compile("(?iu).*\\p{IsAlphabetic}.*[áéíóúüñ].*", Pattern.UNICODE_CHARACTER_CLASS);
 
     public MetadataCountDocumentsTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
@@ -120,7 +115,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for count query: {}", query);
             String zeroMsg = (topic != null)
-                ? (query != null && QUERY_SEEMS_SPANISH.matcher(query).matches()
+                ? (querySeemsSpanish(query)
                     ? "No se encontraron actas que cumplan con ese criterio."
                     : "No meeting minutes match the specified criteria.")
                 : generateNotFoundMessage(query);
@@ -145,6 +140,30 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                   query, analysis.getTotalCount(), totalTime);
         
         return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    /**
+     * Heuristic used for bilingual response templates.
+     *
+     * <p>Implemented without regex to avoid super-linear backtracking on adversarial long inputs.
+     */
+    static boolean querySeemsSpanish(String query) {
+        if (query == null || query.isBlank()) return false;
+        boolean hasAlphabetic = false;
+        boolean hasSpanishDiacritic = false;
+        for (int i = 0; i < query.length(); i++) {
+            char c = query.charAt(i);
+            if (!hasAlphabetic && Character.isAlphabetic(c)) hasAlphabetic = true;
+            if (!hasSpanishDiacritic && isSpanishDiacritic(c)) hasSpanishDiacritic = true;
+            if (hasAlphabetic && hasSpanishDiacritic) return true;
+        }
+        return false;
+    }
+
+    private static boolean isSpanishDiacritic(char c) {
+        // include ü as it's common in Spanish loanwords (e.g. pingüino)
+        return c == 'á' || c == 'é' || c == 'í' || c == 'ó' || c == 'ú' || c == 'ü' || c == 'ñ'
+                || c == 'Á' || c == 'É' || c == 'Í' || c == 'Ó' || c == 'Ú' || c == 'Ü' || c == 'Ñ';
     }
 
     /**
@@ -448,7 +467,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
      */
     private String generateCountZeroMessage(String query, AttendeesCountQueryInfo queryInfo) {
         if (query == null || queryInfo == null) return "0 actas.";
-        String lang = QUERY_SEEMS_SPANISH.matcher(query).matches() ? "es" : "en";
+        String lang = querySeemsSpanish(query) ? "es" : "en";
         if ("less_than".equals(queryInfo.operator)) {
             return lang.equals("es")
                 ? String.format("Ninguna acta cumple el criterio (menos de %d personas).", queryInfo.threshold)

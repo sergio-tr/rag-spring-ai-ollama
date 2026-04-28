@@ -483,10 +483,9 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         
         String decisionSummary = formatDecisionSummary(decisions, clusters);
         
-        String ql = query != null ? query.toLowerCase() : "";
+        String ql = query.toLowerCase();
         boolean asksOccasionsForTopic =
-                query != null
-                        && ((ql.contains("ocasiones") && ql.contains(TOPIC_TOKEN_MENCION))
+                ((ql.contains("ocasiones") && ql.contains(TOPIC_TOKEN_MENCION))
                                 || (ql.contains("occasions") && ql.contains("mention")));
         String topicInstruction = asksOccasionsForTopic
                 ? " When the user asks about occasions when a topic was mentioned, list each meeting/act where it was mentioned and explicitly link each decision to that topic (e.g. 'En relación con la iluminación: en la reunión X se…; en la reunión Y se…'). Do NOT say that the topic was not mentioned if you are listing decisions that do mention it."

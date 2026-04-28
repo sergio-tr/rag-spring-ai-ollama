@@ -24,8 +24,9 @@ public class DefaultQueryIntentResolver implements QueryIntentResolver {
             EntityExtractionResult entities) {
 
         // 1) Classifier wins when non-neutral and OK
-        if (classifierStatus == ClassifierStatus.OK && classifierQueryType != null && classifierQueryType.isPresent()) {
-            return mapClassifierType(classifierQueryType.get());
+        Optional<QueryType> cqt = classifierQueryType == null ? Optional.empty() : classifierQueryType;
+        if (classifierStatus == ClassifierStatus.OK && cqt.isPresent()) {
+            return mapClassifierType(cqt.get());
         }
 
         // 2) Rewrite targetAction only when classifier is neutral/non-authoritative
@@ -58,8 +59,8 @@ public class DefaultQueryIntentResolver implements QueryIntentResolver {
         }
         if (q.startsWith("is ") || q.startsWith("are ") || q.contains(" yes") || q.contains(" no")
                 || q.contains("es ") || q.contains("son ") || q.contains("¿") && q.contains("?")) {
-            if (entities.answerTypeHint().isPresent()
-                    && entities.answerTypeHint().get().toLowerCase(Locale.ROOT).contains("boolean")) {
+            var hint = entities.answerTypeHint();
+            if (hint.isPresent() && hint.get().toLowerCase(Locale.ROOT).contains("boolean")) {
                 return QueryIntent.BOOLEAN_CHECK;
             }
         }

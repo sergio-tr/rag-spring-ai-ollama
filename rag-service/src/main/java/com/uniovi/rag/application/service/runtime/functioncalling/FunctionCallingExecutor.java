@@ -174,10 +174,11 @@ public class FunctionCallingExecutor {
 
             String followUpUser = FunctionCallingPrompts.buildFollowUpUserMessage(plan, payload);
             var followSpec = chatClient.prompt().system(ctx.effectiveSystemPrompt()).user(followUpUser);
-            if (ctx.chatModelOverride().isPresent() && !ctx.chatModelOverride().get().isBlank()) {
+            var chatModelOverride = ctx.chatModelOverride();
+            if (chatModelOverride.isPresent() && !chatModelOverride.get().isBlank()) {
                 followSpec =
                         followSpec.options(
-                                OllamaOptions.builder().model(ctx.chatModelOverride().get().trim()).build());
+                                OllamaOptions.builder().model(chatModelOverride.get().trim()).build());
             }
 
             ChatResponse response2 = followSpec.call().chatResponse();

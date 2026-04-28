@@ -44,7 +44,7 @@ public class RuntimeTracePersistenceService implements Loggable {
             log()
                     .warn(
                             "Runtime trace persistence failed (best-effort). correlationId={} err={}",
-                            ctx != null ? ctx.correlationId() : "",
+                            ctx.correlationId(),
                             e.getClass().getSimpleName());
             return Optional.empty();
         }

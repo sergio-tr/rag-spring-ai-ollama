@@ -35,10 +35,11 @@ public class ClarificationStateResolver {
             clarificationStrategy.clearInvalidPending(conversationId);
             return new ClarificationBootstrap(uq, false, false, true);
         }
-        if (load.state().isEmpty()) {
+        var state = load.state();
+        if (state.isEmpty()) {
             return new ClarificationBootstrap(uq, false, false, false);
         }
-        String merged = clarifiedQueryRefiner.refine(load.state().get(), uq);
+        String merged = clarifiedQueryRefiner.refine(state.get(), uq);
         return new ClarificationBootstrap(merged, true, true, false);
     }
 }
