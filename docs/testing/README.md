@@ -10,14 +10,9 @@
 
 ## Quality gates before deploy (VM)
 
-[`deploy.yml`](../../.github/workflows/deploy.yml) runs only on **`workflow_dispatch`** and **requires** successful runs of the following workflows on the **same commit SHA** as the deploy job (see [../operations/deploy-workflow-audit.md](../operations/deploy-workflow-audit.md)):
+[`deploy.yml`](../../.github/workflows/deploy.yml) runs only on **`workflow_dispatch`** and **requires** a **successful** run of **[`ci.yml`](../../.github/workflows/ci.yml)** on the **same commit SHA** as the deploy job (see [../operations/deploy-workflow-audit.md](../operations/deploy-workflow-audit.md)). The `CI` workflow’s full DAG includes Playwright **`@fullstack`** (job `e2e_fullstack` in [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml)); a separate [`e2e-fullstack.yml`](../../.github/workflows/e2e-fullstack.yml) run on `main` is **not** part of the deploy gate.
 
-| Required before deploy | Workflow file | Role |
-| --- | --- | --- |
-| **CI** | [`ci.yml`](../../.github/workflows/ci.yml) | Backend `mvn verify`, classifier pytest, webapp lint/coverage/build, Playwright **smoke** (excludes `@fullstack`). |
-| **E2E fullstack** | [`e2e-fullstack.yml`](../../.github/workflows/e2e-fullstack.yml) | Spring `e2e` profile + Postgres + Playwright **`@fullstack`** (browser). |
-
-**Not blocking deploy by default:** `integration.yml`, `sonar.yml`, `gatling.yml`, `micro-benchmark.yml`, `system-checks.yml`, `build-images.yml`, `e2e.yml`. Promote any of these only if release policy demands it.
+**Not blocking deploy by default:** `integration.yml`, `e2e-fullstack.yml` (standalone), `sonar.yml`, `gatling.yml`, `micro-benchmark.yml`, `system-checks.yml`, `build-images.yml`, `e2e.yml`. Promote any of these only if release policy demands it.
 
 **Operational smoke after deploy:** manual checks (health, login/chat) are documented in [../operations/runbook-docker-vm.md](../operations/runbook-docker-vm.md) and the Deployment runbook section in [docker/README.md](../../docker/README.md) — not automated in `deploy.yml` today.
 
@@ -36,7 +31,7 @@
 | Unit | Fast, isolated | JUnit, classifier pytest, Vitest | [`ci.yml`](../../.github/workflows/ci.yml) |
 | Integration (service) | Spring `@WebMvcTest`, JDBC | `rag-service/src/test` | `ci.yml` (`mvn verify`) |
 | Stack integration (HTTP) | Auth, product API, lab jobs, optional classifier/obs | `tests/integration` | [`integration.yml`](../../.github/workflows/integration.yml) |
-| E2E UI | Full product flows in browser | `webapp/e2e` (exclude `api/`) | `ci.yml` (smoke) + [`e2e-fullstack.yml`](../../.github/workflows/e2e-fullstack.yml) (`@fullstack`) |
+| E2E UI | Full product flows in browser | `webapp/e2e` (exclude `api/`) | `ci.yml`: smoke + **`@fullstack`** (`e2e_fullstack`); optional post-merge [`e2e-fullstack.yml`](../../.github/workflows/e2e-fullstack.yml) |
 | API / system smoke (Playwright `request`) | **Canonical** HTTP smoke: auth, product, serial API smoke chain — no browser | `webapp/e2e/api` | Local: `npm run test:api`; manual [`system-checks.yml`](../../.github/workflows/system-checks.yml); `make system-checks` |
 | Load / stress | RPS, latency reports | Gatling | [`gatling.yml`](../../.github/workflows/gatling.yml) |
 | Micro-benchmark (Python) | Low-concurrency RAG latency + estimated tokens (schema v1); not load | `tests/performance/retrieval_benchmark.py`, `llm_benchmark.py`, `infra_probe.py` | Local; optional [`micro-benchmark.yml`](../../.github/workflows/micro-benchmark.yml) (dispatch / weekly, **no gates**) |

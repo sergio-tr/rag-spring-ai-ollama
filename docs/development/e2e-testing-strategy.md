@@ -8,7 +8,7 @@
 
 ## Principles
 
-1. **Single PR pipeline:** [`ci.yml`](../../.github/workflows/ci.yml) runs on **pull requests** and **pushes** to **`dev`**, **`main`**, and **`master`**, and calls [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) once. That reusable workflow defines an explicit **`needs:`** DAG: core (backend, classifier, webapp, Playwright smoke) → stack integration → Playwright `@fullstack` → Sonar → **performance** (Gatling smoke + `infra_probe.py`) **only** when the PR targets **`main`** or **`master`**.
+1. **Single PR pipeline:** [`ci.yml`](../../.github/workflows/ci.yml) runs on **pull requests** to **`dev`**, **`main`**, and **`master`**, and on **pushes** to **`main`** and **`master` only** (not on `push` to `dev` — avoids duplicate full DAG when a `dev` → `main` PR is open). It calls [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) once per run. That reusable workflow defines an explicit **`needs:`** DAG: core (backend, classifier, webapp, Playwright smoke) → stack integration → Playwright `@fullstack` → Sonar → **performance** (Gatling smoke + `infra_probe.py`) **only** when the PR targets **`main`** or **`master`**.
 2. **Stack truth** without a browser: `tests/integration` pytest + HTTP (inside the DAG).
 3. **Full browser E2E:** Playwright `@fullstack` (inside the DAG).
 4. **Canonical HTTP smoke** for operators: Playwright **API** project (`webapp/e2e/api`, `npm run test:api`).
@@ -20,11 +20,11 @@
 
 | Workflow | Trigger | Blocks PR merge? | Role |
 | ---------- | --------- | ------------------ | ------ |
-| **`ci.yml`** | PR/push **`dev`**, **`main`**, **`master`** | **Yes** (required check) | Full DAG: backend, classifier, webapp, Playwright smoke, integration, fullstack E2E, Sonar; **+ performance** on PRs to **main/master** only. |
-| `integration.yml` | `push` (paths) + `workflow_dispatch` | No (not on `pull_request`) | Manual / path-filtered stack runs without duplicating the DAG. |
-| `e2e-fullstack.yml` | `push` (paths) + `workflow_dispatch` | No | Manual / path-filtered fullstack runs. |
-| `sonar.yml` | **Push** to `dev` / `main` / `master` only | No | Post-merge branch analysis; **PR** Sonar runs inside `ci.yml`. |
-| `build.yml` | PR/push | Optional | Compile-only. |
+| **`ci.yml`** | `pull_request` on `dev`/`main`/`master`; `push` on `main`/`master` | **Yes** (required: `CI / CI pipeline`) | Full DAG: backend, classifier, webapp, Playwright smoke, integration, fullstack E2E, Sonar; **+ performance** on PRs to **main/master** only. |
+| `integration.yml` | `push` on `main`/`master` (paths) + `workflow_dispatch` | No (not on `pull_request`) | Post-merge / manual path-filtered stack runs. |
+| `e2e-fullstack.yml` | `push` on `main`/`master` (paths) + `workflow_dispatch` | No | Post-merge / manual fullstack runs. |
+| `sonar.yml` | `workflow_dispatch` only | No | Ad-hoc; **PR** Sonar runs inside `ci.yml` → `reusable-ci-core`. |
+| `build.yml` | `pull_request` + `push` on `main`/`master` | Optional | Compile-only; not a substitute for full `CI`. |
 | `e2e.yml` | `workflow_dispatch` | No | Manual Playwright smoke. |
 | `gatling.yml` | Cron + `workflow_dispatch` | No | External Gatling (skips if `GATLING_BASE_URL` empty on schedule). |
 | `micro-benchmark.yml` | Cron + `workflow_dispatch` | No | External micro-benchmarks. |
@@ -32,7 +32,7 @@
 | `build-images.yml` | As configured | Per team | Container images. |
 | **`deploy.yml`** | `workflow_dispatch` | N/A | **Gate:** successful **`ci.yml`** run on the **same commit SHA** (full DAG includes fullstack E2E). |
 
-**Branch protection:** Configure required checks to match the **`ci.yml`** run (job names come from `reusable-ci-core.yml`; verify exact names after the first green run).
+**Branch protection:** The blocking check is the **`CI / CI pipeline`** job from [`ci.yml`](../../.github/workflows/ci.yml) (see [`.github/ci/dev-pr-gate.md`](../../.github/ci/dev-pr-gate.md)). Internal job names in `reusable-ci-core` are shown inside that run; verify exact UI strings after a green run.
 
 **Local parity:** [`.github/local/README.md`](../../.github/local/README.md), [`local-ci-parity.md`](../operations/local-ci-parity.md).
 

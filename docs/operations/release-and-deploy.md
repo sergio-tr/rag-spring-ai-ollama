@@ -17,7 +17,7 @@ Digest may be recorded in release notes as extra evidence; the **primary** opera
 
 ## Quality gates
 
-Workflows for tests, SonarCloud, and optional E2E/load jobs are listed in [../README.md](../README.md). **Manual VM deploy** (`deploy.yml`) requires prior green runs of `ci.yml` and `e2e-fullstack.yml` on the same commit — see [deploy-workflow-audit.md](deploy-workflow-audit.md). **Deploy-specific gate table:** [../testing/README.md](../testing/README.md) — [Quality gates before deploy (VM)](../testing/README.md#quality-gates-before-deploy-vm). Thresholds (e.g. coverage) are enforced in build config; see `rag-service/pom.xml`, classifier `pytest`/`coverage` config, and Sonar project properties.
+Workflows for tests, SonarCloud, and optional E2E/load jobs are listed in [../README.md](../README.md). **Manual VM deploy** (`deploy.yml`) requires a prior successful **[`ci.yml`](../../.github/workflows/ci.yml)** run (full DAG, including Playwright `@fullstack`) for the same commit SHA — see [deploy-workflow-audit.md](deploy-workflow-audit.md). **Deploy-specific gate table:** [../testing/README.md](../testing/README.md) — [Quality gates before deploy (VM)](../testing/README.md#quality-gates-before-deploy-vm). Thresholds (e.g. coverage) are enforced in build config; see `rag-service/pom.xml`, classifier `pytest`/`coverage` config, and Sonar project properties.
 
 ## Database
 

@@ -4,7 +4,7 @@ Normative reference for **pull request validation**, **workflow alignment**, **D
 
 ## Pull requests and branch gates
 
-**Entry workflow:** [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) invokes [`.github/workflows/reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) (`workflow_call`). PRs target branches configured in `ci.yml` (e.g. `dev`, `main`, `master`).
+**Entry workflow:** [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) invokes [`.github/workflows/reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) (`workflow_call`). It runs on **`pull_request`** to `dev`, `main`, and `master`, and on **`push`** to **`main` and `master` only** (post-merge and deploy SHA alignment; not on `push` to `dev` — see [`.github/ci/dev-pr-gate.md`](../../.github/ci/dev-pr-gate.md)).
 
 ### Branch protection checklist (required checks vs GitHub UI labels)
 
@@ -94,7 +94,7 @@ Compose defaults for the same prefix live under **Compose parameterization** bel
 ### Compose validation (two layers)
 
 1. **Every PR** (main CI): job **`compose_structural_guard`** runs `create-env-all.sh --force` and structural [`compose_guard.py`](../../docker/scripts/compose_guard.py) (`image_forbidden`, `yaml_error`, `build_*`). No Docker daemon required.
-2. **When Docker paths change:** [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml) runs the same structural guard plus **`docker compose config -q`** on merged file sets (see workflow). Trigger: `paths` **`docker/**`** or edits to that workflow — so application-only PRs rely on layer (1) unless you run Compose locally.
+2. **When Docker paths change:** [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml) runs the same structural guard plus **`docker compose config -q`** on merged file sets (see workflow). Trigger: `paths` **`docker/**`** or edits to that workflow on **`pull_request`** (all configured bases) and on **`push`** to **`main`/`master` only** — so application-only PRs rely on layer (1) unless you run Compose locally.
 
 **Full `compose_guard` (including `environment_literal`, `healthcheck_*`):** not enforced in CI until remaining overlays are migrated; tracked backlog: `compose.obs.yml`, `compose.prod.yml` (`reverse-proxy`), `compose.rag-dev-obs.yml`, `docker-compose.yml` (classifier healthcheck). CI continues to use `--only-rules` structural subset in both workflows.
 

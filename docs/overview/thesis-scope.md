@@ -37,7 +37,7 @@
 
 ## Operational expectations (informative)
 
-A deployable stack on a VM, **login** and **chat** working, **E2E smoke** (`ci.yml`) green, **observability** demonstrable when the obs overlay is enabled, and **deploy** gated by **CI + E2E fullstack** on the same SHA per [deploy.yml](../../.github/workflows/deploy.yml). Details: [release readiness checklist](../operations/release-readiness-checklist.md).
+A deployable stack on a VM, **login** and **chat** working, **E2E** coverage from a green **`ci.yml`** (including Playwright `@fullstack` in the same DAG), **observability** demonstrable when the obs overlay is enabled, and **deploy** gated by successful **`CI`** for the same SHA per [deploy.yml](../../.github/workflows/deploy.yml). Details: [release readiness checklist](../operations/release-readiness-checklist.md).
 
 ---
 

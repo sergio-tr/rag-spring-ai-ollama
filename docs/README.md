@@ -70,18 +70,18 @@
 
 | Workflow | When it runs | Role |
 | --- | --- | --- |
-| [`ci.yml`](../.github/workflows/ci.yml) | PR/push `dev`, `main`, `master` | **Primary gate**: `mvn verify` (JUnit), classifier `pytest`, webapp lint/typecheck/coverage/build, Playwright **smoke** (excludes `@fullstack`), stack integration, **Docker build smoke** (no push), `@fullstack` E2E, Sonar (details: [devops/README.md](devops/README.md)) |
-| [`docker-compose-ci.yml`](../.github/workflows/docker-compose-ci.yml) | PR/push path `docker/**` (branches as above) | `create-env-all.sh`, `compose_guard.py`, `docker compose config` (merge validation) |
-| [`build.yml`](../.github/workflows/build.yml) | PR/push | Fast compile-only (`mvn package -DskipTests`, classifier build) — no tests |
-| [`integration.yml`](../.github/workflows/integration.yml) | PR/push path filter + `workflow_dispatch` | **Stack HTTP integration**: `pytest tests/integration` against Spring **`e2e`** + Postgres (`INTEGRATION_CHECK_OBS=0`; classifier tests skip if no classifier) |
-| [`e2e-fullstack.yml`](../.github/workflows/e2e-fullstack.yml) | PR/push path filter + `workflow_dispatch` | Spring `e2e` + Postgres + Playwright **`@fullstack`** (browser E2E) |
+| [`ci.yml`](../.github/workflows/ci.yml) | `pull_request` on `dev`/`main`/`master`; `push` on `main`/`master` only | **Primary gate**: `mvn verify` (JUnit), classifier `pytest`, webapp lint/typecheck/coverage/build, Playwright **smoke** (excludes `@fullstack`), stack integration, **Docker build smoke** (no push), `@fullstack` E2E, Sonar (details: [devops/README.md](devops/README.md)) |
+| [`docker-compose-ci.yml`](../.github/workflows/docker-compose-ci.yml) | `pull_request` path `docker/**` on `dev`/`main`/`master`; `push` path `docker/**` on `main`/`master` only | `create-env-all.sh`, `compose_guard.py`, `docker compose config` (merge validation) |
+| [`build.yml`](../.github/workflows/build.yml) | `pull_request` + `push` on `main`/`master` | Fast compile-only (`mvn package -DskipTests`, classifier build) — no tests; optional extra check, not the full DAG |
+| [`integration.yml`](../.github/workflows/integration.yml) | `push` path filter on `main`/`master` + `workflow_dispatch` | **Stack HTTP integration**: `pytest tests/integration` against Spring **`e2e`** + Postgres (`INTEGRATION_CHECK_OBS=0`; classifier tests skip if no classifier) |
+| [`e2e-fullstack.yml`](../.github/workflows/e2e-fullstack.yml) | `push` path filter on `main`/`master` + `workflow_dispatch` | Spring `e2e` + Postgres + Playwright **`@fullstack`** (browser E2E) |
 | [`e2e.yml`](../.github/workflows/e2e.yml) | `workflow_dispatch` only | Manual Playwright smoke (same idea as `ci` webapp-e2e) |
 | [`gatling.yml`](../.github/workflows/gatling.yml) | Weekly cron + `workflow_dispatch` | **Gatling** JVM scenarios incl. `MixedRealistic*` (skips if `GATLING_BASE_URL` empty) |
 | [`micro-benchmark.yml`](../.github/workflows/micro-benchmark.yml) | Weekly cron + `workflow_dispatch` | Optional Python RAG micro-benchmarks (skips if `BENCHMARK_BASE_URL` empty) — no PR gate |
 | [`system-checks.yml`](../.github/workflows/system-checks.yml) | `workflow_dispatch` | Playwright API (`npm run test:api` in `webapp/`) against a **running** Spring URL |
-| [`sonar.yml`](../.github/workflows/sonar.yml) | As configured | SonarCloud analysis |
-| [`build-images.yml`](../.github/workflows/build-images.yml) | As configured | Container image builds |
-| [`deploy.yml`](../.github/workflows/deploy.yml) | `workflow_dispatch` | **Manual deploy** to VM; **gates** on `ci.yml` + `e2e-fullstack.yml` at same SHA — see [operations/deploy-workflow-audit.md](operations/deploy-workflow-audit.md) |
+| [`sonar.yml`](../.github/workflows/sonar.yml) | `workflow_dispatch` | Ad-hoc SonarCloud analysis; PR analysis runs inside `ci.yml` → `reusable-ci-core` |
+| [`build-images.yml`](../.github/workflows/build-images.yml) | `push` on `main`/`master` + `workflow_dispatch` | Container image builds (GHCR) |
+| [`deploy.yml`](../.github/workflows/deploy.yml) | `workflow_dispatch` | **Manual deploy** to VM; **gates** on successful [`ci.yml`](../.github/workflows/ci.yml) for the same commit SHA — see [operations/deploy-workflow-audit.md](operations/deploy-workflow-audit.md) |
 
 Details and the testing pyramid: [testing/README.md](testing/README.md) (including **Quality gates before deploy**). Workflows vs gates (aligned): [development/e2e-testing-strategy.md](development/e2e-testing-strategy.md). Load tool roles: [performance/README.md](performance/README.md). Release checklist: [operations/release-readiness-checklist.md](operations/release-readiness-checklist.md).
 

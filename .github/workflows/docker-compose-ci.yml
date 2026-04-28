@@ -1,6 +1,7 @@
 # Validates Docker Compose policy, generated .env chain, and docker compose config merge.
 # Complements reusable-ci-core "Compose structural guard" (runs on every PR) with full `docker compose config`
 # on representative file sets. This workflow is path-filtered; see docs/devops/README.md.
+# push@dev omitted: same duplicate-run issue as ci.yml when a PR dev->main is open (push + pull_request).
 name: Docker Compose CI
 
 on:
@@ -11,7 +12,7 @@ on:
       - "docker/**"
       - ".github/workflows/docker-compose-ci.yml"
   push:
-    branches: [dev, main, master]
+    branches: [main, master]
     paths:
       - "docker/**"
       - ".github/workflows/docker-compose-ci.yml"

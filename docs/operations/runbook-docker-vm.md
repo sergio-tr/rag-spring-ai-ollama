@@ -81,5 +81,5 @@ Treat observability as an **optional Compose overlay**; production parity is “
 
 | Method | When |
 | -------- | ------ |
-| `workflow_dispatch` on `deploy.yml` | After **`ci.yml`** + **`e2e-fullstack.yml`** are green on the **same SHA** (see [deploy-workflow-audit.md](deploy-workflow-audit.md)). |
+| `workflow_dispatch` on `deploy.yml` | After **`ci.yml`** is green on the **same SHA** (full DAG includes Playwright `@fullstack`; see [deploy-workflow-audit.md](deploy-workflow-audit.md)). |
 | SSH manual | Hotfix, rollback, or when Actions is unavailable — use the same compose commands as above. |

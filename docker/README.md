@@ -93,7 +93,7 @@ Compose uses **`build:`** with `context` + `dockerfile` and **`args`** fed from 
 
 ## CI validation
 
-On pull requests and pushes to **`dev`**, **`main`**, or **`master`** when files under `docker/` change, [`.github/workflows/docker-compose-ci.yml`](../.github/workflows/docker-compose-ci.yml) runs:
+When files under `docker/` change, [`.github/workflows/docker-compose-ci.yml`](../.github/workflows/docker-compose-ci.yml) runs on **pull requests** to **`dev`**, **`main`**, or **`master`**, and on **pushes** to **`main`** or **`master` only** (not on `push` to `dev`, to avoid duplicate runs when a PR is open). It does **not** run if you only change application code outside `docker/`.
 
 1. `./docker/scripts/create-env-all.sh --force`
 2. `compose_guard.py` with structural `--only-rules` (see [`docker/scripts/README.md`](scripts/README.md))

@@ -14,7 +14,7 @@
 | P2 | **Login** functional (authenticated session against the product). | Manual or Playwright smoke path; webapp + backend JWT flow. |
 | P3 | **Chat** functional (RAG/chat path usable end-to-end with configured LLM/embeddings). | Smoke query or UI chat; backend health includes Ollama/models as configured. |
 | P4 | **Observability operational** when the optional stack is enabled (`compose.obs.yml` per [observability README](../../observability/README.md)). | Traces/metrics checklist in [observability/README.md](../../observability/README.md); operator guide: [grafana-observability-guide.md](grafana-observability-guide.md). |
-| P5 | **E2E smoke OK** — `ci.yml` Playwright smoke (non-`@fullstack`) green on the release candidate. | Green `ci.yml` run on the SHA; full-stack browser coverage is additionally gated via `e2e-fullstack.yml` for deploy (see below). |
+| P5 | **E2E smoke OK** — `ci.yml` Playwright paths green on the release candidate (smoke + `@fullstack` in the same workflow). | Green `ci.yml` run on the SHA. |
 
 ---
 
@@ -39,7 +39,7 @@
 | # | Criterion | Evidence |
 | --- | ----------- | ---------- |
 | Q1 | **`ci.yml`** succeeds on the release candidate commit (backend, classifier, webapp including coverage gate where configured). | Green run on `main` / merge SHA. |
-| Q2 | **`e2e-fullstack.yml`** succeeds for the same SHA (Playwright `@fullstack` + stack). | Green workflow run linked to SHA. |
+| Q2 | **Playwright `@fullstack`** is part of a green **`ci.yml`** on the release SHA (see `e2e_fullstack` in [`reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml)). Optional: separate [`e2e-fullstack.yml`](../../.github/workflows/e2e-fullstack.yml) on `main` when paths change — not a `deploy.yml` gate. | `ci.yml` green; optional second workflow if used. |
 | Q3 | **Playwright API smoke** (`npm run test:api`) is documented for staging/ops; optional manual [`system-checks.yml`](../../.github/workflows/system-checks.yml) when validating a running URL. | Doc link or waiver if not exercised. |
 | Q4 | **Sonar / `sonar.yml`** (if enabled for the repo) — no new **blocking** quality gate regressions agreed with maintainers. | Sonar dashboard or CI conclusion. |
 
@@ -47,7 +47,7 @@
 
 | # | Criterion | Evidence |
 | --- | ----------- | ---------- |
-| D1 | **`deploy.yml`** pre-deploy **gate** passes: required workflows (`ci.yml`, `e2e-fullstack.yml`) completed **successfully** for the **same** `head_sha` as the deploy run. | Deploy job log shows “Gate OK” lines. |
+| D1 | **`deploy.yml`** pre-deploy **gate** passes: **[`ci.yml`](../../.github/workflows/ci.yml)** completed **successfully** for the **same** `head_sha` as the deploy run. | Deploy job log shows “Gate OK” for `CI`. |
 | D2 | **Secrets** documented (names and purpose only — no values): `VM_HOST`, `VM_USER`, `VM_SSH_KEY`, `VM_DEPLOY_DIR`, `GHCR_TOKEN`. | [deploy-workflow-audit.md](deploy-workflow-audit.md). |
 | D3 | Target VM can **pull images** (`docker login` + `compose pull`) and **apply** `docker-compose.yml` + `compose.prod.yml`. | Runbook section “Verify after deploy”. |
 
