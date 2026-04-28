@@ -39,6 +39,20 @@ With observability, add `-f compose.obs.yml`, **`--profile observability`**, and
 ./docker/scripts/create-env-all.sh
 ```
 
+## Dev accounts (seeded users)
+
+When running the backend with Spring profile **`dev`** (e.g. `./docker/scripts/up.sh dev --rag ...`), the backend seeds two users so you can use the UI immediately without manual DB edits:
+
+- **Admin**: `admin@dev.local` / `dev`
+- **User** (non-admin): `user@dev.local` / `dev`
+
+Override these defaults via `rag-service/.env`:
+
+- `RAG_DEV_SEED_ADMIN_EMAIL`, `RAG_DEV_SEED_ADMIN_PASSWORD`, `RAG_DEV_SEED_ADMIN_NAME`
+- `RAG_DEV_SEED_USER_EMAIL`, `RAG_DEV_SEED_USER_PASSWORD`, `RAG_DEV_SEED_USER_NAME`
+
+These accounts are **dev-only**; they are not created when running with profile `prod`.
+
 Use `--force` to overwrite existing files. The script also runs `sync_env_from_examples.py` to append new keys from each `*.env.example` without clobbering values.
 
 ## Compose profiles (`docker-compose.yml`)

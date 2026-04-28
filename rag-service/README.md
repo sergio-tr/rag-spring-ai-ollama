@@ -81,6 +81,20 @@ To exercise a **container** environment similar to production but with the repo 
 ./docker/scripts/up.sh dev --rag --gpu --obs --classifier   # example
 ```
 
+#### Dev seeded accounts (profile `dev`)
+
+When running with Spring profile **`dev`** (the default for `backend-dev`), the backend seeds two users so you can use the UI immediately:
+
+- **Admin**: `admin@dev.local` / `dev`
+- **User** (non-admin): `user@dev.local` / `dev`
+
+Override these via `rag-service/.env`:
+
+- `RAG_DEV_SEED_ADMIN_EMAIL`, `RAG_DEV_SEED_ADMIN_PASSWORD`, `RAG_DEV_SEED_ADMIN_NAME`
+- `RAG_DEV_SEED_USER_EMAIL`, `RAG_DEV_SEED_USER_PASSWORD`, `RAG_DEV_SEED_USER_NAME`
+
+These accounts are **dev-only** and are not created with profile `prod`.
+
 This starts **`backend-dev`** (`docker/compose.dev.yml` + `Dockerfile.dev`): bind-mount `rag-service/` → `/app`, Maven cache in the `rag_m2_cache` volume. If Ollama runs in the same Compose stack, set `SPRING_AI_OLLAMA_BASE_URL=http://ollama:11434` in `rag-service/.env`. Watcher poll interval: `RAG_DEV_POLL_INTERVAL` (default `2` seconds).
 
 **Faster restarts:** the entrypoint skips **`mvn compile`** on start when `target/classes` already contains `.class` files (e.g. run `./mvnw compile` once on the host, or reuse a previous build). Set **`RAG_DEV_FORCE_INITIAL_COMPILE=1`** in `rag-service/.env` to always compile on startup (old behaviour).

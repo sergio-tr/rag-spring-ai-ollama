@@ -201,8 +201,15 @@ By default the script brings the stack up and then tears it down; use `--keep` t
 
 ### 3. Authenticated product smoke
 
+**Dev seeded accounts:** when the backend runs with profile **`dev`**, two accounts are available by default:
+
+- Admin: `admin@dev.local` / `dev`
+- User: `user@dev.local` / `dev`
+
+Override in `rag-service/.env` via `RAG_DEV_SEED_*` (see `rag-service/.env.example`).
+
 - Login to obtain a JWT:
-  `curl -s -X POST http://localhost:9000/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"dev@local.test\",\"password\":\"dev\"}"`
+  `curl -s -X POST http://localhost:9000/api/auth/login -H "Content-Type: application/json" -d "{\"email\":\"admin@dev.local\",\"password\":\"dev\"}"`
 - Use the JWT to call stable product endpoints (non-snapshot-dependent):
   - `GET /api/v5/config/schema`
   - `GET /api/v5/presets`
