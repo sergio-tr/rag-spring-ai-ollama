@@ -22,7 +22,6 @@ export default defineConfig({
     coverage: {
       provider: "istanbul",
       reporter: ["text", "json-summary", "lcov", "html"],
-      all: true,
       include: ["src/**"],
       exclude: [
         "**/*.test.{ts,tsx}",
