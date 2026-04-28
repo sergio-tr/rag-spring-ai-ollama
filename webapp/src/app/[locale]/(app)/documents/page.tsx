@@ -19,10 +19,11 @@ export default function DocumentsPage() {
   const qc = useQueryClient();
   const { data, isLoading, isError } = useProjectDocuments(projectId);
   const del = useDeleteProjectDocument(projectId);
+  const rows = data ?? [];
 
   const hasIngesting = useMemo(
-    () => data?.some((d) => d.status === "INGESTING") ?? false,
-    [data],
+    () => rows.some((d) => d.status === "INGESTING"),
+    [rows],
   );
 
   useEffect(() => {
@@ -50,10 +51,10 @@ export default function DocumentsPage() {
           {t("loadError")}
         </p>
       )}
-      {data?.length === 0 && !isLoading && (
+      {!isLoading && !isError && rows.length === 0 && (
         <p className="text-muted-foreground text-sm">{t("empty")}</p>
       )}
-      {(data?.length ?? 0) > 0 && (
+      {rows.length > 0 && (
         <div className="overflow-x-auto rounded-lg border">
           <table className="w-full text-left text-sm">
             <thead className="border-b bg-muted/40">
@@ -66,7 +67,7 @@ export default function DocumentsPage() {
               </tr>
             </thead>
             <tbody>
-              {data.map((row) => (
+              {rows.map((row) => (
                 <tr key={row.id} className="border-b border-border/80">
                   <td className="p-3">{row.fileName}</td>
                   <td className="p-3">

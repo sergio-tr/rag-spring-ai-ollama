@@ -120,7 +120,7 @@ class TrainingPipeline(Loggable):
         with open(labels_file, "w", encoding="utf-8") as f:
             f.write("\n".join(class_names))
 
-        y_pred_probs = model.predict(X_val, verbose=0)
+        y_pred_probs = model.predict(x_val, verbose=0)
         y_pred = np.argmax(y_pred_probs, axis=1)
         y_true = np.argmax(y_val, axis=1)
         report = classification_report(

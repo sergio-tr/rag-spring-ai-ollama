@@ -9,7 +9,8 @@ import { useTranslations } from "next-intl";
 export default function ProjectsPage() {
   const t = useTranslations("Projects");
   const { data, isLoading, isError } = useProjectList(0, 24);
-  useSyncActiveProjectWithList(data?.items);
+  const items = data?.items ?? [];
+  useSyncActiveProjectWithList(items);
 
   return (
     <div className="flex flex-col gap-6">
@@ -30,11 +31,11 @@ export default function ProjectsPage() {
           {t("loadError")}
         </p>
       )}
-      {!isLoading && !isError && data?.items?.length === 0 && (
+      {!isLoading && !isError && items.length === 0 && (
         <p className="text-muted-foreground text-sm">{t("empty")}</p>
       )}
-      {!isLoading && !isError && (data?.items?.length ?? 0) > 0 && (
-        <ProjectGrid items={data.items} />
+      {!isLoading && !isError && items.length > 0 && (
+        <ProjectGrid items={items} />
       )}
     </div>
   );
