@@ -1,18 +1,18 @@
 package com.uniovi.rag.service.admin;
 
+import com.uniovi.rag.domain.AllowedModelType;
+import com.uniovi.rag.infrastructure.persistence.AllowedModelRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.AllowedModelEntity;
 import com.uniovi.rag.interfaces.rest.admin.dto.AdminAllowlistEntryDto;
 import com.uniovi.rag.interfaces.rest.admin.dto.CreateAllowlistEntryRequest;
 import com.uniovi.rag.interfaces.rest.admin.dto.UpdateAllowlistEntryRequest;
-import com.uniovi.rag.domain.AllowedModelType;
-import com.uniovi.rag.infrastructure.persistence.jpa.AllowedModelEntity;
-import com.uniovi.rag.infrastructure.persistence.AllowedModelRepository;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.util.List;
-import java.util.UUID;
 
 @Service
 public class AllowlistAdminService {
@@ -26,7 +26,7 @@ public class AllowlistAdminService {
     @Transactional(readOnly = true)
     public List<AdminAllowlistEntryDto> list() {
         return allowedModelRepository.findAll().stream().map(AllowlistAdminService::toDto).sorted(
-                java.util.Comparator.comparing(AdminAllowlistEntryDto::name)
+                Comparator.comparing(AdminAllowlistEntryDto::name)
                         .thenComparing(e -> e.type().name()))
                 .toList();
     }

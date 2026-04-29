@@ -4,10 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.runtime.tracequery.RuntimeTraceQueryService;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceSummaryDto;
-import org.junit.jupiter.api.Test;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -20,7 +16,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
+import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -247,7 +247,7 @@ class RuntimeTraceExportServiceTest {
     private static List<String> zipEntriesInOrder(byte[] zipBytes) throws RuntimeException {
         try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipBytes), StandardCharsets.UTF_8)) {
             List<String> names = new ArrayList<>();
-            java.util.zip.ZipEntry e;
+            ZipEntry e;
             while ((e = zis.getNextEntry()) != null) {
                 names.add(e.getName());
             }
@@ -259,7 +259,7 @@ class RuntimeTraceExportServiceTest {
 
     private static String readZipEntryUtf8(byte[] zipBytes, String name) throws Exception {
         try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipBytes), StandardCharsets.UTF_8)) {
-            java.util.zip.ZipEntry e;
+            ZipEntry e;
             while ((e = zis.getNextEntry()) != null) {
                 if (name.equals(e.getName())) {
                     return new String(zis.readAllBytes(), StandardCharsets.UTF_8);

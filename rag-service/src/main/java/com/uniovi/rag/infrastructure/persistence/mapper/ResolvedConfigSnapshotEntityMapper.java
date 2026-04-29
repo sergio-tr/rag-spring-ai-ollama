@@ -2,17 +2,17 @@ package com.uniovi.rag.infrastructure.persistence.mapper;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper;
 import com.uniovi.rag.domain.config.runtime.ResolvedConfigSnapshot;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotResponse;
-import org.springframework.stereotype.Component;
-
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.stereotype.Component;
 
 /**
  * Single owner of {@code resolved_config_snapshot} JSON column shapes. Embeds {@code schema_version}
@@ -78,7 +78,7 @@ public class ResolvedConfigSnapshotEntityMapper {
         Map<String, Object> payload = new LinkedHashMap<>(resolved.resolvedCoreConfig().toValueMap());
         if (knowledgeBuildProjectionNested != null && !knowledgeBuildProjectionNested.isEmpty()) {
             payload.put(
-                    com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper.PAYLOAD_KEY,
+                    KnowledgeBuildProjectionMapper.PAYLOAD_KEY,
                     knowledgeBuildProjectionNested);
         }
         e.setPayloadJsonb(payload);

@@ -7,12 +7,12 @@ import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
 /**
  * Resolves {@link RagConfig} for chat-scoped requests using the same cascade as {@link com.uniovi.rag.service.query.ProcessQueryService}
@@ -32,7 +32,7 @@ public class ChatScopedRagConfigResolver {
             @Autowired(required = false) RuntimeConfigResolutionService runtimeConfigResolutionService,
             ConversationRepository conversationRepository,
             ObjectMapper objectMapper,
-            @org.springframework.beans.factory.annotation.Value("${rag.config.v2.enabled:false}") boolean configV2Enabled) {
+            @Value("${rag.config.v2.enabled:false}") boolean configV2Enabled) {
         this.configResolver = configResolver;
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
         this.conversationRepository = conversationRepository;

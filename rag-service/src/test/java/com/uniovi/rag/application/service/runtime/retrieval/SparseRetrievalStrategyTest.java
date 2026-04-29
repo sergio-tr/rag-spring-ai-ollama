@@ -5,22 +5,23 @@ import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataAccessException;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-
 import java.sql.ResultSet;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -99,9 +100,9 @@ class SparseRetrievalStrategyTest {
 
         sparseRetrievalStrategy.retrieve(req);
 
-        org.mockito.Mockito.verify(jdbc)
+        Mockito.verify(jdbc)
                 .query(
-                        org.mockito.ArgumentMatchers.argThat(
+                        ArgumentMatchers.argThat(
                                 (String sql) ->
                                         sql.contains("content_tsv")
                                                 && sql.contains("websearch_to_tsquery")
@@ -169,7 +170,7 @@ class SparseRetrievalStrategyTest {
 
         verify(jdbc)
                 .query(
-                        org.mockito.ArgumentMatchers.argThat(
+                        ArgumentMatchers.argThat(
                                 (String sql) -> sql.contains("(metadata->>'document_id')::uuid IN (:docIds)")),
                         any(MapSqlParameterSource.class),
                         any(RowMapper.class));

@@ -1,10 +1,8 @@
 package com.uniovi.rag.infrastructure.storage;
 
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
 import java.io.BufferedInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -13,6 +11,8 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
 /**
  * Filesystem-backed {@link EvaluationDatasetStorePort} (same pattern as {@link LocalBinaryStorageAdapter}).
@@ -28,7 +28,7 @@ public class LocalEvaluationDatasetStorageAdapter implements EvaluationDatasetSt
             @Value("${rag.evaluation.max-upload-bytes:26214400}") long maxUploadBytes) {
         String r = (rootPath != null && !rootPath.isBlank())
                 ? rootPath
-                : System.getProperty("java.io.tmpdir") + java.io.File.separator + "rag-evaluation-datasets";
+                : System.getProperty("java.io.tmpdir") + File.separator + "rag-evaluation-datasets";
         this.root = Path.of(r).toAbsolutePath().normalize();
         this.maxUploadBytes = maxUploadBytes > 0 ? maxUploadBytes : 25L * 1024 * 1024;
     }

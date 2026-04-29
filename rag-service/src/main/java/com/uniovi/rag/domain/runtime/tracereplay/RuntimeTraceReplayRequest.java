@@ -1,5 +1,6 @@
 package com.uniovi.rag.domain.runtime.tracereplay;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,9 +15,9 @@ public record RuntimeTraceReplayRequest(
         Optional<UUID> messageId) {
 
     public RuntimeTraceReplayRequest {
-        traceId = traceId == null ? Optional.empty() : traceId;
-        conversationId = conversationId == null ? Optional.empty() : conversationId;
-        messageId = messageId == null ? Optional.empty() : messageId;
+        traceId = Objects.requireNonNullElseGet(traceId, Optional::empty);
+        conversationId = Objects.requireNonNullElseGet(conversationId, Optional::empty);
+        messageId = Objects.requireNonNullElseGet(messageId, Optional::empty);
     }
 
     public static RuntimeTraceReplayRequest byTraceId(UUID userId, UUID traceId) {

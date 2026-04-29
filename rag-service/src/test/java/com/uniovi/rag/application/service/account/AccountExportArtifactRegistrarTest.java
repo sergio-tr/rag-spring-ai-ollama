@@ -6,17 +6,17 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AccountExportArtifactEntity
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -38,8 +38,8 @@ class AccountExportArtifactRegistrarTest {
     void saveAndCompleteTask_persistsArtifact_andMarksTaskSucceeded() {
         UUID taskId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID();
-        UserEntity user = org.mockito.Mockito.mock(UserEntity.class);
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        UserEntity user = Mockito.mock(UserEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         Path zip = Path.of("/tmp/export.zip");
         Instant created = Instant.parse("2026-01-01T00:00:00Z");
         Instant expires = Instant.parse("2026-01-02T00:00:00Z");

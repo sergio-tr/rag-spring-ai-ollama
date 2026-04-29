@@ -6,12 +6,12 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.stream.Collectors;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-
-import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataCountDocumentsTool for counting meeting minutes with intelligent analysis.
@@ -90,9 +90,9 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             }
         }
         
-        if (docs.isEmpty()) {
-            log().info("No documents found for count query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "count");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 1.8: Dedupe documents by document_id so we have at most one doc per minute (avoids overcounting e.g. elevator)
@@ -105,14 +105,15 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         // Step 2: Extract minutes in parallel (chunks may repeat same document_id; count by unique minute)
         List<Minute> minutes = extractMinutesInParallel(docs);
         minutes = dedupeMinutesByDocumentId(minutes);
-        if (minutes.isEmpty()) {
-            log().info("No valid minutes found for count query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyMinutes(query, minutes, "count");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        if (relevantMinutes.isEmpty()) {
+        ToolResult missingRelevant = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "count");
+        if (missingRelevant != null) {
             log().info("No relevant minutes found for count query: {}", query);
             String zeroMsg = (topic != null)
                 ? (querySeemsSpanish(query)
@@ -670,7 +671,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             }
             
             try {
-                java.time.LocalDate parsedDate = parseDateFlexible(minute.date());
+                LocalDate parsedDate = parseDateFlexible(minute.date());
                 if (parsedDate == null) {
                     log().debug("Could not parse date '{}' for minute {}", minute.date(), minute.id());
                     continue;

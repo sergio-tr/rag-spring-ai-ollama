@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
@@ -14,13 +15,14 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
-
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.client.ChatClient;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -99,8 +101,8 @@ class WorkflowSelectorTest {
                 Optional.empty(),
                 Optional.empty(),
                 false,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                 false,
                 Optional.empty(),
                 false,
@@ -116,15 +118,15 @@ class WorkflowSelectorTest {
                         new FullCorpusWorkflow(chatClient, mock(SnapshotCorpusAssembler.class), null),
                         new DocumentDenseRagWorkflow(
                                 chatClient,
-                                mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class),
+                                mock(AdvancedRetrievalPipeline.class),
                                 null),
                         new ChunkDenseRagWorkflow(
                                 chatClient,
-                                mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class),
+                                mock(AdvancedRetrievalPipeline.class),
                                 null),
                         new ChunkDenseMetadataWorkflow(
                                 chatClient,
-                                mock(com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline.class),
+                                mock(AdvancedRetrievalPipeline.class),
                                 null));
     }
 

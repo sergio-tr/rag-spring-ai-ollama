@@ -3,12 +3,12 @@ package com.uniovi.rag.infrastructure.observability;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
+import java.util.List;
+import java.util.Map;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -35,7 +35,7 @@ class TracedContextRetrieverTest {
 
     @Test
     void retrieve_delegatesAndReturnsDocuments() {
-        List<Document> docs = List.of(new Document("1", "c", java.util.Map.of()));
+        List<Document> docs = List.of(new Document("1", "c", Map.of()));
         when(delegate.retrieve("q")).thenReturn(docs);
 
         assertEquals(docs, traced.retrieve("q"));
@@ -44,7 +44,7 @@ class TracedContextRetrieverTest {
 
     @Test
     void retrieve_incrementsBucketedRetrievalMetric() {
-        when(delegate.retrieve("q")).thenReturn(List.of(new Document("1", "a", java.util.Map.of())));
+        when(delegate.retrieve("q")).thenReturn(List.of(new Document("1", "a", Map.of())));
 
         traced.retrieve("q");
 
@@ -63,7 +63,7 @@ class TracedContextRetrieverTest {
 
     @Test
     void retrieveWithMetadataFilters_delegates() {
-        List<Document> docs = List.of(new Document("1", "c", java.util.Map.of()));
+        List<Document> docs = List.of(new Document("1", "c", Map.of()));
         JSONObject entities = new JSONObject();
         when(delegate.retrieveWithMetadataFilters("q", entities)).thenReturn(docs);
 
@@ -73,7 +73,7 @@ class TracedContextRetrieverTest {
 
     @Test
     void createContext_delegates() {
-        List<Document> docs = List.of(new Document("1", "c", java.util.Map.of()));
+        List<Document> docs = List.of(new Document("1", "c", Map.of()));
         when(delegate.createContext(any(), eq("q"), any())).thenReturn("context");
 
         assertEquals("context", traced.createContext(docs, "q", null));

@@ -1,5 +1,6 @@
 package com.uniovi.rag.domain.runtime.retrieval;
 
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -17,7 +18,7 @@ public record RetrievalDiagnostics(
         int afterCompressionCount) {
 
     public RetrievalDiagnostics {
-        fusionMode = fusionMode == null ? Optional.empty() : fusionMode;
+        fusionMode = Objects.requireNonNullElseGet(fusionMode, Optional::empty);
         snapshotIdsJoined = snapshotIdsJoined == null ? "" : snapshotIdsJoined;
     }
 }

@@ -1,7 +1,6 @@
 package com.uniovi.rag.domain.runtime.functioncalling;
 
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,7 +23,7 @@ public record FunctionCallingDecision(
         reasons = List.copyOf(Objects.requireNonNull(reasons, "reasons"));
         exposedToolKinds = List.copyOf(Objects.requireNonNull(exposedToolKinds, "exposedToolKinds"));
         normalizedInputs = Map.copyOf(Objects.requireNonNull(normalizedInputs, "normalizedInputs"));
-        suppressionReason = suppressionReason == null ? Optional.empty() : suppressionReason;
+        suppressionReason = Objects.requireNonNullElseGet(suppressionReason, Optional::empty);
         canonicalQueryText = Objects.requireNonNull(canonicalQueryText, "canonicalQueryText");
     }
 }

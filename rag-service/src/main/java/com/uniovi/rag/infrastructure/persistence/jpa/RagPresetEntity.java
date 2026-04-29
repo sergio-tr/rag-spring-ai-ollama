@@ -11,14 +11,13 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "rag_preset")
@@ -159,7 +158,7 @@ public class RagPresetEntity {
         e.owner = owner;
         e.name = name;
         e.description = description;
-        e.tags = tags != null ? tags : new java.util.ArrayList<>();
+        e.tags = tags != null ? tags : new ArrayList<>();
         e.values = values != null ? values : Map.of();
         e.system = false;
         e.createdAt = createdAt;

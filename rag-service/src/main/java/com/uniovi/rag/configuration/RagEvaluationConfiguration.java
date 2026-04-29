@@ -1,36 +1,34 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
+import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
+import com.uniovi.rag.infrastructure.observability.TracedEvaluationService;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.service.document.DocumentService;
+import com.uniovi.rag.service.evaluation.DatasetMinuteEvaluationService;
+import com.uniovi.rag.service.evaluation.EvaluationService;
+import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
+import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
+import com.uniovi.rag.service.query.QueryService;
+import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.service.ranker.ResponseRanker;
 import com.uniovi.rag.service.reasoning.ReasoningStrategy;
-import org.springframework.ai.chat.client.ChatClient;
+import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
 import org.springframework.ai.chat.client.ChatClient.Builder;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.evaluation.RelevancyEvaluator;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
-
-import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
-import com.uniovi.rag.infrastructure.observability.TracedEvaluationService;
-import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
-import com.uniovi.rag.service.document.DocumentService;
-import com.uniovi.rag.service.evaluation.DatasetMinuteEvaluationService;
-import com.uniovi.rag.service.evaluation.EvaluationService;
-import com.uniovi.rag.application.port.ModelCatalogPort;
-import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
-import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.query.QueryService;
-import com.uniovi.rag.service.query.ResponseValidator;
-
-import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
-import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
-import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 
 
 @Configuration
@@ -106,7 +104,7 @@ public class RagEvaluationConfiguration {
         QueryService queryService,
         EvaluationServiceFactory evaluationServiceFactory,
         @Value("${evaluation.clean-before-load:true}") boolean cleanBeforeLoad,
-        @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+        @Autowired(required = false) ObservabilitySupport observability
     ) {
         DatasetMinuteEvaluationService service = new DatasetMinuteEvaluationService(
                 featureConfig, implementationProperties, chatClient, documentService, queryService, cleanBeforeLoad);

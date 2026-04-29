@@ -15,11 +15,12 @@ import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagConfigurationEntity;
-import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -45,7 +46,7 @@ class ChatScopedRagConfigResolverTest {
                         configResolver, null, repo, om, false);
 
         assertSame(expected, cut.resolveForExecutionContext(null));
-        org.mockito.Mockito.verifyNoInteractions(repo);
+        Mockito.verifyNoInteractions(repo);
     }
 
     @Test

@@ -17,7 +17,7 @@ public record DeterministicToolExecutionResult(
         List<String> traceNotes) {
 
     public DeterministicToolExecutionResult {
-        toolKind = toolKind == null ? Optional.empty() : toolKind;
+        toolKind = Objects.requireNonNullElseGet(toolKind, Optional::empty);
         answerText = answerText != null ? answerText : "";
         normalizedPayload = Map.copyOf(Objects.requireNonNull(normalizedPayload, "normalizedPayload"));
         traceNotes = List.copyOf(Objects.requireNonNull(traceNotes, "traceNotes"));

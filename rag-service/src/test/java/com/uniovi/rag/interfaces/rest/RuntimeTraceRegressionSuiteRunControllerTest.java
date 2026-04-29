@@ -15,6 +15,14 @@ import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegress
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,10 +32,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -35,24 +45,15 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
-import java.util.stream.Stream;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.nullValue;
-
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
@@ -280,15 +281,15 @@ class RuntimeTraceRegressionSuiteRunControllerTest {
     void p46_p49_exposes_two_post_two_get_one_delete_mappings() {
         long post =
                 Arrays.stream(RuntimeTraceRegressionSuiteRunController.class.getDeclaredMethods())
-                        .filter(m -> m.isAnnotationPresent(org.springframework.web.bind.annotation.PostMapping.class))
+                        .filter(m -> m.isAnnotationPresent(PostMapping.class))
                         .count();
         long get =
                 Arrays.stream(RuntimeTraceRegressionSuiteRunController.class.getDeclaredMethods())
-                        .filter(m -> m.isAnnotationPresent(org.springframework.web.bind.annotation.GetMapping.class))
+                        .filter(m -> m.isAnnotationPresent(GetMapping.class))
                         .count();
         long delete =
                 Arrays.stream(RuntimeTraceRegressionSuiteRunController.class.getDeclaredMethods())
-                        .filter(m -> m.isAnnotationPresent(org.springframework.web.bind.annotation.DeleteMapping.class))
+                        .filter(m -> m.isAnnotationPresent(DeleteMapping.class))
                         .count();
         assertThat(post).isEqualTo(2);
         assertThat(get).isEqualTo(2);

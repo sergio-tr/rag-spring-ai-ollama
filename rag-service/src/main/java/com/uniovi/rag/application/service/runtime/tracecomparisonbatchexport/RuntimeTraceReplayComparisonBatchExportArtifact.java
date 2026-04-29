@@ -1,7 +1,6 @@
 package com.uniovi.rag.application.service.runtime.tracecomparisonbatchexport;
 
-import java.util.Arrays;
-import java.util.Objects;
+import com.uniovi.rag.application.service.runtime.export.ZipExportArtifactSupport;
 
 /**
  * P26 batch export HTTP payload: final ZIP bytes + suggested filename + length.
@@ -15,26 +14,18 @@ public record RuntimeTraceReplayComparisonBatchExportArtifact(
     public boolean equals(Object o) {
         if (this == o) return true;
         if (!(o instanceof RuntimeTraceReplayComparisonBatchExportArtifact that)) return false;
-        return sizeBytes == that.sizeBytes
-                && Objects.equals(filename, that.filename)
-                && Objects.equals(mediaType, that.mediaType)
-                && Arrays.equals(content, that.content);
+        return ZipExportArtifactSupport.sameArtifact(
+                filename, mediaType, content, sizeBytes, that.filename, that.mediaType, that.content, that.sizeBytes);
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(filename, mediaType, sizeBytes);
-        result = 31 * result + Arrays.hashCode(content);
-        return result;
+        return ZipExportArtifactSupport.artifactHash(filename, mediaType, content, sizeBytes);
     }
 
     @Override
     public String toString() {
-        return "RuntimeTraceReplayComparisonBatchExportArtifact["
-                + "filename=" + filename
-                + ", mediaType=" + mediaType
-                + ", content(len=" + (content == null ? 0 : content.length) + ", hash=" + Arrays.hashCode(content) + ")"
-                + ", sizeBytes=" + sizeBytes
-                + "]";
+        return ZipExportArtifactSupport.artifactToString(
+                "RuntimeTraceReplayComparisonBatchExportArtifact", filename, mediaType, content, sizeBytes);
     }
 }

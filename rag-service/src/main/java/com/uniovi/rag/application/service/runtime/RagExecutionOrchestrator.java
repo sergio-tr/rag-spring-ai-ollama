@@ -1,6 +1,12 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.AdvisorPhaseResult;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.AdvisorSnapshot;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.ExecutionOutcome;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.FcGate;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.JudgeSnapshot;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.RoutingSnapshot;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationPolicyResolver;
@@ -8,34 +14,30 @@ import com.uniovi.rag.application.service.runtime.clarification.ClarificationStr
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
-import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolKindMappings;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorDecision;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorExecutionResult;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome;
-import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
-import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.AdvisorPhaseResult;
-import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.AdvisorSnapshot;
-import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.ExecutionOutcome;
-import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.FcGate;
-import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.JudgeSnapshot;
-import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.RoutingSnapshot;
-import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
-import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
-import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationExecutionResult;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
+import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
+import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
-import com.uniovi.rag.domain.runtime.judge.JudgeCandidateSource;
-import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingDecision;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionResult;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
+import com.uniovi.rag.domain.runtime.judge.JudgeCandidateSource;
+import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
@@ -43,12 +45,11 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
-import org.springframework.stereotype.Component;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import org.springframework.stereotype.Component;
 @Component
 public class RagExecutionOrchestrator {
 
@@ -602,13 +603,13 @@ public class RagExecutionOrchestrator {
         }
     }
 
-    private static String selectRetrievalWorkflowNameForAdvisor(com.uniovi.rag.domain.runtime.RagConfig rag) {
+    private static String selectRetrievalWorkflowNameForAdvisor(RagConfig rag) {
         var strategy = rag.materializationStrategy();
-        if (strategy == com.uniovi.rag.domain.knowledge.MaterializationStrategy.DOCUMENT_LEVEL) {
+        if (strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
             return "DocumentDenseRagWorkflow";
         }
-        if ((strategy == com.uniovi.rag.domain.knowledge.MaterializationStrategy.CHUNK_LEVEL
-                || strategy == com.uniovi.rag.domain.knowledge.MaterializationStrategy.HYBRID)
+        if ((strategy == MaterializationStrategy.CHUNK_LEVEL
+                || strategy == MaterializationStrategy.HYBRID)
                 && rag.metadataEnabled()) {
             return "ChunkDenseMetadataWorkflow";
         }

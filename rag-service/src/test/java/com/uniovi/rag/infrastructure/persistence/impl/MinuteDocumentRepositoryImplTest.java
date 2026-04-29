@@ -4,11 +4,11 @@ import com.uniovi.rag.domain.model.AddResult;
 import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.document.MetadataMinuteDocumentService;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -52,7 +52,7 @@ class MinuteDocumentRepositoryImplTest {
     void addMinute_newMinute_returnsAdded() {
         Minute minute = new Minute("id-1", "f", null, null, null, null, null, null, null, 0, null, null, null, null, null);
         when(documentService.hasDocumentWithId("id-1")).thenReturn(false);
-        when(metadataMinuteDocumentService.createDocumentsFromMinute(minute)).thenReturn(List.of(new Document("c", java.util.Map.of())));
+        when(metadataMinuteDocumentService.createDocumentsFromMinute(minute)).thenReturn(List.of(new Document("c", Map.of())));
 
         assertEquals(AddResult.ADDED, repository.addMinute(minute));
         verify(documentService).add(anyList());

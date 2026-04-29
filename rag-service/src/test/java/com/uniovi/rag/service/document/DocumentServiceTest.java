@@ -1,10 +1,10 @@
 package com.uniovi.rag.service.document;
 
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -19,7 +19,7 @@ class DocumentServiceTest {
         DocumentService svc = mock(DocumentService.class);
 
         MultipartFile file = mock(MultipartFile.class);
-        List<Document> docs = List.of(new Document("id", "c", java.util.Map.of()));
+        List<Document> docs = List.of(new Document("id", "c", Map.of()));
 
         svc.processDocument(file);
         svc.add(docs);

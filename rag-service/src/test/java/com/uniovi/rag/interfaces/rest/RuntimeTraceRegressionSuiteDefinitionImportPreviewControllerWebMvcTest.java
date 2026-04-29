@@ -2,6 +2,7 @@ package com.uniovi.rag.interfaces.rest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionexport.RuntimeTraceRegressionSuiteDefinitionExportManifest;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionimport.P39ImportZipTestUtil;
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionimportpreview.RuntimeTraceRegressionSuiteDefinitionImportPreviewService;
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionEntrySnapshot;
@@ -10,16 +11,26 @@ import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.Runtime
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.zip.CRC32;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -28,15 +39,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -309,13 +311,13 @@ class RuntimeTraceRegressionSuiteDefinitionImportPreviewControllerWebMvcTest {
     void t12_definitionBeforeManifest_400() throws Exception {
         byte[] man =
                 fd4.writeValueAsBytes(
-                        new com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionexport.RuntimeTraceRegressionSuiteDefinitionExportManifest(
+                        new RuntimeTraceRegressionSuiteDefinitionExportManifest(
                                 1,
                                 "REGRESSION_SUITE_DEFINITION",
                                 Instant.now(),
                                 userId.toString(),
                                 "SAVED_DEFINITION_BY_ID",
-                                java.util.Map.of("definitionId", definitionIdPath.toString()),
+                                Map.of("definitionId", definitionIdPath.toString()),
                                 definitionIdPath.toString(),
                                 0L,
                                 false));
@@ -365,7 +367,7 @@ class RuntimeTraceRegressionSuiteDefinitionImportPreviewControllerWebMvcTest {
             e2.setMethod(ZipEntry.STORED);
             e2.setSize(definition.length);
             e2.setCompressedSize(definition.length);
-            java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+            CRC32 crc = new CRC32();
             crc.update(definition);
             e2.setCrc(crc.getValue());
             zos.putNextEntry(e2);

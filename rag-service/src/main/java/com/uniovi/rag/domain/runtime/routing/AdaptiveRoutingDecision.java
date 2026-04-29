@@ -1,6 +1,7 @@
 package com.uniovi.rag.domain.runtime.routing;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -20,7 +21,7 @@ public record AdaptiveRoutingDecision(
         if (primaryRouteKind == null) {
             throw new IllegalArgumentException("primaryRouteKind must not be null");
         }
-        fallbackWorkflowRouteKind = fallbackWorkflowRouteKind == null ? Optional.empty() : fallbackWorkflowRouteKind;
+        fallbackWorkflowRouteKind = Objects.requireNonNullElseGet(fallbackWorkflowRouteKind, Optional::empty);
         reasons = List.copyOf(reasons == null ? List.of() : reasons);
         suppressionNotes = List.copyOf(suppressionNotes == null ? List.of() : suppressionNotes);
         if (fallbackWorkflowRouteKind.isPresent()) {

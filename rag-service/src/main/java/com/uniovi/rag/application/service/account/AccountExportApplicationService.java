@@ -5,8 +5,6 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.uniovi.rag.configuration.RagAccountProperties;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
-import org.springframework.stereotype.Service;
-
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -17,10 +15,12 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.springframework.stereotype.Service;
 
 /**
  * Orchestrates account export: load snapshot (transactional), write ZIP (filesystem), register artifact (transactional).
@@ -86,9 +86,9 @@ public class AccountExportApplicationService {
             Map<String, Object> profile,
             Map<String, Object> prefs,
             Map<String, Object> pers,
-            java.util.List<Map<String, Object>> projects,
-            java.util.List<Map<String, Object>> conversations,
-            java.util.List<Map<String, Object>> documents)
+            List<Map<String, Object>> projects,
+            List<Map<String, Object>> conversations,
+            List<Map<String, Object>> documents)
             throws IOException {
         try (ZipOutputStream zos =
                 new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(zipPath)), StandardCharsets.UTF_8)) {

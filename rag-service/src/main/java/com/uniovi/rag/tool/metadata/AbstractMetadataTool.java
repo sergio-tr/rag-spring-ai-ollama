@@ -1,29 +1,32 @@
 package com.uniovi.rag.tool.metadata;
 
-import com.uniovi.rag.util.RegexSafety;
-import com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures;
-import com.uniovi.rag.tool.AbstractTool;
-import org.json.JSONObject;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.document.Document;
-import org.springframework.cache.annotation.Cacheable;
-import com.uniovi.rag.domain.model.Minute;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
+import com.uniovi.rag.domain.model.Minute;
+import com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures;
+import com.uniovi.rag.service.extraction.DocumentContentExtractor;
+import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.tool.AbstractTool;
+import com.uniovi.rag.tool.ToolResult;
+import com.uniovi.rag.util.DateParsingSupport;
+import com.uniovi.rag.util.RegexSafety;
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.stream.Collectors;
-
-import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.document.Document;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.Lazy;
 
 public abstract class AbstractMetadataTool extends AbstractTool {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
@@ -633,7 +636,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         try {
-            org.json.JSONArray nerAgenda = ner.getJSONArray(METADATA_KEY_AGENDA);
+            JSONArray nerAgenda = ner.getJSONArray(METADATA_KEY_AGENDA);
             if (nerAgenda.length() == 0) {
                 return true; // No agenda items to match
             }
@@ -715,7 +718,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         try {
-            org.json.JSONArray nerEntities = ner.getJSONArray("mentionedEntities");
+            JSONArray nerEntities = ner.getJSONArray("mentionedEntities");
             if (nerEntities.length() == 0) {
                 return true; // No entities to match
             }
@@ -1396,7 +1399,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return minutes.stream().limit(50).toList(); // Increased from 30 to 50
         }
         
-        org.json.JSONArray nerDates = ner.getJSONArray("date");
+        JSONArray nerDates = ner.getJSONArray("date");
         List<String> nerDateStrings = new ArrayList<>();
         for (int i = 0; i < nerDates.length(); i++) {
             nerDateStrings.add(nerDates.getString(i));
@@ -1448,7 +1451,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
             
             // Within 1-2 days = relevant (for typos or similar dates)
-            long daysDiff = Math.abs(java.time.temporal.ChronoUnit.DAYS.between(parsed1, parsed2));
+            long daysDiff = Math.abs(ChronoUnit.DAYS.between(parsed1, parsed2));
             if (daysDiff <= 2) {
                 return true;
             }
@@ -1509,55 +1512,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Note: This method is kept for backward compatibility but parseDateFlexible should be preferred.
      */
     private LocalDate parseDateToLocalDate(String dateStr) {
-        if (dateStr == null || dateStr.trim().isEmpty()) {
-            return null;
-        }
-        
-        // Normalize to lowercase to handle case variations (e.g., "Agosto" vs "agosto")
-        String v = dateStr.trim().toLowerCase();
-        
-        // Try ISO format first (most common after normalization)
-        try {
-            return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
-        } catch (DateTimeParseException ignored) {
-        }
-        
-        // Try Spanish formats with quotes
-        List<DateTimeFormatter> formatters = Arrays.asList(
-            DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            // Spanish formats without quotes
-            DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
-            // Abbreviated month names
-            DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
-            // Without "de" between day and month
-            DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
-            // Numeric formats
-            DateTimeFormatter.ofPattern("d/M/yyyy"),
-            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
-            DateTimeFormatter.ofPattern("d-M-yyyy"),
-            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
-            DateTimeFormatter.ofPattern("yyyy/MM/dd"),
-            DateTimeFormatter.ofPattern("yyyy.MM.dd"),
-            // With day of the week
-            DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH)
-        );
-        
-        for (DateTimeFormatter formatter : formatters) {
-            try {
-                return LocalDate.parse(v, formatter);
-            } catch (DateTimeParseException ignored) {
-                // Try next formatter
-            }
-        }
-        
-        return null;
+        return DateParsingSupport.parseDateToLocalDate(dateStr);
     }
     
     /**
@@ -1976,40 +1931,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * LLM check for a single document against a topic; adds to {@code filtered} when the model confirms a match.
      */
     private void maybeAddDocumentMatchingTopic(Document doc, String topic, List<Document> filtered) {
-        StringBuilder context = new StringBuilder();
-
-        Map<String, Object> metadata = doc.getMetadata();
-        if (metadata != null) {
-            if (metadata.containsKey("topics")) {
-                Object topicsObj = metadata.get("topics");
-                if (topicsObj instanceof List) {
-                    context.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
-                } else if (topicsObj instanceof String) {
-                    context.append("Topics: ").append(topicsObj).append("\n");
-                }
-            }
-            if (metadata.containsKey("summary")) {
-                Object summaryObj = metadata.get("summary");
-                if (summaryObj != null) {
-                    context.append("Summary: ").append(summaryObj.toString()).append("\n");
-                }
-            }
-            if (metadata.containsKey("decisions")) {
-                Object decisionsObj = metadata.get("decisions");
-                if (decisionsObj instanceof List) {
-                    context.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
-                } else if (decisionsObj instanceof String) {
-                    context.append("Decisions: ").append(decisionsObj).append("\n");
-                }
-            }
-        }
-
-        String content = doc.getText();
-        if (content != null && !content.trim().isEmpty()) {
-            String truncatedContent = content.length() > 1000 ? content.substring(0, 1000) + "..." : content;
-            context.append("Content: ").append(truncatedContent);
-        }
-
+        StringBuilder context = buildSemanticDocumentContext(doc, 1000);
         if (context.length() == 0) {
             return;
         }
@@ -2097,7 +2019,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // Check for topics in NER
             if (ner.has("topics") && !ner.isNull("topics")) {
                 try {
-                    org.json.JSONArray topics = ner.getJSONArray("topics");
+                    JSONArray topics = ner.getJSONArray("topics");
                     if (topics.length() > 0) {
                         String topic = topics.getString(0).trim();
                         if (!topic.isEmpty()) {
@@ -2113,7 +2035,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // Check for agenda in NER (topic may be an agenda item, e.g. "aprobación de cuentas")
             if (ner.has(METADATA_KEY_AGENDA) && !ner.isNull(METADATA_KEY_AGENDA)) {
                 try {
-                    org.json.JSONArray agenda = ner.getJSONArray(METADATA_KEY_AGENDA);
+                    JSONArray agenda = ner.getJSONArray(METADATA_KEY_AGENDA);
                     if (agenda.length() > 0) {
                         String agendaItem = agenda.getString(0).trim();
                         if (!agendaItem.isEmpty()) {
@@ -2129,7 +2051,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             // Check for mentionedEntities that might be topics
             if (ner.has(NER_KEY_MENTIONED_ENTITIES) && !ner.isNull(NER_KEY_MENTIONED_ENTITIES)) {
                 try {
-                    org.json.JSONArray entities = ner.getJSONArray(NER_KEY_MENTIONED_ENTITIES);
+                    JSONArray entities = ner.getJSONArray(NER_KEY_MENTIONED_ENTITIES);
                     if (entities.length() > 0) {
                         // Use first entity as potential topic
                         String entity = entities.getString(0).trim();
@@ -2326,7 +2248,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         
         // Fallback: explicit string match for "menos de diez" / "menos de 10" so filter is always applied
         String q = query == null ? "" : query.toLowerCase().trim();
-        String qNorm = java.text.Normalizer.normalize(q, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        String qNorm = Normalizer.normalize(q, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
         if (qNorm.contains("menos de diez") || qNorm.contains("menos de 10")
                 || qNorm.contains("menos de diez personas") || qNorm.contains("menos de 10 personas")) {
             log().info("Attendees count query fallback: detected 'menos de diez' (or variant), using less_than 10");
@@ -2457,7 +2379,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         // Normalize: lowercase, trim, collapse multiple spaces, remove accents for matching (e.g. á->a)
         String n = name.trim().toLowerCase().replaceAll("\\s+", " ");
-        n = java.text.Normalizer.normalize(n, java.text.Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        n = Normalizer.normalize(n, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
         return n;
     }
     
@@ -2477,7 +2399,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         // Strategy 1: Try NER first
         if (ner != null && ner.has("person")) {
             try {
-                org.json.JSONArray persons = ner.getJSONArray("person");
+                JSONArray persons = ner.getJSONArray("person");
                 if (persons.length() > 0) {
                     String personName = persons.getString(0).trim();
                     if (!personName.isEmpty()) {
@@ -2662,38 +2584,51 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * @return true if keyword is found in at least one document, false otherwise
      */
     private StringBuilder buildKeywordValidationContext(Document doc) {
+        return buildSemanticDocumentContext(doc, 500);
+    }
+
+    private static StringBuilder buildSemanticDocumentContext(Document doc, int maxContentChars) {
         StringBuilder context = new StringBuilder();
+
         Map<String, Object> metadata = doc.getMetadata();
         if (metadata != null) {
-            if (metadata.containsKey("topics")) {
-                Object topicsObj = metadata.get("topics");
-                if (topicsObj instanceof List) {
-                    context.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
-                } else if (topicsObj instanceof String) {
-                    context.append("Topics: ").append(topicsObj).append("\n");
-                }
-            }
-            if (metadata.containsKey("summary")) {
-                Object summaryObj = metadata.get("summary");
-                if (summaryObj != null) {
-                    context.append("Summary: ").append(summaryObj.toString()).append("\n");
-                }
-            }
-            if (metadata.containsKey("decisions")) {
-                Object decisionsObj = metadata.get("decisions");
-                if (decisionsObj instanceof List) {
-                    context.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
-                } else if (decisionsObj instanceof String) {
-                    context.append("Decisions: ").append(decisionsObj).append("\n");
-                }
-            }
+            appendOptionalListOrString(context, metadata, "topics", "Topics");
+            appendOptionalValue(context, metadata, "summary", "Summary");
+            appendOptionalListOrString(context, metadata, "decisions", "Decisions");
         }
+
         String content = doc.getText();
         if (content != null && !content.trim().isEmpty()) {
-            String truncatedContent = content.length() > 500 ? content.substring(0, 500) + "..." : content;
+            String truncatedContent =
+                    content.length() > maxContentChars ? content.substring(0, maxContentChars) + "..." : content;
             context.append("Content: ").append(truncatedContent);
         }
+
         return context;
+    }
+
+    private static void appendOptionalValue(StringBuilder out, Map<String, Object> metadata, String key, String label) {
+        if (!metadata.containsKey(key)) {
+            return;
+        }
+        Object obj = metadata.get(key);
+        if (obj != null) {
+            out.append(label).append(": ").append(obj.toString()).append("\n");
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void appendOptionalListOrString(
+            StringBuilder out, Map<String, Object> metadata, String key, String label) {
+        if (!metadata.containsKey(key)) {
+            return;
+        }
+        Object obj = metadata.get(key);
+        if (obj instanceof List) {
+            out.append(label).append(": ").append(String.join(", ", (List<String>) obj)).append("\n");
+        } else if (obj instanceof String) {
+            out.append(label).append(": ").append(obj).append("\n");
+        }
     }
 
     protected boolean validateKeywordExists(List<Document> docs, String keyword) {
@@ -2790,7 +2725,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             if (ner.has(NER_KEY_FILTERS) && !ner.isNull(NER_KEY_FILTERS)) {
                 JSONObject filters = ner.getJSONObject(NER_KEY_FILTERS);
                 if (filters.has("date") && !filters.isNull("date")) {
-                    org.json.JSONArray dates = filters.getJSONArray("date");
+                    JSONArray dates = filters.getJSONArray("date");
                     Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
                     for (int i = 0; i < dates.length(); i++) {
                         String dateStr = dates.getString(i);
@@ -2851,7 +2786,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return true;
         }
         try {
-            java.time.LocalDate parsedDate = parseDateFlexible(docDate);
+            LocalDate parsedDate = parseDateFlexible(docDate);
             if (parsedDate != null) {
                 return String.valueOf(parsedDate.getYear()).equals(year);
             }
@@ -2959,7 +2894,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         for (String field : usefulFields) {
             if (ner.has(field)) {
                 Object value = ner.get(field);
-                if (value instanceof org.json.JSONArray ja && ja.length() > 0) {
+                if (value instanceof JSONArray ja && ja.length() > 0) {
                     return true;
                 } else if (value instanceof String str && !str.trim().isEmpty()) {
                     return true;
@@ -3480,7 +3415,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         // From NER (highest priority - most accurate); use optJSONArray to avoid IllegalArgumentException if "date" is not an array
         if (ner != null && ner.has("date")) {
             try {
-                org.json.JSONArray arr = ner.optJSONArray("date");
+                JSONArray arr = ner.optJSONArray("date");
                 if (arr != null) {
                     for (int i = 0; i < arr.length(); i++) {
                     String s = arr.optString(i, "").trim();
@@ -3616,8 +3551,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
             String jsonStr = raw.substring(start, end + 1).trim();
 
-            org.json.JSONObject obj = new org.json.JSONObject(jsonStr);
-            org.json.JSONArray arr = obj.optJSONArray("dates");
+            JSONObject obj = new JSONObject(jsonStr);
+            JSONArray arr = obj.optJSONArray("dates");
             if (arr == null) return Collections.emptyList();
 
             List<String> dates = new ArrayList<>();
@@ -4235,6 +4170,30 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             }
         }
         return null;
+    }
+
+    protected ToolResult notFoundIfEmptyDocuments(String query, List<Document> docs, String contextLabel) {
+        if (docs != null && !docs.isEmpty()) {
+            return null;
+        }
+        log().info("No documents found for {} query: {}", contextLabel, query);
+        return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+    }
+
+    protected ToolResult notFoundIfEmptyMinutes(String query, List<Minute> minutes, String contextLabel) {
+        if (minutes != null && !minutes.isEmpty()) {
+            return null;
+        }
+        log().info("No valid minutes found for {} query: {}", contextLabel, query);
+        return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+    }
+
+    protected ToolResult notFoundIfEmptyRelevantMinutes(String query, List<Minute> relevantMinutes, String contextLabel) {
+        if (relevantMinutes != null && !relevantMinutes.isEmpty()) {
+            return null;
+        }
+        log().info("No relevant minutes found for {} query: {}", contextLabel, query);
+        return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
     }
     
 }

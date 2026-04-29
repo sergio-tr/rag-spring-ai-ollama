@@ -23,12 +23,13 @@ import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
-import org.junit.jupiter.api.Test;
-
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -151,8 +152,8 @@ class ClarificationPolicyResolverTest {
                 disableReason,
                 Optional.empty(),
                 false,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                 false,
                 Optional.empty(),
                 false,

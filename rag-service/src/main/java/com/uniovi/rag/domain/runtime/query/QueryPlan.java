@@ -1,7 +1,6 @@
 package com.uniovi.rag.domain.runtime.query;
 
 import com.uniovi.rag.domain.model.QueryType;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,7 +39,7 @@ public record QueryPlan(
         normalizedQueryText = Objects.requireNonNull(normalizedQueryText, "normalizedQueryText");
         rewrittenQueryText = Objects.requireNonNull(rewrittenQueryText, "rewrittenQueryText");
         classifierLabel = Objects.requireNonNull(classifierLabel, "classifierLabel");
-        classifierQueryType = classifierQueryType == null ? Optional.empty() : classifierQueryType;
+        classifierQueryType = Objects.requireNonNullElseGet(classifierQueryType, Optional::empty);
         classifierStatus = Objects.requireNonNull(classifierStatus, "classifierStatus");
         queryIntent = Objects.requireNonNull(queryIntent, "queryIntent");
         slots = Map.copyOf(Objects.requireNonNull(slots, "slots"));

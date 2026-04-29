@@ -1,8 +1,8 @@
 package com.uniovi.rag.domain.runtime.routing;
 
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
-
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -25,7 +25,7 @@ public record AdaptiveRoutingExecutionResult(
         if (routingRouteKind == null) {
             throw new IllegalArgumentException("routingRouteKind must not be null");
         }
-        fallbackRouteKind = fallbackRouteKind == null ? Optional.empty() : fallbackRouteKind;
+        fallbackRouteKind = Objects.requireNonNullElseGet(fallbackRouteKind, Optional::empty);
         stageTraces = List.copyOf(stageTraces == null ? List.of() : stageTraces);
         if (fallbackApplied && fallbackRouteKind.isEmpty()) {
             throw new IllegalArgumentException("fallbackRouteKind required when fallbackApplied=true");

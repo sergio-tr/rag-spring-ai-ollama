@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -8,19 +9,24 @@ import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
-import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.*;
-import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
-
+import com.uniovi.rag.domain.runtime.retrieval.CompressionOutcome;
+import com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.mockito.Answers;
+import org.springframework.ai.chat.client.ChatClient;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -139,8 +145,8 @@ class CanonicalQueryUsageWorkflowTest {
                 Optional.empty(),
                 Optional.empty(),
                 false,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                 false,
                 Optional.empty(),
                 false,
@@ -150,15 +156,15 @@ class CanonicalQueryUsageWorkflowTest {
     @Test
     void denseWorkflow_usesRewrittenQueryForRetrievalAndGeneration() {
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
-        com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet curated =
-                new com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet(
+        CuratedContextSet curated =
+                new CuratedContextSet(
                         List.of(),
                         "CTX",
-                        new com.uniovi.rag.domain.runtime.retrieval.CompressionOutcome(0, 0, 0, List.of()),
+                        new CompressionOutcome(0, 0, 0, List.of()),
                         List.of(),
-                        new com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics(
-                                com.uniovi.rag.domain.runtime.retrieval.RetrievalMode.DENSE_ONLY,
-                                java.util.Optional.empty(),
+                        new RetrievalDiagnostics(
+                                RetrievalMode.DENSE_ONLY,
+                                Optional.empty(),
                                 "",
                                 0,
                                 0,
@@ -170,7 +176,7 @@ class CanonicalQueryUsageWorkflowTest {
                         List.of());
         when(pipeline.retrieve(any(), any(), anyString())).thenReturn(curated);
 
-        ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
 
         ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline, null);

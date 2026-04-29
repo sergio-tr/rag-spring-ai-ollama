@@ -1,16 +1,17 @@
 package com.uniovi.rag.infrastructure.classifier;
 
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
-import com.uniovi.rag.domain.model.QueryType;
+import java.time.Duration;
+import java.util.Map;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
-
-import java.util.Map;
 
 /** Response DTO for classifier-service POST /classify (camelCase). */
 record ClassifyResponseDto(String queryType) {}
@@ -109,10 +110,10 @@ public class ClassifierServiceClient implements QueryClassifier {
     }
 
     private static RestTemplate createDefaultRestTemplate(int timeoutMs) {
-        org.springframework.http.client.SimpleClientHttpRequestFactory factory =
-                new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(java.time.Duration.ofMillis(timeoutMs));
-        factory.setReadTimeout(java.time.Duration.ofMillis(timeoutMs));
+        SimpleClientHttpRequestFactory factory =
+                new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofMillis(timeoutMs));
+        factory.setReadTimeout(Duration.ofMillis(timeoutMs));
         RestTemplate rt = new RestTemplate();
         rt.setRequestFactory(factory);
         return rt;

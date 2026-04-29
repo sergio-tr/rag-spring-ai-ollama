@@ -2,14 +2,14 @@ package com.uniovi.rag.infrastructure.observability;
 
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
+import com.uniovi.rag.tool.CountDocumentsTool;
 import com.uniovi.rag.tool.ToolResult;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
+import java.util.Optional;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -37,7 +37,7 @@ class TracedDateExistenceGuardTest {
 
     @Test
     void checkNoActaForDate_delegates() {
-        ToolResult tr = ToolResult.from("none", com.uniovi.rag.tool.CountDocumentsTool.class);
+        ToolResult tr = ToolResult.from("none", CountDocumentsTool.class);
         when(delegate.checkNoActaForDate(anyString(), any(), any())).thenReturn(Optional.of(tr));
 
         JSONObject ner = new JSONObject();

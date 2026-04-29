@@ -1,5 +1,6 @@
 package com.uniovi.rag.domain.runtime.tracereplaybatch;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -23,8 +24,8 @@ public record RuntimeTraceReplayBatchItemResult(
         boolean failedSafe) {
 
     public RuntimeTraceReplayBatchItemResult {
-        resolvedOriginalTraceId = resolvedOriginalTraceId == null ? Optional.empty() : resolvedOriginalTraceId;
-        replayOutcome = replayOutcome == null ? Optional.empty() : replayOutcome;
+        resolvedOriginalTraceId = Objects.requireNonNullElseGet(resolvedOriginalTraceId, Optional::empty);
+        replayOutcome = Objects.requireNonNullElseGet(replayOutcome, Optional::empty);
         answerText = answerText == null ? "" : answerText;
         failureDetail = failureDetail == null ? "" : failureDetail;
         routingRouteKind = routingRouteKind == null ? "" : routingRouteKind;

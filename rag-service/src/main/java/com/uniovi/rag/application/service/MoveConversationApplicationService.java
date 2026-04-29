@@ -5,13 +5,13 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.service.project.ProjectAccessService;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Moves a conversation to another owned project; updates CHAT_LOCAL {@code project_documents} rows without
@@ -42,7 +42,7 @@ public class MoveConversationApplicationService {
         ConversationEntity conversation = projectAccessService.requireConversationForUser(userId, conversationId);
         ProjectEntity sourceProject = conversation.getProject();
         if (!sourceProject.getId().equals(sourceProjectId)) {
-            throw new com.uniovi.rag.interfaces.rest.NotFoundException("conversation not in project");
+            throw new NotFoundException("conversation not in project");
         }
         projectAccessService.requireOwnedProject(userId, sourceProject.getId());
         ProjectEntity dest = projectAccessService.requireOwnedProject(userId, destinationProjectId);

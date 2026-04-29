@@ -5,15 +5,20 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.HashSet;
+import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
-
 import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
-import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataCompareTool for comparing meeting minutes across different dimensions.
@@ -60,19 +65,19 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         }
         docs = yearNarrow.documents();
 
-        ToolResult missing = notFoundIfEmptyDocuments(query, docs);
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "comparison");
         if (missing != null) {
             return missing;
         }
 
         List<Minute> minutes = extractMinutesInParallel(docs);
-        missing = notFoundIfEmptyMinutes(query, minutes);
+        missing = notFoundIfEmptyMinutes(query, minutes, "comparison");
         if (missing != null) {
             return missing;
         }
 
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes);
+        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "comparison");
         if (missing != null) {
             return missing;
         }
@@ -106,30 +111,6 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 ner);
         List<String> dateCandidates = extractDateCandidates(query, ner);
         return mergeDocumentsWhenComparingTwoDates(query, ner, docs, dateCandidates);
-    }
-
-    private ToolResult notFoundIfEmptyDocuments(String query, List<Document> docs) {
-        if (!docs.isEmpty()) {
-            return null;
-        }
-        log().info("No documents found for comparison query: {}", query);
-        return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
-    }
-
-    private ToolResult notFoundIfEmptyMinutes(String query, List<Minute> minutes) {
-        if (!minutes.isEmpty()) {
-            return null;
-        }
-        log().info("No valid minutes found for comparison query: {}", query);
-        return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
-    }
-
-    private ToolResult notFoundIfEmptyRelevantMinutes(String query, List<Minute> relevantMinutes) {
-        if (!relevantMinutes.isEmpty()) {
-            return null;
-        }
-        log().info("No relevant minutes found for comparison query: {}", query);
-        return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
     }
 
     private Map<String, ComparisonValue> applyMonthlyAggregationIfApplicable(
@@ -247,12 +228,12 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 if (ner.has(NER_KEY_FILTERS) && !ner.isNull(NER_KEY_FILTERS)) {
                     JSONObject filters = ner.getJSONObject(NER_KEY_FILTERS);
                     if (filters.has("date") && !filters.isNull("date")) {
-                        org.json.JSONArray dates = filters.getJSONArray("date");
+                        JSONArray dates = filters.getJSONArray("date");
                         for (int i = 0; i < dates.length(); i++) {
                             String dateStr = dates.getString(i);
                             // Extract year from date string
-                            java.util.regex.Pattern yearPattern = java.util.regex.Pattern.compile("\\b(20\\d{2})\\b");
-                            java.util.regex.Matcher matcher = yearPattern.matcher(dateStr);
+                            Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
+                            Matcher matcher = yearPattern.matcher(dateStr);
                             while (matcher.find()) {
                                 String year = matcher.group(1);
                                 if (!years.contains(year)) {
@@ -268,8 +249,8 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         }
         
         // Extract years from query using regex
-        java.util.regex.Pattern yearPattern = java.util.regex.Pattern.compile("\\b(20\\d{2})\\b");
-        java.util.regex.Matcher matcher = yearPattern.matcher(query);
+        Pattern yearPattern = Pattern.compile("\\b(20\\d{2})\\b");
+        Matcher matcher = yearPattern.matcher(query);
         while (matcher.find()) {
             String year = matcher.group(1);
             if (!years.contains(year)) {
@@ -294,7 +275,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 return true;
             }
             try {
-                java.time.LocalDate parsedDate = parseDateFlexible(docDate);
+                LocalDate parsedDate = parseDateFlexible(docDate);
                 if (parsedDate != null && String.valueOf(parsedDate.getYear()).equals(year)) {
                     return true;
                 }
@@ -349,11 +330,11 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         if (docs == null || docs.isEmpty() || dateCandidates == null || dateCandidates.isEmpty()) {
             return docs != null ? docs : new ArrayList<>();
         }
-        Set<String> normalizedCandidates = new java.util.HashSet<>();
+        Set<String> normalizedCandidates = new HashSet<>();
         for (String candidate : dateCandidates) {
-            java.time.LocalDate parsed = parseDateFlexible(candidate);
+            LocalDate parsed = parseDateFlexible(candidate);
             if (parsed != null) {
-                normalizedCandidates.add(parsed.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE));
+                normalizedCandidates.add(parsed.format(DateTimeFormatter.ISO_LOCAL_DATE));
             }
         }
         if (normalizedCandidates.isEmpty()) {
@@ -364,15 +345,15 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 .filter(doc -> {
                     String docDate = getDocumentDate(doc);
                     if (docDate == null) return false;
-                    java.time.LocalDate docLocal = parseDateFlexible(docDate);
+                    LocalDate docLocal = parseDateFlexible(docDate);
                     if (docLocal == null) {
                         try {
-                            docLocal = java.time.LocalDate.parse(docDate, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE);
+                            docLocal = LocalDate.parse(docDate, DateTimeFormatter.ISO_LOCAL_DATE);
                         } catch (Exception ignored) {
                             return false;
                         }
                     }
-                    return normalizedCandidates.contains(docLocal.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE));
+                    return normalizedCandidates.contains(docLocal.format(DateTimeFormatter.ISO_LOCAL_DATE));
                 })
                 .toList();
         log().info("Filtered {} documents by any-of-dates {}: {} match", docs.size(), dateCandidates, filtered.size());
@@ -626,7 +607,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             // Extract year from document date
             String docYear = null;
             try {
-                java.time.LocalDate parsedDate = parseDateFlexible(docDate);
+                LocalDate parsedDate = parseDateFlexible(docDate);
                 if (parsedDate != null) {
                     docYear = String.valueOf(parsedDate.getYear());
                 }
@@ -671,7 +652,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         }
         
         try {
-            java.time.LocalDate parsedDate = parseDateFlexible(minute.date());
+            LocalDate parsedDate = parseDateFlexible(minute.date());
             if (parsedDate == null) {
                 log().warn("Could not parse date '{}' for minute {} to extract month", minute.date(), minute.id());
                 return null;
@@ -893,7 +874,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             return null;
         }
         try {
-            java.time.LocalDate parsedDate = parseDateFlexible(minute.date());
+            LocalDate parsedDate = parseDateFlexible(minute.date());
             if (parsedDate == null) {
                 return null;
             }
@@ -915,7 +896,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             return null;
         }
         try {
-            java.time.LocalDate parsedDate = parseDateFlexible(minute.date());
+            LocalDate parsedDate = parseDateFlexible(minute.date());
             if (parsedDate == null) {
                 return null;
             }

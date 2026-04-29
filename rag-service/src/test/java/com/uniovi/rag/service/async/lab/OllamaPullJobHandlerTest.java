@@ -4,15 +4,15 @@ import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaModelProvisioningService;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import java.io.IOException;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.io.IOException;
-import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -98,7 +98,7 @@ class OllamaPullJobHandlerTest {
     }
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {
-        AsyncTaskEntity t = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity t = Mockito.mock(AsyncTaskEntity.class);
         when(t.getId()).thenReturn(id);
         when(t.getRequestPayload()).thenReturn(payload);
         return t;

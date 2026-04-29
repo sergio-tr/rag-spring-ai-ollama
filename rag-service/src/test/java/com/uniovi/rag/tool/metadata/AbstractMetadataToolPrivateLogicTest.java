@@ -4,15 +4,15 @@ import com.uniovi.rag.domain.model.Minute;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
-import org.json.JSONObject;
-import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.document.Document;
-
 import java.lang.reflect.Method;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
+import org.json.JSONObject;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.document.Document;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -168,7 +168,7 @@ class AbstractMetadataToolPrivateLogicTest {
         ContextRetriever retriever = mock(ContextRetriever.class);
         DocumentContentExtractor extractor = mock(DocumentContentExtractor.class);
         MetadataLlmResponseCacheService llmCache = mock(MetadataLlmResponseCacheService.class);
-        when(llmCache.getCachedResponse(org.mockito.ArgumentMatchers.anyString())).thenReturn("");
+        when(llmCache.getCachedResponse(ArgumentMatchers.anyString())).thenReturn("");
         return new MetadataCountDocumentsTool(chatClient, retriever, extractor, llmCache);
     }
 }

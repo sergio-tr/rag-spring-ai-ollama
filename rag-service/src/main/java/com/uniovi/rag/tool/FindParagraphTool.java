@@ -1,14 +1,13 @@
 package com.uniovi.rag.tool;
 
+import com.uniovi.rag.service.extraction.DocumentContentExtractor;
+import com.uniovi.rag.service.retriever.ContextRetriever;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Enhanced FindParagraphTool for finding relevant paragraphs in meeting minutes with intelligent NER analysis.
@@ -210,7 +209,7 @@ public class FindParagraphTool extends AbstractTool {
         
         String joined = results.stream()
                 .filter(r -> r != null && !r.trim().isEmpty())
-                .collect(java.util.stream.Collectors.joining("\n\n"));
+                .collect(Collectors.joining("\n\n"));
         
         if (joined.trim().isEmpty()) {
             return generateNotFoundResponse(query);
@@ -289,7 +288,7 @@ public class FindParagraphTool extends AbstractTool {
     private String generateFallbackAnswer(String query, List<String> results) {
         String resultsText = results.stream()
                 .limit(5)
-                .collect(java.util.stream.Collectors.joining("\n\n"));
+                .collect(Collectors.joining("\n\n"));
         
         String prompt = String.format("""
             The user asked (in any language): "%s"

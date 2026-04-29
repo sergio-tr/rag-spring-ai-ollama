@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime.judge;
 
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.judge.JudgeCandidateSource;
 import com.uniovi.rag.domain.runtime.judge.JudgeDecision;
@@ -11,10 +12,9 @@ import com.uniovi.rag.domain.runtime.judge.JudgeMode;
 import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -90,7 +90,7 @@ class JudgeStrategyTest {
         when(evaluator.evaluate(anyString(), anyString(), anyBoolean()))
                 .thenReturn(new JudgeEvaluation(JudgeOutcome.RETRY_REQUESTED, Optional.empty(), "fix", List.of()));
         when(retry.retry(anyString(), anyString(), anyString()))
-                .thenReturn(new JudgeRetryExecutor.RetryResult(true, "repaired", List.of(new ExecutionStageTrace("judge_retry_execute", 0L, com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome.SUCCESS, ""))));
+                .thenReturn(new JudgeRetryExecutor.RetryResult(true, "repaired", List.of(new ExecutionStageTrace("judge_retry_execute", 0L, ExecutionStageOutcome.SUCCESS, ""))));
 
         JudgeExecutionResult out =
                 strategy.execute(

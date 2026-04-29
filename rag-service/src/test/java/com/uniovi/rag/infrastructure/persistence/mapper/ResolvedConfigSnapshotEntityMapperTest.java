@@ -2,17 +2,22 @@ package com.uniovi.rag.infrastructure.persistence.mapper;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper;
+import com.uniovi.rag.domain.config.capability.CapabilitySet;
+import com.uniovi.rag.domain.config.indexing.ReindexImpact;
+import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
+import com.uniovi.rag.domain.config.runtime.ConfigProvenance;
 import com.uniovi.rag.domain.config.runtime.ResolvedConfigSnapshot;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
+import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.support.ResolvedConfigSnapshotTestFixtures;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotResponse;
-import org.junit.jupiter.api.Test;
-
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -61,13 +66,13 @@ class ResolvedConfigSnapshotEntityMapperTest {
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         core,
-                        com.uniovi.rag.domain.config.capability.CapabilitySet.fromRagConfig(core),
-                        com.uniovi.rag.domain.config.validation.CompatibilityResult.ok(),
-                        com.uniovi.rag.domain.config.indexing.ReindexImpact.none(),
-                        com.uniovi.rag.domain.config.prompt.SystemPromptLayers.empty(),
+                        CapabilitySet.fromRagConfig(core),
+                        CompatibilityResult.ok(),
+                        ReindexImpact.none(),
+                        SystemPromptLayers.empty(),
                         "prompt",
-                        new com.uniovi.rag.domain.config.runtime.ConfigProvenance(
-                                null, null, null, java.util.List.of(), null, snap),
+                        new ConfigProvenance(
+                                null, null, null, List.of(), null, snap),
                         core);
         ResolvedConfigSnapshot domainSnap =
                 new ResolvedConfigSnapshot(
@@ -111,13 +116,13 @@ class ResolvedConfigSnapshotEntityMapperTest {
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         core2,
-                        com.uniovi.rag.domain.config.capability.CapabilitySet.fromRagConfig(core2),
-                        com.uniovi.rag.domain.config.validation.CompatibilityResult.ok(),
-                        com.uniovi.rag.domain.config.indexing.ReindexImpact.none(),
-                        com.uniovi.rag.domain.config.prompt.SystemPromptLayers.empty(),
+                        CapabilitySet.fromRagConfig(core2),
+                        CompatibilityResult.ok(),
+                        ReindexImpact.none(),
+                        SystemPromptLayers.empty(),
                         "p",
-                        new com.uniovi.rag.domain.config.runtime.ConfigProvenance(
-                                null, null, null, java.util.List.of(), null, snap),
+                        new ConfigProvenance(
+                                null, null, null, List.of(), null, snap),
                         core2);
         ResolvedConfigSnapshot domainSnap =
                 new ResolvedConfigSnapshot(

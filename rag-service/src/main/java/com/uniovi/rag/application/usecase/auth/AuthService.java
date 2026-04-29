@@ -1,38 +1,38 @@
 package com.uniovi.rag.application.usecase.auth;
 
-import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
-import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
-import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
-import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
-import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
-import com.uniovi.rag.interfaces.rest.auth.dto.LoginRequest;
-import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
-import com.uniovi.rag.interfaces.rest.auth.dto.RefreshRequest;
-import com.uniovi.rag.interfaces.rest.auth.dto.ResendConfirmationRequest;
-import com.uniovi.rag.interfaces.rest.auth.dto.RegisterRequest;
-import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.domain.UserRole;
 import com.uniovi.rag.infrastructure.persistence.EmailConfirmationTokenRepository;
 import com.uniovi.rag.infrastructure.persistence.MailOutboxRepository;
 import com.uniovi.rag.infrastructure.persistence.PasswordResetTokenRepository;
-import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.UserEntityFactory;
 import com.uniovi.rag.infrastructure.persistence.jpa.EmailConfirmationTokenEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.MailOutboxEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.PasswordResetTokenEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.UserEntityFactory;
+import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
+import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
+import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
+import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.LoginRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
+import com.uniovi.rag.interfaces.rest.auth.dto.RefreshRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.RegisterRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.ResendConfirmationRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
 import com.uniovi.rag.security.JwtService;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
@@ -269,6 +269,6 @@ public class AuthService {
 	}
 
 	private static String urlEncode(String raw) {
-		return java.net.URLEncoder.encode(raw, StandardCharsets.UTF_8);
+		return URLEncoder.encode(raw, StandardCharsets.UTF_8);
 	}
 }

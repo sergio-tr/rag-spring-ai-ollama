@@ -1,12 +1,15 @@
 package com.uniovi.rag.application.service.runtime.tracereplay;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
 import com.uniovi.rag.domain.config.runtime.ConfigProvenance;
+import com.uniovi.rag.domain.config.runtime.ResolvedConfigSnapshot;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.MessageRepository;
@@ -18,15 +21,14 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.mapper.ResolvedConfigSnapshotEntityMapper;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
 import com.uniovi.rag.service.project.ProjectAccessService;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import static com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE;
 import static com.uniovi.rag.infrastructure.persistence.mapper.RuntimeExecutionTraceEntityMapper.TRACE_SCHEMA_VERSION;
@@ -66,7 +68,7 @@ class RuntimeTraceReplayInputLoaderTest {
 
         MessageEntity prior = Mockito.mock(MessageEntity.class);
         when(prior.getSeq()).thenReturn(1);
-        when(prior.getRole()).thenReturn(com.uniovi.rag.domain.MessageRole.USER);
+        when(prior.getRole()).thenReturn(MessageRole.USER);
         when(prior.getId()).thenReturn(UUID.randomUUID());
         when(prior.getContent()).thenReturn("hi");
 
@@ -144,7 +146,7 @@ class RuntimeTraceReplayInputLoaderTest {
                         false,
                         100,
                         100,
-                        com.uniovi.rag.domain.knowledge.MaterializationStrategy.CHUNK_LEVEL);
+                        MaterializationStrategy.CHUNK_LEVEL);
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         core,
@@ -155,8 +157,8 @@ class RuntimeTraceReplayInputLoaderTest {
                         "eff",
                         new ConfigProvenance(null, null, null, List.of(), null, id),
                         core);
-        com.uniovi.rag.domain.config.runtime.ResolvedConfigSnapshot domainSnap =
-                new com.uniovi.rag.domain.config.runtime.ResolvedConfigSnapshot(
+        ResolvedConfigSnapshot domainSnap =
+                new ResolvedConfigSnapshot(
                         id,
                         Instant.now(),
                         resolved,

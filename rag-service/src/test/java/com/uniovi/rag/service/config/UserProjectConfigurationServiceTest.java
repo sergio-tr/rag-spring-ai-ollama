@@ -1,12 +1,18 @@
 package com.uniovi.rag.service.config;
 
+import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.RagConfigurationLevel;
 import com.uniovi.rag.domain.runtime.RagConfig;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.RagConfigurationEntity;
 import com.uniovi.rag.infrastructure.persistence.RagConfigurationRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.RagConfigurationEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -14,11 +20,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -52,7 +53,7 @@ class UserProjectConfigurationServiceTest {
         UUID uid = UUID.randomUUID();
         when(configResolverProvider.getObject()).thenReturn(configResolver);
         RagConfig cfg = RagConfig.fromFeatureConfiguration(
-                new com.uniovi.rag.configuration.RagFeatureConfiguration(),
+                new RagFeatureConfiguration(),
                 3,
                 0.5,
                 "m",
@@ -70,7 +71,7 @@ class UserProjectConfigurationServiceTest {
     void putUserConfig_updatesExistingRow() {
         UUID uid = UUID.randomUUID();
         when(configResolverProvider.getObject()).thenReturn(configResolver);
-        var user = mock(com.uniovi.rag.infrastructure.persistence.jpa.UserEntity.class);
+        var user = mock(UserEntity.class);
         when(userRepository.findById(uid)).thenReturn(Optional.of(user));
 
         RagConfigurationEntity row = mock(RagConfigurationEntity.class);
@@ -81,7 +82,7 @@ class UserProjectConfigurationServiceTest {
         when(configResolver.resolve(uid, null, null))
                 .thenReturn(
                         RagConfig.fromFeatureConfiguration(
-                                new com.uniovi.rag.configuration.RagFeatureConfiguration(),
+                                new RagFeatureConfiguration(),
                                 5,
                                 0.7,
                                 "a",
@@ -117,7 +118,7 @@ class UserProjectConfigurationServiceTest {
         when(configResolverProvider.getObject()).thenReturn(configResolver);
         ProjectEntity project = mock(ProjectEntity.class);
         when(projectAccessService.requireOwnedProject(uid, pid)).thenReturn(project);
-        var user = mock(com.uniovi.rag.infrastructure.persistence.jpa.UserEntity.class);
+        var user = mock(UserEntity.class);
         when(userRepository.findById(uid)).thenReturn(Optional.of(user));
 
         RagConfigurationEntity row = mock(RagConfigurationEntity.class);
@@ -131,7 +132,7 @@ class UserProjectConfigurationServiceTest {
         when(configResolver.resolve(uid, pid, null))
                 .thenReturn(
                         RagConfig.fromFeatureConfiguration(
-                                new com.uniovi.rag.configuration.RagFeatureConfiguration(),
+                                new RagFeatureConfiguration(),
                                 5,
                                 0.7,
                                 "a",

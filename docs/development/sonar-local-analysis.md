@@ -14,7 +14,7 @@ Configuration lives in the repo root [`sonar-project.properties`](../../sonar-pr
 | **PostgreSQL 16 + pgvector** | On `localhost:5432`, database `vectordb`, user/password `postgres` (or override env vars below). |
 | **Client tools** | `psql` / `pg_isready` on `PATH`, **or** Docker: `sonar-local.sh` uses `pgvector/pgvector:0.8.2-pg16-bookworm` with `--network host`. Override host with `SONAR_PG_DOCKER_HOST`. |
 | **Python 3.11** | For `classifier-service` tests. |
-| **Node.js** | Version per `webapp/package.json` / `.nvmrc` if present. |
+| **Node.js** | **`webapp/package.json` requires Node ≥ 22** (Vitest/rolldown); use the same in CI. On Node 20, `npm run test:coverage` may fail to load native `rolldown` bindings. |
 | **Docker** | Used to run `sonarsource/sonar-scanner-cli` (same stack family as `SonarSource/sonarqube-scan-action` in CI). |
 
 ## Environment variables (same idea as CI)
@@ -51,7 +51,6 @@ export SONAR_TOKEN="your_token_here"
 chmod +x .github/local/sonar-local.sh
 .github/local/sonar-local.sh
 ```
-```
 
 ### Optional: branch name in SonarCloud
 
@@ -86,6 +85,10 @@ Ensure these exist first (as in CI):
 - `rag-service/target/classes`, `rag-service/target/site/jacoco/jacoco.xml`, `rag-service/target/dependency/*.jar`
 - `classifier-service/coverage.xml`
 - `webapp/coverage/lcov.info`
+
+## Security Hotspots (quality gate)
+
+The Sonar **Security Hotspots Reviewed** condition is satisfied in the UI: open each hotspot in SonarCloud, confirm or fix, and mark as **Safe** / **Fixed** as appropriate. Code-only fixes (logging sanitization, binding addresses, removing default credentials) help, but the gate still requires **reviewed** state in the dashboard.
 
 ## Faster feedback in the IDE
 

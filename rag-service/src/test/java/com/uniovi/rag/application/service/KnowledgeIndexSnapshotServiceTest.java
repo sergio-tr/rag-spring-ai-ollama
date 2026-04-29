@@ -4,15 +4,15 @@ import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -41,10 +41,10 @@ class KnowledgeIndexSnapshotServiceTest {
     @Test
     void ensureLegacySnapshot_returnsExistingWhenPresent() {
         UUID pid = UUID.randomUUID();
-        ProjectEntity project = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(pid);
         String sig = KnowledgeIndexSnapshotService.legacySignatureForProject(pid);
-        KnowledgeIndexSnapshotEntity existing = org.mockito.Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        KnowledgeIndexSnapshotEntity existing = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
         when(knowledgeIndexSnapshotRepository.findByProject_IdAndSignatureHashAndStatus(
                         eq(pid), eq(sig), eq(IndexSnapshotStatus.ACTIVE)))
                 .thenReturn(Optional.of(existing));
@@ -55,7 +55,7 @@ class KnowledgeIndexSnapshotServiceTest {
     @Test
     void ensureLegacySnapshot_createsWhenMissing() {
         UUID pid = UUID.randomUUID();
-        ProjectEntity project = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(pid);
         String sig = KnowledgeIndexSnapshotService.legacySignatureForProject(pid);
         when(knowledgeIndexSnapshotRepository.findByProject_IdAndSignatureHashAndStatus(

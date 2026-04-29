@@ -1,16 +1,12 @@
 package com.uniovi.rag.service.evaluation;
 
+import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
-import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.query.QueryService;
-
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.prompt.PromptTemplate;
-import org.springframework.stereotype.Service;
-
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -20,6 +16,9 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.prompt.PromptTemplate;
+import org.springframework.stereotype.Service;
 
 @Service
 public abstract class AbstractEvaluationService implements EvaluationService {    
@@ -654,7 +653,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     protected int countChunks(List<String> ref, List<String> hyp) {
         boolean[] matchedRef = new boolean[ref.size()];
         int[] align = new int[hyp.size()];
-        java.util.Arrays.fill(align, -1);
+        Arrays.fill(align, -1);
         for (int i = 0; i < hyp.size(); i++) {
             for (int j = 0; j < ref.size(); j++) {
                 if (!matchedRef[j] && ref.get(j).equals(hyp.get(i))) {

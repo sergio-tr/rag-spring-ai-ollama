@@ -1,5 +1,6 @@
 package com.uniovi.rag.domain.runtime.tracereplay;
 
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -8,8 +9,8 @@ import java.util.Optional;
 public record RuntimeTraceReplayDecision(boolean eligible, Optional<RuntimeTraceReplayOutcome> unsupportedOutcome, Optional<String> reasonDetail) {
 
     public RuntimeTraceReplayDecision {
-        unsupportedOutcome = unsupportedOutcome == null ? Optional.empty() : unsupportedOutcome;
-        reasonDetail = reasonDetail == null ? Optional.empty() : reasonDetail;
+        unsupportedOutcome = Objects.requireNonNullElseGet(unsupportedOutcome, Optional::empty);
+        reasonDetail = Objects.requireNonNullElseGet(reasonDetail, Optional::empty);
     }
 
     public static RuntimeTraceReplayDecision ok() {

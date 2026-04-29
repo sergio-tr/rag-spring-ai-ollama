@@ -2,12 +2,13 @@ package com.uniovi.rag.service.query.pipeline;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.model.QueryType;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
+import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.service.expand.QueryExpander;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -47,9 +48,9 @@ class QueryInputPreparerTest {
         assertThat(pq.expandedQuery()).isEqualTo("hello");
         assertThat(pq.nerEntities()).isNull();
         assertThat(pq.queryType()).isNull();
-        verify(expander, never()).expand(org.mockito.ArgumentMatchers.anyString());
-        verify(analyser, never()).analyse(org.mockito.ArgumentMatchers.anyString());
-        verify(classifier, never()).classify(org.mockito.ArgumentMatchers.anyString());
+        verify(expander, never()).expand(ArgumentMatchers.anyString());
+        verify(analyser, never()).analyse(ArgumentMatchers.anyString());
+        verify(classifier, never()).classify(ArgumentMatchers.anyString());
     }
 
     @Test

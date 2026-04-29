@@ -1,10 +1,10 @@
 package com.uniovi.rag.service.guard;
 
+import java.time.LocalDate;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -57,7 +57,7 @@ class QueryDateExtractorTest {
     @Test
     void extractNormalizedDate_prefersNerDateArray() {
         JSONObject ner = new JSONObject();
-        ner.put("date", new org.json.JSONArray().put("2027-01-10"));
+        ner.put("date", new JSONArray().put("2027-01-10"));
         assertEquals("2027-01-10", extractor.extractNormalizedDate("no iso in text", ner));
     }
 

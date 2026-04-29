@@ -5,18 +5,19 @@ import com.uniovi.rag.configuration.RagAccountProperties;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.io.TempDir;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -43,8 +44,8 @@ class AccountExportApplicationServiceTest {
 
         UUID taskId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        UserEntity user = org.mockito.Mockito.mock(UserEntity.class);
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        UserEntity user = Mockito.mock(UserEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         when(task.getId()).thenReturn(taskId);
         when(task.getUser()).thenReturn(user);
         when(user.getId()).thenReturn(userId);
@@ -66,8 +67,8 @@ class AccountExportApplicationServiceTest {
 
         svc.runExport(task, mutation);
 
-        verify(mutation).appendProgressLine(eq(taskId), org.mockito.ArgumentMatchers.contains("Collecting"));
-        verify(mutation).appendProgressLine(eq(taskId), org.mockito.ArgumentMatchers.contains("ZIP"));
+        verify(mutation).appendProgressLine(eq(taskId), ArgumentMatchers.contains("Collecting"));
+        verify(mutation).appendProgressLine(eq(taskId), ArgumentMatchers.contains("ZIP"));
 
         ArgumentCaptor<AccountExportCompletion> cap = ArgumentCaptor.forClass(AccountExportCompletion.class);
         verify(artifactRegistrar).saveAndCompleteTask(cap.capture());

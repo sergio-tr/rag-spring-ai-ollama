@@ -1,7 +1,6 @@
 package com.uniovi.rag.interfaces.rest;
 
 
-import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.tracecomparisonbatchexport.RuntimeTraceReplayComparisonBatchExportArtifact;
 import com.uniovi.rag.application.service.runtime.tracecomparisonbatchexport.RuntimeTraceReplayComparisonBatchExportNotAttemptedException;
 import com.uniovi.rag.application.service.runtime.tracecomparisonbatchexport.RuntimeTraceReplayComparisonBatchExportService;
@@ -9,6 +8,10 @@ import com.uniovi.rag.application.service.runtime.tracecomparisonbatchexport.Run
 import com.uniovi.rag.configuration.TraceComparisonBatchRestJacksonConfiguration;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,11 +27,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.PostMapping;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
-
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -74,9 +75,9 @@ class RuntimeTraceReplayComparisonBatchExportControllerTest {
     void controller_exposes_exactly_two_post_mappings() {
         long n =
                 Arrays.stream(RuntimeTraceReplayComparisonBatchExportController.class.getDeclaredMethods())
-                        .filter(m -> m.isAnnotationPresent(org.springframework.web.bind.annotation.PostMapping.class))
+                        .filter(m -> m.isAnnotationPresent(PostMapping.class))
                         .count();
-        org.assertj.core.api.Assertions.assertThat(n).isEqualTo(2);
+        Assertions.assertThat(n).isEqualTo(2);
     }
 
     @Test

@@ -1,18 +1,18 @@
 package com.uniovi.rag.service.model;
 
-import com.uniovi.rag.interfaces.rest.dto.ModelsCatalogResponseDto;
 import com.uniovi.rag.domain.AllowedModelType;
-import com.uniovi.rag.infrastructure.persistence.jpa.AllowedModelEntity;
 import com.uniovi.rag.infrastructure.llm.ollama.OllamaApiClient;
 import com.uniovi.rag.infrastructure.persistence.AllowedModelRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.AllowedModelEntity;
+import com.uniovi.rag.interfaces.rest.dto.ModelsCatalogResponseDto;
+import java.io.IOException;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.List;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -51,7 +51,7 @@ class ModelsCatalogServiceTest {
     @Test
     void buildCatalog_whenOllamaFails_marksUnreachable() throws Exception {
         when(allowedModelRepository.findAll()).thenReturn(List.of());
-        when(ollamaApiClient.listModelNames()).thenThrow(new java.io.IOException("down"));
+        when(ollamaApiClient.listModelNames()).thenThrow(new IOException("down"));
 
         ModelsCatalogResponseDto dto = modelsCatalogService.buildCatalog();
 

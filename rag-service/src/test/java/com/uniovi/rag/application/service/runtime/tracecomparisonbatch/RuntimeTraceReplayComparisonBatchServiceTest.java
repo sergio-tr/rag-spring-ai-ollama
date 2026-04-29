@@ -15,20 +15,20 @@ import com.uniovi.rag.domain.runtime.tracecomparisonbatch.RuntimeTraceReplayComp
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayMode;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayOutcome;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceSummaryDto;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -82,7 +82,7 @@ class RuntimeTraceReplayComparisonBatchServiceTest {
         assertThat(r.items()).hasSize(2);
         assertThat(r.summary().processedCount()).isEqualTo(2);
         assertSummaryIdentity(r.summary());
-        verify(comparisonService, org.mockito.Mockito.times(2)).compare(any(RuntimeTraceReplayComparisonRequest.class));
+        verify(comparisonService, Mockito.times(2)).compare(any(RuntimeTraceReplayComparisonRequest.class));
     }
 
     @Test

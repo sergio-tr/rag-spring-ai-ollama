@@ -1,7 +1,6 @@
 package com.uniovi.rag.interfaces.rest;
 
 
-import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.config.ConfigurationSchemaProvider;
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
@@ -9,28 +8,29 @@ import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
 import com.uniovi.rag.interfaces.rest.dto.CreateResolvedConfigSnapshotRequest;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotCreatedResponse;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotResponse;
-import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.service.config.UserProjectConfigurationService;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -104,13 +104,13 @@ class ConfigControllerResolvedSnapshotWebMvcTest {
                         new ResolvedConfigSnapshotResponse(
                                 snapId,
                                 Instant.parse("2026-01-01T00:00:00Z"),
-                                java.util.Map.of(),
-                                java.util.Map.of(),
-                                java.util.Map.of(),
-                                java.util.Map.of(),
-                                java.util.Map.of(),
+                                Map.of(),
+                                Map.of(),
+                                Map.of(),
+                                Map.of(),
+                                Map.of(),
                                 "x",
-                                java.util.Map.of(),
+                                Map.of(),
                                 "h",
                                 null,
                                 null,

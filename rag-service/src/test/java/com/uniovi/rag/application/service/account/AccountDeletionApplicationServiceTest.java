@@ -4,15 +4,15 @@ import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -35,9 +35,9 @@ class AccountDeletionApplicationServiceTest {
     void runDeletion_marksSucceeded_thenDeletesUser() {
         UUID taskId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
-        UserEntity user = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity user = Mockito.mock(UserEntity.class);
         when(user.getId()).thenReturn(userId);
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         when(task.getId()).thenReturn(taskId);
         when(task.getUser()).thenReturn(user);
 

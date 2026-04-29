@@ -1,5 +1,15 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
+import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
+import com.uniovi.rag.application.service.runtime.clarification.ClarificationPolicyResolver;
+import com.uniovi.rag.application.service.runtime.clarification.ClarificationStrategy;
+import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
+import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
+import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
+import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
+import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -13,15 +23,19 @@ import com.uniovi.rag.domain.runtime.advisor.AdvisorExecutionResult;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorMode;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome;
 import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
-import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingDecision;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionResult;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingMode;
 import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
+import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
+import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
@@ -30,29 +44,18 @@ import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
+import com.uniovi.rag.domain.runtime.routing.RouteExecutionGate;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
-import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
-import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
-import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
-import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
-import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
-import com.uniovi.rag.application.service.runtime.clarification.ClarificationPolicyResolver;
-import com.uniovi.rag.application.service.runtime.clarification.ClarificationStrategy;
-import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
-import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
-import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingPolicyResolver;
-import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
-import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
-import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
-import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -97,21 +100,21 @@ class RagExecutionOrchestratorAdvisorTest {
 
         when(routingStrategy.execute(any(), eq(plan)))
                 .thenReturn(
-                        new com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult(
-                                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK,
+                        new AdaptiveRoutingExecutionResult(
+                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK,
                                 true,
-                                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE,
+                                AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE,
                                 false,
                                 Optional.empty(),
                                 false,
-                                new com.uniovi.rag.domain.runtime.routing.RouteExecutionGate(
-                                        com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE,
+                                new RouteExecutionGate(
+                                        AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE,
                                         false,
                                         true,
                                         false,
                                         false,
                                         true,
-                                        Optional.of(com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE),
+                                        Optional.of(AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE),
                                         false),
                                 List.of()));
 
@@ -181,21 +184,21 @@ class RagExecutionOrchestratorAdvisorTest {
 
         when(routingStrategy.execute(any(), eq(plan)))
                 .thenReturn(
-                        new com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult(
-                                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK,
+                        new AdaptiveRoutingExecutionResult(
+                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK,
                                 true,
-                                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.FUNCTION_CALLING_ROUTE,
+                                AdaptiveRouteKind.FUNCTION_CALLING_ROUTE,
                                 false,
                                 Optional.empty(),
                                 false,
-                                new com.uniovi.rag.domain.runtime.routing.RouteExecutionGate(
-                                        com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.FUNCTION_CALLING_ROUTE,
+                                new RouteExecutionGate(
+                                        AdaptiveRouteKind.FUNCTION_CALLING_ROUTE,
                                         false,
                                         false,
                                         true,
                                         false,
                                         true,
-                                        Optional.of(com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE),
+                                        Optional.of(AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE),
                                         false),
                                 List.of()));
 
@@ -306,21 +309,21 @@ class RagExecutionOrchestratorAdvisorTest {
 
         when(routingStrategy.execute(any(), eq(plan)))
                 .thenReturn(
-                        new com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult(
-                                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.PRIMARY_ROUTE_CONTINUED_TO_WORKFLOW,
+                        new AdaptiveRoutingExecutionResult(
+                                AdaptiveRoutingOutcome.PRIMARY_ROUTE_CONTINUED_TO_WORKFLOW,
                                 true,
-                                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.ADVISOR_ROUTE,
+                                AdaptiveRouteKind.ADVISOR_ROUTE,
                                 false,
                                 Optional.empty(),
                                 false,
-                                new com.uniovi.rag.domain.runtime.routing.RouteExecutionGate(
-                                        com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.ADVISOR_ROUTE,
+                                new RouteExecutionGate(
+                                        AdaptiveRouteKind.ADVISOR_ROUTE,
                                         false,
                                         false,
                                         false,
                                         true,
                                         true,
-                                        Optional.of(com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE),
+                                        Optional.of(AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE),
                                         false),
                                 List.of()));
 
@@ -471,8 +474,8 @@ class RagExecutionOrchestratorAdvisorTest {
                 Optional.empty(),
                 Optional.empty(),
                 false,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                 false,
                 Optional.empty(),
                 false,

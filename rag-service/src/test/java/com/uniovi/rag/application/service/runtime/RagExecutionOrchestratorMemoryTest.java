@@ -18,23 +18,35 @@ import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.domain.runtime.advisor.AdvisorDecision;
+import com.uniovi.rag.domain.runtime.advisor.AdvisorExecutionResult;
+import com.uniovi.rag.domain.runtime.advisor.AdvisorMode;
+import com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
-import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
-import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
+import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
-import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
-import com.uniovi.rag.domain.runtime.query.QueryPlan;
-import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
-import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
+import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingDecision;
+import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingMode;
+import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
 import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
 import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
-import org.junit.jupiter.api.Test;
-
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -83,13 +95,13 @@ class RagExecutionOrchestratorMemoryTest {
                 new ExecutionStageTrace(
                         "memory_history_load",
                         0L,
-                        com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome.SUCCESS,
+                        ExecutionStageOutcome.SUCCESS,
                         "x");
         ExecutionStageTrace mem2 =
                 new ExecutionStageTrace(
                         "memory_finalize_planning_input",
                         0L,
-                        com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome.SUCCESS,
+                        ExecutionStageOutcome.SUCCESS,
                         "y");
 
         ExecutionContext in =
@@ -108,8 +120,8 @@ class RagExecutionOrchestratorMemoryTest {
         when(factory.attachQueryPlan(in, plan)).thenReturn(in);
 
         when(clarificationPolicy.resolve(any(), any()))
-                .thenReturn(new com.uniovi.rag.domain.runtime.clarification.ClarificationDecision(false,
-                        com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome.NOT_NEEDED, null, ""));
+                .thenReturn(new ClarificationDecision(false,
+                        ClarificationOutcome.NOT_NEEDED, null, ""));
 
         ExecutionWorkflow wf = mock(ExecutionWorkflow.class);
         when(wf.workflowName()).thenReturn("DirectLlmWorkflow");
@@ -120,21 +132,21 @@ class RagExecutionOrchestratorMemoryTest {
         when(tools.tryExecute(any(), any())).thenReturn(
                 DeterministicToolExecutionResult.skipped(DeterministicToolOutcome.NOT_ATTEMPTED, List.of(), Optional.empty()));
         when(fcPolicy.resolve(any(), any()))
-                .thenReturn(Optional.of(new com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingDecision(
-                        com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingMode.DISABLED,
-                        com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome.DISABLED_BY_CONFIG,
+                .thenReturn(Optional.of(new FunctionCallingDecision(
+                        FunctionCallingMode.DISABLED,
+                        FunctionCallingOutcome.DISABLED_BY_CONFIG,
                         false,
                         List.of(),
                         List.of(),
                         Optional.of("disabled"),
                         "",
-                        java.util.Map.of())));
+                        Map.of())));
         when(advisorPolicy.resolve(any(), any()))
-                .thenReturn(new com.uniovi.rag.domain.runtime.advisor.AdvisorDecision(
-                        com.uniovi.rag.domain.runtime.advisor.AdvisorMode.DISABLED, false, List.of(), "", List.of(), Optional.empty()));
+                .thenReturn(new AdvisorDecision(
+                        AdvisorMode.DISABLED, false, List.of(), "", List.of(), Optional.empty()));
         when(advisorStrategy.execute(any(), any(), any(), any()))
-                .thenReturn(new com.uniovi.rag.domain.runtime.advisor.AdvisorExecutionResult(
-                        com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome.SUPPRESSED_BY_POLICY, false, Optional.empty(), List.of()));
+                .thenReturn(new AdvisorExecutionResult(
+                        AdvisorOutcome.SUPPRESSED_BY_POLICY, false, Optional.empty(), List.of()));
 
         RagExecutionResult out = orchestrator.execute(in);
         ExecutionTrace trace = out.executionTrace();
@@ -222,8 +234,8 @@ class RagExecutionOrchestratorMemoryTest {
                 Optional.empty(),
                 Optional.empty(),
                 false,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                 false,
                 Optional.empty(),
                 false,

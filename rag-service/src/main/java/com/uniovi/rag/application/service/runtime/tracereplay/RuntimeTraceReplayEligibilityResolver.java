@@ -1,17 +1,17 @@
 package com.uniovi.rag.application.service.runtime.tracereplay;
 
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayDecision;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayOutcome;
-import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.infrastructure.persistence.mapper.RuntimeExecutionTraceEntityMapper;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
-import org.springframework.stereotype.Service;
-
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.stereotype.Service;
 
 /**
  * Decides whether a persisted trace is eligible for P18 replay (strict matrix).
@@ -128,7 +128,7 @@ public class RuntimeTraceReplayEligibilityResolver {
 
     public record RuntimeTraceReplayEligibility(RuntimeTraceReplayDecision decision, Optional<PinnedReplayExecutionSpec> pin) {
         public RuntimeTraceReplayEligibility {
-            pin = pin == null ? Optional.empty() : pin;
+            pin = Objects.requireNonNullElseGet(pin, Optional::empty);
         }
     }
 }

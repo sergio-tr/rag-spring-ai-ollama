@@ -1,13 +1,12 @@
 package com.uniovi.rag.infrastructure.bootstrap;
 
+import java.util.List;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
-
-import java.util.List;
-
-import org.mockito.ArgumentCaptor;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -41,7 +40,7 @@ class DevUsersSeederTest {
         verify(jdbc, times(2)).update(sql.capture(), any(), any(), any(), any(), any(), any());
         List<String> sqls = sql.getAllValues();
         // Both calls should be UPDATE statements.
-        org.junit.jupiter.api.Assertions.assertTrue(sqls.stream().allMatch(s -> s.contains("UPDATE users SET")));
+        Assertions.assertTrue(sqls.stream().allMatch(s -> s.contains("UPDATE users SET")));
     }
 
     @Test
@@ -68,7 +67,7 @@ class DevUsersSeederTest {
 
         ArgumentCaptor<String> insertSql = ArgumentCaptor.forClass(String.class);
         verify(jdbc, times(2)).update(insertSql.capture(), any(), any(), any(), any(), any());
-        org.junit.jupiter.api.Assertions.assertTrue(
+        Assertions.assertTrue(
                 insertSql.getAllValues().stream().allMatch(s -> s.contains("INSERT INTO users")));
     }
 }

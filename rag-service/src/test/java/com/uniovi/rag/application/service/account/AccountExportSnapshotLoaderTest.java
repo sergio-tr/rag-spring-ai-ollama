@@ -1,7 +1,7 @@
 package com.uniovi.rag.application.service.account;
 
-import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
@@ -12,19 +12,21 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.Pageable;
-
+import com.uniovi.rag.infrastructure.persistence.jpa.UserPersonalizationEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.UserPreferencesEntity;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -61,7 +63,7 @@ class AccountExportSnapshotLoaderTest {
         UUID convId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
 
-        UserEntity user = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity user = Mockito.mock(UserEntity.class);
         when(user.getEmail()).thenReturn("u@example.com");
         when(user.getName()).thenReturn("User");
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
@@ -69,7 +71,7 @@ class AccountExportSnapshotLoaderTest {
         when(userPreferencesRepository.findById(userId)).thenReturn(Optional.empty());
         when(userPersonalizationRepository.findById(userId)).thenReturn(Optional.empty());
 
-        ProjectEntity project = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(projectId);
         when(project.getName()).thenReturn("P");
         when(project.getDescription()).thenReturn("d");
@@ -79,13 +81,13 @@ class AccountExportSnapshotLoaderTest {
         when(projectRepository.findByOwner_IdOrderByUpdatedAtDesc(eq(userId), eq(Pageable.unpaged())))
                 .thenReturn(new PageImpl<>(List.of(project)));
 
-        ConversationEntity conv = org.mockito.Mockito.mock(ConversationEntity.class);
+        ConversationEntity conv = Mockito.mock(ConversationEntity.class);
         when(conv.getId()).thenReturn(convId);
         when(conv.getProject()).thenReturn(project);
         when(conv.getTitle()).thenReturn("Chat");
         when(conversationRepository.findByProject_IdOrderByUpdatedAtDesc(projectId)).thenReturn(List.of(conv));
 
-        KnowledgeDocumentEntity doc = org.mockito.Mockito.mock(KnowledgeDocumentEntity.class);
+        KnowledgeDocumentEntity doc = Mockito.mock(KnowledgeDocumentEntity.class);
         when(doc.getId()).thenReturn(docId);
         when(doc.getProject()).thenReturn(project);
         when(doc.getConversation()).thenReturn(null);
@@ -112,17 +114,17 @@ class AccountExportSnapshotLoaderTest {
     @Test
     void load_mapsOptionalJsonBlobs_whenPresent() {
         UUID userId = UUID.randomUUID();
-        UserEntity user = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity user = Mockito.mock(UserEntity.class);
         when(user.getEmail()).thenReturn("e@e.e");
         when(user.getName()).thenReturn("N");
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        var prefRow = org.mockito.Mockito.mock(com.uniovi.rag.infrastructure.persistence.jpa.UserPreferencesEntity.class);
+        var prefRow = Mockito.mock(UserPreferencesEntity.class);
         when(prefRow.getPreferences()).thenReturn(Map.of("theme", "dark"));
         when(userPreferencesRepository.findById(userId)).thenReturn(Optional.of(prefRow));
 
         var persRow =
-                org.mockito.Mockito.mock(com.uniovi.rag.infrastructure.persistence.jpa.UserPersonalizationEntity.class);
+                Mockito.mock(UserPersonalizationEntity.class);
         when(persRow.getPersonalization()).thenReturn(null);
         when(userPersonalizationRepository.findById(userId)).thenReturn(Optional.of(persRow));
 

@@ -3,25 +3,28 @@ package com.uniovi.rag.service.retriever;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.infrastructure.observability.Loggable;
-import org.json.JSONObject;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.ai.vectorstore.SearchRequest;
-
+import com.uniovi.rag.util.DateParsingSupport;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
 public abstract class AbstractContextRetriever implements ContextRetriever, Loggable {
 
@@ -248,7 +251,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return docs;
         }
         try {
-            org.json.JSONArray arr = nerEntities.getJSONArray("date");
+            JSONArray arr = nerEntities.getJSONArray("date");
             List<LocalDate> requestedDates = new ArrayList<>();
             for (int i = 0; i < arr.length(); i++) {
                 LocalDate d = parseDateToLocalDate(arr.optString(i, "").trim());
@@ -306,8 +309,8 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return null;
         }
         
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\b(\\d{4})\\b");
-        java.util.regex.Matcher matcher = pattern.matcher(date);
+        Pattern pattern = Pattern.compile("\\b(\\d{4})\\b");
+        Matcher matcher = pattern.matcher(date);
         if (matcher.find()) {
             return matcher.group(1);
         }
@@ -386,56 +389,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
      * Always tries ISO format first for better performance.
      */
     protected LocalDate parseDateToLocalDate(String dateStr) {
-        if (dateStr == null || dateStr.trim().isEmpty()) {
-            return null;
-        }
-        
-        // Normalize to lowercase to handle case variations (e.g., "Agosto" vs "agosto")
-        String v = dateStr.trim().toLowerCase();
-        
-        // Try ISO format first (most common after normalization)
-        try {
-            return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
-        } catch (DateTimeParseException ignored) {
-            // Not ISO after lowercasing; continue with locale-specific formatters below.
-        }
-        
-        // Try Spanish formats with quotes
-        List<DateTimeFormatter> formatters = Arrays.asList(
-            DateTimeFormatter.ofPattern("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            // Spanish formats without quotes
-            DateTimeFormatter.ofPattern("d de MMMM de yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd de MMMM de yyyy", Locale.forLanguageTag("es")),
-            // Abbreviated month names
-            DateTimeFormatter.ofPattern("d 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd 'de' MMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("d de MMM de yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd de MMM de yyyy", Locale.forLanguageTag("es")),
-            // Without "de" between day and month
-            DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("dd MMMM yyyy", Locale.forLanguageTag("es")),
-            // Numeric formats
-            DateTimeFormatter.ofPattern("d/M/yyyy"),
-            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
-            DateTimeFormatter.ofPattern("d-M-yyyy"),
-            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
-            DateTimeFormatter.ofPattern("yyyy/MM/dd"),
-            DateTimeFormatter.ofPattern("yyyy.MM.dd"),
-            // With day of the week
-            DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")),
-            DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH)
-        );
-        
-        for (DateTimeFormatter formatter : formatters) {
-            try {
-                return LocalDate.parse(v, formatter);
-            } catch (DateTimeParseException ignored) {
-                // Try next formatter
-            }
-        }
-        
-        return null;
+        return DateParsingSupport.parseDateToLocalDate(dateStr);
     }
     
     /**
@@ -461,8 +415,8 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         String lower = dateStr.toLowerCase();
         
         // Extract year (4 digits)
-        java.util.regex.Pattern yearPattern = java.util.regex.Pattern.compile("\\b(\\d{4})\\b");
-        java.util.regex.Matcher yearMatcher = yearPattern.matcher(dateStr);
+        Pattern yearPattern = Pattern.compile("\\b(\\d{4})\\b");
+        Matcher yearMatcher = yearPattern.matcher(dateStr);
         String year = yearMatcher.find() ? yearMatcher.group(1) : null;
         
         // Extract month (name or number)
@@ -477,8 +431,8 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         }
         
         // Extract day (1-2 digits)
-        java.util.regex.Pattern dayPattern = java.util.regex.Pattern.compile("\\b(\\d{1,2})\\b");
-        java.util.regex.Matcher dayMatcher = dayPattern.matcher(dateStr);
+        Pattern dayPattern = Pattern.compile("\\b(\\d{1,2})\\b");
+        Matcher dayMatcher = dayPattern.matcher(dateStr);
         String day = null;
         while (dayMatcher.find()) {
             String candidate = dayMatcher.group(1);
@@ -564,14 +518,14 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         }
         
         // Group documents by document_id
-        java.util.Map<String, java.util.List<Document>> documentsById = docs.stream()
-                .collect(java.util.stream.Collectors.groupingBy(this::getDocumentId));
+        Map<String, List<Document>> documentsById = docs.stream()
+                .collect(Collectors.groupingBy(this::getDocumentId));
         
         // Combine chunks for each document
-        java.util.List<Document> combinedDocuments = new java.util.ArrayList<>();
-        for (java.util.Map.Entry<String, java.util.List<Document>> entry : documentsById.entrySet()) {
+        List<Document> combinedDocuments = new ArrayList<>();
+        for (Map.Entry<String, List<Document>> entry : documentsById.entrySet()) {
             String documentId = entry.getKey();
-            java.util.List<Document> chunks = entry.getValue();
+            List<Document> chunks = entry.getValue();
             
             if (chunks.size() == 1) {
                 // Single chunk, use as-is
@@ -598,7 +552,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
      * Combines multiple chunks of the same document into a single Document.
      * Merges content in order (by chunk_index) and uses metadata from the chunk with most complete metadata.
      */
-    protected Document combineChunks(java.util.List<Document> chunks) {
+    protected Document combineChunks(List<Document> chunks) {
         if (chunks == null || chunks.isEmpty()) {
             return null;
         }
@@ -608,7 +562,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         }
         
         // Sort chunks by chunk_index if available
-        java.util.List<Document> sortedChunks = new java.util.ArrayList<>(chunks);
+        List<Document> sortedChunks = new ArrayList<>(chunks);
         sortedChunks.sort((d1, d2) -> {
             Integer idx1 = getChunkIndex(d1);
             Integer idx2 = getChunkIndex(d2);
@@ -639,7 +593,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
                 .orElse(sortedChunks.get(0));
         
         // Create new Document with combined content and best metadata
-        java.util.Map<String, Object> combinedMetadata = new java.util.HashMap<>(bestMetadataChunk.getMetadata());
+        Map<String, Object> combinedMetadata = new HashMap<>(bestMetadataChunk.getMetadata());
         // Remove chunk-specific metadata
         combinedMetadata.remove("chunk_index");
         combinedMetadata.remove("total_chunks");
@@ -670,7 +624,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return null;
         }
         
-        java.util.Map<String, Object> metadata = doc.getMetadata();
+        Map<String, Object> metadata = doc.getMetadata();
         
         // Try to get document_id first (new documents)
         Object docId = metadata.get("document_id");
@@ -691,10 +645,10 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         if (value instanceof String s) {
             return !s.trim().isEmpty();
         }
-        if (value instanceof java.util.List<?> list) {
+        if (value instanceof List<?> list) {
             return !list.isEmpty();
         }
-        if (value instanceof java.util.Map<?, ?> map) {
+        if (value instanceof Map<?, ?> map) {
             return !map.isEmpty();
         }
         return true;
@@ -709,7 +663,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
             return 0;
         }
         
-        java.util.Map<String, Object> metadata = doc.getMetadata();
+        Map<String, Object> metadata = doc.getMetadata();
         
         int count = 0;
         for (Object value : metadata.values()) {

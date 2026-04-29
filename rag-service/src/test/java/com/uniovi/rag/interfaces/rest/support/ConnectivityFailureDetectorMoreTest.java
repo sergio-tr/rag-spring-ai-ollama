@@ -1,13 +1,13 @@
 package com.uniovi.rag.interfaces.rest.support;
 
-import org.junit.jupiter.api.Test;
-
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.net.http.HttpTimeoutException;
 import java.nio.channels.ClosedChannelException;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,7 +32,7 @@ class ConnectivityFailureDetectorMoreTest {
     @Test
     void detectsHttpTimeoutException() {
         assertTrue(ConnectivityFailureDetector.isConnectivityFailure(
-                new java.net.http.HttpTimeoutException("timeout")));
+                new HttpTimeoutException("timeout")));
     }
 
     @Test

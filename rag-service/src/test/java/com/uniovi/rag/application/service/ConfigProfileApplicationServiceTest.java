@@ -9,20 +9,20 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.ConfigProfileResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.CreateConfigProfileRequest;
 import com.uniovi.rag.interfaces.rest.dto.PatchConfigProfileRequest;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -74,9 +74,9 @@ class ConfigProfileApplicationServiceTest {
         UUID userId = UUID.randomUUID();
         UUID otherId = UUID.randomUUID();
         UUID profileId = UUID.randomUUID();
-        UserEntity owner = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity owner = Mockito.mock(UserEntity.class);
         when(owner.getId()).thenReturn(otherId);
-        ConfigProfileEntity e = org.mockito.Mockito.mock(ConfigProfileEntity.class);
+        ConfigProfileEntity e = Mockito.mock(ConfigProfileEntity.class);
         when(e.getOwner()).thenReturn(owner);
         when(configProfileRepository.findById(profileId)).thenReturn(Optional.of(e));
 
@@ -110,7 +110,7 @@ class ConfigProfileApplicationServiceTest {
     @Test
     void create_success() {
         UUID userId = UUID.randomUUID();
-        UserEntity actor = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity actor = Mockito.mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(actor));
         when(modelCatalogPort.allowedLlmNamesInGovernance()).thenReturn(Set.of());
 
@@ -152,7 +152,7 @@ class ConfigProfileApplicationServiceTest {
     void patch_immutable_conflict() {
         UUID userId = UUID.randomUUID();
         UUID profileId = UUID.randomUUID();
-        ConfigProfileEntity e = org.mockito.Mockito.mock(ConfigProfileEntity.class);
+        ConfigProfileEntity e = Mockito.mock(ConfigProfileEntity.class);
         when(e.isImmutable()).thenReturn(true);
         when(configProfileRepository.findById(profileId)).thenReturn(Optional.of(e));
 
@@ -167,9 +167,9 @@ class ConfigProfileApplicationServiceTest {
 
     private static ConfigProfileEntity mockEntityForDto(ConfigProfileType type, UUID ownerId) {
         UUID id = UUID.randomUUID();
-        UserEntity owner = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity owner = Mockito.mock(UserEntity.class);
         when(owner.getId()).thenReturn(ownerId);
-        ConfigProfileEntity e = org.mockito.Mockito.mock(ConfigProfileEntity.class);
+        ConfigProfileEntity e = Mockito.mock(ConfigProfileEntity.class);
         when(e.getId()).thenReturn(id);
         when(e.getProfileType()).thenReturn(type);
         when(e.getVersion()).thenReturn(1);

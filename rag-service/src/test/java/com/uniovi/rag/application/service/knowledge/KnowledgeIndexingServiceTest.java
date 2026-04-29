@@ -8,12 +8,7 @@ import com.uniovi.rag.infrastructure.persistence.DocumentArtifactRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.DocumentArtifactEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-import org.mockito.ArgumentCaptor;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-
+import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +17,13 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -31,7 +33,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@org.junit.jupiter.api.extension.ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class)
 class KnowledgeIndexingServiceTest {
 
     @TempDir Path tempDir;
@@ -39,13 +41,13 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_structuredSearch_savesParsedMetadataIndex_andSkipsVectorsAndChunks() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        var ingestionService = mock(com.uniovi.rag.service.document.ProjectDocumentIngestionService.class);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
-        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
         when(doc.getId()).thenReturn(UUID.randomUUID());
         when(doc.getProject().getId()).thenReturn(UUID.randomUUID());
@@ -70,7 +72,7 @@ class KnowledgeIndexingServiceTest {
                         123));
 
         ArgumentCaptor<DocumentArtifactEntity> captor = ArgumentCaptor.forClass(DocumentArtifactEntity.class);
-        verify(artifactRepo, org.mockito.Mockito.times(3)).save(captor.capture());
+        verify(artifactRepo, Mockito.times(3)).save(captor.capture());
 
         List<DocumentArtifactType> types = captor.getAllValues().stream().map(DocumentArtifactEntity::getArtifactType).toList();
         assertThat(types)
@@ -86,13 +88,13 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_documentLevel_indexesSingleVector_andDoesNotPersistChunkArtifact() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        var ingestionService = mock(com.uniovi.rag.service.document.ProjectDocumentIngestionService.class);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
-        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
         when(snapshot.getId()).thenReturn(UUID.randomUUID());
         when(doc.getId()).thenReturn(UUID.randomUUID());
@@ -118,7 +120,7 @@ class KnowledgeIndexingServiceTest {
                         100));
 
         ArgumentCaptor<DocumentArtifactEntity> captor = ArgumentCaptor.forClass(DocumentArtifactEntity.class);
-        verify(artifactRepo, org.mockito.Mockito.times(3)).save(captor.capture());
+        verify(artifactRepo, Mockito.times(3)).save(captor.capture());
         List<DocumentArtifactType> types = captor.getAllValues().stream().map(DocumentArtifactEntity::getArtifactType).toList();
         assertThat(types)
                 .containsExactly(DocumentArtifactType.PARSED, DocumentArtifactType.METADATA, DocumentArtifactType.INDEX);
@@ -132,13 +134,13 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_hybrid_savesChunkArtifact_andIndexesChunksPlusDocSlice() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        var ingestionService = mock(com.uniovi.rag.service.document.ProjectDocumentIngestionService.class);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
-        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
         when(snapshot.getId()).thenReturn(UUID.randomUUID());
         when(doc.getId()).thenReturn(UUID.randomUUID());
@@ -165,7 +167,7 @@ class KnowledgeIndexingServiceTest {
                         5));
 
         ArgumentCaptor<DocumentArtifactEntity> captor = ArgumentCaptor.forClass(DocumentArtifactEntity.class);
-        verify(artifactRepo, org.mockito.Mockito.times(4)).save(captor.capture());
+        verify(artifactRepo, Mockito.times(4)).save(captor.capture());
         List<DocumentArtifactType> types = captor.getAllValues().stream().map(DocumentArtifactEntity::getArtifactType).toList();
         assertThat(types)
                 .containsExactly(DocumentArtifactType.PARSED, DocumentArtifactType.METADATA, DocumentArtifactType.CHUNK, DocumentArtifactType.INDEX);
@@ -179,7 +181,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_throwsOnEmptyContent() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        var ingestionService = mock(com.uniovi.rag.service.document.ProjectDocumentIngestionService.class);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
@@ -211,13 +213,13 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_readsFromStorage_whenNoTempFileOverride() throws Exception {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        var ingestionService = mock(com.uniovi.rag.service.document.ProjectDocumentIngestionService.class);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
         KnowledgeIndexingService sut = new KnowledgeIndexingService(vectorStore, ingestionService, storagePort, artifactRepo);
 
-        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+        KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class, Mockito.RETURNS_DEEP_STUBS);
         KnowledgeIndexSnapshotEntity snapshot = mock(KnowledgeIndexSnapshotEntity.class);
         when(snapshot.getId()).thenReturn(UUID.randomUUID());
         when(doc.getId()).thenReturn(UUID.randomUUID());
@@ -248,7 +250,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void computeChunkCountForDoc_returnsFirstChunkCountFromArtifacts() {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        var ingestionService = mock(com.uniovi.rag.service.document.ProjectDocumentIngestionService.class);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 
@@ -270,7 +272,7 @@ class KnowledgeIndexingServiceTest {
     @Test
     void processDocument_throwsWhenStorageUriMissing() {
         PgVectorStore vectorStore = mock(PgVectorStore.class);
-        var ingestionService = mock(com.uniovi.rag.service.document.ProjectDocumentIngestionService.class);
+        var ingestionService = mock(ProjectDocumentIngestionService.class);
         BinaryStoragePort storagePort = mock(BinaryStoragePort.class);
         DocumentArtifactRepository artifactRepo = mock(DocumentArtifactRepository.class);
 

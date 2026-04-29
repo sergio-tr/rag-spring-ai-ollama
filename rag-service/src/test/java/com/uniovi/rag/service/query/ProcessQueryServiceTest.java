@@ -5,6 +5,7 @@ import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
+import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -21,16 +22,15 @@ import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
+import java.net.ConnectException;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.web.client.ResourceAccessException;
-
-import java.net.ConnectException;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -79,7 +79,7 @@ class ProcessQueryServiceTest {
     private static ExecutionContext legacyCtx() {
         RagConfig rag =
                 RagConfig.fromFeatureConfiguration(
-                        new com.uniovi.rag.configuration.RagFeatureConfiguration(),
+                        new RagFeatureConfiguration(),
                         10,
                         0.7,
                         "m",

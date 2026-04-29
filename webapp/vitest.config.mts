@@ -20,9 +20,12 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     css: true,
     coverage: {
-      provider: "istanbul",
+      // Istanbul is producing empty LCOV locally (0/0 statements).
+      // V8 coverage is the supported default in Vitest v4 and generates stable LCOV for Sonar.
+      provider: "v8",
       reporter: ["text", "json-summary", "lcov", "html"],
-      include: ["src/**"],
+      // V8 coverage needs explicit file globs (directories alone may yield 0/0).
+      include: ["src/**/*.{ts,tsx,js,jsx}"],
       exclude: [
         "**/*.test.{ts,tsx}",
         // Type-only barrel (no runtime statements to instrument meaningfully).
@@ -31,7 +34,6 @@ export default defineConfig({
         "src/test-utils/**",
         // Next.js App Router layouts/pages are integration-heavy; only measure the few we unit test.
         "src/app/**/page.tsx",
-        "!src/app/[locale]/(app)/chat/page.tsx",
         "src/app/**/layout.tsx",
         // Lab classifier train/eval/classify panels (extracted from page for Sonar); E2E/manual validation.
         "src/app/**/lab-classifier-panels.tsx",

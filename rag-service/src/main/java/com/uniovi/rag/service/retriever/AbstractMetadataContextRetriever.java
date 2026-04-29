@@ -1,19 +1,18 @@
 package com.uniovi.rag.service.retriever;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.ai.vectorstore.SearchRequest;
-
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
 public abstract class AbstractMetadataContextRetriever extends AbstractContextRetriever {
 
@@ -354,8 +353,8 @@ public abstract class AbstractMetadataContextRetriever extends AbstractContextRe
     
     private String extractYear(String date) {
         // Try to extract 4-digit year
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\b(\\d{4})\\b");
-        java.util.regex.Matcher matcher = pattern.matcher(date);
+        Pattern pattern = Pattern.compile("\\b(\\d{4})\\b");
+        Matcher matcher = pattern.matcher(date);
         if (matcher.find()) {
             return matcher.group(1);
         }

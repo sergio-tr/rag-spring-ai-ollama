@@ -3,30 +3,32 @@ package com.uniovi.rag.application.service.runtime;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.application.service.RuntimeConfigResolutionService;
-import com.uniovi.rag.domain.config.EffectiveModelPolicy;
-import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
-import com.uniovi.rag.domain.runtime.RagExecutionContext;
-import com.uniovi.rag.application.service.runtime.memory.ConversationMemoryStrategy;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationBootstrap;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationStateResolver;
+import com.uniovi.rag.application.service.runtime.memory.ConversationMemoryStrategy;
+import com.uniovi.rag.domain.config.EffectiveModelPolicy;
+import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagConfig;
-import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
+import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryExecutionResult;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import io.micrometer.tracing.Tracer;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Sole constructor of {@link ExecutionContext} for orchestrated turns.
@@ -49,7 +51,7 @@ public class ExecutionContextFactory {
             ModelCatalogPort modelCatalogPort,
             ClarificationStateResolver clarificationStateResolver,
             ConversationMemoryStrategy conversationMemoryStrategy,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) Tracer tracer) {
+            @Autowired(required = false) Tracer tracer) {
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
         this.knowledgeRuntimeSnapshotSelector = knowledgeRuntimeSnapshotSelector;
         this.chatScopedRagConfigResolver = chatScopedRagConfigResolver;
@@ -214,8 +216,8 @@ public class ExecutionContextFactory {
                 disableReason,
                 originatingUserMessageId,
                 false,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                 false,
                 Optional.empty(),
                 false,
@@ -258,8 +260,8 @@ public class ExecutionContextFactory {
                 base.clarificationDisableReason(),
                 base.originatingUserMessageId(),
                 false,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                 false,
                 Optional.empty(),
                 false,

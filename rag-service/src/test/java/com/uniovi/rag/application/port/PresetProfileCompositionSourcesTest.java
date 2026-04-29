@@ -1,10 +1,10 @@
 package com.uniovi.rag.application.port;
 
-import org.junit.jupiter.api.Test;
-
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -26,7 +26,7 @@ class PresetProfileCompositionSourcesTest {
         UUID pid = UUID.randomUUID();
         Map<String, Object> preset = Map.of("k", 1);
         List<Map<String, Object>> payloads = List.of(Map.of("a", 2));
-        List<UUID> ids = new java.util.ArrayList<>(List.of(pid));
+        List<UUID> ids = new ArrayList<>(List.of(pid));
 
         PresetProfileCompositionSources src =
                 new PresetProfileCompositionSources(preset, payloads, ids);

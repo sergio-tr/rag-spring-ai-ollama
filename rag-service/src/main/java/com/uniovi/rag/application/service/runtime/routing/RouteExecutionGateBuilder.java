@@ -2,17 +2,17 @@ package com.uniovi.rag.application.service.runtime.routing;
 
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingDecision;
-import org.springframework.stereotype.Service;
-
+import com.uniovi.rag.domain.runtime.routing.RouteExecutionGate;
 import java.util.Optional;
+import org.springframework.stereotype.Service;
 
 /**
  * Builds the single routing gate contract consumed by {@code RagExecutionOrchestrator}.
  */
 @Service
-public class RouteExecutionGate {
+public class RouteExecutionGateBuilder {
 
-    public com.uniovi.rag.domain.runtime.routing.RouteExecutionGate fromDecision(AdaptiveRoutingDecision d) {
+    public RouteExecutionGate fromDecision(AdaptiveRoutingDecision d) {
         AdaptiveRouteKind primary = d.primaryRouteKind();
 
         boolean workflowAllowed = primary == AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE
@@ -29,7 +29,7 @@ public class RouteExecutionGate {
 
         boolean workflowSelectorRequired = workflowAllowed;
 
-        return new com.uniovi.rag.domain.runtime.routing.RouteExecutionGate(
+        return new RouteExecutionGate(
                 primary,
                 workflowAllowed,
                 deterministicAllowed,
@@ -40,4 +40,3 @@ public class RouteExecutionGate {
                 workflowSelectorRequired);
     }
 }
-

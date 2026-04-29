@@ -9,16 +9,16 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntityFact
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
 import com.uniovi.rag.service.project.ProjectAccessService;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Promotes a CHAT_LOCAL document to PROJECT_SHARED (new row + re-ingest; overlay remains — DC-09).
@@ -70,7 +70,7 @@ public class PromoteDocumentApplicationService {
 
         Path temp = Files.createTempFile("rag-promote-", ".bin");
         try (InputStream in = binaryStoragePort.openStream(copied.relativeUri())) {
-            Files.copy(in, temp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);
         }
         ingestionService.ingestFromTempFile(
                 userId,

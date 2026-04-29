@@ -1,5 +1,6 @@
 package com.uniovi.rag.domain.runtime.routing;
 
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -19,7 +20,7 @@ public record RouteExecutionGate(
         if (primaryRouteKind == null) {
             throw new IllegalArgumentException("primaryRouteKind must not be null");
         }
-        fallbackRouteKind = fallbackRouteKind == null ? Optional.empty() : fallbackRouteKind;
+        fallbackRouteKind = Objects.requireNonNullElseGet(fallbackRouteKind, Optional::empty);
         int allowedCount = 0;
         if (workflowAllowed) allowedCount++;
         if (deterministicToolsAllowed) allowedCount++;

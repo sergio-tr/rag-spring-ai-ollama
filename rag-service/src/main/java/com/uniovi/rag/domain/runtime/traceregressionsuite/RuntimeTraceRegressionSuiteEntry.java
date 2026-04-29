@@ -2,6 +2,7 @@ package com.uniovi.rag.domain.runtime.traceregressionsuite;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -26,9 +27,9 @@ public sealed interface RuntimeTraceRegressionSuiteEntry
             implements RuntimeTraceRegressionSuiteEntry {
 
         public ByConversation {
-            createdAtFrom = createdAtFrom == null ? Optional.empty() : createdAtFrom;
-            createdAtTo = createdAtTo == null ? Optional.empty() : createdAtTo;
-            workflowName = workflowName == null ? Optional.empty() : workflowName;
+            createdAtFrom = Objects.requireNonNullElseGet(createdAtFrom, Optional::empty);
+            createdAtTo = Objects.requireNonNullElseGet(createdAtTo, Optional::empty);
+            workflowName = Objects.requireNonNullElseGet(workflowName, Optional::empty);
         }
     }
 }

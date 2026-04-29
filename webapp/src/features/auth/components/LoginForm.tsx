@@ -6,11 +6,10 @@ import { Link, useRouter } from "@/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
 import { setStoredUserRole } from "@/lib/user-role";
+import { AuthEmailPasswordFields } from "@/features/auth/components/AuthEmailPasswordFields";
 import {
   loginSchema,
   type LoginFormValues,
@@ -67,34 +66,12 @@ export function LoginForm() {
           {t("oauthGoogleCta")}
         </Link>
       )}
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="email">{t("email")}</Label>
-        <Input
-          id="email"
-          type="email"
-          autoComplete="email"
-          {...form.register("email")}
-        />
-        {form.formState.errors.email && (
-          <p className="text-destructive text-sm" role="alert">
-            {form.formState.errors.email.message}
-          </p>
-        )}
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="password">{t("password")}</Label>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          {...form.register("password")}
-        />
-        {form.formState.errors.password && (
-          <p className="text-destructive text-sm" role="alert">
-            {form.formState.errors.password.message}
-          </p>
-        )}
-      </div>
+      <AuthEmailPasswordFields
+        register={form.register}
+        errors={form.formState.errors}
+        t={t}
+        passwordAutoComplete="current-password"
+      />
       {formError && (
         <p className="text-destructive text-sm" role="alert">
           {formError}

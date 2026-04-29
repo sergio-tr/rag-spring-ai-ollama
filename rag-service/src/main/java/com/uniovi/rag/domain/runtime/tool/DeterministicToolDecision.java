@@ -21,8 +21,8 @@ public record DeterministicToolDecision(
     public DeterministicToolDecision {
         reasons = List.copyOf(Objects.requireNonNull(reasons, "reasons"));
         normalizedInputs = Map.copyOf(Objects.requireNonNull(normalizedInputs, "normalizedInputs"));
-        selectedToolKind = selectedToolKind == null ? Optional.empty() : selectedToolKind;
-        suppressionReason = suppressionReason == null ? Optional.empty() : suppressionReason;
-        fallbackPolicy = fallbackPolicy == null ? Optional.empty() : fallbackPolicy;
+        selectedToolKind = Objects.requireNonNullElseGet(selectedToolKind, Optional::empty);
+        suppressionReason = Objects.requireNonNullElseGet(suppressionReason, Optional::empty);
+        fallbackPolicy = Objects.requireNonNullElseGet(fallbackPolicy, Optional::empty);
     }
 }

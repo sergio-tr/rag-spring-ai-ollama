@@ -1,13 +1,14 @@
 package com.uniovi.rag.interfaces.rest.support;
 
-import org.springframework.web.client.ResourceAccessException;
-
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.net.http.HttpTimeoutException;
 import java.nio.channels.ClosedChannelException;
+import org.springframework.web.client.ResourceAccessException;
 
 /**
  * Detects transport-level failures to LLM / HTTP backends (Ollama, etc.) from exception messages.
@@ -42,13 +43,13 @@ public final class ConnectivityFailureDetector {
             if (cur instanceof ClosedChannelException) {
                 return true;
             }
-            if (cur instanceof java.net.http.HttpTimeoutException) {
+            if (cur instanceof HttpTimeoutException) {
                 return true;
             }
             if (cur instanceof UncheckedIOException uio && uio.getCause() instanceof IOException) {
                 return true;
             }
-            if (cur instanceof IOException && !(cur instanceof java.io.FileNotFoundException)) {
+            if (cur instanceof IOException && !(cur instanceof FileNotFoundException)) {
                 // Generic I/O to remote — often broken pipe / reset
                 String m = cur.getMessage();
                 if (m != null && (m.contains("Connection reset") || m.contains("Broken pipe"))) {

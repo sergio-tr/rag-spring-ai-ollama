@@ -1,5 +1,6 @@
 package com.uniovi.rag.domain.runtime.tracecomparisonbatch;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,7 +22,7 @@ public record RuntimeTraceReplayComparisonBatchItemResult(
         boolean failedSafe) {
 
     public RuntimeTraceReplayComparisonBatchItemResult {
-        resolvedOriginalTraceId = resolvedOriginalTraceId == null ? Optional.empty() : resolvedOriginalTraceId;
+        resolvedOriginalTraceId = Objects.requireNonNullElseGet(resolvedOriginalTraceId, Optional::empty);
         summary = summary == null ? "" : summary;
     }
 }

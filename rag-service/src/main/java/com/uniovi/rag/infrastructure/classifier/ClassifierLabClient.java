@@ -3,6 +3,12 @@ package com.uniovi.rag.infrastructure.classifier;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.port.ClassifierLabPort;
 import com.uniovi.rag.application.port.ClassifierTrainBytesCommand;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Map;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,19 +21,15 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * HTTP client for classifier-service lab endpoints ({@code /train}, {@code /evaluate}).
@@ -64,10 +66,10 @@ public class ClassifierLabClient implements ClassifierLabPort {
     }
 
     private static RestTemplate createRestTemplate(int timeoutMs) {
-        org.springframework.http.client.SimpleClientHttpRequestFactory factory =
-                new org.springframework.http.client.SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(java.time.Duration.ofMillis(timeoutMs));
-        factory.setReadTimeout(java.time.Duration.ofMillis(timeoutMs));
+        SimpleClientHttpRequestFactory factory =
+                new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofMillis(timeoutMs));
+        factory.setReadTimeout(Duration.ofMillis(timeoutMs));
         RestTemplate rt = new RestTemplate();
         rt.setRequestFactory(factory);
         return rt;
@@ -286,12 +288,12 @@ public class ClassifierLabClient implements ClassifierLabPort {
             if (!(o instanceof NamedByteArrayResource that)) {
                 return false;
             }
-            return super.equals(o) && java.util.Objects.equals(filename, that.filename);
+            return super.equals(o) && Objects.equals(filename, that.filename);
         }
 
         @Override
         public int hashCode() {
-            return java.util.Objects.hash(super.hashCode(), filename);
+            return Objects.hash(super.hashCode(), filename);
         }
     }
 }

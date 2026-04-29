@@ -10,9 +10,6 @@ import com.uniovi.rag.service.async.lab.LabJobHandler;
 import com.uniovi.rag.service.chat.ChatRetrievalSourceContributor;
 import com.uniovi.rag.service.chat.ChatStreamChunks;
 import com.uniovi.rag.service.query.ProcessQueryService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -20,11 +17,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 /**
  * Runs {@link com.uniovi.rag.domain.AsyncTaskType#CHAT_MESSAGE}: RAG + LLM, cooperative cancel, streamed progress in task result.
  */
-@org.springframework.stereotype.Component
+@Component
 public class ChatMessageJobHandler implements LabJobHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ChatMessageJobHandler.class);

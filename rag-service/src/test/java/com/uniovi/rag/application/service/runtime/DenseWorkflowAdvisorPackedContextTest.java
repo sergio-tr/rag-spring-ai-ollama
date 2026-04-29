@@ -21,13 +21,15 @@ import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
-import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
-
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.mockito.Answers;
+import org.springframework.ai.chat.client.ChatClient;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -43,7 +45,7 @@ class DenseWorkflowAdvisorPackedContextTest {
     @Test
     void document_dense_skips_retrieval_pipeline_when_advisor_packed_context_present() {
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
-        ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
 
         DocumentDenseRagWorkflow wf = new DocumentDenseRagWorkflow(chatClient, pipeline, null);
@@ -62,7 +64,7 @@ class DenseWorkflowAdvisorPackedContextTest {
     @Test
     void chunk_dense_skips_retrieval_pipeline_when_advisor_packed_context_present() {
         AdvancedRetrievalPipeline pipeline = mock(AdvancedRetrievalPipeline.class);
-        ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).call().content()).thenReturn("ANS");
 
         ChunkDenseRagWorkflow wf = new ChunkDenseRagWorkflow(chatClient, pipeline, null);
@@ -189,8 +191,8 @@ class DenseWorkflowAdvisorPackedContextTest {
                 Optional.empty(),
                 Optional.empty(),
                 false,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                 false,
                 Optional.empty(),
                 false,

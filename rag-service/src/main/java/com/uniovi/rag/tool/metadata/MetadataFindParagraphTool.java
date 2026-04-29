@@ -44,23 +44,23 @@ public class MetadataFindParagraphTool extends AbstractMetadataTool {
             ner
         );
         
-        if (docs.isEmpty()) {
-            log().info("No documents found for find paragraph query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "find paragraph");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
-        if (minutes.isEmpty()) {
-            log().info("No valid minutes found for find paragraph query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyMinutes(query, minutes, "find paragraph");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        if (relevantMinutes.isEmpty()) {
-            log().info("No relevant minutes found for find paragraph query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "find paragraph");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 3.5: Create map of minute ID to document for content access

@@ -1,7 +1,7 @@
 package com.uniovi.rag.domain.runtime.tracereplay;
 
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
-
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -14,9 +14,9 @@ public record RuntimeTraceReplayResult(
         Optional<ExecutionTrace> transientReplayTrace) {
 
     public RuntimeTraceReplayResult {
-        answerText = answerText == null ? Optional.empty() : answerText;
-        failureDetail = failureDetail == null ? Optional.empty() : failureDetail;
-        transientReplayTrace = transientReplayTrace == null ? Optional.empty() : transientReplayTrace;
+        answerText = Objects.requireNonNullElseGet(answerText, Optional::empty);
+        failureDetail = Objects.requireNonNullElseGet(failureDetail, Optional::empty);
+        transientReplayTrace = Objects.requireNonNullElseGet(transientReplayTrace, Optional::empty);
     }
 
     public static RuntimeTraceReplayResult unsupported(RuntimeTraceReplayOutcome outcome, Optional<String> detail) {

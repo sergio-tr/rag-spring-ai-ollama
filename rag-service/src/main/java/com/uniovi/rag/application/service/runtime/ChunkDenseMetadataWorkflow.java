@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
+import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -8,13 +9,12 @@ import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.retrieval.CuratedContextSet;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 @Component
 public class ChunkDenseMetadataWorkflow extends AbstractExecutionWorkflow {
@@ -34,7 +34,7 @@ public class ChunkDenseMetadataWorkflow extends AbstractExecutionWorkflow {
         QueryPlan plan = ctx.queryPlan().orElseThrow(() -> new IllegalStateException("QueryPlan required"));
         String q = canonicalGenerationQuery(ctx);
         long tLlm = System.nanoTime();
-        Optional<com.uniovi.rag.domain.runtime.advisor.PackedContextSet> packed = ctx.advisorPackedContextSet();
+        Optional<PackedContextSet> packed = ctx.advisorPackedContextSet();
         if (packed.isPresent()) {
             String user = RuntimeAnswerPrompts.ragUserTurn(q, packed.get().promptContextText());
             String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);

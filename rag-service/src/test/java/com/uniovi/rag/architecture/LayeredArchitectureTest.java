@@ -1,5 +1,6 @@
 package com.uniovi.rag.architecture;
 
+import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
@@ -11,7 +12,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 /**
  * Gradual architecture rules toward hexagonal layering. Extend as packages stabilize.
  */
-@AnalyzeClasses(packages = "com.uniovi.rag", importOptions = com.tngtech.archunit.core.importer.ImportOption.DoNotIncludeTests.class)
+@AnalyzeClasses(packages = "com.uniovi.rag", importOptions = ImportOption.DoNotIncludeTests.class)
 class LayeredArchitectureTest {
 
 	@ArchTest

@@ -8,14 +8,15 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -57,7 +58,7 @@ class EvalLlmJobHandlerTest {
         stubFeatureFlags(true, false);
         Map<String, Object> eval = Map.of("score", 1);
         when(evaluationService.evaluateWithConfiguration(
-                        org.mockito.ArgumentMatchers.any(RagFeatureConfiguration.class),
+                        ArgumentMatchers.any(RagFeatureConfiguration.class),
                         eq(implementationProperties)))
                 .thenReturn(eval);
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
@@ -83,7 +84,7 @@ class EvalLlmJobHandlerTest {
         UUID runId = UUID.randomUUID();
         stubFeatureFlags(false, false);
         when(evaluationService.evaluateWithConfiguration(
-                        org.mockito.ArgumentMatchers.any(RagFeatureConfiguration.class),
+                        ArgumentMatchers.any(RagFeatureConfiguration.class),
                         eq(implementationProperties)))
                 .thenThrow(new RuntimeException("eval failed"));
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
@@ -107,7 +108,7 @@ class EvalLlmJobHandlerTest {
         UUID taskId = UUID.randomUUID();
         stubFeatureFlags(false, true);
         when(evaluationService.evaluateWithConfiguration(
-                        org.mockito.ArgumentMatchers.any(RagFeatureConfiguration.class),
+                        ArgumentMatchers.any(RagFeatureConfiguration.class),
                         eq(implementationProperties)))
                 .thenThrow(new IllegalStateException("x"));
         AsyncTaskEntity task = task(taskId, Map.of());
@@ -139,7 +140,7 @@ class EvalLlmJobHandlerTest {
     }
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {
-        AsyncTaskEntity t = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity t = Mockito.mock(AsyncTaskEntity.class);
         when(t.getId()).thenReturn(id);
         when(t.getRequestPayload()).thenReturn(payload);
         return t;

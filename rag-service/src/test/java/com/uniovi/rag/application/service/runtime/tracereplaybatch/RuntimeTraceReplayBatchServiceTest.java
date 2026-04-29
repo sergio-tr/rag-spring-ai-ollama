@@ -3,8 +3,8 @@ package com.uniovi.rag.application.service.runtime.tracereplaybatch;
 import com.uniovi.rag.application.service.runtime.tracequery.RuntimeTraceQueryService;
 import com.uniovi.rag.application.service.runtime.tracereplay.RuntimeTraceReplayService;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
-import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayRequest;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayOutcome;
+import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayRequest;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayResult;
 import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchItemOutcome;
 import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchOutcome;
@@ -12,20 +12,20 @@ import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchReq
 import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchSummary;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceSummaryDto;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -80,7 +80,7 @@ class RuntimeTraceReplayBatchServiceTest {
         assertThat(r.items()).hasSize(2);
         assertThat(r.summary().processedCount()).isEqualTo(2);
         assertSummaryIdentity(r.summary());
-        verify(replayService, org.mockito.Mockito.times(2)).replay(any(RuntimeTraceReplayRequest.class));
+        verify(replayService, Mockito.times(2)).replay(any(RuntimeTraceReplayRequest.class));
     }
 
     @Test

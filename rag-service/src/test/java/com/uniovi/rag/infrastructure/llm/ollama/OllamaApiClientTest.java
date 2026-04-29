@@ -1,14 +1,14 @@
 package com.uniovi.rag.infrastructure.llm.ollama;
 
+import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.uniovi.rag.infrastructure.health.RagHealthProperties;
-import org.junit.jupiter.api.Test;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -140,7 +140,7 @@ class OllamaApiClientTest {
         return new AutoCloseableServer(server, "http://127.0.0.1:" + port);
     }
 
-    private static void write(com.sun.net.httpserver.HttpExchange ex, int status, String body) throws IOException {
+    private static void write(HttpExchange ex, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         ex.sendResponseHeaders(status, bytes.length);
         try (OutputStream os = ex.getResponseBody()) {

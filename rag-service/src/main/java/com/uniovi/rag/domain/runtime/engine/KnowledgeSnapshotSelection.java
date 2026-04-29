@@ -1,6 +1,7 @@
 package com.uniovi.rag.domain.runtime.engine;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,12 +17,10 @@ public record KnowledgeSnapshotSelection(
 
     public KnowledgeSnapshotSelection {
         orderedSnapshotIds = List.copyOf(orderedSnapshotIds);
-        projectSharedSnapshotId = projectSharedSnapshotId == null ? Optional.empty() : projectSharedSnapshotId;
-        chatLocalSnapshotId = chatLocalSnapshotId == null ? Optional.empty() : chatLocalSnapshotId;
-        projectSnapshotSignatureHash =
-                projectSnapshotSignatureHash == null ? Optional.empty() : projectSnapshotSignatureHash;
-        chatSnapshotSignatureHash =
-                chatSnapshotSignatureHash == null ? Optional.empty() : chatSnapshotSignatureHash;
+        projectSharedSnapshotId = Objects.requireNonNullElseGet(projectSharedSnapshotId, Optional::empty);
+        chatLocalSnapshotId = Objects.requireNonNullElseGet(chatLocalSnapshotId, Optional::empty);
+        projectSnapshotSignatureHash = Objects.requireNonNullElseGet(projectSnapshotSignatureHash, Optional::empty);
+        chatSnapshotSignatureHash = Objects.requireNonNullElseGet(chatSnapshotSignatureHash, Optional::empty);
     }
 
     public static KnowledgeSnapshotSelection empty() {

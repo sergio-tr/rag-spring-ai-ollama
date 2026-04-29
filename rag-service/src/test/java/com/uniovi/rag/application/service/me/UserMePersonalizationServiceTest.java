@@ -7,15 +7,15 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserPersonalizationEntity;
 import com.uniovi.rag.interfaces.rest.dto.me.MePersonalizationResponse;
 import com.uniovi.rag.interfaces.rest.dto.me.MePutPersonalizationRequest;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -53,7 +53,7 @@ class UserMePersonalizationServiceTest {
     @Test
     void put_createsAndSaves() {
         UUID userId = UUID.randomUUID();
-        UserEntity user = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity user = Mockito.mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userPersonalizationRepository.findById(userId)).thenReturn(Optional.empty());
         when(userPersonalizationRepository.save(any(UserPersonalizationEntity.class)))

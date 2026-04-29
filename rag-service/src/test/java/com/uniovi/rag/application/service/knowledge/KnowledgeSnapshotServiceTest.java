@@ -8,16 +8,16 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeSnapshotDocumentReposi
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -60,7 +60,7 @@ class KnowledgeSnapshotServiceTest {
 
         verify(prior).setStatus(IndexSnapshotStatus.SUPERSEDED);
         verify(building).setStatus(IndexSnapshotStatus.ACTIVE);
-        verify(snapshotRepository, org.mockito.Mockito.atLeast(2)).save(any());
+        verify(snapshotRepository, Mockito.atLeast(2)).save(any());
         verify(snapshotDocumentRepository).save(any());
     }
 

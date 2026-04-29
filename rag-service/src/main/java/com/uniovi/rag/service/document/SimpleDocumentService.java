@@ -1,5 +1,9 @@
 package com.uniovi.rag.service.document;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
@@ -7,8 +11,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
 
 @Service
 public class SimpleDocumentService extends AbstractDocumentService {
@@ -44,9 +46,9 @@ public class SimpleDocumentService extends AbstractDocumentService {
         }
         
         // Create multiple documents (one per chunk) with basic metadata for grouping
-        List<Document> documents = new java.util.ArrayList<>();
+        List<Document> documents = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
-            java.util.Map<String, Object> metadata = new java.util.HashMap<>();
+            Map<String, Object> metadata = new HashMap<>();
             metadata.put("document_id", documentId);
             metadata.put("filename", file.getOriginalFilename() != null ? file.getOriginalFilename() : "unknown");
             metadata.put("chunk_index", i);

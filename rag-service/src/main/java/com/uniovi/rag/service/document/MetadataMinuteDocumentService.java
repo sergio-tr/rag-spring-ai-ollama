@@ -2,28 +2,28 @@ package com.uniovi.rag.service.document;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.domain.model.Minute;
+import com.uniovi.rag.infrastructure.logging.LogSanitization;
 import com.uniovi.rag.util.RegexSafety;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Service;
-
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-
-import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+
+import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
 
 @Service
 public class MetadataMinuteDocumentService extends AbstractMetadataDocumentService<Minute> {
@@ -39,6 +39,15 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
     /** Normalized ISO date key in chunk metadata (see {@link #addDerivedFields}). */
     private static final String METADATA_KEY_DATE_ISO = "date_iso";
+
+    private static final String LOG_FAILED_EXTRACT_CRIT_FIELDS =
+            "Failed to extract critical fields (datePresent: {}, placePresent: {}, attendeeCount: {}, decisionCount: {},"
+                    + " topicCount: {})";
+
+    private static final String LOG_EXTRACTED_MINUTE_FIELDS =
+            "Extracted minute fields (datePresent: {}, placePresent: {}, startTimePresent: {}, endTimePresent: {}, "
+                    + "presidentPresent: {}, secretaryPresent: {}, attendeeCount: {}, decisionCount: {}, "
+                    + "mentionedEntityCount: {}, topicCount: {}, summaryLen: {})";
 
     /** Fallback: bullet/numbered block after Orden|Agenda|Puntos (complexity isolated for static analysis). */
     /** Bounded repetition limits backtracking depth on very long agenda-like blocks. */
@@ -149,7 +158,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
      * Creates a list of vector-store documents from a Minute (for repository add without duplicate).
      * Builds content from summary, agenda, decisions and topics, then chunks and applies metadata.
      */
-    public List<org.springframework.ai.document.Document> createDocumentsFromMinute(Minute minute) {
+    public List<Document> createDocumentsFromMinute(Minute minute) {
         if (minute == null || minute.id() == null || minute.id().isBlank()) {
             throw new IllegalArgumentException("Minute and minute.id() must be non-null and non-blank");
         }
@@ -158,14 +167,14 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         validateMetadata(metadata, minute.filename() != null ? minute.filename() : "minute-" + minute.id());
         List<String> chunks = splitContentIntoChunks(content, chunkMaxChars);
         String metadataPrefix = buildChunkMetadataPrefix(metadata);
-        List<org.springframework.ai.document.Document> documents = new ArrayList<>();
+        List<Document> documents = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
             Map<String, Object> chunkMetadata = new HashMap<>(metadata);
             chunkMetadata.put("chunk_index", i);
             chunkMetadata.put("total_chunks", chunks.size());
             String chunkText = chunks.get(i);
             String contentForEmbedding = metadataPrefix.isEmpty() ? chunkText : (metadataPrefix + chunkText);
-            documents.add(new org.springframework.ai.document.Document(contentForEmbedding, chunkMetadata));
+            documents.add(new Document(contentForEmbedding, chunkMetadata));
         }
         return documents;
     }
@@ -276,7 +285,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         if (date == null && place == null && attendees.isEmpty() && decisions.isEmpty() && (topics == null || topics.isEmpty())) {
             log().warn(
-                    "Failed to extract critical fields (datePresent: {}, placePresent: {}, attendeeCount: {}, decisionCount: {}, topicCount: {})",
+                    LOG_FAILED_EXTRACT_CRIT_FIELDS,
                     date != null,
                     place != null,
                     attendees.size(),
@@ -286,9 +295,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
 
         // Log counts and presence flags only — avoid logging upload names or extracted document text.
         log().info(
-                "Extracted minute fields (datePresent: {}, placePresent: {}, startTimePresent: {}, endTimePresent: {}, "
-                        + "presidentPresent: {}, secretaryPresent: {}, attendeeCount: {}, decisionCount: {}, "
-                        + "mentionedEntityCount: {}, topicCount: {}, summaryLen: {})",
+                LOG_EXTRACTED_MINUTE_FIELDS,
                 date != null,
                 place != null,
                 startTime != null,
@@ -688,13 +695,13 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         try {
             String minuteJson = objectMapper.writeValueAsString(minute);
             metadata.put("minute", minuteJson);
-            log().info("Minute object stored in metadata as JSON for document: {}", minute.id());
+            log().info("Minute object stored in metadata as JSON for document: {}", LogSanitization.singleLineForLog(minute.id()));
         } catch (Exception e) {
-            log().warn("Failed to serialize Minute object to JSON for document: {}", minute.id(), e);
+            log().warn("Failed to serialize Minute object to JSON for document: {}", LogSanitization.singleLineForLog(minute.id()), e);
         }
         
-        log().info("Metadata extracted for document: {} with {} fields (document_id: {})", 
-                  minute.id(), metadata.size(), minute.id());
+        String docId = LogSanitization.singleLineForLog(minute.id());
+        log().info("Metadata extracted for document: {} with {} fields (document_id: {})", docId, metadata.size(), docId);
         return metadata;
     }
     
@@ -721,7 +728,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .distinct()
-                .collect(java.util.stream.Collectors.toList());
+                .collect(Collectors.toList());
     }
     
     /**
@@ -1027,11 +1034,11 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     private LocalDate parseDateYearFallback(String dateStr) {
         if (dateStr == null || dateStr.trim().isEmpty()) return null;
         String v = dateStr.trim();
-        java.util.regex.Pattern spanishPattern = java.util.regex.Pattern.compile(
+        Pattern spanishPattern = Pattern.compile(
             "(\\d{1,2})\\s+de\\s+(\\p{L}+)\\s+de\\s+(\\d{4})",
-            java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CHARACTER_CLASS
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS
         );
-        java.util.regex.Matcher m = spanishPattern.matcher(v);
+        Matcher m = spanishPattern.matcher(v);
         if (m.find()) {
             int day = Integer.parseInt(m.group(1));
             int month = SPANISH_MONTH_MAP.getOrDefault(m.group(2).toLowerCase(), -1);
@@ -1043,7 +1050,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 }
             }
         }
-        java.util.regex.Matcher yearMatcher = java.util.regex.Pattern.compile("(\\d{4})").matcher(v);
+        Matcher yearMatcher = Pattern.compile("(\\d{4})").matcher(v);
         if (yearMatcher.find()) {
             int year = Integer.parseInt(yearMatcher.group(1));
             if (year >= 1900 && year <= 2100) {

@@ -13,6 +13,6 @@ public record RetrievedContextSet(
 
     public RetrievedContextSet {
         candidates = List.copyOf(Objects.requireNonNull(candidates, "candidates"));
-        fusionModeUsed = fusionModeUsed == null ? Optional.empty() : fusionModeUsed;
+        fusionModeUsed = Objects.requireNonNullElseGet(fusionModeUsed, Optional::empty);
     }
 }

@@ -1,18 +1,18 @@
 package com.uniovi.rag.service.query;
 
-import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
+import java.util.List;
+import java.util.Map;
+import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -63,7 +63,7 @@ class SimpleQueryServiceTest {
     void generateResponse_withContext_returnsLlmAnswer() {
         when(expander.expand("p")).thenReturn("p");
         when(analyser.analyse("p")).thenReturn(null);
-        when(retriever.retrieve("p")).thenReturn(List.of(new Document("doc", java.util.Map.of())));
+        when(retriever.retrieve("p")).thenReturn(List.of(new Document("doc", Map.of())));
         when(retriever.createContext(anyList(), anyString(), any())).thenReturn("context");
         ChatClientTestSupport.stubUserPromptReturns(chatClient, "Answer from LLM");
 
@@ -79,7 +79,7 @@ class SimpleQueryServiceTest {
         ner.put("any", "1");
         when(expander.expand("p")).thenReturn("p");
         when(analyser.analyse("p")).thenReturn(ner);
-        when(retriever.retrieveWithMetadataFilters("p", ner)).thenReturn(List.of(new Document("d", java.util.Map.of())));
+        when(retriever.retrieveWithMetadataFilters("p", ner)).thenReturn(List.of(new Document("d", Map.of())));
         when(retriever.createContext(anyList(), anyString(), eq(ner))).thenReturn("ctx");
         ChatClientTestSupport.stubUserPromptReturns(chatClient, "out");
 
@@ -94,7 +94,7 @@ class SimpleQueryServiceTest {
         ChatClientTestSupport.stubUserPromptThrows(chatClient, new RuntimeException("down"));
         when(expander.expand("p")).thenReturn("p");
         when(analyser.analyse("p")).thenReturn(null);
-        when(retriever.retrieve("p")).thenReturn(List.of(new Document("d", java.util.Map.of())));
+        when(retriever.retrieve("p")).thenReturn(List.of(new Document("d", Map.of())));
         when(retriever.createContext(anyList(), anyString(), any())).thenReturn("context");
 
         QueryResponse response = service.generateResponse("p");

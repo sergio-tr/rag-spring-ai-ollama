@@ -1,7 +1,6 @@
 package com.uniovi.rag.interfaces.rest;
 
 
-import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.tracereplaybatch.RuntimeTraceReplayBatchService;
 import com.uniovi.rag.configuration.ReplayBatchRestJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayOutcome;
@@ -14,6 +13,10 @@ import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchSel
 import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchSummary;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,12 +33,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.PostMapping;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -80,7 +80,7 @@ class RuntimeTraceReplayBatchControllerTest {
     void controller_exposes_exactly_two_post_mappings() {
         long n =
                 Arrays.stream(RuntimeTraceReplayBatchController.class.getDeclaredMethods())
-                        .filter(m -> m.isAnnotationPresent(org.springframework.web.bind.annotation.PostMapping.class))
+                        .filter(m -> m.isAnnotationPresent(PostMapping.class))
                         .count();
         assertThat(n).isEqualTo(2);
     }

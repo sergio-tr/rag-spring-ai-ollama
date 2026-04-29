@@ -7,16 +7,17 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.classifier.ClassifierModelRegistryService;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -117,7 +118,7 @@ class ClassifierEvalJobHandlerTest {
         new ClassifierEvalJobHandler(classifierLab, classifierModelRegistryService, canonicalPersistence)
                 .run(task, mutation);
 
-        verify(mutation).markFailed(eq(taskId), org.mockito.ArgumentMatchers.startsWith("Could not read eval file"));
+        verify(mutation).markFailed(eq(taskId), ArgumentMatchers.startsWith("Could not read eval file"));
         verifyNoInteractions(classifierLab);
     }
 
@@ -135,7 +136,7 @@ class ClassifierEvalJobHandlerTest {
                         runId.toString());
         when(classifierLab.evaluateBytes(isNull(), eq(true), any(), eq("eval.xlsx")))
                 .thenReturn(Map.of("ok", true));
-        org.mockito.Mockito.doThrow(new RuntimeException("persist"))
+        Mockito.doThrow(new RuntimeException("persist"))
                 .when(canonicalPersistence)
                 .persistClassifierMetrics(eq(runId), any());
 
@@ -149,13 +150,13 @@ class ClassifierEvalJobHandlerTest {
     }
 
     private static UserEntity user(UUID id) {
-        UserEntity u = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity u = Mockito.mock(UserEntity.class);
         when(u.getId()).thenReturn(id);
         return u;
     }
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {
-        AsyncTaskEntity t = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity t = Mockito.mock(AsyncTaskEntity.class);
         when(t.getId()).thenReturn(id);
         when(t.getRequestPayload()).thenReturn(payload);
         return t;

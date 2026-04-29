@@ -1,7 +1,6 @@
 package com.uniovi.rag.interfaces.rest.me;
 
 
-import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.domain.AccountExportArtifactStatus;
 import com.uniovi.rag.infrastructure.persistence.AccountExportArtifactRepository;
@@ -9,24 +8,9 @@ import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AccountExportArtifactEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
-import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.service.async.AsyncTaskService;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.context.annotation.Import;
-import org.springframework.http.MediaType;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.context.ContextConfiguration;
-import org.springframework.test.web.servlet.MockMvc;
-
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,7 +19,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.hamcrest.Matchers;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
 
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -140,7 +140,7 @@ class MeAccountControllerWebMvcTest {
 
         mockMvc.perform(get(path("/me/account/export/{id}/download"), exportId))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("attachment")));
+                .andExpect(header().string("Content-Disposition", Matchers.containsString("attachment")));
     }
 
     @Test

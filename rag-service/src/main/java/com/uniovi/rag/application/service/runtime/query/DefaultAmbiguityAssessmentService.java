@@ -7,12 +7,12 @@ import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.NormalizedQuery;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
-import org.springframework.stereotype.Service;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
+import org.springframework.stereotype.Service;
 
 @Service
 public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentService {
@@ -26,7 +26,7 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
             StructuredRewriteResult rewrite,
             EntityExtractionResult entities) {
 
-        Optional<QueryType> cqt = classifierQueryType == null ? Optional.empty() : classifierQueryType;
+        Optional<QueryType> cqt = Objects.requireNonNullElseGet(classifierQueryType, Optional::empty);
         List<String> reasons = new ArrayList<>();
         List<String> missing = new ArrayList<>();
 

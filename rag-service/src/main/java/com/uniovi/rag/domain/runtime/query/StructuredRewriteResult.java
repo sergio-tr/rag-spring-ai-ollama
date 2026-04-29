@@ -24,7 +24,7 @@ public record StructuredRewriteResult(
         rewriteStrategyId = Objects.requireNonNull(rewriteStrategyId, "rewriteStrategyId");
         targetEntities = List.copyOf(Objects.requireNonNull(targetEntities, "targetEntities"));
         targetAttributes = List.copyOf(Objects.requireNonNull(targetAttributes, "targetAttributes"));
-        targetAction = targetAction == null ? Optional.empty() : targetAction;
+        targetAction = Objects.requireNonNullElseGet(targetAction, Optional::empty);
         slotFilling = Map.copyOf(Objects.requireNonNull(slotFilling, "slotFilling"));
         constraints = List.copyOf(Objects.requireNonNull(constraints, "constraints"));
     }

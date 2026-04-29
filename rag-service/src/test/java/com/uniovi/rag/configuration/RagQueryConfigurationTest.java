@@ -21,9 +21,12 @@ import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.service.query.SimpleProcessQueryService;
 import com.uniovi.rag.service.query.SimpleQueryService;
+import com.uniovi.rag.service.ranker.FaithfulnessRanker;
+import com.uniovi.rag.service.ranker.LLMAsJudgeRanker;
 import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.reasoning.SelectingReasoningStrategy;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
 import org.junit.jupiter.api.Test;
@@ -33,7 +36,6 @@ import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.web.client.RestTemplate;
-import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -91,7 +93,7 @@ class RagQueryConfigurationTest {
         RagRankerProperties props = new RagRankerProperties();
         props.setStrategy(null);
         assertInstanceOf(
-                com.uniovi.rag.service.ranker.LLMAsJudgeRanker.class,
+                LLMAsJudgeRanker.class,
                 config.responseRanker(props, mock(ChatClient.class), null));
     }
 
@@ -101,7 +103,7 @@ class RagQueryConfigurationTest {
         RagRankerProperties props = new RagRankerProperties();
         props.setStrategy("faithfulness");
         assertInstanceOf(
-                com.uniovi.rag.service.ranker.FaithfulnessRanker.class,
+                FaithfulnessRanker.class,
                 config.responseRanker(props, mock(ChatClient.class), null));
     }
 

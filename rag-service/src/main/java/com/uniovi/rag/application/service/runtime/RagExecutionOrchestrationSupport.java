@@ -1,26 +1,27 @@
 package com.uniovi.rag.application.service.runtime;
 
-import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
-import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
-import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
-import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
-import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionResult;
-import com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome;
 import com.uniovi.rag.domain.runtime.advisor.AdvisorExecutionResult;
+import com.uniovi.rag.domain.runtime.advisor.AdvisorOutcome;
 import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
-import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
-import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
-import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
-import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
-import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
-import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
+import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
+import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
+import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
+import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingExecutionResult;
+import com.uniovi.rag.domain.runtime.functioncalling.FunctionCallingOutcome;
 import com.uniovi.rag.domain.runtime.judge.JudgeCandidateSource;
 import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
-import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
 import com.uniovi.rag.domain.runtime.judge.JudgeKind;
-
+import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
+import com.uniovi.rag.domain.runtime.routing.RouteExecutionGate;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -57,7 +58,7 @@ public final class RagExecutionOrchestrationSupport {
 
 		public static RoutingSnapshot enabled(
 				AdaptiveRouteKind kind,
-				com.uniovi.rag.domain.runtime.routing.RouteExecutionGate gate,
+				RouteExecutionGate gate,
 				List<ExecutionStageTrace> stages) {
 			return new RoutingSnapshot(
 					kind,
@@ -75,7 +76,7 @@ public final class RagExecutionOrchestrationSupport {
 				boolean fbApplied,
 				Optional<AdaptiveRouteKind> fbKind,
 				boolean workflowSelectorInvoked) {
-			java.util.Objects.requireNonNull(fbKind, "fbKind");
+			Objects.requireNonNull(fbKind, "fbKind");
 			return new RoutingSnapshot(
 					routeKind,
 					fallbackWorkflowRouteKind,

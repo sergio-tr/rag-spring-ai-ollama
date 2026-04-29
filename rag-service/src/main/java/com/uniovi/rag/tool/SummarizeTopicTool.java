@@ -1,14 +1,13 @@
 package com.uniovi.rag.tool;
 
+import com.uniovi.rag.service.extraction.DocumentContentExtractor;
+import com.uniovi.rag.service.retriever.ContextRetriever;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.retriever.ContextRetriever;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Enhanced SummarizeTopicTool for summarizing specific topics from meeting minutes with intelligent NER analysis.
@@ -226,7 +225,7 @@ public class SummarizeTopicTool extends AbstractTool {
 
         String joined = fragments.stream()
                 .filter(f -> f != null && !f.trim().isEmpty())
-                .collect(java.util.stream.Collectors.joining("\n\n"));
+                .collect(Collectors.joining("\n\n"));
 
         if (joined.trim().isEmpty()) {
             return generateNotFoundMessage(query);
@@ -327,7 +326,7 @@ public class SummarizeTopicTool extends AbstractTool {
     private String generateFallbackSummary(String query, List<String> fragments) {
         String fragmentsText = fragments.stream()
                 .limit(5)
-                .collect(java.util.stream.Collectors.joining("\n\n"));
+                .collect(Collectors.joining("\n\n"));
 
         String prompt = String.format("""
             The user asked (in any language): "%s"

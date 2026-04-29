@@ -1,19 +1,20 @@
 package com.uniovi.rag.application.service.runtime.tracereplay;
 
 import com.uniovi.rag.application.service.runtime.tracequery.RuntimeTraceQueryService;
+import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
+import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayDecision;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayOutcome;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayRequest;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayResult;
 import com.uniovi.rag.infrastructure.persistence.mapper.RuntimeExecutionTraceEntityMapper;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import static com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,7 +42,7 @@ class RuntimeTraceReplayServiceTest {
         when(eligibility.resolve(detail))
                 .thenReturn(
                         new RuntimeTraceReplayEligibilityResolver.RuntimeTraceReplayEligibility(
-                                com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayDecision.ok(),
+                                RuntimeTraceReplayDecision.ok(),
                                 Optional.of(
                                         new PinnedReplayExecutionSpec(
                                                 DIRECT_WORKFLOW_ROUTE, "DirectLlmWorkflow", List.of(), ""))));
@@ -53,7 +54,7 @@ class RuntimeTraceReplayServiceTest {
                                         null, null, null, List.of(), List.of())));
 
         when(strategy.execute(any(), any(), any()))
-                .thenReturn(RuntimeTraceReplayResult.success("ok", com.uniovi.rag.domain.runtime.engine.ExecutionTrace.placeholder()));
+                .thenReturn(RuntimeTraceReplayResult.success("ok", ExecutionTrace.placeholder()));
 
         RuntimeTraceReplayService service =
                 new RuntimeTraceReplayService(query, eligibility, loader, strategy);

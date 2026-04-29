@@ -38,6 +38,22 @@ def test_get_models_dir_default():
     assert c.get_models_dir() == "models"
 
 
+def test_get_data_dir_default():
+    if "DATA_DIR" in os.environ:
+        del os.environ["DATA_DIR"]
+    Config._instance = None
+    c = Config()
+    assert c.get_data_dir() == "data"
+
+
+def test_get_default_eval_dataset_path_uses_data_dir():
+    os.environ["DATA_DIR"] = "custom-data"
+    Config._instance = None
+    c = Config()
+    assert c.get_default_eval_dataset_path().endswith("custom-data/evaluation_dataset.xlsx")
+    del os.environ["DATA_DIR"]
+
+
 def test_get_default_model_id_default():
     if "DEFAULT_MODEL_ID" in os.environ:
         del os.environ["DEFAULT_MODEL_ID"]

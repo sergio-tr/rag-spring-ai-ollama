@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
 import { setStoredUserRole } from "@/lib/user-role";
+import { AuthEmailPasswordFields } from "@/features/auth/components/AuthEmailPasswordFields";
 import {
   registerSchema,
   type RegisterFormValues,
@@ -71,34 +72,12 @@ export function RegisterForm() {
           </p>
         )}
       </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="email">{t("email")}</Label>
-        <Input
-          id="email"
-          type="email"
-          autoComplete="email"
-          {...form.register("email")}
-        />
-        {form.formState.errors.email && (
-          <p className="text-destructive text-sm" role="alert">
-            {form.formState.errors.email.message}
-          </p>
-        )}
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="password">{t("password")}</Label>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="new-password"
-          {...form.register("password")}
-        />
-        {form.formState.errors.password && (
-          <p className="text-destructive text-sm" role="alert">
-            {form.formState.errors.password.message}
-          </p>
-        )}
-      </div>
+      <AuthEmailPasswordFields
+        register={form.register}
+        errors={form.formState.errors}
+        t={t}
+        passwordAutoComplete="new-password"
+      />
       {formError && (
         <p className="text-destructive text-sm" role="alert">
           {formError}

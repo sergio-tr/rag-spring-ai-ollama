@@ -7,14 +7,18 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.testsupport.RagApiTestPaths;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.env.Environment;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -25,10 +29,6 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultMatcher;
-
-import java.util.List;
-import java.util.Locale;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -114,7 +114,7 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
                         post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, org.hamcrest.Matchers.containsString("application/zip")))
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, Matchers.containsString("application/zip")))
                 .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, expectedDisposition))
                 .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, "3"))
                 .andExpect(
@@ -213,8 +213,8 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
                         post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, org.hamcrest.Matchers.containsString("application/zip")))
-                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, org.hamcrest.Matchers.containsString("attachment")));
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, Matchers.containsString("application/zip")))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, Matchers.containsString("attachment")));
     }
 
     @Test
@@ -225,8 +225,8 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
                         post(productBase() + "/runtime-trace-regression-suite-definitions/{id}/execute/export", definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, org.hamcrest.Matchers.containsString("application/zip")))
-                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, org.hamcrest.Matchers.containsString("attachment")));
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, Matchers.containsString("application/zip")))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, Matchers.containsString("attachment")));
     }
 
     @Test
@@ -273,6 +273,6 @@ class RuntimeTraceRegressionSuiteDefinitionExecutionExportControllerWebMvcTest {
                                         definitionId)
                                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, org.hamcrest.Matchers.containsString("_conversation_")));
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, Matchers.containsString("_conversation_")));
     }
 }

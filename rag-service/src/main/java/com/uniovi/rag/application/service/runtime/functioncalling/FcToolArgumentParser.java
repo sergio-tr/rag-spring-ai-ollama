@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
-
 import java.util.Iterator;
+import java.util.Set;
 
 /**
  * Strict JSON argument validation for FC (§10.9).
@@ -70,7 +70,7 @@ public final class FcToolArgumentParser {
     }
 
     private static void assertNoExtraKeys(ObjectNode obj, String... allowed) {
-        java.util.Set<String> allow = java.util.Set.of(allowed);
+        Set<String> allow = Set.of(allowed);
         Iterator<String> it = obj.fieldNames();
         while (it.hasNext()) {
             String n = it.next();

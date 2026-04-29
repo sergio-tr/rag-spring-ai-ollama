@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime.tracepersistence;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -16,11 +17,10 @@ import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.infrastructure.persistence.jpa.RuntimeExecutionTraceRepository;
 import com.uniovi.rag.infrastructure.persistence.mapper.RuntimeExecutionTraceEntityMapper;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -45,7 +45,7 @@ class RuntimeTracePersistenceServiceTest {
     private static ExecutionContext ctx() {
         RagConfig rag =
                 RagConfig.fromFeatureConfiguration(
-                        new com.uniovi.rag.configuration.RagFeatureConfiguration(),
+                        new RagFeatureConfiguration(),
                         10,
                         0.7,
                         "m",

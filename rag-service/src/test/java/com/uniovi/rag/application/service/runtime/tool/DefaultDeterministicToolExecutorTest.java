@@ -9,14 +9,14 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import com.uniovi.rag.domain.runtime.tool.MeetingMinutesToolRawResult;
 import com.uniovi.rag.domain.runtime.tool.ToolExecutionMode;
 import com.uniovi.rag.tool.ToolResult;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -71,7 +71,7 @@ class DefaultDeterministicToolExecutorTest {
 
     @Test
     void execute_mapsSuccess_whenMapperReturnsOutput() {
-        ToolResult toolResult = org.mockito.Mockito.mock(ToolResult.class);
+        ToolResult toolResult = Mockito.mock(ToolResult.class);
         when(meetingMinutesToolExecutionCore.execute(any(), any(), any()))
                 .thenReturn(
                         MeetingMinutesToolRawResult.ok(DeterministicToolKind.COUNT_DOCUMENTS_TOOL, toolResult));
@@ -121,7 +121,7 @@ class DefaultDeterministicToolExecutorTest {
 
     @Test
     void execute_returnsInfraFailure_whenMapperReturnsNull() {
-        ToolResult toolResult = org.mockito.Mockito.mock(ToolResult.class);
+        ToolResult toolResult = Mockito.mock(ToolResult.class);
         when(meetingMinutesToolExecutionCore.execute(any(), any(), any()))
                 .thenReturn(
                         MeetingMinutesToolRawResult.ok(DeterministicToolKind.COUNT_DOCUMENTS_TOOL, toolResult));

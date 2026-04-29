@@ -1,17 +1,16 @@
 package com.uniovi.rag.tool;
 
-import org.json.JSONObject;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.document.Document;
-
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
-
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.json.JSONObject;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.document.Document;
 
 /**
  * Enhanced CountDocumentsTool for counting meeting minutes based on specific criteria.
@@ -59,7 +58,7 @@ public class CountDocumentsTool extends AbstractTool {
                 ? nerHandler.filterDocumentsByTemporalContext(docs, ner)
                 : docs;
 
-        List<String> matchedIds = new java.util.ArrayList<>();
+        List<String> matchedIds = new ArrayList<>();
 
         for (Document doc : candidateDocs) {
             if (doc != null

@@ -1,18 +1,17 @@
 package com.uniovi.rag.tool;
 
-import org.json.JSONObject;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.document.Document;
-
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import org.json.JSONObject;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.document.Document;
 
 /**
  * Enhanced GetDurationTool for retrieving meeting durations with intelligent NER analysis.
@@ -155,7 +154,7 @@ public class GetDurationTool extends AbstractTool {
     }
 
     /** Prefer metadata startTime/endTime when present (avoids "No durations found" when data exists in metadata). */
-    private static final java.util.regex.Pattern TIME_PATTERN = Pattern.compile("(\\d{1,2}):(\\d{2})");
+    private static final Pattern TIME_PATTERN = Pattern.compile("(\\d{1,2}):(\\d{2})");
 
     /**
      * Extracts meeting duration from document with validation.
@@ -218,8 +217,8 @@ public class GetDurationTool extends AbstractTool {
 
     /** Parses "HH:mm" or "H:mm" and returns duration in minutes; 0 if invalid. */
     private int durationMinutesFromTimes(String startTime, String endTime) {
-        java.util.regex.Matcher startM = TIME_PATTERN.matcher(startTime);
-        java.util.regex.Matcher endM = TIME_PATTERN.matcher(endTime);
+        Matcher startM = TIME_PATTERN.matcher(startTime);
+        Matcher endM = TIME_PATTERN.matcher(endTime);
         if (startM.find() && endM.find()) {
             int startMin = Integer.parseInt(startM.group(1)) * 60 + Integer.parseInt(startM.group(2));
             int endMin = Integer.parseInt(endM.group(1)) * 60 + Integer.parseInt(endM.group(2));

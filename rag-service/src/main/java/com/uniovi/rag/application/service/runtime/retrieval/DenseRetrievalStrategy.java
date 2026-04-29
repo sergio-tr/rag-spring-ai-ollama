@@ -4,11 +4,6 @@ import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.stereotype.Service;
-
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -16,6 +11,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
 /**
  * Snapshot-bound dense retrieval via pgvector similarity search and post-filtering.
@@ -29,8 +29,8 @@ public class DenseRetrievalStrategy {
 
     public DenseRetrievalStrategy(
             PgVectorStore vectorStore,
-            @org.springframework.beans.factory.annotation.Value("${spring.ai.ollama.top-k:10}") int defaultTopK,
-            @org.springframework.beans.factory.annotation.Value("${spring.ai.ollama.similarity-threshold:0.7}")
+            @Value("${spring.ai.ollama.top-k:10}") int defaultTopK,
+            @Value("${spring.ai.ollama.similarity-threshold:0.7}")
                     double defaultSimilarityThreshold) {
         this.vectorStore = vectorStore;
         this.defaultTopK = defaultTopK;

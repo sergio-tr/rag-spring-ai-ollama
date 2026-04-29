@@ -1,17 +1,22 @@
 package com.uniovi.rag.interfaces.rest;
 
 
-import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.tracecomparisonbatch.RuntimeTraceReplayComparisonBatchService;
+import com.uniovi.rag.configuration.TraceComparisonBatchRestJacksonConfiguration;
 import com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayComparisonOutcome;
 import com.uniovi.rag.domain.runtime.tracecomparisonbatch.RuntimeTraceReplayComparisonBatchItemResult;
-import com.uniovi.rag.domain.runtime.tracecomparisonbatch.RuntimeTraceReplayComparisonBatchSelection;
 import com.uniovi.rag.domain.runtime.tracecomparisonbatch.RuntimeTraceReplayComparisonBatchOutcome;
 import com.uniovi.rag.domain.runtime.tracecomparisonbatch.RuntimeTraceReplayComparisonBatchRequest;
 import com.uniovi.rag.domain.runtime.tracecomparisonbatch.RuntimeTraceReplayComparisonBatchResult;
+import com.uniovi.rag.domain.runtime.tracecomparisonbatch.RuntimeTraceReplayComparisonBatchSelection;
 import com.uniovi.rag.domain.runtime.tracecomparisonbatch.RuntimeTraceReplayComparisonBatchSummary;
+import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayOutcome;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,16 +33,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.PostMapping;
 
-import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayOutcome;
-
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-
-import com.uniovi.rag.configuration.TraceComparisonBatchRestJacksonConfiguration;
-
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
@@ -82,7 +80,7 @@ class RuntimeTraceReplayComparisonBatchControllerTest {
     void controller_exposes_exactly_two_post_mappings() {
         long n =
                 Arrays.stream(RuntimeTraceReplayComparisonBatchController.class.getDeclaredMethods())
-                        .filter(m -> m.isAnnotationPresent(org.springframework.web.bind.annotation.PostMapping.class))
+                        .filter(m -> m.isAnnotationPresent(PostMapping.class))
                         .count();
         assertThat(n).isEqualTo(2);
     }

@@ -8,9 +8,9 @@ import com.uniovi.rag.infrastructure.persistence.impl.MinuteDocumentRepositoryIm
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.document.MetadataMinuteDocumentService;
 import com.uniovi.rag.service.document.SimpleDocumentService;
-
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,7 +26,7 @@ public class RagDocumentConfiguration {
         JdbcTemplate jdbcTemplate,
         MetadataMinuteDocumentService metadataMinuteDocumentService,
         SimpleDocumentService simpleDocumentService,
-        @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+        @Autowired(required = false) ObservabilitySupport observability
     ) {
         DocumentService raw = featureConfig.isMetadataEnabled()
                 ? metadataMinuteDocumentService
@@ -41,7 +41,7 @@ public class RagDocumentConfiguration {
     public MinuteDocumentRepository minuteDocumentRepository(
             DocumentService documentService,
             MetadataMinuteDocumentService metadataMinuteDocumentService,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability) {
+            @Autowired(required = false) ObservabilitySupport observability) {
         MinuteDocumentRepository raw = new MinuteDocumentRepositoryImpl(documentService, metadataMinuteDocumentService);
         if (observability != null) {
             return new TracedMinuteDocumentRepository(raw, observability);

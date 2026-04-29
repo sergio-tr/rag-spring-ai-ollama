@@ -5,13 +5,13 @@ import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.notNull;
@@ -31,7 +31,7 @@ class EvaluationCanonicalPersistenceServiceTest {
 
         UUID runId = UUID.randomUUID();
         EvaluationRunEntity run = mock(EvaluationRunEntity.class);
-        when(runs.findById(runId)).thenReturn(java.util.Optional.of(run));
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
 
         sut.markRunFailed(runId, "boom");
 
@@ -67,7 +67,7 @@ class EvaluationCanonicalPersistenceServiceTest {
 
         UUID runId = UUID.randomUUID();
         EvaluationRunEntity run = mock(EvaluationRunEntity.class);
-        when(runs.findById(runId)).thenReturn(java.util.Optional.of(run));
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("question", "q1");
@@ -99,7 +99,7 @@ class EvaluationCanonicalPersistenceServiceTest {
 
         UUID runId = UUID.randomUUID();
         EvaluationRunEntity run = mock(EvaluationRunEntity.class);
-        when(runs.findById(runId)).thenReturn(java.util.Optional.of(run));
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
 
         Map<String, Object> r = new LinkedHashMap<>();
         r.put("question", "q");
@@ -128,7 +128,7 @@ class EvaluationCanonicalPersistenceServiceTest {
 
         UUID runId = UUID.randomUUID();
         EvaluationRunEntity run = mock(EvaluationRunEntity.class);
-        when(runs.findById(runId)).thenReturn(java.util.Optional.of(run));
+        when(runs.findById(runId)).thenReturn(Optional.of(run));
 
         Map<String, Object> resp = Map.of("acc", 0.9);
         sut.persistClassifierMetrics(runId, resp);

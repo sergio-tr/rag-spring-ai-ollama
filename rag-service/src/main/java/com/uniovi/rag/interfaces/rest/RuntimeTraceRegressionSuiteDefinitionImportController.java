@@ -6,16 +6,14 @@ import com.uniovi.rag.security.RagPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.InvalidMediaTypeException;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.IOException;
 import java.net.URI;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -41,30 +39,13 @@ public class RuntimeTraceRegressionSuiteDefinitionImportController {
         if (request.getQueryString() != null) {
             return ResponseEntity.badRequest().build();
         }
-        String rawCt = request.getContentType();
-        if (rawCt == null || rawCt.isBlank()) {
+        Optional<byte[]> bodyOpt =
+                RuntimeTraceImportRequestSupport.readZipBody(
+                        request, RuntimeTraceRegressionSuiteDefinitionImportService.MAX_IMPORT_ZIP_BYTES);
+        if (bodyOpt.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        MediaType mediaType;
-        try {
-            mediaType = MediaType.parseMediaType(rawCt.trim());
-        } catch (InvalidMediaTypeException ex) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (!"application".equals(mediaType.getType())
-                || !"zip".equals(mediaType.getSubtype())
-                || !mediaType.getParameters().isEmpty()) {
-            return ResponseEntity.badRequest().build();
-        }
-        byte[] body;
-        try {
-            body = request.getInputStream().readAllBytes();
-        } catch (IOException ex) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (body.length == 0 || body.length > RuntimeTraceRegressionSuiteDefinitionImportService.MAX_IMPORT_ZIP_BYTES) {
-            return ResponseEntity.badRequest().build();
-        }
+        byte[] body = bodyOpt.get();
         UUID userId = principal.userId();
         try {
             UUID createdId = importService.importDefinitionZip(body, userId);

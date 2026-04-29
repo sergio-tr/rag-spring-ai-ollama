@@ -12,8 +12,13 @@ import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepositor
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.persistence.support.ResolvedConfigSnapshotTestFixtures;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
+import com.uniovi.rag.testsupport.TestEnvironment;
 import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
 import jakarta.persistence.EntityManager;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,10 +26,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.Instant;
-import java.util.Map;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -116,7 +117,7 @@ class RagConfigurationProfilePresetSnapshotJpaIT {
                         user,
                         "it-preset",
                         "desc",
-                        java.util.List.of("t1"),
+                        List.of("t1"),
                         Map.of("rag", true),
                         now,
                         now);

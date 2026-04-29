@@ -12,17 +12,17 @@ import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.chat.ChatRetrievalSourceContributor;
 import com.uniovi.rag.service.query.ProcessQueryService;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.springframework.http.HttpStatus;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -60,7 +60,7 @@ class ChatMessageJobHandlerTest {
     @Test
     void run_nullPayload_marksFailed() {
         UUID taskId = UUID.randomUUID();
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         when(task.getId()).thenReturn(taskId);
         when(task.getRequestPayload()).thenReturn(null);
 
@@ -73,7 +73,7 @@ class ChatMessageJobHandlerTest {
     @Test
     void run_missingProject_marksFailed() {
         UUID taskId = UUID.randomUUID();
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         UserEntity user = mockUser();
         when(task.getId()).thenReturn(taskId);
         when(task.getUser()).thenReturn(user);
@@ -88,7 +88,7 @@ class ChatMessageJobHandlerTest {
     @Test
     void run_blankUserText_marksFailed() {
         UUID taskId = UUID.randomUUID();
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         UserEntity user = mockUser();
         ProjectEntity project = mockProject();
         when(task.getId()).thenReturn(taskId);
@@ -108,7 +108,7 @@ class ChatMessageJobHandlerTest {
         UUID taskId = UUID.randomUUID();
         UUID convId = UUID.randomUUID();
         UUID asstId = UUID.randomUUID();
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         UserEntity user = mockUser();
         ProjectEntity project = mockProject();
         when(task.getId()).thenReturn(taskId);
@@ -136,7 +136,7 @@ class ChatMessageJobHandlerTest {
         UserEntity user = mockUser(userId);
         ProjectEntity project = mockProject(projectId);
 
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         when(task.getId()).thenReturn(taskId);
         when(task.getUser()).thenReturn(user);
         when(task.getProject()).thenReturn(project);
@@ -180,7 +180,7 @@ class ChatMessageJobHandlerTest {
         UUID convId = UUID.randomUUID();
         UUID asstId = UUID.randomUUID();
 
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         UserEntity user = mockUser();
         ProjectEntity project = mockProject();
         when(task.getId()).thenReturn(taskId);
@@ -211,7 +211,7 @@ class ChatMessageJobHandlerTest {
         UUID convId = UUID.randomUUID();
         UUID asstId = UUID.randomUUID();
 
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         UserEntity user = mockUser();
         ProjectEntity project = mockProject();
         when(task.getId()).thenReturn(taskId);
@@ -235,7 +235,7 @@ class ChatMessageJobHandlerTest {
     }
 
     private static UserEntity mockUser(UUID id) {
-        UserEntity u = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity u = Mockito.mock(UserEntity.class);
         when(u.getId()).thenReturn(id);
         return u;
     }
@@ -245,7 +245,7 @@ class ChatMessageJobHandlerTest {
     }
 
     private static ProjectEntity mockProject(UUID id) {
-        ProjectEntity p = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity p = Mockito.mock(ProjectEntity.class);
         when(p.getId()).thenReturn(id);
         return p;
     }

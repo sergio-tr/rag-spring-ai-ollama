@@ -43,7 +43,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -56,7 +55,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.IOException;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -133,28 +131,14 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             @AuthenticationPrincipal RagPrincipal principal,
             @RequestBody(required = false) String body,
             HttpServletRequest request) {
-        if (request.getQueryString() != null) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (body == null) {
-            return ResponseEntity.badRequest().build();
-        }
-        String trimmedBody = body.trim();
-        if (trimmedBody.isEmpty()) {
-            return ResponseEntity.badRequest().build();
-        }
-        RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto;
-        try {
-            dto = strictMutationMapper.readValue(trimmedBody, RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto.class);
-        } catch (JsonProcessingException ex) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (!isUpsertAdapterValid(dto)) {
+        Optional<RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto> dtoOpt =
+                parseValidUpsertRequestBody(request, body);
+        if (dtoOpt.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
         UUID userId = principal.userId();
         try {
-            UUID createdId = definitionService.create(userId, toCreateCommand(dto));
+            UUID createdId = definitionService.create(userId, toCreateCommand(dtoOpt.get()));
             String location =
                     productBasePath + "/runtime-trace-regression-suite-definitions/" + createdId;
             return ResponseEntity.created(URI.create(location)).build();
@@ -173,32 +157,18 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             @PathVariable("definitionId") String definitionIdRaw,
             @RequestBody(required = false) String body,
             HttpServletRequest request) {
-        if (request.getQueryString() != null) {
-            return ResponseEntity.badRequest().build();
-        }
         Optional<UUID> definitionId = parseUuid(definitionIdRaw);
         if (definitionId.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        if (body == null) {
-            return ResponseEntity.badRequest().build();
-        }
-        String trimmedBody = body.trim();
-        if (trimmedBody.isEmpty()) {
-            return ResponseEntity.badRequest().build();
-        }
-        RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto;
-        try {
-            dto = strictMutationMapper.readValue(trimmedBody, RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto.class);
-        } catch (JsonProcessingException ex) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (!isUpsertAdapterValid(dto)) {
+        Optional<RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto> dtoOpt =
+                parseValidUpsertRequestBody(request, body);
+        if (dtoOpt.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
         UUID userId = principal.userId();
         try {
-            definitionService.update(definitionId.get(), userId, toUpdateCommand(dto));
+            definitionService.update(definitionId.get(), userId, toUpdateCommand(dtoOpt.get()));
             return ResponseEntity.noContent().build();
         } catch (NotFoundException ex) {
             return ResponseEntity.notFound().build();
@@ -250,13 +220,11 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         }
         UUID userId = principal.userId();
         UUID definitionId = definitionIdOpt.get();
-        RuntimeTraceRegressionSuiteRequest req;
-        try {
-            req = definitionService.materializeToSuiteRequest(definitionId, userId);
-        } catch (NotFoundException ex) {
+        Optional<RuntimeTraceRegressionSuiteRequest> reqOpt = materializeRequestForDefinition(definitionId, userId);
+        if (reqOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        RuntimeTraceRegressionSuiteResult result = suiteService.execute(req);
+        RuntimeTraceRegressionSuiteResult result = suiteService.execute(reqOpt.get());
         return respondDefinitionExecution(result);
     }
 
@@ -281,12 +249,11 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         UUID userId = principal.userId();
         UUID definitionId = definitionIdOpt.get();
         UUID conversationId = conversationIdOpt.get();
-        RuntimeTraceRegressionSuiteRequest req;
-        try {
-            req = definitionService.materializeToSuiteRequest(definitionId, userId);
-        } catch (NotFoundException ex) {
+        Optional<RuntimeTraceRegressionSuiteRequest> reqOpt = materializeRequestForDefinition(definitionId, userId);
+        if (reqOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
+        RuntimeTraceRegressionSuiteRequest req = reqOpt.get();
         if (conversationScopedGuardFails(conversationId, req)) {
             return ResponseEntity.notFound().build();
         }
@@ -312,13 +279,11 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         }
         UUID userId = principal.userId();
         UUID definitionId = definitionIdOpt.get();
-        RuntimeTraceRegressionSuiteRequest req;
-        try {
-            req = definitionService.materializeToSuiteRequest(definitionId, userId);
-        } catch (NotFoundException ex) {
+        Optional<RuntimeTraceRegressionSuiteRequest> reqOpt = materializeRequestForDefinition(definitionId, userId);
+        if (reqOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        RuntimeTraceRegressionSuiteResult result = suiteService.execute(req);
+        RuntimeTraceRegressionSuiteResult result = suiteService.execute(reqOpt.get());
         return respondPersistedRunFromDefinition(userId, definitionId, result);
     }
 
@@ -343,12 +308,11 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         UUID userId = principal.userId();
         UUID definitionId = definitionIdOpt.get();
         UUID conversationId = conversationIdOpt.get();
-        RuntimeTraceRegressionSuiteRequest req;
-        try {
-            req = definitionService.materializeToSuiteRequest(definitionId, userId);
-        } catch (NotFoundException ex) {
+        Optional<RuntimeTraceRegressionSuiteRequest> reqOpt = materializeRequestForDefinition(definitionId, userId);
+        if (reqOpt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
+        RuntimeTraceRegressionSuiteRequest req = reqOpt.get();
         if (conversationScopedGuardFails(conversationId, req)) {
             return ResponseEntity.notFound().build();
         }
@@ -489,30 +453,13 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         if (definitionService.loadByIdForUser(definitionId, userId).isEmpty()) {
             throw new NotFoundException("definition not found");
         }
-        String rawCt = request.getContentType();
-        if (rawCt == null || rawCt.isBlank()) {
+        Optional<byte[]> bodyOpt =
+                RuntimeTraceImportRequestSupport.readZipBody(
+                        request, RuntimeTraceRegressionSuiteRunImportService.MAX_IMPORT_ZIP_BYTES);
+        if (bodyOpt.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        MediaType mediaType;
-        try {
-            mediaType = MediaType.parseMediaType(rawCt.trim());
-        } catch (InvalidMediaTypeException ex) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (!"application".equals(mediaType.getType())
-                || !"zip".equals(mediaType.getSubtype())
-                || !mediaType.getParameters().isEmpty()) {
-            return ResponseEntity.badRequest().build();
-        }
-        byte[] body;
-        try {
-            body = request.getInputStream().readAllBytes();
-        } catch (IOException ex) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (body.length == 0 || body.length > RuntimeTraceRegressionSuiteRunImportService.MAX_IMPORT_ZIP_BYTES) {
-            return ResponseEntity.badRequest().build();
-        }
+        byte[] body = bodyOpt.get();
         try {
             UUID createdId = runImportService.importRunZipForDefinition(body, userId, definitionId);
             String location = productBasePath + "/runtime-trace-regression-suite-runs/" + createdId;
@@ -541,30 +488,13 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         if (definitionService.loadByIdForUser(definitionId, userId).isEmpty()) {
             throw new NotFoundException("definition not found");
         }
-        String rawCt = request.getContentType();
-        if (rawCt == null || rawCt.isBlank()) {
+        Optional<byte[]> bodyOpt =
+                RuntimeTraceImportRequestSupport.readZipBody(
+                        request, RuntimeTraceRegressionSuiteRunImportPreviewService.MAX_PREVIEW_ZIP_BYTES);
+        if (bodyOpt.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        MediaType mediaType;
-        try {
-            mediaType = MediaType.parseMediaType(rawCt.trim());
-        } catch (InvalidMediaTypeException ex) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (!"application".equals(mediaType.getType())
-                || !"zip".equals(mediaType.getSubtype())
-                || !mediaType.getParameters().isEmpty()) {
-            return ResponseEntity.badRequest().build();
-        }
-        byte[] body;
-        try {
-            body = request.getInputStream().readAllBytes();
-        } catch (IOException ex) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (body.length == 0 || body.length > RuntimeTraceRegressionSuiteRunImportPreviewService.MAX_PREVIEW_ZIP_BYTES) {
-            return ResponseEntity.badRequest().build();
-        }
+        byte[] body = bodyOpt.get();
         try {
             RuntimeTraceRegressionSuiteRunImportPreviewResponseDto dto =
                     runImportPreviewService.previewImportZipForDefinition(body, definitionId);
@@ -611,6 +541,32 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             return true;
         }
         return body.trim().isEmpty();
+    }
+
+    private Optional<RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto> parseValidUpsertRequestBody(
+            HttpServletRequest request, String body) {
+        if (request.getQueryString() != null || body == null) {
+            return Optional.empty();
+        }
+        String trimmedBody = body.trim();
+        if (trimmedBody.isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto =
+                    strictMutationMapper.readValue(trimmedBody, RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto.class);
+            return isUpsertAdapterValid(dto) ? Optional.of(dto) : Optional.empty();
+        } catch (JsonProcessingException ex) {
+            return Optional.empty();
+        }
+    }
+
+    private Optional<RuntimeTraceRegressionSuiteRequest> materializeRequestForDefinition(UUID definitionId, UUID userId) {
+        try {
+            return Optional.of(definitionService.materializeToSuiteRequest(definitionId, userId));
+        } catch (NotFoundException ex) {
+            return Optional.empty();
+        }
     }
 
     private static boolean conversationScopedGuardFails(UUID pathConversationId, RuntimeTraceRegressionSuiteRequest request) {

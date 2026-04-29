@@ -4,7 +4,10 @@ import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.interfaces.rest.dto.me.MeDocumentsPageResponse;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -13,9 +16,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-
-import java.util.List;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -37,8 +37,8 @@ class MeDocumentQueryServiceTest {
         UUID userId = UUID.randomUUID();
         KnowledgeDocumentEntity d = mock(KnowledgeDocumentEntity.class);
         UUID pid = UUID.randomUUID();
-        com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity project =
-                mock(com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity.class);
+        ProjectEntity project =
+                mock(ProjectEntity.class);
         when(project.getId()).thenReturn(pid);
         when(d.getId()).thenReturn(UUID.randomUUID());
         when(d.getProject()).thenReturn(project);

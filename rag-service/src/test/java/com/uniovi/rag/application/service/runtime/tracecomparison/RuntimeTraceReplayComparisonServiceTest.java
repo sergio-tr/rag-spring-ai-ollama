@@ -7,22 +7,22 @@ import com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayAnswerCom
 import com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayComparisonOutcome;
 import com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayComparisonRequest;
 import com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayFieldMismatch;
+import com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayMismatchCategory;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayOutcome;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayResult;
 import com.uniovi.rag.infrastructure.persistence.mapper.RuntimeExecutionTraceEntityMapper;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -111,7 +111,7 @@ class RuntimeTraceReplayComparisonServiceTest {
                 List.of(
                         new RuntimeTraceReplayFieldMismatch(
                                 "ExecutionTrace.classifierStatus",
-                                com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayMismatchCategory
+                                RuntimeTraceReplayMismatchCategory
                                         .FIELD_VALUE_MISMATCH,
                                 "a",
                                 "b"));
@@ -136,7 +136,7 @@ class RuntimeTraceReplayComparisonServiceTest {
                 List.of(
                         new RuntimeTraceReplayFieldMismatch(
                                 "workflowName",
-                                com.uniovi.rag.domain.runtime.tracecomparison.RuntimeTraceReplayMismatchCategory
+                                RuntimeTraceReplayMismatchCategory
                                         .FIELD_VALUE_MISMATCH,
                                 "a",
                                 "b"));

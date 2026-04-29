@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime.routing;
 
+import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingDecision;
@@ -7,10 +8,9 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingExecutionResult;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingMode;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.domain.runtime.routing.RouteExecutionGate;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -23,8 +23,7 @@ class AdaptiveRoutingStrategyTest {
     @Test
     void execute_whenDisabledByConfig_producesDisabledOutcome_andNoStages() {
         AdaptiveRoutingPolicyResolver policy = mock(AdaptiveRoutingPolicyResolver.class);
-        com.uniovi.rag.application.service.runtime.routing.RouteExecutionGate gateBuilder =
-                mock(com.uniovi.rag.application.service.runtime.routing.RouteExecutionGate.class);
+        RouteExecutionGateBuilder gateBuilder = mock(RouteExecutionGateBuilder.class);
         AdaptiveRoutingStrategy s = new AdaptiveRoutingStrategy(policy, gateBuilder);
 
         AdaptiveRoutingDecision d =
@@ -36,7 +35,7 @@ class AdaptiveRoutingStrategyTest {
                         List.of());
         when(policy.resolve(any(), any())).thenReturn(d);
 
-        AdaptiveRoutingExecutionResult out = s.execute(mock(com.uniovi.rag.domain.runtime.engine.ExecutionContext.class), mock(QueryPlan.class));
+        AdaptiveRoutingExecutionResult out = s.execute(mock(ExecutionContext.class), mock(QueryPlan.class));
         assertEquals(AdaptiveRoutingOutcome.DISABLED_BY_CONFIG, out.outcome());
         assertFalse(out.routingAttempted());
         assertTrue(out.stageTraces().isEmpty());
@@ -47,8 +46,7 @@ class AdaptiveRoutingStrategyTest {
     @Test
     void execute_whenEnabled_emitsDeterministicStageTraces_andUsesGateBuilder() {
         AdaptiveRoutingPolicyResolver policy = mock(AdaptiveRoutingPolicyResolver.class);
-        com.uniovi.rag.application.service.runtime.routing.RouteExecutionGate gateBuilder =
-                mock(com.uniovi.rag.application.service.runtime.routing.RouteExecutionGate.class);
+        RouteExecutionGateBuilder gateBuilder = mock(RouteExecutionGateBuilder.class);
         AdaptiveRoutingStrategy s = new AdaptiveRoutingStrategy(policy, gateBuilder);
 
         AdaptiveRoutingDecision d =
@@ -72,7 +70,7 @@ class AdaptiveRoutingStrategyTest {
                         false);
         when(gateBuilder.fromDecision(eq(d))).thenReturn(gate);
 
-        AdaptiveRoutingExecutionResult out = s.execute(mock(com.uniovi.rag.domain.runtime.engine.ExecutionContext.class), mock(QueryPlan.class));
+        AdaptiveRoutingExecutionResult out = s.execute(mock(ExecutionContext.class), mock(QueryPlan.class));
         assertEquals(AdaptiveRoutingOutcome.PRIMARY_ROUTE_SELECTED_WITH_WORKFLOW_FALLBACK, out.outcome());
         assertTrue(out.routingAttempted());
         assertEquals(AdaptiveRouteKind.DETERMINISTIC_TOOL_ROUTE, out.routingRouteKind());

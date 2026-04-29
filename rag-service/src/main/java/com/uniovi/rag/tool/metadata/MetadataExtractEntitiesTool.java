@@ -5,15 +5,16 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
-
 import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
-import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataExtractEntitiesTool for extracting and analyzing entities from meeting minutes with intelligent processing.
@@ -391,10 +392,10 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
             jsonStr = jsonStr.substring(arrayStart, arrayEnd + 1);
             
             // Parse JSON array
-            org.json.JSONArray jsonArray = new org.json.JSONArray(jsonStr);
+            JSONArray jsonArray = new JSONArray(jsonStr);
             
             for (int i = 0; i < jsonArray.length(); i++) {
-                org.json.JSONObject obj = jsonArray.getJSONObject(i);
+                JSONObject obj = jsonArray.getJSONObject(i);
                 String name = obj.optString("name", "").trim();
                 String type = obj.optString("type", "OTHER").trim();
                 String role = obj.optString("role", "").trim();
@@ -410,7 +411,7 @@ public class MetadataExtractEntitiesTool extends AbstractMetadataTool {
                     ));
                 }
             }
-        } catch (org.json.JSONException e) {
+        } catch (JSONException e) {
             log().info("Error parsing JSON from LLM response, trying line-by-line parsing: {}", e.getMessage());
             // Fallback to line-by-line parsing
             return parseEntitiesFromLines(response);

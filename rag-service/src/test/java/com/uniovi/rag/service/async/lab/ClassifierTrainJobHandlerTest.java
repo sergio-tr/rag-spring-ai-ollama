@@ -7,17 +7,18 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.classifier.ClassifierModelRegistryService;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -63,7 +64,7 @@ class ClassifierTrainJobHandlerTest {
 
         new ClassifierTrainJobHandler(classifierLab, classifierModelRegistryService).run(task, mutation);
 
-        verify(mutation).markFailed(eq(taskId), org.mockito.ArgumentMatchers.startsWith("Could not read training file"));
+        verify(mutation).markFailed(eq(taskId), ArgumentMatchers.startsWith("Could not read training file"));
     }
 
     @Test
@@ -159,17 +160,17 @@ class ClassifierTrainJobHandlerTest {
 
         new ClassifierTrainJobHandler(classifierLab, classifierModelRegistryService).run(task, mutation);
 
-        verify(mutation).markFailed(eq(taskId), org.mockito.ArgumentMatchers.startsWith("Could not read labels file"));
+        verify(mutation).markFailed(eq(taskId), ArgumentMatchers.startsWith("Could not read labels file"));
     }
 
     private static UserEntity user(UUID id) {
-        UserEntity u = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity u = Mockito.mock(UserEntity.class);
         when(u.getId()).thenReturn(id);
         return u;
     }
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {
-        AsyncTaskEntity t = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity t = Mockito.mock(AsyncTaskEntity.class);
         when(t.getId()).thenReturn(id);
         when(t.getRequestPayload()).thenReturn(payload);
         return t;

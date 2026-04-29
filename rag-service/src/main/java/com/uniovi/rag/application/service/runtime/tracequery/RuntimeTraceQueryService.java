@@ -6,15 +6,15 @@ import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeExecutionTraceSummaryDto;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 @Service
 public class RuntimeTraceQueryService {
@@ -172,11 +172,11 @@ public class RuntimeTraceQueryService {
                 safeListMap(e.getStagesJsonb()));
     }
 
-    private static java.util.Map<String, Object> safeMap(java.util.Map<String, Object> m) {
-        return m == null ? java.util.Map.of() : java.util.Map.copyOf(m);
+    private static Map<String, Object> safeMap(Map<String, Object> m) {
+        return m == null ? Map.of() : Map.copyOf(m);
     }
 
-    private static List<java.util.Map<String, Object>> safeListMap(List<java.util.Map<String, Object>> m) {
+    private static List<Map<String, Object>> safeListMap(List<Map<String, Object>> m) {
         return m == null ? List.of() : List.copyOf(m);
     }
 }

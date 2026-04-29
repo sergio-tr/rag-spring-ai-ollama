@@ -21,9 +21,9 @@ public record EntityExtractionResult(
         locations = List.copyOf(Objects.requireNonNull(locations, "locations"));
         topics = List.copyOf(Objects.requireNonNull(topics, "topics"));
         organizations = List.copyOf(Objects.requireNonNull(organizations, "organizations"));
-        temporalContext = temporalContext == null ? Optional.empty() : temporalContext;
-        answerTypeHint = answerTypeHint == null ? Optional.empty() : answerTypeHint;
-        comparisonTypeHint = comparisonTypeHint == null ? Optional.empty() : comparisonTypeHint;
+        temporalContext = Objects.requireNonNullElseGet(temporalContext, Optional::empty);
+        answerTypeHint = Objects.requireNonNullElseGet(answerTypeHint, Optional::empty);
+        comparisonTypeHint = Objects.requireNonNullElseGet(comparisonTypeHint, Optional::empty);
         notes = List.copyOf(Objects.requireNonNull(notes, "notes"));
     }
 

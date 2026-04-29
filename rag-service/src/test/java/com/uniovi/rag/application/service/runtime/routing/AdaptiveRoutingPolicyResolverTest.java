@@ -23,12 +23,12 @@ import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingDecision;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingMode;
-import org.junit.jupiter.api.Test;
-
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -142,7 +142,7 @@ class AdaptiveRoutingPolicyResolverTest {
                 Optional.empty(),
                 Optional.empty(),
                 false,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
                 AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                 false,
                 Optional.empty(),

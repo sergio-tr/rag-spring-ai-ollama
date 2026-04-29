@@ -1,5 +1,10 @@
 package com.uniovi.rag.service.document;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.ss.usermodel.Cell;
@@ -12,12 +17,6 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.List;
 
 public abstract class AbstractDocumentService implements DocumentService {
 
@@ -150,7 +149,7 @@ public abstract class AbstractDocumentService implements DocumentService {
             }
         } catch (IllegalArgumentException e) {
             throw e;
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             throw new IllegalStateException("Error processing the file", e);
         } catch (Exception e) {
             throw new IllegalStateException("Error processing the file", e);

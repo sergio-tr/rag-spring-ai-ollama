@@ -4,6 +4,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
 import type { ProjectSummary } from "@/types/api";
+import { useAppStore } from "@/store/app.store";
 import { AppSidebar } from "./AppSidebar";
 
 vi.mock("@/lib/user-role", () => ({
@@ -18,15 +19,19 @@ vi.mock("@/navigation", () => ({
     </a>
   ),
   usePathname: () => "/projects",
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushMock, refresh: vi.fn(), replace: vi.fn() }),
 }));
+
+const pushMock = vi.fn();
 
 vi.mock("@/features/projects/hooks/use-projects", () => ({
   useProjectList: () => mockProjectsState,
   useActivateProject: () => ({
-    mutateAsync: vi.fn(async () => {}),
+    mutateAsync: activateProjectMutateAsync,
   }),
 }));
+
+const activateProjectMutateAsync = vi.fn(async () => {});
 
 const mockProjectsState: {
   data: { items: ProjectSummary[]; total: number } | null;
@@ -44,8 +49,26 @@ const mockProjectsState: {
         colorHex: "#ff0000",
         iconKey: "folder",
       },
+      {
+        id: "p2",
+        name: "Project Two",
+        docCount: 0,
+        convCount: 0,
+        updatedAt: "2026-01-01T00:00:00Z",
+        colorHex: null,
+        iconKey: "rocket",
+      },
+      {
+        id: "p3",
+        name: "Project Three",
+        docCount: 0,
+        convCount: 0,
+        updatedAt: "2026-01-01T00:00:00Z",
+        colorHex: "#00ff00",
+        iconKey: "shield",
+      },
     ],
-    total: 1,
+    total: 3,
   },
   isLoading: false,
   isError: false,
@@ -60,16 +83,26 @@ vi.mock("@/features/projects/components/NewProjectDialog", () => ({
 }));
 
 vi.mock("@/features/chat/hooks/use-conversations", () => ({
-  useConversations: () => ({
-    data: [{ id: "c1", title: "Chat One", updatedAt: "2026-01-01T00:00:00Z" }],
+  useConversations: (projectId?: string) => ({
+    data:
+      projectId === "p2"
+        ? [{ id: "c2", title: "Budget Chat", updatedAt: "2026-01-01T00:00:00Z" }]
+        : [{ id: "c1", title: "Chat One", updatedAt: "2026-01-01T00:00:00Z" }],
     isLoading: false,
     isError: false,
   }),
-  useCreateConversation: () => ({ isPending: false, mutateAsync: vi.fn(async () => ({ id: "c1" })) }),
+  useCreateConversation: () => mockCreateConversation,
 }));
+
+const mockCreateConversation: { isPending: boolean; mutateAsync: ReturnType<typeof vi.fn> } = {
+  isPending: false,
+  mutateAsync: vi.fn(async () => ({ id: "c1" })),
+};
 
 describe("AppSidebar", () => {
   beforeEach(() => {
+    pushMock.mockReset();
+    activateProjectMutateAsync.mockClear();
     mockProjectsState.data = {
       items: [
         {
@@ -81,11 +114,33 @@ describe("AppSidebar", () => {
           colorHex: "#ff0000",
           iconKey: "folder",
         },
+        {
+          id: "p2",
+          name: "Project Two",
+          docCount: 0,
+          convCount: 0,
+          updatedAt: "2026-01-01T00:00:00Z",
+          colorHex: null,
+          iconKey: "rocket",
+        },
+        {
+          id: "p3",
+          name: "Project Three",
+          docCount: 0,
+          convCount: 0,
+          updatedAt: "2026-01-01T00:00:00Z",
+          colorHex: "#00ff00",
+          iconKey: "shield",
+        },
       ],
-      total: 1,
+      total: 3,
     };
     mockProjectsState.isLoading = false;
     mockProjectsState.isError = false;
+    mockCreateConversation.isPending = false;
+    mockCreateConversation.mutateAsync.mockClear();
+    localStorage.removeItem("rag-sidebar");
+    useAppStore.setState({ activeProject: null });
   });
 
   it("renders primary links and pinned settings", () => {
@@ -167,6 +222,19 @@ describe("AppSidebar", () => {
     expect(screen.getByText(/failed to load projects/i)).toBeInTheDocument();
   });
 
+  it("shows a link to view all projects when the list is truncated", () => {
+    mockProjectsState.data = {
+      items: mockProjectsState.data?.items ?? [],
+      total: 100,
+    };
+    render(
+      <IntlTestProvider>
+        <AppSidebar />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("link", { name: /view all projects/i })).toHaveAttribute("href", "/projects");
+  });
+
   it("opens the search dialog", async () => {
     const user = userEvent.setup();
     render(
@@ -176,5 +244,70 @@ describe("AppSidebar", () => {
     );
     await user.click(screen.getByRole("button", { name: /search chat/i }));
     expect(screen.getByText(/search chats/i)).toBeInTheDocument();
+  });
+
+  it("restores persisted collapsed/expanded state", () => {
+    localStorage.setItem("rag-sidebar", JSON.stringify({ projectsCollapsed: true, expandedProjectIds: ["p1"] }));
+    render(
+      <IntlTestProvider>
+        <AppSidebar />
+      </IntlTestProvider>,
+    );
+    const projectsToggle = screen.getByRole("button", { name: /^projects$/i });
+    expect(projectsToggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("ignores invalid persisted sidebar JSON", () => {
+    localStorage.setItem("rag-sidebar", "{not-json");
+    render(
+      <IntlTestProvider>
+        <AppSidebar />
+      </IntlTestProvider>,
+    );
+    const projectsToggle = screen.getByRole("button", { name: /^projects$/i });
+    expect(projectsToggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("creates a new conversation when active project exists", async () => {
+    useAppStore.setState({ activeProject: { id: "p1", name: "Project One" } });
+    mockCreateConversation.mutateAsync.mockResolvedValueOnce({ id: "c42" });
+
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <AppSidebar />
+      </IntlTestProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /new conversation/i }));
+    expect(mockCreateConversation.mutateAsync).toHaveBeenCalled();
+    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c42");
+  });
+
+  it("searches chats across projects and activates when selecting a different project", async () => {
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <AppSidebar />
+      </IntlTestProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /search chat/i }));
+    await user.type(screen.getByPlaceholderText(/chat title/i), "budget");
+
+    const match = await screen.findByRole("button", { name: /budget chat/i });
+    await user.click(match);
+    expect(activateProjectMutateAsync).toHaveBeenCalledWith({ id: "p2", name: "Project Two" });
+    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c2");
+  });
+
+  it("disables new conversation CTA while create is pending", () => {
+    useAppStore.setState({ activeProject: { id: "p1", name: "Project One" } });
+    mockCreateConversation.isPending = true;
+    render(
+      <IntlTestProvider>
+        <AppSidebar />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("button", { name: /new conversation/i })).toBeDisabled();
   });
 });

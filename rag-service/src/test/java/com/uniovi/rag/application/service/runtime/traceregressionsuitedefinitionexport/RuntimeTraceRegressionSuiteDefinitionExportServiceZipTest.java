@@ -10,12 +10,8 @@ import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTrace
 import com.uniovi.rag.infrastructure.zip.ZipExpansionBudget;
 import com.uniovi.rag.infrastructure.zip.ZipIoGuards;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionDetailDto;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +19,10 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -92,7 +92,7 @@ class RuntimeTraceRegressionSuiteDefinitionExportServiceZipTest {
         Instant generatedAt = Instant.parse("2024-05-01T00:00:00Z");
         UUID userId = UUID.randomUUID();
         UUID definitionId = UUID.randomUUID();
-        byte[] definitionJsonUtf8 = "{\"x\":1}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] definitionJsonUtf8 = "{\"x\":1}".getBytes(StandardCharsets.UTF_8);
         byte[] zip = svc.buildZipBytes(generatedAt, userId, definitionId, definitionJsonUtf8);
 
         try (ZipInputStream zin = new ZipInputStream(new ByteArrayInputStream(zip))) {

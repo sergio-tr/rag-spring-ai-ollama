@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
@@ -10,19 +11,19 @@ import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -119,8 +120,8 @@ class SnapshotCorpusAssemblerTest {
     }
 
     private static ExecutionContext ctxWithSnapshots(List<UUID> ids) {
-        var resolved = org.mockito.Mockito.mock(com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig.class);
-        org.mockito.Mockito.lenient()
+        var resolved = Mockito.mock(ResolvedRuntimeConfig.class);
+        Mockito.lenient()
                 .when(resolved.toRagConfig())
                 .thenReturn(
                         RagConfig.fromFeatureConfiguration(

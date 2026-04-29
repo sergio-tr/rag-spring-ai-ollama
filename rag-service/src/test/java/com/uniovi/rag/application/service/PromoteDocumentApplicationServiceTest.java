@@ -7,18 +7,18 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -52,9 +52,9 @@ class PromoteDocumentApplicationServiceTest {
         UUID otherProject = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
 
-        ProjectEntity project = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(otherProject);
-        KnowledgeDocumentEntity src = org.mockito.Mockito.mock(KnowledgeDocumentEntity.class);
+        KnowledgeDocumentEntity src = Mockito.mock(KnowledgeDocumentEntity.class);
         when(src.getProject()).thenReturn(project);
         when(projectAccessService.requireDocumentForUser(userId, docId)).thenReturn(src);
 
@@ -71,9 +71,9 @@ class PromoteDocumentApplicationServiceTest {
         UUID projectId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
 
-        ProjectEntity project = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(projectId);
-        KnowledgeDocumentEntity src = org.mockito.Mockito.mock(KnowledgeDocumentEntity.class);
+        KnowledgeDocumentEntity src = Mockito.mock(KnowledgeDocumentEntity.class);
         when(src.getProject()).thenReturn(project);
         when(src.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
         when(projectAccessService.requireDocumentForUser(userId, docId)).thenReturn(src);
@@ -91,9 +91,9 @@ class PromoteDocumentApplicationServiceTest {
         UUID projectId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
 
-        ProjectEntity project = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(projectId);
-        KnowledgeDocumentEntity src = org.mockito.Mockito.mock(KnowledgeDocumentEntity.class);
+        KnowledgeDocumentEntity src = Mockito.mock(KnowledgeDocumentEntity.class);
         when(src.getProject()).thenReturn(project);
         when(src.getCorpusScope()).thenReturn(CorpusScope.CHAT_LOCAL);
         when(src.getStorageUri()).thenReturn("  ");
@@ -113,10 +113,10 @@ class PromoteDocumentApplicationServiceTest {
         UUID docId = UUID.randomUUID();
         UUID promotedId = UUID.randomUUID();
 
-        ProjectEntity project = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(projectId);
 
-        KnowledgeDocumentEntity src = org.mockito.Mockito.mock(KnowledgeDocumentEntity.class);
+        KnowledgeDocumentEntity src = Mockito.mock(KnowledgeDocumentEntity.class);
         when(src.getProject()).thenReturn(project);
         when(src.getCorpusScope()).thenReturn(CorpusScope.CHAT_LOCAL);
         when(src.getStorageUri()).thenReturn("src/blob");

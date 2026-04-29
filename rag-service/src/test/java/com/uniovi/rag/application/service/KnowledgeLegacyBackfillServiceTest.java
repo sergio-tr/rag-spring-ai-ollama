@@ -3,15 +3,15 @@ package com.uniovi.rag.application.service;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
-
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -39,8 +39,8 @@ class KnowledgeLegacyBackfillServiceTest {
     void backfillProject_updatesVectorsWhenProjectExists() {
         UUID projectId = UUID.randomUUID();
         UUID snapshotId = UUID.randomUUID();
-        ProjectEntity project = org.mockito.Mockito.mock(ProjectEntity.class);
-        KnowledgeIndexSnapshotEntity snap = org.mockito.Mockito.mock(KnowledgeIndexSnapshotEntity.class);
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        KnowledgeIndexSnapshotEntity snap = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
         when(snap.getId()).thenReturn(snapshotId);
         when(snap.getSignatureHash()).thenReturn("sig");
 

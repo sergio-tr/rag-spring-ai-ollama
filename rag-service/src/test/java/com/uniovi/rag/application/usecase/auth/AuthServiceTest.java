@@ -4,11 +4,14 @@ import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
+import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RefreshRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.domain.UserRole;
+import com.uniovi.rag.infrastructure.persistence.jpa.EmailConfirmationTokenEntity;
 import com.uniovi.rag.infrastructure.persistence.EmailConfirmationTokenRepository;
 import com.uniovi.rag.infrastructure.persistence.MailOutboxRepository;
 import com.uniovi.rag.infrastructure.persistence.PasswordResetTokenRepository;
@@ -84,6 +87,23 @@ class AuthServiceTest {
 				false,
 				"no-reply@local.test",
 				"http://localhost:3000",
+				3600,
+				3600);
+	}
+
+	private AuthService newServiceEmailAndMailEnabled() {
+		return new AuthService(
+				userAccountPort,
+				passwordEncoder,
+				jwtService,
+				emailConfirmationTokenRepository,
+				passwordResetTokenRepository,
+				mailOutboxRepository,
+				true,
+				true,
+				true,
+				"no-reply@local.test",
+				"http://localhost:3000/",
 				3600,
 				3600);
 	}
@@ -181,5 +201,73 @@ class AuthServiceTest {
 		verify(passwordResetTokenRepository).save(any());
 		verify(userAccountPort).save(eq(u));
 		verify(passwordEncoder).encode("password123");
+	}
+
+	@Test
+	void register_withEmailConfirmationEnabled_issuesConfirmationToken() {
+		when(userAccountPort.findByEmailIgnoreCase("new@user.com")).thenReturn(Optional.empty());
+		when(passwordEncoder.encode("password123")).thenReturn("encoded");
+		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+		newServiceEmailAndMailEnabled().register(new RegisterRequest("Name", "new@user.com", "password123"));
+
+		verify(emailConfirmationTokenRepository).save(any(EmailConfirmationTokenEntity.class));
+		verify(mailOutboxRepository).save(any());
+	}
+
+	@Test
+	void confirmEmail_whenDisabled_isNoop() {
+		newService().confirmEmail(new ConfirmEmailRequest("token"));
+	}
+
+	@Test
+	void confirmEmail_consumedToken_throwsInvalidCredentials() {
+		EmailConfirmationTokenEntity tok = new EmailConfirmationTokenEntity();
+		tok.setConsumedAt(Instant.now());
+		tok.setExpiresAt(Instant.now().plusSeconds(300));
+		when(emailConfirmationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
+
+		assertThatThrownBy(() -> newServiceEmailAndMailEnabled().confirmEmail(new ConfirmEmailRequest("raw")))
+				.isInstanceOf(InvalidCredentialsException.class);
+	}
+
+	@Test
+	void confirmEmail_expiredToken_throwsInvalidCredentials() {
+		EmailConfirmationTokenEntity tok = new EmailConfirmationTokenEntity();
+		tok.setConsumedAt(null);
+		tok.setExpiresAt(Instant.now().minusSeconds(1));
+		when(emailConfirmationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
+
+		assertThatThrownBy(() -> newServiceEmailAndMailEnabled().confirmEmail(new ConfirmEmailRequest("raw")))
+				.isInstanceOf(InvalidCredentialsException.class);
+	}
+
+	@Test
+	void confirmEmail_validToken_marksUserVerified() {
+		UserEntity u = mock(UserEntity.class);
+		EmailConfirmationTokenEntity tok = new EmailConfirmationTokenEntity();
+		tok.setUser(u);
+		tok.setConsumedAt(null);
+		tok.setExpiresAt(Instant.now().plusSeconds(60));
+		when(emailConfirmationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
+		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+		newServiceEmailAndMailEnabled().confirmEmail(new ConfirmEmailRequest("raw"));
+
+		verify(emailConfirmationTokenRepository).save(any(EmailConfirmationTokenEntity.class));
+		verify(u).setEmailVerified(true);
+		verify(userAccountPort).save(u);
+	}
+
+	@Test
+	void forgotPassword_enabled_existingUser_issuesResetTokenAndMail() {
+		UserEntity user = mock(UserEntity.class);
+		when(user.getEmail()).thenReturn("new@user.com");
+		when(userAccountPort.findByEmailIgnoreCase("new@user.com")).thenReturn(Optional.of(user));
+
+		newServiceEmailAndMailEnabled().forgotPassword(new ForgotPasswordRequest("new@user.com"));
+
+		verify(passwordResetTokenRepository).save(any(PasswordResetTokenEntity.class));
+		verify(mailOutboxRepository).save(any());
 	}
 }

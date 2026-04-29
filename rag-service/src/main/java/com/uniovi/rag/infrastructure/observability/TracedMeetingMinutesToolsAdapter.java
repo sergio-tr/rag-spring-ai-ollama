@@ -1,9 +1,10 @@
 package com.uniovi.rag.infrastructure.observability;
 
+import com.uniovi.rag.configuration.RagToolsConfiguration;
 import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import com.uniovi.rag.tool.ToolResult;
-
 import java.util.Map;
 
 /**
@@ -17,8 +18,8 @@ public class TracedMeetingMinutesToolsAdapter extends MeetingMinutesToolsAdapter
     private final ObservabilitySupport observability;
 
     public TracedMeetingMinutesToolsAdapter(
-            com.uniovi.rag.configuration.RagToolsConfiguration toolsConfig,
-            com.uniovi.rag.service.analyser.QueryAnalyser analyser,
+            RagToolsConfiguration toolsConfig,
+            QueryAnalyser analyser,
             ObservabilitySupport observability) {
         super(toolsConfig, analyser);
         this.observability = observability;

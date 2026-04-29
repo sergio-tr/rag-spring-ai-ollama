@@ -56,21 +56,21 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             return keywordError;
         }
 
-        if (docs.isEmpty()) {
-            log().info("No documents found for query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "boolean");
+        if (missing != null) {
+            return missing;
         }
 
         List<Minute> minutes = extractMinutesInParallel(docs);
-        if (minutes.isEmpty()) {
-            log().info("No valid minutes found for query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyMinutes(query, minutes, "boolean");
+        if (missing != null) {
+            return missing;
         }
 
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        if (relevantMinutes.isEmpty()) {
-            log().info("No relevant minutes found for query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "boolean");
+        if (missing != null) {
+            return missing;
         }
 
         List<String> evidence = extractEvidenceInParallel(query, relevantMinutes);

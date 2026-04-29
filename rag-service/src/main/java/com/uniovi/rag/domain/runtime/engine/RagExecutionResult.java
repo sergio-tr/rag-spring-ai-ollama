@@ -2,8 +2,8 @@ package com.uniovi.rag.domain.runtime.engine;
 
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
-
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -28,11 +28,10 @@ public record RagExecutionResult(
     public RagExecutionResult {
         usedKnowledgeSnapshotIds = List.copyOf(usedKnowledgeSnapshotIds);
         workflowStageTraces = List.copyOf(workflowStageTraces);
-        usedResolvedConfigSnapshotId =
-                usedResolvedConfigSnapshotId == null ? Optional.empty() : usedResolvedConfigSnapshotId;
-        usedConfigHash = usedConfigHash == null ? Optional.empty() : usedConfigHash;
+        usedResolvedConfigSnapshotId = Objects.requireNonNullElseGet(usedResolvedConfigSnapshotId, Optional::empty);
+        usedConfigHash = Objects.requireNonNullElseGet(usedConfigHash, Optional::empty);
         toolUsedLabel = toolUsedLabel;
-        retrievalDiagnostics = retrievalDiagnostics == null ? Optional.empty() : retrievalDiagnostics;
+        retrievalDiagnostics = Objects.requireNonNullElseGet(retrievalDiagnostics, Optional::empty);
     }
 
     public static RagExecutionResult withPlaceholderTrace(

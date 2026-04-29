@@ -13,6 +13,10 @@ import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.UUID;
 import org.springframework.core.io.PathResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -27,10 +31,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.UUID;
 
 @Tag(name = "Account", description = "Async export, deletion, and job polling (not Lab)")
 @RestController
@@ -101,7 +101,7 @@ public class MeAccountController {
             throw new ResponseStatusException(HttpStatus.GONE, "Export has expired");
         }
         Path path = Path.of(artifact.getStorageUri());
-        if (!java.nio.file.Files.isRegularFile(path)) {
+        if (!Files.isRegularFile(path)) {
             throw new ResponseStatusException(HttpStatus.GONE, "Export file missing");
         }
         if (artifact.getDownloadedAt() == null) {

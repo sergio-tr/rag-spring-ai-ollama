@@ -10,10 +10,10 @@ import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,7 +42,7 @@ class ClarificationQuestionGeneratorTest {
                 Optional.empty(),
                 ClassifierStatus.OK,
                 QueryIntent.UNKNOWN,
-                java.util.Map.of(),
+                Map.of(),
                 List.of(),
                 List.of(),
                 EntityExtractionResult.emptyWithNote(""),

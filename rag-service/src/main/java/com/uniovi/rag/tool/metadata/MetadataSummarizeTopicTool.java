@@ -73,23 +73,23 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             return ToolResult.from(formatResponse(errorMessage, query), getClass());
         }
         
-        if (docs.isEmpty()) {
-            log().info("No documents found for summarize topic query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "summarize topic");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
-        if (minutes.isEmpty()) {
-            log().info("No valid minutes found for summarize topic query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyMinutes(query, minutes, "summarize topic");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        if (relevantMinutes.isEmpty()) {
-            log().info("No relevant minutes found for summarize topic query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "summarize topic");
+        if (missing != null) {
+            return missing;
         }
         
         // Step 3.5: Additional filtering by specific topic with relevance threshold

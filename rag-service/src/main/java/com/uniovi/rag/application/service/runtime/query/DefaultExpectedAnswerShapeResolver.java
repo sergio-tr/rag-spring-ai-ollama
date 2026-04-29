@@ -3,17 +3,17 @@ package com.uniovi.rag.application.service.runtime.query;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
-import org.springframework.stereotype.Service;
-
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
+import org.springframework.stereotype.Service;
 
 @Service
 public class DefaultExpectedAnswerShapeResolver implements ExpectedAnswerShapeResolver {
 
     @Override
     public ExpectedAnswerShape resolve(Optional<QueryType> classifierQueryType, EntityExtractionResult entities) {
-        Optional<QueryType> cqt = classifierQueryType == null ? Optional.empty() : classifierQueryType;
+        Optional<QueryType> cqt = Objects.requireNonNullElseGet(classifierQueryType, Optional::empty);
         if (cqt.isPresent()) {
             return mapClassifierType(cqt.get());
         }

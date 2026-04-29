@@ -91,3 +91,22 @@ def test_inference_engine_predict_maps_argmax_to_label():
     assert out == expected
     assert out in QUERY_TYPES_ALLOWED
 
+
+def test_inference_engine_predict_loads_model_when_not_loaded():
+    _reset_config_singleton()
+
+    class DummyModel:
+        def predict(self, _x):
+            return np.array([[0.9, 0.1]], dtype=float)
+
+    loader = mock.MagicMock()
+    loader.is_loaded.return_value = False
+    loader.get_model.return_value = DummyModel()
+    loader.get_class_names.return_value = ["COUNT_DOCUMENTS", "SUMMARIZE_MEETING"]
+
+    engine = InferenceEngine(loader=loader, config=Config())
+    out = engine.predict("q", model_id="default")
+
+    assert out == "COUNT_DOCUMENTS"
+    loader.load_by_id.assert_called_once_with("default")
+

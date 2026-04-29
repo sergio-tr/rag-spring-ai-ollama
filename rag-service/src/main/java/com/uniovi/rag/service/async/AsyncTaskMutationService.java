@@ -1,14 +1,14 @@
 package com.uniovi.rag.service.async;
 
 import com.uniovi.rag.domain.AsyncTaskStatus;
-import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
+import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AsyncTaskMutationService {
@@ -85,8 +85,8 @@ public class AsyncTaskMutationService {
     @Transactional
     public void updateStreamingChatResult(UUID taskId, String partialAnswer) {
         AsyncTaskEntity e = asyncTaskRepository.findById(taskId).orElseThrow();
-        java.util.Map<String, Object> r =
-                e.getResultJson() != null ? new java.util.LinkedHashMap<>(e.getResultJson()) : new java.util.LinkedHashMap<>();
+        Map<String, Object> r =
+                e.getResultJson() != null ? new LinkedHashMap<>(e.getResultJson()) : new LinkedHashMap<>();
         r.put("streamedAnswer", partialAnswer);
         r.put("phase", "streaming");
         e.setResultJson(r);

@@ -6,13 +6,14 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,7 +50,7 @@ class EvalRagJobHandlerTest {
 
         new EvalRagJobHandler(evaluationService, canonicalPersistence).run(task, mutation);
 
-        verify(mutation).appendProgressLine(eq(taskId), org.mockito.ArgumentMatchers.contains("RAG"));
+        verify(mutation).appendProgressLine(eq(taskId), ArgumentMatchers.contains("RAG"));
         verify(canonicalPersistence)
                 .persistLlmJudgeFromEvaluationMap(runId, eval, BenchmarkKind.RAG_PRESET_END_TO_END);
         verify(mutation).markSucceeded(taskId, eval);
@@ -95,7 +96,7 @@ class EvalRagJobHandlerTest {
     }
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {
-        AsyncTaskEntity t = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity t = Mockito.mock(AsyncTaskEntity.class);
         when(t.getId()).thenReturn(id);
         when(t.getRequestPayload()).thenReturn(payload);
         return t;

@@ -7,16 +7,17 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
-import java.time.LocalDate;
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
-
 import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
-import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataDecisionExtractionTool for extracting and analyzing meeting decisions with intelligent processing.
@@ -373,26 +374,26 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         List<String> entities = new ArrayList<>();
         
         // Extract amounts (€, euros, numbers with currency)
-        java.util.regex.Pattern amountPattern = java.util.regex.Pattern.compile("\\d+[.,]?\\d*\\s*€|\\d+[.,]?\\d*\\s*euro");
-        java.util.regex.Matcher amountMatcher = amountPattern.matcher(decisionText);
+        Pattern amountPattern = Pattern.compile("\\d++(?:[.,]\\d++)?\\s*+(?:€|euro)");
+        Matcher amountMatcher = amountPattern.matcher(decisionText);
         while (amountMatcher.find()) {
             entities.add(amountMatcher.group().trim());
         }
         
         // Extract dates (common Spanish date patterns)
-        java.util.regex.Pattern datePattern = java.util.regex.Pattern.compile(
+        Pattern datePattern = Pattern.compile(
             "\\d{1,2}\\s+de\\s+[a-z]+\\s+de\\s+\\d{4}|\\d{1,2}/\\d{1,2}/\\d{4}|\\d{4}-\\d{2}-\\d{2}"
         );
-        java.util.regex.Matcher dateMatcher = datePattern.matcher(decisionText);
+        Matcher dateMatcher = datePattern.matcher(decisionText);
         while (dateMatcher.find()) {
             entities.add(dateMatcher.group().trim());
         }
         
         // Extract capitalized words/phrases (likely names or organizations)
-        java.util.regex.Pattern namePattern = java.util.regex.Pattern.compile(
+        Pattern namePattern = Pattern.compile(
             "\\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{1,48}(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{1,48}){1,12}\\b"
         );
-        java.util.regex.Matcher nameMatcher = namePattern.matcher(decisionText);
+        Matcher nameMatcher = namePattern.matcher(decisionText);
         while (nameMatcher.find()) {
             String name = nameMatcher.group().trim();
             // Filter out common words that are capitalized but not entities

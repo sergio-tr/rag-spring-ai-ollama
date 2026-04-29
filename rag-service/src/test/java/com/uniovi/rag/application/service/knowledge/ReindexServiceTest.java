@@ -12,14 +12,15 @@ import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.ReindexEventRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ReindexEventEntity;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
-
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -71,7 +72,7 @@ class ReindexServiceTest {
         KnowledgeBuildProjection projection = projectionHard();
         when(knowledgePipelineOrchestrator.hasReadyDocumentsInScope(projectId, CorpusScope.PROJECT_SHARED, null))
                 .thenReturn(true);
-        when(projectRepository.getReferenceById(projectId)).thenReturn(org.mockito.Mockito.mock(ProjectEntity.class));
+        when(projectRepository.getReferenceById(projectId)).thenReturn(Mockito.mock(ProjectEntity.class));
         when(knowledgePipelineOrchestrator.previewSnapshotSignatureHex(
                         eq(projectId), eq(CorpusScope.PROJECT_SHARED), eq(null), eq(projection)))
                 .thenReturn("ab".repeat(32));
@@ -102,7 +103,7 @@ class ReindexServiceTest {
         assertThat(out.reindexEventId()).isNotNull();
         verify(knowledgePipelineOrchestrator)
                 .rebuildScope(projectId, CorpusScope.PROJECT_SHARED, null, projection, configSnapId);
-        verify(reindexEventRepository, org.mockito.Mockito.atLeastOnce()).save(any());
+        verify(reindexEventRepository, Mockito.atLeastOnce()).save(any());
     }
 
     private static KnowledgeBuildProjection projectionHard() {
@@ -113,7 +114,7 @@ class ReindexServiceTest {
                 0,
                 "m",
                 false,
-                new ReindexImpact(ReindexImpactLevel.HARD_REINDEX, java.util.List.of("t")),
+                new ReindexImpact(ReindexImpactLevel.HARD_REINDEX, List.of("t")),
                 null,
                 "deadbeef");
     }

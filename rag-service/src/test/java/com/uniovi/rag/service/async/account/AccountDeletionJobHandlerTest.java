@@ -4,12 +4,12 @@ import com.uniovi.rag.application.service.account.AccountDeletionApplicationServ
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -35,7 +35,7 @@ class AccountDeletionJobHandlerTest {
     @Test
     void run_delegatesToApplicationService() {
         UUID taskId = UUID.randomUUID();
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         when(task.getId()).thenReturn(taskId);
 
         new AccountDeletionJobHandler(accountDeletionApplicationService).run(task, mutation);
@@ -46,7 +46,7 @@ class AccountDeletionJobHandlerTest {
     @Test
     void run_marksFailed_withClassName_whenMessageNull() {
         UUID taskId = UUID.randomUUID();
-        AsyncTaskEntity task = org.mockito.Mockito.mock(AsyncTaskEntity.class);
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
         when(task.getId()).thenReturn(taskId);
         doThrow(new NullPointerException()).when(accountDeletionApplicationService).runDeletion(task, mutation);
 

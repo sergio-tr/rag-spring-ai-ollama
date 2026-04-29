@@ -13,16 +13,17 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
-import org.json.JSONObject;
-import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.json.JSONObject;
+import org.junit.jupiter.api.Test;
+import org.mockito.Answers;
+import org.springframework.ai.chat.client.ChatClient;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -108,7 +109,7 @@ class DefaultQueryUnderstandingPipelineTest {
         QueryAnalyser analyser = mock(QueryAnalyser.class);
         when(analyser.analyse(anyString())).thenReturn(new JSONObject("{\"date\":[],\"place\":[],\"attendees\":[],\"topics\":[],\"mentionedEntities\":[],\"answerType\":\"unknown\",\"comparisonType\":\"none\",\"temporalContext\":\"none\"}"));
 
-        ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         String rewriteJson = """
                 {
                   "rewrittenQueryText": "list all items",
@@ -185,7 +186,7 @@ class DefaultQueryUnderstandingPipelineTest {
         var outcome = adapter.classify(ctx(rag, "q"), "q");
         assertEquals("UNCLASSIFIED", outcome.classifierLabel());
         assertTrue(outcome.classifierQueryType().isEmpty());
-        assertEquals(com.uniovi.rag.domain.runtime.query.ClassifierStatus.DISABLED, outcome.classifierStatus());
+        assertEquals(ClassifierStatus.DISABLED, outcome.classifierStatus());
         verifyNoInteractions(classifier);
     }
 }

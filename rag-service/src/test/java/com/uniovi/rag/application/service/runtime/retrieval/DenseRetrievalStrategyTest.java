@@ -8,6 +8,11 @@ import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,11 +23,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -357,7 +357,7 @@ class DenseRetrievalStrategyTest {
                         Optional.empty(),
                         List.of("all"),
                         true);
-        List<Document> docs = new java.util.ArrayList<>();
+        List<Document> docs = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
             docs.add(
                     new Document(

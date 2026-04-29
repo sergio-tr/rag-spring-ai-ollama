@@ -6,16 +6,16 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.tool.ToolExecutionContext;
 import com.uniovi.rag.tool.ToolResult;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
-import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
-
 import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
-import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataGetFieldTool for extracting specific fields from meeting minutes with intelligent analysis.
@@ -205,7 +205,7 @@ public class MetadataGetFieldTool extends AbstractMetadataTool {
         }
         String[] alternativeNames = getAlternativeFieldNames(detectedField);
         log().debug("Trying alternative names for field '{}': {}", detectedField,
-                java.util.Arrays.toString(alternativeNames));
+                Arrays.toString(alternativeNames));
         for (String altName : alternativeNames) {
             if (altName.equals(detectedField)) {
                 continue;

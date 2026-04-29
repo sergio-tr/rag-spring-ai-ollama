@@ -1,16 +1,20 @@
 package com.uniovi.rag.application.service.runtime.retrieval;
 
+import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
+import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
+import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
+import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -93,15 +97,15 @@ class RetrievalRerankerTest {
                 "rewritten",
                 "L",
                 Optional.empty(),
-                com.uniovi.rag.domain.runtime.query.ClassifierStatus.DISABLED,
-                com.uniovi.rag.domain.runtime.query.QueryIntent.UNKNOWN,
+                ClassifierStatus.DISABLED,
+                QueryIntent.UNKNOWN,
                 Map.of(),
                 entities,
                 List.of(),
                 entitiesResult,
-                com.uniovi.rag.domain.runtime.query.StructuredRewriteResult.identityDisabled("r", "r"),
-                com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape.UNKNOWN,
-                com.uniovi.rag.domain.runtime.query.AmbiguityAssessment.sufficient(),
+                StructuredRewriteResult.identityDisabled("r", "r"),
+                ExpectedAnswerShape.UNKNOWN,
+                AmbiguityAssessment.sufficient(),
                 "c",
                 "m",
                 List.of());

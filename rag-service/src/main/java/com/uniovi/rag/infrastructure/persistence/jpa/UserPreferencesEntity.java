@@ -8,12 +8,12 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "user_preferences")
@@ -44,7 +44,7 @@ public class UserPreferencesEntity {
     public static UserPreferencesEntity newForUser(UserEntity user) {
         UserPreferencesEntity e = new UserPreferencesEntity();
         e.setUser(user);
-        e.setPreferences(new java.util.LinkedHashMap<>());
+        e.setPreferences(new LinkedHashMap<>());
         e.setSchemaVersion(1);
         e.setUpdatedAt(Instant.now());
         return e;

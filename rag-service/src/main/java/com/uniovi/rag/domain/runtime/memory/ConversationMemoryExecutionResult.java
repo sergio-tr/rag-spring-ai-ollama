@@ -1,7 +1,6 @@
 package com.uniovi.rag.domain.runtime.memory;
 
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
-
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -20,7 +19,7 @@ public record ConversationMemoryExecutionResult(
 
     public ConversationMemoryExecutionResult {
         outcome = Objects.requireNonNull(outcome, "outcome");
-        slice = slice == null ? Optional.empty() : slice;
+        slice = Objects.requireNonNullElseGet(slice, Optional::empty);
         finalPlanningInputText = finalPlanningInputText != null ? finalPlanningInputText : "";
         stageTraces = List.copyOf(Objects.requireNonNull(stageTraces, "stageTraces"));
         if (fallbackApplied && condensationUsed) {

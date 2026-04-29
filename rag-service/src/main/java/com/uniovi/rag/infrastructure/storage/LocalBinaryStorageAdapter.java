@@ -1,10 +1,8 @@
 package com.uniovi.rag.infrastructure.storage;
 
 import com.uniovi.rag.application.port.BinaryStoragePort;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
 import java.io.BufferedInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -14,6 +12,9 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
 /**
  * Filesystem-backed {@link BinaryStoragePort} under {@code rag.storage.root}.
@@ -26,7 +27,7 @@ public class LocalBinaryStorageAdapter implements BinaryStoragePort {
     public LocalBinaryStorageAdapter(@Value("${rag.storage.root:}") String rootPath) {
         String r = (rootPath != null && !rootPath.isBlank())
                 ? rootPath
-                : System.getProperty("java.io.tmpdir") + java.io.File.separator + "rag-storage";
+                : System.getProperty("java.io.tmpdir") + File.separator + "rag-storage";
         this.root = Path.of(r).toAbsolutePath().normalize();
     }
 
@@ -95,7 +96,7 @@ public class LocalBinaryStorageAdapter implements BinaryStoragePort {
 
     private static String sanitizeRelativeKey(String hint) {
         if (hint == null || hint.isBlank()) {
-            return "bin/" + java.util.UUID.randomUUID();
+            return "bin/" + UUID.randomUUID();
         }
         String t = hint.replace('\\', '/').trim();
         while (t.startsWith("/")) {

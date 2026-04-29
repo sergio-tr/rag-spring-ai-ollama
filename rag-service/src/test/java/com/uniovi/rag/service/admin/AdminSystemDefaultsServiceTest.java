@@ -3,14 +3,14 @@ package com.uniovi.rag.service.admin;
 import com.uniovi.rag.infrastructure.persistence.DefaultSystemConfigurationRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.DefaultSystemConfigurationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.DefaultSystemConfigurationEntityFactory;
+import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Map;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -63,7 +63,7 @@ class AdminSystemDefaultsServiceTest {
 
         Map<String, Object> out = service.putDefaults(Map.of("topK", 12, "unknownKey", "ignored"));
 
-        verify(defaultSystemConfigurationRepository).save(org.mockito.Mockito.any(DefaultSystemConfigurationEntity.class));
+        verify(defaultSystemConfigurationRepository).save(Mockito.any(DefaultSystemConfigurationEntity.class));
         assertThat(out).containsEntry("topK", 12);
     }
 }

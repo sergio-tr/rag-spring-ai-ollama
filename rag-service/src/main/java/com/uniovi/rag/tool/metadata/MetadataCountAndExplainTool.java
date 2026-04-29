@@ -40,23 +40,23 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
             ner
         );
         
-        if (docs.isEmpty()) {
-            log().info("No documents found for count and explain query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "count and explain");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
-        if (minutes.isEmpty()) {
-            log().info("No valid minutes found for count and explain query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyMinutes(query, minutes, "count and explain");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        if (relevantMinutes.isEmpty()) {
-            log().info("No relevant minutes found for count and explain query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "count and explain");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 4: Generate explanations in parallel

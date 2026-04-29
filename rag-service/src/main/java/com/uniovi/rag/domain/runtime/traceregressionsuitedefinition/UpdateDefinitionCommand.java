@@ -1,6 +1,7 @@
 package com.uniovi.rag.domain.runtime.traceregressionsuitedefinition;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -9,7 +10,7 @@ import java.util.Optional;
 public record UpdateDefinitionCommand(String name, Optional<String> description, List<RuntimeTraceRegressionSuiteDefinitionEntrySpec> entries) {
 
     public UpdateDefinitionCommand {
-        description = description == null ? Optional.empty() : description;
+        description = Objects.requireNonNullElseGet(description, Optional::empty);
         entries = entries == null ? List.of() : List.copyOf(entries);
     }
 }

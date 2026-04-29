@@ -9,13 +9,13 @@ import com.uniovi.rag.configuration.RagReasoningProperties;
 import com.uniovi.rag.domain.config.PresetProfilePayloadMerge;
 import com.uniovi.rag.domain.config.RagConfigurationMerge;
 import com.uniovi.rag.domain.runtime.RagConfig;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 
 /**
  * Resolves {@link RagConfig} using the 4-level cascade: system defaults, user, project, runtime JSON.
@@ -79,22 +79,22 @@ public class ConfigResolver implements RagConfigurationResolver {
                         "default",
                         reasoningProperties.getStrategy() != null ? reasoningProperties.getStrategy() : "SIMPLE");
 
-        Optional<java.util.Map<String, Object>> system = configurationSource.loadSystemDefaults();
-        Optional<java.util.Map<String, Object>> user =
+        Optional<Map<String, Object>> system = configurationSource.loadSystemDefaults();
+        Optional<Map<String, Object>> user =
                 userId != null ? configurationSource.loadUserDefault(userId) : Optional.empty();
-        Optional<java.util.Map<String, Object>> project =
+        Optional<Map<String, Object>> project =
                 (userId != null && projectId != null)
                         ? configurationSource.loadProject(userId, projectId)
                         : Optional.empty();
 
-        Optional<java.util.Map<String, Object>> presetProfileLayer = Optional.empty();
+        Optional<Map<String, Object>> presetProfileLayer = Optional.empty();
         if (userId != null && presetId != null) {
             presetProfileLayer =
                     configurationSource
                             .loadPresetProfileCompositionSources(userId, presetId)
                             .map(
                                     src -> {
-                                        List<java.util.Map<String, Object>> payloads =
+                                        List<Map<String, Object>> payloads =
                                                 new ArrayList<>(src.orderedProfilePayloads());
                                         return PresetProfilePayloadMerge.merge(src.presetValues(), payloads);
                                     })

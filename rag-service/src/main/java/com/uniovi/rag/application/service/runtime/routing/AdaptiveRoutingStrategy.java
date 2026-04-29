@@ -22,11 +22,11 @@ import java.util.Optional;
 public class AdaptiveRoutingStrategy {
 
     private final AdaptiveRoutingPolicyResolver policyResolver;
-    private final com.uniovi.rag.application.service.runtime.routing.RouteExecutionGate gateBuilder;
+    private final RouteExecutionGateBuilder gateBuilder;
 
     public AdaptiveRoutingStrategy(
             AdaptiveRoutingPolicyResolver policyResolver,
-            com.uniovi.rag.application.service.runtime.routing.RouteExecutionGate gateBuilder) {
+            RouteExecutionGateBuilder gateBuilder) {
         this.policyResolver = policyResolver;
         this.gateBuilder = gateBuilder;
     }

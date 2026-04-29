@@ -1,17 +1,21 @@
 package com.uniovi.rag.service.project;
 
-import com.uniovi.rag.interfaces.rest.dto.CreateProjectRequest;
-import com.uniovi.rag.interfaces.rest.dto.PatchProjectRequest;
-import com.uniovi.rag.interfaces.rest.dto.ProjectListResponseDto;
-import com.uniovi.rag.interfaces.rest.dto.ProjectSummaryDto;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
-import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntityTestFactory;
+import com.uniovi.rag.application.service.AuditApplicationService;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
-import com.uniovi.rag.application.service.AuditApplicationService;
+import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntityTestFactory;
+import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.interfaces.rest.dto.CreateProjectRequest;
+import com.uniovi.rag.interfaces.rest.dto.PatchProjectRequest;
+import com.uniovi.rag.interfaces.rest.dto.ProjectListResponseDto;
+import com.uniovi.rag.interfaces.rest.dto.ProjectSummaryDto;
 import com.uniovi.rag.service.preset.PresetService;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -20,10 +24,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -83,7 +83,7 @@ class ProjectServiceTest {
     @Test
     void create_savesAndReturnsSummary() {
         UUID userId = UUID.randomUUID();
-        com.uniovi.rag.infrastructure.persistence.jpa.UserEntity owner = mock(com.uniovi.rag.infrastructure.persistence.jpa.UserEntity.class);
+        UserEntity owner = mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
 
         UUID newId = UUID.randomUUID();
@@ -105,7 +105,7 @@ class ProjectServiceTest {
     void create_withInitialPresetId_appliesPreset() {
         UUID userId = UUID.randomUUID();
         UUID presetId = UUID.randomUUID();
-        com.uniovi.rag.infrastructure.persistence.jpa.UserEntity owner = mock(com.uniovi.rag.infrastructure.persistence.jpa.UserEntity.class);
+        UserEntity owner = mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
 
         UUID newId = UUID.randomUUID();

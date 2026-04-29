@@ -2,10 +2,11 @@ package com.uniovi.rag.infrastructure.observability;
 
 import com.uniovi.rag.domain.model.Cluster;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Decorator that adds tracing and metrics to any {@link DocumentContentExtractor}.
@@ -126,9 +127,9 @@ public final class TracedDocumentContentExtractor implements DocumentContentExtr
                 (String) null, () -> delegate.clusterItems(items, contentExtractor, typeExtractor, similarityThreshold));
     }
 
-    private String traced(String operation, Map<String, String> attrs, java.util.function.Supplier<String> supplier) {
+    private String traced(String operation, Map<String, String> attrs, Supplier<String> supplier) {
         observability.recordCounter(METRIC_EXTRACTION_CALLS, METRIC_KEY_OPERATION, operation);
-        Map<String, String> full = new java.util.HashMap<>(attrs);
+        Map<String, String> full = new HashMap<>(attrs);
         full.put(METRIC_KEY_OPERATION, operation);
         return observability.runWithSpan("rag.extraction." + operation, full, METRIC_KEY_RESULT, supplier);
     }

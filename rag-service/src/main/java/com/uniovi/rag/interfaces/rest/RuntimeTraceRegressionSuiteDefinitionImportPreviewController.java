@@ -4,14 +4,12 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinitionimportpreview.RuntimeTraceRegressionSuiteDefinitionImportPreviewService;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinitionimportpreview.RuntimeTraceRegressionSuiteDefinitionImportPreviewResponseDto;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.http.InvalidMediaTypeException;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.IOException;
+import java.util.Optional;
 
 /**
  * P40: synchronous {@code POST} definition ZIP import preview — delegates only to {@link RuntimeTraceRegressionSuiteDefinitionImportPreviewService}.
@@ -33,30 +31,13 @@ public class RuntimeTraceRegressionSuiteDefinitionImportPreviewController {
         if (request.getQueryString() != null) {
             return ResponseEntity.badRequest().build();
         }
-        String rawCt = request.getContentType();
-        if (rawCt == null || rawCt.isBlank()) {
+        Optional<byte[]> bodyOpt =
+                RuntimeTraceImportRequestSupport.readZipBody(
+                        request, RuntimeTraceRegressionSuiteDefinitionImportPreviewService.MAX_PREVIEW_ZIP_BYTES);
+        if (bodyOpt.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-        MediaType mediaType;
-        try {
-            mediaType = MediaType.parseMediaType(rawCt.trim());
-        } catch (InvalidMediaTypeException ex) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (!"application".equals(mediaType.getType())
-                || !"zip".equals(mediaType.getSubtype())
-                || !mediaType.getParameters().isEmpty()) {
-            return ResponseEntity.badRequest().build();
-        }
-        byte[] body;
-        try {
-            body = request.getInputStream().readAllBytes();
-        } catch (IOException ex) {
-            return ResponseEntity.badRequest().build();
-        }
-        if (body.length == 0 || body.length > RuntimeTraceRegressionSuiteDefinitionImportPreviewService.MAX_PREVIEW_ZIP_BYTES) {
-            return ResponseEntity.badRequest().build();
-        }
+        byte[] body = bodyOpt.get();
         try {
             RuntimeTraceRegressionSuiteDefinitionImportPreviewResponseDto previewDto =
                     previewService.previewImportZip(body);

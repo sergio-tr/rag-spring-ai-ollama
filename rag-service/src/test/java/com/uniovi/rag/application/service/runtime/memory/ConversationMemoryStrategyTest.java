@@ -3,15 +3,17 @@ package com.uniovi.rag.application.service.runtime.memory;
 import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryDecision;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryExecutionResult;
+import com.uniovi.rag.domain.runtime.memory.ConversationMemoryMode;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemorySlice;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryTurn;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -35,11 +37,11 @@ class ConversationMemoryStrategyTest {
         when(ctx.resolved()).thenThrow(new AssertionError("not needed"));
 
         when(policy.resolve(ctx)).thenReturn(
-                new com.uniovi.rag.domain.runtime.memory.ConversationMemoryDecision(
-                        com.uniovi.rag.domain.runtime.memory.ConversationMemoryMode.ENABLED_CONDENSE_FOR_PLANNING,
+                new ConversationMemoryDecision(
+                        ConversationMemoryMode.ENABLED_CONDENSE_FOR_PLANNING,
                         true,
                         true,
-                        com.uniovi.rag.domain.runtime.memory.ConversationMemoryDecision.FIXED_MAX_HISTORY_TURNS_P12,
+                        ConversationMemoryDecision.FIXED_MAX_HISTORY_TURNS_P12,
                         List.of("enabled")));
 
         List<ConversationMemoryTurn> history =
@@ -47,8 +49,8 @@ class ConversationMemoryStrategyTest {
                         new ConversationMemoryTurn(UUID.randomUUID(), 1, MessageRole.USER, "a"),
                         new ConversationMemoryTurn(UUID.randomUUID(), 2, MessageRole.ASSISTANT, "b"));
         when(loader.loadEligibleHistory(ctx)).thenReturn(history);
-        when(condensor.condense(org.mockito.ArgumentMatchers.eq(ctx), org.mockito.ArgumentMatchers.any(ConversationMemorySlice.class),
-                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString()))
+        when(condensor.condense(ArgumentMatchers.eq(ctx), ArgumentMatchers.any(ConversationMemorySlice.class),
+                ArgumentMatchers.anyString(), ArgumentMatchers.anyString()))
                 .thenThrow(new RuntimeException("boom"));
 
         String pre = "pre-memory";
@@ -74,19 +76,19 @@ class ConversationMemoryStrategyTest {
 
         ExecutionContext ctx = mock(ExecutionContext.class);
         when(policy.resolve(ctx)).thenReturn(
-                new com.uniovi.rag.domain.runtime.memory.ConversationMemoryDecision(
-                        com.uniovi.rag.domain.runtime.memory.ConversationMemoryMode.ENABLED_CONDENSE_FOR_PLANNING,
+                new ConversationMemoryDecision(
+                        ConversationMemoryMode.ENABLED_CONDENSE_FOR_PLANNING,
                         true,
                         true,
-                        com.uniovi.rag.domain.runtime.memory.ConversationMemoryDecision.FIXED_MAX_HISTORY_TURNS_P12,
+                        ConversationMemoryDecision.FIXED_MAX_HISTORY_TURNS_P12,
                         List.of("enabled")));
 
         when(loader.loadEligibleHistory(ctx)).thenReturn(List.of());
 
         ConversationMemoryExecutionResult out = strategy.execute(ctx, "pre");
         assertThat(out.outcome()).isEqualTo(ConversationMemoryOutcome.NO_HISTORY_AVAILABLE);
-        verify(selector, never()).selectSlice(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.any());
-        verify(condensor, never()).condense(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        verify(selector, never()).selectSlice(ArgumentMatchers.anyList(), ArgumentMatchers.any());
+        verify(condensor, never()).condense(ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any());
     }
 }
 

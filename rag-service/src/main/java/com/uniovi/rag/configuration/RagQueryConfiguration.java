@@ -1,36 +1,34 @@
 package com.uniovi.rag.configuration;
 
+import com.uniovi.rag.application.port.ModelCatalogPort;
+import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
+import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
+import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.domain.model.ExpansionStrategy;
-import com.uniovi.rag.service.analyser.MinuteNERQueryAnalyser;
-import com.uniovi.rag.service.analyser.NERQueryEnricher;
-import com.uniovi.rag.service.analyser.NoOpQueryAnalyser;
-import com.uniovi.rag.service.analyser.QueryAnalyser;
+import com.uniovi.rag.infrastructure.classifier.ClassifierInferenceMetricsDecorator;
+import com.uniovi.rag.infrastructure.classifier.ClassifierServiceClient;
+import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedDateExistenceGuard;
 import com.uniovi.rag.infrastructure.observability.TracedQueryAnalyser;
 import com.uniovi.rag.infrastructure.observability.TracedQueryClassifier;
 import com.uniovi.rag.infrastructure.observability.TracedQueryExpander;
 import com.uniovi.rag.infrastructure.observability.TracedQueryService;
-import io.micrometer.tracing.Tracer;
 import com.uniovi.rag.infrastructure.observability.TracedReasoningStrategy;
 import com.uniovi.rag.infrastructure.observability.TracedResponseRanker;
 import com.uniovi.rag.infrastructure.observability.TracedResponseValidator;
-import com.uniovi.rag.infrastructure.classifier.ClassifierInferenceMetricsDecorator;
-import com.uniovi.rag.infrastructure.classifier.ClassifierServiceClient;
-import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
-import io.micrometer.core.instrument.MeterRegistry;
+import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
+import com.uniovi.rag.service.analyser.MinuteNERQueryAnalyser;
+import com.uniovi.rag.service.analyser.NERQueryEnricher;
+import com.uniovi.rag.service.analyser.NoOpQueryAnalyser;
+import com.uniovi.rag.service.analyser.QueryAnalyser;
 import com.uniovi.rag.service.expand.MinuteDocumentStructureExpander;
 import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
-import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.service.query.LLMResponseValidatorService;
-import com.uniovi.rag.application.port.ModelCatalogPort;
-import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
-import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
-import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -44,10 +42,17 @@ import com.uniovi.rag.service.reasoning.SelectingReasoningStrategy;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.service.retriever.NaiveCorpusContextService;
 import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.tracing.Tracer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Duration;
+import java.util.Arrays;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -55,10 +60,6 @@ import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
-
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.time.Duration;
 
 @Configuration
 public class RagQueryConfiguration {
@@ -82,7 +83,7 @@ public class RagQueryConfiguration {
 
     @Bean
     public ResponseValidator responseValidator(
-            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+            @Autowired(required = false) ObservabilitySupport observability
     ) {
         ResponseValidator raw = new LLMResponseValidatorService();
         if (observability != null) {
@@ -95,7 +96,7 @@ public class RagQueryConfiguration {
     public ReasoningStrategy reasoningStrategy(
             RagReasoningProperties reasoningProperties,
             ChatClient chatClient,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+            @Autowired(required = false) ObservabilitySupport observability
     ) {
         ReasoningStrategy raw = new SelectingReasoningStrategy(chatClient, reasoningProperties);
         if (observability != null) {
@@ -108,7 +109,7 @@ public class RagQueryConfiguration {
     public ResponseRanker responseRanker(
             RagRankerProperties rankerProperties,
             ChatClient chatClient,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+            @Autowired(required = false) ObservabilitySupport observability
     ) {
         String strategy = rankerProperties.getStrategy() != null ? rankerProperties.getStrategy().toUpperCase() : "LLM_AS_JUDGE";
         ResponseRanker raw = "FAITHFULNESS".equals(strategy)
@@ -129,7 +130,7 @@ public class RagQueryConfiguration {
             @Value("${rag.expansion.max-query-total-chars:512}") int maxQueryTotalChars,
             @Value("${rag.expansion.max-query-length-for-llm:500}") int maxQueryLengthForLlm,
             @Value("${rag.expansion.retry-query-length:200}") int retryQueryLength,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+            @Autowired(required = false) ObservabilitySupport observability
     ) {
         ExpansionStrategy strategy;
         try {
@@ -172,8 +173,8 @@ public class RagQueryConfiguration {
         @Value("${rag.classifier.service.url:http://localhost:8000}") String classifierServiceUrl,
         @Value("${rag.classifier.model-id:default}") String modelId,
         @Value("${rag.classifier.service.timeout-ms:5000}") int timeoutMs,
-        @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability,
-        @org.springframework.beans.factory.annotation.Autowired(required = false) MeterRegistry meterRegistry,
+        @Autowired(required = false) ObservabilitySupport observability,
+        @Autowired(required = false) MeterRegistry meterRegistry,
         @Qualifier("classifierRestTemplate") RestTemplate classifierRestTemplate
     ) {
         QueryClassifier raw =
@@ -191,7 +192,7 @@ public class RagQueryConfiguration {
     public QueryAnalyser queryAnalyser(
             ChatClient chatClient,
             RagImplementationProperties implProps,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+            @Autowired(required = false) ObservabilitySupport observability
     ) {
         String impl = implProps.getAnalyserImpl() != null ? implProps.getAnalyserImpl().trim().toLowerCase() : "minute-ner";
         QueryAnalyser raw = "no-op".equals(impl) ? new NoOpQueryAnalyser() : new MinuteNERQueryAnalyser(chatClient);
@@ -217,7 +218,7 @@ public class RagQueryConfiguration {
                     return NER_CACHE_KEY_PREFIX + q.hashCode();
                 }
             }
-            return NER_CACHE_KEY_PREFIX + java.util.Arrays.hashCode(params);
+            return NER_CACHE_KEY_PREFIX + Arrays.hashCode(params);
         };
     }
 
@@ -238,7 +239,7 @@ public class RagQueryConfiguration {
     public DateExistenceGuard dateExistenceGuard(
             ContextRetriever retriever,
             QueryDateExtractor queryDateExtractor,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+            @Autowired(required = false) ObservabilitySupport observability
     ) {
         DateExistenceGuard raw = new DefaultDateExistenceGuard(retriever, queryDateExtractor);
         if (observability != null) {
@@ -258,7 +259,7 @@ public class RagQueryConfiguration {
             RagExecutionOrchestrator ragExecutionOrchestrator,
             RuntimeTracePersistenceService runtimeTracePersistenceService,
             RagImplementationProperties implProps,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) ObservabilitySupport observability
+            @Autowired(required = false) ObservabilitySupport observability
     ) {
         String impl = implProps.getQueryServiceImpl() != null ? implProps.getQueryServiceImpl().trim().toLowerCase() : "process";
         QueryService raw;

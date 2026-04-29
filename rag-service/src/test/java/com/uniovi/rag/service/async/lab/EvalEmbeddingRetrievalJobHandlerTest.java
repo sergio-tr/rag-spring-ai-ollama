@@ -5,19 +5,19 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -117,9 +117,9 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     }
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {
-        AsyncTaskEntity t = org.mockito.Mockito.mock(AsyncTaskEntity.class);
-        org.mockito.Mockito.when(t.getId()).thenReturn(id);
-        org.mockito.Mockito.when(t.getRequestPayload()).thenReturn(payload);
+        AsyncTaskEntity t = Mockito.mock(AsyncTaskEntity.class);
+        Mockito.when(t.getId()).thenReturn(id);
+        Mockito.when(t.getRequestPayload()).thenReturn(payload);
         return t;
     }
 }

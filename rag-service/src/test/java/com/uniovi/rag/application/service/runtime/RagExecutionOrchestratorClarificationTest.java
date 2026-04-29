@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.application.port.PendingClarificationStore;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorPolicyResolver;
 import com.uniovi.rag.application.service.runtime.advisor.AdvisorStrategy;
 import com.uniovi.rag.application.service.runtime.clarification.ClarificationPolicyResolver;
@@ -11,7 +12,6 @@ import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
-import com.uniovi.rag.application.port.PendingClarificationStore;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -26,7 +26,10 @@ import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
+import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
+import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
+import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.query.AmbiguityStatus;
@@ -36,14 +39,15 @@ import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
-import com.uniovi.rag.domain.runtime.judge.JudgeExecutionResult;
-import com.uniovi.rag.domain.runtime.judge.JudgeOutcome;
-import org.junit.jupiter.api.Test;
-
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
+import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
+import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -164,8 +168,8 @@ class RagExecutionOrchestratorClarificationTest {
                         Optional.empty(),
                         Optional.empty(),
                         false,
-                        com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
-                        com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                        AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                        AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                         false,
                         Optional.empty(),
                         false,
@@ -221,13 +225,13 @@ class RagExecutionOrchestratorClarificationTest {
         when(wf.workflowName()).thenReturn("DirectLlmWorkflow");
         when(wf.execute(any()))
                 .thenReturn(
-                        com.uniovi.rag.domain.runtime.engine.RagExecutionResult.withPlaceholderTrace(
+                        RagExecutionResult.withPlaceholderTrace(
                                 "ok", "DirectLlmWorkflow", false, false, List.of(), "none", List.of()));
         when(workflowSelector.select(any())).thenReturn(wf);
         when(tools.tryExecute(any(), any()))
                 .thenReturn(
-                        com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult.skipped(
-                                com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome.NOT_APPLICABLE,
+                        DeterministicToolExecutionResult.skipped(
+                                DeterministicToolOutcome.NOT_APPLICABLE,
                                 List.of(),
                                 Optional.empty()));
         when(advisorPolicy.resolve(any(), any()))
@@ -327,8 +331,8 @@ class RagExecutionOrchestratorClarificationTest {
                 Optional.empty(),
                 Optional.empty(),
                 false,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
-                com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
+                AdaptiveRoutingOutcome.DISABLED_BY_CONFIG,
+                AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE,
                 false,
                 Optional.empty(),
                 false,

@@ -19,7 +19,10 @@ import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationDecision;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationExecutionResult;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationOutcome;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationQuestion;
+import com.uniovi.rag.domain.runtime.clarification.ClarificationQuestionKind;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
@@ -38,12 +41,11 @@ import com.uniovi.rag.domain.runtime.routing.RouteExecutionGate;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolExecutionResult;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
@@ -238,13 +240,13 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
                         new ClarificationDecision(
                                 true,
                                 ClarificationOutcome.ASKED_CLARIFICATION,
-                                new com.uniovi.rag.domain.runtime.clarification.ClarificationQuestion(
+                                new ClarificationQuestion(
                                         "q?",
-                                        com.uniovi.rag.domain.runtime.clarification.ClarificationQuestionKind.MISSING_DATE,
+                                        ClarificationQuestionKind.MISSING_DATE,
                                         List.of("date")),
                                 ""));
         when(clarificationStrategy.executeAsk(any(), any(), any()))
-                .thenReturn(new com.uniovi.rag.domain.runtime.clarification.ClarificationExecutionResult(
+                .thenReturn(new ClarificationExecutionResult(
                         ClarificationOutcome.ASKED_CLARIFICATION,
                         "q?",
                         List.of()));

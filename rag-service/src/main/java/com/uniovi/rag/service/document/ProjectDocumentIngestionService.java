@@ -2,17 +2,18 @@ package com.uniovi.rag.service.document;
 
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
-import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Service;
-
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.UUID;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Async ingestion for {@code project_documents}; delegates indexing to {@link KnowledgeIngestionService}.
@@ -25,7 +26,7 @@ public class ProjectDocumentIngestionService extends AbstractDocumentService {
 
     public ProjectDocumentIngestionService(
             PgVectorStore vectorStore,
-            org.springframework.ai.chat.client.ChatClient chatClient,
+            ChatClient chatClient,
             JdbcTemplate jdbcTemplate,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
             KnowledgeIngestionService knowledgeIngestionService) {
@@ -35,7 +36,7 @@ public class ProjectDocumentIngestionService extends AbstractDocumentService {
     }
 
     @Override
-    public void processDocument(org.springframework.web.multipart.MultipartFile file) {
+    public void processDocument(MultipartFile file) {
         throw new UnsupportedOperationException("Use ingestFromTempFile for project-scoped documents");
     }
 

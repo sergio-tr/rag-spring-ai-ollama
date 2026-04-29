@@ -12,15 +12,19 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
+import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
+import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
+import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -182,15 +186,15 @@ class RetrievalRequestBuilderTest {
                 rewritten,
                 "L",
                 Optional.empty(),
-                com.uniovi.rag.domain.runtime.query.ClassifierStatus.DISABLED,
-                com.uniovi.rag.domain.runtime.query.QueryIntent.UNKNOWN,
+                ClassifierStatus.DISABLED,
+                QueryIntent.UNKNOWN,
                 Map.of(),
                 List.of(),
                 List.of(),
                 entities,
-                com.uniovi.rag.domain.runtime.query.StructuredRewriteResult.identityDisabled("r", "r"),
-                com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape.UNKNOWN,
-                com.uniovi.rag.domain.runtime.query.AmbiguityAssessment.sufficient(),
+                StructuredRewriteResult.identityDisabled("r", "r"),
+                ExpectedAnswerShape.UNKNOWN,
+                AmbiguityAssessment.sufficient(),
                 "c",
                 "m",
                 List.of());

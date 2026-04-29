@@ -6,10 +6,10 @@ import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.NormalizedQuery;
 import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
-import org.springframework.stereotype.Service;
-
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
+import org.springframework.stereotype.Service;
 
 @Service
 public class DefaultQueryIntentResolver implements QueryIntentResolver {
@@ -24,7 +24,7 @@ public class DefaultQueryIntentResolver implements QueryIntentResolver {
             EntityExtractionResult entities) {
 
         // 1) Classifier wins when non-neutral and OK
-        Optional<QueryType> cqt = classifierQueryType == null ? Optional.empty() : classifierQueryType;
+        Optional<QueryType> cqt = Objects.requireNonNullElseGet(classifierQueryType, Optional::empty);
         if (classifierStatus == ClassifierStatus.OK && cqt.isPresent()) {
             return mapClassifierType(cqt.get());
         }

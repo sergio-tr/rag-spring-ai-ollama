@@ -128,6 +128,7 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 | `SPRING_DATASOURCE_URL` | PostgreSQL JDBC URL (same DB as in db/.env) | `jdbc:postgresql://localhost:5432/vectordb` or `postgres:5432` in Compose |
 | `SPRING_DATASOURCE_USERNAME` | DB user (must match db/.env) | `postgres` |
 | `SPRING_DATASOURCE_PASSWORD` | DB password (must match db/.env) | — |
+| `RAG_JWT_SECRET` | HS256 key for JWTs (≥32 characters). The root `application.properties` has no default: set this env, or use Spring profile **`dev`** / **`docker`** (non-prod fallbacks in `application-dev.properties` / `application-docker.properties`). | Strong random in staging/prod |
 | `rag.classifier.service.url` | Classifier service URL (backend) | `http://localhost:8000` |
 | `RAG_CONFIG_V2_ENABLED` / `rag.config.v2.enabled` | Use `ResolvedRuntimeConfig` resolution in the chat path (aligned with `POST /config/preview`) | `false` |
 | `rag.runtime.workflow-schema-version` | Semver of the RAG execution stage graph (Lab/eval reproducibility) | `1.0.0` |

@@ -4,16 +4,16 @@ import com.uniovi.rag.domain.knowledge.DocumentArtifactType;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.stereotype.Component;
-
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.stereotype.Component;
 
 /**
  * Snapshot-bound DB metadata appendix for {@link com.uniovi.rag.application.service.runtime.ChunkDenseMetadataWorkflow}.
@@ -28,7 +28,7 @@ public class MetadataAppendixLoader {
     }
 
     public String loadAppendix(ExecutionContext ctx, QueryPlan plan, List<RetrievalCandidate> survivors) {
-        java.util.Objects.requireNonNull(plan, "plan");
+        Objects.requireNonNull(plan, "plan");
         List<UUID> snapshotIds = ctx.knowledgeSnapshotSelection().orderedSnapshotIds();
         if (ctx.projectId() == null || snapshotIds.isEmpty()) {
             return "";

@@ -10,12 +10,6 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntit
 import com.uniovi.rag.service.document.ByteArrayMultipartFile;
 import com.uniovi.rag.service.document.KnowledgeChunkMetadataFactory;
 import com.uniovi.rag.service.document.ProjectDocumentIngestionService;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -25,6 +19,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Pipeline stages for one workspace document; invoked only from {@link KnowledgePipelineOrchestrator}.
@@ -199,7 +199,7 @@ public class KnowledgeIndexingService {
         return content;
     }
 
-    public int computeChunkCountForDoc(java.util.UUID documentId) {
+    public int computeChunkCountForDoc(UUID documentId) {
         return documentArtifactRepository.findByDocument_IdOrderByCreatedAtAsc(documentId).stream()
                 .filter(a -> a.getArtifactType() == DocumentArtifactType.CHUNK)
                 .mapToInt(

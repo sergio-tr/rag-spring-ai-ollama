@@ -9,15 +9,21 @@ import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.advisor.PackedContextSet;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
+import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryExecutionResult;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,11 +31,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -205,7 +206,7 @@ class ExecutionContextFactoryTest {
                                 List.of()));
 
         ExecutionContext ctx = factory.buildForLegacyHttp("q", null);
-        assertThat(ctx.documentFilter()).containsExactly(com.uniovi.rag.domain.runtime.RagExecutionContext.ALL_DOCUMENTS);
+        assertThat(ctx.documentFilter()).containsExactly(RagExecutionContext.ALL_DOCUMENTS);
     }
 
     @Test
@@ -239,7 +240,7 @@ class ExecutionContextFactoryTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 "q",
-                com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind.CHAT_MESSAGE,
+                RuntimeOperationKind.CHAT_MESSAGE,
                 resolvedRuntimeConfig,
                 "sys",
                 KnowledgeSnapshotSelection.empty(),

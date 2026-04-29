@@ -3,20 +3,22 @@ package com.uniovi.rag.tool.metadata;
 import com.uniovi.rag.domain.model.Cluster;
 import com.uniovi.rag.domain.model.FilterResult;
 import com.uniovi.rag.domain.model.Minute;
-import com.uniovi.rag.tool.ToolExecutionContext;
-import com.uniovi.rag.tool.ToolResult;
 import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
-
+import com.uniovi.rag.tool.ToolExecutionContext;
+import com.uniovi.rag.tool.ToolResult;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.json.JSONObject;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 
-import java.util.*;
-import java.util.concurrent.CompletableFuture;
-
 import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
-import java.util.stream.Collectors;
 
 /**
  * Enhanced MetadataFilterAndListTool for filtering and listing meeting minutes with intelligent analysis.
@@ -42,23 +44,23 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
             ner
         );
         
-        if (docs.isEmpty()) {
-            log().info("No documents found for filter and list query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "filter and list");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
-        if (minutes.isEmpty()) {
-            log().info("No valid minutes found for filter and list query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyMinutes(query, minutes, "filter and list");
+        if (missing != null) {
+            return missing;
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        if (relevantMinutes.isEmpty()) {
-            log().info("No relevant minutes found for filter and list query: {}", query);
-            return ToolResult.from(formatResponse(generateNotFoundMessage(query), query), getClass());
+        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "filter and list");
+        if (missing != null) {
+            return missing;
         }
         
         // Step 3.5: Filter by attendee name when query asks "when/where did [person] attend" (e.g. Alejandro Torres Rojas)
@@ -428,11 +430,11 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         String personName = extractPersonNameFromQuery(query, ner);
         // Fallback: "¿Cuándo (y en qué reuniones) asistió Alejandro Torres Rojas?" (§4 Alejandro → ACTA 1, 3, 6)
         if ((personName == null || personName.trim().isEmpty()) && query != null) {
-            java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+            Matcher m = Pattern.compile(
                 "(?:asistió|asistieron|participó|participaron)\\s+([\\p{L}]{1,128}(?:\\s+[\\p{L}]{1,128}){1,24})\\s*\\??",
-                java.util.regex.Pattern.CASE_INSENSITIVE
-                        | java.util.regex.Pattern.UNICODE_CASE
-                        | java.util.regex.Pattern.UNICODE_CHARACTER_CLASS
+                Pattern.CASE_INSENSITIVE
+                        | Pattern.UNICODE_CASE
+                        | Pattern.UNICODE_CHARACTER_CLASS
             ).matcher(query);
             if (m.find()) {
                 personName = m.group(1).trim();
@@ -475,8 +477,8 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
      */
     private Integer extractExactAttendeesCount(String query) {
         if (query == null) return null;
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile("(?:exactamente|con)\\s+(\\d+)\\s+asistentes", java.util.regex.Pattern.CASE_INSENSITIVE);
-        java.util.regex.Matcher m = p.matcher(query);
+        Pattern p = Pattern.compile("(?:exactamente|con)\\s+(\\d+)\\s+asistentes", Pattern.CASE_INSENSITIVE);
+        Matcher m = p.matcher(query);
         if (m.find()) {
             try {
                 return Integer.parseInt(m.group(1));
@@ -490,10 +492,10 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
     /** Extracts minimum attendees from query (e.g. Spanish "more than 18 attendees" patterns -> 18). Returns null if not found. */
     private Integer extractMinAttendeesFromQuery(String query) {
         if (query == null) return null;
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+        Pattern p = Pattern.compile(
                 "(?:más de|más que)\\s+(\\d+)\\s+asistentes",
-                java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.UNICODE_CASE | java.util.regex.Pattern.CANON_EQ);
-        java.util.regex.Matcher m = p.matcher(query);
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.CANON_EQ);
+        Matcher m = p.matcher(query);
         if (m.find()) {
             try {
                 return Integer.parseInt(m.group(1));
@@ -504,18 +506,18 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         return null;
     }
 
-    private static final java.util.Map<String, Integer> MONTH_NAMES = java.util.Map.ofEntries(
-            java.util.Map.entry("enero", 1), java.util.Map.entry("febrero", 2), java.util.Map.entry("marzo", 3),
-            java.util.Map.entry("abril", 4), java.util.Map.entry("mayo", 5), java.util.Map.entry("junio", 6),
-            java.util.Map.entry("julio", 7), java.util.Map.entry("agosto", 8), java.util.Map.entry("septiembre", 9),
-            java.util.Map.entry("octubre", 10), java.util.Map.entry("noviembre", 11), java.util.Map.entry("diciembre", 12)
+    private static final Map<String, Integer> MONTH_NAMES = Map.ofEntries(
+            Map.entry("enero", 1), Map.entry("febrero", 2), Map.entry("marzo", 3),
+            Map.entry("abril", 4), Map.entry("mayo", 5), Map.entry("junio", 6),
+            Map.entry("julio", 7), Map.entry("agosto", 8), Map.entry("septiembre", 9),
+            Map.entry("octubre", 10), Map.entry("noviembre", 11), Map.entry("diciembre", 12)
     );
 
     /** Extracts requested month (1-12) when query says "reuniones celebradas en agosto" / "en agosto". Returns null if not a single-month filter. */
     private Integer extractRequestedMonthFromQuery(String query) {
         if (query == null) return null;
         String q = query.toLowerCase();
-        for (java.util.Map.Entry<String, Integer> e : MONTH_NAMES.entrySet()) {
+        for (Map.Entry<String, Integer> e : MONTH_NAMES.entrySet()) {
             String month = e.getKey();
             if (q.contains("en " + month) || q.contains("celebradas en " + month) || q.contains("del mes de " + month)) {
                 return e.getValue();
@@ -530,7 +532,7 @@ public class MetadataFilterAndListTool extends AbstractMetadataTool {
         return minutes.stream()
                 .filter(m -> {
                     if (m.date() == null || m.date().isBlank()) return false;
-                    java.time.LocalDate d = parseDateFlexible(m.date());
+                    LocalDate d = parseDateFlexible(m.date());
                     return d != null && d.getMonthValue() == requestedMonth;
                 })
                 .collect(Collectors.toList());

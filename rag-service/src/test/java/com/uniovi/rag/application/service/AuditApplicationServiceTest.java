@@ -3,15 +3,15 @@ package com.uniovi.rag.application.service;
 import com.uniovi.rag.infrastructure.persistence.AuditLogRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -34,7 +34,7 @@ class AuditApplicationServiceTest {
     void record_persistsWithActor() {
         UUID actorId = UUID.randomUUID();
         UUID resourceId = UUID.randomUUID();
-        UserEntity actor = org.mockito.Mockito.mock(UserEntity.class);
+        UserEntity actor = Mockito.mock(UserEntity.class);
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
 
         service.persistAuditEntry(actorId, "UPDATE", "RagConfiguration", resourceId, Map.of("k", 1));

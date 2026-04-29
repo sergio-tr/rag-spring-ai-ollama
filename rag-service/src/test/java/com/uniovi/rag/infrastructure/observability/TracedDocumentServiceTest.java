@@ -3,12 +3,12 @@ package com.uniovi.rag.infrastructure.observability;
 import com.uniovi.rag.service.document.DocumentService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.document.Document;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -44,7 +44,7 @@ class TracedDocumentServiceTest {
 
     @Test
     void add_delegates() {
-        List<Document> docs = List.of(new Document("id", "content", java.util.Map.of()));
+        List<Document> docs = List.of(new Document("id", "content", Map.of()));
         doNothing().when(delegate).add(anyList());
 
         traced.add(docs);

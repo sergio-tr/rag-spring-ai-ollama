@@ -1,7 +1,6 @@
 package com.uniovi.rag.interfaces.rest;
 
 
-import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiteexport.RuntimeTraceRegressionSuiteExportArtifact;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiteexport.RuntimeTraceRegressionSuiteExportNotAttemptedException;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiteexport.RuntimeTraceRegressionSuiteExportService;
@@ -27,7 +26,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.PostMapping;
 
+import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -72,7 +73,7 @@ class RuntimeTraceRegressionSuiteExportControllerTest {
     void controller_exposes_exactly_two_post_mappings() {
         long n =
                 Arrays.stream(RuntimeTraceRegressionSuiteExportController.class.getDeclaredMethods())
-                        .filter(m -> m.isAnnotationPresent(org.springframework.web.bind.annotation.PostMapping.class))
+                        .filter(m -> m.isAnnotationPresent(PostMapping.class))
                         .count();
         assertThat(n).isEqualTo(2);
     }

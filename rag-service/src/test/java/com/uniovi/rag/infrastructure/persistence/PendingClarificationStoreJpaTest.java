@@ -4,19 +4,19 @@ import com.uniovi.rag.application.port.PendingClarificationLoad;
 import com.uniovi.rag.domain.runtime.clarification.ClarificationQuestionKind;
 import com.uniovi.rag.domain.runtime.clarification.PendingClarificationState;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
@@ -67,7 +67,7 @@ class PendingClarificationStoreJpaTest {
     @Test
     void load_invalidJson_returnsInvalidLoad() {
         UUID conv = UUID.randomUUID();
-        ConversationEntity entity = org.mockito.Mockito.mock(ConversationEntity.class);
+        ConversationEntity entity = Mockito.mock(ConversationEntity.class);
         Map<String, Object> badJson = new LinkedHashMap<>();
         badJson.put("clarificationStateVersion", 99);
         when(entity.getPendingClarification()).thenReturn(badJson);
@@ -82,7 +82,7 @@ class PendingClarificationStoreJpaTest {
     @SuppressWarnings({"unchecked", "rawtypes"})
     void saveReplace_writesJsonOnEntity() {
         UUID conv = UUID.randomUUID();
-        ConversationEntity entity = org.mockito.Mockito.mock(ConversationEntity.class);
+        ConversationEntity entity = Mockito.mock(ConversationEntity.class);
         when(conversationRepository.findById(conv)).thenReturn(Optional.of(entity));
 
         PendingClarificationState state =
@@ -109,7 +109,7 @@ class PendingClarificationStoreJpaTest {
     @Test
     void clear_setsPendingToNull() {
         UUID conv = UUID.randomUUID();
-        ConversationEntity entity = org.mockito.Mockito.mock(ConversationEntity.class);
+        ConversationEntity entity = Mockito.mock(ConversationEntity.class);
         when(conversationRepository.findById(conv)).thenReturn(Optional.of(entity));
 
         store.clear(conv);

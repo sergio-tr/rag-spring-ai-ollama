@@ -2,7 +2,6 @@ package com.uniovi.rag.domain.runtime.functioncalling;
 
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -27,6 +26,6 @@ public record FunctionCallingExecutionResult(
         stageTraces = List.copyOf(Objects.requireNonNull(stageTraces, "stageTraces"));
         answerText = answerText != null ? answerText : "";
         normalizedPayload = Map.copyOf(Objects.requireNonNull(normalizedPayload, "normalizedPayload"));
-        selectedToolKind = selectedToolKind == null ? Optional.empty() : selectedToolKind;
+        selectedToolKind = Objects.requireNonNullElseGet(selectedToolKind, Optional::empty);
     }
 }

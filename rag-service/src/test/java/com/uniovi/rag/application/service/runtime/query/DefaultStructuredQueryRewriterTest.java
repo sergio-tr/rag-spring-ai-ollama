@@ -17,12 +17,12 @@ import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
 import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
 import com.uniovi.rag.domain.runtime.query.NormalizedQuery;
 import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
-import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
-
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.mockito.Answers;
+import org.springframework.ai.chat.client.ChatClient;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -102,7 +102,7 @@ class DefaultStructuredQueryRewriterTest {
 
     @Test
     void disabled_returnsIdentityDisabled() {
-        ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(chatClient);
         NormalizedQuery nq = new NormalizedQuery("raw", "hello", List.of());
         EntityExtractionResult entities =
@@ -117,7 +117,7 @@ class DefaultStructuredQueryRewriterTest {
 
     @Test
     void invalidJson_returnsIdentityFallback() {
-        ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         when(chatClient.prompt().system(anyString()).user(anyString()).options(any()).call().content())
                 .thenReturn("not json");
         DefaultStructuredQueryRewriter rewriter = new DefaultStructuredQueryRewriter(chatClient);
@@ -134,7 +134,7 @@ class DefaultStructuredQueryRewriterTest {
 
     @Test
     void droppedDate_isRejectedToFallback() {
-        ChatClient chatClient = mock(ChatClient.class, org.mockito.Answers.RETURNS_DEEP_STUBS);
+        ChatClient chatClient = mock(ChatClient.class, Answers.RETURNS_DEEP_STUBS);
         String rewriteJson = """
                 {"rewrittenQueryText":"tell me about the meeting","targetEntities":[],"targetAttributes":[],"targetAction":"SUMMARIZE","slotFilling":{},"constraints":[]}
                 """;

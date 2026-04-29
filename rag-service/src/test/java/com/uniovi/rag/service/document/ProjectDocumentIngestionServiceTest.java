@@ -3,15 +3,15 @@ package com.uniovi.rag.service.document;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
-import org.junit.jupiter.api.Test;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
-import org.springframework.jdbc.core.JdbcTemplate;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -100,7 +100,7 @@ class ProjectDocumentIngestionServiceTest {
         ProjectDocumentIngestionService sut =
                 new ProjectDocumentIngestionService(vs, chatClient, jdbc, repo, ingestion);
 
-        org.springframework.web.multipart.MultipartFile file = mock(org.springframework.web.multipart.MultipartFile.class);
+        MultipartFile file = mock(MultipartFile.class);
         assertThatThrownBy(() -> sut.processDocument(file)).isInstanceOf(UnsupportedOperationException.class);
     }
 }

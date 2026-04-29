@@ -1,7 +1,6 @@
 package com.uniovi.rag.domain.runtime.query;
 
 import com.uniovi.rag.domain.model.QueryType;
-
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -24,7 +23,7 @@ public record QueryUnderstandingResult(
     public QueryUnderstandingResult {
         normalizedQuery = Objects.requireNonNull(normalizedQuery, "normalizedQuery");
         classifierLabel = Objects.requireNonNull(classifierLabel, "classifierLabel");
-        classifierQueryType = classifierQueryType == null ? Optional.empty() : classifierQueryType;
+        classifierQueryType = Objects.requireNonNullElseGet(classifierQueryType, Optional::empty);
         classifierStatus = Objects.requireNonNull(classifierStatus, "classifierStatus");
         entities = Objects.requireNonNull(entities, "entities");
         rewrite = Objects.requireNonNull(rewrite, "rewrite");

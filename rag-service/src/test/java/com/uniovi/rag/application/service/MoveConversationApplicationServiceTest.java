@@ -5,16 +5,17 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -47,12 +48,12 @@ class MoveConversationApplicationServiceTest {
         UUID sourcePid = UUID.randomUUID();
         UUID destPid = UUID.randomUUID();
 
-        ProjectEntity sourceProject = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity sourceProject = Mockito.mock(ProjectEntity.class);
         when(sourceProject.getId()).thenReturn(sourcePid);
-        ProjectEntity destProject = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity destProject = Mockito.mock(ProjectEntity.class);
         when(destProject.getId()).thenReturn(destPid);
 
-        ConversationEntity conv = org.mockito.Mockito.mock(ConversationEntity.class);
+        ConversationEntity conv = Mockito.mock(ConversationEntity.class);
         when(conv.getProject()).thenReturn(sourceProject);
 
         when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(conv);
@@ -77,15 +78,15 @@ class MoveConversationApplicationServiceTest {
         UUID otherPid = UUID.randomUUID();
         UUID destPid = UUID.randomUUID();
 
-        ProjectEntity actualSource = org.mockito.Mockito.mock(ProjectEntity.class);
+        ProjectEntity actualSource = Mockito.mock(ProjectEntity.class);
         when(actualSource.getId()).thenReturn(otherPid);
 
-        ConversationEntity conv = org.mockito.Mockito.mock(ConversationEntity.class);
+        ConversationEntity conv = Mockito.mock(ConversationEntity.class);
         when(conv.getProject()).thenReturn(actualSource);
         when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(conv);
 
         assertThrows(
-                com.uniovi.rag.interfaces.rest.NotFoundException.class,
+                NotFoundException.class,
                 () -> service.moveConversationToProject(userId, sourcePid, convId, destPid));
     }
 }

@@ -1,14 +1,15 @@
 package com.uniovi.rag.service.document;
 
 import com.uniovi.rag.domain.exception.DocumentAlreadyExistsException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.pgvector.PgVectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
-import java.util.Map;
 
 public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumentService {
 
@@ -95,9 +96,9 @@ public abstract class AbstractMetadataDocumentService<T> extends AbstractDocumen
             // Step 7: Create multiple documents (one per chunk) with same metadata
             // Prepend short date/president prefix to chunk text so embedding reflects metadata (better similarity for date/person queries)
             String metadataPrefix = buildChunkMetadataPrefix(metadata);
-            List<Document> documents = new java.util.ArrayList<>();
+            List<Document> documents = new ArrayList<>();
             for (int i = 0; i < chunks.size(); i++) {
-                Map<String, Object> chunkMetadata = new java.util.HashMap<>(metadata);
+                Map<String, Object> chunkMetadata = new HashMap<>(metadata);
                 chunkMetadata.put("chunk_index", i);
                 chunkMetadata.put("total_chunks", chunks.size());
                 String chunkText = chunks.get(i);

@@ -2,7 +2,7 @@ package com.uniovi.rag.domain.runtime.tracecomparison;
 
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayMode;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayRequest;
-
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,9 +17,9 @@ public record RuntimeTraceReplayComparisonRequest(
         Optional<UUID> messageId) {
 
     public RuntimeTraceReplayComparisonRequest {
-        traceId = traceId == null ? Optional.empty() : traceId;
-        conversationId = conversationId == null ? Optional.empty() : conversationId;
-        messageId = messageId == null ? Optional.empty() : messageId;
+        traceId = Objects.requireNonNullElseGet(traceId, Optional::empty);
+        conversationId = Objects.requireNonNullElseGet(conversationId, Optional::empty);
+        messageId = Objects.requireNonNullElseGet(messageId, Optional::empty);
     }
 
     public static RuntimeTraceReplayComparisonRequest byTraceId(UUID userId, UUID traceId) {

@@ -2,13 +2,6 @@ package com.uniovi.rag.service.analyser;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.context.annotation.Lazy;
-
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -16,6 +9,13 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.Lazy;
 
 /**
  * Enhanced NER Query Analyser for extracting entities from meeting minutes queries.
@@ -278,7 +278,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
             
             log().info("NER: Successfully parsed and normalized JSON for query: {}", query);
             return json;
-        } catch (org.json.JSONException e) {
+        } catch (JSONException e) {
             log().error("NER: JSON parsing error for query '{}': {}", query, e.getMessage(), e);
             return createFallbackResponse(query);
         } catch (IllegalArgumentException e) {
@@ -287,10 +287,10 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
         }
     }
 
-    private JSONObject parseNerJson(String cleanResponse) throws org.json.JSONException {
+    private JSONObject parseNerJson(String cleanResponse) throws JSONException {
         try {
             return new JSONObject(cleanResponse);
-        } catch (org.json.JSONException e) {
+        } catch (JSONException e) {
             if (e.getMessage() != null && e.getMessage().contains("Duplicate key")) {
                 try {
                     JsonNode node = JACKSON_MAPPER.readTree(cleanResponse);
