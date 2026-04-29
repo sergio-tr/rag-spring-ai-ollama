@@ -61,6 +61,37 @@ export type ApiClientOptions = RequestInit & {
 
 const unauthorizedListeners = new Set<() => void>();
 
+function buildAuthHeaders(args: {
+  initHeaders: HeadersInit | undefined;
+  skipTraceparent: boolean | undefined;
+  skipCredentials: boolean | undefined;
+  allowFormDataContentTypeRemoval: boolean;
+  body: RequestInit["body"];
+}): Headers {
+  const {
+    initHeaders,
+    skipTraceparent,
+    skipCredentials,
+    allowFormDataContentTypeRemoval,
+    body,
+  } = args;
+
+  const headers = new Headers(initHeaders);
+  if (allowFormDataContentTypeRemoval && body instanceof FormData) {
+    headers.delete("Content-Type");
+  }
+  if (!skipTraceparent && !headers.has("traceparent")) {
+    headers.set("traceparent", createTraceparent());
+  }
+  if (!skipCredentials) {
+    const bearer = getAccessToken();
+    if (bearer && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${bearer}`);
+    }
+  }
+  return headers;
+}
+
 /**
  * Subscribe to "final" 401 responses after a refresh attempt (session expired).
  * Used to redirect to login; login/register calls use `skipCredentials` and do not trigger this.
@@ -125,29 +156,13 @@ export async function apiFetch<T = unknown>(
 
   const url = resolveApiUrl(path);
 
-  const buildHeaders = () => {
-    const headers = new Headers(initHeaders);
-    if (rest.body instanceof FormData) {
-      headers.delete("Content-Type");
-    }
-    if (!skipTraceparent && !headers.has("traceparent")) {
-      headers.set("traceparent", createTraceparent());
-    }
-    if (!skipCredentials) {
-      const bearer = getAccessToken();
-      if (bearer && !headers.has("Authorization")) {
-        headers.set("Authorization", `Bearer ${bearer}`);
-      }
-    }
-    return headers;
-  };
-
-  const doRequest = () =>
-    fetch(url, {
-      ...rest,
-      credentials: skipCredentials ? "omit" : "include",
-      headers: buildHeaders(),
-    });
+  const doRequest = createDoRequest(url, {
+    rest,
+    initHeaders,
+    skipTraceparent,
+    skipCredentials,
+    allowFormDataContentTypeRemoval: true,
+  });
 
   let res = await doRequest();
 
@@ -191,27 +206,13 @@ export async function apiDownloadBlob(path: string, options: ApiClientOptions = 
 
   const url = resolveApiUrl(path);
 
-  const buildHeaders = () => {
-    const headers = new Headers(initHeaders);
-    if (!skipTraceparent && !headers.has("traceparent")) {
-      headers.set("traceparent", createTraceparent());
-    }
-    if (!skipCredentials) {
-      const bearer = getAccessToken();
-      if (bearer && !headers.has("Authorization")) {
-        headers.set("Authorization", `Bearer ${bearer}`);
-      }
-    }
-    return headers;
-  };
-
-  const doRequest = () =>
-    fetch(url, {
-      ...rest,
-      method: "GET",
-      credentials: skipCredentials ? "omit" : "include",
-      headers: buildHeaders(),
-    });
+  const doRequest = createDoRequest(url, {
+    rest: { ...rest, method: "GET" },
+    initHeaders,
+    skipTraceparent,
+    skipCredentials,
+    allowFormDataContentTypeRemoval: false,
+  });
 
   let res = await doRequest();
 
@@ -231,6 +232,38 @@ export async function apiDownloadBlob(path: string, options: ApiClientOptions = 
   }
 
   return res.blob();
+}
+
+function createDoRequest(
+  url: string,
+  args: {
+    rest: RequestInit;
+    initHeaders: HeadersInit | undefined;
+    skipTraceparent: boolean | undefined;
+    skipCredentials: boolean | undefined;
+    allowFormDataContentTypeRemoval: boolean;
+  },
+) {
+  const {
+    rest,
+    initHeaders,
+    skipTraceparent,
+    skipCredentials,
+    allowFormDataContentTypeRemoval,
+  } = args;
+
+  return () =>
+    fetch(url, {
+      ...rest,
+      credentials: skipCredentials ? "omit" : "include",
+      headers: buildAuthHeaders({
+        initHeaders,
+        skipTraceparent,
+        skipCredentials,
+        allowFormDataContentTypeRemoval,
+        body: rest.body,
+      }),
+    });
 }
 
 export class ApiError extends Error {

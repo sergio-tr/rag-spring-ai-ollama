@@ -83,49 +83,6 @@ public class FilterAndListTool extends AbstractTool {
     }
 
     /**
-     * Determines if content is relevant to query using LLM.
-     * Uses English for internal processing, but preserves original language in query and content.
-     */
-    private boolean isRelevantByLLM(String content, String query) {
-        if (content == null || content.trim().isEmpty() || query == null || query.trim().isEmpty()) {
-            return false;
-        }
-        
-        String contentSnippet = content.substring(0, Math.min(1000, content.length()));
-        String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
-            
-            And the following meeting minutes content (may be in any language):
-            "%s"
-            
-            Does this minutes document match all the conditions in the query?
-            
-            Respond with ONLY one word: YES or NO.
-            Do not include any explanation or additional text.
-            """, query, contentSnippet);
-        
-        try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
-            
-            if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in isRelevantByLLM, defaulting to false");
-                return false;
-            }
-            
-            // Use LLM to interpret boolean response
-            return interpretBooleanResponse(result, "isRelevantByLLM");
-        } catch (Exception e) {
-            log().error("Error in isRelevantByLLM, defaulting to false", e);
-            return false; // Default to false on error to avoid false positives
-        }
-    }
-
-    /**
      * Extracts and summarizes relevant content.
      * Uses English for internal processing, but preserves original language in query and content.
      */
@@ -230,44 +187,6 @@ public class FilterAndListTool extends AbstractTool {
         }
     }
     
-    /**
-     * Interprets LLM response as boolean using another LLM call.
-     */
-    private boolean interpretBooleanResponse(String response, String context) {
-        if (response == null || response.trim().isEmpty()) {
-            return false;
-        }
-        
-        String prompt = String.format("""
-            Context: %s
-            
-            The LLM generated this response: "%s"
-            
-            Task: Interpret this response as a boolean answer.
-            - If it means YES/TRUE/POSITIVE, respond with: YES
-            - If it means NO/FALSE/NEGATIVE, respond with: NO
-            
-            Consider semantic meaning, not just exact words.
-            
-            Respond with ONLY one word: YES or NO.
-            """, context, response);
-        
-        try {
-            String interpretation = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toUpperCase();
-            
-            return interpretation.contains("YES");
-        } catch (Exception e) {
-            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
-            return false;
-        }
-    }
-
     /**
      * Generates a fallback answer when LLM fails.
      * Uses LLM to generate message in correct language.

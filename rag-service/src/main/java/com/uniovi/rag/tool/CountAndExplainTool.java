@@ -223,44 +223,6 @@ public class CountAndExplainTool extends AbstractTool {
     }
 
     /**
-     * Interprets LLM response as boolean using another LLM call.
-     */
-    private boolean interpretBooleanResponse(String response, String context) {
-        if (response == null || response.trim().isEmpty()) {
-            return false;
-        }
-        
-        String prompt = String.format("""
-            Context: %s
-            
-            The LLM generated this response: "%s"
-            
-            Task: Interpret this response as a boolean answer.
-            - If it means YES/TRUE/POSITIVE, respond with: YES
-            - If it means NO/FALSE/NEGATIVE, respond with: NO
-            
-            Consider semantic meaning, not just exact words.
-            
-            Respond with ONLY one word: YES or NO.
-            """, context, response);
-        
-        try {
-            String interpretation = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toUpperCase();
-            
-            return interpretation.contains("YES");
-        } catch (Exception e) {
-            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
-            return false;
-        }
-    }
-
-    /**
      * Generates a fallback answer when LLM fails.
      * Uses LLM to generate message in correct language.
      */

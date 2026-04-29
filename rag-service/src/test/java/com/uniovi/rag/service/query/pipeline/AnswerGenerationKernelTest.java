@@ -7,6 +7,7 @@ import com.uniovi.rag.service.analyser.NERQueryEnricher;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.service.query.ResponseValidator;
 import com.uniovi.rag.service.retriever.ContextRetriever;
+import com.uniovi.rag.service.retriever.AbstractContextRetriever;
 import com.uniovi.rag.service.retriever.NaiveCorpusContextService;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +21,7 @@ import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -551,5 +553,147 @@ class AnswerGenerationKernelTest {
         assertEquals(
                 "ok",
                 kernel.askModel("algebraic topology intro", new JSONObject(), QueryType.GET_FIELD));
+    }
+
+    @Test
+    void askModel_advisorPathThrows_fallsBackToManualRetrieveAndReturnsValidatedResponse() {
+        when(featureConfig.isUseRetrieval()).thenReturn(true);
+        when(featureConfig.isUseAdvisor()).thenReturn(true);
+        when(featureConfig.isNerEnabled()).thenReturn(false);
+        when(featureConfig.isPostRetrievalEnabled()).thenReturn(false);
+        when(featureConfig.isMetadataEnabled()).thenReturn(false);
+        when(featureConfig.isToolsEnabled()).thenReturn(true);
+
+        ContextRetriever retriever = mock(ContextRetriever.class);
+        when(retriever.retrieve(anyString())).thenReturn(List.of(new Document("x")));
+        when(retriever.createContext(any(), anyString(), any()))
+                .thenReturn("0123456789".repeat(8));
+
+        QuestionAnswerAdvisor advisor = mock(QuestionAnswerAdvisor.class);
+        when(requestSpec.advisors(any(QuestionAnswerAdvisor.class))).thenReturn(requestSpec);
+        when(callResponseSpec.content())
+                .thenThrow(new RuntimeException("advisor exploded"))
+                .thenReturn("ok");
+        when(responseValidator.validateAndClean("ok", "ProcessQueryService"))
+                .thenReturn("ok");
+
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                retriever,
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                advisor,
+                                chatRequestSpecFactory,
+                                null,
+                                false));
+
+        assertEquals("ok", kernel.askModel("q", new JSONObject(), QueryType.GET_FIELD));
+    }
+
+    @Test
+    void askModelWithPreStep_whenRetrieverIsAbstractAndNerEntitiesPresent_usesMetadataFilters() {
+        when(featureConfig.isUseRetrieval()).thenReturn(true);
+        when(featureConfig.isUseAdvisor()).thenReturn(false);
+        when(featureConfig.isNerEnabled()).thenReturn(true);
+        when(featureConfig.isPostRetrievalEnabled()).thenReturn(false);
+
+        NERQueryEnricher enricher = mock(NERQueryEnricher.class);
+        when(enricher.buildEnrichedQueryForRetrieval(eq("q"), any(JSONObject.class))).thenReturn("q");
+
+        AbstractContextRetriever retriever = mock(AbstractContextRetriever.class);
+        when(retriever.retrieveWithMetadataFilters(anyString(), any(JSONObject.class)))
+                .thenReturn(List.of(new Document("x")));
+        when(retriever.createContext(any(), anyString(), any()))
+                .thenReturn("0123456789".repeat(8));
+
+        when(callResponseSpec.content()).thenReturn("ok");
+        when(responseValidator.validateAndClean("ok", "ProcessQueryService")).thenReturn("ok");
+
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                enricher,
+                                retriever,
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
+
+        JSONObject ner = new JSONObject().put("x", "y");
+        DraftAndContext out = kernel.askModelWithPreStep("q", ner, QueryType.GET_FIELD, "thought");
+        assertNotNull(out);
+        assertEquals("ok", out.draft());
+        verify(retriever).retrieveWithMetadataFilters(eq("q"), eq(ner));
+    }
+
+    @Test
+    void askModel_whenRetrieverThrowsNullPointerException_rethrows() {
+        when(featureConfig.isUseRetrieval()).thenReturn(true);
+        when(featureConfig.isUseAdvisor()).thenReturn(false);
+        when(featureConfig.isNerEnabled()).thenReturn(false);
+        when(featureConfig.isPostRetrievalEnabled()).thenReturn(false);
+        when(featureConfig.isMetadataEnabled()).thenReturn(false);
+        when(featureConfig.isToolsEnabled()).thenReturn(true);
+
+        ContextRetriever retriever = mock(ContextRetriever.class);
+        when(retriever.retrieve(anyString())).thenThrow(new NullPointerException("boom"));
+
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                retriever,
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
+
+        assertThrows(NullPointerException.class, () -> kernel.askModel("q", new JSONObject(), QueryType.GET_FIELD));
+    }
+
+    @Test
+    void callLlmWithPromptContext_whenInterruptedDuringRetry_breaksAndReturnsNoContextFallback() {
+        when(featureConfig.isUseRetrieval()).thenReturn(true);
+        when(featureConfig.isUseAdvisor()).thenReturn(false);
+        when(featureConfig.isNerEnabled()).thenReturn(false);
+        when(featureConfig.isPostRetrievalEnabled()).thenReturn(false);
+
+        ContextRetriever retriever = mock(ContextRetriever.class);
+        when(retriever.retrieve(anyString())).thenReturn(List.of(new Document("x")));
+        when(retriever.createContext(any(), anyString(), any()))
+                .thenReturn("0123456789".repeat(8));
+
+        when(callResponseSpec.content()).thenReturn("bad", " fallback ");
+        when(responseValidator.validateAndClean("bad", "ProcessQueryService")).thenReturn(null);
+
+        AnswerGenerationKernel kernel =
+                new AnswerGenerationKernel(
+                        new AnswerGenerationKernel.Dependencies(
+                                featureConfig,
+                                mock(NERQueryEnricher.class),
+                                retriever,
+                                mock(PostRetrievalProcessor.class),
+                                responseValidator,
+                                mock(QuestionAnswerAdvisor.class),
+                                chatRequestSpecFactory,
+                                null,
+                                false));
+
+        try {
+            Thread.currentThread().interrupt();
+            assertEquals("fallback", kernel.askModel("q", new JSONObject(), QueryType.GET_FIELD));
+        } finally {
+            // Ensure we don't leak interrupt status to other tests
+            Thread.interrupted();
+        }
     }
 }

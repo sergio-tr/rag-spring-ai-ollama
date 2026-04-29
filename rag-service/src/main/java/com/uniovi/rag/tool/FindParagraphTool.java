@@ -122,79 +122,42 @@ public class FindParagraphTool extends AbstractTool {
      * Determines if a paragraph is relevant to the query using LLM.
      * Uses English for internal processing, but preserves original language in query and paragraph.
      */
-    private boolean isParagraphRelevantByLLM(String query, String paragraph) {
+    protected boolean isParagraphRelevantByLLM(String query, String paragraph) {
         if (query == null || query.trim().isEmpty() || paragraph == null || paragraph.trim().isEmpty()) {
             return false;
         }
-        
+
         String prompt = String.format("""
             This is the user's query (in any language):
             "%s"
-            
+
             And this is a paragraph from the meeting minutes (may be in any language):
             "%s"
-            
+
             Does the paragraph clearly or partially answer the query?
-            
+
             Respond with ONLY one word: YES or NO.
             Do not include any explanation or additional text.
             """, query, paragraph);
-        
+
         try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
-            
+            String result =
+                    chatClient
+                            .prompt()
+                            .user(prompt)
+                            .call()
+                            .content();
+
             if (result == null || result.trim().isEmpty()) {
                 log().warn("Empty response from LLM in isParagraphRelevantByLLM, defaulting to false");
                 return false;
             }
-            
+
             // Use LLM to interpret the response as yes/no
             return interpretBooleanResponse(result, "isParagraphRelevantByLLM");
         } catch (Exception e) {
             log().error("Error in isParagraphRelevantByLLM, defaulting to false", e);
             return false; // Default to false on error to avoid false positives
-        }
-    }
-
-    /**
-     * Interprets LLM response as boolean using another LLM call.
-     */
-    private boolean interpretBooleanResponse(String response, String context) {
-        if (response == null || response.trim().isEmpty()) {
-            return false;
-        }
-        
-        String prompt = String.format("""
-            Context: %s
-            
-            The LLM generated this response: "%s"
-            
-            Task: Interpret this response as a boolean answer.
-            - If it means YES/TRUE/POSITIVE, respond with: YES
-            - If it means NO/FALSE/NEGATIVE, respond with: NO
-            
-            Consider semantic meaning, not just exact words.
-            
-            Respond with ONLY one word: YES or NO.
-            """, context, response);
-        
-        try {
-            String interpretation = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toUpperCase();
-            
-            return interpretation.contains("YES");
-        } catch (Exception e) {
-            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
-            return false;
         }
     }
 

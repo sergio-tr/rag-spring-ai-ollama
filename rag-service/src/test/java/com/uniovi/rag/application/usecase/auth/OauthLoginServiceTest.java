@@ -124,6 +124,37 @@ class OauthLoginServiceTest {
     }
 
     @Test
+    void exchange_expiredCode_throwsInvalidCredentials() {
+        OauthLoginExchangeCodeEntity e = new OauthLoginExchangeCodeEntity();
+        e.setCodeHash("h");
+        e.setCreatedAt(Instant.now());
+        e.setExpiresAt(Instant.now().minusSeconds(1));
+        when(oauthLoginExchangeCodeRepository.findByCodeHash(any())).thenReturn(Optional.of(e));
+
+        OauthLoginService svc = new OauthLoginService(
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
+                "/api/auth/oauth/google/callback");
+        assertThatThrownBy(() -> svc.exchange("raw")).isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
+    void googleStartUrl_enabled_buildsGoogleAuthorizationUrl() {
+        OauthLoginService svc = new OauthLoginService(
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                true, "http://localhost:3000/", "http://localhost:9000/", "cid", "secret", "https://accounts.google.com",
+                "/api/auth/oauth/google/callback");
+
+        String url = svc.googleStartUrl();
+        assertThat(url).startsWith("https://accounts.google.com/o/oauth2/v2/auth");
+        assertThat(url).contains("client_id=cid");
+        assertThat(url).contains("response_type=code");
+        assertThat(url).contains("scope=openid+email+profile");
+        assertThat(url).contains("redirect_uri=http%3A%2F%2Flocalhost%3A9000%2Fapi%2Fauth%2Foauth%2Fgoogle%2Fcallback");
+        assertThat(url).contains("state=");
+    }
+
+    @Test
     void resolveOrCreateUser_existingIdentity_updatesLastLogin() {
         UserEntity user = mock(UserEntity.class);
         OauthIdentityEntity identity = new OauthIdentityEntity();
@@ -138,6 +169,27 @@ class OauthLoginServiceTest {
                 "/api/auth/oauth/google/callback");
         UserEntity resolved = ReflectionTestUtils.invokeMethod(svc, "resolveOrCreateUser", "subject", "a@b.com", true);
         assertThat(resolved).isEqualTo(user);
+    }
+
+    @Test
+    void resolveOrCreateUser_newUser_linksIdentity_and_marksEmailVerified() {
+        when(oauthIdentityRepository.findByProviderAndProviderSubject("google", "subject"))
+                .thenReturn(Optional.empty());
+        when(userAccountPort.findByEmailIgnoreCase(any())).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(any())).thenReturn("pw-hash");
+        when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        OauthLoginService svc = new OauthLoginService(
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
+                "/api/auth/oauth/google/callback");
+
+        UserEntity resolved =
+                ReflectionTestUtils.invokeMethod(svc, "resolveOrCreateUser", "subject", "User@Example.com", true);
+
+        assertThat(resolved.getEmail()).isEqualTo("user@example.com");
+        assertThat(resolved.isEmailVerified()).isTrue();
+        assertThat(resolved.getEmailVerifiedAt()).isNotNull();
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.uniovi.rag.service.extraction.DocumentContentExtractor;
 import com.uniovi.rag.service.retriever.ContextRetriever;
 import com.uniovi.rag.util.RegexSafety;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public abstract class AbstractTool implements Tool {
@@ -216,6 +217,39 @@ public abstract class AbstractTool implements Tool {
     }
 
     /**
+     * Standardized "not found" tool result (message language matches query).
+     * Keeps behavior consistent across tools while removing boilerplate duplication.
+     */
+    protected final ToolResult buildFormattedNotFoundToolResult(String query) {
+        String formattedNotFound = formatResponse(generateNotFoundMessage(query), query);
+        return ToolResult.from(formattedNotFound, getClass());
+    }
+
+    /**
+     * Extracts relevant paragraph-sized fragments from a document, using {@link #isParagraphRelevantByLLM}.
+     * Returns at most {@code 250} characters per fragment.
+     */
+    protected final List<String> extractRelevantParagraphFragments(Document doc, String query) {
+        if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
+            return List.of();
+        }
+
+        List<String> relevant = new ArrayList<>();
+        String content = doc.getText();
+        String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
+        for (String p : paragraphs) {
+            if (p != null && !p.trim().isEmpty() && isParagraphRelevantByLLM(query, p)) {
+                String fragment = p.trim();
+                if (fragment.length() > 250) {
+                    fragment = fragment.substring(0, 250) + "...";
+                }
+                relevant.add(fragment);
+            }
+        }
+        return relevant;
+    }
+
+    /**
      * Generates a "not found" message using the LLM so the response language matches the query.
      */
     protected String generateNotFoundMessage(String query) {
@@ -295,6 +329,131 @@ public abstract class AbstractTool implements Tool {
         } catch (Exception e) {
             log().warn("Error interpreting LLM yes/no response in {}", context, e);
             return null;
+        }
+    }
+
+    /**
+     * Common YES/NO boolean interpretation used by multiple tools.
+     * Mirrors the local per-tool implementation pattern to avoid behavior drift.
+     */
+    protected boolean interpretBooleanResponse(String response, String context) {
+        if (response == null || response.trim().isEmpty()) {
+            return false;
+        }
+
+        String prompt = String.format("""
+            Context: %s
+
+            The LLM generated this response: "%s"
+
+            Task: Interpret this response as a boolean answer.
+            - If it means YES/TRUE/POSITIVE, respond with: YES
+            - If it means NO/FALSE/NEGATIVE, respond with: NO
+
+            Consider semantic meaning, not just exact words.
+
+            Respond with ONLY one word: YES or NO.
+            """, context, response);
+
+        try {
+            String interpretation =
+                    chatClient
+                            .prompt()
+                            .user(prompt)
+                            .call()
+                            .content()
+                            .strip()
+                            .toUpperCase();
+
+            return interpretation.contains("YES");
+        } catch (Exception e) {
+            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
+            return false;
+        }
+    }
+
+    /**
+     * Determines if content is relevant to query using LLM.
+     * Uses English for internal processing, but preserves original language in query and content.
+     */
+    protected boolean isRelevantByLLM(String content, String query) {
+        if (content == null || content.trim().isEmpty() || query == null || query.trim().isEmpty()) {
+            return false;
+        }
+
+        String contentSnippet = content.substring(0, Math.min(1000, content.length()));
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+
+            And the following meeting minutes content (may be in any language):
+            "%s"
+
+            Does this minutes document match all the conditions in the query?
+
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
+            """, query, contentSnippet);
+
+        try {
+            String result =
+                    chatClient
+                            .prompt()
+                            .user(prompt)
+                            .call()
+                            .content();
+
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in isRelevantByLLM, defaulting to false");
+                return false;
+            }
+
+            return interpretBooleanResponse(result, "isRelevantByLLM");
+        } catch (Exception e) {
+            log().error("Error in isRelevantByLLM, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
+        }
+    }
+
+    /**
+     * Determines if a paragraph is relevant to the query using LLM.
+     * Uses English for internal processing, but preserves original language in query and paragraph.
+     */
+    protected boolean isParagraphRelevantByLLM(String query, String paragraph) {
+        if (query == null || query.trim().isEmpty() || paragraph == null || paragraph.trim().isEmpty()) {
+            return false;
+        }
+
+        String prompt = String.format("""
+            Given the following user query (in any language):
+            "%s"
+
+            And this is a paragraph from the minutes (may be in any language):
+            "%s"
+
+            Does the paragraph clearly or partially answer the query?
+
+            Respond with ONLY one word: YES or NO.
+            Do not include any explanation or additional text.
+            """, query, paragraph);
+
+        try {
+            String result =
+                    chatClient
+                            .prompt()
+                            .user(prompt)
+                            .call()
+                            .content();
+
+            if (result == null || result.trim().isEmpty()) {
+                log().warn("Empty response from LLM in isParagraphRelevantByLLM, defaulting to false");
+                return false;
+            }
+
+            return interpretBooleanResponse(result, "isParagraphRelevantByLLM");
+        } catch (Exception e) {
+            log().error("Error in isParagraphRelevantByLLM, defaulting to false", e);
+            return false; // Default to false on error to avoid false positives
         }
     }
 

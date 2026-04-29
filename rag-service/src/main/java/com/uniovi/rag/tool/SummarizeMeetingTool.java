@@ -46,10 +46,7 @@ public class SummarizeMeetingTool extends AbstractTool {
         if (fragments.isEmpty()) {
             long totalTime = System.currentTimeMillis() - startTime;
             log().info("No fragments found for summarize meeting query: '{}' (execution time: {} ms)", query, totalTime);
-            String notFound = generateNotFoundMessage(query);
-            // Apply formatResponse to clean the not found message
-            String formattedNotFound = formatResponse(notFound, query);
-            return ToolResult.from(formattedNotFound, getClass());
+            return buildFormattedNotFoundToolResult(query);
         }
 
         log().debug("Extracted {} fragments for summarize meeting query, limiting to 3 for conciseness", fragments.size());
@@ -90,104 +87,8 @@ public class SummarizeMeetingTool extends AbstractTool {
         }
     }
 
-    /**
-     * Determines if content is relevant to query using LLM.
-     * Uses English for internal processing, but preserves original language in query and content.
-     */
-    private boolean isRelevantByLLM(String content, String query) {
-        if (content == null || content.trim().isEmpty() || query == null || query.trim().isEmpty()) {
-            return false;
-        }
-        
-        String contentSnippet = content.substring(0, Math.min(1000, content.length()));
-        String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
-            
-            And the following meeting minutes content (may be in any language):
-            "%s"
-            
-            Does this minutes document match all the conditions in the query?
-            
-            Respond with ONLY one word: YES or NO.
-            Do not include any explanation or additional text.
-            """, query, contentSnippet);
-        
-        try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
-            
-            if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in isRelevantByLLM, defaulting to false");
-                return false;
-            }
-            
-            // Use LLM to interpret boolean response
-            return interpretBooleanResponse(result, "isRelevantByLLM");
-        } catch (Exception e) {
-            log().error("Error in isRelevantByLLM, defaulting to false", e);
-            return false; // Default to false on error to avoid false positives
-        }
-    }
-
     private List<String> extractRelevantFragments(Document doc, String query) {
-        List<String> relevant = new ArrayList<>();
-        String content = doc.getText();
-        String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
-        for (String p : paragraphs) {
-            if (isParagraphRelevantByLLM(query, p)) {
-                // Limit fragment length to 250 characters for conciseness
-                String fragment = p.trim();
-                if (fragment.length() > 250) {
-                    fragment = fragment.substring(0, 250) + "...";
-                }
-                relevant.add(fragment);
-            }
-        }
-        return relevant;
-    }
-
-    /**
-     * Determines if a paragraph is relevant to the query using LLM.
-     * Uses English for internal processing, but preserves original language in query and paragraph.
-     */
-    private boolean isParagraphRelevantByLLM(String query, String paragraph) {
-        if (query == null || query.trim().isEmpty() || paragraph == null || paragraph.trim().isEmpty()) {
-            return false;
-        }
-        
-        String prompt = String.format("""
-            Given the following user query (in any language):
-            "%s"
-            And this is a paragraph from the minutes (may be in any language):
-            "%s"
-            Does the paragraph clearly or partially answer the query?
-            
-            Respond with ONLY one word: YES or NO.
-            Do not include any explanation or additional text.
-            """, query, paragraph);
-        
-        try {
-            String result = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content();
-            
-            if (result == null || result.trim().isEmpty()) {
-                log().warn("Empty response from LLM in isParagraphRelevantByLLM, defaulting to false");
-                return false;
-            }
-            
-            // Use LLM to interpret boolean response
-            return interpretBooleanResponse(result, "isParagraphRelevantByLLM");
-        } catch (Exception e) {
-            log().error("Error in isParagraphRelevantByLLM, defaulting to false", e);
-            return false; // Default to false on error to avoid false positives
-        }
+        return new ArrayList<>(extractRelevantParagraphFragments(doc, query));
     }
 
     /**
@@ -255,44 +156,6 @@ public class SummarizeMeetingTool extends AbstractTool {
         }
     }
     
-    /**
-     * Interprets LLM response as boolean using another LLM call.
-     */
-    private boolean interpretBooleanResponse(String response, String context) {
-        if (response == null || response.trim().isEmpty()) {
-            return false;
-        }
-        
-        String prompt = String.format("""
-            Context: %s
-            
-            The LLM generated this response: "%s"
-            
-            Task: Interpret this response as a boolean answer.
-            - If it means YES/TRUE/POSITIVE, respond with: YES
-            - If it means NO/FALSE/NEGATIVE, respond with: NO
-            
-            Consider semantic meaning, not just exact words.
-            
-            Respond with ONLY one word: YES or NO.
-            """, context, response);
-        
-        try {
-            String interpretation = chatClient
-                    .prompt()
-                    .user(prompt)
-                    .call()
-                    .content()
-                    .strip()
-                    .toUpperCase();
-            
-            return interpretation.contains("YES");
-        } catch (Exception e) {
-            log().warn("Error interpreting boolean response in {}, defaulting to false", context, e);
-            return false;
-        }
-    }
-
     /**
      * Generates a fallback summary when LLM fails.
      * Uses LLM to generate message in correct language.

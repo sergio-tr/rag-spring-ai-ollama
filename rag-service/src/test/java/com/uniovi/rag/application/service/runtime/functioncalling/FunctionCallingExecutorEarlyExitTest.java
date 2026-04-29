@@ -20,6 +20,8 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.application.service.runtime.tool.MeetingMinutesToolExecutionCore;
 import com.uniovi.rag.domain.runtime.tool.DeterministicToolKind;
+import com.uniovi.rag.domain.runtime.tool.MeetingMinutesToolRawResult;
+import com.uniovi.rag.tool.ToolResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -129,6 +131,81 @@ class FunctionCallingExecutorEarlyExitTest {
                 executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
 
         assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.INVALID_MODEL_OUTPUT);
+    }
+
+    @Test
+    void run_returnsInvalidModelOutput_whenToolNotExposedInDecision() {
+        AssistantMessage assistant = mock(AssistantMessage.class);
+        when(assistant.hasToolCalls()).thenReturn(true);
+        ToolCall tc = mock(ToolCall.class);
+        when(tc.name()).thenReturn("COUNT_DOCUMENTS_TOOL");
+        when(assistant.getToolCalls()).thenReturn(List.of(tc));
+
+        FunctionCallingDecision decision =
+                new FunctionCallingDecision(
+                        FunctionCallingMode.ENABLED,
+                        FunctionCallingOutcome.NOT_APPLICABLE,
+                        true,
+                        List.of(DeterministicToolKind.GET_FIELD_TOOL),
+                        List.of(),
+                        Optional.empty(),
+                        "raw",
+                        Map.of());
+
+        FunctionCallingExecutor executor =
+                new FunctionCallingExecutor(
+                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+        FunctionCallingExecutionResult r = executor.run(buildCtx(), minimalPlan(), decision);
+
+        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.INVALID_MODEL_OUTPUT);
+    }
+
+    @Test
+    void run_returnsExecutedFailedInfra_whenToolExecutionFails() {
+        AssistantMessage assistant = mock(AssistantMessage.class);
+        when(assistant.hasToolCalls()).thenReturn(true);
+        ToolCall tc = mock(ToolCall.class);
+        when(tc.name()).thenReturn("COUNT_DOCUMENTS_TOOL");
+        when(tc.arguments()).thenReturn("{\"query\":\"rewritten\"}");
+        when(assistant.getToolCalls()).thenReturn(List.of(tc));
+
+        when(meetingMinutesToolExecutionCore.execute(any(), any(), any()))
+                .thenReturn(MeetingMinutesToolRawResult.runtimeFailure(DeterministicToolKind.COUNT_DOCUMENTS_TOOL, "down"));
+
+        FunctionCallingExecutor executor =
+                new FunctionCallingExecutor(
+                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+        FunctionCallingExecutionResult r =
+                executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
+
+        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.EXECUTED_FAILED_INFRA);
+        assertThat(r.traceNotes()).anyMatch(n -> n.startsWith("tool_infra"));
+    }
+
+    @Test
+    void run_returnsExecutedFailedInfra_whenMapperReturnsBlankStableText() {
+        AssistantMessage assistant = mock(AssistantMessage.class);
+        when(assistant.hasToolCalls()).thenReturn(true);
+        ToolCall tc = mock(ToolCall.class);
+        when(tc.name()).thenReturn("COUNT_DOCUMENTS_TOOL");
+        when(tc.arguments()).thenReturn("{\"query\":\"rewritten\"}");
+        when(assistant.getToolCalls()).thenReturn(List.of(tc));
+
+        ToolResult raw = mock(ToolResult.class);
+        when(meetingMinutesToolExecutionCore.execute(any(), any(), any()))
+                .thenReturn(MeetingMinutesToolRawResult.ok(DeterministicToolKind.COUNT_DOCUMENTS_TOOL, raw));
+        when(resultMapper.stableAnswerText(raw, DeterministicToolKind.COUNT_DOCUMENTS_TOOL)).thenReturn("   ");
+        when(resultMapper.normalizedPayload(raw, DeterministicToolKind.COUNT_DOCUMENTS_TOOL)).thenReturn(Map.of("k", "v"));
+
+        FunctionCallingExecutor executor =
+                new FunctionCallingExecutor(
+                        chatClientForAssistant(assistant), toolRegistry, meetingMinutesToolExecutionCore, resultMapper);
+        FunctionCallingExecutionResult r =
+                executor.run(buildCtx(), minimalPlan(), decisionExposingAllMeetingTools());
+
+        assertThat(r.outcome()).isEqualTo(FunctionCallingOutcome.EXECUTED_FAILED_INFRA);
+        assertThat(r.traceNotes()).contains("mapping_empty");
+        assertThat(r.normalizedPayload()).containsEntry("k", "v");
     }
 
     private static ChatClient chatClientForAssistant(AssistantMessage assistant) {
