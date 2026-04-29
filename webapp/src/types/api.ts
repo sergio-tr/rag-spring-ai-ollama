@@ -15,6 +15,20 @@ export type LoginResponse = {
   user: AuthUser;
 };
 
+export type RegisterResponse = {
+  status: "REGISTERED" | "PENDING_EMAIL_VERIFICATION";
+  login?: LoginResponse | null;
+};
+
+export type MeResponse = {
+  userId: string;
+  email: string;
+  name: string;
+  roleName: UserRole;
+  emailVerified: boolean;
+  emailVerifiedAt: string | null;
+};
+
 export type ProjectSummary = {
   id: string;
   name: string;

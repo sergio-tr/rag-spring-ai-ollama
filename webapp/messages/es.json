@@ -39,6 +39,8 @@
     "loginLink": "Inicia sesión",
     "invalidCredentials": "Correo o contraseña incorrectos.",
     "registerFailed": "No se pudo registrar. Prueba otro correo.",
+    "registerVerificationRequired": "Cuenta creada. Verifica tu correo antes de iniciar sesión.",
+    "emailNotVerified": "Es necesaria la verificación del correo. Revisa tu bandeja de entrada para el enlace de confirmación.",
     "networkError": "Error de red. Revisa la URL de la API y CORS."
   },
   "Nav": {
