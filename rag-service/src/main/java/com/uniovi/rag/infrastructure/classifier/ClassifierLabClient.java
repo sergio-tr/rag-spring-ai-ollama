@@ -59,7 +59,7 @@ public class ClassifierLabClient implements ClassifierLabPort {
      * Package-private hook for tests: inject a {@link RestTemplate} (e.g. bound to {@code MockRestServiceServer}).
      */
     ClassifierLabClient(String baseUrl, int timeoutMs, ObjectMapper objectMapper, RestTemplate restTemplate) {
-        this.baseUrl = baseUrl != null ? baseUrl.replaceAll("/+$", "") : "";
+        this.baseUrl = baseUrl != null ? stripTrailingSlashes(baseUrl) : "";
         this.objectMapper = objectMapper;
         int effective = timeoutMs > 0 ? timeoutMs : 5000;
         this.restTemplate = restTemplate != null ? restTemplate : createRestTemplate(effective);
@@ -73,6 +73,17 @@ public class ClassifierLabClient implements ClassifierLabPort {
         RestTemplate rt = new RestTemplate();
         rt.setRequestFactory(factory);
         return rt;
+    }
+
+    private static String stripTrailingSlashes(String url) {
+        if (url == null || url.isEmpty()) {
+            return "";
+        }
+        int end = url.length();
+        while (end > 0 && url.charAt(end - 1) == '/') {
+            end--;
+        }
+        return url.substring(0, end);
     }
 
     public Map<String, Object> train(

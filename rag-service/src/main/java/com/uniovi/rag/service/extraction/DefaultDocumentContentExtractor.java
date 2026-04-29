@@ -107,9 +107,17 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
             case "endTime":
                 return extractTime(content, "end");
             case "president":
-                return match(content, "(?i)•\\s*(.+?)\\s*\\(Presidente\\)");
+                return extractAttendeesWithRoles(content).stream()
+                        .filter(a -> "PRESIDENTE".equals(a.role()))
+                        .map(Attendee::name)
+                        .findFirst()
+                        .orElse(null);
             case "secretary":
-                return match(content, "(?i)•\\s*(.+?)\\s*\\(Secretari[ao]\\)");
+                return extractAttendeesWithRoles(content).stream()
+                        .filter(a -> "SECRETARIO".equals(a.role()) || "SECRETARIA".equals(a.role()))
+                        .map(Attendee::name)
+                        .findFirst()
+                        .orElse(null);
             default:
                 return null;
         }
@@ -121,12 +129,57 @@ public class DefaultDocumentContentExtractor implements DocumentContentExtractor
         if (content == null) {
             return attendees;
         }
-        String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
-        Matcher matcher = Pattern.compile("(?m)^•\\s*(.+?)(?:\\s*\\((Presidente|Secretari[ao])\\))?$").matcher(c);
-        while (matcher.find()) {
-            attendees.add(matcher.group(1).trim());
+        for (Attendee a : extractAttendeesWithRoles(content)) {
+            attendees.add(a.name());
         }
         return attendees;
+    }
+
+    private record Attendee(String name, String role) {
+    }
+
+    private List<Attendee> extractAttendeesWithRoles(String content) {
+        if (content == null) {
+            return List.of();
+        }
+        // Avoid regex on multi-line untrusted input; line parsing is sufficient.
+        String c = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
+        List<Attendee> out = new ArrayList<>();
+        for (String rawLine : c.split("\n")) {
+            String line = rawLine.strip();
+            if (!line.startsWith("•")) {
+                continue;
+            }
+            String tail = line.substring(1).strip();
+            if (tail.isEmpty()) {
+                continue;
+            }
+            String name = tail;
+            String role = "";
+            int openIdx = tail.lastIndexOf('(');
+            int closeIdx = tail.endsWith(")") ? tail.length() - 1 : -1;
+            if (openIdx != -1 && closeIdx != -1 && openIdx < closeIdx) {
+                String roleRaw = tail.substring(openIdx + 1, closeIdx).strip();
+                String candidateName = tail.substring(0, openIdx).strip();
+                if (!candidateName.isEmpty()) {
+                    name = candidateName;
+                    role = normalizeRole(roleRaw);
+                }
+            }
+            out.add(new Attendee(name, role));
+        }
+        return out;
+    }
+
+    private static String normalizeRole(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String r = raw.strip().toUpperCase();
+        if (r.startsWith("PRESIDENTE")) return "PRESIDENTE";
+        if (r.startsWith("SECRETARIO")) return "SECRETARIO";
+        if (r.startsWith("SECRETARIA")) return "SECRETARIA";
+        return r;
     }
 
     @Override

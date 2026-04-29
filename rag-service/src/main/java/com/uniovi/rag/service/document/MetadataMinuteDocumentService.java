@@ -1880,13 +1880,64 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     }
 
     private static boolean isAgendaNewItemLine(String line, String currentKey) {
-        return line.matches("^[•·▪▫◦‣⁃*\\-]\\s+.+")
-                || line.matches("^\\d+[.)]\\s+.+")
-                || (line.matches("^[A-ZÁÉÍÓÚÑ].+") && currentKey == null);
+        if (line == null || line.isBlank()) {
+            return false;
+        }
+        String trimmed = line.strip();
+        char first = trimmed.charAt(0);
+        if (isBullet(first)) {
+            return hasNonBlankAfterPrefix(trimmed, 1);
+        }
+        if (Character.isDigit(first)) {
+            int i = 0;
+            while (i < trimmed.length() && Character.isDigit(trimmed.charAt(i))) {
+                i++;
+            }
+            if (i < trimmed.length() && (trimmed.charAt(i) == '.' || trimmed.charAt(i) == ')')) {
+                return hasNonBlankAfterPrefix(trimmed, i + 1);
+            }
+        }
+        // Uppercase line as a new item only when there is no current key yet.
+        if (currentKey == null) {
+            return isUppercaseLetter(first) && trimmed.length() > 1;
+        }
+        return false;
     }
 
     private static boolean isAgendaContinuationLine(String line) {
-        return !line.matches("(?i)^(?:Ruegos|No habiendo|Clausura).*");
+        if (line == null || line.isBlank()) {
+            return false;
+        }
+        String t = line.strip();
+        String lower = t.toLowerCase();
+        return !(lower.startsWith("ruegos") || lower.startsWith("no habiendo") || lower.startsWith("clausura"));
+    }
+
+    private static boolean isBullet(char c) {
+        return c == '•'
+                || c == '·'
+                || c == '▪'
+                || c == '▫'
+                || c == '◦'
+                || c == '‣'
+                || c == '⁃'
+                || c == '*'
+                || c == '-';
+    }
+
+    private static boolean hasNonBlankAfterPrefix(String s, int idx) {
+        if (idx < 0 || idx >= s.length()) {
+            return false;
+        }
+        int i = idx;
+        while (i < s.length() && Character.isWhitespace(s.charAt(i))) {
+            i++;
+        }
+        return i < s.length();
+    }
+
+    private static boolean isUppercaseLetter(char c) {
+        return Character.isLetter(c) && Character.isUpperCase(c);
     }
 
     private void parseAgendaLinesIntoMap(String[] lines, Map<String, String> agenda) {

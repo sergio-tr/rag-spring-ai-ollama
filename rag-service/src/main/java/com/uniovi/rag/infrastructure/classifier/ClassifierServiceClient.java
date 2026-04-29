@@ -49,7 +49,7 @@ public class ClassifierServiceClient implements QueryClassifier {
      * {@link org.springframework.boot.web.client.RestTemplateBuilder} so outbound calls propagate W3C trace context.
      */
     public ClassifierServiceClient(String baseUrl, String modelId, int timeoutMs, RestTemplate restTemplate) {
-        this.baseUrl = baseUrl != null ? baseUrl.replaceAll("/+$", "") : "";
+        this.baseUrl = baseUrl != null ? stripTrailingSlashes(baseUrl) : "";
         this.modelId = (modelId != null && !modelId.isBlank()) ? modelId : DEFAULT_MODEL_ID;
         int effectiveTimeout = timeoutMs > 0 ? timeoutMs : 5000;
         this.restTemplate = restTemplate != null ? restTemplate : createDefaultRestTemplate(effectiveTimeout);
@@ -117,5 +117,16 @@ public class ClassifierServiceClient implements QueryClassifier {
         RestTemplate rt = new RestTemplate();
         rt.setRequestFactory(factory);
         return rt;
+    }
+
+    private static String stripTrailingSlashes(String url) {
+        if (url == null || url.isEmpty()) {
+            return "";
+        }
+        int end = url.length();
+        while (end > 0 && url.charAt(end - 1) == '/') {
+            end--;
+        }
+        return url.substring(0, end);
     }
 }

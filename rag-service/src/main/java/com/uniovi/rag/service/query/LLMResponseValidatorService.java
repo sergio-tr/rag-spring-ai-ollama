@@ -1,9 +1,8 @@
 package com.uniovi.rag.service.query;
 
+import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.regex.Pattern;
 
 /**
  * Validates and cleans LLM responses consistently across the query pipeline.
@@ -13,13 +12,6 @@ public class LLMResponseValidatorService implements ResponseValidator {
     private static final Logger log = LoggerFactory.getLogger(LLMResponseValidatorService.class);
     private static final int MIN_RESPONSE_LENGTH = 2;
     private static final int MAX_RESPONSE_LENGTH = 10000;
-    private static final int RX_FLAGS =
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.DOTALL | Pattern.CANON_EQ;
-    private static final Pattern NO_ERROR_PHRASE = Pattern.compile(
-            ".*\\b(no|ningún|ningun|sin)\\s+(ningún|ningun)?\\s*error\\b.*", RX_FLAGS);
-    private static final Pattern NO_HAY_ERROR = Pattern.compile(".*\\bno\\s+hay\\s+error.*", RX_FLAGS);
-    private static final Pattern NO_ERROR_ENCONTRADO = Pattern.compile(
-            ".*\\bno\\s+se\\s+encontr[oó]\\s+(ningún|ningun)?\\s*error.*", RX_FLAGS);
 
     @Override
     public boolean isValidResponse(String response, String context) {
@@ -76,19 +68,35 @@ public class LLMResponseValidatorService implements ResponseValidator {
 
     private static boolean isErrorResponse(String response) {
         if (response == null || response.isEmpty()) return false;
-        String lower = response.toLowerCase().trim();
-        if (NO_ERROR_PHRASE.matcher(lower).matches()) return false;
-        if (NO_HAY_ERROR.matcher(lower).matches()) return false;
-        if (NO_ERROR_ENCONTRADO.matcher(lower).matches()) return false;
+        String lower = response.toLowerCase(Locale.ROOT).trim();
+        if (isExplicitNoErrorPhrase(lower)) return false;
         return (lower.startsWith("error:") || lower.startsWith("exception:"))
-                || (lower.contains("error occurred") || lower.contains("an error occurred"))
-                || (lower.contains("processing error") || lower.contains("processing exception"))
+                || lower.contains("error occurred")
+                || lower.contains("an error occurred")
+                || lower.contains("processing error")
+                || lower.contains("processing exception")
                 || looksLikeExceptionTrace(lower)
-                || (lower.contains("failed to process") || lower.contains("failed to retrieve"));
+                || lower.contains("failed to process")
+                || lower.contains("failed to retrieve");
     }
 
     private static boolean looksLikeExceptionTrace(String lower) {
         return lower.contains("exception")
                 && (lower.contains("thrown") || lower.contains("caught") || lower.contains("at "));
+    }
+
+    private static boolean isExplicitNoErrorPhrase(String lower) {
+        // Avoid regex here: simple phrase checks are sufficient and safer.
+        // Normalize common Spanish variants without attempting full NLP.
+        if (lower.contains("no hay error")) return true;
+        if (lower.contains("no se encontro error")) return true;
+        if (lower.contains("no se encontró error")) return true;
+
+        // "no error", "sin error", "ningun error", "ningún error"
+        if (lower.contains(" no error")) return true;
+        if (lower.contains(" sin error")) return true;
+        if (lower.contains(" ningun error")) return true;
+        if (lower.contains(" ningún error")) return true;
+        return false;
     }
 }

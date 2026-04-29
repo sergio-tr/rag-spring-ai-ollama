@@ -123,12 +123,52 @@ public class DecisionExtractionTool extends AbstractTool {
     private List<String> extractDecisions(String content, String query) {
         String bounded = content == null ? "" : RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
         // Split content into fragments and use LLM to determine if it's a relevant decision
-        return Stream.of(bounded.split("(?<=[.:?])\\s*([\\n\\r])+"))
+        return splitIntoFragments(bounded).stream()
                 .map(String::trim)
                 .filter(p -> !p.isBlank())
                 .filter(p -> isDecisionRelevantToQuery(p, query))
                 .limit(10)
                 .collect(Collectors.toList());
+    }
+
+    private static List<String> splitIntoFragments(String text) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        // Avoid regex on large/untrusted input: do a simple scan that splits on newline blocks
+        // following sentence-ending punctuation.
+        List<String> out = new ArrayList<>();
+        StringBuilder buf = new StringBuilder();
+        boolean sawTerminator = false;
+        int newlineRun = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            buf.append(c);
+            if (c == '.' || c == ':' || c == '?' || c == '!') {
+                sawTerminator = true;
+            }
+            if (c == '\n' || c == '\r') {
+                newlineRun++;
+            } else if (Character.isWhitespace(c)) {
+                // keep whitespace
+            } else {
+                newlineRun = 0;
+            }
+            if (sawTerminator && newlineRun >= 1) {
+                String frag = buf.toString().trim();
+                if (!frag.isEmpty()) {
+                    out.add(frag);
+                }
+                buf.setLength(0);
+                sawTerminator = false;
+                newlineRun = 0;
+            }
+        }
+        String tail = buf.toString().trim();
+        if (!tail.isEmpty()) {
+            out.add(tail);
+        }
+        return out;
     }
 
     /**

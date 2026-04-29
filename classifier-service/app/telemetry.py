@@ -37,7 +37,14 @@ def setup_telemetry(app):
 
     service_name = os.environ.get("OTEL_SERVICE_NAME", "classifier-service")
     resource = Resource.create({"service.name": service_name})
-    base_url = endpoint if endpoint.startswith("http") else f"http://{endpoint}"
+    # Prefer explicit scheme to avoid accidentally sending telemetry over cleartext.
+    # For local collectors, allow http when the endpoint is loopback or a local service name.
+    if endpoint.startswith("http://") or endpoint.startswith("https://"):
+        base_url = endpoint
+    else:
+        local_prefixes = ("localhost", "127.0.0.1", "otel-collector", "collector")
+        scheme = "http" if endpoint.startswith(local_prefixes) else "https"
+        base_url = f"{scheme}://{endpoint}"
     base_url = base_url.rstrip("/")
 
     # Tracing
