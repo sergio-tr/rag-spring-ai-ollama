@@ -98,9 +98,12 @@ describe("RegisterForm", () => {
   it("registers and navigates", async () => {
     const user = userEvent.setup();
     vi.mocked(apiFetch).mockResolvedValueOnce({
-      accessToken: "a",
-      refreshToken: "r",
-      user: { id: "1", email: "e@e.com", name: "n", role: "USER" },
+      status: "REGISTERED",
+      login: {
+        accessToken: "a",
+        refreshToken: "r",
+        user: { id: "1", email: "e@e.com", name: "n", role: "USER" },
+      },
     });
     render(
       <IntlTestProvider>
