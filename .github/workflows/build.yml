@@ -1,10 +1,9 @@
 name: Build (no tests)
 
 on:
-  push:
-    branches: [main, master]
-  pull_request:
-    branches: [main, master]
+  # Manual tool only: CI (ci.yml) is the authoritative gate for PRs and pushes.
+  # Keep this workflow as an ad-hoc compile-only signal when needed.
+  workflow_dispatch: {}
 
 jobs:
   backend:

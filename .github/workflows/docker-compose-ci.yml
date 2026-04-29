@@ -11,11 +11,8 @@ on:
     paths:
       - "docker/**"
       - ".github/workflows/docker-compose-ci.yml"
-  push:
-    branches: [main, master]
-    paths:
-      - "docker/**"
-      - ".github/workflows/docker-compose-ci.yml"
+  # Note: no push trigger by default to avoid redundant post-merge compute.
+  # The authoritative CI DAG already runs a compose structural guard on push main/master.
 
 concurrency:
   group: docker-compose-ci-${{ github.workflow }}-${{ github.ref }}
@@ -37,13 +34,14 @@ jobs:
       - name: Create .env files (create-env-all.sh + sync)
         run: |
           set -euo pipefail
-          bash ./docker/scripts/create-env-all.sh --force
+          bash ./docker/scripts/create-env-all.sh --force 2>&1 | tee /tmp/docker-compose-ci-env.log
 
       - name: Compose policy guard (structural rules)
         run: |
           set -euo pipefail
           python3 docker/scripts/compose_guard.py \
-            --only-rules image_forbidden,yaml_error,build_invalid,build_missing_context,build_missing_dockerfile
+            --only-rules image_forbidden,yaml_error,build_invalid,build_missing_context,build_missing_dockerfile \
+            2>&1 | tee /tmp/docker-compose-ci-compose-guard.log
 
       - name: docker compose config — base + profiles
         working-directory: docker
@@ -52,7 +50,7 @@ jobs:
           docker compose -f docker-compose.yml \
             --profile logs \
             --env-file ../observability/.env \
-            config -q
+            config -q 2>&1 | tee /tmp/docker-compose-ci-config-base.log
 
       - name: docker compose config — obs overlays + profiles
         working-directory: docker
@@ -67,7 +65,7 @@ jobs:
             --env-file ../rag-service/.env \
             --env-file ../webapp/.env \
             --env-file ../observability/.env \
-            config -q
+            config -q 2>&1 | tee /tmp/docker-compose-ci-config-obs.log
 
       - name: docker compose config — prod-like
         working-directory: docker
@@ -80,4 +78,18 @@ jobs:
             --env-file ../rag-service/.env \
             --env-file ../webapp/.env \
             --env-file ../observability/.env \
-            config -q
+            config -q 2>&1 | tee /tmp/docker-compose-ci-config-prod.log
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: docker-compose-ci-diagnostics
+          path: |
+            /tmp/docker-compose-ci-env.log
+            /tmp/docker-compose-ci-compose-guard.log
+            /tmp/docker-compose-ci-config-base.log
+            /tmp/docker-compose-ci-config-obs.log
+            /tmp/docker-compose-ci-config-prod.log
+          retention-days: 7
+          if-no-files-found: warn

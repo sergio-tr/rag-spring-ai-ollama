@@ -3,13 +3,9 @@
 name: Stack integration (pytest)
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [main, master]
-    paths:
-      - "tests/integration/**"
-      - "rag-service/**"
-      - ".github/workflows/integration.yml"
+  # Manual tool only: the authoritative CI DAG (ci.yml → reusable-ci-core.yml)
+  # already runs stack integration on PRs and on push to main/master.
+  workflow_dispatch: {}
 concurrency:
   group: integration-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

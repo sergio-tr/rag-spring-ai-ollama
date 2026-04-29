@@ -4,10 +4,6 @@ name: Observability smoke
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "docker/**"
-      - ".github/workflows/observability-smoke.yml"
   schedule:
     - cron: "45 6 * * *"
 

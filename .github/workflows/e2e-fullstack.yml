@@ -2,13 +2,9 @@
 name: E2E fullstack (Playwright + API)
 
 on:
-  workflow_dispatch:
-  push:
-    branches: [main, master]
-    paths:
-      - "webapp/**"
-      - "rag-service/**"
-      - ".github/workflows/e2e-fullstack.yml"
+  # Manual tool only: the authoritative CI DAG (ci.yml → reusable-ci-core.yml)
+  # already runs fullstack E2E on PRs and on push to main/master.
+  workflow_dispatch: {}
 concurrency:
   group: e2e-fullstack-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
