@@ -3,6 +3,7 @@ package com.uniovi.rag.domain.runtime.query;
 import com.uniovi.rag.domain.model.QueryType;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -18,7 +19,7 @@ class QueryUnderstandingResultTest {
         EntityExtractionResult entities = EntityExtractionResult.emptyWithNote("n");
         StructuredRewriteResult rewrite = StructuredRewriteResult.identityDisabled("norm", null);
 
-        List<String> mutableNotes = new java.util.ArrayList<>(List.of("a"));
+        List<String> mutableNotes = new ArrayList<>(List.of("a"));
 
         QueryUnderstandingResult r =
                 new QueryUnderstandingResult(
