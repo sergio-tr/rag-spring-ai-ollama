@@ -11,7 +11,10 @@ import com.uniovi.rag.infrastructure.persistence.jpa.PasswordResetTokenEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntityFactory;
 import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
+import com.uniovi.rag.interfaces.rest.auth.EmailNotVerifiedException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
+import com.uniovi.rag.interfaces.rest.auth.AuthTokenException;
+import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
@@ -19,6 +22,7 @@ import com.uniovi.rag.interfaces.rest.auth.dto.LoginRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.RefreshRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.RegisterResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.ResendConfirmationRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
 import com.uniovi.rag.security.JwtService;
@@ -84,7 +88,7 @@ public class AuthService {
 	}
 
 	@Transactional
-	public LoginResponse register(RegisterRequest req) {
+	public RegisterResponse register(RegisterRequest req) {
 		if (userAccountPort.findByEmailIgnoreCase(req.email()).isPresent()) {
 			throw new DuplicateEmailException();
 		}
@@ -99,14 +103,18 @@ public class AuthService {
 		u = userAccountPort.save(u);
 		if (emailConfirmationEnabled) {
 			issueEmailConfirmation(u);
+			return new RegisterResponse("PENDING_EMAIL_VERIFICATION", null);
 		}
-		return tokensForUser(u);
+		return new RegisterResponse("REGISTERED", tokensForUser(u));
 	}
 
 	@Transactional
 	public LoginResponse login(LoginRequest req) {
 		UserEntity u = userAccountPort.findByEmailIgnoreCase(req.email().trim().toLowerCase())
 				.orElseThrow(InvalidCredentialsException::new);
+		if (emailConfirmationEnabled && !u.isEmailVerified()) {
+			throw new EmailNotVerifiedException();
+		}
 		if (!passwordEncoder.matches(req.password(), u.getPasswordHash())) {
 			throw new InvalidCredentialsException();
 		}
@@ -130,16 +138,16 @@ public class AuthService {
 	@Transactional
 	public void confirmEmail(ConfirmEmailRequest req) {
 		if (!emailConfirmationEnabled) {
-			return;
+			throw new FeatureDisabledException("EMAIL_CONFIRMATION_DISABLED", "Email confirmation disabled");
 		}
 		String hash = sha256Hex(req.token().trim());
 		EmailConfirmationTokenEntity tok = emailConfirmationTokenRepository.findByTokenHash(hash)
-				.orElseThrow(InvalidCredentialsException::new);
+				.orElseThrow(() -> new AuthTokenException("CONFIRM_TOKEN_INVALID", "Invalid confirmation token"));
 		if (tok.getConsumedAt() != null) {
-			throw new InvalidCredentialsException();
+			throw new AuthTokenException("CONFIRM_TOKEN_ALREADY_USED", "Confirmation token already used");
 		}
 		if (tok.getExpiresAt().isBefore(Instant.now())) {
-			throw new InvalidCredentialsException();
+			throw new AuthTokenException("CONFIRM_TOKEN_EXPIRED", "Confirmation token expired");
 		}
 		tok.setConsumedAt(Instant.now());
 		emailConfirmationTokenRepository.save(tok);
@@ -152,7 +160,7 @@ public class AuthService {
 	@Transactional
 	public void resendConfirmation(ResendConfirmationRequest req) {
 		if (!emailConfirmationEnabled) {
-			return;
+			throw new FeatureDisabledException("EMAIL_CONFIRMATION_DISABLED", "Email confirmation disabled");
 		}
 		userAccountPort.findByEmailIgnoreCase(req.email().trim().toLowerCase())
 				.ifPresent(u -> {
@@ -163,27 +171,27 @@ public class AuthService {
 	}
 
 	@Transactional
-	public void forgotPassword(ForgotPasswordRequest req) {
+	public void forgotPassword(ForgotPasswordRequest req, String requestIp, String requestUserAgent) {
 		if (!passwordResetEnabled) {
-			return;
+			throw new FeatureDisabledException("PASSWORD_RESET_DISABLED", "Password reset disabled");
 		}
 		userAccountPort.findByEmailIgnoreCase(req.email().trim().toLowerCase())
-				.ifPresent(this::issuePasswordReset);
+				.ifPresent(u -> issuePasswordReset(u, requestIp, requestUserAgent));
 	}
 
 	@Transactional
 	public void resetPassword(ResetPasswordRequest req) {
 		if (!passwordResetEnabled) {
-			throw new InvalidCredentialsException();
+			throw new AuthTokenException("PASSWORD_RESET_DISABLED", "Password reset disabled");
 		}
 		String hash = sha256Hex(req.token().trim());
 		PasswordResetTokenEntity tok = passwordResetTokenRepository.findByTokenHash(hash)
-				.orElseThrow(InvalidCredentialsException::new);
+				.orElseThrow(() -> new AuthTokenException("RESET_TOKEN_INVALID", "Invalid reset token"));
 		if (tok.getConsumedAt() != null) {
-			throw new InvalidCredentialsException();
+			throw new AuthTokenException("RESET_TOKEN_ALREADY_USED", "Reset token already used");
 		}
 		if (tok.getExpiresAt().isBefore(Instant.now())) {
-			throw new InvalidCredentialsException();
+			throw new AuthTokenException("RESET_TOKEN_EXPIRED", "Reset token expired");
 		}
 		tok.setConsumedAt(Instant.now());
 		passwordResetTokenRepository.save(tok);
@@ -215,7 +223,7 @@ public class AuthService {
 		}
 	}
 
-	private void issuePasswordReset(UserEntity u) {
+	private void issuePasswordReset(UserEntity u, String requestIp, String requestUserAgent) {
 		String raw = randomToken();
 		String hash = sha256Hex(raw);
 		PasswordResetTokenEntity tok = new PasswordResetTokenEntity();
@@ -223,6 +231,12 @@ public class AuthService {
 		tok.setTokenHash(hash);
 		tok.setCreatedAt(Instant.now());
 		tok.setExpiresAt(Instant.now().plusSeconds(Math.max(60, passwordResetTtlSeconds)));
+		if (requestIp != null && !requestIp.isBlank()) {
+			tok.setRequestIp(requestIp.trim());
+		}
+		if (requestUserAgent != null && !requestUserAgent.isBlank()) {
+			tok.setRequestUserAgent(requestUserAgent.trim());
+		}
 		passwordResetTokenRepository.save(tok);
 		if (mailEnabled) {
 			String link = webappBaseUrl + "/en/reset-password?token=" + urlEncode(raw);

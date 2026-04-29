@@ -39,6 +39,8 @@
     "loginLink": "Sign in",
     "invalidCredentials": "Invalid email or password.",
     "registerFailed": "Could not register. Try another email.",
+    "registerVerificationRequired": "Account created. Please verify your email before signing in.",
+    "emailNotVerified": "Email verification required. Check your inbox for a confirmation link.",
     "networkError": "Network error. Check API URL and CORS."
   },
   "Nav": {

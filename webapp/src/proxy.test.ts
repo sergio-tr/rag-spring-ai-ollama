@@ -48,4 +48,23 @@ describe("proxy middleware", () => {
     const res = proxy(req);
     expect(res.headers.get("location")).toMatch(/\/en\/login$/);
   });
+
+  it("does not redirect non-app routes without auth cookie", async () => {
+    const { default: proxy } = await import("./proxy");
+    const req = new NextRequest(new URL("http://localhost/"));
+    const res = proxy(req);
+    expect(res.status).toBe(200);
+    expect(handleI18n).toHaveBeenCalledWith(req);
+  });
+
+  it.each(["/documents", "/settings", "/lab", "/admin"] as const)(
+    "redirects unauthenticated users from %s",
+    async (path) => {
+      const { default: proxy } = await import("./proxy");
+      const req = new NextRequest(new URL(`http://localhost/en${path}`));
+      const res = proxy(req);
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toBe("http://localhost/en/login");
+    },
+  );
 });

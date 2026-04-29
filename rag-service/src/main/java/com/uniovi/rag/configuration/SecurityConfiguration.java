@@ -1,6 +1,8 @@
 package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.security.JwtAuthenticationFilter;
+import com.uniovi.rag.security.RestAccessDeniedHandler;
+import com.uniovi.rag.security.RestAuthenticationEntryPoint;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +14,7 @@ import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -42,20 +45,24 @@ public class SecurityConfiguration {
             HttpSecurity http,
             JwtAuthenticationFilter jwtFilter,
             CorsConfigurationSource corsConfigurationSource,
-            RagApiPathProperties ragApiPathProperties)
+            RagApiPathProperties ragApiPathProperties,
+            RequestMappingHandlerMapping requestMappingHandlerMapping)
             throws Exception {
         http
                 // Stateless Bearer JWT — see class Javadoc (CSRF targets automatic cookie submission).
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(c -> c.configurationSource(corsConfigurationSource))
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint(new RestAuthenticationEntryPoint(requestMappingHandlerMapping))
+                        .accessDeniedHandler(new RestAccessDeniedHandler()))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus")
                         .permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/**").authenticated()
+                        .requestMatchers(ragApiPathProperties.getProductBasePath() + "/**").authenticated()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

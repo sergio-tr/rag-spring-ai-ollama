@@ -3,6 +3,7 @@ package com.uniovi.rag.application.usecase.auth;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.infrastructure.persistence.OauthIdentityRepository;
 import com.uniovi.rag.infrastructure.persistence.OauthLoginExchangeCodeRepository;
+import com.uniovi.rag.infrastructure.persistence.OauthLoginStateTokenRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.OauthLoginExchangeCodeEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.OauthIdentityEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
@@ -22,7 +23,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,6 +39,9 @@ class OauthLoginServiceTest {
 
     @Mock
     private OauthLoginExchangeCodeRepository oauthLoginExchangeCodeRepository;
+
+    @Mock
+    private OauthLoginStateTokenRepository oauthLoginStateTokenRepository;
 
     @Mock
     private JwtService jwtService;
@@ -64,6 +70,7 @@ class OauthLoginServiceTest {
                 userAccountPort,
                 oauthIdentityRepository,
                 oauthLoginExchangeCodeRepository,
+                oauthLoginStateTokenRepository,
                 jwtService,
                 passwordEncoder,
                 true,
@@ -83,7 +90,7 @@ class OauthLoginServiceTest {
     @Test
     void googleStartUrl_disabled_returnsLoginUrl() {
         OauthLoginService svc = new OauthLoginService(
-                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 false, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
         assertThat(svc.googleStartUrl()).isEqualTo("http://localhost:3000/en/login");
@@ -92,7 +99,7 @@ class OauthLoginServiceTest {
     @Test
     void googleStartUrl_enabledWithoutClientId_throws() {
         OauthLoginService svc = new OauthLoginService(
-                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
         assertThatThrownBy(svc::googleStartUrl).isInstanceOf(IllegalStateException.class);
@@ -101,7 +108,7 @@ class OauthLoginServiceTest {
     @Test
     void exchange_disabled_throwsInvalidCredentials() {
         OauthLoginService svc = new OauthLoginService(
-                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 false, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
         assertThatThrownBy(() -> svc.exchange("raw")).isInstanceOf(InvalidCredentialsException.class);
@@ -117,7 +124,7 @@ class OauthLoginServiceTest {
         when(oauthLoginExchangeCodeRepository.findByCodeHash(any())).thenReturn(Optional.of(e));
 
         OauthLoginService svc = new OauthLoginService(
-                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
         assertThatThrownBy(() -> svc.exchange("raw")).isInstanceOf(InvalidCredentialsException.class);
@@ -132,7 +139,7 @@ class OauthLoginServiceTest {
         when(oauthLoginExchangeCodeRepository.findByCodeHash(any())).thenReturn(Optional.of(e));
 
         OauthLoginService svc = new OauthLoginService(
-                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
         assertThatThrownBy(() -> svc.exchange("raw")).isInstanceOf(InvalidCredentialsException.class);
@@ -141,7 +148,7 @@ class OauthLoginServiceTest {
     @Test
     void googleStartUrl_enabled_buildsGoogleAuthorizationUrl() {
         OauthLoginService svc = new OauthLoginService(
-                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000/", "http://localhost:9000/", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
 
@@ -152,6 +159,7 @@ class OauthLoginServiceTest {
         assertThat(url).contains("scope=openid+email+profile");
         assertThat(url).contains("redirect_uri=http%3A%2F%2Flocalhost%3A9000%2Fapi%2Fauth%2Foauth%2Fgoogle%2Fcallback");
         assertThat(url).contains("state=");
+        verify(oauthLoginStateTokenRepository).save(any());
     }
 
     @Test
@@ -164,7 +172,7 @@ class OauthLoginServiceTest {
         when(userAccountPort.save(user)).thenReturn(user);
 
         OauthLoginService svc = new OauthLoginService(
-                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
         UserEntity resolved = ReflectionTestUtils.invokeMethod(svc, "resolveOrCreateUser", "subject", "a@b.com", true);
@@ -180,7 +188,7 @@ class OauthLoginServiceTest {
         when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         OauthLoginService svc = new OauthLoginService(
-                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
 
@@ -195,7 +203,7 @@ class OauthLoginServiceTest {
     @Test
     void handleGoogleCallback_oauthDisabled_returnsLoginUrl() {
         OauthLoginService svc = new OauthLoginService(
-                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 false, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
 
@@ -205,7 +213,7 @@ class OauthLoginServiceTest {
     @Test
     void handleGoogleCallback_errorOrMissingCode_returnsOauthError() {
         OauthLoginService svc = new OauthLoginService(
-                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, jwtService, passwordEncoder,
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
 
@@ -215,6 +223,20 @@ class OauthLoginServiceTest {
                 .isEqualTo("http://localhost:3000/en/login?oauth=error");
         assertThat(svc.handleGoogleCallback("   ", "state", null))
                 .isEqualTo("http://localhost:3000/en/login?oauth=error");
+    }
+
+    @Test
+    void handleGoogleCallback_invalidState_returnsInvalidState_withoutExchangingCode() {
+        when(oauthLoginStateTokenRepository.findByStateHash(any())).thenReturn(Optional.empty());
+        OauthLoginService svc = new OauthLoginService(
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
+                true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
+                "/api/auth/oauth/google/callback");
+
+        String redirect = svc.handleGoogleCallback("code", "bad-state", null);
+        assertThat(redirect).isEqualTo("http://localhost:3000/en/login?oauth=invalid_state");
+        verify(oauthLoginStateTokenRepository).findByStateHash(any());
+        verify(oauthLoginExchangeCodeRepository, never()).save(any());
     }
 }
 

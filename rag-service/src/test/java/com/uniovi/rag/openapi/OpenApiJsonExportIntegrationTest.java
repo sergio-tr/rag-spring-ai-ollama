@@ -79,5 +79,36 @@ class OpenApiJsonExportIntegrationTest {
         // Always write the decoded body to disk to make CI/local failures diagnosable.
         Files.writeString(out, jsonBodyForFile, StandardCharsets.UTF_8);
         assertTrue(json.has("openapi"), "response should be OpenAPI JSON (see target/openapi.json)");
+
+        // Swagger/OpenAPI security must declare Bearer JWT and mark protected endpoints.
+        JsonNode schemes = json.path("components").path("securitySchemes");
+        assertTrue(schemes.has("bearerAuth"), "OpenAPI must declare components.securitySchemes.bearerAuth");
+        assertTrue(
+                schemes.path("bearerAuth").path("type").asText("").equalsIgnoreCase("http"),
+                "bearerAuth.type must be http");
+        assertTrue(
+                schemes.path("bearerAuth").path("scheme").asText("").equalsIgnoreCase("bearer"),
+                "bearerAuth.scheme must be bearer");
+
+        // Protected example: /api/v5/me/summary GET should require bearerAuth.
+        JsonNode meSummaryGet = json.path("paths").path("/api/v5/me/summary").path("get");
+        assertTrue(meSummaryGet.isObject(), "OpenAPI must include /api/v5/me/summary GET path");
+        JsonNode sec = meSummaryGet.path("security");
+        assertTrue(sec.isArray() && sec.size() > 0, "Protected operations must include security requirements");
+        boolean hasBearer = false;
+        for (JsonNode entry : sec) {
+            if (entry.has("bearerAuth")) {
+                hasBearer = true;
+                break;
+            }
+        }
+        assertTrue(hasBearer, "Protected operations must require bearerAuth");
+
+        // Public example: /api/auth/login should not require bearerAuth.
+        JsonNode loginPost = json.path("paths").path("/api/auth/login").path("post");
+        assertTrue(loginPost.isObject(), "OpenAPI must include /api/auth/login POST path");
+        assertTrue(
+                !loginPost.has("security") || loginPost.path("security").isMissingNode() || loginPost.path("security").size() == 0,
+                "Public auth endpoints must not require bearerAuth");
     }
 }

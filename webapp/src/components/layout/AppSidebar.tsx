@@ -21,12 +21,14 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 import { useProjectList, useActivateProject } from "@/features/projects/hooks/use-projects";
 import { useConversations, useCreateConversation } from "@/features/chat/hooks/use-conversations";
 import { useAppStore } from "@/store/app.store";
 import type { ProjectSummary } from "@/types/api";
 import { NewProjectDialog } from "@/features/projects/components/NewProjectDialog";
-import { getStoredUserRole } from "@/lib/user-role";
+import { getStoredUserRole, setStoredUserRole } from "@/lib/user-role";
+import type { MeResponse } from "@/types/api";
 
 const primaryLinks = [
   { href: "/projects" as const, key: "projects" as const, icon: FolderKanban },
@@ -108,7 +110,26 @@ export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const canSeeAdmin = getStoredUserRole() === "ADMIN";
+  const [role, setRole] = useState(() => getStoredUserRole());
+  const canSeeAdmin = role === "ADMIN";
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const me = await apiFetch<MeResponse>("/api/auth/me");
+        if (cancelled) return;
+        const nextRole = me.roleName ?? null;
+        setRole(nextRole);
+        setStoredUserRole(nextRole);
+      } catch {
+        // Ignore: anonymous sessions and API failures should not block navigation rendering.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const activeProject = useAppStore((s) => s.activeProject);
   const activateProject = useActivateProject();

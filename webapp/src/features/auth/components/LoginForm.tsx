@@ -51,6 +51,10 @@ export function LoginForm() {
         setFormError(t("invalidCredentials"));
         return;
       }
+      if (e instanceof ApiError && e.status === 403) {
+        setFormError(t("emailNotVerified"));
+        return;
+      }
       setFormError(t("networkError"));
     }
   }
