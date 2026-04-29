@@ -39,11 +39,14 @@ public final class JudgeScoreParser {
         if (llmEvaluation == null || llmEvaluation.isBlank()) {
             return scores;
         }
-        scores.put("correctness", extractScore(llmEvaluation, CORRECTNESS_LINE));
-        scores.put("context_sufficiency", extractScore(llmEvaluation, CONTEXT_SUFFICIENCY_LINE));
-        scores.put("relevance", extractScore(llmEvaluation, RELEVANCE_LINE));
-        scores.put("independence", extractScore(llmEvaluation, INDEPENDENCE_LINE));
-        scores.put("groundedness", extractScore(llmEvaluation, GROUNDEDNESS_LINE));
+        // Bound the input to avoid excessive regex work on untrusted or very large LLM outputs.
+        String bounded = llmEvaluation.length() > 20000 ? llmEvaluation.substring(0, 20000) : llmEvaluation;
+
+        putIfPresent(scores, "correctness", extractScore(bounded, CORRECTNESS_LINE));
+        putIfPresent(scores, "context_sufficiency", extractScore(bounded, CONTEXT_SUFFICIENCY_LINE));
+        putIfPresent(scores, "relevance", extractScore(bounded, RELEVANCE_LINE));
+        putIfPresent(scores, "independence", extractScore(bounded, INDEPENDENCE_LINE));
+        putIfPresent(scores, "groundedness", extractScore(bounded, GROUNDEDNESS_LINE));
         return scores;
     }
 
@@ -57,5 +60,11 @@ public final class JudgeScoreParser {
             }
         }
         return null;
+    }
+
+    private static void putIfPresent(Map<String, Integer> scores, String key, Integer value) {
+        if (value != null) {
+            scores.put(key, value);
+        }
     }
 }

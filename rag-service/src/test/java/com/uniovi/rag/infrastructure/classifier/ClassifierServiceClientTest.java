@@ -38,6 +38,15 @@ class ClassifierServiceClientTest {
     }
 
     @Test
+    void constructor_stripsTrailingSlashesFromBaseUrl() throws Exception {
+        ClassifierServiceClient c =
+                new ClassifierServiceClient("http://example.test///", "default", 1000, restTemplate);
+        var f = ClassifierServiceClient.class.getDeclaredField("baseUrl");
+        f.setAccessible(true);
+        assertEquals("http://example.test", f.get(c));
+    }
+
+    @Test
     void classify_returnsQueryType_whenServiceReturns200WithValidQueryType() {
         String base = ClassifierClientTestSupport.defaultBaseUrl();
         server.expect(requestTo(base + "/classify"))

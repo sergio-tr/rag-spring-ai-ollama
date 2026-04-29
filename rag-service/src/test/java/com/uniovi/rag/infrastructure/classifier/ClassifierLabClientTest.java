@@ -36,6 +36,14 @@ class ClassifierLabClientTest {
     }
 
     @Test
+    void constructor_stripsTrailingSlashesFromBaseUrl() throws Exception {
+        ClassifierLabClient c = new ClassifierLabClient("http://example.test///", 1000, new ObjectMapper(), restTemplate);
+        var f = ClassifierLabClient.class.getDeclaredField("baseUrl");
+        f.setAccessible(true);
+        assertThat(f.get(c)).isEqualTo("http://example.test");
+    }
+
+    @Test
     void isConfigured_falseWhenBaseUrlBlank() {
         ClassifierLabClient empty = new ClassifierLabClient("", 5000, new ObjectMapper(), restTemplate);
         assertThat(empty.isConfigured()).isFalse();

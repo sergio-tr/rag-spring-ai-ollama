@@ -18,17 +18,17 @@ GitHub Rulesets / branch protection **required status checks** must match the **
 | `core_webapp_e2e` | Webapp E2E (Playwright smoke) | Yes |
 | `core_done` | Core stages complete | No (aggregator) |
 | `integration` | Stack integration (pytest) | Yes |
-| `docker_build_smoke` | Docker build smoke (no push) | Yes |
+| `docker_build_smoke` | Docker build smoke (no push) | No (release-quality lane; run on PRs to `main`/`master` and push `main`/`master`) |
 | `compose_structural_guard` | Compose structural guard (no Docker) | Yes |
 | `e2e_fullstack` | E2E fullstack (Playwright @fullstack) | Yes |
-| `sonar` | SonarCloud Scan | Yes when `SONAR_TOKEN` is configured and fork policy allows it |
+| `sonar` | SonarCloud Scan | No (release-quality lane; run on PRs to `main`/`master` and push `main`/`master`) |
 | `performance` | Performance (Gatling + infra probe) | No for `dev` (runs only when PR base is `main` or `master`) |
 
 **Separate workflow** [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml): job **Env, compose guard, docker compose config** — see [Compose validation (two layers)](#compose-validation-two-layers) below.
 
 ### Job DAG (names as in GitHub Actions)
 
-`core_backend` → parallel with `core_classifier` and the `core_webapp` → `core_webapp_e2e` chain → `core_done` → `integration`, `docker_build_smoke`, and `compose_structural_guard` (parallel) → `e2e_fullstack` → `sonar` → `performance` (conditional).
+`core_backend` → parallel with `core_classifier` and the `core_webapp` → `core_webapp_e2e` chain → `core_done` → `integration` and `compose_structural_guard` (parallel) → `e2e_fullstack` → release-quality lanes (`docker_build_smoke` + `sonar`) on `main`/`master` only → `performance` (conditional).
 
 | Job id | Role | Typical merge policy |
 | --- | --- | --- |
@@ -38,10 +38,10 @@ GitHub Rulesets / branch protection **required status checks** must match the **
 | `core_webapp_e2e` | Playwright smoke (excludes `@fullstack`) | **Blocking** |
 | `core_done` | Aggregates core stages | N/A (no-op step) |
 | `integration` | Spring `e2e` + Postgres + `pytest tests/integration` (stack HTTP) | **Blocking** (recommended) |
-| `docker_build_smoke` | `docker build` for app images + `db` + `reverse-proxy` (no push); see inventory below | **Blocking** |
+| `docker_build_smoke` | `docker build` for app images + `db` + `reverse-proxy` (no push); see inventory below | **Blocking** for PRs to `main`/`master` (not default for `dev`) |
 | `compose_structural_guard` | `create-env-all.sh` + structural `compose_guard.py` (no Docker daemon) | **Blocking** |
 | `e2e_fullstack` | Spring + Postgres + Playwright `@fullstack` | **Blocking** (recommended) |
-| `sonar` | Coverage + SonarCloud scan | **Blocking** when `SONAR_TOKEN` is available (see forks below) |
+| `sonar` | Coverage + SonarCloud scan | **Blocking** for PRs to `main`/`master` when `SONAR_TOKEN` is available (see forks below) |
 | `performance` | Gatling + Python infra probe | **Not** run for PRs to `dev` (only when `pull_request` base is `main` or `master`) |
 
 Team policy: mark the jobs you require in GitHub **Branch protection** / **Rulesets** to match the tables above. Do not treat `performance` as a `dev` PR gate unless you change the workflow conditions.
@@ -94,7 +94,7 @@ Compose defaults for the same prefix live under **Compose parameterization** bel
 ### Compose validation (two layers)
 
 1. **Every PR** (main CI): job **`compose_structural_guard`** runs `create-env-all.sh --force` and structural [`compose_guard.py`](../../docker/scripts/compose_guard.py) (`image_forbidden`, `yaml_error`, `build_*`). No Docker daemon required.
-2. **When Docker paths change:** [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml) runs the same structural guard plus **`docker compose config -q`** on merged file sets (see workflow). Trigger: `paths` **`docker/**`** or edits to that workflow on **`pull_request`** (all configured bases) and on **`push`** to **`main`/`master` only** — so application-only PRs rely on layer (1) unless you run Compose locally.
+2. **When Docker paths change:** [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml) runs the same structural guard plus **`docker compose config -q`** on representative merged file sets (see workflow). Trigger: `paths` **`docker/**`** or edits to that workflow on **`pull_request`** (all configured bases). Application-only PRs rely on layer (1) unless you run Compose locally.
 
 **Full `compose_guard` (including `environment_literal`, `healthcheck_*`):** not enforced in CI until remaining overlays are migrated; tracked backlog: `compose.obs.yml`, `compose.prod.yml` (`reverse-proxy`), `compose.rag-dev-obs.yml`, `docker-compose.yml` (classifier healthcheck). CI continues to use `--only-rules` structural subset in both workflows.
 

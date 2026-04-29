@@ -417,6 +417,9 @@ jobs:
     name: Docker build smoke (no push)
     runs-on: ubuntu-latest
     needs: [core_done]
+    # Release-quality lane: run on PRs to main/master and on push to main/master.
+    # Do not run on PRs targeting dev by default (avoid Docker-heavy compute on integration PRs).
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'master')) }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
@@ -482,7 +485,8 @@ jobs:
   e2e_fullstack:
     name: E2E fullstack (Playwright @fullstack)
     runs-on: ubuntu-latest
-    needs: [integration, integration_classifier_required, docker_build_smoke, compose_structural_guard]
+    # Dev PR gate requires fullstack E2E; keep it independent from Docker-heavy lanes.
+    needs: [integration, integration_classifier_required, compose_structural_guard]
     timeout-minutes: 45
     services:
       postgres:
@@ -718,7 +722,13 @@ jobs:
     name: SonarCloud Scan
     runs-on: ubuntu-latest
     needs: [e2e_fullstack]
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
+    # Release-quality lane: run on PRs to main/master and on push to main/master.
+    # Skip fork PRs (secrets are unavailable by default).
+    if: >-
+      ${{
+        (github.event_name == 'push' || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'master')))
+        && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+      }}
     timeout-minutes: 60
     permissions:
       contents: read

@@ -1,40 +1,39 @@
 package com.uniovi.rag.service.evaluation;
 
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 class JudgeScoreParserTest {
 
     @Test
-    void parseScores_extractsAllFiveDimensions() {
-        String text =
-                """
+    void parseScores_extractsKnownScores() {
+        String text = """
                 Correctness: [5]
-                Context Sufficiency: 3
-                Relevance: [2.0]
-                Independence: 1
+                Context Sufficiency: [3.0]
+                Relevance: 2
+                Independence: [1]
                 Groundedness: [4]
                 """;
-        Map<String, Integer> out = JudgeScoreParser.parseScores(text);
-        assertThat(out)
-                .containsEntry("correctness", 5)
-                .containsEntry("context_sufficiency", 3)
-                .containsEntry("relevance", 2)
-                .containsEntry("independence", 1)
-                .containsEntry("groundedness", 4);
+
+        Map<String, Integer> scores = JudgeScoreParser.parseScores(text);
+
+        assertThat(scores).containsEntry("correctness", 5);
+        assertThat(scores).containsEntry("context_sufficiency", 3);
+        assertThat(scores).containsEntry("relevance", 2);
+        assertThat(scores).containsEntry("independence", 1);
+        assertThat(scores).containsEntry("groundedness", 4);
     }
 
     @Test
-    void parseScores_returnsNullValuesWhenMissing() {
+    void parseScores_doesNotInsertNullValues() {
         Map<String, Integer> out = JudgeScoreParser.parseScores("Correctness: 2");
-        assertThat(out.get("correctness")).isEqualTo(2);
-        assertThat(out.get("context_sufficiency")).isNull();
-        assertThat(out.get("relevance")).isNull();
-        assertThat(out.get("independence")).isNull();
-        assertThat(out.get("groundedness")).isNull();
+        assertThat(out).containsEntry("correctness", 2);
+        assertThat(out).doesNotContainKey("context_sufficiency");
+        assertThat(out).doesNotContainKey("relevance");
+        assertThat(out).doesNotContainKey("independence");
+        assertThat(out).doesNotContainKey("groundedness");
     }
 
     @Test

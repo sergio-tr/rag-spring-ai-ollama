@@ -44,18 +44,20 @@ The `CI` workflow delegates to the reusable DAG in `.github/workflows/reusable-c
 - Stack integration (pytest, classifier optional)
 - Stack integration (pytest, classifier required)
 - Compose structural guard
-- Docker build smoke (no push)
 - Fullstack UI (`@fullstack`)
-- SonarCloud scan (internal PRs; see below)
+ 
+Notes:
+
+- Docker build smoke and SonarCloud are treated as **release-quality lanes** and run primarily on PRs targeting `main` / `master` (and on push to `main` / `master` for post-merge SHA contracts).
 
 ## SonarCloud policy
 
-- **Internal PRs (same repo)**: Sonar is **blocking** when `SONAR_TOKEN` is available.
+- **PRs to `main` / `master` (same repo)**: Sonar is **blocking** when `SONAR_TOKEN` is available.
 - **Fork PRs**: Sonar is **non-blocking** (skipped) because secrets are not available by default.
 
 ## Docker Compose CI (path-filtered auxiliary)
 
-[`docker-compose-ci.yml`](../workflows/docker-compose-ci.yml) runs when `docker/**` or that workflow file changes. **`pull_request`** covers `dev`, `main`, and `master`. **`push`** is limited to **`main` and `master` only** (not `dev`) so it does not duplicate runs when a PR is open and `dev` is updated, matching the `ci.yml` policy.
+[`docker-compose-ci.yml`](../workflows/docker-compose-ci.yml) runs when `docker/**` or that workflow file changes. **`pull_request`** covers `dev`, `main`, and `master`. It is an **auxiliary** validation (compose guard + representative `docker compose config -q`) and must not be treated as a substitute for the authoritative `CI` workflow.
 
 ## Manual deploy and commit SHA
 

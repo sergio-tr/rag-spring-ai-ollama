@@ -370,12 +370,14 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         if (decisionText == null || decisionText.isBlank()) {
             return Collections.emptyList();
         }
-        
+        // Bound untrusted text before running regex matchers to avoid excessive backtracking work.
+        String bounded = decisionText.length() > 5000 ? decisionText.substring(0, 5000) : decisionText;
+
         List<String> entities = new ArrayList<>();
         
         // Extract amounts (€, euros, numbers with currency)
         Pattern amountPattern = Pattern.compile("\\d++(?:[.,]\\d++)?\\s*+(?:€|euro)");
-        Matcher amountMatcher = amountPattern.matcher(decisionText);
+        Matcher amountMatcher = amountPattern.matcher(bounded);
         while (amountMatcher.find()) {
             entities.add(amountMatcher.group().trim());
         }
@@ -384,7 +386,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         Pattern datePattern = Pattern.compile(
             "\\d{1,2}\\s+de\\s+[a-z]+\\s+de\\s+\\d{4}|\\d{1,2}/\\d{1,2}/\\d{4}|\\d{4}-\\d{2}-\\d{2}"
         );
-        Matcher dateMatcher = datePattern.matcher(decisionText);
+        Matcher dateMatcher = datePattern.matcher(bounded);
         while (dateMatcher.find()) {
             entities.add(dateMatcher.group().trim());
         }
@@ -393,11 +395,11 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         Pattern namePattern = Pattern.compile(
             "\\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{1,48}(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{1,48}){1,12}\\b"
         );
-        Matcher nameMatcher = namePattern.matcher(decisionText);
+        Matcher nameMatcher = namePattern.matcher(bounded);
         while (nameMatcher.find()) {
             String name = nameMatcher.group().trim();
             // Filter out common words that are capitalized but not entities
-            if (!name.matches("^(El|La|Los|Las|De|Del|En|Por|Para|Con|Sin|Sobre|Bajo|Entre|Durante|Según|Mediante)$")) {
+            if (!isCapitalizedStopword(name)) {
                 entities.add(name);
             }
         }
@@ -406,6 +408,14 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                 .distinct()
                 .limit(10) // Limit to avoid too many entities
                 .toList();
+    }
+
+    private static boolean isCapitalizedStopword(String name) {
+        return switch (name) {
+            case "El", "La", "Los", "Las", "De", "Del", "En", "Por", "Para", "Con", "Sin", "Sobre", "Bajo",
+                    "Entre", "Durante", "Según", "Mediante" -> true;
+            default -> false;
+        };
     }
 
     /**

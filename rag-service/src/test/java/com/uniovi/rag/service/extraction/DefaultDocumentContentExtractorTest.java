@@ -92,4 +92,20 @@ class DefaultDocumentContentExtractorTest {
         assertEquals(1, clusters.size());
         assertEquals("a", clusters.get(0).getRepresentativeItem());
     }
+
+    @Test
+    void extractAttendees_parsesBulletLinesAndStripsRoles() {
+        String content = """
+                Lugar: Sala
+                • Alice Example (Presidente)
+                • Bob Example (Secretario)
+                • Carol Example
+                """;
+
+        List<String> attendees = extractor.extractAttendees(content);
+
+        assertEquals(List.of("Alice Example", "Bob Example", "Carol Example"), attendees);
+        assertEquals("Alice Example", extractor.extractLiteralField("president", content));
+        assertEquals("Bob Example", extractor.extractLiteralField("secretary", content));
+    }
 }
