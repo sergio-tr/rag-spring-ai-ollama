@@ -1,9 +1,11 @@
 package com.uniovi.rag.interfaces.rest.support;
 
-import com.uniovi.rag.interfaces.rest.support.dto.ApiResponse;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.Instant;
+import com.uniovi.rag.interfaces.rest.support.dto.ApiErrorResponse;
 import org.springframework.boot.web.servlet.error.ErrorController;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ApiErrorController implements ErrorController {
 
     @RequestMapping("/error")
-    public ResponseEntity<ApiResponse<Void>> error(HttpServletRequest request) {
+    public ResponseEntity<ApiErrorResponse> error(HttpServletRequest request) {
         Object statusObj = request.getAttribute(RequestDispatcher.ERROR_STATUS_CODE);
         int status = statusObj instanceof Integer ? (Integer) statusObj : 500;
         HttpStatus httpStatus = HttpStatus.resolve(status) != null ? HttpStatus.valueOf(status) : HttpStatus.INTERNAL_SERVER_ERROR;
@@ -33,12 +35,27 @@ public class ApiErrorController implements ErrorController {
             default -> "Request failed";
         };
 
-        // Keep detail minimal to avoid leaking internals; path is useful for debugging API clients.
-        String detail = path != null ? "path=" + path : null;
+        String code = switch (httpStatus) {
+            case NOT_FOUND -> "NOT_FOUND";
+            case UNAUTHORIZED -> "UNAUTHENTICATED";
+            case FORBIDDEN -> "FORBIDDEN";
+            case METHOD_NOT_ALLOWED -> "METHOD_NOT_ALLOWED";
+            case UNSUPPORTED_MEDIA_TYPE -> "UNSUPPORTED_MEDIA_TYPE";
+            case BAD_REQUEST -> "BAD_REQUEST";
+            default -> "INTERNAL_ERROR";
+        };
 
         return ResponseEntity
                 .status(httpStatus)
-                .body(ApiResponse.fail(httpStatus.name(), message, detail));
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new ApiErrorResponse(
+                        Instant.now(),
+                        httpStatus.value(),
+                        code,
+                        message,
+                        path != null ? path : request.getRequestURI(),
+                        request.getHeader("X-Request-Id"),
+                        null));
     }
 }
 
