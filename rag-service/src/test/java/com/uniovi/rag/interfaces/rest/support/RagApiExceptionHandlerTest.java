@@ -1,7 +1,8 @@
 package com.uniovi.rag.interfaces.rest.support;
 
-import com.uniovi.rag.interfaces.rest.support.dto.ApiResponse;
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.interfaces.rest.support.dto.ApiErrorResponse;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,11 +17,13 @@ class RagApiExceptionHandlerTest {
     void handleRagService_mapsToStatusAndEnvelope() {
         RagApiExceptionHandler handler = new RagApiExceptionHandler();
         RagServiceException ex = RagServiceException.llmUnavailable(new ConnectException("refused"));
-        ResponseEntity<ApiResponse<Void>> res = handler.handleRagService(ex);
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/api/v5/lab/status");
+        ResponseEntity<ApiErrorResponse> res = handler.handleRagService(ex, req);
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, res.getStatusCode());
         assertNotNull(res.getBody());
-        assertFalse(res.getBody().success());
-        assertEquals("LLM_UNAVAILABLE", res.getBody().error().code());
-        assertNotNull(res.getBody().error().message());
+        assertEquals(503, res.getBody().status());
+        assertEquals("LLM_UNAVAILABLE", res.getBody().code());
+        assertNotNull(res.getBody().message());
     }
 }
