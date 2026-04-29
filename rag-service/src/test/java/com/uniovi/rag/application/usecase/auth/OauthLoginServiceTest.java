@@ -23,7 +23,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -157,6 +159,7 @@ class OauthLoginServiceTest {
         assertThat(url).contains("scope=openid+email+profile");
         assertThat(url).contains("redirect_uri=http%3A%2F%2Flocalhost%3A9000%2Fapi%2Fauth%2Foauth%2Fgoogle%2Fcallback");
         assertThat(url).contains("state=");
+        verify(oauthLoginStateTokenRepository).save(any());
     }
 
     @Test
@@ -220,6 +223,20 @@ class OauthLoginServiceTest {
                 .isEqualTo("http://localhost:3000/en/login?oauth=error");
         assertThat(svc.handleGoogleCallback("   ", "state", null))
                 .isEqualTo("http://localhost:3000/en/login?oauth=error");
+    }
+
+    @Test
+    void handleGoogleCallback_invalidState_returnsInvalidState_withoutExchangingCode() {
+        when(oauthLoginStateTokenRepository.findByStateHash(any())).thenReturn(Optional.empty());
+        OauthLoginService svc = new OauthLoginService(
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
+                true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
+                "/api/auth/oauth/google/callback");
+
+        String redirect = svc.handleGoogleCallback("code", "bad-state", null);
+        assertThat(redirect).isEqualTo("http://localhost:3000/en/login?oauth=invalid_state");
+        verify(oauthLoginStateTokenRepository).findByStateHash(any());
+        verify(oauthLoginExchangeCodeRepository, never()).save(any());
     }
 }
 
