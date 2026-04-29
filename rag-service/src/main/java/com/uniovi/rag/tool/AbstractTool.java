@@ -236,7 +236,9 @@ public abstract class AbstractTool implements Tool {
 
         List<String> relevant = new ArrayList<>();
         String content = doc.getText();
-        String[] paragraphs = content.split("(?<=[.:?])\\s*([\\n\\r])+");
+        // Avoid nested-quantifier regex that can cause catastrophic backtracking (Sonar hotspot).
+        // Equivalent intent: split on a punctuation boundary followed by whitespace + one-or-more line breaks.
+        String[] paragraphs = content.split("(?<=[.:?])\\s*\\R+");
         for (String p : paragraphs) {
             if (p != null && !p.trim().isEmpty() && isParagraphRelevantByLLM(query, p)) {
                 String fragment = p.trim();
