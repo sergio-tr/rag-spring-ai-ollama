@@ -129,6 +129,19 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 | `SPRING_DATASOURCE_USERNAME` | DB user (must match db/.env) | `postgres` |
 | `SPRING_DATASOURCE_PASSWORD` | DB password (must match db/.env) | — |
 | `RAG_JWT_SECRET` | HS256 key for JWTs (≥32 characters). The root `application.properties` has no default: set this env, or use Spring profile **`dev`** / **`docker`** (non-prod fallbacks in `application-dev.properties` / `application-docker.properties`). | Strong random in staging/prod |
+| `rag.auth.email-confirmation.enabled` / `RAG_AUTH_EMAIL_CONFIRMATION_ENABLED` | Enable email confirmation after register (register returns **202** + `PENDING_EMAIL_VERIFICATION`; login blocks until verified). | `false` |
+| `rag.auth.email-confirmation.token-ttl-seconds` / `RAG_AUTH_EMAIL_CONFIRMATION_TOKEN_TTL_SECONDS` | Email confirmation token TTL (seconds). | `3600` |
+| `rag.auth.password-reset.enabled` / `RAG_AUTH_PASSWORD_RESET_ENABLED` | Enable forgot/reset password. Forgot password is anti-enumeration (always **200**). | `false` |
+| `rag.auth.password-reset.token-ttl-seconds` / `RAG_AUTH_PASSWORD_RESET_TOKEN_TTL_SECONDS` | Password reset token TTL (seconds). | `3600` |
+| `rag.auth.mail.enabled` / `RAG_AUTH_MAIL_ENABLED` | When true, auth flows queue mails into `mail_outbox` (outbox-only in this repo; delivery is external). | `false` |
+| `rag.auth.mail.from` / `RAG_AUTH_MAIL_FROM` | Mail “From” header embedded into outbox payloads. | `no-reply@local.test` |
+| `rag.auth.webapp-base-url` / `RAG_AUTH_WEBAPP_BASE_URL` | Base URL used for links in email templates (confirm + reset). | `http://localhost:3000` |
+| `rag.auth.backend-base-url` / `RAG_AUTH_BACKEND_BASE_URL` | Base URL used for OAuth redirect URIs (backend callback). | `http://localhost:9000` |
+| `rag.auth.oauth.enabled` / `RAG_AUTH_OAUTH_ENABLED` | Enable OAuth routes under `/api/auth/oauth/*` (Google implementation). Uses persisted one-time state tokens + exchange codes. | `false` |
+| `rag.auth.oauth.google.client-id` / `RAG_AUTH_OAUTH_GOOGLE_CLIENT_ID` | Google OAuth client id. | — |
+| `rag.auth.oauth.google.client-secret` / `RAG_AUTH_OAUTH_GOOGLE_CLIENT_SECRET` | Google OAuth client secret. | — |
+| `rag.auth.oauth.google.issuer` / `RAG_AUTH_OAUTH_GOOGLE_ISSUER` | Expected issuer for Google ID tokens. | `https://accounts.google.com` |
+| `rag.auth.oauth.google.redirect-path` / `RAG_AUTH_OAUTH_GOOGLE_REDIRECT_PATH` | Backend callback path mounted under the backend base URL. | `/api/auth/oauth/google/callback` |
 | `rag.classifier.service.url` | Classifier service URL (backend) | `http://localhost:8000` |
 | `RAG_CONFIG_V2_ENABLED` / `rag.config.v2.enabled` | Use `ResolvedRuntimeConfig` resolution in the chat path (aligned with `POST /config/preview`) | `false` |
 | `rag.runtime.workflow-schema-version` | Semver of the RAG execution stage graph (Lab/eval reproducibility) | `1.0.0` |
