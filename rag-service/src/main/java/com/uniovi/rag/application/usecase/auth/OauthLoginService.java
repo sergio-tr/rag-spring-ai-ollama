@@ -4,8 +4,10 @@ import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.domain.UserRole;
 import com.uniovi.rag.infrastructure.persistence.OauthIdentityRepository;
 import com.uniovi.rag.infrastructure.persistence.OauthLoginExchangeCodeRepository;
+import com.uniovi.rag.infrastructure.persistence.OauthLoginStateTokenRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.OauthIdentityEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.OauthLoginExchangeCodeEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.OauthLoginStateTokenEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntityFactory;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
@@ -37,10 +39,12 @@ public class OauthLoginService {
 
     private static final String PROVIDER_GOOGLE = "google";
     private static final long EXCHANGE_TTL_SECONDS = 120;
+    private static final long STATE_TTL_SECONDS = 300;
 
     private final UserAccountPort userAccountPort;
     private final OauthIdentityRepository oauthIdentityRepository;
     private final OauthLoginExchangeCodeRepository oauthLoginExchangeCodeRepository;
+    private final OauthLoginStateTokenRepository oauthLoginStateTokenRepository;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
 
@@ -59,6 +63,7 @@ public class OauthLoginService {
             UserAccountPort userAccountPort,
             OauthIdentityRepository oauthIdentityRepository,
             OauthLoginExchangeCodeRepository oauthLoginExchangeCodeRepository,
+            OauthLoginStateTokenRepository oauthLoginStateTokenRepository,
             JwtService jwtService,
             PasswordEncoder passwordEncoder,
             @Value("${rag.auth.oauth.enabled:false}") boolean oauthEnabled,
@@ -71,6 +76,7 @@ public class OauthLoginService {
         this.userAccountPort = userAccountPort;
         this.oauthIdentityRepository = oauthIdentityRepository;
         this.oauthLoginExchangeCodeRepository = oauthLoginExchangeCodeRepository;
+        this.oauthLoginStateTokenRepository = oauthLoginStateTokenRepository;
         this.jwtService = jwtService;
         this.passwordEncoder = passwordEncoder;
         this.oauthEnabled = oauthEnabled;
@@ -90,7 +96,7 @@ public class OauthLoginService {
             throw new IllegalStateException("OAuth enabled but Google client-id is empty");
         }
         String redirectUri = buildRedirectUri();
-        String state = randomToken(16);
+        String state = createStateToken();
         return "https://accounts.google.com/o/oauth2/v2/auth"
                 + "?client_id=" + urlEncode(googleClientId)
                 + "&redirect_uri=" + urlEncode(redirectUri)
@@ -109,6 +115,9 @@ public class OauthLoginService {
         }
         if (code == null || code.isBlank()) {
             return webappBaseUrl + "/en/login?oauth=error";
+        }
+        if (!consumeStateToken(state)) {
+            return webappBaseUrl + "/en/login?oauth=invalid_state";
         }
 
         Map<String, Object> tokenResponse = exchangeAuthCodeForTokens(code);
@@ -199,6 +208,38 @@ public class OauthLoginService {
         e.setExpiresAt(Instant.now().plusSeconds(EXCHANGE_TTL_SECONDS));
         oauthLoginExchangeCodeRepository.save(e);
         return raw;
+    }
+
+    private String createStateToken() {
+        String raw = randomToken(16);
+        String hash = sha256Hex(raw);
+        OauthLoginStateTokenEntity e = new OauthLoginStateTokenEntity();
+        e.setStateHash(hash);
+        e.setCreatedAt(Instant.now());
+        e.setExpiresAt(Instant.now().plusSeconds(STATE_TTL_SECONDS));
+        oauthLoginStateTokenRepository.save(e);
+        return raw;
+    }
+
+    private boolean consumeStateToken(String state) {
+        if (state == null || state.isBlank()) {
+            return false;
+        }
+        String hash = sha256Hex(state.trim());
+        Optional<OauthLoginStateTokenEntity> maybe = oauthLoginStateTokenRepository.findByStateHash(hash);
+        if (maybe.isEmpty()) {
+            return false;
+        }
+        OauthLoginStateTokenEntity e = maybe.get();
+        if (e.getConsumedAt() != null) {
+            return false;
+        }
+        if (e.getExpiresAt().isBefore(Instant.now())) {
+            return false;
+        }
+        e.setConsumedAt(Instant.now());
+        oauthLoginStateTokenRepository.save(e);
+        return true;
     }
 
     private Map<String, Object> exchangeAuthCodeForTokens(String code) {
