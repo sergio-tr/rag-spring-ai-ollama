@@ -3,6 +3,7 @@ import { getStoredUserRole, setStoredUserRole } from "./user-role";
 
 describe("user-role", () => {
   const originalSessionStorage = globalThis.sessionStorage;
+  const originalWindow = (globalThis as unknown as { window?: unknown }).window;
 
   beforeEach(() => {
     // Ensure a clean storage between tests.
@@ -12,6 +13,7 @@ describe("user-role", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     globalThis.sessionStorage = originalSessionStorage;
+    (globalThis as unknown as { window?: unknown }).window = originalWindow;
   });
 
   it("getStoredUserRole returns null for unknown values", () => {
@@ -47,6 +49,13 @@ describe("user-role", () => {
     });
     globalThis.sessionStorage = { ...sessionStorage, setItem } as unknown as Storage;
     expect(() => setStoredUserRole("ADMIN")).not.toThrow();
+  });
+
+  it("returns null and no-ops when window is undefined (SSR guard)", () => {
+    (globalThis as unknown as { window?: unknown }).window = undefined;
+    expect(getStoredUserRole()).toBeNull();
+    expect(() => setStoredUserRole("USER")).not.toThrow();
+    expect(() => setStoredUserRole(null)).not.toThrow();
   });
 });
 
