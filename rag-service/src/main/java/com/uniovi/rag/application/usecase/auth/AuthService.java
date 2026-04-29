@@ -14,6 +14,7 @@ import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
 import com.uniovi.rag.interfaces.rest.auth.EmailNotVerifiedException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.AuthTokenException;
+import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
@@ -137,7 +138,7 @@ public class AuthService {
 	@Transactional
 	public void confirmEmail(ConfirmEmailRequest req) {
 		if (!emailConfirmationEnabled) {
-			return;
+			throw new FeatureDisabledException("EMAIL_CONFIRMATION_DISABLED", "Email confirmation disabled");
 		}
 		String hash = sha256Hex(req.token().trim());
 		EmailConfirmationTokenEntity tok = emailConfirmationTokenRepository.findByTokenHash(hash)
@@ -159,7 +160,7 @@ public class AuthService {
 	@Transactional
 	public void resendConfirmation(ResendConfirmationRequest req) {
 		if (!emailConfirmationEnabled) {
-			return;
+			throw new FeatureDisabledException("EMAIL_CONFIRMATION_DISABLED", "Email confirmation disabled");
 		}
 		userAccountPort.findByEmailIgnoreCase(req.email().trim().toLowerCase())
 				.ifPresent(u -> {
@@ -170,12 +171,12 @@ public class AuthService {
 	}
 
 	@Transactional
-	public void forgotPassword(ForgotPasswordRequest req) {
+	public void forgotPassword(ForgotPasswordRequest req, String requestIp, String requestUserAgent) {
 		if (!passwordResetEnabled) {
-			return;
+			throw new FeatureDisabledException("PASSWORD_RESET_DISABLED", "Password reset disabled");
 		}
 		userAccountPort.findByEmailIgnoreCase(req.email().trim().toLowerCase())
-				.ifPresent(this::issuePasswordReset);
+				.ifPresent(u -> issuePasswordReset(u, requestIp, requestUserAgent));
 	}
 
 	@Transactional
@@ -222,7 +223,7 @@ public class AuthService {
 		}
 	}
 
-	private void issuePasswordReset(UserEntity u) {
+	private void issuePasswordReset(UserEntity u, String requestIp, String requestUserAgent) {
 		String raw = randomToken();
 		String hash = sha256Hex(raw);
 		PasswordResetTokenEntity tok = new PasswordResetTokenEntity();
@@ -230,6 +231,12 @@ public class AuthService {
 		tok.setTokenHash(hash);
 		tok.setCreatedAt(Instant.now());
 		tok.setExpiresAt(Instant.now().plusSeconds(Math.max(60, passwordResetTtlSeconds)));
+		if (requestIp != null && !requestIp.isBlank()) {
+			tok.setRequestIp(requestIp.trim());
+		}
+		if (requestUserAgent != null && !requestUserAgent.isBlank()) {
+			tok.setRequestUserAgent(requestUserAgent.trim());
+		}
 		passwordResetTokenRepository.save(tok);
 		if (mailEnabled) {
 			String link = webappBaseUrl + "/en/reset-password?token=" + urlEncode(raw);

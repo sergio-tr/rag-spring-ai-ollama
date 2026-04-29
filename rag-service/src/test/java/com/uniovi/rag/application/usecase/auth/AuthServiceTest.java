@@ -2,6 +2,7 @@ package com.uniovi.rag.application.usecase.auth;
 
 import com.uniovi.rag.interfaces.rest.auth.AuthTokenException;
 import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
+import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
@@ -223,8 +224,9 @@ class AuthServiceTest {
 	}
 
 	@Test
-	void confirmEmail_whenDisabled_isNoop() {
-		newService().confirmEmail(new ConfirmEmailRequest("token"));
+	void confirmEmail_whenDisabled_throwsFeatureDisabled() {
+		assertThatThrownBy(() -> newService().confirmEmail(new ConfirmEmailRequest("token")))
+				.isInstanceOf(FeatureDisabledException.class);
 	}
 
 	@Test
@@ -272,7 +274,7 @@ class AuthServiceTest {
 		when(user.getEmail()).thenReturn("new@user.com");
 		when(userAccountPort.findByEmailIgnoreCase("new@user.com")).thenReturn(Optional.of(user));
 
-		newServiceEmailAndMailEnabled().forgotPassword(new ForgotPasswordRequest("new@user.com"));
+		newServiceEmailAndMailEnabled().forgotPassword(new ForgotPasswordRequest("new@user.com"), "127.0.0.1", "test-agent");
 
 		verify(passwordResetTokenRepository).save(any(PasswordResetTokenEntity.class));
 		verify(mailOutboxRepository).save(any());
