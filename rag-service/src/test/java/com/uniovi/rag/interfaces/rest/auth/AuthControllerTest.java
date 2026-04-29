@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest.auth;
 
 import com.uniovi.rag.application.usecase.auth.AuthService;
+import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -34,6 +35,9 @@ class AuthControllerTest {
 
     @MockitoBean
     private AuthService authService;
+
+    @MockitoBean
+    private UserAccountPort userAccountPort;
 
     @Test
     void login_valid_returnsTokens() throws Exception {

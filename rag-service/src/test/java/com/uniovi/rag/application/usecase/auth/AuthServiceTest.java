@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.usecase.auth;
 
+import com.uniovi.rag.interfaces.rest.auth.AuthTokenException;
 import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginRequest;
@@ -8,6 +9,7 @@ import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RefreshRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.RegisterResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.domain.UserRole;
@@ -33,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -180,7 +183,7 @@ class AuthServiceTest {
 	@Test
 	void resetPassword_disabled_throws() {
 		assertThatThrownBy(() -> newService().resetPassword(new ResetPasswordRequest("t", "password123")))
-				.isInstanceOf(InvalidCredentialsException.class);
+				.isInstanceOf(AuthTokenException.class);
 	}
 
 	@Test
@@ -209,8 +212,12 @@ class AuthServiceTest {
 		when(passwordEncoder.encode("password123")).thenReturn("encoded");
 		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-		newServiceEmailAndMailEnabled().register(new RegisterRequest("Name", "new@user.com", "password123"));
+		RegisterResponse res = newServiceEmailAndMailEnabled().register(new RegisterRequest("Name", "new@user.com", "password123"));
 
+		assertThat(res.status()).isEqualTo("PENDING_EMAIL_VERIFICATION");
+		assertThat(res.login()).isNull();
+		verify(jwtService, never()).createAccessToken(any(), any(), any());
+		verify(jwtService, never()).createRefreshToken(any());
 		verify(emailConfirmationTokenRepository).save(any(EmailConfirmationTokenEntity.class));
 		verify(mailOutboxRepository).save(any());
 	}
@@ -228,7 +235,7 @@ class AuthServiceTest {
 		when(emailConfirmationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
 
 		assertThatThrownBy(() -> newServiceEmailAndMailEnabled().confirmEmail(new ConfirmEmailRequest("raw")))
-				.isInstanceOf(InvalidCredentialsException.class);
+				.isInstanceOf(AuthTokenException.class);
 	}
 
 	@Test
@@ -239,7 +246,7 @@ class AuthServiceTest {
 		when(emailConfirmationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
 
 		assertThatThrownBy(() -> newServiceEmailAndMailEnabled().confirmEmail(new ConfirmEmailRequest("raw")))
-				.isInstanceOf(InvalidCredentialsException.class);
+				.isInstanceOf(AuthTokenException.class);
 	}
 
 	@Test
