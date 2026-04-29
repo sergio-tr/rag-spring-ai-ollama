@@ -15,6 +15,7 @@ import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.security.RagPrincipal;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -77,8 +78,10 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public void forgotPassword(@Valid @RequestBody ForgotPasswordRequest body) {
-        authService.forgotPassword(body);
+    public void forgotPassword(@Valid @RequestBody ForgotPasswordRequest body, HttpServletRequest request) {
+        String ip = request != null ? request.getRemoteAddr() : null;
+        String ua = request != null ? request.getHeader("User-Agent") : null;
+        authService.forgotPassword(body, ip, ua);
     }
 
     @PostMapping("/reset-password")
