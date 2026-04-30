@@ -3,6 +3,7 @@ import { buildConfigValuesSchema } from "./build-config-zod";
 import type { ConfigSchemaField } from "@/features/settings/hooks/use-rag-config";
 
 describe("buildConfigValuesSchema", () => {
+  
   const fields: ConfigSchemaField[] = [
     { key: "n", type: "integer", min: 0, max: 10, userEditable: true },
     { key: "f", type: "number", userEditable: true },
@@ -31,7 +32,13 @@ describe("buildConfigValuesSchema", () => {
     ];
     const schema = buildConfigValuesSchema(narrow);
     expect(schema.safeParse({ i: 0 }).success).toBe(false);
+    expect(schema.safeParse({ i: 4 }).success).toBe(false);
     expect(schema.safeParse({ i: 2 }).success).toBe(true);
+    expect(schema.safeParse({ i: "2" }).success).toBe(true);
+    expect(schema.safeParse({ i: 2.5 }).success).toBe(false);
+    expect(schema.safeParse({ f: 0.4 }).success).toBe(false);
     expect(schema.safeParse({ f: 1 }).success).toBe(true);
+    expect(schema.safeParse({ f: "1.2" }).success).toBe(true);
+    expect(schema.safeParse({ f: 2 }).success).toBe(false);
   });
 });

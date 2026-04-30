@@ -127,8 +127,7 @@ export function EditProjectDialog({ project }: EditProjectDialogProps) {
               <select
                 id={`edit-proj-icon-${project.id}`}
                 className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm"
-                value={form.watch("iconKey") || ""}
-                onChange={(e) => form.setValue("iconKey", e.target.value)}
+                {...form.register("iconKey")}
               >
                 <option value="">{t("projectIconNone")}</option>
                 {PROJECT_ICONS.map((k) => (

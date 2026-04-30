@@ -4,8 +4,13 @@ package com.uniovi.rag.interfaces.rest;
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.PromoteDocumentApplicationService;
 import com.uniovi.rag.application.service.ProjectDocumentApplicationService;
+import com.uniovi.rag.domain.ProjectDocumentStatus;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
+import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,11 +28,14 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.mock.web.MockMultipartFile;
 
 @WebMvcTest(controllers = ProjectDocumentsController.class)
 @ContextConfiguration(classes = RagWebMvcTestApplication.class)
@@ -71,5 +79,36 @@ class ProjectDocumentsControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void upload_returnsCreatedForMultipartFile() throws Exception {
+        UUID docId = UUID.randomUUID();
+        ProjectDocumentDto dto = new ProjectDocumentDto(
+                docId,
+                "a.txt",
+                ProjectDocumentStatus.READY,
+                0,
+                null,
+                Instant.parse("2024-01-01T00:00:00Z"),
+                null,
+                CorpusScope.PROJECT_SHARED,
+                null,
+                null,
+                null,
+                true);
+        when(projectDocumentApplicationService.uploadDocument(eq(userId), eq(projectId), any()))
+                .thenReturn(dto);
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "a.txt",
+                "text/plain",
+                "hello".getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(multipart(path("/projects/" + projectId + "/documents")).file(file))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(docId.toString()))
+                .andExpect(jsonPath("$.fileName").value("a.txt"));
     }
 }

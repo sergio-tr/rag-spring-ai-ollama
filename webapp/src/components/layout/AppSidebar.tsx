@@ -1,20 +1,17 @@
 "use client";
 
 import {
-  Briefcase,
-  Code,
   FileText,
   FlaskConical,
-  Folder,
   FolderKanban,
   MessageSquare,
-  Rocket,
   Search,
   Settings,
   Shield,
-  Star,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, Link, useRouter } from "@/navigation";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -26,9 +23,12 @@ import { useProjectList, useActivateProject } from "@/features/projects/hooks/us
 import { useConversations, useCreateConversation } from "@/features/chat/hooks/use-conversations";
 import { useAppStore } from "@/store/app.store";
 import type { ProjectSummary } from "@/types/api";
+import { fetchLatestConversationId } from "@/features/projects/lib/open-project-in-chat";
 import { NewProjectDialog } from "@/features/projects/components/NewProjectDialog";
+import { ProjectVisual } from "@/features/projects/components/ProjectVisual";
 import { getStoredUserRole, setStoredUserRole } from "@/lib/user-role";
 import type { MeResponse } from "@/types/api";
+import { Suspense } from "react";
 
 const primaryLinks = [
   { href: "/projects" as const, key: "projects" as const, icon: FolderKanban },
@@ -39,41 +39,6 @@ const primaryLinks = [
 ];
 
 const STORAGE_KEY = "rag-sidebar";
-
-function isHexColor(s: string | null | undefined): s is string {
-  return Boolean(s && /^#([0-9A-Fa-f]{6})$/.test(s));
-}
-
-type ProjectIconProps = Readonly<{
-  iconKey: string | null | undefined;
-  className?: string;
-  "aria-hidden"?: boolean;
-}>;
-
-function ProjectIcon({ iconKey, className, ...rest }: ProjectIconProps) {
-  switch (iconKey) {
-    case "folder":
-      return <Folder className={className} {...rest} />;
-    case "briefcase":
-      return <Briefcase className={className} {...rest} />;
-    case "star":
-      return <Star className={className} {...rest} />;
-    case "code":
-      return <Code className={className} {...rest} />;
-    case "rocket":
-      return <Rocket className={className} {...rest} />;
-    case "shield":
-      return <Shield className={className} {...rest} />;
-    case "chat":
-      return <MessageSquare className={className} {...rest} />;
-    case "lab":
-      return <FlaskConical className={className} {...rest} />;
-    case "book":
-      return <FileText className={className} {...rest} />;
-    default:
-      return <FolderKanban className={className} {...rest} />;
-  }
-}
 
 type SidebarPersistence = {
   projectsCollapsed: boolean;
@@ -105,10 +70,21 @@ function writeSidebarPersistence(next: SidebarPersistence) {
 }
 
 export function AppSidebar() {
+  return (
+    <Suspense fallback={<aside className="flex w-[260px] shrink-0 flex-col border-border border-r bg-sidebar" />}>
+      <AppSidebarContent />
+    </Suspense>
+  );
+}
+
+function AppSidebarContent() {
   const tNav = useTranslations("Nav");
   const tChat = useTranslations("Chat");
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const selectedConversationId = searchParams?.get("conversationId") ?? null;
 
   const [role, setRole] = useState(() => getStoredUserRole());
   const canSeeAdmin = role === "ADMIN";
@@ -135,8 +111,15 @@ export function AppSidebar() {
   const activateProject = useActivateProject();
 
   const { data: projectData, isLoading: projectsLoading, isError: projectsError } = useProjectList(0, 64);
-  const projects = projectData?.items ?? [];
+  const projects = useMemo(() => projectData?.items ?? [], [projectData?.items]);
   const projectsTotal = projectData?.total ?? projects.length;
+
+  useEffect(() => {
+    if (!activeProject?.id || projectsLoading) return;
+    if (!projects.some((p) => p.id === activeProject.id)) {
+      useAppStore.getState().setActiveProject(null);
+    }
+  }, [activeProject?.id, projects, projectsLoading]);
 
   const [initialPersisted] = useState<SidebarPersistence>(() => readSidebarPersistence());
   const [projectsCollapsed, setProjectsCollapsed] = useState(initialPersisted.projectsCollapsed);
@@ -168,6 +151,16 @@ export function AppSidebar() {
 
   async function activate(p: ProjectSummary) {
     await activateProject.mutateAsync({ id: p.id, name: p.name });
+  }
+
+  async function openProjectInChat(p: ProjectSummary) {
+    await activateProject.mutateAsync({ id: p.id, name: p.name });
+    const convId = await fetchLatestConversationId(queryClient, p.id);
+    if (convId) {
+      router.push(`/chat?conversationId=${encodeURIComponent(convId)}`);
+      return;
+    }
+    router.push("/chat");
   }
 
   const createConversation = useCreateConversation(activeProject?.id);
@@ -203,6 +196,7 @@ export function AppSidebar() {
           >
             {tChat("newConversation")}
           </Button>
+          {!activeProject ? <p className="text-muted-foreground px-1 text-xs">{tChat("newConversationDisabledHint")}</p> : null}
           <Dialog
             open={searchOpen}
             onOpenChange={(o) => {
@@ -219,13 +213,17 @@ export function AppSidebar() {
               }
             >
               <Search className="mr-2 size-4" aria-hidden />
-              Search chat
+              {tChat("searchConversations")}
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Search chats</DialogTitle>
+                <DialogTitle>{tChat("searchConversations")}</DialogTitle>
               </DialogHeader>
-              <Input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Chat title" />
+              <Input
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder={tChat("chatTitlePlaceholder")}
+              />
               <SearchChatsBody
                 projects={projects}
                 activeProjectId={activeProject?.id ?? null}
@@ -276,6 +274,9 @@ export function AppSidebar() {
                     toggleExpanded={() => toggleProjectExpanded(p.id)}
                     activeProjectId={activeProject?.id ?? null}
                     activateProject={activate}
+                    openProjectInChat={openProjectInChat}
+                    selectedConversationId={selectedConversationId}
+                    chatRouteActive={pathname === "/chat" || pathname?.startsWith("/chat/")}
                     searchQuery={searchQuery}
                     onSelectConversation={(conversationId) => {
                       router.push(`/chat?conversationId=${encodeURIComponent(conversationId)}`);
@@ -341,6 +342,9 @@ type SidebarProjectNodeProps = Readonly<{
   toggleExpanded: () => void;
   activeProjectId: string | null;
   activateProject: (p: ProjectSummary) => Promise<void>;
+  openProjectInChat: (p: ProjectSummary) => Promise<void>;
+  selectedConversationId: string | null;
+  chatRouteActive: boolean;
   searchQuery: string;
   onSelectConversation: (conversationId: string) => void;
 }>;
@@ -351,6 +355,9 @@ function SidebarProjectNode({
   toggleExpanded,
   activeProjectId,
   activateProject,
+  openProjectInChat,
+  selectedConversationId,
+  chatRouteActive,
   searchQuery,
   onSelectConversation,
 }: SidebarProjectNodeProps) {
@@ -369,17 +376,13 @@ function SidebarProjectNode({
       <div className="flex items-center gap-1">
         <button
           type="button"
-          className="hover:bg-sidebar-accent/80 flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm"
-          onClick={() => void activateProject(project)}
+          className={cn(
+            "hover:bg-sidebar-accent/80 flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+            activeProjectId === project.id && "bg-sidebar-accent/60 ring-1 ring-sidebar-accent",
+          )}
+          onClick={() => void openProjectInChat(project)}
         >
-          <span
-            className="inline-block size-2.5 shrink-0 rounded-full border border-border"
-            style={{
-              backgroundColor: isHexColor(project.colorHex) ? project.colorHex : "#9ca3af",
-            }}
-            aria-hidden
-          />
-          <ProjectIcon iconKey={project.iconKey} className="size-4 shrink-0" aria-hidden />
+          <ProjectVisual iconKey={project.iconKey} colorHex={project.colorHex} />
           <span className="truncate">{project.name}</span>
         </button>
         <button
@@ -404,7 +407,12 @@ function SidebarProjectNode({
               <button
                 key={c.id}
                 type="button"
-                className="hover:bg-sidebar-accent/80 ml-4 w-[calc(100%-1rem)] rounded-md px-2 py-1 text-left text-xs"
+                className={cn(
+                  "hover:bg-sidebar-accent/80 ml-4 w-[calc(100%-1rem)] rounded-md px-2 py-1 text-left text-xs",
+                  chatRouteActive &&
+                    selectedConversationId === c.id &&
+                    "bg-sidebar-accent text-sidebar-accent-foreground",
+                )}
                 onClick={async () => {
                   if (activeProjectId !== project.id) {
                     await activateProject(project);
