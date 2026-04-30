@@ -43,10 +43,15 @@ public class OpenApiSecurityConfiguration {
         return (OpenAPI openApi) -> {
             if (openApi.getPaths() == null) return;
             openApi.getPaths().forEach((path, item) -> {
+                boolean isProductAuthPath =
+                        path != null
+                                && (path.equals(productBasePath + "/auth")
+                                        || path.startsWith(productBasePath + "/auth/"));
                 boolean secured =
                         path != null
                                 && (path.startsWith(productBasePath + "/")
-                                        || path.startsWith("/api/admin/"));
+                                        || path.startsWith("/api/admin/"))
+                                && !isProductAuthPath;
                 if (!secured || item == null) return;
                 item.readOperations().forEach(op -> {
                     if (op.getSecurity() == null || op.getSecurity().isEmpty()) {

@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -48,6 +49,8 @@ public class SecurityConfiguration {
             RagApiPathProperties ragApiPathProperties,
             RequestMappingHandlerMapping requestMappingHandlerMapping)
             throws Exception {
+        String productBasePath = ragApiPathProperties.getProductBasePath();
+        String productAuthBase = productBasePath + "/auth";
         http
                 // Stateless Bearer JWT — see class Javadoc (CSRF targets automatic cookie submission).
                 .csrf(AbstractHttpConfigurer::disable)
@@ -57,12 +60,24 @@ public class SecurityConfiguration {
                         .authenticationEntryPoint(new RestAuthenticationEntryPoint(requestMappingHandlerMapping))
                         .accessDeniedHandler(new RestAccessDeniedHandler()))
                 .authorizeHttpRequests(a -> a
+                        // New primary auth contract under product API base path.
+                        .requestMatchers(HttpMethod.GET, productAuthBase + "/me").authenticated()
+                        .requestMatchers(
+                                productAuthBase + "/login",
+                                productAuthBase + "/register",
+                                productAuthBase + "/refresh",
+                                productAuthBase + "/confirm-email",
+                                productAuthBase + "/resend-confirmation",
+                                productAuthBase + "/forgot-password",
+                                productAuthBase + "/reset-password")
+                        .permitAll()
+                        // Transitional legacy auth contract (scheduled for removal).
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus")
                         .permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers(ragApiPathProperties.getProductBasePath() + "/**").authenticated()
+                        .requestMatchers(productBasePath + "/**").authenticated()
                         .anyRequest().permitAll())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
