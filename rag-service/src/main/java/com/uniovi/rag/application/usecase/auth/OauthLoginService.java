@@ -72,7 +72,8 @@ public class OauthLoginService {
             @Value("${rag.auth.oauth.google.client-id:}") String googleClientId,
             @Value("${rag.auth.oauth.google.client-secret:}") String googleClientSecret,
             @Value("${rag.auth.oauth.google.issuer:https://accounts.google.com}") String googleIssuer,
-            @Value("${rag.auth.oauth.google.redirect-path:/api/auth/oauth/google/callback}") String googleRedirectPath) {
+            @Value("${rag.auth.oauth.google.redirect-path:${rag.api.product-base-path}/auth/oauth/google/callback}")
+                    String googleRedirectPath) {
         this.userAccountPort = userAccountPort;
         this.oauthIdentityRepository = oauthIdentityRepository;
         this.oauthLoginExchangeCodeRepository = oauthLoginExchangeCodeRepository;
@@ -85,18 +86,19 @@ public class OauthLoginService {
         this.googleClientId = googleClientId != null ? googleClientId : "";
         this.googleClientSecret = googleClientSecret != null ? googleClientSecret : "";
         this.googleIssuer = googleIssuer != null ? googleIssuer : "https://accounts.google.com";
-        this.googleRedirectPath = googleRedirectPath != null ? googleRedirectPath : "/api/auth/oauth/google/callback";
+        this.googleRedirectPath = googleRedirectPath != null ? googleRedirectPath : "/auth/oauth/google/callback";
     }
 
-    public String googleStartUrl() {
+    public String googleStartUrl(String locale) {
+        String resolvedLocale = resolveLocale(locale);
         if (!oauthEnabled) {
-            return webappBaseUrl + "/en/login";
+            return webappBaseUrl + "/" + resolvedLocale + "/login";
         }
         if (googleClientId.isBlank()) {
             throw new IllegalStateException("OAuth enabled but Google client-id is empty");
         }
         String redirectUri = buildRedirectUri();
-        String state = createStateToken();
+        String state = createStateToken(resolvedLocale);
         return "https://accounts.google.com/o/oauth2/v2/auth"
                 + "?client_id=" + urlEncode(googleClientId)
                 + "&redirect_uri=" + urlEncode(redirectUri)
@@ -107,23 +109,24 @@ public class OauthLoginService {
 
     @Transactional
     public String handleGoogleCallback(String code, String state, String error) {
+        String resolvedLocale = extractLocaleFromState(state);
         if (!oauthEnabled) {
-            return webappBaseUrl + "/en/login";
+            return webappBaseUrl + "/" + resolvedLocale + "/login";
         }
         if (error != null && !error.isBlank()) {
-            return webappBaseUrl + "/en/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
         }
         if (code == null || code.isBlank()) {
-            return webappBaseUrl + "/en/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
         }
         if (!consumeStateToken(state)) {
-            return webappBaseUrl + "/en/login?oauth=invalid_state";
+            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=invalid_state";
         }
 
         Map<String, Object> tokenResponse = exchangeAuthCodeForTokens(code);
         String idToken = Optional.ofNullable(tokenResponse.get("id_token")).map(Object::toString).orElse("");
         if (idToken.isBlank()) {
-            return webappBaseUrl + "/en/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
         }
 
         Jwt jwt = googleIdTokenDecoder().decode(idToken);
@@ -131,12 +134,12 @@ public class OauthLoginService {
         String email = jwt.getClaimAsString("email");
         Boolean emailVerified = jwt.getClaimAsBoolean("email_verified");
         if (subject == null || subject.isBlank() || email == null || email.isBlank()) {
-            return webappBaseUrl + "/en/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
         }
 
         UserEntity user = resolveOrCreateUser(subject, email, Boolean.TRUE.equals(emailVerified));
         String exchangeCode = createExchangeCode(user);
-        return webappBaseUrl + "/en/oauth/callback/google?code=" + urlEncode(exchangeCode);
+        return webappBaseUrl + "/" + resolvedLocale + "/oauth/callback/google?code=" + urlEncode(exchangeCode);
     }
 
     @Transactional
@@ -176,6 +179,8 @@ public class OauthLoginService {
                             passwordEncoder.encode(randomPw));
                     created.setRole(UserRole.USER);
                     created.setCreatedAt(Instant.now());
+                    created.setEmailVerified(false);
+                    created.setEmailVerifiedAt(null);
                     return userAccountPort.save(created);
                 });
 
@@ -210,15 +215,16 @@ public class OauthLoginService {
         return raw;
     }
 
-    private String createStateToken() {
+    private String createStateToken(String locale) {
         String raw = randomToken(16);
-        String hash = sha256Hex(raw);
+        String state = raw + "." + resolveLocale(locale);
+        String hash = sha256Hex(state);
         OauthLoginStateTokenEntity e = new OauthLoginStateTokenEntity();
         e.setStateHash(hash);
         e.setCreatedAt(Instant.now());
         e.setExpiresAt(Instant.now().plusSeconds(STATE_TTL_SECONDS));
         oauthLoginStateTokenRepository.save(e);
-        return raw;
+        return state;
     }
 
     private boolean consumeStateToken(String state) {
@@ -240,6 +246,25 @@ public class OauthLoginService {
         e.setConsumedAt(Instant.now());
         oauthLoginStateTokenRepository.save(e);
         return true;
+    }
+
+    private String extractLocaleFromState(String state) {
+        if (state == null || state.isBlank()) {
+            return "en";
+        }
+        String[] parts = state.trim().split("\\.");
+        return resolveLocale(parts.length > 1 ? parts[parts.length - 1] : null);
+    }
+
+    private String resolveLocale(String locale) {
+        if (locale == null) {
+            return "en";
+        }
+        String normalized = locale.trim().toLowerCase();
+        if (normalized.matches("^[a-z]{2}(-[a-z]{2})?$")) {
+            return normalized;
+        }
+        return "en";
     }
 
     Map<String, Object> exchangeAuthCodeForTokens(String code) {

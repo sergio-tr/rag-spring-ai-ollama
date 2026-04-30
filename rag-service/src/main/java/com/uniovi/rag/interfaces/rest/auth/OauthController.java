@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.io.IOException;
 
 @RestController
-@RequestMapping("/api/auth/oauth")
+@RequestMapping({"${rag.api.product-base-path}/auth/oauth", "/api/auth/oauth"})
 public class OauthController {
 
     private final OauthLoginService oauthLoginService;
@@ -25,8 +25,10 @@ public class OauthController {
     }
 
     @GetMapping("/google/start")
-    public void startGoogle(HttpServletResponse response) throws IOException {
-        response.sendRedirect(oauthLoginService.googleStartUrl());
+    public void startGoogle(
+            @RequestParam(name = "locale", required = false) String locale,
+            HttpServletResponse response) throws IOException {
+        response.sendRedirect(oauthLoginService.googleStartUrl(locale));
     }
 
     @GetMapping("/google/callback")
