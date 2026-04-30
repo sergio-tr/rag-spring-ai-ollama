@@ -19,6 +19,7 @@ POSTGRES_PORT="${RAG_LOCAL_POSTGRES_PORT:-5432}"
 STOP_AFTER="${RAG_CI_STOP_CONTAINER:-0}"
 CI_NETWORK="${RAG_CI_NETWORK:-rag-ci}"
 BACKEND_CONTAINER="${RAG_CI_BACKEND_CONTAINER:-rag-ci-backend}"
+PROXY_CONTAINER="${RAG_CI_PROXY_CONTAINER:-rag-ci-proxy}"
 MAVEN_CACHE_VOLUME="${RAG_MAVEN_CACHE_VOLUME:-rag-m2-cache}"
 
 # Playwright runs in a Linux container for parity (browser deps included).
@@ -148,10 +149,10 @@ wait_for_admin_login() {
   log "Waiting for e2e admin login to be available."
   for _ in $(seq 1 45); do
     code="$(
-      curl -sS -o /dev/null -w '%{http_code}' \
+      curl -ksS -o /dev/null -w '%{http_code}' \
         -H 'Content-Type: application/json' \
         -d '{"email":"admin@e2e.local","password":"e2e"}' \
-        http://127.0.0.1:9000/api/auth/login || true
+        https://127.0.0.1:8443/api/auth/login || true
     )"
     if [[ "${code}" == "200" ]]; then
       log "Admin login OK."
@@ -160,6 +161,38 @@ wait_for_admin_login() {
     sleep 2
   done
   log "Admin login not ready; continuing (admin UI test may fail)."
+}
+
+start_proxy() {
+  log "Starting reverse-proxy container for HTTPS proxy-mode E2E."
+  docker rm -f "${PROXY_CONTAINER}" >/dev/null 2>&1 || true
+  docker build -t rag-reverse-proxy-local "${REPO_ROOT}/reverse-proxy" >/dev/null
+  docker run -d --name "${PROXY_CONTAINER}" \
+    --add-host=host.docker.internal:host-gateway \
+    -p 8080:80 -p 8443:443 \
+    -e BACKEND_HOST=host.docker.internal \
+    -e BACKEND_INTERNAL_PORT=9000 \
+    -e WEBAPP_HOST=host.docker.internal \
+    -e WEBAPP_INTERNAL_PORT=3000 \
+    -e REVERSE_PROXY_ENFORCE_HTTPS=1 \
+    -e API_CLIENT_MAX_BODY_SIZE=50m \
+    -e API_PROXY_CONNECT_TIMEOUT=10s \
+    -e API_PROXY_SEND_TIMEOUT=180s \
+    -e API_PROXY_READ_TIMEOUT=180s \
+    rag-reverse-proxy-local >/dev/null
+}
+
+wait_for_proxy() {
+  log "Waiting for reverse-proxy HTTPS endpoint."
+  for _ in $(seq 1 90); do
+    if curl -skf https://127.0.0.1:8443/ >/dev/null 2>&1; then
+      log "Proxy healthy."
+      return 0
+    fi
+    sleep 2
+  done
+  docker logs --tail 200 "${PROXY_CONTAINER}" >&2 || true
+  return 1
 }
 
 seed_admin() {
@@ -183,8 +216,9 @@ run_playwright_fullstack() {
     -v "${NPM_CACHE_VOLUME}:/root/.npm" \
     -e E2E_ALLOW_INSECURE_COOKIES="true" \
     -e E2E_ADMIN_ENABLED="1" \
-    -e PLAYWRIGHT_BASE_URL="http://127.0.0.1:3000" \
-    -e NEXT_PUBLIC_API_BASE_URL="http://host.docker.internal:9000" \
+    -e PLAYWRIGHT_BASE_URL="https://127.0.0.1:8443" \
+    -e PLAYWRIGHT_IGNORE_HTTPS_ERRORS="1" \
+    -e NEXT_PUBLIC_API_BASE_URL="" \
     -e NEXT_PUBLIC_RAG_API_PREFIX="/api/v5" \
     "${PLAYWRIGHT_IMAGE}" bash -lc \
       "npm ci --silent --no-audit --no-fund && npm run build && npm run test:e2e:fullstack"
@@ -194,7 +228,12 @@ stop_backend() {
   docker rm -f "${BACKEND_CONTAINER}" >/dev/null 2>&1 || true
 }
 
+stop_proxy() {
+  docker rm -f "${PROXY_CONTAINER}" >/dev/null 2>&1 || true
+}
+
 cleanup() {
+  stop_proxy
   stop_backend
   if [[ "${STOP_AFTER}" = "1" ]]; then
     log "Removing Postgres container: ${POSTGRES_CONTAINER}"
@@ -209,6 +248,8 @@ ensure_network
 prepare_postgres
 start_backend
 wait_for_backend
+start_proxy
+wait_for_proxy
 seed_admin
 wait_for_admin_login
 run_playwright_fullstack

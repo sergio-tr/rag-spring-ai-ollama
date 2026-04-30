@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const uiBaseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
 const apiBaseURL =
   process.env.API_BASE_URL ?? process.env.INTEGRATION_BACKEND_URL ?? "http://127.0.0.1:9000";
+const ignoreHTTPSErrors = process.env.PLAYWRIGHT_IGNORE_HTTPS_ERRORS === "1";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -19,6 +20,7 @@ export default defineConfig({
   use: {
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    ignoreHTTPSErrors,
   },
   projects: [
     {
