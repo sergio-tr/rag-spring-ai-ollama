@@ -7,6 +7,7 @@ import {
   apiProductPath,
   getApiBaseUrl,
   getRagApiProductPrefix,
+  getSafeApiErrorMessage,
   onApiUnauthorized,
 } from "./api-client";
 import * as accessToken from "./access-token";
@@ -298,7 +299,61 @@ describe("apiFetch", () => {
     expect(main).toHaveBeenCalledTimes(2);
   });
 
-  it("uses statusText when error response body read fails", async () => {
+  it("extracts detail from JSON error body on 400", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: () => Promise.resolve(JSON.stringify({ detail: "Invalid payload" })),
+    } as Response);
+    await expect(apiFetch("/bad", { skipCredentials: true })).rejects.toMatchObject({
+      status: 400,
+      message: "Invalid payload",
+    });
+  });
+
+  it("getSafeApiErrorMessage handles ApiError and generic errors", () => {
+    expect(getSafeApiErrorMessage(new ApiError(418, "tea"))).toBe("tea");
+    expect(getSafeApiErrorMessage(new Error("e"))).toBe("e");
+    expect(getSafeApiErrorMessage(12)).toBe("12");
+  });
+
+  it("uses short non-HTML text for client errors when body is small", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      statusText: "Unprocessable",
+      headers: new Headers({ "content-type": "text/plain" }),
+      text: () => Promise.resolve("bad schema"),
+    } as Response);
+    try {
+      await apiFetch("/boom", { skipCredentials: true });
+      expect.fail();
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).message).toMatch(/bad schema/);
+    }
+  });
+
+  it("classifies JSON-looking error body without JSON content-type", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      statusText: "Unprocessable",
+      headers: new Headers(),
+      text: () => Promise.resolve('{"message":"nope"}'),
+    } as Response);
+    try {
+      await apiFetch("/v", { skipCredentials: true });
+      expect.fail();
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      expect((e as ApiError).meta?.kind).toBe("json");
+      expect((e as ApiError).message).toContain("nope");
+    }
+  });
+
+  it("maps 502 to a safe message when error response body read fails", async () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce({
       ok: false,
       status: 502,
@@ -307,10 +362,36 @@ describe("apiFetch", () => {
       text: () => Promise.reject(new Error("read failed")),
     } as Response);
 
-    await expect(apiFetch("/z", { skipCredentials: true })).rejects.toMatchObject({
+    try {
+      await apiFetch("/z", { skipCredentials: true });
+      expect.fail("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      const err = e as ApiError;
+      expect(err.status).toBe(502);
+      expect(err.message).not.toContain("<html");
+      expect(err.meta?.kind).toBeDefined();
+    }
+  });
+
+  it("normalizes nginx HTML 502 without exposing HTML in message", async () => {
+    const html = "<html><body>502 Bad Gateway</body></html>";
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+      ok: false,
       status: 502,
-      message: "Bad Gateway",
-    });
+      headers: new Headers({ "content-type": "text/html" }),
+      text: () => Promise.resolve(html),
+    } as Response);
+
+    try {
+      await apiFetch("/api/x", { skipCredentials: true });
+      expect.fail("expected throw");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError);
+      const err = e as ApiError;
+      expect(err.message).not.toContain("<html");
+      expect(err.meta?.kind).toBe("html");
+    }
   });
 
   it("prefixes path without leading slash onto API base", async () => {
@@ -354,6 +435,14 @@ describe("apiDownloadBlob", () => {
       "fetch",
       vi.fn(() => Promise.reject(new Error("unmocked fetch"))),
     );
+  });
+
+  it("wraps network failures as ApiError with kind network", async () => {
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError("offline"));
+    await expect(apiDownloadBlob("/blob", { skipCredentials: true })).rejects.toMatchObject({
+      status: 0,
+      meta: expect.objectContaining({ kind: "network" }),
+    });
   });
 
   afterEach(() => {
