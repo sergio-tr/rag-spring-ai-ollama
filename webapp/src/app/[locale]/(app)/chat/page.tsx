@@ -16,6 +16,7 @@ import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
 import { useRagPresets } from "@/features/chat/hooks/use-rag-presets";
 import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
 import { useProjectList } from "@/features/projects/hooks/use-projects";
+import { ProjectVisual } from "@/features/projects/components/ProjectVisual";
 import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { cn } from "@/lib/utils";
@@ -79,11 +80,11 @@ function ChatPageInner() {
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDocumentFilterRef = useRef<string[] | null>(null);
 
   useEffect(() => {
     if (urlConversationId && urlConversationId !== conversationId) {
-      const t = setTimeout(() => setConversationId(urlConversationId), 0);
-      return () => clearTimeout(t);
+      setConversationId(urlConversationId);
     }
   }, [urlConversationId, conversationId]);
 
@@ -126,6 +127,7 @@ function ChatPageInner() {
     () => (conversationId && convs ? convs.find((c) => c.id === conversationId) : undefined),
     [conversationId, convs],
   );
+  const conversationNotFound = Boolean(conversationId && convs && !activeConv);
 
   const convSyncKey = activeConv
     ? `${activeConv.id}:${activeConv.presetId ?? ""}:${JSON.stringify(activeConv.documentFilter ?? [])}`
@@ -137,6 +139,17 @@ function ChatPageInner() {
 
   useEffect(() => {
     if (!activeConv || patchConv.isPending) return;
+    if (pendingDocumentFilterRef.current) {
+      const serverFilter = activeConv.documentFilter ?? [];
+      const pending = pendingDocumentFilterRef.current;
+      const matchesPending =
+        pending.length === serverFilter.length && pending.every((id) => serverFilter.includes(id));
+      if (matchesPending) {
+        pendingDocumentFilterRef.current = null;
+      } else {
+        return;
+      }
+    }
     setPresetSelectValue(activeConv.presetId ?? "");
     const df = activeConv.documentFilter;
     if (df && df.length > 0) {
@@ -193,7 +206,7 @@ function ChatPageInner() {
     const e = modelsQueryError;
     if (e instanceof ApiError) {
       if (e.status === 401 || e.status === 403) return t("modelsLoadErrorAuth");
-      if (e.meta?.kind === "html" || e.status === 502 || e.status === 503 || e.status === 504) {
+      if (e.status === 502 || e.status === 503 || e.status === 504) {
         return t("modelsLoadErrorGateway");
       }
       if (e.status === 0 && e.meta?.kind === "network") return t("modelsLoadErrorGateway");
@@ -318,7 +331,7 @@ function ChatPageInner() {
   );
 
   const send = useCallback(async () => {
-    if (!conversationId || !input.trim()) return;
+    if (!input.trim()) return;
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
@@ -329,9 +342,16 @@ function ChatPageInner() {
       content: text,
       llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
     };
+    let targetConversationId = conversationId;
     try {
+      if (!targetConversationId) {
+        const created = await createConv.mutateAsync();
+        targetConversationId = created.id;
+        selectConversation(created.id);
+      }
+      if (!targetConversationId) return;
       const accepted = await apiFetch<LabJobAcceptedDto>(
-        apiProductPath(`/conversations/${conversationId}/messages`),
+        apiProductPath(`/conversations/${targetConversationId}/messages`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -346,7 +366,7 @@ function ChatPageInner() {
       }
       setSendError(getSafeApiErrorMessage(e));
     }
-  }, [conversationId, input, llmModelChoice, runChatJob]);
+  }, [conversationId, createConv, input, llmModelChoice, runChatJob]);
 
   const retryAssistant = useCallback(
     async (assistantMessageId: string) => {
@@ -440,12 +460,14 @@ function ChatPageInner() {
     if (!checked) {
       setLimitDocs(false);
       setSelectedDocIds([]);
+      pendingDocumentFilterRef.current = [];
       patchConv.mutate({ conversationId, body: { documentFilter: [] } });
       return;
     }
     const ready = docs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [];
     setLimitDocs(true);
     setSelectedDocIds(ready);
+    pendingDocumentFilterRef.current = ready;
     patchConv.mutate({ conversationId, body: { documentFilter: ready } });
   };
 
@@ -457,10 +479,12 @@ function ChatPageInner() {
     if (next.length === 0) {
       setLimitDocs(false);
       setSelectedDocIds([]);
+      pendingDocumentFilterRef.current = [];
       patchConv.mutate({ conversationId, body: { documentFilter: [] } });
       return;
     }
     setSelectedDocIds(next);
+    pendingDocumentFilterRef.current = next;
     patchConv.mutate({ conversationId, body: { documentFilter: next } });
   };
 
@@ -532,15 +556,10 @@ function ChatPageInner() {
         {conversationId && active ? (
           <header className="flex flex-wrap items-end gap-3 border-border border-b pb-3">
             <div className="flex min-w-[10rem] items-center gap-2">
-              <span
-                className="inline-block size-3 shrink-0 rounded-full border border-border"
-                style={{
-                  backgroundColor:
-                    currentProject?.colorHex && /^#([0-9A-Fa-f]{6})$/.test(currentProject.colorHex)
-                      ? currentProject.colorHex
-                      : "#9ca3af",
-                }}
-                aria-hidden
+              <ProjectVisual
+                iconKey={currentProject?.iconKey}
+                colorHex={currentProject?.colorHex}
+                dotClassName="inline-block size-3 shrink-0 rounded-full border border-border"
               />
               <span className="truncate font-medium text-sm">{active.name}</span>
             </div>
@@ -695,8 +714,34 @@ function ChatPageInner() {
               {t("jumpToBottom")}
             </Button>
           ) : null}
-          {!conversationId && (
-            <p className="text-muted-foreground text-sm">{t("pickConversation")}</p>
+          {!conversationId && <p className="text-muted-foreground text-sm">{t("pickConversation")}</p>}
+          {conversationNotFound && (
+            <div className="flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+              <p className="text-sm">{t("conversationNotFound")}</p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setConversationId(null);
+                    router.push("/chat");
+                  }}
+                >
+                  {t("backToConversations")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    setConversationId(null);
+                    router.push("/chat");
+                  }}
+                >
+                  {t("startNewChat")}
+                </Button>
+              </div>
+            </div>
           )}
           {messages?.map((m) => (
             <div
@@ -818,13 +863,13 @@ function ChatPageInner() {
                 void send();
               }
             }}
-            disabled={!conversationId}
+            disabled={false}
           />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" disabled={!isStreaming} onClick={() => stop()}>
               {t("stop")}
             </Button>
-            <Button type="button" size="sm" disabled={!conversationId || !input.trim()} onClick={() => void send()}>
+            <Button type="button" size="sm" disabled={!input.trim()} onClick={() => void send()}>
               {t("send")}
             </Button>
           </div>

@@ -16,8 +16,9 @@ import {
 } from "@/components/ui/card";
 import { DeleteProjectDialog } from "@/features/projects/components/DeleteProjectDialog";
 import { EditProjectDialog } from "@/features/projects/components/EditProjectDialog";
-import { fetchOrCreateDefaultConversation } from "@/features/projects/lib/open-project-in-chat";
+import { fetchLatestConversationId } from "@/features/projects/lib/open-project-in-chat";
 import { useActivateProject } from "@/features/projects/hooks/use-projects";
+import { ProjectVisual } from "@/features/projects/components/ProjectVisual";
 import { useAppStore } from "@/store/app.store";
 import type { ProjectSummary } from "@/types/api";
 
@@ -42,8 +43,8 @@ function OpenProjectChatButton({ project }: Readonly<{ project: ProjectSummary }
         setBusy(true);
         try {
           await activate.mutateAsync({ id: project.id, name: project.name });
-          const convId = await fetchOrCreateDefaultConversation(queryClient, project.id);
-          router.push(`/chat?conversationId=${encodeURIComponent(convId)}`);
+          const convId = await fetchLatestConversationId(queryClient, project.id);
+          router.push(convId ? `/chat?conversationId=${encodeURIComponent(convId)}` : "/chat");
         } finally {
           setBusy(false);
         }
@@ -67,12 +68,10 @@ export function ProjectGrid({ items }: ProjectGridProps) {
           <Card key={p.id} className="flex flex-col border-border/80">
             <CardHeader className="gap-1">
               <CardTitle className="flex items-center gap-2 text-lg leading-tight">
-                <span
-                  className="inline-block size-3 shrink-0 rounded-full border border-border"
-                  style={{
-                    backgroundColor: p.colorHex && /^#([0-9A-Fa-f]{6})$/.test(p.colorHex) ? p.colorHex : "#9ca3af",
-                  }}
-                  aria-hidden
+                <ProjectVisual
+                  iconKey={p.iconKey}
+                  colorHex={p.colorHex}
+                  dotClassName="inline-block size-3 shrink-0 rounded-full border border-border"
                 />
                 {p.name}
               </CardTitle>

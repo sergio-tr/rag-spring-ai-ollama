@@ -9,12 +9,12 @@ export function conversationsQueryKey(projectId: string) {
 }
 
 /**
- * Returns the most recently updated conversation id, or creates one if the project has none.
+ * Returns the most recently updated conversation id, or null if the project has none.
  */
-export async function fetchOrCreateDefaultConversation(
+export async function fetchLatestConversationId(
   queryClient: QueryClient,
   projectId: string,
-): Promise<string> {
+): Promise<string | null> {
   const list = await queryClient.fetchQuery({
     queryKey: conversationsQueryKey(projectId),
     queryFn: () =>
@@ -26,11 +26,5 @@ export async function fetchOrCreateDefaultConversation(
   if (sorted[0]?.id) {
     return sorted[0].id;
   }
-  const created = await apiFetch<ConversationDto>(apiProductPath(`/projects/${projectId}/conversations`), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
-  await queryClient.invalidateQueries({ queryKey: conversationsQueryKey(projectId) });
-  return created.id;
+  return null;
 }

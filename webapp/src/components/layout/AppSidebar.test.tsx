@@ -30,8 +30,10 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+const fetchLatestConversationIdMock = vi.fn(async () => "c-open");
+
 vi.mock("@/features/projects/lib/open-project-in-chat", () => ({
-  fetchOrCreateDefaultConversation: vi.fn(async () => "c-open"),
+  fetchLatestConversationId: (...args: unknown[]) => fetchLatestConversationIdMock(...args),
 }));
 
 vi.mock("@/features/projects/hooks/use-projects", () => ({
@@ -159,6 +161,8 @@ describe("AppSidebar", () => {
     mockProjectsState.isError = false;
     mockCreateConversation.isPending = false;
     mockCreateConversation.mutateAsync.mockClear();
+    fetchLatestConversationIdMock.mockReset();
+    fetchLatestConversationIdMock.mockResolvedValue("c-open");
     localStorage.removeItem("rag-sidebar");
     useAppStore.setState({ activeProject: null });
   });
@@ -231,7 +235,7 @@ describe("AppSidebar", () => {
     const user = userEvent.setup();
     render(<AppSidebar />, { wrapper: Wrapper });
     await user.click(screen.getByRole("button", { name: /search chat/i }));
-    expect(screen.getByText(/search chats/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /search chat/i })).toBeInTheDocument();
   });
 
   it("restores persisted collapsed/expanded state", () => {
@@ -270,6 +274,14 @@ describe("AppSidebar", () => {
     await user.click(match);
     expect(activateProjectMutateAsync).toHaveBeenCalledWith({ id: "p2", name: "Project Two" });
     expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c2");
+  });
+
+  it("opens project without conversationId when project has no chats", async () => {
+    fetchLatestConversationIdMock.mockResolvedValueOnce(null);
+    const user = userEvent.setup();
+    render(<AppSidebar />, { wrapper: Wrapper });
+    await user.click(screen.getByRole("button", { name: /^project one$/i }));
+    expect(pushMock).toHaveBeenCalledWith("/chat");
   });
 
   it("disables new conversation CTA while create is pending", () => {

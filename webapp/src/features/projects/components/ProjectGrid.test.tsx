@@ -23,8 +23,10 @@ vi.mock("@/features/projects/components/DeleteProjectDialog", () => ({
   DeleteProjectDialog: () => <span data-testid="del-dlg">del</span>,
 }));
 
+const fetchLatestConversationIdMock = vi.fn(async () => "c1");
+
 vi.mock("@/features/projects/lib/open-project-in-chat", () => ({
-  fetchOrCreateDefaultConversation: vi.fn(async () => "c1"),
+  fetchLatestConversationId: (...args: unknown[]) => fetchLatestConversationIdMock(...args),
 }));
 
 vi.mock("@/features/projects/hooks/use-projects", () => ({
@@ -40,6 +42,8 @@ describe("ProjectGrid", () => {
 
   beforeEach(() => {
     useAppStore.setState({ activeProject: null });
+    fetchLatestConversationIdMock.mockReset();
+    fetchLatestConversationIdMock.mockResolvedValue("c1");
   });
 
   it("renders projects and can activate", async () => {
@@ -63,5 +67,20 @@ describe("ProjectGrid", () => {
     );
     expect(screen.getByText("Alpha")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /open chat/i }));
+  });
+
+  it("routes to chat without conversation query when project has no conversations", async () => {
+    fetchLatestConversationIdMock.mockResolvedValueOnce(null);
+    const user = userEvent.setup();
+    const items = [{ id: "p1", name: "Alpha", description: "d", docCount: 1, convCount: 0, updatedAt: "" }];
+    render(
+      <QueryClientProvider client={qc}>
+        <IntlTestProvider>
+          <ProjectGrid items={items} />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /open chat/i }));
+    expect(fetchLatestConversationIdMock).toHaveBeenCalled();
   });
 });

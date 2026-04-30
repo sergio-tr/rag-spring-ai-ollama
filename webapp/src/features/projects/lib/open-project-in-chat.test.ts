@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api-client";
-import { conversationsQueryKey, fetchOrCreateDefaultConversation } from "./open-project-in-chat";
+import { fetchLatestConversationId } from "./open-project-in-chat";
 
 vi.mock("@/lib/api-client", () => ({
   apiFetch: vi.fn(),
   apiProductPath: (p: string) => p,
 }));
 
-describe("fetchOrCreateDefaultConversation", () => {
+describe("fetchLatestConversationId", () => {
   let qc: QueryClient;
 
   beforeEach(() => {
@@ -23,25 +23,16 @@ describe("fetchOrCreateDefaultConversation", () => {
       { id: "new", title: "b", updatedAt: "2025-01-01T00:00:00Z", presetId: null },
     ]);
 
-    const id = await fetchOrCreateDefaultConversation(qc, "pid");
+    const id = await fetchLatestConversationId(qc, "pid");
     expect(id).toBe("new");
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("creates a conversation when none exist and invalidates cache", async () => {
+  it("returns null when no conversations exist", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce([]);
-    vi.mocked(apiFetch).mockResolvedValueOnce({
-      id: "created",
-      title: "New",
-      updatedAt: "2025-01-01T00:00:00Z",
-      presetId: null,
-    });
 
-    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
-
-    const id = await fetchOrCreateDefaultConversation(qc, "pid2");
-    expect(id).toBe("created");
-    expect(apiFetch).toHaveBeenCalledTimes(2);
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: conversationsQueryKey("pid2") });
+    const id = await fetchLatestConversationId(qc, "pid2");
+    expect(id).toBeNull();
+    expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 });
