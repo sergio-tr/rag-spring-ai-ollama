@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
-import { createAndActivateProject, loginAsSeedUser } from "../support/helpers";
+import { createAndActivateProject, loginAsSeedUser, sendChatMessage } from "../support/helpers";
 
 /**
  * E2E-05: ingest a doc, then one chat turn.
@@ -38,10 +38,7 @@ test.describe("Chat RAG", () => {
       .getByRole("main")
       .getByRole("button", { name: /new conversation|nueva conversación/i })
       .click();
-    const textarea = page.getByPlaceholder(/message|mensaje/i);
-    await expect(textarea).toBeEnabled({ timeout: 15_000 });
-    await textarea.fill("What is in my project documents?");
-    await page.getByRole("button", { name: /^send$|^enviar$/i }).click();
+    await sendChatMessage(page, "What is in my project documents?");
 
     await expect(page.getByText(/could not send message/i)).toHaveCount(0);
     await expect(page.getByText(/E2E stub reply/i)).toBeVisible({ timeout: 120_000 });

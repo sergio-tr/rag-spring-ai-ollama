@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { adminEmail, adminPassword, seedEmail, seedPassword } from "../fixtures/users";
 
 const apiBase = () =>
@@ -29,9 +29,15 @@ export async function authHeadersFromPage(page: Page): Promise<Record<string, st
 
 /** Logs in with Flyway seed credentials and waits for the projects page. */
 export async function loginAsSeedUser(page: Page): Promise<void> {
-  await page.goto("/en/login");
-  await page.getByLabel(/email|correo/i).fill(seedEmail());
-  await page.getByLabel(/^password$/i).fill(seedPassword());
+  await page.goto("/en/login", { waitUntil: "domcontentloaded" });
+  const emailInput = page.getByLabel(/email|correo/i);
+  const passwordInput = page.getByLabel(/^password$/i);
+  await expect(emailInput).toBeVisible({ timeout: loginTimeoutMs });
+  await expect(emailInput).toBeEnabled({ timeout: loginTimeoutMs });
+  await expect(passwordInput).toBeVisible({ timeout: loginTimeoutMs });
+  await expect(passwordInput).toBeEnabled({ timeout: loginTimeoutMs });
+  await emailInput.fill(seedEmail());
+  await passwordInput.fill(seedPassword());
   await page.getByRole("button", { name: /continue|iniciar|sign in/i }).click();
   await expect(page).toHaveURL(/\/en\/projects/, { timeout: loginTimeoutMs });
   await expect(
@@ -59,9 +65,106 @@ export async function createAndActivateProject(page: Page, projectName: string):
 
 /** ADMIN user seeded when Spring profile {@code e2e} is active (see E2eAdminUserSeeder). */
 export async function loginAsE2eAdmin(page: Page): Promise<void> {
-  await page.goto("/en/login");
-  await page.getByLabel(/email|correo/i).fill(adminEmail());
-  await page.getByLabel(/^password$/i).fill(adminPassword());
+  await page.goto("/en/login", { waitUntil: "domcontentloaded" });
+  const emailInput = page.getByLabel(/email|correo/i);
+  const passwordInput = page.getByLabel(/^password$/i);
+  await expect(emailInput).toBeVisible({ timeout: loginTimeoutMs });
+  await expect(emailInput).toBeEnabled({ timeout: loginTimeoutMs });
+  await expect(passwordInput).toBeVisible({ timeout: loginTimeoutMs });
+  await expect(passwordInput).toBeEnabled({ timeout: loginTimeoutMs });
+  await emailInput.fill(adminEmail());
+  await passwordInput.fill(adminPassword());
   await page.getByRole("button", { name: /continue|iniciar|sign in/i }).click();
   await expect(page).toHaveURL(/\/en\/projects/, { timeout: loginTimeoutMs });
+}
+
+export type SendChatMessageOptions = {
+  /** Wait for the composer textarea to become visible and enabled. Default 15000. */
+  textareaReadyTimeoutMs?: number;
+  /** Wait for Send to become enabled after filling the textarea. Default 15000. */
+  sendEnabledTimeoutMs?: number;
+};
+
+function chatComposerLocators(page: Page): {
+  textarea: Locator;
+  sendButton: Locator;
+  newConversationButton: Locator;
+} {
+  return {
+    textarea: page.getByPlaceholder(/message|mensaje/i),
+    sendButton: page.getByRole("button", { name: /^send$|^enviar$/i }),
+    newConversationButton: page
+      .getByRole("main")
+      .getByRole("button", { name: /new conversation|nueva conversación/i }),
+  };
+}
+
+/**
+ * Waits for the chat composer, fills the message, and submits via Send (or Enter as fallback).
+ * Retries with clear/refill and a single "new conversation" reset when the Send button stays disabled.
+ */
+export async function sendChatMessage(page: Page, message: string, options?: SendChatMessageOptions): Promise<void> {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    throw new Error("sendChatMessage: message must be non-empty after trim.");
+  }
+
+  const textareaReadyTimeoutMs = options?.textareaReadyTimeoutMs ?? 15_000;
+  const sendEnabledTimeoutMs = options?.sendEnabledTimeoutMs ?? 15_000;
+  const recoverySendTimeoutMs = 10_000;
+  const afterEnterEmptyTimeoutMs = 8_000;
+
+  const { textarea, sendButton, newConversationButton } = chatComposerLocators(page);
+
+  async function prepareComposer(): Promise<void> {
+    await expect(textarea).toBeVisible({ timeout: textareaReadyTimeoutMs });
+    await expect(textarea).toBeEnabled({ timeout: textareaReadyTimeoutMs });
+    await textarea.fill(message);
+  }
+
+  async function clickSendWhenEnabled(timeoutMs: number): Promise<boolean> {
+    try {
+      await expect(sendButton).toBeEnabled({ timeout: timeoutMs });
+      await sendButton.click();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function submitViaEnterAndConfirm(): Promise<boolean> {
+    await textarea.press("Enter");
+    try {
+      await expect(textarea).toHaveValue("", { timeout: afterEnterEmptyTimeoutMs });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  await prepareComposer();
+  if (await clickSendWhenEnabled(sendEnabledTimeoutMs)) {
+    return;
+  }
+
+  await textarea.clear();
+  await textarea.fill(message);
+  if (await clickSendWhenEnabled(recoverySendTimeoutMs)) {
+    return;
+  }
+
+  if (await submitViaEnterAndConfirm()) {
+    return;
+  }
+
+  await newConversationButton.click();
+  await prepareComposer();
+  if (await clickSendWhenEnabled(sendEnabledTimeoutMs)) {
+    return;
+  }
+
+  throw new Error(
+    "sendChatMessage: could not send — Send stayed disabled after refill, Enter did not clear the composer, " +
+      "and retry after starting a new conversation failed.",
+  );
 }

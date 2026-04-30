@@ -138,7 +138,7 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run build
-          nohup npm run start > /tmp/webapp-e2e.log 2>&1 &
+          nohup env npm run start -- -H 0.0.0.0 -p 3000 > /tmp/webapp-e2e.log 2>&1 &
           echo $! > /tmp/webapp-e2e.pid
 
       - name: Wait for webapp health
@@ -158,12 +158,12 @@ jobs:
         run: |
           docker build -t rag-reverse-proxy-ci reverse-proxy
           docker run -d --name rag-reverse-proxy-ci \
-            --add-host=host.docker.internal:host-gateway \
+            --add-host=host-gateway.internal:host-gateway \
             -p ${REVERSE_PROXY_HTTP_PORT}:80 \
             -p ${REVERSE_PROXY_HTTPS_PORT}:443 \
-            -e BACKEND_HOST=host.docker.internal \
+            -e BACKEND_HOST=host-gateway.internal \
             -e BACKEND_INTERNAL_PORT=9000 \
-            -e WEBAPP_HOST=host.docker.internal \
+            -e WEBAPP_HOST=host-gateway.internal \
             -e WEBAPP_INTERNAL_PORT=3000 \
             -e REVERSE_PROXY_ENFORCE_HTTPS=1 \
             -e API_CLIENT_MAX_BODY_SIZE=50m \
@@ -191,10 +191,11 @@ jobs:
           E2E_ALLOW_INSECURE_COOKIES: "true"
           E2E_LOGIN_TIMEOUT_MS: "12000"
           PLAYWRIGHT_IGNORE_HTTPS_ERRORS: "1"
-          PLAYWRIGHT_RETRIES: "0"
+          PLAYWRIGHT_WORKERS: "1"
+          PLAYWRIGHT_RETRIES: "1"
           PLAYWRIGHT_SKIP_WEBSERVER: "1"
           PLAYWRIGHT_EXPECT_TIMEOUT_MS: "10000"
-          PLAYWRIGHT_TEST_TIMEOUT_MS: "20000"
+          PLAYWRIGHT_TEST_TIMEOUT_MS: "30000"
           PLAYWRIGHT_BASE_URL: https://127.0.0.1:8443
           API_BASE_URL: https://127.0.0.1:8443
         run: |

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
-import { createAndActivateProject, loginAsSeedUser } from "../support/helpers";
+import { createAndActivateProject, loginAsSeedUser, sendChatMessage } from "../support/helpers";
 
 /** E2E-10: multiple conversations and switch between them in the chat sidebar. */
 test.describe("Conversation history", () => {
@@ -15,10 +15,7 @@ test.describe("Conversation history", () => {
       .getByRole("main")
       .getByRole("button", { name: /new conversation|nueva conversación/i })
       .click();
-    const textarea = page.getByPlaceholder(/message|mensaje/i);
-    await expect(textarea).toBeEnabled({ timeout: 15_000 });
-    await textarea.fill("First thread message");
-    await page.getByRole("button", { name: /^send$|^enviar$/i }).click();
+    await sendChatMessage(page, "First thread message");
     // Smoke-level assertion: user message is rendered (job completion can vary by backend flags).
     await expect(page.getByText("First thread message")).toBeVisible({ timeout: 10_000 });
 
