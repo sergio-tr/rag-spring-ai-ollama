@@ -16,6 +16,7 @@ import {
   createRegisterSchema,
   type RegisterFormValues,
 } from "@/features/auth/schemas/auth-schemas";
+import { shouldCommitRegisterSessionAfterRegister } from "@/features/auth/lib/register-session-policy";
 import type { RegisterResponse } from "@/types/api";
 
 export function RegisterForm() {
@@ -23,7 +24,6 @@ export function RegisterForm() {
   const locale = useLocale();
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const oauthGoogleEnabled = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === "true";
   const privacyVersion = process.env.NEXT_PUBLIC_LEGAL_PRIVACY_VERSION ?? "";
   const termsVersion = process.env.NEXT_PUBLIC_LEGAL_TERMS_VERSION ?? "";
@@ -42,7 +42,6 @@ export function RegisterForm() {
 
   async function onSubmit(values: RegisterFormValues) {
     setFormError(null);
-    setInfoMessage(null);
     try {
       const data = await apiFetch<RegisterResponse>(authApiPath("/register"), {
         method: "POST",
@@ -59,15 +58,16 @@ export function RegisterForm() {
           termsVersion: termsVersion || undefined,
         }),
       });
-      if (data.status === "PENDING_EMAIL_VERIFICATION" || !data.login) {
-        setInfoMessage(t("registerVerificationRequired"));
+      if (!shouldCommitRegisterSessionAfterRegister(data)) {
+        router.push(`/register/pending?email=${encodeURIComponent(values.email)}`);
+        router.refresh();
         return;
       }
       await commitSessionCookie({
-        accessToken: data.login.accessToken,
-        refreshToken: data.login.refreshToken,
+        accessToken: data.login!.accessToken,
+        refreshToken: data.login!.refreshToken,
       });
-      setStoredUserRole(data.login.user.role);
+      setStoredUserRole(data.login!.user.role);
       router.push("/projects");
       router.refresh();
     } catch (e) {
@@ -151,11 +151,6 @@ export function RegisterForm() {
           </p>
         )}
       </div>
-      {infoMessage && (
-        <p className="text-muted-foreground text-sm" role="status">
-          {infoMessage}
-        </p>
-      )}
       {formError && (
         <p className="text-destructive text-sm" role="alert">
           {formError}
