@@ -5,6 +5,7 @@ import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterResponse;
+import com.uniovi.rag.interfaces.rest.auth.AuthTokenException;
 import com.uniovi.rag.interfaces.rest.support.ApiEarlyExceptionResolver;
 import com.uniovi.rag.interfaces.rest.support.ApiGlobalExceptionHandler;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -23,6 +24,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -168,12 +170,15 @@ class AuthControllerTest {
     }
 
     @Test
-    void forgotPassword_valid_returnsOk() throws Exception {
+    void forgotPassword_valid_returnsNeutralJson() throws Exception {
         doNothing().when(authService).forgotPassword(any(), anyString(), anyString());
         mockMvc.perform(post(AUTH_BASE + "/forgot-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"a@b.com\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REQUEST_ACCEPTED"))
+                .andExpect(jsonPath("$.message").value(
+                        "If an account exists for that email, a reset link will be sent"));
     }
 
     @Test
@@ -183,6 +188,54 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"t\",\"newPassword\":\"password123\"}"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void resetPassword_invalidToken_returns400WithCode() throws Exception {
+        doThrow(new AuthTokenException("RESET_TOKEN_INVALID", "Invalid reset token"))
+                .when(authService)
+                .resetPassword(any());
+        mockMvc.perform(post(AUTH_BASE + "/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"bad\",\"newPassword\":\"password123\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("RESET_TOKEN_INVALID"));
+    }
+
+    @Test
+    void resetPassword_expiredToken_returns400WithCode() throws Exception {
+        doThrow(new AuthTokenException("RESET_TOKEN_EXPIRED", "Reset token expired"))
+                .when(authService)
+                .resetPassword(any());
+        mockMvc.perform(post(AUTH_BASE + "/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"expired\",\"newPassword\":\"password123\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("RESET_TOKEN_EXPIRED"));
+    }
+
+    @Test
+    void resetPassword_reusedToken_returns400WithCode() throws Exception {
+        doThrow(new AuthTokenException("RESET_TOKEN_ALREADY_USED", "Reset token already used"))
+                .when(authService)
+                .resetPassword(any());
+        mockMvc.perform(post(AUTH_BASE + "/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"used\",\"newPassword\":\"password123\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("RESET_TOKEN_ALREADY_USED"));
+    }
+
+    @Test
+    void resetPassword_disabled_returns400WithCode() throws Exception {
+        doThrow(new AuthTokenException("PASSWORD_RESET_DISABLED", "Password reset disabled"))
+                .when(authService)
+                .resetPassword(any());
+        mockMvc.perform(post(AUTH_BASE + "/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"t\",\"newPassword\":\"password123\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("PASSWORD_RESET_DISABLED"));
     }
 
     @Test

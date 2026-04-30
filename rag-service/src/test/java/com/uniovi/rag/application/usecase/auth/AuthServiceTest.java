@@ -376,6 +376,53 @@ class AuthServiceTest {
 	}
 
 	@Test
+	void forgotPassword_unknownEmail_doesNotPersistTokenOrMail() {
+		when(userAccountPort.findByEmailIgnoreCase("ghost@user.com")).thenReturn(Optional.empty());
+
+		newServiceEmailAndMailEnabled().forgotPassword(
+				new ForgotPasswordRequest("ghost@user.com", "en"), "127.0.0.1", "test-agent");
+
+		verify(passwordResetTokenRepository, never()).save(any(PasswordResetTokenEntity.class));
+		verify(mailOutboxRepository, never()).save(any(MailOutboxEntity.class));
+	}
+
+	@Test
+	void resetPassword_invalidToken_throws() {
+		when(passwordResetTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> newServicePasswordResetEnabled()
+						.resetPassword(new ResetPasswordRequest("raw", "password123")))
+				.isInstanceOfSatisfying(AuthTokenException.class,
+						ex -> assertThat(ex.getCode()).isEqualTo("RESET_TOKEN_INVALID"));
+	}
+
+	@Test
+	void resetPassword_reusedToken_throws() {
+		PasswordResetTokenEntity tok = new PasswordResetTokenEntity();
+		tok.setConsumedAt(Instant.now());
+		tok.setExpiresAt(Instant.now().plusSeconds(300));
+		when(passwordResetTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
+
+		assertThatThrownBy(() -> newServicePasswordResetEnabled()
+						.resetPassword(new ResetPasswordRequest("raw", "password123")))
+				.isInstanceOfSatisfying(AuthTokenException.class,
+						ex -> assertThat(ex.getCode()).isEqualTo("RESET_TOKEN_ALREADY_USED"));
+	}
+
+	@Test
+	void resetPassword_expiredToken_throws() {
+		PasswordResetTokenEntity tok = new PasswordResetTokenEntity();
+		tok.setConsumedAt(null);
+		tok.setExpiresAt(Instant.now().minusSeconds(1));
+		when(passwordResetTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
+
+		assertThatThrownBy(() -> newServicePasswordResetEnabled()
+						.resetPassword(new ResetPasswordRequest("raw", "password123")))
+				.isInstanceOfSatisfying(AuthTokenException.class,
+						ex -> assertThat(ex.getCode()).isEqualTo("RESET_TOKEN_EXPIRED"));
+	}
+
+	@Test
 	void resendConfirmation_unverifiedUser_issuesNewTokenAndMail() {
 		UserEntity u = mock(UserEntity.class);
 		when(u.isEmailVerified()).thenReturn(false);
