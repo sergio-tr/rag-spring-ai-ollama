@@ -45,7 +45,16 @@ services:
       # envsubst substitutes these into nginx.conf (see reverse-proxy/Dockerfile).
       BACKEND_HOST: backend
       BACKEND_INTERNAL_PORT: ${SERVER_PORT:-9000}
+      WEBAPP_HOST: webapp
       WEBAPP_INTERNAL_PORT: ${WEBAPP_CONTAINER_PORT:-3000}
+      REVERSE_PROXY_ENFORCE_HTTPS: ${REVERSE_PROXY_ENFORCE_HTTPS:-1}
+      API_PROXY_CONNECT_TIMEOUT: ${API_PROXY_CONNECT_TIMEOUT:-10s}
+      API_PROXY_SEND_TIMEOUT: ${API_PROXY_SEND_TIMEOUT:-180s}
+      API_PROXY_READ_TIMEOUT: ${API_PROXY_READ_TIMEOUT:-180s}
+      API_CLIENT_MAX_BODY_SIZE: ${API_CLIENT_MAX_BODY_SIZE:-50m}
+      WEB_CLIENT_MAX_BODY_SIZE: ${WEB_CLIENT_MAX_BODY_SIZE:-20m}
+      TLS_CERT_PATH: ${TLS_CERT_PATH:-/etc/nginx/certs/tls.crt}
+      TLS_KEY_PATH: ${TLS_KEY_PATH:-/etc/nginx/certs/tls.key}
     networks:
       - public
     restart: unless-stopped
