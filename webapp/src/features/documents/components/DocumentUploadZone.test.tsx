@@ -106,7 +106,7 @@ describe("DocumentUploadZone", () => {
   it("classifies HTML gateway errors without parsing message as JSON", () => {
     uploadHook.isError = true;
     uploadHook.error = new ApiError(502, "Gateway error.", {
-      kind: "html",
+      kind: "http",
       contentType: "text/html",
     });
     render(

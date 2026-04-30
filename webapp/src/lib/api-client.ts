@@ -142,15 +142,21 @@ async function tryRefreshOnce(): Promise<boolean> {
   return refreshPromise;
 }
 
-export type ApiErrorKind = "json" | "html" | "text" | "network" | "unknown";
+export type ApiErrorKind = "http" | "network" | "timeout" | "abort" | "unknown";
 
 export type ApiErrorMeta = {
   kind: ApiErrorKind;
+  safeMessage?: string;
+  details?: Record<string, unknown>;
   contentType?: string | null;
   /** Bounded slice of raw body for logs/debug only — never render unbounded HTML to users. */
   rawBodyPreview?: string;
-  /** Parsed JSON body when error response was JSON or looked like JSON. */
-  json?: unknown;
+  diagnostics?: {
+    traceparent?: string | null;
+    requestId?: string | null;
+    url?: string;
+    method?: string;
+  };
   url?: string;
   method?: string;
 };
@@ -185,12 +191,26 @@ function extractJsonDetail(parsed: unknown): string | null {
   return null;
 }
 
+function extractValidationDetails(parsed: unknown): Record<string, unknown> | undefined {
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const o = parsed as Record<string, unknown>;
+  const fieldErrors = o.fieldErrors;
+  if (fieldErrors && typeof fieldErrors === "object") {
+    return { fieldErrors: fieldErrors as Record<string, unknown> };
+  }
+  const errors = o.errors;
+  if (Array.isArray(errors)) {
+    return { errors: errors as unknown[] };
+  }
+  return undefined;
+}
+
 function buildSafeMessage(args: {
   status: number;
   contentType: string | null;
   bodyText: string;
   parsedJson: unknown | null;
-  kind: ApiErrorKind;
+  kind: "json" | "html" | "text" | "unknown";
 }): string {
   const { status, contentType, bodyText, parsedJson, kind } = args;
 
@@ -231,28 +251,28 @@ function previewBody(body: string): string {
 }
 
 function classifyErrorBody(contentType: string | null, bodyText: string): {
-  kind: ApiErrorKind;
+  bodyKind: "json" | "html" | "text" | "unknown";
   parsedJson: unknown | null;
 } {
   if (contentType?.includes("application/json")) {
     try {
-      return { kind: "json", parsedJson: JSON.parse(bodyText) as unknown };
+      return { bodyKind: "json", parsedJson: JSON.parse(bodyText) as unknown };
     } catch {
-      return { kind: "text", parsedJson: null };
+      return { bodyKind: "text", parsedJson: null };
     }
   }
   const trimmed = bodyText.trim();
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
-      return { kind: "json", parsedJson: JSON.parse(bodyText) as unknown };
+      return { bodyKind: "json", parsedJson: JSON.parse(bodyText) as unknown };
     } catch {
       /* fall through */
     }
   }
   if (contentType?.includes("text/html") || looksLikeHtml(bodyText)) {
-    return { kind: "html", parsedJson: null };
+    return { bodyKind: "html", parsedJson: null };
   }
-  return { kind: bodyText ? "text" : "unknown", parsedJson: null };
+  return { bodyKind: bodyText ? "text" : "unknown", parsedJson: null };
 }
 
 export function createHttpApiError(args: {
@@ -263,19 +283,27 @@ export function createHttpApiError(args: {
   method: string;
 }): ApiError {
   const ct = args.headers.get("content-type");
-  const { kind, parsedJson } = classifyErrorBody(ct, args.bodyText);
+  const { bodyKind, parsedJson } = classifyErrorBody(ct, args.bodyText);
   const safeMessage = buildSafeMessage({
     status: args.status,
     contentType: ct,
     bodyText: args.bodyText,
     parsedJson,
-    kind,
+    kind: bodyKind,
   });
+  const details = extractValidationDetails(parsedJson);
   const meta: ApiErrorMeta = {
-    kind,
+    kind: "http",
+    safeMessage,
+    details,
     contentType: ct,
     rawBodyPreview: previewBody(args.bodyText),
-    json: parsedJson ?? undefined,
+    diagnostics: {
+      traceparent: args.headers.get("traceparent"),
+      requestId: args.headers.get("x-request-id"),
+      url: args.requestUrl,
+      method: args.method,
+    },
     url: args.requestUrl,
     method: args.method,
   };
@@ -298,7 +326,7 @@ export class ApiError extends Error {
  */
 export function getSafeApiErrorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message;
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error) return "Unexpected error. Please try again.";
   return String(error);
 }
 
@@ -331,10 +359,9 @@ export async function apiFetch<T = unknown>(
   try {
     res = await doRequest();
   } catch (e) {
-    const msg =
-      e instanceof Error ? e.message : "Network error.";
-    throw new ApiError(0, `Network error: ${msg}`, {
-      kind: "network",
+    const isAbort = e instanceof DOMException && e.name === "AbortError";
+    throw new ApiError(0, isAbort ? "Request was cancelled." : "Network error. Check connection and server availability.", {
+      kind: isAbort ? "abort" : "network",
       url,
       method,
     });
@@ -346,9 +373,9 @@ export async function apiFetch<T = unknown>(
       try {
         res = await doRequest();
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Network error.";
-        throw new ApiError(0, `Network error: ${msg}`, {
-          kind: "network",
+        const isAbort = e instanceof DOMException && e.name === "AbortError";
+        throw new ApiError(0, isAbort ? "Request was cancelled." : "Network error. Check connection and server availability.", {
+          kind: isAbort ? "abort" : "network",
           url,
           method,
         });
@@ -408,9 +435,9 @@ export async function apiDownloadBlob(path: string, options: ApiClientOptions = 
   try {
     res = await doRequest();
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Network error.";
-    throw new ApiError(0, `Network error: ${msg}`, {
-      kind: "network",
+    const isAbort = e instanceof DOMException && e.name === "AbortError";
+    throw new ApiError(0, isAbort ? "Request was cancelled." : "Network error. Check connection and server availability.", {
+      kind: isAbort ? "abort" : "network",
       url,
       method,
     });
@@ -422,9 +449,9 @@ export async function apiDownloadBlob(path: string, options: ApiClientOptions = 
       try {
         res = await doRequest();
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Network error.";
-        throw new ApiError(0, `Network error: ${msg}`, {
-          kind: "network",
+        const isAbort = e instanceof DOMException && e.name === "AbortError";
+        throw new ApiError(0, isAbort ? "Request was cancelled." : "Network error. Check connection and server availability.", {
+          kind: isAbort ? "abort" : "network",
           url,
           method,
         });

@@ -314,7 +314,7 @@ describe("apiFetch", () => {
 
   it("getSafeApiErrorMessage handles ApiError and generic errors", () => {
     expect(getSafeApiErrorMessage(new ApiError(418, "tea"))).toBe("tea");
-    expect(getSafeApiErrorMessage(new Error("e"))).toBe("e");
+    expect(getSafeApiErrorMessage(new Error("e"))).toBe("Unexpected error. Please try again.");
     expect(getSafeApiErrorMessage(12)).toBe("12");
   });
 
@@ -348,7 +348,7 @@ describe("apiFetch", () => {
       expect.fail();
     } catch (e) {
       expect(e).toBeInstanceOf(ApiError);
-      expect((e as ApiError).meta?.kind).toBe("json");
+      expect((e as ApiError).meta?.kind).toBe("http");
       expect((e as ApiError).message).toContain("nope");
     }
   });
@@ -390,7 +390,7 @@ describe("apiFetch", () => {
       expect(e).toBeInstanceOf(ApiError);
       const err = e as ApiError;
       expect(err.message).not.toContain("<html");
-      expect(err.meta?.kind).toBe("html");
+      expect(err.meta?.kind).toBe("http");
     }
   });
 

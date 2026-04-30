@@ -30,11 +30,10 @@ function uploadErrorDetail(err: unknown, t: (key: string) => string): string | n
     if (err.status === 503) return t("uploadErrorOllamaNotReady");
     if (err.status === 409) return t("uploadErrorDuplicate");
     if (err.status === 401 || err.status === 403) return t("uploadErrorUnauthorized");
-    if (err.meta?.kind === "html" || err.status === 502 || err.status === 504) return t("uploadErrorGateway");
+    if (err.status === 502 || err.status === 503 || err.status === 504) return t("uploadErrorGateway");
     if (err.status === 0 && err.meta?.kind === "network") return t("uploadErrorGateway");
-
-    const fromMeta = extractJsonDetailFromUnknown(err.meta?.json);
-    if (fromMeta) return fromMeta;
+    const fromDetails = extractJsonDetailFromUnknown(err.meta?.details);
+    if (fromDetails) return fromDetails;
 
     const msg = err.message?.trim() ?? "";
     if (msg.startsWith("{") || msg.startsWith("[")) {
