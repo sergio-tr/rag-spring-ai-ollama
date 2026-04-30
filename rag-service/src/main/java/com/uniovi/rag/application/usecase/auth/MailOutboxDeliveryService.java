@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.lang.Nullable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +32,7 @@ public class MailOutboxDeliveryService {
     private static final Logger log = LoggerFactory.getLogger(MailOutboxDeliveryService.class);
 
     private final MailOutboxRepository mailOutboxRepository;
+    @Nullable
     private final JavaMailSender mailSender;
     private final boolean mailEnabled;
     private final String mailFrom;
@@ -38,7 +40,7 @@ public class MailOutboxDeliveryService {
 
     public MailOutboxDeliveryService(
             MailOutboxRepository mailOutboxRepository,
-            JavaMailSender mailSender,
+            @Nullable JavaMailSender mailSender,
             @Value("${rag.auth.mail.enabled:false}") boolean mailEnabled,
             @Value("${rag.auth.mail.from:no-reply@local.test}") String mailFrom,
             @Value("${rag.auth.mail.from-name:RAG App}") String mailFromName) {
@@ -55,6 +57,10 @@ public class MailOutboxDeliveryService {
     @Transactional
     public void deliverPending() {
         if (!mailEnabled) {
+            return;
+        }
+        if (mailSender == null) {
+            log.warn("Mail delivery is enabled but JavaMailSender bean is unavailable; skipping outbox sweep");
             return;
         }
         List<MailOutboxEntity> pending = mailOutboxRepository.findTop50BySentAtIsNullOrderByCreatedAtAsc();

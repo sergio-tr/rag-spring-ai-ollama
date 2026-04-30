@@ -569,7 +569,7 @@ class OauthLoginServiceTest {
                         (String) null,
                         (String) null);
         assertThat(ReflectionTestUtils.getField(svc, "googleIssuer")).isEqualTo("https://accounts.google.com");
-        assertThat(ReflectionTestUtils.getField(svc, "googleRedirectPath")).isEqualTo("/api/v5/auth/oauth/google/callback");
+        assertThat(ReflectionTestUtils.getField(svc, "googleRedirectPath")).isEqualTo("/auth/oauth/google/callback");
     }
 
     private static OauthLoginStateTokenEntity validUnconsumedStateRow(String rawState) {

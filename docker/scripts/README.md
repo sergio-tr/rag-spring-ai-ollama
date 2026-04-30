@@ -76,6 +76,8 @@ Requires **Python 3** and **PyYAML** (same as the compose helpers below).
 | [`compose_inventory.py`](compose_inventory.py) | Lists every `docker/*.yml` and each service with `image` vs `build` (per-file, not merged stacks). |
 | [`compose_guard.py`](compose_guard.py) | Policy rules: no `image:` in `docker/*.yml`, valid `build:` blocks, optional env/port/healthcheck strictness. Full run may report **violations** for `environment_literal` / `healthcheck_*` during migration. **CI** uses `--only-rules image_forbidden,yaml_error,build_invalid,build_missing_context,build_missing_dockerfile` (see [`.github/workflows/docker-compose-ci.yml`](../../.github/workflows/docker-compose-ci.yml)). |
 
+**Mailpit** (`docker-compose.yml`, profile `dev-mail`): upstream image is pinned via **`docker/mailpit/Dockerfile`** and build arg **`MAILPIT_BASE_IMAGE`** (default `axllent/mailpit:v1.29.7`), because Compose services must use **`build:`** only — never a top-level **`image:`**.
+
 ```bash
 python3 ./docker/scripts/compose_inventory.py
 python3 ./docker/scripts/compose_inventory.py --format markdown
