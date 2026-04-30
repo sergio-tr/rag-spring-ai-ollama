@@ -4,6 +4,7 @@ package com.uniovi.rag.interfaces.rest;
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ConversationApplicationService;
 import com.uniovi.rag.application.service.MoveConversationApplicationService;
+import com.uniovi.rag.interfaces.rest.dto.ConversationDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import org.junit.jupiter.api.AfterEach;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -20,9 +22,11 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -88,5 +92,24 @@ class ProjectConversationsControllerWebMvcTest {
 
         verify(moveConversationApplicationService)
                 .moveConversationToProject(userId, projectId, conversationId, destinationProjectId);
+    }
+
+    @Test
+    void create_returns201WhenBodyIsEmptyJsonObject() throws Exception {
+        when(conversationApplicationService.createConversation(eq(userId), eq(projectId), any()))
+                .thenReturn(new ConversationDto(
+                        conversationId,
+                        "Chat",
+                        Instant.parse("2024-06-01T12:00:00Z"),
+                        null,
+                        List.of()));
+
+        mockMvc.perform(
+                        post(path("/projects/" + projectId + "/conversations"))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(conversationId.toString()))
+                .andExpect(jsonPath("$.title").value("Chat"));
     }
 }

@@ -5,6 +5,7 @@ import com.uniovi.rag.application.service.ChatMessageApplicationService;
 import com.uniovi.rag.application.service.ConversationApplicationService;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.interfaces.rest.dto.ChatMessageAcceptedDto;
+import com.uniovi.rag.interfaces.rest.dto.ConversationDto;
 import com.uniovi.rag.interfaces.rest.dto.PatchUserMessageRequest;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -23,6 +24,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -96,5 +98,21 @@ class ConversationControllerWebMvcTest {
                 .andExpect(jsonPath("$.streamPath").value("/api/v5/lab/jobs/" + jobId + "/events"));
 
         verify(chatMessageApplicationService).retryAssistantMessage(userId, conv, assistantMsg);
+    }
+
+    @Test
+    void patchConversation_acceptsTitleAndDocumentFilter() throws Exception {
+        UUID conv = UUID.randomUUID();
+        when(conversationApplicationService.patchConversation(eq(userId), eq(conv), any()))
+                .thenReturn(new ConversationDto(
+                        conv, "Renamed", Instant.parse("2024-07-01T00:00:00Z"), null, List.of("d1")));
+
+        mockMvc.perform(
+                        patch(path("/conversations/") + conv)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"title\":\"Renamed\",\"documentFilter\":[\"d1\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Renamed"))
+                .andExpect(jsonPath("$.documentFilter[0]").value("d1"));
     }
 }
