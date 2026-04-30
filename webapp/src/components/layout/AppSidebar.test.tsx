@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
 import type { ProjectSummary } from "@/types/api";
@@ -12,6 +13,11 @@ import { AppSidebar } from "./AppSidebar";
 vi.mock("@/lib/user-role", () => ({
   getStoredUserRole: vi.fn(() => null),
   setStoredUserRole: vi.fn(),
+}));
+
+const apiFetchMock = vi.fn();
+vi.mock("@/lib/api-client", () => ({
+  apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
 vi.mock("@/navigation", () => ({
@@ -30,10 +36,14 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const fetchLatestConversationIdMock = vi.fn(async () => "c-open");
+const { fetchLatestConversationIdMock } = vi.hoisted(() => ({
+  fetchLatestConversationIdMock: vi.fn<
+    (queryClient: QueryClient, projectId: string) => Promise<string | null>
+  >(async () => "c-open"),
+}));
 
 vi.mock("@/features/projects/lib/open-project-in-chat", () => ({
-  fetchLatestConversationId: (...args: unknown[]) => fetchLatestConversationIdMock(...args),
+  fetchLatestConversationId: fetchLatestConversationIdMock,
 }));
 
 vi.mock("@/features/projects/hooks/use-projects", () => ({
@@ -163,6 +173,8 @@ describe("AppSidebar", () => {
     mockCreateConversation.mutateAsync.mockClear();
     fetchLatestConversationIdMock.mockReset();
     fetchLatestConversationIdMock.mockResolvedValue("c-open");
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue({ roleName: null });
     localStorage.removeItem("rag-sidebar");
     useAppStore.setState({ activeProject: null });
   });
@@ -185,6 +197,14 @@ describe("AppSidebar", () => {
     vi.mocked(getStoredUserRole).mockReturnValue("ADMIN");
     render(<AppSidebar />, { wrapper: Wrapper });
     expect(screen.getByRole("link", { name: /^admin$/i })).toHaveAttribute("href", "/admin");
+  });
+
+  it("shows Admin link when /api/auth/me returns ADMIN", async () => {
+    apiFetchMock.mockResolvedValueOnce({ roleName: "ADMIN" });
+    render(<AppSidebar />, { wrapper: Wrapper });
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /^admin$/i })).toHaveAttribute("href", "/admin");
+    });
   });
 
   it("supports collapsing projects and expanding a project node", async () => {
@@ -276,12 +296,48 @@ describe("AppSidebar", () => {
     expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c2");
   });
 
+  it("searches chats without re-activating when project is already active", async () => {
+    useAppStore.setState({ activeProject: { id: "p2", name: "Project Two" } });
+    const user = userEvent.setup();
+    render(<AppSidebar />, { wrapper: Wrapper });
+
+    await user.click(screen.getByRole("button", { name: /search chat/i }));
+    await user.type(screen.getByPlaceholderText(/chat title/i), "budget");
+
+    const match = await screen.findByRole("button", { name: /budget chat/i });
+    await user.click(match);
+
+    expect(activateProjectMutateAsync).not.toHaveBeenCalled();
+    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c2");
+  });
+
   it("opens project without conversationId when project has no chats", async () => {
     fetchLatestConversationIdMock.mockResolvedValueOnce(null);
     const user = userEvent.setup();
     render(<AppSidebar />, { wrapper: Wrapper });
     await user.click(screen.getByRole("button", { name: /^project one$/i }));
     expect(pushMock).toHaveBeenCalledWith("/chat");
+  });
+
+  it("clears stale active project when it is not in the current list", async () => {
+    useAppStore.setState({ activeProject: { id: "missing", name: "Old Project" } });
+    render(<AppSidebar />, { wrapper: Wrapper });
+    await waitFor(() => {
+      expect(useAppStore.getState().activeProject).toBeNull();
+    });
+  });
+
+  it("activates a project when selecting a conversation from a collapsed inactive project", async () => {
+    useAppStore.setState({ activeProject: { id: "p2", name: "Project Two" } });
+    const user = userEvent.setup();
+    render(<AppSidebar />, { wrapper: Wrapper });
+
+    const expandProjectOne = screen.getByRole("button", { name: /expand chats for project one/i });
+    await user.click(expandProjectOne);
+    await user.click(screen.getByRole("button", { name: /chat one/i }));
+
+    expect(activateProjectMutateAsync).toHaveBeenCalledWith({ id: "p1", name: "Project One" });
+    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c1");
   });
 
   it("disables new conversation CTA while create is pending", () => {

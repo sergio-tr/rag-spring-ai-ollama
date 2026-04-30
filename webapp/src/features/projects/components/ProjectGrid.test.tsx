@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { createTestQueryClient } from "@/test-utils/query-client";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { useAppStore } from "@/store/app.store";
@@ -23,10 +24,14 @@ vi.mock("@/features/projects/components/DeleteProjectDialog", () => ({
   DeleteProjectDialog: () => <span data-testid="del-dlg">del</span>,
 }));
 
-const fetchLatestConversationIdMock = vi.fn(async () => "c1");
+const { fetchLatestConversationIdMock } = vi.hoisted(() => ({
+  fetchLatestConversationIdMock: vi.fn<
+    (queryClient: QueryClient, projectId: string) => Promise<string | null>
+  >(async () => "c1"),
+}));
 
 vi.mock("@/features/projects/lib/open-project-in-chat", () => ({
-  fetchLatestConversationId: (...args: unknown[]) => fetchLatestConversationIdMock(...args),
+  fetchLatestConversationId: fetchLatestConversationIdMock,
 }));
 
 vi.mock("@/features/projects/hooks/use-projects", () => ({

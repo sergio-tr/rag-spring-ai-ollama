@@ -90,6 +90,14 @@ describe("DocumentUploadZone", () => {
       </IntlTestProvider>,
     );
     expect(screen.getByRole("alert").textContent?.toLowerCase()).toContain("not authorized");
+
+    uploadHook.error = new ApiError(504, "x");
+    rerender(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert").textContent?.toLowerCase()).toMatch(/gateway|unavailable/);
   });
 
   it("extracts error detail from JSON in ApiError message", () => {
@@ -101,6 +109,31 @@ describe("DocumentUploadZone", () => {
       </IntlTestProvider>,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("boom");
+  });
+
+  it("prefers structured details from ApiError metadata", () => {
+    uploadHook.isError = true;
+    uploadHook.error = new ApiError(500, "fallback", {
+      kind: "http",
+      details: { error: { detail: "from details" } } as unknown as Record<string, unknown>,
+    });
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("from details");
+  });
+
+  it("maps network-kind ApiError to gateway message", () => {
+    uploadHook.isError = true;
+    uploadHook.error = new ApiError(0, "offline", { kind: "network" });
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert").textContent?.toLowerCase()).toMatch(/gateway|unavailable/);
   });
 
   it("classifies HTML gateway errors without parsing message as JSON", () => {
@@ -168,6 +201,19 @@ describe("DocumentUploadZone", () => {
     const file = new File(["x"], "x.txt", { type: "text/plain" });
     const files = { 0: file, length: 1, item: (i: number) => (i === 0 ? file : null) };
     fireEvent.drop(zone, { dataTransfer: { files } });
+    expect(zone.className).not.toMatch(/border-primary/);
+  });
+
+  it("clears drag styling on drag leave", () => {
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    const zone = screen.getByText(/Drag files here or browse/i).closest("div")!;
+    fireEvent.dragOver(zone);
+    expect(zone.className).toMatch(/border-primary/);
+    fireEvent.dragLeave(zone);
     expect(zone.className).not.toMatch(/border-primary/);
   });
 });

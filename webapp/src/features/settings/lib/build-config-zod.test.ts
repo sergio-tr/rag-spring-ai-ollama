@@ -31,7 +31,13 @@ describe("buildConfigValuesSchema", () => {
     ];
     const schema = buildConfigValuesSchema(narrow);
     expect(schema.safeParse({ i: 0 }).success).toBe(false);
+    expect(schema.safeParse({ i: 4 }).success).toBe(false);
     expect(schema.safeParse({ i: 2 }).success).toBe(true);
+    expect(schema.safeParse({ i: "2" }).success).toBe(true);
+    expect(schema.safeParse({ i: 2.5 }).success).toBe(false);
+    expect(schema.safeParse({ f: 0.4 }).success).toBe(false);
     expect(schema.safeParse({ f: 1 }).success).toBe(true);
+    expect(schema.safeParse({ f: "1.2" }).success).toBe(true);
+    expect(schema.safeParse({ f: 2 }).success).toBe(false);
   });
 });

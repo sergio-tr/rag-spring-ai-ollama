@@ -2,7 +2,13 @@ import { z } from "zod";
 import type { ConfigSchemaField } from "@/features/settings/hooks/use-rag-config";
 
 function numOrUndef(v: unknown): unknown {
-  if (v === "" || v === null || v === undefined) return undefined;
+  if (v === null || v === undefined) return undefined;
+  if (typeof v === "string") {
+    const trimmed = v.trim();
+    if (trimmed === "") return undefined;
+    const parsed = Number(trimmed);
+    return Number.isNaN(parsed) ? v : parsed;
+  }
   if (typeof v === "number" && Number.isNaN(v)) return undefined;
   return v;
 }
