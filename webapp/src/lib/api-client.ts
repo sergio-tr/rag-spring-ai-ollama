@@ -1,7 +1,7 @@
 /**
  * Browser API client for the Spring BFF.
  *
- * Env: `NEXT_PUBLIC_API_BASE_URL` (e.g. http://localhost:9000), `NEXT_PUBLIC_RAG_API_PREFIX` (default from deployment env).
+ * Env: `NEXT_PUBLIC_API_BASE_URL` (e.g. http://localhost:9000), `NEXT_PUBLIC_RAG_API_PREFIX` (falls back to **`/api/v5`** when unset).
  * Product routes: GET/POST/PATCH/DELETE `{prefix}/projects`, `{prefix}/projects/{id}/documents`,
  * GET/PUT `{prefix}/config/user`, GET/PUT/DELETE `{prefix}/config/project/{id}`, GET `{prefix}/config/schema`,
  * GET `{prefix}/presets`, POST/DELETE `{prefix}/presets/{id}`. Auth: `{prefix}/auth/*`. See `webapp/README.md` and backend OpenAPI (`/v3/api-docs`).
@@ -37,7 +37,7 @@ function normalizeProductApiPrefix(raw: string | undefined, fallback: string): s
 /** Authenticated product REST API prefix (must match Spring `rag.api.product-base-path`). */
 const RAG_API_PRODUCT_PREFIX = normalizeProductApiPrefix(
   process.env.NEXT_PUBLIC_RAG_API_PREFIX,
-  "/api",
+  "/api/v5",
 );
 
 /**
