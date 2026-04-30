@@ -136,7 +136,9 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
       <CardHeader>
         <CardTitle>{mode === "user" ? t("userConfigTitle") : t("projectConfigTitle")}</CardTitle>
         <CardDescription>
-          {mode === "user" ? t("userConfigFormDescription") : t("projectConfigFormDescription")}
+          {mode === "user"
+            ? t("userConfigFormDescription")
+            : t("projectConfigFormDescription", { id: projectId ?? "" })}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
