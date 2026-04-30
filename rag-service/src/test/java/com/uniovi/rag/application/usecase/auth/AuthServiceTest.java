@@ -20,9 +20,11 @@ import com.uniovi.rag.infrastructure.persistence.MailOutboxRepository;
 import com.uniovi.rag.infrastructure.persistence.PasswordResetTokenRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.PasswordResetTokenEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.MailOutboxEntity;
 import com.uniovi.rag.security.JwtService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -220,7 +222,10 @@ class AuthServiceTest {
 		verify(jwtService, never()).createAccessToken(any(), any(), any());
 		verify(jwtService, never()).createRefreshToken(any());
 		verify(emailConfirmationTokenRepository).save(any(EmailConfirmationTokenEntity.class));
-		verify(mailOutboxRepository).save(any());
+		ArgumentCaptor<MailOutboxEntity> outbox = ArgumentCaptor.forClass(MailOutboxEntity.class);
+		verify(mailOutboxRepository).save(outbox.capture());
+		assertThat(outbox.getValue().getPurpose()).isEqualTo("EMAIL_CONFIRMATION");
+		assertThat(outbox.getValue().getBodyText()).contains("/en/confirm-email?token=");
 	}
 
 	@Test
@@ -277,6 +282,9 @@ class AuthServiceTest {
 		newServiceEmailAndMailEnabled().forgotPassword(new ForgotPasswordRequest("new@user.com"), "127.0.0.1", "test-agent");
 
 		verify(passwordResetTokenRepository).save(any(PasswordResetTokenEntity.class));
-		verify(mailOutboxRepository).save(any());
+		ArgumentCaptor<MailOutboxEntity> outbox = ArgumentCaptor.forClass(MailOutboxEntity.class);
+		verify(mailOutboxRepository).save(outbox.capture());
+		assertThat(outbox.getValue().getPurpose()).isEqualTo("PASSWORD_RESET");
+		assertThat(outbox.getValue().getBodyText()).contains("/en/reset-password?token=");
 	}
 }

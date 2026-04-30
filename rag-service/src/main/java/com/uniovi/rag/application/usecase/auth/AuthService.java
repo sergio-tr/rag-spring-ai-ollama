@@ -250,7 +250,7 @@ public class AuthService {
 		e.setPurpose(purpose);
 		e.setRecipient(recipient);
 		e.setSubject(subject);
-		e.setBodyText("From: " + mailFrom + "\n\n" + bodyText);
+		e.setBodyText(bodyText);
 		mailOutboxRepository.save(e);
 	}
 

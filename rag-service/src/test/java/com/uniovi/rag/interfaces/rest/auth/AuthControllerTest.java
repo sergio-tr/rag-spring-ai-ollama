@@ -4,6 +4,7 @@ import com.uniovi.rag.application.usecase.auth.AuthService;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
+import com.uniovi.rag.interfaces.rest.auth.dto.RegisterResponse;
 import com.uniovi.rag.interfaces.rest.support.ApiEarlyExceptionResolver;
 import com.uniovi.rag.interfaces.rest.support.ApiGlobalExceptionHandler;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -86,6 +87,36 @@ class AuthControllerTest {
                         .content("{\"name\":\"N\",\"email\":\"a@b.com\",\"password\":\"password123\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("EMAIL_ALREADY_REGISTERED"));
+    }
+
+    @Test
+    void register_pendingEmailVerification_returnsAccepted() throws Exception {
+        when(authService.register(any()))
+                .thenReturn(new RegisterResponse("PENDING_EMAIL_VERIFICATION", null));
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"N\",\"email\":\"a@b.com\",\"password\":\"password123\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING_EMAIL_VERIFICATION"));
+    }
+
+    @Test
+    void register_registered_returnsOk() throws Exception {
+        UUID id = UUID.randomUUID();
+        LoginResponse login = new LoginResponse(
+                "access",
+                "refresh",
+                new AuthUserDto(id, "a@b.com", "User", "USER"));
+        when(authService.register(any()))
+                .thenReturn(new RegisterResponse("REGISTERED", login));
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"N\",\"email\":\"a@b.com\",\"password\":\"password123\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REGISTERED"))
+                .andExpect(jsonPath("$.login.accessToken").value("access"));
     }
 
     @Test
