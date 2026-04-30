@@ -103,6 +103,22 @@ describe("DocumentUploadZone", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("boom");
   });
 
+  it("classifies HTML gateway errors without parsing message as JSON", () => {
+    uploadHook.isError = true;
+    uploadHook.error = new ApiError(502, "Gateway error.", {
+      kind: "html",
+      contentType: "text/html",
+    });
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    const alert = screen.getByRole("alert").textContent ?? "";
+    expect(alert.toLowerCase()).toMatch(/gateway|reach|api/i);
+    expect(alert).not.toContain("<html");
+  });
+
   it("falls back to raw ApiError message when JSON parsing fails", () => {
     uploadHook.isError = true;
     uploadHook.error = new ApiError(500, "{not json");
