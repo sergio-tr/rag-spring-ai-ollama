@@ -2,10 +2,12 @@ package com.uniovi.rag.security;
 
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.application.usecase.auth.AuthService;
+import com.uniovi.rag.application.usecase.auth.OauthLoginService;
 import com.uniovi.rag.configuration.SecurityConfiguration;
 import com.uniovi.rag.domain.UserRole;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.auth.AuthController;
+import com.uniovi.rag.interfaces.rest.auth.OauthController;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
 import com.uniovi.rag.interfaces.rest.support.ApiEarlyExceptionResolver;
@@ -28,6 +30,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -36,11 +40,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = AuthController.class)
+@WebMvcTest(controllers = {AuthController.class, OauthController.class})
 @ContextConfiguration(classes = RagWebMvcTestApplication.class)
 @AutoConfigureMockMvc(addFilters = true)
 @Import({
         AuthController.class,
+        OauthController.class,
         SecurityConfiguration.class,
         JwtService.class,
         JwtAuthenticationFilter.class,
@@ -65,6 +70,9 @@ class AuthEndpointSecurityWebMvcTest {
 
     @MockitoBean
     private UserAccountPort userAccountPort;
+
+    @MockitoBean
+    private OauthLoginService oauthLoginService;
 
     @Test
     void authLogin_publicWithoutToken_returnsOk() throws Exception {
@@ -108,5 +116,47 @@ class AuthEndpointSecurityWebMvcTest {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("u@test"));
+    }
+
+    @Test
+    void oauthV5Start_withoutToken_isPublicAndRedirects() throws Exception {
+        when(oauthLoginService.googleStartUrl(any())).thenReturn("https://accounts.google.com/o/oauth2/v2/auth");
+
+        mockMvc.perform(get("/api/v5/auth/oauth/google/start"))
+                .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void oauthV5Callback_withoutToken_isPublic() throws Exception {
+        when(oauthLoginService.handleGoogleCallback(eq("code"), eq("state"), isNull()))
+                .thenReturn("http://localhost:3000/en/oauth/callback/google?code=x");
+
+        mockMvc.perform(get("/api/v5/auth/oauth/google/callback")
+                        .param("code", "code")
+                        .param("state", "state"))
+                .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void oauthV5Exchange_withoutToken_isPublic() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(oauthLoginService.exchange("raw-code"))
+                .thenReturn(new LoginResponse(
+                        "access",
+                        "refresh",
+                        new AuthUserDto(id, "oauth@test", "OAuth User", "USER")));
+
+        mockMvc.perform(post("/api/v5/auth/oauth/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"raw-code\"}")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("access"));
+    }
+
+    @Test
+    void productEndpoint_withoutToken_stillRequiresJwt() throws Exception {
+        mockMvc.perform(get("/api/v5/projects").accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
     }
 }

@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiError } from "@/lib/api-client";
+import { authApiPath } from "@/lib/api-client";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { LoginForm } from "./LoginForm";
 import { RegisterForm } from "./RegisterForm";
@@ -30,6 +31,35 @@ describe("LoginForm", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
     push.mockReset();
+    vi.unstubAllEnvs();
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "false");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("hides Google CTA when oauth flag is disabled", () => {
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    expect(screen.queryByRole("link", { name: /continue with google/i })).not.toBeInTheDocument();
+  });
+
+  it("shows Google CTA when oauth flag is enabled and points to v5 start route", () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "true");
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    const googleLink = screen.getByRole("link", { name: /continue with google/i });
+    expect(googleLink).toBeInTheDocument();
+    expect(googleLink).toHaveAttribute(
+      "href",
+      expect.stringContaining(`${authApiPath("/oauth/google/start")}?locale=`),
+    );
   });
 
   it("submits credentials and navigates to projects", async () => {
@@ -156,6 +186,35 @@ describe("RegisterForm", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
     push.mockReset();
+    vi.unstubAllEnvs();
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "false");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("hides Google CTA when oauth flag is disabled", () => {
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    expect(screen.queryByRole("link", { name: /continue with google/i })).not.toBeInTheDocument();
+  });
+
+  it("shows Google CTA when oauth flag is enabled and points to v5 start route", () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "true");
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    const googleLink = screen.getByRole("link", { name: /continue with google/i });
+    expect(googleLink).toBeInTheDocument();
+    expect(googleLink).toHaveAttribute(
+      "href",
+      expect.stringContaining(`${authApiPath("/oauth/google/start")}?locale=`),
+    );
   });
 
   it("registers and navigates", async () => {
@@ -175,7 +234,10 @@ describe("RegisterForm", () => {
     );
     await user.type(screen.getByLabelText(/display name/i), "N");
     await user.type(screen.getByLabelText(/email/i), "a@b.com");
-    await user.type(screen.getByLabelText(/password/i), "secret12");
+    await user.type(screen.getByLabelText(/^password$/i), "secret12");
+    await user.type(screen.getByLabelText(/repeat password/i), "secret12");
+    await user.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
+    await user.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
     await user.click(screen.getByRole("button", { name: /^Register$/i }));
     await vi.waitFor(() => expect(commitSessionCookie).toHaveBeenCalled());
     expect(push).toHaveBeenCalledWith("/projects");
@@ -191,7 +253,10 @@ describe("RegisterForm", () => {
     );
     await user.type(screen.getByLabelText(/display name/i), "N");
     await user.type(screen.getByLabelText(/email/i), "a@b.com");
-    await user.type(screen.getByLabelText(/password/i), "secret12");
+    await user.type(screen.getByLabelText(/^password$/i), "secret12");
+    await user.type(screen.getByLabelText(/repeat password/i), "secret12");
+    await user.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
+    await user.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
     await user.click(screen.getByRole("button", { name: /^Register$/i }));
     await vi.waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
   });

@@ -9,6 +9,21 @@ import { NextResponse } from "next/server";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:9000";
 
+function normalizeProductApiPrefix(raw: string | undefined): string {
+  const s = (raw ?? "/api").trim();
+  if (!s) {
+    return "/api";
+  }
+  const withLeadingSlash = s.startsWith("/") ? s : `/${s}`;
+  return withLeadingSlash.endsWith("/") && withLeadingSlash.length > 1
+    ? withLeadingSlash.slice(0, -1)
+    : withLeadingSlash;
+}
+
+const PRODUCT_API_PREFIX = normalizeProductApiPrefix(
+  process.env.NEXT_PUBLIC_RAG_API_PREFIX ?? process.env.RAG_API_PRODUCT_BASE_PATH,
+);
+
 const cookieSecure =
   process.env.NODE_ENV === "production" &&
   process.env.E2E_ALLOW_INSECURE_COOKIES !== "true";
@@ -30,7 +45,7 @@ export async function POST() {
     return NextResponse.json({ error: "no_refresh" }, { status: 401 });
   }
 
-  const upstream = await fetch(`${API_BASE}/api/auth/refresh`, {
+  const upstream = await fetch(`${API_BASE}${PRODUCT_API_PREFIX}/auth/refresh`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

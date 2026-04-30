@@ -5,6 +5,7 @@ import { IntlTestProvider } from "@/test-utils/intl";
 const apiFetch = vi.fn();
 vi.mock("@/lib/api-client", () => ({
   apiFetch: (...a: unknown[]) => apiFetch(...a),
+  authApiPath: (path: string) => `/api/test/auth${path.startsWith("/") ? path : `/${path}`}`,
   ApiError: class ApiError extends Error {},
 }));
 

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { POST } from "./route";
 
-describe("POST /api/auth/session", () => {
+describe("POST session route", () => {
   it("returns 400 on invalid JSON", async () => {
     const req = new Request("http://localhost/api/auth/session", {
       method: "POST",

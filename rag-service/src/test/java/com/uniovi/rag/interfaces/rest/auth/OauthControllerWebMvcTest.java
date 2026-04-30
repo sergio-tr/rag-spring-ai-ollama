@@ -13,6 +13,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -20,6 +21,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -31,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ContextConfiguration(classes = RagWebMvcTestApplication.class)
 @AutoConfigureMockMvc(addFilters = false)
 @Import({OauthController.class, ApiGlobalExceptionHandler.class, ApiEarlyExceptionResolver.class})
+@TestPropertySource(properties = "rag.api.product-base-path=/api/v5")
 class OauthControllerWebMvcTest {
 
     @Autowired
@@ -41,14 +44,51 @@ class OauthControllerWebMvcTest {
 
     @Test
     void startGoogle_redirectsToAuthorizationUrl() throws Exception {
-        when(oauthLoginService.googleStartUrl()).thenReturn("https://accounts.google.com/o/oauth2/v2/auth");
+        when(oauthLoginService.googleStartUrl(any())).thenReturn("https://accounts.google.com/o/oauth2/v2/auth");
 
-        mockMvc.perform(get("/api/auth/oauth/google/start")).andExpect(status().is3xxRedirection())
+        mockMvc.perform(get("/api/v5/auth/oauth/google/start")).andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("https://accounts.google.com/o/oauth2/v2/auth"));
     }
 
     @Test
-    void callbackGoogle_redirectsToWebappUrl() throws Exception {
+    void callbackGoogle_v5Route_redirectsToWebappUrl() throws Exception {
+        when(oauthLoginService.handleGoogleCallback(eq("c"), eq("s"), isNull()))
+                .thenReturn("http://localhost:3000/en/oauth/callback/google?code=x");
+
+        mockMvc.perform(get("/api/v5/auth/oauth/google/callback")
+                        .param("code", "c")
+                        .param("state", "s"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("http://localhost:3000/en/oauth/callback/google?code=x"));
+    }
+
+    @Test
+    void exchange_v5Route_returnsLoginResponse() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(oauthLoginService.exchange("raw-code"))
+                .thenReturn(new LoginResponse(
+                        "access",
+                        "refresh",
+                        new AuthUserDto(id, "u@test.com", "U", "USER")));
+
+        mockMvc.perform(post("/api/v5/auth/oauth/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"raw-code\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("access"))
+                .andExpect(jsonPath("$.user.email").value("u@test.com"));
+    }
+
+    @Test
+    void exchange_v5Route_blankCode_returnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/v5/auth/oauth/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void callbackGoogle_legacyRoute_keptAsTransitionalCompatibility() throws Exception {
         when(oauthLoginService.handleGoogleCallback(eq("c"), eq("s"), isNull()))
                 .thenReturn("http://localhost:3000/en/oauth/callback/google?code=x");
 
@@ -57,22 +97,5 @@ class OauthControllerWebMvcTest {
                         .param("state", "s"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("http://localhost:3000/en/oauth/callback/google?code=x"));
-    }
-
-    @Test
-    void exchange_returnsLoginResponse() throws Exception {
-        UUID id = UUID.randomUUID();
-        when(oauthLoginService.exchange("raw-code"))
-                .thenReturn(new LoginResponse(
-                        "access",
-                        "refresh",
-                        new AuthUserDto(id, "u@test.com", "U", "USER")));
-
-        mockMvc.perform(post("/api/auth/oauth/exchange")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"code\":\"raw-code\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("access"))
-                .andExpect(jsonPath("$.user.email").value("u@test.com"));
     }
 }

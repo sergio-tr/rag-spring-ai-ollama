@@ -19,6 +19,9 @@ describe("registerSchema", () => {
       name: "N",
       email: "a@b.co",
       password: "12345678",
+      confirmPassword: "12345678",
+      acceptedPrivacyPolicy: true,
+      acceptedTerms: true,
     });
     expect(r.success).toBe(true);
   });

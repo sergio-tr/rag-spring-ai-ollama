@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { IntlTestProvider } from "@/test-utils/intl";
+import { authApiPath } from "@/lib/api-client";
 
 const apiFetch = vi.fn();
 vi.mock("@/lib/api-client", () => ({
   apiFetch: (...a: unknown[]) => apiFetch(...a),
+  authApiPath: (path: string) => `/api/test/auth${path.startsWith("/") ? path : `/${path}`}`,
   ApiError: class ApiError extends Error {},
 }));
 
@@ -61,6 +63,12 @@ describe("OauthCallbackView", () => {
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalled();
+      expect(apiFetch).toHaveBeenCalledWith(
+        authApiPath("/oauth/exchange"),
+        expect.objectContaining({
+          method: "POST",
+        }),
+      );
       expect(commitSessionCookie).toHaveBeenCalledWith({ accessToken: "a", refreshToken: "r" });
       expect(replace).toHaveBeenCalledWith("/projects");
       expect(refresh).toHaveBeenCalled();

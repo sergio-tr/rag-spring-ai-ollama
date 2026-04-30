@@ -69,7 +69,10 @@ public class SecurityConfiguration {
                                 productAuthBase + "/confirm-email",
                                 productAuthBase + "/resend-confirmation",
                                 productAuthBase + "/forgot-password",
-                                productAuthBase + "/reset-password")
+                                productAuthBase + "/reset-password",
+                                productAuthBase + "/oauth/google/start",
+                                productAuthBase + "/oauth/google/callback",
+                                productAuthBase + "/oauth/exchange")
                         .permitAll()
                         // Transitional legacy auth contract (scheduled for removal).
                         .requestMatchers("/api/auth/**").permitAll()

@@ -7,7 +7,7 @@ vi.mock("next/headers", () => ({
   cookies: () => cookiesMock(),
 }));
 
-describe("POST /api/auth/refresh", () => {
+describe("POST refresh route", () => {
   const prevFetch = globalThis.fetch;
   const prevApi = process.env.NEXT_PUBLIC_API_BASE_URL;
   const prevE2e = process.env.E2E_ALLOW_INSECURE_COOKIES;

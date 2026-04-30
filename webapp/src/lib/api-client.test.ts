@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  authApiPath,
   apiDownloadBlob,
   apiFetch,
   apiProductPath,
@@ -64,7 +65,7 @@ describe("apiFetch", () => {
 
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/api/auth/refresh")) {
+      if (url.includes(authApiPath("/refresh"))) {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -165,7 +166,7 @@ describe("apiFetch", () => {
       throw new Error("listener boom");
     });
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (String(input).includes("/api/auth/refresh")) {
+      if (String(input).includes(authApiPath("/refresh"))) {
         return Promise.resolve({
           ok: false,
           status: 401,
@@ -191,7 +192,7 @@ describe("apiFetch", () => {
 
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/api/auth/refresh")) {
+      if (url.includes(authApiPath("/refresh"))) {
         return Promise.resolve({
           ok: false,
           status: 401,
@@ -250,7 +251,7 @@ describe("apiFetch", () => {
   it("returns false from refresh when refresh throws", async () => {
     vi.spyOn(accessToken, "getAccessToken").mockReturnValue("tok");
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (String(input).includes("/api/auth/refresh")) {
+      if (String(input).includes(authApiPath("/refresh"))) {
         return Promise.reject(new Error("network"));
       }
       return Promise.resolve({
@@ -292,7 +293,7 @@ describe("apiFetch", () => {
       } as Response);
 
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (String(input).includes("/api/auth/refresh")) {
+      if (String(input).includes(authApiPath("/refresh"))) {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -475,7 +476,7 @@ describe("createHttpApiError", () => {
       status: 400,
       bodyText: JSON.stringify({ message: "bad request", fieldErrors: { topK: "must be >=1" } }),
       headers: new Headers({ "content-type": "application/json", "x-request-id": "req-1" }),
-      requestUrl: "http://example.test/api/v5/config",
+      requestUrl: "http://example.test/api/config",
       method: "PUT",
     });
     expect(err.meta?.details).toEqual({ fieldErrors: { topK: "must be >=1" } });
@@ -487,7 +488,7 @@ describe("createHttpApiError", () => {
       status: 503,
       bodyText: "<!doctype html><html><body>down</body></html>",
       headers: new Headers({ "content-type": "text/plain" }),
-      requestUrl: "http://example.test/api/v5/projects",
+      requestUrl: "http://example.test/api/projects",
       method: "GET",
     });
     expect(err.message.toLowerCase()).toContain("gateway");
@@ -557,7 +558,7 @@ describe("apiDownloadBlob", () => {
       } as Response);
 
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (String(input).includes("/api/auth/refresh")) {
+      if (String(input).includes(authApiPath("/refresh"))) {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -580,7 +581,7 @@ describe("apiDownloadBlob", () => {
     onApiUnauthorized(listener);
 
     vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (String(input).includes("/api/auth/refresh")) {
+      if (String(input).includes(authApiPath("/refresh"))) {
         return Promise.resolve({
           ok: false,
           status: 401,

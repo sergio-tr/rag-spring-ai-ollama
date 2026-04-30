@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { commitSessionCookie, clearSessionCookie } from "./session-client";
+import { authApiPath } from "@/lib/api-client";
 
 vi.mock("@/lib/access-token", () => ({
   setAccessToken: vi.fn(),
@@ -17,7 +18,7 @@ describe("session-client", () => {
     const { setAccessToken } = await import("@/lib/access-token");
     await commitSessionCookie({ accessToken: "a", refreshToken: "r" });
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/auth/session",
+      authApiPath("/session"),
       expect.objectContaining({ method: "POST" }),
     );
     expect(setAccessToken).toHaveBeenCalledWith("a");
@@ -33,6 +34,6 @@ describe("session-client", () => {
     const { setAccessToken } = await import("@/lib/access-token");
     await clearSessionCookie();
     expect(setAccessToken).toHaveBeenCalledWith(null);
-    expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledWith(authApiPath("/logout"), expect.any(Object));
   });
 });

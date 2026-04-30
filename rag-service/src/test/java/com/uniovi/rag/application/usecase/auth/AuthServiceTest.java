@@ -80,7 +80,11 @@ class AuthServiceTest {
 				"no-reply@local.test",
 				"http://localhost:3000",
 				3600,
-				3600);
+				3600,
+				false,
+				"",
+				"",
+				"en");
 	}
 
 	private AuthService newServicePasswordResetEnabled() {
@@ -97,7 +101,11 @@ class AuthServiceTest {
 				"no-reply@local.test",
 				"http://localhost:3000",
 				3600,
-				3600);
+				3600,
+				false,
+				"",
+				"",
+				"en");
 	}
 
 	private AuthService newServiceEmailAndMailEnabled() {
@@ -114,7 +122,11 @@ class AuthServiceTest {
 				"no-reply@local.test",
 				"http://localhost:3000/",
 				3600,
-				3600);
+				3600,
+				false,
+				"",
+				"",
+				"en");
 	}
 
 	private AuthService newServiceEmailConfirmationEnabled() {
@@ -131,7 +143,36 @@ class AuthServiceTest {
 				"no-reply@local.test",
 				"http://localhost:3000/",
 				3600,
-				3600);
+				3600,
+				false,
+				"",
+				"",
+				"en");
+	}
+
+	private AuthService newServiceLegalRequired() {
+		return new AuthService(
+				userAccountPort,
+				passwordEncoder,
+				jwtService,
+				emailConfirmationTokenRepository,
+				passwordResetTokenRepository,
+				mailOutboxRepository,
+				false,
+				false,
+				false,
+				"no-reply@local.test",
+				"http://localhost:3000",
+				3600,
+				3600,
+				true,
+				"v1",
+				"v1",
+				"en");
+	}
+
+	private static RegisterRequest registerRequest(String email) {
+		return new RegisterRequest("Name", email, "password123", "en", true, true, "v1", "v1");
 	}
 
 	@Test
@@ -183,7 +224,7 @@ class AuthServiceTest {
 		when(userAccountPort.findByEmailIgnoreCase("a@b.com")).thenReturn(Optional.of(mock(UserEntity.class)));
 
 		assertThatThrownBy(() ->
-						newService().register(new RegisterRequest("N", "a@b.com", "password123")))
+						newService().register(registerRequest("a@b.com")))
 				.isInstanceOf(DuplicateEmailException.class);
 	}
 
@@ -245,7 +286,7 @@ class AuthServiceTest {
 		when(passwordEncoder.encode("password123")).thenReturn("encoded");
 		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-		RegisterResponse res = newServiceEmailAndMailEnabled().register(new RegisterRequest("Name", "new@user.com", "password123"));
+		RegisterResponse res = newServiceEmailAndMailEnabled().register(registerRequest("new@user.com"));
 
 		assertThat(res.status()).isEqualTo("PENDING_EMAIL_VERIFICATION");
 		assertThat(res.login()).isNull();
@@ -264,7 +305,7 @@ class AuthServiceTest {
 		when(passwordEncoder.encode("password123")).thenReturn("encoded");
 		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-		newServiceEmailAndMailEnabled().register(new RegisterRequest("Name", "new@user.com", "password123"));
+		newServiceEmailAndMailEnabled().register(registerRequest("new@user.com"));
 
 		ArgumentCaptor<UserEntity> savedUsers = ArgumentCaptor.forClass(UserEntity.class);
 		verify(userAccountPort, times(1)).save(savedUsers.capture());
@@ -324,13 +365,14 @@ class AuthServiceTest {
 		when(user.getEmail()).thenReturn("new@user.com");
 		when(userAccountPort.findByEmailIgnoreCase("new@user.com")).thenReturn(Optional.of(user));
 
-		newServiceEmailAndMailEnabled().forgotPassword(new ForgotPasswordRequest("new@user.com"), "127.0.0.1", "test-agent");
+		newServiceEmailAndMailEnabled().forgotPassword(
+				new ForgotPasswordRequest("new@user.com", "es"), "127.0.0.1", "test-agent");
 
 		verify(passwordResetTokenRepository).save(any(PasswordResetTokenEntity.class));
 		ArgumentCaptor<MailOutboxEntity> outbox = ArgumentCaptor.forClass(MailOutboxEntity.class);
 		verify(mailOutboxRepository).save(outbox.capture());
 		assertThat(outbox.getValue().getPurpose()).isEqualTo("PASSWORD_RESET");
-		assertThat(outbox.getValue().getBodyText()).contains("/en/reset-password?token=");
+		assertThat(outbox.getValue().getBodyText()).contains("/es/reset-password?token=");
 	}
 
 	@Test
@@ -340,7 +382,7 @@ class AuthServiceTest {
 		when(u.getEmail()).thenReturn("new@user.com");
 		when(userAccountPort.findByEmailIgnoreCase("new@user.com")).thenReturn(Optional.of(u));
 
-		newServiceEmailAndMailEnabled().resendConfirmation(new ResendConfirmationRequest("new@user.com"));
+		newServiceEmailAndMailEnabled().resendConfirmation(new ResendConfirmationRequest("new@user.com", "es"));
 
 		verify(emailConfirmationTokenRepository).save(any(EmailConfirmationTokenEntity.class));
 		verify(mailOutboxRepository).save(any(MailOutboxEntity.class));
@@ -352,7 +394,7 @@ class AuthServiceTest {
 		when(u.isEmailVerified()).thenReturn(true);
 		when(userAccountPort.findByEmailIgnoreCase("verified@user.com")).thenReturn(Optional.of(u));
 
-		newServiceEmailAndMailEnabled().resendConfirmation(new ResendConfirmationRequest("verified@user.com"));
+		newServiceEmailAndMailEnabled().resendConfirmation(new ResendConfirmationRequest("verified@user.com", "en"));
 
 		verify(emailConfirmationTokenRepository, never()).save(any(EmailConfirmationTokenEntity.class));
 		verify(mailOutboxRepository, never()).save(any(MailOutboxEntity.class));
@@ -362,9 +404,25 @@ class AuthServiceTest {
 	void resendConfirmation_unknownEmail_doesNothing() {
 		when(userAccountPort.findByEmailIgnoreCase("missing@user.com")).thenReturn(Optional.empty());
 
-		newServiceEmailAndMailEnabled().resendConfirmation(new ResendConfirmationRequest("missing@user.com"));
+		newServiceEmailAndMailEnabled().resendConfirmation(new ResendConfirmationRequest("missing@user.com", "en"));
 
 		verify(emailConfirmationTokenRepository, never()).save(any(EmailConfirmationTokenEntity.class));
 		verify(mailOutboxRepository, never()).save(any(MailOutboxEntity.class));
+	}
+
+	@Test
+	void register_whenLegalRequiredAndNotAccepted_throws() {
+		assertThatThrownBy(() -> newServiceLegalRequired().register(
+				new RegisterRequest("Name", "user@example.com", "password123", "en", false, true, "v1", "v1")))
+				.isInstanceOf(AuthTokenException.class)
+				.hasMessageContaining("Privacy policy and terms must be accepted");
+	}
+
+	@Test
+	void register_whenLegalRequiredAndVersionMismatch_throws() {
+		assertThatThrownBy(() -> newServiceLegalRequired().register(
+				new RegisterRequest("Name", "user@example.com", "password123", "en", true, true, "v2", "v1")))
+				.isInstanceOf(AuthTokenException.class)
+				.hasMessageContaining("Privacy policy version mismatch");
 	}
 }

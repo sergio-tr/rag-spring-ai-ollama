@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
+import org.mockito.ArgumentCaptor;
 
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -35,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -114,7 +116,7 @@ class OauthLoginServiceTest {
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 false, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
-        assertThat(svc.googleStartUrl()).isEqualTo("http://localhost:3000/en/login");
+        assertThat(svc.googleStartUrl("en")).isEqualTo("http://localhost:3000/en/login");
     }
 
     @Test
@@ -123,7 +125,7 @@ class OauthLoginServiceTest {
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
-        assertThatThrownBy(svc::googleStartUrl).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> svc.googleStartUrl("en")).isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -173,7 +175,7 @@ class OauthLoginServiceTest {
                 true, "http://localhost:3000/", "http://localhost:9000/", "cid", "secret", "https://accounts.google.com",
                 "/api/auth/oauth/google/callback");
 
-        String url = svc.googleStartUrl();
+        String url = svc.googleStartUrl("es");
         assertThat(url).startsWith("https://accounts.google.com/o/oauth2/v2/auth");
         assertThat(url).contains("client_id=cid");
         assertThat(url).contains("response_type=code");
@@ -219,6 +221,41 @@ class OauthLoginServiceTest {
         assertThat(resolved.getEmail()).isEqualTo("user@example.com");
         assertThat(resolved.isEmailVerified()).isTrue();
         assertThat(resolved.getEmailVerifiedAt()).isNotNull();
+    }
+
+    @Test
+    void resolveOrCreateUser_newUser_withEmailVerifiedFalse_keepsUserUnverified() {
+        when(oauthIdentityRepository.findByProviderAndProviderSubject("google", "subject-false"))
+                .thenReturn(Optional.empty());
+        when(userAccountPort.findByEmailIgnoreCase(any())).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(any())).thenReturn("pw-hash");
+        when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(oauthIdentityRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        OauthLoginService svc = new OauthLoginService(
+                userAccountPort,
+                oauthIdentityRepository,
+                oauthLoginExchangeCodeRepository,
+                oauthLoginStateTokenRepository,
+                jwtService,
+                passwordEncoder,
+                true,
+                "http://localhost:3000",
+                "http://localhost:9000",
+                "cid",
+                "secret",
+                "https://accounts.google.com",
+                "/api/v5/auth/oauth/google/callback");
+
+        UserEntity resolved = ReflectionTestUtils.invokeMethod(
+                svc,
+                "resolveOrCreateUser",
+                "subject-false",
+                "false@example.com",
+                false);
+
+        assertThat(resolved.isEmailVerified()).isFalse();
+        assertThat(resolved.getEmailVerifiedAt()).isNull();
     }
 
     @Test
@@ -468,6 +505,53 @@ class OauthLoginServiceTest {
     }
 
     @Test
+    void handleGoogleCallback_missingEmailVerified_claim_doesNotAutoVerify() {
+        JwtDecoder decoder = mock(JwtDecoder.class);
+        Jwt jwt = mock(Jwt.class);
+        when(jwt.getSubject()).thenReturn("prov-sub-missing-verified");
+        when(jwt.getClaimAsString("email")).thenReturn("missing-verified@test.com");
+        when(jwt.getClaimAsBoolean("email_verified")).thenReturn(null);
+        when(decoder.decode("id-jwt")).thenReturn(jwt);
+
+        when(oauthIdentityRepository.findByProviderAndProviderSubject(any(), any())).thenReturn(Optional.empty());
+        when(userAccountPort.findByEmailIgnoreCase(any())).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(any())).thenReturn("pw-hash");
+        when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(oauthIdentityRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        String rawState = "test-oauth-state-missing-verified-claim";
+        OauthLoginStateTokenEntity stateRow = validUnconsumedStateRow(rawState);
+        when(oauthLoginStateTokenRepository.findByStateHash(stateRow.getStateHash())).thenReturn(Optional.of(stateRow));
+
+        TestOauthLoginService svc =
+                new TestOauthLoginService(
+                        userAccountPort,
+                        oauthIdentityRepository,
+                        oauthLoginExchangeCodeRepository,
+                        oauthLoginStateTokenRepository,
+                        jwtService,
+                        passwordEncoder,
+                        true,
+                        "http://localhost:3000",
+                        "http://localhost:9000",
+                        "cid",
+                        "secret",
+                        "https://accounts.google.com",
+                        "/api/v5/auth/oauth/google/callback",
+                        code -> Map.of("id_token", "id-jwt"),
+                        decoder);
+
+        String redirect = svc.handleGoogleCallback("auth-code", rawState, null);
+
+        assertThat(redirect).startsWith("http://localhost:3000/en/oauth/callback/google?code=");
+        ArgumentCaptor<UserEntity> savedUsers = ArgumentCaptor.forClass(UserEntity.class);
+        verify(userAccountPort, atLeastOnce()).save(savedUsers.capture());
+        UserEntity savedUser = savedUsers.getValue();
+        assertThat(savedUser.isEmailVerified()).isFalse();
+        assertThat(savedUser.getEmailVerifiedAt()).isNull();
+    }
+
+    @Test
     void oauthConstructor_nullIssuerAndRedirect_useDefaults() {
         OauthLoginService svc =
                 new OauthLoginService(
@@ -485,7 +569,7 @@ class OauthLoginServiceTest {
                         (String) null,
                         (String) null);
         assertThat(ReflectionTestUtils.getField(svc, "googleIssuer")).isEqualTo("https://accounts.google.com");
-        assertThat(ReflectionTestUtils.getField(svc, "googleRedirectPath")).isEqualTo("/api/auth/oauth/google/callback");
+        assertThat(ReflectionTestUtils.getField(svc, "googleRedirectPath")).isEqualTo("/api/v5/auth/oauth/google/callback");
     }
 
     private static OauthLoginStateTokenEntity validUnconsumedStateRow(String rawState) {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useRouter } from "@/navigation";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch, authApiPath } from "@/lib/api-client";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
 import type { LoginResponse } from "@/types/api";
 
@@ -22,7 +22,7 @@ export function OauthCallbackView({ provider }: { provider: "google" }) {
       setMessage(code ? t("oauthCallbackWorking") : t("oauthCallbackMissingCode"));
       if (!code) return;
       try {
-        const data = await apiFetch<LoginResponse>("/api/auth/oauth/exchange", {
+        const data = await apiFetch<LoginResponse>(authApiPath("/oauth/exchange"), {
           method: "POST",
           skipCredentials: true,
           headers: { "Content-Type": "application/json" },

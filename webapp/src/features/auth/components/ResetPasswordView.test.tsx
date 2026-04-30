@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
 
 const apiFetch = vi.fn();
 vi.mock("@/lib/api-client", () => ({
   apiFetch: (...a: unknown[]) => apiFetch(...a),
+  authApiPath: (path: string) => `/api/test/auth${path.startsWith("/") ? path : `/${path}`}`,
   ApiError: class ApiError extends Error {},
 }));
 
@@ -50,9 +51,10 @@ describe("ResetPasswordView", () => {
       </IntlTestProvider>,
     );
     await user.type(screen.getByLabelText(/^password$/i), "12345678");
+    await user.type(screen.getByLabelText(/repeat password/i), "12345678");
     await user.click(screen.getByRole("button", { name: /set new password/i }));
     expect(apiFetch).toHaveBeenCalled();
-    expect(replace).toHaveBeenCalledWith("/login");
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
   });
 });
 

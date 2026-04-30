@@ -1,10 +1,10 @@
 /**
  * Browser API client for the Spring BFF.
  *
- * Env: `NEXT_PUBLIC_API_BASE_URL` (e.g. http://localhost:9000), `NEXT_PUBLIC_RAG_API_PREFIX` (default /api/v5).
+ * Env: `NEXT_PUBLIC_API_BASE_URL` (e.g. http://localhost:9000), `NEXT_PUBLIC_RAG_API_PREFIX` (default from deployment env).
  * Product routes: GET/POST/PATCH/DELETE `{prefix}/projects`, `{prefix}/projects/{id}/documents`,
  * GET/PUT `{prefix}/config/user`, GET/PUT/DELETE `{prefix}/config/project/{id}`, GET `{prefix}/config/schema`,
- * GET `{prefix}/presets`, POST/DELETE `{prefix}/presets/{id}`. Auth: `/api/auth/*`. See `webapp/README.md` and backend OpenAPI (`/v3/api-docs`).
+ * GET `{prefix}/presets`, POST/DELETE `{prefix}/presets/{id}`. Auth: `{prefix}/auth/*`. See `webapp/README.md` and backend OpenAPI (`/v3/api-docs`).
  */
 import { getAccessToken, setAccessToken } from "@/lib/access-token";
 import { createTraceparent } from "@/lib/traceparent";
@@ -37,7 +37,7 @@ function normalizeProductApiPrefix(raw: string | undefined, fallback: string): s
 /** Authenticated product REST API prefix (must match Spring `rag.api.product-base-path`). */
 const RAG_API_PRODUCT_PREFIX = normalizeProductApiPrefix(
   process.env.NEXT_PUBLIC_RAG_API_PREFIX,
-  "/api/v5",
+  "/api",
 );
 
 /**
@@ -52,6 +52,11 @@ export function apiProductPath(path: string): string {
 
 export function getRagApiProductPrefix(): string {
   return RAG_API_PRODUCT_PREFIX;
+}
+
+export function authApiPath(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${RAG_API_PRODUCT_PREFIX}/auth${p}`;
 }
 
 export type ApiClientOptions = RequestInit & {
@@ -119,7 +124,7 @@ async function tryRefreshOnce(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     try {
-      const res = await fetch("/api/auth/refresh", {
+      const res = await fetch(authApiPath("/refresh"), {
         method: "POST",
         credentials: "same-origin",
       });
