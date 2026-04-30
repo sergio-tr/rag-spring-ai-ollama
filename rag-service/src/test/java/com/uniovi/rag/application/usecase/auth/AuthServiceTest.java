@@ -4,6 +4,7 @@ import com.uniovi.rag.interfaces.rest.auth.AuthTokenException;
 import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
 import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
+import com.uniovi.rag.interfaces.rest.auth.EmailNotVerifiedException;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
@@ -11,6 +12,7 @@ import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RefreshRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterResponse;
+import com.uniovi.rag.interfaces.rest.auth.dto.ResendConfirmationRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.domain.UserRole;
@@ -41,6 +43,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -114,6 +117,23 @@ class AuthServiceTest {
 				3600);
 	}
 
+	private AuthService newServiceEmailConfirmationEnabled() {
+		return new AuthService(
+				userAccountPort,
+				passwordEncoder,
+				jwtService,
+				emailConfirmationTokenRepository,
+				passwordResetTokenRepository,
+				mailOutboxRepository,
+				true,
+				false,
+				true,
+				"no-reply@local.test",
+				"http://localhost:3000/",
+				3600,
+				3600);
+	}
+
 	@Test
 	void login_success_returnsTokens() {
 		UUID id = UUID.randomUUID();
@@ -146,6 +166,16 @@ class AuthServiceTest {
 
 		assertThatThrownBy(() -> newService().login(new LoginRequest("a@b.com", "bad")))
 				.isInstanceOf(InvalidCredentialsException.class);
+	}
+
+	@Test
+	void login_unverifiedUserWhenConfirmationEnabled_throws() {
+		UserEntity u = mock(UserEntity.class);
+		when(u.isEmailVerified()).thenReturn(false);
+		when(userAccountPort.findByEmailIgnoreCase("a@b.com")).thenReturn(Optional.of(u));
+
+		assertThatThrownBy(() -> newServiceEmailConfirmationEnabled().login(new LoginRequest("a@b.com", "pw")))
+				.isInstanceOf(EmailNotVerifiedException.class);
 	}
 
 	@Test
@@ -229,6 +259,21 @@ class AuthServiceTest {
 	}
 
 	@Test
+	void register_withEmailConfirmationEnabled_createsUserAsUnverified() {
+		when(userAccountPort.findByEmailIgnoreCase("new@user.com")).thenReturn(Optional.empty());
+		when(passwordEncoder.encode("password123")).thenReturn("encoded");
+		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+		newServiceEmailAndMailEnabled().register(new RegisterRequest("Name", "new@user.com", "password123"));
+
+		ArgumentCaptor<UserEntity> savedUsers = ArgumentCaptor.forClass(UserEntity.class);
+		verify(userAccountPort, times(1)).save(savedUsers.capture());
+		UserEntity created = savedUsers.getValue();
+		assertThat(created.isEmailVerified()).isFalse();
+		assertThat(created.getEmailVerifiedAt()).isNull();
+	}
+
+	@Test
 	void confirmEmail_whenDisabled_throwsFeatureDisabled() {
 		assertThatThrownBy(() -> newService().confirmEmail(new ConfirmEmailRequest("token")))
 				.isInstanceOf(FeatureDisabledException.class);
@@ -286,5 +331,40 @@ class AuthServiceTest {
 		verify(mailOutboxRepository).save(outbox.capture());
 		assertThat(outbox.getValue().getPurpose()).isEqualTo("PASSWORD_RESET");
 		assertThat(outbox.getValue().getBodyText()).contains("/en/reset-password?token=");
+	}
+
+	@Test
+	void resendConfirmation_unverifiedUser_issuesNewTokenAndMail() {
+		UserEntity u = mock(UserEntity.class);
+		when(u.isEmailVerified()).thenReturn(false);
+		when(u.getEmail()).thenReturn("new@user.com");
+		when(userAccountPort.findByEmailIgnoreCase("new@user.com")).thenReturn(Optional.of(u));
+
+		newServiceEmailAndMailEnabled().resendConfirmation(new ResendConfirmationRequest("new@user.com"));
+
+		verify(emailConfirmationTokenRepository).save(any(EmailConfirmationTokenEntity.class));
+		verify(mailOutboxRepository).save(any(MailOutboxEntity.class));
+	}
+
+	@Test
+	void resendConfirmation_verifiedUser_doesNotIssueNewToken() {
+		UserEntity u = mock(UserEntity.class);
+		when(u.isEmailVerified()).thenReturn(true);
+		when(userAccountPort.findByEmailIgnoreCase("verified@user.com")).thenReturn(Optional.of(u));
+
+		newServiceEmailAndMailEnabled().resendConfirmation(new ResendConfirmationRequest("verified@user.com"));
+
+		verify(emailConfirmationTokenRepository, never()).save(any(EmailConfirmationTokenEntity.class));
+		verify(mailOutboxRepository, never()).save(any(MailOutboxEntity.class));
+	}
+
+	@Test
+	void resendConfirmation_unknownEmail_doesNothing() {
+		when(userAccountPort.findByEmailIgnoreCase("missing@user.com")).thenReturn(Optional.empty());
+
+		newServiceEmailAndMailEnabled().resendConfirmation(new ResendConfirmationRequest("missing@user.com"));
+
+		verify(emailConfirmationTokenRepository, never()).save(any(EmailConfirmationTokenEntity.class));
+		verify(mailOutboxRepository, never()).save(any(MailOutboxEntity.class));
 	}
 }

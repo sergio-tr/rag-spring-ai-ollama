@@ -104,9 +104,9 @@ class OpenApiJsonExportIntegrationTest {
         }
         assertTrue(hasBearer, "Protected operations must require bearerAuth");
 
-        // Public example: /api/auth/login should not require bearerAuth.
-        JsonNode loginPost = json.path("paths").path("/api/auth/login").path("post");
-        assertTrue(loginPost.isObject(), "OpenAPI must include /api/auth/login POST path");
+        // Public primary contract example: /api/v5/auth/login should not require bearerAuth.
+        JsonNode loginPost = json.path("paths").path("/api/v5/auth/login").path("post");
+        assertTrue(loginPost.isObject(), "OpenAPI must include /api/v5/auth/login POST path");
         assertTrue(
                 !loginPost.has("security") || loginPost.path("security").isMissingNode() || loginPost.path("security").size() == 0,
                 "Public auth endpoints must not require bearerAuth");

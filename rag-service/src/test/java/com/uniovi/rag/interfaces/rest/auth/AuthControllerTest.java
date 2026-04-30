@@ -35,6 +35,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({AuthController.class, ApiGlobalExceptionHandler.class, ApiEarlyExceptionResolver.class})
 class AuthControllerTest {
 
+    private static final String AUTH_BASE = "/api/v5/auth";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -53,7 +55,7 @@ class AuthControllerTest {
                         "refresh",
                         new AuthUserDto(id, "a@b.com", "User", "USER")));
 
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post(AUTH_BASE + "/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"a@b.com\",\"password\":\"secret\"}"))
                 .andExpect(status().isOk())
@@ -64,7 +66,7 @@ class AuthControllerTest {
     @Test
     void login_invalidCredentials_returnsCanonical401Json() throws Exception {
         when(authService.login(any())).thenThrow(new InvalidCredentialsException());
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post(AUTH_BASE + "/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"a@b.com\",\"password\":\"bad\"}"))
                 .andExpect(status().isUnauthorized())
@@ -73,7 +75,7 @@ class AuthControllerTest {
 
     @Test
     void login_invalidEmail_returnsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post(AUTH_BASE + "/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"not-an-email\",\"password\":\"secret\"}"))
                 .andExpect(status().isBadRequest());
@@ -82,7 +84,7 @@ class AuthControllerTest {
     @Test
     void register_duplicateEmail_returnsCanonical409Json() throws Exception {
         when(authService.register(any())).thenThrow(new DuplicateEmailException());
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post(AUTH_BASE + "/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"N\",\"email\":\"a@b.com\",\"password\":\"password123\"}"))
                 .andExpect(status().isConflict())
@@ -94,7 +96,7 @@ class AuthControllerTest {
         when(authService.register(any()))
                 .thenReturn(new RegisterResponse("PENDING_EMAIL_VERIFICATION", null));
 
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post(AUTH_BASE + "/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"N\",\"email\":\"a@b.com\",\"password\":\"password123\"}"))
                 .andExpect(status().isAccepted())
@@ -111,7 +113,7 @@ class AuthControllerTest {
         when(authService.register(any()))
                 .thenReturn(new RegisterResponse("REGISTERED", login));
 
-        mockMvc.perform(post("/api/auth/register")
+        mockMvc.perform(post(AUTH_BASE + "/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"N\",\"email\":\"a@b.com\",\"password\":\"password123\"}"))
                 .andExpect(status().isOk())
@@ -121,25 +123,25 @@ class AuthControllerTest {
 
     @Test
     void login_invalidEmail_returnsCanonicalValidationJson() throws Exception {
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post(AUTH_BASE + "/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"not-an-email\",\"password\":\"secret\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
                 .andExpect(jsonPath("$.validationErrors").isArray())
-                .andExpect(jsonPath("$.path").value("/api/auth/login"));
+                .andExpect(jsonPath("$.path").value(AUTH_BASE + "/login"));
     }
 
     @Test
     void login_wrongMethod_returnsCanonical405Json() throws Exception {
-        mockMvc.perform(get("/api/auth/login").accept(MediaType.APPLICATION_JSON))
+        mockMvc.perform(get(AUTH_BASE + "/login").accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isMethodNotAllowed())
                 .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
     }
 
     @Test
     void login_unsupportedMediaType_returnsCanonical415Json() throws Exception {
-        mockMvc.perform(post("/api/auth/login")
+        mockMvc.perform(post(AUTH_BASE + "/login")
                         .accept(MediaType.APPLICATION_JSON)
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("x"))
@@ -150,7 +152,7 @@ class AuthControllerTest {
     @Test
     void confirmEmail_valid_returnsOk() throws Exception {
         doNothing().when(authService).confirmEmail(any());
-        mockMvc.perform(post("/api/auth/confirm-email")
+        mockMvc.perform(post(AUTH_BASE + "/confirm-email")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"t\"}"))
                 .andExpect(status().isOk());
@@ -159,7 +161,7 @@ class AuthControllerTest {
     @Test
     void resendConfirmation_valid_returnsOk() throws Exception {
         doNothing().when(authService).resendConfirmation(any());
-        mockMvc.perform(post("/api/auth/resend-confirmation")
+        mockMvc.perform(post(AUTH_BASE + "/resend-confirmation")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"a@b.com\"}"))
                 .andExpect(status().isOk());
@@ -168,7 +170,7 @@ class AuthControllerTest {
     @Test
     void forgotPassword_valid_returnsOk() throws Exception {
         doNothing().when(authService).forgotPassword(any(), anyString(), anyString());
-        mockMvc.perform(post("/api/auth/forgot-password")
+        mockMvc.perform(post(AUTH_BASE + "/forgot-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"a@b.com\"}"))
                 .andExpect(status().isOk());
@@ -177,9 +179,25 @@ class AuthControllerTest {
     @Test
     void resetPassword_valid_returnsOk() throws Exception {
         doNothing().when(authService).resetPassword(any());
-        mockMvc.perform(post("/api/auth/reset-password")
+        mockMvc.perform(post(AUTH_BASE + "/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"t\",\"newPassword\":\"password123\"}"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void login_legacyPathStillAccepted_forTransition() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(authService.login(any()))
+                .thenReturn(new LoginResponse(
+                        "access",
+                        "refresh",
+                        new AuthUserDto(id, "a@b.com", "User", "USER")));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"a@b.com\",\"password\":\"secret\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("access"));
     }
 }
