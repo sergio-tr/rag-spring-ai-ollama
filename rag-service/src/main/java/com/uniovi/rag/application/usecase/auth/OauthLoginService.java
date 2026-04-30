@@ -242,7 +242,7 @@ public class OauthLoginService {
         return true;
     }
 
-    private Map<String, Object> exchangeAuthCodeForTokens(String code) {
+    Map<String, Object> exchangeAuthCodeForTokens(String code) {
         String redirectUri = buildRedirectUri();
         return restClient.post()
                 .uri("https://oauth2.googleapis.com/token")
@@ -256,7 +256,7 @@ public class OauthLoginService {
                 .body(Map.class);
     }
 
-    private JwtDecoder googleIdTokenDecoder() {
+    JwtDecoder googleIdTokenDecoder() {
         String jwks = "https://www.googleapis.com/oauth2/v3/certs";
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwks).build();
         decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(googleIssuer));
