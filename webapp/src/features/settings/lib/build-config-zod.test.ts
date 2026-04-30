@@ -3,6 +3,7 @@ import { buildConfigValuesSchema } from "./build-config-zod";
 import type { ConfigSchemaField } from "@/features/settings/hooks/use-rag-config";
 
 describe("buildConfigValuesSchema", () => {
+  
   const fields: ConfigSchemaField[] = [
     { key: "n", type: "integer", min: 0, max: 10, userEditable: true },
     { key: "f", type: "number", userEditable: true },
