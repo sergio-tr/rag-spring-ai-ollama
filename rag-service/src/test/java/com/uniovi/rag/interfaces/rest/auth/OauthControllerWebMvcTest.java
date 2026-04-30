@@ -98,4 +98,28 @@ class OauthControllerWebMvcTest {
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("http://localhost:3000/en/oauth/callback/google?code=x"));
     }
+
+    @Test
+    void startGoogle_legacyRoute_redirectsSameAsV5() throws Exception {
+        when(oauthLoginService.googleStartUrl(any())).thenReturn("https://accounts.google.com/o/oauth2/v2/auth");
+
+        mockMvc.perform(get("/api/auth/oauth/google/start")).andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("https://accounts.google.com/o/oauth2/v2/auth"));
+    }
+
+    @Test
+    void exchange_legacyRoute_returnsLoginResponse() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(oauthLoginService.exchange("raw-code"))
+                .thenReturn(new LoginResponse(
+                        "access",
+                        "refresh",
+                        new AuthUserDto(id, "u@test.com", "U", "USER")));
+
+        mockMvc.perform(post("/api/auth/oauth/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"raw-code\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("access"));
+    }
 }

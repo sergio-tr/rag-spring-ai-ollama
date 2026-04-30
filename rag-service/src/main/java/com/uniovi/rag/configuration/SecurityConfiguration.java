@@ -74,7 +74,7 @@ public class SecurityConfiguration {
                                 productAuthBase + "/oauth/google/callback",
                                 productAuthBase + "/oauth/exchange")
                         .permitAll()
-                        // Transitional legacy auth contract (scheduled for removal).
+                        // Transitional legacy auth + OAuth under /api/auth/** (scheduled for removal; mirror v5 rules).
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus")

@@ -6,7 +6,7 @@ import { authApiPath } from "@/lib/api-client";
 const apiFetch = vi.fn();
 vi.mock("@/lib/api-client", () => ({
   apiFetch: (...a: unknown[]) => apiFetch(...a),
-  authApiPath: (path: string) => `/api/test/auth${path.startsWith("/") ? path : `/${path}`}`,
+  authApiPath: (path: string) => `/api/v5/auth${path.startsWith("/") ? path : `/${path}`}`,
   ApiError: class ApiError extends Error {},
 }));
 

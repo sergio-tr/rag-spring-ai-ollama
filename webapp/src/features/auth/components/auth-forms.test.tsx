@@ -60,6 +60,7 @@ describe("LoginForm", () => {
       "href",
       expect.stringContaining(`${authApiPath("/oauth/google/start")}?locale=`),
     );
+    expect(googleLink.getAttribute("href")).toContain("/api/v5/auth/oauth/google/start");
   });
 
   it("submits credentials and navigates to projects", async () => {
@@ -75,7 +76,7 @@ describe("LoginForm", () => {
       </IntlTestProvider>,
     );
     await user.type(screen.getByLabelText(/email/i), "a@b.com");
-    await user.type(screen.getByLabelText(/password/i), "secret1234");
+    await user.type(screen.getByLabelText(/^password$/i), "secret1234");
     await user.click(screen.getByRole("button", { name: /^Continue$/i }));
     await vi.waitFor(() => expect(commitSessionCookie).toHaveBeenCalled());
     expect(push).toHaveBeenCalledWith("/projects");
@@ -90,7 +91,7 @@ describe("LoginForm", () => {
       </IntlTestProvider>,
     );
     await user.type(screen.getByLabelText(/email/i), "a@b.com");
-    await user.type(screen.getByLabelText(/password/i), "secret1234");
+    await user.type(screen.getByLabelText(/^password$/i), "secret1234");
     await user.click(screen.getByRole("button", { name: /^Continue$/i }));
     await vi.waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
   });
@@ -104,7 +105,7 @@ describe("LoginForm", () => {
       </IntlTestProvider>,
     );
     await user.type(screen.getByLabelText(/email/i), "a@b.com");
-    await user.type(screen.getByLabelText(/password/i), "badpass12");
+    await user.type(screen.getByLabelText(/^password$/i), "badpass12");
     await user.click(screen.getByRole("button", { name: /^Continue$/i }));
     await vi.waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
   });
@@ -123,7 +124,7 @@ describe("LoginForm", () => {
       </IntlTestProvider>,
     );
     await user.type(screen.getByLabelText(/email/i), "a@b.com");
-    await user.type(screen.getByLabelText(/password/i), "secret1234");
+    await user.type(screen.getByLabelText(/^password$/i), "secret1234");
     await user.click(screen.getByRole("button", { name: /^Continue$/i }));
     await vi.waitFor(() =>
       expect(screen.getByText(/Email verification required\./i)).toBeInTheDocument(),
@@ -144,7 +145,7 @@ describe("LoginForm", () => {
       </IntlTestProvider>,
     );
     await user.type(screen.getByLabelText(/email/i), "a@b.com");
-    await user.type(screen.getByLabelText(/password/i), "secret1234");
+    await user.type(screen.getByLabelText(/^password$/i), "secret1234");
     await user.click(screen.getByRole("button", { name: /^Continue$/i }));
     await vi.waitFor(() =>
       expect(screen.getByText(/Email verification required\./i)).toBeInTheDocument(),
@@ -164,7 +165,7 @@ describe("LoginForm", () => {
       </IntlTestProvider>,
     );
     await user.type(screen.getByLabelText(/email/i), "a@b.com");
-    await user.type(screen.getByLabelText(/password/i), "secret1234");
+    await user.type(screen.getByLabelText(/^password$/i), "secret1234");
     await user.click(screen.getByRole("button", { name: /^Continue$/i }));
     await vi.waitFor(() =>
       expect(screen.getByText(/Network error\. Check API URL and CORS\./i)).toBeInTheDocument(),
@@ -180,12 +181,31 @@ describe("LoginForm", () => {
     );
     expect(screen.getByRole("link", { name: /forgot password/i })).toBeInTheDocument();
   });
+
+  it("toggles login password visibility with icon button", async () => {
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    const pwd = screen.getByLabelText(/^password$/i);
+    expect(pwd).toHaveAttribute("type", "password");
+    const showBtn = screen.getByRole("button", { name: /show password/i });
+    expect(showBtn).toHaveAttribute("aria-pressed", "false");
+    await user.click(showBtn);
+    expect(pwd).toHaveAttribute("type", "text");
+    expect(screen.getByRole("button", { name: /hide password/i })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: /hide password/i }));
+    expect(pwd).toHaveAttribute("type", "password");
+  });
 });
 
 describe("RegisterForm", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
     push.mockReset();
+    vi.mocked(commitSessionCookie).mockClear();
     vi.unstubAllEnvs();
     vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "false");
   });
@@ -215,6 +235,32 @@ describe("RegisterForm", () => {
       "href",
       expect.stringContaining(`${authApiPath("/oauth/google/start")}?locale=`),
     );
+    expect(googleLink.getAttribute("href")).toContain("/api/v5/auth/oauth/google/start");
+  });
+
+  it("toggles register password and repeat-password visibility independently", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "false");
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    const pwd = screen.getByLabelText(/^password$/i);
+    const repeat = screen.getByLabelText(/repeat password/i);
+    expect(pwd).toHaveAttribute("type", "password");
+    expect(repeat).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: /^show password$/i }));
+    expect(pwd).toHaveAttribute("type", "text");
+    expect(repeat).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: /show repeated password/i }));
+    expect(repeat).toHaveAttribute("type", "text");
+
+    await user.click(screen.getByRole("button", { name: /^hide password$/i }));
+    expect(pwd).toHaveAttribute("type", "password");
+    expect(repeat).toHaveAttribute("type", "text");
   });
 
   it("registers and navigates", async () => {
@@ -241,6 +287,30 @@ describe("RegisterForm", () => {
     await user.click(screen.getByRole("button", { name: /^Register$/i }));
     await vi.waitFor(() => expect(commitSessionCookie).toHaveBeenCalled());
     expect(push).toHaveBeenCalledWith("/projects");
+  });
+
+  it("pending email verification navigates to pending page without committing session", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockResolvedValue({
+      status: "PENDING_EMAIL_VERIFICATION",
+      login: null,
+    });
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/display name/i), "N");
+    await user.type(screen.getByLabelText(/email/i), "a@b.com");
+    await user.type(screen.getByLabelText(/^password$/i), "secret12");
+    await user.type(screen.getByLabelText(/repeat password/i), "secret12");
+    await user.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
+    await user.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
+    await user.click(screen.getByRole("button", { name: /^Register$/i }));
+    await vi.waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/register/pending?email=a%40b.com"),
+    );
+    expect(commitSessionCookie).not.toHaveBeenCalled();
   });
 
   it("shows register error on conflict", async () => {
