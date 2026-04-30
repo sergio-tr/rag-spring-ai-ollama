@@ -123,7 +123,7 @@ start_backend() {
     -e SPRING_DATASOURCE_URL="jdbc:postgresql://${POSTGRES_CONTAINER}:5432/vectordb" \
     -e SPRING_DATASOURCE_USERNAME=postgres \
     -e SPRING_DATASOURCE_PASSWORD=postgres \
-    -e RAG_CORS_ALLOWED_ORIGINS="http://127.0.0.1:3000,http://localhost:3000" \
+    -e RAG_CORS_ALLOWED_ORIGINS="http://127.0.0.1:3000,http://localhost:3000,https://127.0.0.1:8443,https://localhost:8443" \
     -e RAG_JWT_SECRET="e2e-ci-jwt-secret-must-be-at-least-32-chars" \
     -e RAG_TEST_USE_TESTCONTAINERS_DATASOURCE=false \
     -e RAG_API_PRODUCT_BASE_PATH=/api/v5 \
