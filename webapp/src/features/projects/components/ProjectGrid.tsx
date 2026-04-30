@@ -1,6 +1,9 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
+import { useRouter } from "@/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { DeleteProjectDialog } from "@/features/projects/components/DeleteProjectDialog";
 import { EditProjectDialog } from "@/features/projects/components/EditProjectDialog";
+import { fetchOrCreateDefaultConversation } from "@/features/projects/lib/open-project-in-chat";
 import { useActivateProject } from "@/features/projects/hooks/use-projects";
 import { useAppStore } from "@/store/app.store";
 import type { ProjectSummary } from "@/types/api";
@@ -20,6 +24,35 @@ import type { ProjectSummary } from "@/types/api";
 type ProjectGridProps = {
   items: ProjectSummary[];
 };
+
+function OpenProjectChatButton({ project }: Readonly<{ project: ProjectSummary }>) {
+  const t = useTranslations("Projects");
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const activate = useActivateProject();
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="default"
+      disabled={busy || activate.isPending}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          await activate.mutateAsync({ id: project.id, name: project.name });
+          const convId = await fetchOrCreateDefaultConversation(queryClient, project.id);
+          router.push(`/chat?conversationId=${encodeURIComponent(convId)}`);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {t("openChat")}
+    </Button>
+  );
+}
 
 export function ProjectGrid({ items }: ProjectGridProps) {
   const t = useTranslations("Projects");
@@ -56,10 +89,11 @@ export function ProjectGrid({ items }: ProjectGridProps) {
               </Badge>
             </CardContent>
             <CardFooter className="mt-auto flex flex-wrap items-center gap-2">
+              <OpenProjectChatButton project={p} />
               <Button
                 type="button"
                 size="sm"
-                variant={isActive ? "secondary" : "default"}
+                variant={isActive ? "secondary" : "outline"}
                 disabled={activate.isPending}
                 onClick={() => activate.mutate({ id: p.id, name: p.name })}
               >

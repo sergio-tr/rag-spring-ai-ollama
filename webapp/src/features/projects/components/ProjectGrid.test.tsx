@@ -7,6 +7,10 @@ import { IntlTestProvider } from "@/test-utils/intl";
 import { useAppStore } from "@/store/app.store";
 import { ProjectGrid } from "./ProjectGrid";
 
+vi.mock("@/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
+}));
+
 vi.mock("@/lib/api-client", () => ({
   apiFetch: vi.fn().mockResolvedValue({ activeProjectId: "p1" }),
   apiProductPath: (p: string) => p,
@@ -17,6 +21,18 @@ vi.mock("@/features/projects/components/EditProjectDialog", () => ({
 }));
 vi.mock("@/features/projects/components/DeleteProjectDialog", () => ({
   DeleteProjectDialog: () => <span data-testid="del-dlg">del</span>,
+}));
+
+vi.mock("@/features/projects/lib/open-project-in-chat", () => ({
+  fetchOrCreateDefaultConversation: vi.fn(async () => "c1"),
+}));
+
+vi.mock("@/features/projects/hooks/use-projects", () => ({
+  useActivateProject: () => ({
+    mutate: vi.fn(),
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+  }),
 }));
 
 describe("ProjectGrid", () => {
@@ -46,6 +62,6 @@ describe("ProjectGrid", () => {
       </QueryClientProvider>,
     );
     expect(screen.getByText("Alpha")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^Open$/i }));
+    await user.click(screen.getByRole("button", { name: /open chat/i }));
   });
 });
