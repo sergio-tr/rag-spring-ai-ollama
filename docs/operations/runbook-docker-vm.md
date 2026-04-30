@@ -48,8 +48,17 @@ Use `docker compose ps` and service logs for troubleshooting: `docker compose lo
 ## 4. Verify after deploy
 
 1. **Containers:** `docker compose ps` — all required services `running` (or expected exit for one-shot jobs).
-2. **HTTP:** Hit the reverse proxy or app URL (parameterize hostname — see [azure-vm-parameterization.md](azure-vm-parameterization.md)).
-3. **Backend:** Actuator/health if exposed per [rag-service/README.md](../../rag-service/README.md).
+2. **Proxy HTTP/HTTPS entrypoints:** verify redirect and HTTPS availability on the reverse-proxy host.
+3. **API contract through proxy:** verify `/api/v5/**` routes return API JSON (including failure contract for gateway errors).
+4. **Backend health (proxy path):** verify health/readiness route exposure policy per [rag-service/README.md](../../rag-service/README.md).
+
+Example smoke commands (replace host/ports):
+
+```bash
+curl -i "http://<host>:80/"
+curl -k -i "https://<host>:443/"
+curl -k -i "https://<host>:443/api/v5/config/schema"
+```
 
 ---
 
