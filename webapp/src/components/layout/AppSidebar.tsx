@@ -111,7 +111,7 @@ function AppSidebarContent() {
   const activateProject = useActivateProject();
 
   const { data: projectData, isLoading: projectsLoading, isError: projectsError } = useProjectList(0, 64);
-  const projects = projectData?.items ?? [];
+  const projects = useMemo(() => projectData?.items ?? [], [projectData?.items]);
   const projectsTotal = projectData?.total ?? projects.length;
 
   useEffect(() => {

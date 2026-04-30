@@ -19,7 +19,7 @@ export default function DocumentsPage() {
   const qc = useQueryClient();
   const { data, isLoading, isError } = useProjectDocuments(projectId);
   const del = useDeleteProjectDocument(projectId);
-  const rows = data ?? [];
+  const rows = useMemo(() => data ?? [], [data]);
 
   const hasIngesting = useMemo(
     () => rows.some((d) => d.status === "INGESTING"),

@@ -84,14 +84,15 @@ function ChatPageInner() {
 
   useEffect(() => {
     if (urlConversationId && urlConversationId !== conversationId) {
-      setConversationId(urlConversationId);
+      const syncTimer = setTimeout(() => setConversationId(urlConversationId), 0);
+      return () => clearTimeout(syncTimer);
     }
   }, [urlConversationId, conversationId]);
 
-  function selectConversation(nextId: string) {
+  const selectConversation = useCallback((nextId: string) => {
     setConversationId(nextId);
     router.push(`/chat?conversationId=${encodeURIComponent(nextId)}`);
-  }
+  }, [router]);
 
   function persistConvListCollapsed(next: boolean) {
     setConvListCollapsed(next);
@@ -134,7 +135,8 @@ function ChatPageInner() {
     : "";
 
   useEffect(() => {
-    setTitleDraft(activeConv?.title ?? "");
+    const syncTimer = setTimeout(() => setTitleDraft(activeConv?.title ?? ""), 0);
+    return () => clearTimeout(syncTimer);
   }, [activeConv?.id, activeConv?.title]);
 
   useEffect(() => {
@@ -150,15 +152,18 @@ function ChatPageInner() {
         return;
       }
     }
-    setPresetSelectValue(activeConv.presetId ?? "");
-    const df = activeConv.documentFilter;
-    if (df && df.length > 0) {
-      setLimitDocs(true);
-      setSelectedDocIds([...df]);
-    } else {
-      setLimitDocs(false);
-      setSelectedDocIds([]);
-    }
+    const syncTimer = setTimeout(() => {
+      setPresetSelectValue(activeConv.presetId ?? "");
+      const df = activeConv.documentFilter;
+      if (df && df.length > 0) {
+        setLimitDocs(true);
+        setSelectedDocIds([...df]);
+      } else {
+        setLimitDocs(false);
+        setSelectedDocIds([]);
+      }
+    }, 0);
+    return () => clearTimeout(syncTimer);
   }, [convSyncKey, activeConv, patchConv.isPending]);
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
@@ -188,7 +193,8 @@ function ChatPageInner() {
 
   useEffect(() => {
     stickToBottomRef.current = true;
-    setShowJumpToBottom(false);
+    const resetTimer = setTimeout(() => setShowJumpToBottom(false), 0);
+    return () => clearTimeout(resetTimer);
   }, [conversationId]);
 
   useEffect(() => {
@@ -366,7 +372,7 @@ function ChatPageInner() {
       }
       setSendError(getSafeApiErrorMessage(e));
     }
-  }, [conversationId, createConv, input, llmModelChoice, runChatJob]);
+  }, [conversationId, createConv, input, llmModelChoice, runChatJob, selectConversation]);
 
   const retryAssistant = useCallback(
     async (assistantMessageId: string) => {
