@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, authApiPath } from "@/lib/api-client";
 import { Link } from "@/navigation";
 
 const schema = z.object({
@@ -19,6 +19,7 @@ type Values = z.infer<typeof schema>;
 
 export function ForgotPasswordView() {
   const t = useTranslations("Auth");
+  const locale = useLocale();
   const [status, setStatus] = useState<"idle" | "busy" | "done">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -31,11 +32,11 @@ export function ForgotPasswordView() {
     setMessage(null);
     setStatus("busy");
     try {
-      await apiFetch("/api/auth/forgot-password", {
+      await apiFetch(authApiPath("/forgot-password"), {
         method: "POST",
         skipCredentials: true,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: values.email }),
+        body: JSON.stringify({ email: values.email, locale }),
       });
       setStatus("done");
       setMessage(t("forgotPasswordSubmitted"));

@@ -9,16 +9,22 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch, authApiPath } from "@/lib/api-client";
 import { Link, useRouter } from "@/navigation";
 
 function schema(t: ReturnType<typeof useTranslations>) {
-  return z.object({
-    password: z.string().min(8, t("passwordTooShort")),
-  });
+  return z
+    .object({
+      password: z.string().min(8, t("passwordTooShort")),
+      confirmPassword: z.string().min(1, t("confirmPasswordRequired")),
+    })
+    .refine((v) => v.password === v.confirmPassword, {
+      path: ["confirmPassword"],
+      message: t("passwordMismatch"),
+    });
 }
 
-type Values = { password: string };
+type Values = { password: string; confirmPassword: string };
 
 export function ResetPasswordView() {
   const t = useTranslations("Auth");
@@ -33,7 +39,7 @@ export function ResetPasswordView() {
 
   const form = useForm<Values>({
     resolver: zodResolver(zodSchema),
-    defaultValues: { password: "" },
+    defaultValues: { password: "", confirmPassword: "" },
   });
 
   async function onSubmit(values: Values) {
@@ -41,7 +47,7 @@ export function ResetPasswordView() {
     setStatus("busy");
     setMessage(null);
     try {
-      await apiFetch("/api/auth/reset-password", {
+      await apiFetch(authApiPath("/reset-password"), {
         method: "POST",
         skipCredentials: true,
         headers: { "Content-Type": "application/json" },
@@ -49,7 +55,7 @@ export function ResetPasswordView() {
       });
       setStatus("ok");
       setMessage(t("resetPasswordSuccess"));
-      router.replace("/login");
+      setTimeout(() => router.replace("/login"), 900);
     } catch (e) {
       setStatus("error");
       if (e instanceof ApiError) {
@@ -74,6 +80,20 @@ export function ResetPasswordView() {
           {form.formState.errors.password && (
             <p className="text-destructive text-sm" role="alert">
               {form.formState.errors.password.message}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
+          <Input
+            id="confirmPassword"
+            type="password"
+            autoComplete="new-password"
+            {...form.register("confirmPassword")}
+          />
+          {form.formState.errors.confirmPassword && (
+            <p className="text-destructive text-sm" role="alert">
+              {form.formState.errors.confirmPassword.message}
             </p>
           )}
         </div>
