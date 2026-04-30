@@ -16,6 +16,30 @@ import {
 } from "@/features/auth/schemas/auth-schemas";
 import type { LoginResponse } from "@/types/api";
 
+function isEmailNotVerifiedApiError(error: ApiError): boolean {
+  if (error.status !== 403) {
+    return false;
+  }
+
+  const rawBody = error.meta?.rawBodyPreview;
+  if (!rawBody) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(rawBody) as {
+      code?: string;
+      message?: string;
+      error?: { code?: string; message?: string };
+    };
+    const code = parsed.code ?? parsed.error?.code;
+    const message = parsed.message ?? parsed.error?.message ?? "";
+    return code === "EMAIL_NOT_VERIFIED" || /email (not verified|verification required)/i.test(message);
+  } catch {
+    return /EMAIL_NOT_VERIFIED|email (not verified|verification required)/i.test(rawBody);
+  }
+}
+
 export function LoginForm() {
   const t = useTranslations("Auth");
   const router = useRouter();
@@ -51,7 +75,7 @@ export function LoginForm() {
         setFormError(t("invalidCredentials"));
         return;
       }
-      if (e instanceof ApiError && e.status === 403) {
+      if (e instanceof ApiError && e.status === 403 && isEmailNotVerifiedApiError(e)) {
         setFormError(t("emailNotVerified"));
         return;
       }

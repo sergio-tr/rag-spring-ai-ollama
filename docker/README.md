@@ -178,6 +178,14 @@ docker compose \
 Includes: `reverse-proxy` (HTTP/HTTPS) and `compose.prod.yml` so internal services do not publish host ports.
 By default it also includes internal observability (no Jaeger/Prometheus/Grafana/OTEL host ports).
 
+Reverse-proxy defaults in this branch:
+
+- API/product prefix: `/api/v5/**` routed to backend
+- App/static routes: `/` and `/_next/**` routed to webapp
+- API error contract for gateway failures: JSON body (not default HTML) on API locations
+- Upload/body defaults: `API_CLIENT_MAX_BODY_SIZE=50m` (keep aligned with Spring multipart limits)
+- HTTPS redirect: controlled with `REVERSE_PROXY_ENFORCE_HTTPS` (`1` in prod-like, optional `0` in dev debug)
+
 Start / stop:
 
 ```bash
@@ -236,6 +244,15 @@ Keep a copy of the repo (e.g. `/opt/rag-spring-ai-ollama`):
      - Authenticated product smoke (get JWT, then call stable product endpoints like `GET {product}/config/schema` or `GET {product}/presets`)
 
 > Note: if the backend is not exposed directly (only via reverse proxy), use the reverse-proxy published port (`REVERSE_PROXY_HTTP_PORT` defaults to **80** in `compose.prod.yml`; HTTPS uses `REVERSE_PROXY_HTTPS_PORT`, default **8443** until TLS on **443** is wired).
+
+### HTTPS certificate policy (local/prod-like)
+
+- The reverse-proxy image generates a self-signed certificate by default for local/prod-like testing.
+- You can provide certificate paths with:
+  - `TLS_CERT_PATH`
+  - `TLS_KEY_PATH`
+- Do not commit certificate files or private keys to this repository.
+- For production issuance/renewal with external accounts (ACME, cloud certificates), document operational steps outside this branch scope.
 
 ### Log rotation and volumes
 

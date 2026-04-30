@@ -79,6 +79,69 @@ describe("LoginForm", () => {
     await vi.waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
   });
 
+  it("shows email verification error when backend returns EMAIL_NOT_VERIFIED code", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockRejectedValueOnce(
+      new ApiError(403, "Forbidden.", {
+        kind: "http",
+        rawBodyPreview: '{"code":"EMAIL_NOT_VERIFIED","message":"Forbidden"}',
+      }),
+    );
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "a@b.com");
+    await user.type(screen.getByLabelText(/password/i), "secret1234");
+    await user.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await vi.waitFor(() =>
+      expect(screen.getByText(/Email verification required\./i)).toBeInTheDocument(),
+    );
+  });
+
+  it("shows email verification error when 403 message indicates verification requirement", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockRejectedValueOnce(
+      new ApiError(403, "Forbidden.", {
+        kind: "http",
+        rawBodyPreview: '{"message":"Email verification required"}',
+      }),
+    );
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "a@b.com");
+    await user.type(screen.getByLabelText(/password/i), "secret1234");
+    await user.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await vi.waitFor(() =>
+      expect(screen.getByText(/Email verification required\./i)).toBeInTheDocument(),
+    );
+  });
+
+  it("falls back to network error for 403 without verification signal", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockRejectedValueOnce(
+      new ApiError(403, "Forbidden.", {
+        kind: "http",
+      }),
+    );
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/email/i), "a@b.com");
+    await user.type(screen.getByLabelText(/password/i), "secret1234");
+    await user.click(screen.getByRole("button", { name: /^Continue$/i }));
+    await vi.waitFor(() =>
+      expect(screen.getByText(/Network error\. Check API URL and CORS\./i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Email verification required\./i)).not.toBeInTheDocument();
+  });
+
   it("renders forgot password link", async () => {
     render(
       <IntlTestProvider>

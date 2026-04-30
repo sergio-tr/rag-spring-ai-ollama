@@ -174,7 +174,9 @@ describe("AppSidebar", () => {
     fetchLatestConversationIdMock.mockReset();
     fetchLatestConversationIdMock.mockResolvedValue("c-open");
     apiFetchMock.mockReset();
-    apiFetchMock.mockResolvedValue({ roleName: null });
+    // Default to a rejected auth probe to avoid async state updates
+    // from the role bootstrap effect in tests that do not care about it.
+    apiFetchMock.mockRejectedValue(new Error("auth unavailable"));
     localStorage.removeItem("rag-sidebar");
     useAppStore.setState({ activeProject: null });
   });
