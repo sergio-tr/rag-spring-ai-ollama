@@ -55,6 +55,10 @@ public class AuthService {
 	private final String webappBaseUrl;
 	private final long emailConfirmationTtlSeconds;
 	private final long passwordResetTtlSeconds;
+	private final boolean legalAcceptanceRequired;
+	private final String requiredPrivacyPolicyVersion;
+	private final String requiredTermsVersion;
+	private final String defaultLocale;
 
 	private final SecureRandom secureRandom = new SecureRandom();
 
@@ -71,7 +75,11 @@ public class AuthService {
 			@Value("${rag.auth.mail.from:no-reply@local.test}") String mailFrom,
 			@Value("${rag.auth.webapp-base-url:http://localhost:3000}") String webappBaseUrl,
 			@Value("${rag.auth.email-confirmation.token-ttl-seconds:3600}") long emailConfirmationTtlSeconds,
-			@Value("${rag.auth.password-reset.token-ttl-seconds:3600}") long passwordResetTtlSeconds) {
+			@Value("${rag.auth.password-reset.token-ttl-seconds:3600}") long passwordResetTtlSeconds,
+			@Value("${rag.auth.legal.required:false}") boolean legalAcceptanceRequired,
+			@Value("${rag.auth.legal.privacy-policy-version:}") String requiredPrivacyPolicyVersion,
+			@Value("${rag.auth.legal.terms-version:}") String requiredTermsVersion,
+			@Value("${rag.auth.default-locale:en}") String defaultLocale) {
 		this.userAccountPort = userAccountPort;
 		this.passwordEncoder = passwordEncoder;
 		this.jwtService = jwtService;
@@ -85,10 +93,15 @@ public class AuthService {
 		this.webappBaseUrl = normalizeBaseUrl(webappBaseUrl);
 		this.emailConfirmationTtlSeconds = emailConfirmationTtlSeconds;
 		this.passwordResetTtlSeconds = passwordResetTtlSeconds;
+		this.legalAcceptanceRequired = legalAcceptanceRequired;
+		this.requiredPrivacyPolicyVersion = trimToEmpty(requiredPrivacyPolicyVersion);
+		this.requiredTermsVersion = trimToEmpty(requiredTermsVersion);
+		this.defaultLocale = trimToEmpty(defaultLocale).isEmpty() ? "en" : defaultLocale.trim();
 	}
 
 	@Transactional
 	public RegisterResponse register(RegisterRequest req) {
+		validateLegalAcceptance(req);
 		if (userAccountPort.findByEmailIgnoreCase(req.email()).isPresent()) {
 			throw new DuplicateEmailException();
 		}
@@ -100,9 +113,10 @@ public class AuthService {
 			u.setEmailVerified(false);
 			u.setEmailVerifiedAt(null);
 		}
+		applyLegalAcceptance(u, req);
 		u = userAccountPort.save(u);
 		if (emailConfirmationEnabled) {
-			issueEmailConfirmation(u);
+			issueEmailConfirmation(u, req.locale());
 			return new RegisterResponse("PENDING_EMAIL_VERIFICATION", null);
 		}
 		return new RegisterResponse("REGISTERED", tokensForUser(u));
@@ -165,7 +179,7 @@ public class AuthService {
 		userAccountPort.findByEmailIgnoreCase(req.email().trim().toLowerCase())
 				.ifPresent(u -> {
 					if (!u.isEmailVerified()) {
-						issueEmailConfirmation(u);
+							issueEmailConfirmation(u, req.locale());
 					}
 				});
 	}
@@ -173,10 +187,10 @@ public class AuthService {
 	@Transactional
 	public void forgotPassword(ForgotPasswordRequest req, String requestIp, String requestUserAgent) {
 		if (!passwordResetEnabled) {
-			throw new FeatureDisabledException("PASSWORD_RESET_DISABLED", "Password reset disabled");
+			return;
 		}
 		userAccountPort.findByEmailIgnoreCase(req.email().trim().toLowerCase())
-				.ifPresent(u -> issuePasswordReset(u, requestIp, requestUserAgent));
+				.ifPresent(u -> issuePasswordReset(u, requestIp, requestUserAgent, req.locale()));
 	}
 
 	@Transactional
@@ -208,7 +222,7 @@ public class AuthService {
 		return new LoginResponse(access, refresh, dto);
 	}
 
-	private void issueEmailConfirmation(UserEntity u) {
+	private void issueEmailConfirmation(UserEntity u, String locale) {
 		String raw = randomToken();
 		String hash = sha256Hex(raw);
 		EmailConfirmationTokenEntity tok = new EmailConfirmationTokenEntity();
@@ -218,12 +232,12 @@ public class AuthService {
 		tok.setExpiresAt(Instant.now().plusSeconds(Math.max(60, emailConfirmationTtlSeconds)));
 		emailConfirmationTokenRepository.save(tok);
 		if (mailEnabled) {
-			String link = webappBaseUrl + "/en/confirm-email?token=" + urlEncode(raw);
+			String link = webappBaseUrl + "/" + resolveLocale(locale) + "/confirm-email?token=" + urlEncode(raw);
 			saveOutbox("EMAIL_CONFIRMATION", u.getEmail(), "Confirm your email", "Confirm your email: " + link);
 		}
 	}
 
-	private void issuePasswordReset(UserEntity u, String requestIp, String requestUserAgent) {
+	private void issuePasswordReset(UserEntity u, String requestIp, String requestUserAgent, String locale) {
 		String raw = randomToken();
 		String hash = sha256Hex(raw);
 		PasswordResetTokenEntity tok = new PasswordResetTokenEntity();
@@ -239,7 +253,7 @@ public class AuthService {
 		}
 		passwordResetTokenRepository.save(tok);
 		if (mailEnabled) {
-			String link = webappBaseUrl + "/en/reset-password?token=" + urlEncode(raw);
+			String link = webappBaseUrl + "/" + resolveLocale(locale) + "/reset-password?token=" + urlEncode(raw);
 			saveOutbox("PASSWORD_RESET", u.getEmail(), "Reset your password", "Reset your password: " + link);
 		}
 	}
@@ -284,5 +298,59 @@ public class AuthService {
 
 	private static String urlEncode(String raw) {
 		return URLEncoder.encode(raw, StandardCharsets.UTF_8);
+	}
+
+	private void validateLegalAcceptance(RegisterRequest req) {
+		if (!legalAcceptanceRequired) {
+			return;
+		}
+		if (!Boolean.TRUE.equals(req.acceptedPrivacyPolicy()) || !Boolean.TRUE.equals(req.acceptedTerms())) {
+			throw new AuthTokenException("LEGAL_ACCEPTANCE_REQUIRED", "Privacy policy and terms must be accepted");
+		}
+		String privacyVersion = trimToEmpty(req.privacyPolicyVersion());
+		String termsVersion = trimToEmpty(req.termsVersion());
+		if (privacyVersion.isEmpty() || termsVersion.isEmpty()) {
+			throw new AuthTokenException("LEGAL_VERSION_REQUIRED", "Legal document version is required");
+		}
+		if (!requiredPrivacyPolicyVersion.isEmpty() && !requiredPrivacyPolicyVersion.equals(privacyVersion)) {
+			throw new AuthTokenException("PRIVACY_VERSION_MISMATCH", "Privacy policy version mismatch");
+		}
+		if (!requiredTermsVersion.isEmpty() && !requiredTermsVersion.equals(termsVersion)) {
+			throw new AuthTokenException("TERMS_VERSION_MISMATCH", "Terms version mismatch");
+		}
+	}
+
+	private static String trimToEmpty(String raw) {
+		return raw == null ? "" : raw.trim();
+	}
+
+	private static String trimToNull(String raw) {
+		String value = trimToEmpty(raw);
+		return value.isEmpty() ? null : value;
+	}
+
+	private String resolveLocale(String locale) {
+		String normalized = trimToEmpty(locale).toLowerCase();
+		if (normalized.matches("^[a-z]{2}(-[a-z]{2})?$")) {
+			return normalized;
+		}
+		return defaultLocale;
+	}
+
+	private void applyLegalAcceptance(UserEntity user, RegisterRequest req) {
+		String privacyVersion = trimToNull(req.privacyPolicyVersion());
+		String termsVersion = trimToNull(req.termsVersion());
+		if (Boolean.TRUE.equals(req.acceptedPrivacyPolicy()) || Boolean.TRUE.equals(req.acceptedTerms())) {
+			Instant now = Instant.now();
+			user.setPrivacyAcceptedAt(Boolean.TRUE.equals(req.acceptedPrivacyPolicy()) ? now : null);
+			user.setTermsAcceptedAt(Boolean.TRUE.equals(req.acceptedTerms()) ? now : null);
+			user.setPrivacyPolicyVersion(privacyVersion);
+			user.setTermsVersion(termsVersion);
+			return;
+		}
+		user.setPrivacyAcceptedAt(null);
+		user.setTermsAcceptedAt(null);
+		user.setPrivacyPolicyVersion(privacyVersion);
+		user.setTermsVersion(termsVersion);
 	}
 }

@@ -45,6 +45,18 @@ public class UserEntity {
     @Column(name = "email_verified_at")
     private Instant emailVerifiedAt;
 
+    @Column(name = "privacy_accepted_at")
+    private Instant privacyAcceptedAt;
+
+    @Column(name = "terms_accepted_at")
+    private Instant termsAcceptedAt;
+
+    @Column(name = "privacy_policy_version", length = 64)
+    private String privacyPolicyVersion;
+
+    @Column(name = "terms_version", length = 64)
+    private String termsVersion;
+
     protected UserEntity() {
     }
 
@@ -118,5 +130,37 @@ public class UserEntity {
 
     public void setEmailVerifiedAt(Instant emailVerifiedAt) {
         this.emailVerifiedAt = emailVerifiedAt;
+    }
+
+    public Instant getPrivacyAcceptedAt() {
+        return privacyAcceptedAt;
+    }
+
+    public void setPrivacyAcceptedAt(Instant privacyAcceptedAt) {
+        this.privacyAcceptedAt = privacyAcceptedAt;
+    }
+
+    public Instant getTermsAcceptedAt() {
+        return termsAcceptedAt;
+    }
+
+    public void setTermsAcceptedAt(Instant termsAcceptedAt) {
+        this.termsAcceptedAt = termsAcceptedAt;
+    }
+
+    public String getPrivacyPolicyVersion() {
+        return privacyPolicyVersion;
+    }
+
+    public void setPrivacyPolicyVersion(String privacyPolicyVersion) {
+        this.privacyPolicyVersion = privacyPolicyVersion;
+    }
+
+    public String getTermsVersion() {
+        return termsVersion;
+    }
+
+    public void setTermsVersion(String termsVersion) {
+        this.termsVersion = termsVersion;
     }
 }
