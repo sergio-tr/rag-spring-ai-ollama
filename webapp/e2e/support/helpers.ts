@@ -10,6 +10,7 @@ const apiBase = () =>
   ).replace(/\/$/, "");
 const productPrefix = () =>
   (process.env.NEXT_PUBLIC_RAG_API_PREFIX ?? "/api/v5").replace(/\/$/, "");
+const loginTimeoutMs = Number.parseInt(process.env.E2E_LOGIN_TIMEOUT_MS ?? "12000", 10);
 
 /** Full URL for product API path (e.g. `/projects`). */
 export function productApiUrl(path: string): string {
@@ -32,10 +33,10 @@ export async function loginAsSeedUser(page: Page): Promise<void> {
   await page.getByLabel(/email|correo/i).fill(seedEmail());
   await page.getByLabel(/^password$/i).fill(seedPassword());
   await page.getByRole("button", { name: /continue|iniciar|sign in/i }).click();
-  await expect(page).toHaveURL(/\/en\/projects/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/en\/projects/, { timeout: loginTimeoutMs });
   await expect(
     page.getByRole("heading", { name: /^projects$/i }),
-  ).toBeVisible({ timeout: 30_000 });
+  ).toBeVisible({ timeout: loginTimeoutMs });
 }
 
 /**
@@ -62,5 +63,5 @@ export async function loginAsE2eAdmin(page: Page): Promise<void> {
   await page.getByLabel(/email|correo/i).fill(adminEmail());
   await page.getByLabel(/^password$/i).fill(adminPassword());
   await page.getByRole("button", { name: /continue|iniciar|sign in/i }).click();
-  await expect(page).toHaveURL(/\/en\/projects/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/en\/projects/, { timeout: loginTimeoutMs });
 }

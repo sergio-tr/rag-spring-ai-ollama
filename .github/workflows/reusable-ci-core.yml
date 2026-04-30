@@ -552,6 +552,49 @@ jobs:
           echo "--- spring log (tail) ---"
           tail -n 200 /tmp/spring-e2e.log || true
           exit 1
+      - name: Seed deterministic e2e users
+        shell: bash
+        run: |
+          set -euo pipefail
+          PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
+            INSERT INTO users (id, email, password_hash, name, role, created_at, email_verified, email_verified_at)
+            VALUES
+              ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP),
+              ('e2e0ad00-0000-4000-8000-000000000002', 'dev@local.test', '{noop}dev', 'Dev User', 'USER', CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP)
+            ON CONFLICT (email) DO UPDATE
+            SET
+              password_hash = EXCLUDED.password_hash,
+              name = EXCLUDED.name,
+              role = EXCLUDED.role,
+              email_verified = true,
+              email_verified_at = COALESCE(users.email_verified_at, CURRENT_TIMESTAMP);
+          "
+      - name: Wait for e2e seed login to be available
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            code="$(
+              curl -sS -o /dev/null -w '%{http_code}' \
+                -H 'Content-Type: application/json' \
+                -d '{"email":"dev@local.test","password":"dev"}' \
+                http://127.0.0.1:9000/api/auth/login || true
+            )"
+            if [ "$code" = "200" ]; then
+              echo "Seed login OK"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Seed login not ready after waiting."
+          echo "--- backend health (diagnostic) ---"
+          curl -sS http://127.0.0.1:9000/actuator/health || true
+          echo ""
+          echo "--- backend readiness (diagnostic; 200 or 503) ---"
+          curl -sS http://127.0.0.1:9000/actuator/health/readiness || true
+          echo ""
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-e2e.log || true
+          exit 1
       - name: Wait for e2e admin login to be available
         env:
           E2E_ADMIN_EMAIL: admin@e2e.local
@@ -650,7 +693,12 @@ jobs:
         working-directory: webapp
         env:
           E2E_ALLOW_INSECURE_COOKIES: "true"
+          E2E_LOGIN_TIMEOUT_MS: "12000"
           PLAYWRIGHT_IGNORE_HTTPS_ERRORS: "1"
+          PLAYWRIGHT_RETRIES: "0"
+          PLAYWRIGHT_SKIP_WEBSERVER: "1"
+          PLAYWRIGHT_EXPECT_TIMEOUT_MS: "10000"
+          PLAYWRIGHT_TEST_TIMEOUT_MS: "20000"
           PLAYWRIGHT_BASE_URL: https://127.0.0.1:8443
           API_BASE_URL: https://127.0.0.1:8443
         run: |
