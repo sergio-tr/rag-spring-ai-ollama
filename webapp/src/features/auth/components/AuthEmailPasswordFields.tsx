@@ -2,6 +2,7 @@
 
 import type { FieldErrors, FieldValues, UseFormRegister } from "react-hook-form";
 import { useState } from "react";
+import { PasswordVisibilityToggle } from "@/features/auth/components/PasswordVisibilityToggle";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -36,15 +37,15 @@ export function AuthEmailPasswordFields<TFieldValues extends FieldValues>(props:
             id="password"
             type={showPassword ? "text" : "password"}
             autoComplete={passwordAutoComplete}
+            className="flex-1"
             {...register("password" as never)}
           />
-          <button
-            className="rounded border px-3 text-sm"
-            type="button"
-            onClick={() => setShowPassword((prev) => !prev)}
-          >
-            {showPassword ? t("hidePassword") : t("showPassword")}
-          </button>
+          <PasswordVisibilityToggle
+            visible={showPassword}
+            onToggle={() => setShowPassword((prev) => !prev)}
+            showPasswordLabel={t("showPassword")}
+            hidePasswordLabel={t("hidePassword")}
+          />
         </div>
         {errors.password && (
           <p className="text-destructive text-sm" role="alert">
@@ -60,15 +61,15 @@ export function AuthEmailPasswordFields<TFieldValues extends FieldValues>(props:
               id="confirmPassword"
               type={showConfirmPassword ? "text" : "password"}
               autoComplete="new-password"
+              className="flex-1"
               {...register("confirmPassword" as never)}
             />
-            <button
-              className="rounded border px-3 text-sm"
-              type="button"
-              onClick={() => setShowConfirmPassword((prev) => !prev)}
-            >
-              {showConfirmPassword ? t("hidePassword") : t("showPassword")}
-            </button>
+            <PasswordVisibilityToggle
+              visible={showConfirmPassword}
+              onToggle={() => setShowConfirmPassword((prev) => !prev)}
+              showPasswordLabel={t("showRepeatPassword")}
+              hidePasswordLabel={t("hideRepeatPassword")}
+            />
           </div>
           {errors.confirmPassword && (
             <p className="text-destructive text-sm" role="alert">

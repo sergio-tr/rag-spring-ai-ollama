@@ -32,7 +32,17 @@ describe("ForgotPasswordView", () => {
 
     await user.type(screen.getByLabelText(/^email$/i), "user@example.com");
     await user.click(screen.getByRole("button", { name: /send reset link/i }));
-    expect(apiFetch).toHaveBeenCalled();
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = apiFetch.mock.calls[0]!;
+    expect(url).toBe("/api/test/auth/forgot-password");
+    expect(init).toMatchObject({
+      method: "POST",
+      skipCredentials: true,
+    });
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      email: "user@example.com",
+      locale: "en",
+    });
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /send reset link/i })).toBeDisabled();
   });

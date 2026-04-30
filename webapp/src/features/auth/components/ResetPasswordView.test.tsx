@@ -2,12 +2,22 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
+import { ApiError } from "@/lib/api-client";
 
 const apiFetch = vi.fn();
 vi.mock("@/lib/api-client", () => ({
   apiFetch: (...a: unknown[]) => apiFetch(...a),
   authApiPath: (path: string) => `/api/test/auth${path.startsWith("/") ? path : `/${path}`}`,
-  ApiError: class ApiError extends Error {},
+  ApiError: class ApiError extends Error {
+    constructor(
+      public status: number,
+      message: string,
+      public meta?: { rawBodyPreview?: string },
+    ) {
+      super(message);
+      this.name = "ApiError";
+    }
+  },
 }));
 
 const replace = vi.fn();
@@ -37,10 +47,26 @@ describe("ResetPasswordView", () => {
       </IntlTestProvider>,
     );
     expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByRole("button")).toBeDisabled();
+    expect(screen.getByRole("button", { name: /set new password/i })).toBeDisabled();
   });
 
-  it("submits when token exists and redirects to login", async () => {
+  it("password visibility toggles use icon buttons with aria-pressed", async () => {
+    mockToken = "t1";
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <ResetPasswordView />
+      </IntlTestProvider>,
+    );
+    const pwd = screen.getByLabelText(/^password$/i);
+    expect(screen.getByRole("button", { name: /show password/i })).toHaveAttribute("aria-pressed", "false");
+    await user.click(screen.getByRole("button", { name: /show password/i }));
+    expect(pwd).toHaveAttribute("type", "text");
+    await user.click(screen.getByRole("button", { name: /show repeated password/i }));
+    expect(screen.getByLabelText(/repeat password/i)).toHaveAttribute("type", "text");
+  });
+
+  it("submits when token exists and redirects to login after success", async () => {
     mockToken = "t1";
     apiFetch.mockResolvedValueOnce({});
 
@@ -54,7 +80,49 @@ describe("ResetPasswordView", () => {
     await user.type(screen.getByLabelText(/repeat password/i), "12345678");
     await user.click(screen.getByRole("button", { name: /set new password/i }));
     expect(apiFetch).toHaveBeenCalled();
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"), { timeout: 4000 });
+  });
+
+  it("shows localized message for expired reset token code", async () => {
+    mockToken = "t1";
+    apiFetch.mockRejectedValueOnce(
+      new ApiError(400, "Bad request", {
+        kind: "http",
+        rawBodyPreview: JSON.stringify({ code: "RESET_TOKEN_EXPIRED" }),
+      }),
+    );
+
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <ResetPasswordView />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/^password$/i), "12345678");
+    await user.type(screen.getByLabelText(/repeat password/i), "12345678");
+    await user.click(screen.getByRole("button", { name: /set new password/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/expired/i);
+    });
+    expect(screen.getByRole("button", { name: /set new password/i })).not.toBeDisabled();
+  });
+
+  it("disables submit after successful reset", async () => {
+    mockToken = "t1";
+    apiFetch.mockResolvedValueOnce({});
+
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <ResetPasswordView />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/^password$/i), "12345678");
+    await user.type(screen.getByLabelText(/repeat password/i), "12345678");
+    await user.click(screen.getByRole("button", { name: /set new password/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /set new password/i })).toBeDisabled();
+    });
   });
 });
 
