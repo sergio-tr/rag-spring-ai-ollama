@@ -15,6 +15,8 @@ import {
   Star,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, Link, useRouter } from "@/navigation";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -26,6 +28,7 @@ import { useProjectList, useActivateProject } from "@/features/projects/hooks/us
 import { useConversations, useCreateConversation } from "@/features/chat/hooks/use-conversations";
 import { useAppStore } from "@/store/app.store";
 import type { ProjectSummary } from "@/types/api";
+import { fetchOrCreateDefaultConversation } from "@/features/projects/lib/open-project-in-chat";
 import { NewProjectDialog } from "@/features/projects/components/NewProjectDialog";
 import { getStoredUserRole, setStoredUserRole } from "@/lib/user-role";
 import type { MeResponse } from "@/types/api";
@@ -109,6 +112,9 @@ export function AppSidebar() {
   const tChat = useTranslations("Chat");
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const selectedConversationId = searchParams?.get("conversationId") ?? null;
 
   const [role, setRole] = useState(() => getStoredUserRole());
   const canSeeAdmin = role === "ADMIN";
@@ -168,6 +174,12 @@ export function AppSidebar() {
 
   async function activate(p: ProjectSummary) {
     await activateProject.mutateAsync({ id: p.id, name: p.name });
+  }
+
+  async function openProjectInChat(p: ProjectSummary) {
+    await activateProject.mutateAsync({ id: p.id, name: p.name });
+    const convId = await fetchOrCreateDefaultConversation(queryClient, p.id);
+    router.push(`/chat?conversationId=${encodeURIComponent(convId)}`);
   }
 
   const createConversation = useCreateConversation(activeProject?.id);
@@ -276,6 +288,9 @@ export function AppSidebar() {
                     toggleExpanded={() => toggleProjectExpanded(p.id)}
                     activeProjectId={activeProject?.id ?? null}
                     activateProject={activate}
+                    openProjectInChat={openProjectInChat}
+                    selectedConversationId={selectedConversationId}
+                    chatRouteActive={pathname === "/chat" || pathname?.startsWith("/chat/")}
                     searchQuery={searchQuery}
                     onSelectConversation={(conversationId) => {
                       router.push(`/chat?conversationId=${encodeURIComponent(conversationId)}`);
@@ -341,6 +356,9 @@ type SidebarProjectNodeProps = Readonly<{
   toggleExpanded: () => void;
   activeProjectId: string | null;
   activateProject: (p: ProjectSummary) => Promise<void>;
+  openProjectInChat: (p: ProjectSummary) => Promise<void>;
+  selectedConversationId: string | null;
+  chatRouteActive: boolean;
   searchQuery: string;
   onSelectConversation: (conversationId: string) => void;
 }>;
@@ -351,6 +369,9 @@ function SidebarProjectNode({
   toggleExpanded,
   activeProjectId,
   activateProject,
+  openProjectInChat,
+  selectedConversationId,
+  chatRouteActive,
   searchQuery,
   onSelectConversation,
 }: SidebarProjectNodeProps) {
@@ -369,8 +390,11 @@ function SidebarProjectNode({
       <div className="flex items-center gap-1">
         <button
           type="button"
-          className="hover:bg-sidebar-accent/80 flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm"
-          onClick={() => void activateProject(project)}
+          className={cn(
+            "hover:bg-sidebar-accent/80 flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm",
+            activeProjectId === project.id && "bg-sidebar-accent/60 ring-1 ring-sidebar-accent",
+          )}
+          onClick={() => void openProjectInChat(project)}
         >
           <span
             className="inline-block size-2.5 shrink-0 rounded-full border border-border"
@@ -404,7 +428,12 @@ function SidebarProjectNode({
               <button
                 key={c.id}
                 type="button"
-                className="hover:bg-sidebar-accent/80 ml-4 w-[calc(100%-1rem)] rounded-md px-2 py-1 text-left text-xs"
+                className={cn(
+                  "hover:bg-sidebar-accent/80 ml-4 w-[calc(100%-1rem)] rounded-md px-2 py-1 text-left text-xs",
+                  chatRouteActive &&
+                    selectedConversationId === c.id &&
+                    "bg-sidebar-accent text-sidebar-accent-foreground",
+                )}
                 onClick={async () => {
                   if (activeProjectId !== project.id) {
                     await activateProject(project);

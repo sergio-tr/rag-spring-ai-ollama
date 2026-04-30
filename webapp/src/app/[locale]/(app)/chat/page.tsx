@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,7 +15,8 @@ import {
 import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
 import { useRagPresets } from "@/features/chat/hooks/use-rag-presets";
 import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
-import { apiFetch, apiProductPath } from "@/lib/api-client";
+import { useProjectList } from "@/features/projects/hooks/use-projects";
+import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { cn } from "@/lib/utils";
 import { useRouter } from "@/navigation";
@@ -26,7 +28,7 @@ import type {
   PatchUserMessageBody,
   PostMessageBody,
 } from "@/types/api";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -72,6 +74,10 @@ function ChatPageInner() {
   const abortRef = useRef<AbortController | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -108,7 +114,12 @@ function ChatPageInner() {
     return null;
   }, [messages]);
   const { data: docs } = useProjectDocuments(projectId);
-  const { data: modelsCatalog, isError: modelsError } = useModelsCatalog();
+  const { data: projectListData } = useProjectList(0, 64);
+  const currentProject = useMemo(
+    () => projectListData?.items?.find((p) => p.id === projectId),
+    [projectListData?.items, projectId],
+  );
+  const { data: modelsCatalog, isError: modelsError, error: modelsQueryError } = useModelsCatalog();
   const { data: presets, isError: presetsError } = useRagPresets();
 
   const activeConv = useMemo(
@@ -121,22 +132,21 @@ function ChatPageInner() {
     : "";
 
   useEffect(() => {
-    if (!activeConv) return;
-    const t = setTimeout(() => setPresetSelectValue(activeConv.presetId ?? ""), 0);
+    setTitleDraft(activeConv?.title ?? "");
+  }, [activeConv?.id, activeConv?.title]);
+
+  useEffect(() => {
+    if (!activeConv || patchConv.isPending) return;
+    setPresetSelectValue(activeConv.presetId ?? "");
     const df = activeConv.documentFilter;
     if (df && df.length > 0) {
-      setTimeout(() => {
-        setLimitDocs(true);
-        setSelectedDocIds([...df]);
-      }, 0);
+      setLimitDocs(true);
+      setSelectedDocIds([...df]);
     } else {
-      setTimeout(() => {
-        setLimitDocs(false);
-        setSelectedDocIds([]);
-      }, 0);
+      setLimitDocs(false);
+      setSelectedDocIds([]);
     }
-    return () => clearTimeout(t);
-  }, [convSyncKey, activeConv]);
+  }, [convSyncKey, activeConv, patchConv.isPending]);
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
   const setStreamingText = useChatExplainStore((s) => s.setStreamingText);
@@ -145,9 +155,52 @@ function ChatPageInner() {
   const isStreaming = useChatExplainStore((s) => s.isStreaming);
   const streamingText = useChatExplainStore((s) => s.streamingText);
 
+  function updateStickFromScroll() {
+    const el = scrollAreaRef.current;
+    if (!el) return;
+    const threshold = 96;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const near = dist < threshold;
+    stickToBottomRef.current = near;
+    if (near) setShowJumpToBottom(false);
+  }
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollAreaRef.current;
+    if (!el) return;
+    const onScroll = () => updateStickFromScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [conversationId]);
+
+  useEffect(() => {
+    stickToBottomRef.current = true;
+    setShowJumpToBottom(false);
+  }, [conversationId]);
+
+  useEffect(() => {
+    const el = scrollAreaRef.current;
+    if (!el) return;
+    if (stickToBottomRef.current) {
+      requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
+    } else {
+      setShowJumpToBottom(true);
+    }
   }, [messages, conversationId, streamingText]);
+
+  const modelsErrorMessage = useMemo(() => {
+    if (!modelsError) return null;
+    const e = modelsQueryError;
+    if (e instanceof ApiError) {
+      if (e.status === 401 || e.status === 403) return t("modelsLoadErrorAuth");
+      if (e.meta?.kind === "html" || e.status === 502 || e.status === 503 || e.status === 504) {
+        return t("modelsLoadErrorGateway");
+      }
+      if (e.status === 0 && e.meta?.kind === "network") return t("modelsLoadErrorGateway");
+      return getSafeApiErrorMessage(e);
+    }
+    return t("modelsLoadError");
+  }, [modelsError, modelsQueryError, t]);
 
   /** Cancel in-flight chat job when switching project, conversation, or unmounting. */
   useEffect(() => {
@@ -256,12 +309,12 @@ function ChatPageInner() {
         if (e instanceof DOMException && e.name === "AbortError") {
           return;
         }
-        setSendError(e instanceof Error ? e.message : t("sendError"));
+        setSendError(getSafeApiErrorMessage(e));
       } finally {
         setStreaming(false);
       }
     },
-    [refetchMessages, resetStreaming, setLastDone, setStreaming, setStreamingText, t],
+    [refetchMessages, resetStreaming, setLastDone, setStreaming, setStreamingText],
   );
 
   const send = useCallback(async () => {
@@ -291,9 +344,9 @@ function ChatPageInner() {
       if (e instanceof DOMException && e.name === "AbortError") {
         return;
       }
-      setSendError(e instanceof Error ? e.message : t("sendError"));
+      setSendError(getSafeApiErrorMessage(e));
     }
-  }, [conversationId, input, llmModelChoice, runChatJob, t]);
+  }, [conversationId, input, llmModelChoice, runChatJob]);
 
   const retryAssistant = useCallback(
     async (assistantMessageId: string) => {
@@ -311,10 +364,10 @@ function ChatPageInner() {
         if (e instanceof DOMException && e.name === "AbortError") {
           return;
         }
-        setSendError(e instanceof Error ? e.message : t("sendError"));
+        setSendError(getSafeApiErrorMessage(e));
       }
     },
-    [conversationId, runChatJob, t],
+    [conversationId, runChatJob],
   );
 
   const saveUserEditAndRegenerate = useCallback(async () => {
@@ -356,7 +409,7 @@ function ChatPageInner() {
         return;
       }
       setEditError(t("editError"));
-      setSendError(e instanceof Error ? e.message : t("sendError"));
+      setSendError(getSafeApiErrorMessage(e));
     }
   }, [conversationId, editBody, editingUserMessageId, llmModelChoice, runChatJob, t]);
 
@@ -459,7 +512,6 @@ function ChatPageInner() {
           >
             {t("newConversation")}
           </Button>
-          <MoveConversationDialog sourceProjectId={projectId} conversationId={conversationId} />
           <div className="flex max-h-48 flex-col gap-1 overflow-y-auto md:max-h-none md:flex-1">
             {convs?.map((c) => (
               <Button
@@ -477,6 +529,49 @@ function ChatPageInner() {
         </aside>
       )}
       <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {conversationId && active ? (
+          <header className="flex flex-wrap items-end gap-3 border-border border-b pb-3">
+            <div className="flex min-w-[10rem] items-center gap-2">
+              <span
+                className="inline-block size-3 shrink-0 rounded-full border border-border"
+                style={{
+                  backgroundColor:
+                    currentProject?.colorHex && /^#([0-9A-Fa-f]{6})$/.test(currentProject.colorHex)
+                      ? currentProject.colorHex
+                      : "#9ca3af",
+                }}
+                aria-hidden
+              />
+              <span className="truncate font-medium text-sm">{active.name}</span>
+            </div>
+            <div className="flex min-w-[min(100%,14rem)] flex-1 flex-col gap-1">
+              <Label htmlFor="chat-title" className="text-muted-foreground text-xs">
+                {t("chatTitleLabel")}
+              </Label>
+              <Input
+                id="chat-title"
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={() => {
+                  if (!conversationId || !activeConv) return;
+                  const next = titleDraft.trim();
+                  if (next === (activeConv.title ?? "").trim()) return;
+                  patchConv.mutate(
+                    { conversationId, body: { title: next } },
+                    {
+                      onError: () => setTitleDraft(activeConv.title ?? ""),
+                    },
+                  );
+                }}
+                disabled={patchConv.isPending}
+                className="h-9"
+              />
+            </div>
+            <div className="pb-0.5">
+              <MoveConversationDialog sourceProjectId={projectId} conversationId={conversationId} />
+            </div>
+          </header>
+        ) : null}
         {conversationId && (
           <div className="flex flex-col gap-3 rounded-lg border bg-card/20 p-3 text-sm md:flex-row md:flex-wrap md:items-end md:gap-4">
             <div className="flex min-w-[12rem] flex-1 flex-col gap-1">
@@ -507,7 +602,11 @@ function ChatPageInner() {
                     );
                   })}
               </select>
-              {modelsError && <p className="text-destructive text-xs">{t("modelsLoadError")}</p>}
+              {modelsError && (
+                <p className="text-destructive text-xs" role="alert">
+                  {modelsErrorMessage}
+                </p>
+              )}
               {!modelsError && !modelsCatalog?.ollamaReachable && (
                 <p className="text-muted-foreground text-xs">{t("ollamaUnreachable")}</p>
               )}
@@ -576,7 +675,26 @@ function ChatPageInner() {
             </div>
           </div>
         )}
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border bg-card/30 p-3">
+        <div
+          ref={scrollAreaRef}
+          className="relative min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border bg-card/30 p-3"
+        >
+          {showJumpToBottom ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="absolute right-4 bottom-4 z-10 shadow-md"
+              onClick={() => {
+                stickToBottomRef.current = true;
+                setShowJumpToBottom(false);
+                requestAnimationFrame(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
+              }}
+            >
+              <ChevronDown className="mr-1 size-4 shrink-0" aria-hidden />
+              {t("jumpToBottom")}
+            </Button>
+          ) : null}
           {!conversationId && (
             <p className="text-muted-foreground text-sm">{t("pickConversation")}</p>
           )}

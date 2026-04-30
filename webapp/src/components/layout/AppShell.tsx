@@ -10,6 +10,7 @@ import { ThemeLanguageMenu } from "@/components/layout/ThemeLanguageMenu";
 import { SessionExpiredBridge } from "@/components/auth/SessionExpiredBridge";
 import { clearSessionCookie } from "@/features/auth/lib/session-client";
 import { ExplainabilityPanel } from "@/features/rag/ExplainabilityPanel";
+import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app.store";
 import { usePathname, useRouter } from "@/navigation";
 
@@ -59,7 +60,14 @@ export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
       <div className="flex min-h-0 min-w-0 flex-1">
         <AppSidebar />
         <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-5xl px-4 py-6 md:px-8">{children}</div>
+          <div
+            className={cn(
+              "mx-auto px-4 py-6 md:px-8",
+              isChat ? "max-w-none w-full" : "max-w-5xl",
+            )}
+          >
+            {children}
+          </div>
         </main>
         <CollapsiblePanel open={panelOpen}>
           {isChat ? <ExplainabilityPanel /> : panelBody}

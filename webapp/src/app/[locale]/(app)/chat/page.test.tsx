@@ -76,6 +76,27 @@ vi.mock("@/features/documents/hooks/use-project-documents", () => ({
   }),
 }));
 
+vi.mock("@/features/projects/hooks/use-projects", () => ({
+  useProjectList: () => ({
+    data: {
+      items: [
+        {
+          id: "p1",
+          name: "P",
+          docCount: 0,
+          convCount: 0,
+          updatedAt: "",
+          colorHex: "#ff0000",
+          iconKey: "folder",
+        },
+      ],
+      total: 1,
+    },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 vi.mock("@/features/chat/hooks/use-models-catalog", () => ({
   useModelsCatalog: () => ({
     data: {
