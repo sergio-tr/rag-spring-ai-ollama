@@ -57,7 +57,13 @@ async function pollUntilTerminal(
 export async function pollAccountJob(
   jobId: string,
   onTick: (status: AsyncTaskStatusDto) => void,
-  options?: { intervalMs?: number; signal?: AbortSignal; throwOnFailed?: boolean },
+  options?: {
+    intervalMs?: number;
+    signal?: AbortSignal;
+    throwOnFailed?: boolean;
+    /** Caps local polling — server job may still run ({@link LabJobPollTimeoutError}). */
+    maxWaitMs?: number;
+  },
 ): Promise<AsyncTaskStatusDto> {
   return pollUntilTerminal(
     () => apiFetch<AsyncTaskStatusDto>(apiProductPath(`/me/account/jobs/${jobId}`)),
