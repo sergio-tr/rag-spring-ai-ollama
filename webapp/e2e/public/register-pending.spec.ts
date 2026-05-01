@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 function uniqueEmail(): string {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  return `pending-${stamp}@example.test`;
+  return `pending-${stamp}@example.com`;
 }
 
 test.describe("Register pending flow", () => {
@@ -26,13 +26,22 @@ test.describe("Register pending flow", () => {
     });
 
     await page.goto("/en/register", { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.locator("#name").fill("Pending User");
-    await page.locator("#email").fill(email);
-    await page.locator("#password").fill("Password123!");
-    await page.locator("#confirmPassword").fill("Password123!");
-    await page.getByRole("checkbox", { name: /privacy policy/i }).check();
-    await page.getByRole("checkbox", { name: /terms and conditions/i }).check();
-    await page.getByRole("button", { name: /register/i }).click();
+    const form = page.locator("form").first();
+    const nameInput = form.locator("#name");
+    const emailInput = form.locator("#email");
+    await expect(nameInput).toBeVisible();
+    await expect(emailInput).toBeVisible();
+    await nameInput.click();
+    await nameInput.type("Pending User");
+    await emailInput.click();
+    await emailInput.type(email);
+    await expect(nameInput).toHaveValue("Pending User");
+    await expect(emailInput).toHaveValue(email);
+    await form.getByLabel(/^password$/i).fill("Password123!");
+    await form.getByLabel(/repeat password/i).fill("Password123!");
+    await form.getByRole("checkbox", { name: /privacy policy/i }).check();
+    await form.getByRole("checkbox", { name: /terms and conditions/i }).check();
+    await form.getByRole("button", { name: /register/i }).click();
 
     await expect(page).toHaveURL(new RegExp(`/en/register/pending\\?email=${encodeURIComponent(email)}`), {
       timeout: 15_000,
