@@ -56,11 +56,23 @@ describe("LoginForm", () => {
     );
     const googleLink = screen.getByRole("link", { name: /continue with google/i });
     expect(googleLink).toBeInTheDocument();
-    expect(googleLink).toHaveAttribute(
-      "href",
-      expect.stringContaining(`${authApiPath("/oauth/google/start")}?locale=`),
+    expect(googleLink.tagName).toBe("A");
+    const href = googleLink.getAttribute("href") ?? "";
+    expect(href).toBe(`${authApiPath("/oauth/google/start")}?locale=en`);
+    expect(href).toBe("/api/v5/auth/oauth/google/start?locale=en");
+    expect(href).not.toMatch(/^\/(en|es|fr|de|pt|it)\//);
+  });
+
+  it("renders Google CTA as a plain anchor (no client-side router) so OAuth start is not locale-prefixed", () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "true");
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
     );
-    expect(googleLink.getAttribute("href")).toContain("/api/v5/auth/oauth/google/start");
+    const cta = screen.getByTestId("oauth-google-cta");
+    expect(cta.tagName).toBe("A");
+    expect(cta).toHaveAttribute("href", "/api/v5/auth/oauth/google/start?locale=en");
   });
 
   it("submits credentials and navigates to projects", async () => {
@@ -231,11 +243,23 @@ describe("RegisterForm", () => {
     );
     const googleLink = screen.getByRole("link", { name: /continue with google/i });
     expect(googleLink).toBeInTheDocument();
-    expect(googleLink).toHaveAttribute(
-      "href",
-      expect.stringContaining(`${authApiPath("/oauth/google/start")}?locale=`),
+    expect(googleLink.tagName).toBe("A");
+    const href = googleLink.getAttribute("href") ?? "";
+    expect(href).toBe(`${authApiPath("/oauth/google/start")}?locale=en`);
+    expect(href).toBe("/api/v5/auth/oauth/google/start?locale=en");
+    expect(href).not.toMatch(/^\/(en|es|fr|de|pt|it)\//);
+  });
+
+  it("renders Google CTA as a plain anchor (no client-side router) so OAuth start is not locale-prefixed", () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "true");
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
     );
-    expect(googleLink.getAttribute("href")).toContain("/api/v5/auth/oauth/google/start");
+    const cta = screen.getByTestId("oauth-google-cta");
+    expect(cta.tagName).toBe("A");
+    expect(cta).toHaveAttribute("href", "/api/v5/auth/oauth/google/start?locale=en");
   });
 
   it("uses one password visibility toggle for both password and repeat-password fields", async () => {

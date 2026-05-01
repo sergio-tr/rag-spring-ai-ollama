@@ -23,10 +23,19 @@ test.describe("Public auth pages", () => {
       );
 
       for (const path of ["/en/login", "/en/register"] as const) {
-        await page.goto(path);
+        await page.goto(path, { waitUntil: "domcontentloaded", timeout: 60_000 });
         const link = page.getByRole("link", { name: /continue with google/i });
-        await expect(link).toBeVisible();
-        await expect(link).toHaveAttribute("href", /\/api\/v5\/auth\/oauth\/google\/start\?locale=/);
+        await expect(link).toBeVisible({ timeout: 30_000 });
+        // The href MUST be the absolute backend route, NOT prefixed by the active
+        // locale segment. Regression guard for the bug where next-intl <Link>
+        // rewrote the href to /en/api/v5/auth/oauth/google/start (HTTP 404).
+        await expect(link).toHaveAttribute(
+          "href",
+          /^\/api\/v5\/auth\/oauth\/google\/start\?locale=(en|es)$/,
+        );
+        // Belt-and-suspenders: the rendered href must not start with /en/ or /es/.
+        const href = await link.getAttribute("href");
+        expect(href).not.toMatch(/^\/(en|es)\//);
       }
     });
   });

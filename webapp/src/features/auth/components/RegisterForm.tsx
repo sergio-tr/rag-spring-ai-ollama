@@ -105,12 +105,18 @@ export function RegisterForm() {
     >
       {oauthGoogleEnabled && (
         <>
-          <Link
+          {/*
+           * Plain <a> on purpose: this is an absolute backend API URL that
+           * issues a 302 to Google. Using next-intl's <Link> here would
+           * prepend the active locale (e.g. /en/api/v5/...) and 404.
+           */}
+          <a
             className={buttonVariants({ variant: "secondary" })}
+            data-testid="oauth-google-cta"
             href={`${authApiPath("/oauth/google/start")}?locale=${encodeURIComponent(locale)}`}
           >
             {t("oauthGoogleCta")}
-          </Link>
+          </a>
           <p className="text-muted-foreground text-center text-xs">{t("oauthSeparator")}</p>
         </>
       )}
