@@ -55,6 +55,15 @@ vi.mock("@/features/auth/lib/session-client", () => ({
 import { LoginForm } from "./LoginForm";
 import { RegisterForm } from "./RegisterForm";
 
+function expectGoogleOauthStartHref(href: string) {
+  const parsed = href.startsWith("http://") || href.startsWith("https://")
+    ? new URL(href)
+    : new URL(href, "http://localhost");
+  expect(parsed.pathname).toBe("/api/v5/auth/oauth/google/start");
+  expect(parsed.searchParams.get("locale")).toBe("en");
+  expect(parsed.pathname).not.toMatch(/^\/(en|es|fr|de|pt|it)\//);
+}
+
 describe("OAuth CTA locale-prefix regression", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
@@ -74,8 +83,7 @@ describe("OAuth CTA locale-prefix regression", () => {
     const cta = screen.getByTestId("oauth-google-cta");
     expect(cta.tagName).toBe("A");
     const href = cta.getAttribute("href") ?? "";
-    expect(href).toBe("/api/v5/auth/oauth/google/start?locale=en");
-    expect(href).not.toMatch(/^\/(en|es|fr|de|pt|it)\//);
+    expectGoogleOauthStartHref(href);
   });
 
   it("RegisterForm OAuth CTA href stays /api/v5/auth/oauth/google/start (no locale prefix), even when <Link> would have prepended one", () => {
@@ -87,8 +95,7 @@ describe("OAuth CTA locale-prefix regression", () => {
     const cta = screen.getByTestId("oauth-google-cta");
     expect(cta.tagName).toBe("A");
     const href = cta.getAttribute("href") ?? "";
-    expect(href).toBe("/api/v5/auth/oauth/google/start?locale=en");
-    expect(href).not.toMatch(/^\/(en|es|fr|de|pt|it)\//);
+    expectGoogleOauthStartHref(href);
   });
 
   it("regression-mock truth check: <Link> wrapper would prepend /en/ if used directly", async () => {

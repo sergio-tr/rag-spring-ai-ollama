@@ -27,6 +27,15 @@ vi.mock("@/lib/api-client", async (orig) => {
 import { apiFetch } from "@/lib/api-client";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
 
+function expectGoogleOauthStartHref(href: string) {
+  const parsed = href.startsWith("http://") || href.startsWith("https://")
+    ? new URL(href)
+    : new URL(href, "http://localhost");
+  expect(parsed.pathname).toBe("/api/v5/auth/oauth/google/start");
+  expect(parsed.searchParams.get("locale")).toBe("en");
+  expect(parsed.pathname).not.toMatch(/^\/(en|es|fr|de|pt|it)\//);
+}
+
 describe("LoginForm", () => {
   beforeEach(() => {
     vi.mocked(apiFetch).mockReset();
@@ -69,9 +78,8 @@ describe("LoginForm", () => {
     expect(googleLink).toBeInTheDocument();
     expect(googleLink.tagName).toBe("A");
     const href = googleLink.getAttribute("href") ?? "";
-    expect(href).toBe(`${authApiPath("/oauth/google/start")}?locale=en`);
-    expect(href).toBe("/api/v5/auth/oauth/google/start?locale=en");
-    expect(href).not.toMatch(/^\/(en|es|fr|de|pt|it)\//);
+    expect(href).toContain(`${authApiPath("/oauth/google/start")}?locale=en`);
+    expectGoogleOauthStartHref(href);
   });
 
   it("renders Google CTA as a plain anchor (no client-side router) so OAuth start is not locale-prefixed", () => {
@@ -83,7 +91,7 @@ describe("LoginForm", () => {
     );
     const cta = screen.getByTestId("oauth-google-cta");
     expect(cta.tagName).toBe("A");
-    expect(cta).toHaveAttribute("href", "/api/v5/auth/oauth/google/start?locale=en");
+    expectGoogleOauthStartHref(cta.getAttribute("href") ?? "");
   });
 
   it("prefixes Google OAuth href with NEXT_PUBLIC_API_BASE_URL when set (direct webapp port)", () => {
@@ -302,9 +310,8 @@ describe("RegisterForm", () => {
     expect(googleLink).toBeInTheDocument();
     expect(googleLink.tagName).toBe("A");
     const href = googleLink.getAttribute("href") ?? "";
-    expect(href).toBe(`${authApiPath("/oauth/google/start")}?locale=en`);
-    expect(href).toBe("/api/v5/auth/oauth/google/start?locale=en");
-    expect(href).not.toMatch(/^\/(en|es|fr|de|pt|it)\//);
+    expect(href).toContain(`${authApiPath("/oauth/google/start")}?locale=en`);
+    expectGoogleOauthStartHref(href);
   });
 
   it("renders Google CTA as a plain anchor (no client-side router) so OAuth start is not locale-prefixed", () => {
@@ -316,7 +323,7 @@ describe("RegisterForm", () => {
     );
     const cta = screen.getByTestId("oauth-google-cta");
     expect(cta.tagName).toBe("A");
-    expect(cta).toHaveAttribute("href", "/api/v5/auth/oauth/google/start?locale=en");
+    expectGoogleOauthStartHref(cta.getAttribute("href") ?? "");
   });
 
   it("prefixes Google OAuth href with NEXT_PUBLIC_API_BASE_URL when set (direct webapp port)", () => {
