@@ -25,13 +25,14 @@ export function SettingsTabQueryNormalizerInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const tabParam = searchParams.get("tab");
 
   useEffect(() => {
     if (pathname !== "/settings") return;
-    if (!searchParams.has("tab")) return;
-    const target = resolveSettingsPathFromTabQuery(searchParams.get("tab"));
+    if (tabParam === null) return;
+    const target = resolveSettingsPathFromTabQuery(tabParam);
     router.replace(target);
-  }, [pathname, router, searchParams]);
+  }, [pathname, router, tabParam]);
 
   return null;
 }
