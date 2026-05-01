@@ -84,7 +84,49 @@
     "lab": "Research Lab",
     "admin": "Admin",
     "signOut": "Sign out",
-    "activeProjectLabel": "Active project"
+    "activeProjectLabel": "Active project",
+    "sidebarExpand": "Expand sidebar",
+    "sidebarCollapse": "Collapse sidebar",
+    "openNavigation": "Open navigation menu",
+    "navigationDrawerTitle": "Navigation",
+    "resizeSidebar": "Resize sidebar"
+  },
+  "Context": {
+    "breadcrumbNavLabel": "Current location",
+    "breadcrumbLoading": "Loading…",
+    "noProjectSelected": "No project selected",
+    "loadingProject": "Loading project…",
+    "unnamedProject": "Project",
+    "loadingChatTitle": "Loading chat…",
+    "untitledChat": "Untitled chat"
+  },
+  "SectionActions": {
+    "projectsMenuLabel": "Projects actions",
+    "documentsMenuLabel": "Documents actions",
+    "chatMenuLabel": "Chat actions",
+    "settingsMenuLabel": "Settings actions",
+    "newProject": "New project",
+    "deleteAllProjects": "Delete all projects",
+    "deleteAllProjectsUnavailable": "Not available — delete projects individually from each project card.",
+    "refreshDocumentList": "Refresh document list",
+    "deleteAllDocuments": "Delete all documents",
+    "deleteAllDocumentsUnavailable": "Not available — no bulk-delete API; remove files one by one on this page.",
+    "needsActiveProject": "Select an active project first.",
+    "needsActiveConversation": "Open or select a chat conversation first.",
+    "chatMenuPhaseNote": "Advanced chat controls (Phase 5)",
+    "chatMoveProject": "Move to another project",
+    "chatModel": "Model",
+    "chatPreset": "Preset",
+    "chatLimitRetrieval": "Limit retrieval",
+    "chatDelete": "Delete chat",
+    "chatActionDeferred": "Available from chat controls in a future update.",
+    "chatDeleteUnavailable": "Not available — no delete-chat API wired in the UI yet.",
+    "reloadSettings": "Reload settings view",
+    "refreshUsageData": "Refresh usage data",
+    "openAccountExport": "Jump to account export",
+    "goToAccountExport": "Go to account export",
+    "settingsImportExportDeferred": "Import / structured export",
+    "settingsFormsDeferredHint": "Use each settings tab for edits; structured import/export is planned separately."
   },
   "Settings": {
     "title": "Settings",
@@ -401,7 +443,9 @@
   },
   "Panel": {
     "title": "Tips",
-    "body": "This panel may show explainability and trace details as the UI evolves."
+    "body": "This panel may show explainability and trace details as the UI evolves.",
+    "hideTipsPanel": "Hide tips panel",
+    "showTipsPanel": "Show tips panel"
   },
   "Theme": {
     "light": "Light",

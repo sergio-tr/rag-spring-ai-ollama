@@ -84,7 +84,49 @@
     "lab": "Laboratorio",
     "admin": "Admin",
     "signOut": "Cerrar sesión",
-    "activeProjectLabel": "Proyecto activo"
+    "activeProjectLabel": "Proyecto activo",
+    "sidebarExpand": "Expandir barra lateral",
+    "sidebarCollapse": "Contraer barra lateral",
+    "openNavigation": "Abrir menú de navegación",
+    "navigationDrawerTitle": "Navegación",
+    "resizeSidebar": "Redimensionar barra lateral"
+  },
+  "Context": {
+    "breadcrumbNavLabel": "Ubicación actual",
+    "breadcrumbLoading": "Cargando…",
+    "noProjectSelected": "Ningún proyecto seleccionado",
+    "loadingProject": "Cargando proyecto…",
+    "unnamedProject": "Proyecto",
+    "loadingChatTitle": "Cargando chat…",
+    "untitledChat": "Chat sin título"
+  },
+  "SectionActions": {
+    "projectsMenuLabel": "Acciones de proyectos",
+    "documentsMenuLabel": "Acciones de documentos",
+    "chatMenuLabel": "Acciones del chat",
+    "settingsMenuLabel": "Acciones de ajustes",
+    "newProject": "Nuevo proyecto",
+    "deleteAllProjects": "Eliminar todos los proyectos",
+    "deleteAllProjectsUnavailable": "No disponible — elimina proyectos uno a uno desde cada tarjeta.",
+    "refreshDocumentList": "Actualizar lista de documentos",
+    "deleteAllDocuments": "Eliminar todos los documentos",
+    "deleteAllDocumentsUnavailable": "No disponible — no hay API de borrado masivo; quita archivos uno por uno en esta página.",
+    "needsActiveProject": "Selecciona primero un proyecto activo.",
+    "needsActiveConversation": "Abre o selecciona primero una conversación.",
+    "chatMenuPhaseNote": "Controles avanzados del chat (fase 5)",
+    "chatMoveProject": "Mover a otro proyecto",
+    "chatModel": "Modelo",
+    "chatPreset": "Preset",
+    "chatLimitRetrieval": "Limitar recuperación",
+    "chatDelete": "Eliminar chat",
+    "chatActionDeferred": "Disponible más adelante desde los controles del chat.",
+    "chatDeleteUnavailable": "No disponible — aún no hay API de borrar chat en la interfaz.",
+    "reloadSettings": "Recargar vista de ajustes",
+    "refreshUsageData": "Actualizar datos de uso",
+    "openAccountExport": "Ir a exportación de cuenta",
+    "goToAccountExport": "Ir a exportación de cuenta",
+    "settingsImportExportDeferred": "Importar / exportación estructurada",
+    "settingsFormsDeferredHint": "Usa cada pestaña para editar; la importación/exportación estructurada está planificada aparte."
   },
   "Settings": {
     "title": "Ajustes",
@@ -401,7 +443,9 @@
   },
   "Panel": {
     "title": "Consejos",
-    "body": "Este panel puede mostrar explicabilidad y trazas según evolucione la interfaz."
+    "body": "Este panel puede mostrar explicabilidad y trazas según evolucione la interfaz.",
+    "hideTipsPanel": "Ocultar panel de consejos",
+    "showTipsPanel": "Mostrar panel de consejos"
   },
   "Theme": {
     "light": "Claro",
