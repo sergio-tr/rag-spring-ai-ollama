@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { HelpPopover } from "@/features/help/HelpPopover";
+import { InlineHelpStatus } from "@/features/help/InlineHelpStatus";
 import { MoveConversationDialog } from "@/features/chat/components/MoveConversationDialog";
 import { documentFiltersEqual } from "@/features/chat/lib/chat-document-filter-sync";
 import {
@@ -18,6 +20,7 @@ import {
   useCreateConversation,
   usePatchConversation,
 } from "@/features/chat/hooks/use-conversations";
+import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
 import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
 import { useRagPresets } from "@/features/chat/hooks/use-rag-presets";
 import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
@@ -29,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
 import { useChatExplainStore } from "@/store/chat-explain.store";
+import { useTraceStore } from "@/features/trace/trace.store";
 import type {
   ConversationDraftDto,
   LabJobAcceptedDto,
@@ -41,6 +45,14 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
+
+type AssistantPipelinePhase =
+  | "sending"
+  | "contacting"
+  | "processing"
+  | "receiving"
+  | "failed"
+  | null;
 
 async function cancelChatJob(jobId: string, signal?: AbortSignal): Promise<void> {
   await apiFetch<void>(apiProductPath(`/lab/jobs/${jobId}/cancel`), {
@@ -55,6 +67,7 @@ function isAssistantRetryable(status: string | null | undefined): boolean {
 
 function ChatPageInner() {
   const t = useTranslations("Chat");
+  const tHelp = useTranslations("Help");
   const router = useRouter();
   const searchParams = useSearchParams();
   const active = useAppStore((s) => s.activeProject);
@@ -89,6 +102,10 @@ function ChatPageInner() {
   const pendingDocumentFilterRef = useRef<string[] | null>(null);
   /** POST + async chat job in flight (distinct from streaming preview state). */
   const [isSending, setIsSending] = useState(false);
+  /** Local-only user bubble until the server list includes the same text. */
+  const [optimisticUserContent, setOptimisticUserContent] = useState<string | null>(null);
+  /** Visible pipeline stages between send and a terminal assistant outcome. */
+  const [assistantPhase, setAssistantPhase] = useState<AssistantPipelinePhase>(null);
 
   useEffect(() => {
     if (urlConversationId && urlConversationId !== conversationId) {
@@ -231,7 +248,7 @@ function ChatPageInner() {
     } else {
       setShowJumpToBottom(true);
     }
-  }, [messages, conversationId, streamingText]);
+  }, [messages, conversationId, streamingText, optimisticUserContent]);
 
   const modelsErrorMessage = useMemo(() => {
     if (!modelsError) return null;
@@ -265,6 +282,11 @@ function ChatPageInner() {
       resetStreaming();
       setStreaming(false);
     }
+    const resetUiTimer = setTimeout(() => {
+      setOptimisticUserContent(null);
+      setAssistantPhase(null);
+    }, 0);
+    return () => clearTimeout(resetUiTimer);
   }, [conversationId, projectId, resetStreaming, setStreaming]);
 
   /** Load persisted draft when opening a conversation. */
@@ -339,15 +361,20 @@ function ChatPageInner() {
     async (accepted: LabJobAcceptedDto, signal: AbortSignal) => {
       resetStreaming();
       setLastDone(null);
-      setSendError(null);
       setStreaming(true);
+      setAssistantPhase("processing");
       activeJobIdRef.current = accepted.jobId;
+      let streamingSeen = false;
       try {
-        await followLabJob(
+        const terminal = await followLabJob(
           accepted,
           (s) => {
             const streamed = s.result?.streamedAnswer;
-            if (typeof streamed === "string") {
+            if (typeof streamed === "string" && streamed.length > 0) {
+              if (!streamingSeen) {
+                streamingSeen = true;
+                setAssistantPhase("receiving");
+              }
               setStreamingText(streamed);
             }
           },
@@ -357,20 +384,53 @@ function ChatPageInner() {
         setLastDone(null);
         resetStreaming();
         setStreaming(false);
-        void refetchMessages();
+        await refetchMessages();
+
+        if (terminal.status === "FAILED") {
+          setAssistantPhase("failed");
+          const hint =
+            terminal.errorMessage?.trim().slice(0, 280) || t("assistantJobFailedShort");
+          setSendError(hint);
+          useTraceStore.getState().addTraceEvent({
+            section: "chat",
+            action: "assistant_failed",
+            message: t("traceAssistantFailed"),
+            status: "error",
+            metadata: { jobId: accepted.jobId },
+          });
+        } else {
+          setAssistantPhase(null);
+          setSendError(null);
+          useTraceStore.getState().addTraceEvent({
+            section: "chat",
+            action: "assistant_response_received",
+            message: t("traceAssistantCompleted"),
+            status: "success",
+            metadata: { jobId: accepted.jobId },
+          });
+        }
       } catch (e) {
         activeJobIdRef.current = null;
         setStreaming(false);
         resetStreaming();
         if (e instanceof DOMException && e.name === "AbortError") {
+          setAssistantPhase(null);
           return;
         }
+        setAssistantPhase("failed");
         setSendError(getSafeApiErrorMessage(e));
+        useTraceStore.getState().addTraceEvent({
+          section: "chat",
+          action: "assistant_failed",
+          message: t("traceAssistantFailed"),
+          status: "error",
+          metadata: { jobId: accepted.jobId },
+        });
       } finally {
         setStreaming(false);
       }
     },
-    [refetchMessages, resetStreaming, setLastDone, setStreaming, setStreamingText],
+    [refetchMessages, resetStreaming, setLastDone, setStreaming, setStreamingText, t],
   );
 
   const send = useCallback(async () => {
@@ -380,7 +440,15 @@ function ChatPageInner() {
     const signal = abortRef.current.signal;
     setEditError(null);
     const text = input.trim();
+    useTraceStore.getState().addTraceEvent({
+      section: "chat",
+      action: "message_submitted",
+      message: t("traceMessageSubmitted"),
+      status: "info",
+    });
+    setOptimisticUserContent(text);
     setInput("");
+    setAssistantPhase("sending");
     const body: PostMessageBody = {
       content: text,
       llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
@@ -404,14 +472,32 @@ function ChatPageInner() {
           signal,
         },
       );
+      setAssistantPhase("contacting");
+      useTraceStore.getState().addTraceEvent({
+        section: "chat",
+        action: "assistant_processing_started",
+        message: t("traceAssistantStarted"),
+        status: "in_progress",
+        metadata: { jobId: accepted.jobId },
+      });
+      await refetchMessages();
       await runChatJob(accepted, signal);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         setInput(text);
+        setOptimisticUserContent(null);
+        setAssistantPhase(null);
         return;
       }
+      setAssistantPhase("failed");
       setInput(text);
       setSendError(getSafeApiErrorMessage(e));
+      useTraceStore.getState().addTraceEvent({
+        section: "chat",
+        action: "message_submit_failed",
+        message: t("traceMessageSubmitFailed"),
+        status: "error",
+      });
     } finally {
       setIsSending(false);
     }
@@ -422,8 +508,10 @@ function ChatPageInner() {
     isSending,
     isStreaming,
     llmModelChoice,
+    refetchMessages,
     runChatJob,
     selectConversation,
+    t,
   ]);
 
   const retryAssistant = useCallback(
@@ -434,22 +522,39 @@ function ChatPageInner() {
       const signal = abortRef.current.signal;
       setIsSending(true);
       setSendError(null);
+      setAssistantPhase("sending");
       try {
         const accepted = await apiFetch<LabJobAcceptedDto>(
           apiProductPath(`/conversations/${conversationId}/messages/${assistantMessageId}/retry`),
           { method: "POST", signal },
         );
+        useTraceStore.getState().addTraceEvent({
+          section: "chat",
+          action: "assistant_processing_started",
+          message: t("traceAssistantStarted"),
+          status: "in_progress",
+          metadata: { jobId: accepted.jobId },
+        });
+        await refetchMessages();
         await runChatJob(accepted, signal);
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
+          setAssistantPhase(null);
           return;
         }
+        setAssistantPhase("failed");
         setSendError(getSafeApiErrorMessage(e));
+        useTraceStore.getState().addTraceEvent({
+          section: "chat",
+          action: "message_submit_failed",
+          message: t("traceMessageSubmitFailed"),
+          status: "error",
+        });
       } finally {
         setIsSending(false);
       }
     },
-    [conversationId, isSending, runChatJob],
+    [conversationId, isSending, refetchMessages, runChatJob, t],
   );
 
   const saveUserEditAndRegenerate = useCallback(async () => {
@@ -486,6 +591,7 @@ function ChatPageInner() {
       );
       setEditingUserMessageId(null);
       setEditBody("");
+      await refetchMessages();
       await runChatJob(accepted, signal);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
@@ -496,7 +602,7 @@ function ChatPageInner() {
     } finally {
       setIsSending(false);
     }
-  }, [conversationId, editBody, editingUserMessageId, isSending, llmModelChoice, runChatJob, t]);
+  }, [conversationId, editBody, editingUserMessageId, isSending, llmModelChoice, refetchMessages, runChatJob, t]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -507,8 +613,38 @@ function ChatPageInner() {
     }
     resetStreaming();
     setStreaming(false);
+    setAssistantPhase(null);
     void refetchMessages();
   }, [refetchMessages, resetStreaming, setStreaming]);
+
+  const optimisticVisible =
+    Boolean(optimisticUserContent?.trim()) && !optimisticConsumed(messages, optimisticUserContent);
+
+  const assistantPipelineLabel = useMemo(() => {
+    if (assistantPhase === "failed" || sendError) {
+      return sendError ?? t("assistantPhaseFailed");
+    }
+    switch (assistantPhase) {
+      case "sending":
+        return t("assistantPhaseSending");
+      case "contacting":
+        return t("assistantPhaseContacting");
+      case "processing":
+        return t("assistantPhaseProcessing");
+      case "receiving":
+        return t("assistantPhaseReceiving");
+      default:
+        return "";
+    }
+  }, [assistantPhase, sendError, t]);
+
+  const showAssistantPipelineRow =
+    !(streamingText?.trim()) &&
+    Boolean(assistantPipelineLabel) &&
+    (isSending || isStreaming || assistantPhase !== null);
+
+  const assistantPipelineTraceStatus =
+    assistantPhase === "failed" || sendError ? "error" : "in_progress";
 
   const onPresetChange = (value: string) => {
     if (!conversationId || !value.trim()) return;
@@ -661,6 +797,14 @@ function ChatPageInner() {
         ) : null}
         {conversationId && (
           <div className="flex flex-col gap-3 rounded-lg border bg-card/20 p-3 text-sm md:flex-row md:flex-wrap md:items-end md:gap-4">
+            <div className="flex w-full justify-end md:order-last md:w-auto md:flex-none md:justify-start">
+              <HelpPopover
+                triggerAriaLabel={tHelp("chatControlsTriggerLabel")}
+                title={tHelp("chatControlsTitle")}
+                message={tHelp("chatControlsMessage")}
+                details={tHelp("chatControlsDetails")}
+              />
+            </div>
             <div className="flex min-w-[12rem] flex-1 flex-col gap-1">
               <Label htmlFor="chat-llm-model">{t("modelLabel")}</Label>
               <select
@@ -903,6 +1047,24 @@ function ChatPageInner() {
               )}
             </div>
           ))}
+          {optimisticVisible ? (
+            <div
+              role="article"
+              aria-label={t("optimisticUserAria")}
+              data-testid="chat-optimistic-user"
+              className="ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm"
+            >
+              <p className="whitespace-pre-wrap">{optimisticUserContent}</p>
+            </div>
+          ) : null}
+          {showAssistantPipelineRow && assistantPipelineLabel ? (
+            <div className="mr-auto max-w-[85%]">
+              <InlineHelpStatus
+                status={assistantPipelineTraceStatus}
+                label={assistantPipelineLabel}
+              />
+            </div>
+          ) : null}
           {isStreaming && streamingText && (
             <div className="mr-auto max-w-[85%] rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm">
               <p className="whitespace-pre-wrap">{streamingText}</p>
@@ -926,11 +1088,6 @@ function ChatPageInner() {
               {t("patchError")}
             </p>
           )}
-          {isSending && !isStreaming ? (
-            <p className="text-muted-foreground text-xs" aria-live="polite">
-              {t("sending")}
-            </p>
-          ) : null}
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

@@ -4,8 +4,16 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
-import type { ConversationDto } from "@/types/api";
+import type { AsyncTaskStatusDto, ConversationDto, MessageDto } from "@/types/api";
 import ChatPage from "./page";
+
+/** Stable references — page effects depend on these store actions; new vi.fn() each render would clear optimistic UI every paint. */
+const chatExplainMocks = vi.hoisted(() => ({
+  setLastDone: vi.fn(),
+  setStreamingText: vi.fn(),
+  resetStreaming: vi.fn(),
+  setStreaming: vi.fn(),
+}));
 
 vi.mock("@/navigation", () => ({
   Link: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -15,7 +23,7 @@ vi.mock("@/navigation", () => ({
   usePathname: () => "/en/chat",
 }));
 
-const followLabJob = vi.fn().mockResolvedValue(undefined);
+const followLabJob = vi.fn();
 vi.mock("@/lib/lab-job-follow", () => ({ followLabJob: (...a: unknown[]) => followLabJob(...a) }));
 
 vi.mock("@/lib/api-client", async () => {
@@ -28,6 +36,7 @@ vi.mock("@/lib/api-client", async () => {
 });
 
 import { ApiError, apiFetch, createHttpApiError } from "@/lib/api-client";
+import { useTraceStore } from "@/features/trace/trace.store";
 
 vi.mock("@/store/app.store", () => ({
   useAppStore: (sel: (s: { activeProject: { id: string; name: string } | null }) => unknown) =>
@@ -56,24 +65,27 @@ const createMutateAsync = vi.fn().mockResolvedValue({
   presetId: null,
 });
 
-vi.mock("@/features/chat/hooks/use-conversations", () => ({
-  useConversations: () => ({ data: conversationsQueryResult.data }),
-  useCreateConversation: () => ({
-    mutateAsync: createMutateAsync,
-    isPending: false,
-  }),
-  useConversationMessages: () => ({ data: mockMessages, refetch: vi.fn() }),
-  usePatchConversation: () => ({
-    mutate: patchMutate,
-    isPending: false,
-    isError: false,
-  }),
-  useMoveConversation: () => ({
-    mutateAsync: vi.fn().mockResolvedValue(undefined),
-    isPending: false,
-    isError: false,
-  }),
-}));
+vi.mock("@/features/chat/hooks/use-conversations", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/chat/hooks/use-conversations")>();
+  return {
+    ...actual,
+    useConversations: () => ({ data: conversationsQueryResult.data }),
+    useCreateConversation: () => ({
+      mutateAsync: createMutateAsync,
+      isPending: false,
+    }),
+    usePatchConversation: () => ({
+      mutate: patchMutate,
+      isPending: false,
+      isError: false,
+    }),
+    useMoveConversation: () => ({
+      mutateAsync: vi.fn().mockResolvedValue(undefined),
+      isPending: false,
+      isError: false,
+    }),
+  };
+});
 
 vi.mock("@/features/documents/hooks/use-project-documents", () => {
   const data = [
@@ -143,10 +155,10 @@ vi.mock("@/features/chat/hooks/use-rag-presets", () => ({
   useRagPresets: () => ({ data: ragPresetsData, isError: false }),
 }));
 
-const mockMessages = [
+const initialChatMessages: MessageDto[] = [
   {
     id: "m1",
-    role: "USER" as const,
+    role: "USER",
     content: "hi",
     createdAt: "",
     sources: null,
@@ -156,7 +168,7 @@ const mockMessages = [
   },
   {
     id: "m2",
-    role: "ASSISTANT" as const,
+    role: "ASSISTANT",
     content: "Answering without retrieval due to a temporary issue.",
     createdAt: "",
     sources: null,
@@ -166,13 +178,64 @@ const mockMessages = [
   },
 ];
 
+let chatMessagesStore: MessageDto[] = [];
+
+const terminalSucceeded: AsyncTaskStatusDto = {
+  id: "t1",
+  taskType: "LAB",
+  status: "SUCCEEDED",
+  progressText: null,
+  result: null,
+  errorMessage: null,
+  terminal: true,
+  createdAt: "",
+  updatedAt: "",
+  startedAt: null,
+  completedAt: null,
+};
+
+function defaultApiFetch(url: string | { toString(): string }, init?: RequestInit): Promise<unknown> {
+  const u = typeof url === "string" ? url : url.toString();
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (u.includes("/draft")) return Promise.resolve({ content: "" });
+  if (u.includes("/conversations/c1/messages") && method === "GET") {
+    return Promise.resolve([...chatMessagesStore]);
+  }
+  if (method === "POST" && u.includes("/conversations/c1/messages")) {
+    if (u.includes("/retry")) {
+      return Promise.resolve({ jobId: "j2", status: "RUNNING", pollPath: "/x", streamPath: "/y" });
+    }
+    const body = JSON.parse(String(init?.body ?? "{}")) as { content?: string };
+    chatMessagesStore = [
+      ...chatMessagesStore,
+      {
+        id: `u-${chatMessagesStore.length + 1}`,
+        role: "USER",
+        content: body.content ?? "",
+        createdAt: "",
+        sources: null,
+        queryType: null,
+        pipelineSteps: null,
+        status: "DONE",
+      },
+    ];
+    return Promise.resolve({
+      jobId: "j1",
+      status: "RUNNING",
+      pollPath: "/x",
+      streamPath: "/y",
+    });
+  }
+  return Promise.resolve({});
+}
+
 vi.mock("@/store/chat-explain.store", () => ({
   useChatExplainStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({
-      setLastDone: vi.fn(),
-      setStreamingText: vi.fn(),
-      resetStreaming: vi.fn(),
-      setStreaming: vi.fn(),
+      setLastDone: chatExplainMocks.setLastDone,
+      setStreamingText: chatExplainMocks.setStreamingText,
+      resetStreaming: chatExplainMocks.resetStreaming,
+      setStreaming: chatExplainMocks.setStreaming,
       isStreaming: false,
       streamingText: "",
     }),
@@ -192,6 +255,7 @@ function renderChat() {
 
 describe("ChatPage", () => {
   beforeEach(() => {
+    chatMessagesStore = structuredClone(initialChatMessages);
     mockConvRows.length = 0;
     mockConvRows.push({
       id: "c1",
@@ -207,16 +271,11 @@ describe("ChatPage", () => {
     ];
     patchMutate.mockClear();
     createMutateAsync.mockClear();
-    vi.mocked(apiFetch).mockImplementation(async (url: string | { toString(): string }) => {
-      const u = typeof url === "string" ? url : url.toString();
-      if (u.includes("/draft")) return { content: "" };
-      if (u.includes("/messages") && !u.includes("/retry")) {
-        return { jobId: "j1", status: "RUNNING", pollPath: "/x", streamPath: "/y" };
-      }
-      return {};
-    });
+    useTraceStore.getState().clearTraceEvents();
+    vi.mocked(apiFetch).mockImplementation(defaultApiFetch);
     followLabJob.mockImplementation(async (_a: unknown, onChunk: (s: { result?: { streamedAnswer?: string } }) => void) => {
       onChunk({ result: { streamedAnswer: "partial" } });
+      return terminalSucceeded;
     });
     Element.prototype.scrollIntoView = vi.fn();
   });
@@ -230,6 +289,94 @@ describe("ChatPage", () => {
     await user.type(input, "hello");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
     await waitFor(() => expect(followLabJob).toHaveBeenCalled());
+  });
+
+  it("shows optimistic user message and assistant status before POST resolves", async () => {
+    let resolvePost!: (v: unknown) => void;
+    vi.mocked(apiFetch).mockImplementation((url: string | { toString(): string }, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (u.includes("/draft")) return Promise.resolve({ content: "" });
+      if (u.includes("/conversations/c1/messages") && method === "GET") {
+        return Promise.resolve([...chatMessagesStore]);
+      }
+      if (method === "POST" && u.includes("/conversations/c1/messages") && !u.includes("/retry")) {
+        return new Promise((resolve) => {
+          resolvePost = resolve;
+        });
+      }
+      return defaultApiFetch(url, init);
+    });
+
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /T1/i }));
+    const input = await screen.findByPlaceholderText(/Message/i);
+    await user.type(input, "hello");
+    await user.click(screen.getByRole("button", { name: /^Send$/i }));
+    expect(await screen.findByTestId("chat-optimistic-user")).toHaveTextContent("hello");
+    expect(await screen.findByRole("status")).toBeInTheDocument();
+    expect(input).toHaveValue("");
+    chatMessagesStore.push({
+      id: "ux",
+      role: "USER",
+      content: "hello",
+      createdAt: "",
+      sources: null,
+      queryType: null,
+      pipelineSteps: null,
+      status: "DONE",
+    });
+    resolvePost({
+      jobId: "j1",
+      status: "RUNNING",
+      pollPath: "/x",
+      streamPath: "/y",
+    });
+    await waitFor(() => expect(followLabJob).toHaveBeenCalled());
+  });
+
+  it("records trace events for submit, assistant start, and completion", async () => {
+    const addTrace = vi.spyOn(useTraceStore.getState(), "addTraceEvent");
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /T1/i }));
+    const input = await screen.findByPlaceholderText(/Message/i);
+    await user.type(input, "hello");
+    await user.click(screen.getByRole("button", { name: /^Send$/i }));
+    await waitFor(() => expect(followLabJob).toHaveBeenCalled());
+    expect(addTrace).toHaveBeenCalledWith(
+      expect.objectContaining({ section: "chat", action: "message_submitted", status: "info" }),
+    );
+    expect(addTrace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        section: "chat",
+        action: "assistant_processing_started",
+        status: "in_progress",
+        metadata: { jobId: "j1" },
+      }),
+    );
+    expect(addTrace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        section: "chat",
+        action: "assistant_response_received",
+        status: "success",
+        metadata: { jobId: "j1" },
+      }),
+    );
+    addTrace.mockRestore();
+  });
+
+  it("drops optimistic bubble after server list includes the message without duplicate text nodes", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /T1/i }));
+    const input = await screen.findByPlaceholderText(/Message/i);
+    await user.type(input, "hello");
+    await user.click(screen.getByRole("button", { name: /^Send$/i }));
+    await waitFor(() => expect(screen.queryByTestId("chat-optimistic-user")).not.toBeInTheDocument());
+    const helloRows = screen.getAllByText("hello");
+    expect(helloRows.length).toBe(1);
   });
 
   it("sends Buenos dias to the active conversation messages endpoint", async () => {
@@ -306,10 +453,14 @@ describe("ChatPage", () => {
 
   it("sanitizes HTML gateway bodies in send errors", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiFetch).mockImplementation(async (url: string | { toString(): string }) => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string | { toString(): string }, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
       if (u.includes("/draft")) return { content: "" };
-      if (u.includes("/conversations/c1/messages") && u.endsWith("/messages")) {
+      if (u.includes("/conversations/c1/messages") && method === "GET") {
+        return [...chatMessagesStore];
+      }
+      if (method === "POST" && u.includes("/conversations/c1/messages") && !u.includes("/retry")) {
         throw createHttpApiError({
           status: 502,
           bodyText: "<html><head></head><body>502 Bad Gateway</body></html>",
@@ -325,18 +476,27 @@ describe("ChatPage", () => {
     const input = await screen.findByPlaceholderText(/Message/i);
     await user.type(input, "x");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
-    expect(await screen.findByText(/Gateway error: upstream service unavailable/i)).toBeInTheDocument();
+    expect(await screen.findByTestId("chat-optimistic-user")).toHaveTextContent("x");
+    expect(
+      screen.getAllByText(/Gateway error: upstream service unavailable/i).length,
+    ).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/502 Bad Gateway/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
     const sendBtn = screen.getByRole("button", { name: /^Send$/i });
     expect(sendBtn).not.toBeDisabled();
+    expect(useTraceStore.getState().events.some((e) => e.action === "message_submit_failed")).toBe(true);
   });
 
   it("surfaces friendly ApiError messages from controlled failures", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiFetch).mockImplementation(async (url: string | { toString(): string }) => {
+    vi.mocked(apiFetch).mockImplementation(async (url: string | { toString(): string }, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url.toString();
+      const method = (init?.method ?? "GET").toUpperCase();
       if (u.includes("/draft")) return { content: "" };
-      if (u.includes("/conversations/c1/messages") && u.endsWith("/messages")) {
+      if (u.includes("/conversations/c1/messages") && method === "GET") {
+        return [...chatMessagesStore];
+      }
+      if (method === "POST" && u.includes("/conversations/c1/messages") && !u.includes("/retry")) {
         throw new ApiError(503, "The service used a direct answer fallback.", { kind: "http" });
       }
       return {};
@@ -346,7 +506,8 @@ describe("ChatPage", () => {
     const input = await screen.findByPlaceholderText(/Message/i);
     await user.type(input, "q");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
-    expect(await screen.findByText(/direct answer fallback/i)).toBeInTheDocument();
+    expect(await screen.findByTestId("chat-optimistic-user")).toHaveTextContent("q");
+    expect(screen.getAllByText(/direct answer fallback/i).length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders assistant bodies for backend-controlled ERROR turns", async () => {
@@ -360,17 +521,6 @@ describe("ChatPage", () => {
 
   it("retries assistant on ERROR status after opening the conversation", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiFetch).mockImplementation(async (url: string | { toString(): string }) => {
-      const u = typeof url === "string" ? url : url.toString();
-      if (u.includes("/retry")) {
-        return { jobId: "j2", status: "RUNNING", pollPath: "/x", streamPath: "/y" };
-      }
-      if (u.includes("/draft")) return { content: "" };
-      if (u.includes("/messages") && u.includes("POST")) {
-        return { jobId: "j1", status: "RUNNING", pollPath: "/x", streamPath: "/y" };
-      }
-      return {};
-    });
     renderChat();
     await user.click(screen.getByRole("button", { name: /T1/i }));
     await user.click(screen.getByRole("button", { name: /^Retry$/i }));
