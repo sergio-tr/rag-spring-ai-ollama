@@ -16,6 +16,15 @@ Copy `.env.example` to `.env` (or use `./docker/scripts/create-env-webapp.sh` fr
 | `NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME` / `NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME` | Cookie names for session route handlers. |
 | `NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED` | Show “Continue with Google” button (requires backend OAuth enabled and configured). |
 
+> **Important — `NEXT_PUBLIC_*` is baked at build time.** Next.js inlines every `process.env.NEXT_PUBLIC_*` reference into the client bundle during `next build`. Changing these values requires a rebuild and a process restart for the browser to see the new value:
+>
+> - **Local dev** (`npm run dev`): edit `webapp/.env`/`webapp/.env.local`, then **stop and restart** `npm run dev`.
+> - **Local production** (`npm run build && npm run start`): edit env, then run **both** `npm run build` and `npm run start` again.
+> - **Docker (Dockerfile)**: the `NEXT_PUBLIC_*` values are passed as `ARG` lines at build time. Set them in the build environment (or via `docker compose build --build-arg`) and **rebuild the image** (`docker compose build webapp`).
+> - **Docker Compose**: `docker/docker-compose.yml` forwards `NEXT_PUBLIC_*` from `webapp/.env` into the build args of the `webapp` service. After editing `webapp/.env`, run **`docker compose build webapp && docker compose up -d webapp`** — `docker compose restart webapp` alone will NOT bake new values into the bundle.
+>
+> The Google CTA on `/login` and `/register` reads `NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED` and the backend OAuth route (`/api/v5/auth/oauth/google/start`) is rendered as a plain `<a>` (full-page navigation), not a next-intl `<Link>`, so the browser does not prepend the active locale to that absolute API path.
+
 **Product API usage (non-exhaustive):** under `NEXT_PUBLIC_RAG_API_PREFIX` (default in `.env.example`): `GET/POST/PATCH/DELETE …/projects`, `PUT …/activate`, `GET/POST …/projects/{id}/documents`, `GET/PUT …/me/preferences`, `GET/PUT …/me/personalization`, `GET …/me/summary`, `GET …/me/documents`, `POST …/me/account/export` (202) + `GET …/me/account/jobs/{id}` + `GET …/me/account/export/{id}/download`, `GET/PUT …/config/user` (legacy; prefer `/me/*` for UI prefs), `GET/PUT/DELETE …/config/project/{id}`, `GET …/config/schema`, `GET/POST/DELETE …/presets`. Auth (via `authApiPath`): `{NEXT_PUBLIC_RAG_API_PREFIX}/auth/login`, `…/register` (**may return 202** when email confirmation is enabled), `…/confirm-email`, `…/forgot-password`, `…/reset-password`, `…/me`, **OAuth** `GET …/oauth/google/start`, `GET …/oauth/google/callback` (backend redirect), `POST …/oauth/exchange` (SPA callback page), refresh via the BFF cookie route (see `src/lib/api-client.ts`). With default prefix **`/api/v5`**, the Google button targets **`/api/v5/auth/oauth/google/start`**. Legacy `/api/auth/*` may still work during transition. Canonical contract: OpenAPI from the backend (`/v3/api-docs` when enabled) and `src/lib/api-client.ts`.
 
 ### Chat (SSE + conversation context)
