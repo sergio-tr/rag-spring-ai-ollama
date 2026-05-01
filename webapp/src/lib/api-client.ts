@@ -9,18 +9,7 @@
 import { getAccessToken, setAccessToken } from "@/lib/access-token";
 import { createTraceparent } from "@/lib/traceparent";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:9000";
-
 const DEBUG_BODY_PREVIEW_CHARS = 500;
-
-function resolveApiUrl(path: string): string {
-  if (path.startsWith("http")) {
-    return path;
-  }
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${normalizedPath}`;
-}
 
 function normalizeProductApiPrefix(raw: string | undefined, fallback: string): string {
   const s = (raw ?? fallback).trim();
@@ -57,6 +46,28 @@ export function getRagApiProductPrefix(): string {
 export function authApiPath(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${RAG_API_PRODUCT_PREFIX}/auth${p}`;
+}
+
+/**
+ * Full browser URL for product API paths (e.g. OAuth {@code <a href>}).
+ * When {@code NEXT_PUBLIC_API_BASE_URL} is empty/whitespace, returns a same-origin path for nginx reverse-proxy.
+ * When set (e.g. {@code http://127.0.0.1:9000}), prefixes so navigation works if the UI is opened on the webapp port only.
+ */
+export function resolveBrowserProductApiUrl(path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const trimmed = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+  if (!trimmed) {
+    return normalizedPath;
+  }
+  return `${trimmed}${normalizedPath}`;
+}
+
+function resolveApiUrl(path: string): string {
+  if (path.startsWith("http")) {
+    return path;
+  }
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return resolveBrowserProductApiUrl(normalizedPath);
 }
 
 export type ApiClientOptions = RequestInit & {
@@ -513,6 +524,7 @@ function createDoRequest(
     });
 }
 
+/** Trimmed backend origin, or empty when using same-origin `/api/v5/*` (reverse-proxy). Read live from env. */
 export function getApiBaseUrl(): string {
-  return API_BASE;
+  return (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
 }

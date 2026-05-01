@@ -39,7 +39,9 @@ export function OauthCallbackView({ provider }: { provider: "google" }) {
       } catch (e) {
         if (!cancelled) {
           if (e instanceof ApiError) {
-            setMessage(t("oauthCallbackFailed"));
+            setMessage(
+              e.status === 404 ? t("oauthCallbackFailedNotFound") : t("oauthCallbackFailed"),
+            );
           } else {
             setMessage(t("networkError"));
           }

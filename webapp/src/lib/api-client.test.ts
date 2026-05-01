@@ -153,7 +153,9 @@ describe("apiFetch", () => {
 
   it("exposes product prefix and API base getters", () => {
     expect(getRagApiProductPrefix()).toMatch(/^\//);
-    expect(getApiBaseUrl()).toMatch(/^https?:\/\//);
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://localhost:9000");
+    expect(getApiBaseUrl()).toBe("http://localhost:9000");
+    vi.unstubAllEnvs();
   });
 
   it("builds apiProductPath without leading slash on argument", () => {

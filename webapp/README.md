@@ -10,7 +10,7 @@ Copy `.env.example` to `.env` (or use `./docker/scripts/create-env-webapp.sh` fr
 
 | Variable | Role |
 | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | Spring Boot backend origin (e.g. `http://localhost:9000`). Empty when the UI is served behind the same origin as the API (reverse proxy). |
+| `NEXT_PUBLIC_API_BASE_URL` | Spring Boot backend origin (e.g. `http://localhost:9000`). Empty when the UI is served behind the same origin as the API (reverse proxy). **If empty**, browser calls (including `POST /api/v5/auth/oauth/exchange` on the Google callback page) target **the same host:port as Next.js** — fine behind nginx on `:80`, but **404 / “OAuth sign-in failed”** if you browse only the webapp host port (e.g. `:8081`) without a proxy; then set this to `http://127.0.0.1:9000` and rebuild. |
 | `NEXT_PUBLIC_RAG_API_PREFIX` | Must match Spring `rag.api.product-base-path` (see `.env.example`). |
 | `NEXT_PUBLIC_TIMEZONE` | IANA timezone for next-intl (e.g. `UTC`). |
 | `NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME` / `NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME` | Cookie names for session route handlers. |

@@ -86,6 +86,20 @@ describe("LoginForm", () => {
     expect(cta).toHaveAttribute("href", "/api/v5/auth/oauth/google/start?locale=en");
   });
 
+  it("prefixes Google OAuth href with NEXT_PUBLIC_API_BASE_URL when set (direct webapp port)", () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "true");
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000");
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByTestId("oauth-google-cta")).toHaveAttribute(
+      "href",
+      "http://127.0.0.1:9000/api/v5/auth/oauth/google/start?locale=en",
+    );
+  });
+
   it("submits credentials and navigates to projects", async () => {
     const user = userEvent.setup();
     vi.mocked(apiFetch).mockResolvedValueOnce({
@@ -282,6 +296,20 @@ describe("RegisterForm", () => {
     const cta = screen.getByTestId("oauth-google-cta");
     expect(cta.tagName).toBe("A");
     expect(cta).toHaveAttribute("href", "/api/v5/auth/oauth/google/start?locale=en");
+  });
+
+  it("prefixes Google OAuth href with NEXT_PUBLIC_API_BASE_URL when set (direct webapp port)", () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "true");
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000");
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByTestId("oauth-google-cta")).toHaveAttribute(
+      "href",
+      "http://127.0.0.1:9000/api/v5/auth/oauth/google/start?locale=en",
+    );
   });
 
   it("uses one password visibility toggle for both password and repeat-password fields", async () => {

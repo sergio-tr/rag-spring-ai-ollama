@@ -34,6 +34,7 @@
     "oauthCallbackWorking": "Completando inicio de sesión…",
     "oauthCallbackMissingCode": "Falta el código OAuth.",
     "oauthCallbackFailed": "El inicio de sesión OAuth falló. Inténtalo de nuevo.",
+    "oauthCallbackFailedNotFound": "No se pudo llegar a la API (404). Abre la app por la URL del proxy inverso (mismo host/puerto que la API) o define NEXT_PUBLIC_API_BASE_URL con el backend Spring y recompila la webapp.",
     "email": "Correo",
     "password": "Contraseña",
     "confirmPassword": "Repite la contraseña",

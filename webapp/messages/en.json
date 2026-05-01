@@ -34,6 +34,7 @@
     "oauthCallbackWorking": "Completing sign-in…",
     "oauthCallbackMissingCode": "Missing OAuth code.",
     "oauthCallbackFailed": "OAuth sign-in failed. Try again.",
+    "oauthCallbackFailedNotFound": "Sign-in could not reach the API (404). Open the app via the reverse-proxy URL (same host/port as the API), or set NEXT_PUBLIC_API_BASE_URL to your Spring backend and rebuild the webapp.",
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Repeat password",
