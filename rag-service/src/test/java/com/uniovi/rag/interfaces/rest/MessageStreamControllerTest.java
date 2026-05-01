@@ -97,4 +97,5 @@ class MessageStreamControllerTest {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
     }
+
 }

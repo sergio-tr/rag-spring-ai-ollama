@@ -267,6 +267,11 @@ public class AsyncTaskService {
     }
 
     private static AsyncTaskStatusDto toDto(AsyncTaskEntity e) {
+        String failureCode = null;
+        if (e.getResultJson() != null) {
+            Object fc = e.getResultJson().get("failureCode");
+            failureCode = fc != null ? fc.toString() : null;
+        }
         return new AsyncTaskStatusDto(
                 e.getId(),
                 e.getTaskType().name(),
@@ -278,7 +283,8 @@ public class AsyncTaskService {
                 e.getCreatedAt(),
                 e.getUpdatedAt(),
                 e.getStartedAt(),
-                e.getCompletedAt());
+                e.getCompletedAt(),
+                failureCode);
     }
 
     /** Bundles classifier train multipart fields for a single enqueue path (keeps API overloads thin). */

@@ -3,6 +3,7 @@ package com.uniovi.rag.service.async;
 import com.uniovi.rag.domain.AsyncTaskStatus;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -12,6 +13,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AsyncTaskMutationService {
+
+    private static final int USER_ERROR_MESSAGE_MAX_LEN = 600;
 
     private final AsyncTaskRepository asyncTaskRepository;
 
@@ -52,13 +55,29 @@ public class AsyncTaskMutationService {
 
     @Transactional
     public void markFailed(UUID taskId, String message) {
+        markFailed(taskId, message, null);
+    }
+
+    /**
+     * @param failureCode stable ErrorCode enum name (or similar) for API consumers; optional.
+     */
+    @Transactional
+    public void markFailed(UUID taskId, String message, String failureCode) {
         AsyncTaskEntity e = asyncTaskRepository.findById(taskId).orElseThrow();
         Instant now = Instant.now();
         e.setStatus(AsyncTaskStatus.FAILED);
-        e.setErrorMessage(message);
+        String safeMsg =
+                UserFacingErrorSanitizer.sanitizeOrDefault(message, USER_ERROR_MESSAGE_MAX_LEN, "Job failed");
+        e.setErrorMessage(safeMsg);
+        LinkedHashMap<String, Object> meta = new LinkedHashMap<>();
+        if (failureCode != null && !failureCode.isBlank()) {
+            meta.put("failureCode", failureCode.trim());
+        }
+        meta.put("phase", "failed");
+        e.setResultJson(meta);
         e.setCompletedAt(now);
         e.setUpdatedAt(now);
-        appendProgress(e, "Failed: " + (message != null ? message : "unknown error"));
+        appendProgress(e, "Failed: " + safeMsg);
         asyncTaskRepository.save(e);
     }
 

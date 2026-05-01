@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest.support;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.domain.exception.ErrorCode;
 import com.uniovi.rag.interfaces.rest.support.dto.ApiErrorResponse;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.junit.jupiter.api.Test;
@@ -28,5 +29,18 @@ class RagApiExceptionHandlerTest {
         assertFalse(
                 res.getBody().message().toLowerCase().contains("<html"),
                 "API envelope must not echo HTML error pages");
+    }
+
+    @Test
+    void handleRagService_chatDocumentScope_maps422AndCode() {
+        RagApiExceptionHandler handler = new RagApiExceptionHandler();
+        RagServiceException ex = RagServiceException.chatDocumentScopeEmpty();
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setRequestURI("/api/v5/conversations/x/messages");
+        var res = handler.handleRagService(ex, req);
+        assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, res.getStatusCode());
+        assertNotNull(res.getBody());
+        assertEquals(ErrorCode.CHAT_DOCUMENT_SCOPE_EMPTY.name(), res.getBody().code());
+        assertFalse(res.getBody().message().toLowerCase().contains("<html"));
     }
 }

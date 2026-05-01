@@ -83,7 +83,34 @@ class AsyncTaskMutationServiceTest {
 
         assertThat(e.getStatus()).isEqualTo(AsyncTaskStatus.FAILED);
         assertThat(e.getErrorMessage()).isEqualTo("boom");
+        assertThat(e.getResultJson()).containsEntry("phase", "failed");
         verify(asyncTaskRepository).save(e);
+    }
+
+    @Test
+    void markFailed_stripsHtmlProxyBodies() {
+        UUID id = UUID.randomUUID();
+        AsyncTaskEntity e = queuedEntity();
+        assignId(e, id);
+        when(asyncTaskRepository.findById(id)).thenReturn(Optional.of(e));
+
+        mutationService.markFailed(id, "<html><body>502</body></html>");
+
+        assertThat(e.getErrorMessage()).isEqualTo("Job failed");
+        assertThat(e.getResultJson()).containsEntry("phase", "failed");
+    }
+
+    @Test
+    void markFailed_withFailureCode_recordsCodeInResultJson() {
+        UUID id = UUID.randomUUID();
+        AsyncTaskEntity e = queuedEntity();
+        assignId(e, id);
+        when(asyncTaskRepository.findById(id)).thenReturn(Optional.of(e));
+
+        mutationService.markFailed(id, "x", "CHAT_DOCUMENT_SCOPE_EMPTY");
+
+        assertThat(e.getResultJson()).containsEntry("failureCode", "CHAT_DOCUMENT_SCOPE_EMPTY");
+        assertThat(e.getResultJson()).containsEntry("phase", "failed");
     }
 
     @Test

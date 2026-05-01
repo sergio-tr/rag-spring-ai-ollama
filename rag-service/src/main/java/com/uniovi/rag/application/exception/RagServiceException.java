@@ -68,6 +68,26 @@ public class RagServiceException extends RuntimeException {
                 null);
     }
 
+    /** Conversation {@code documentFilter} UUIDs do not match any document row in the project. */
+    public static RagServiceException chatDocumentScopeEmpty() {
+        return new RagServiceException(
+                ErrorCode.CHAT_DOCUMENT_SCOPE_EMPTY,
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "None of the selected documents exist in this project. Clear document filters or pick documents that are indexed.",
+                null,
+                null);
+    }
+
+    /** Conversation {@code documentFilter} contains values that are not valid document UUIDs. */
+    public static RagServiceException chatDocumentFilterInvalid() {
+        return new RagServiceException(
+                ErrorCode.CHAT_DOCUMENT_FILTER_INVALID,
+                HttpStatus.BAD_REQUEST,
+                "One or more selected document ids are invalid.",
+                null,
+                null);
+    }
+
     /** Hybrid sparse leg failed; dense-only fallback is not applied. */
     public static RagServiceException hybridSparseRetrievalFailed(Throwable cause) {
         return new RagServiceException(
