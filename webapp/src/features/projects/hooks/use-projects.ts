@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
-import { useAppStore } from "@/store/app.store";
+import { activeProjectFromSummary, useAppStore } from "@/store/app.store";
 import type {
   ActivateProjectResponse,
   CreateProjectBody,
@@ -42,7 +42,7 @@ export function useCreateProject() {
       return created;
     },
     onSuccess: (created) => {
-      setActiveProject({ id: created.id, name: created.name });
+      setActiveProject(activeProjectFromSummary(created));
       void queryClient.invalidateQueries({ queryKey: projectsKey });
       void queryClient.invalidateQueries({ queryKey: ["config", "project", created.id] });
     },
@@ -83,7 +83,7 @@ export function usePatchProject() {
     onSuccess: (updated) => {
       void queryClient.invalidateQueries({ queryKey: projectsKey });
       if (active?.id === updated.id) {
-        setActiveProject({ id: updated.id, name: updated.name });
+        setActiveProject(activeProjectFromSummary(updated));
       }
     },
   });
@@ -113,7 +113,14 @@ export function useActivateProject() {
   const setActiveProject = useAppStore((s) => s.setActiveProject);
 
   return useMutation({
-    mutationFn: async (vars: { id: string; name: string }) => {
+    mutationFn: async (
+      vars: {
+        id: string;
+        name: string;
+        iconKey?: string | null;
+        colorHex?: string | null;
+      },
+    ) => {
       const res = await apiFetch<ActivateProjectResponse>(
         apiProductPath(`/projects/${vars.id}/activate`),
         { method: "PUT" },
@@ -122,7 +129,14 @@ export function useActivateProject() {
     },
     onSuccess: async (_data, vars) => {
       void queryClient.invalidateQueries({ queryKey: projectsKey });
-      setActiveProject({ id: vars.id, name: vars.name });
+      setActiveProject(
+        activeProjectFromSummary({
+          id: vars.id,
+          name: vars.name,
+          iconKey: vars.iconKey,
+          colorHex: vars.colorHex,
+        }),
+      );
       void queryClient.invalidateQueries({ queryKey: ["config", "project", vars.id] });
     },
     onError: (err) => {

@@ -19,7 +19,7 @@ import { EditProjectDialog } from "@/features/projects/components/EditProjectDia
 import { fetchLatestConversationId } from "@/features/projects/lib/open-project-in-chat";
 import { useActivateProject } from "@/features/projects/hooks/use-projects";
 import { ProjectVisual } from "@/features/projects/components/ProjectVisual";
-import { useAppStore } from "@/store/app.store";
+import { activeProjectFromSummary, useAppStore } from "@/store/app.store";
 import type { ProjectSummary } from "@/types/api";
 
 type ProjectGridProps = {
@@ -42,7 +42,7 @@ function OpenProjectChatButton({ project }: Readonly<{ project: ProjectSummary }
       onClick={async () => {
         setBusy(true);
         try {
-          await activate.mutateAsync({ id: project.id, name: project.name });
+          await activate.mutateAsync(activeProjectFromSummary(project));
           const convId = await fetchLatestConversationId(queryClient, project.id);
           router.push(convId ? `/chat?conversationId=${encodeURIComponent(convId)}` : "/chat");
         } finally {
@@ -94,7 +94,7 @@ export function ProjectGrid({ items }: ProjectGridProps) {
                 size="sm"
                 variant={isActive ? "secondary" : "outline"}
                 disabled={activate.isPending}
-                onClick={() => activate.mutate({ id: p.id, name: p.name })}
+                onClick={() => activate.mutate(activeProjectFromSummary(p))}
               >
                 {isActive ? t("active") : t("activate")}
               </Button>
