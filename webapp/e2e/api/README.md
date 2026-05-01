@@ -33,5 +33,5 @@ Uses `PLAYWRIGHT_SKIP_WEBSERVER=1` internally so `npm run start` is not spawned.
 ## Layout
 
 - `fixtures/env.ts`, `fixtures/auth.ts` — URLs and login helpers.
-- `system/system-smoke.chain.spec.ts` — serial smoke: health, auth, config, lab, optional classifier, OpenAPI, readiness.
+- `system/system-smoke.chain.spec.ts` — serial smoke: health, auth, config, **lab/status** (datasets + capability flags), optional classifier, OpenAPI, readiness.
 - `auth/`, `projects/`, `documents/`, `chat/` — domain smoke specs (`@api`).

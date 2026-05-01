@@ -39,7 +39,21 @@ test.describe.serial("System smoke chain @api @system", () => {
       headers: authHeaders(token),
     });
     expect(res.status(), await res.text()).toBe(200);
-    await res.json();
+    const body = (await res.json()) as {
+      datasets?: { enabled?: boolean; questionCount?: number };
+      evaluations?: Record<string, unknown>;
+      classifier?: Record<string, unknown>;
+      message?: string;
+    };
+    expect(body.datasets).toEqual(
+      expect.objectContaining({
+        enabled: expect.any(Boolean),
+        questionCount: expect.any(Number),
+      }),
+    );
+    expect(body.evaluations).toEqual(expect.any(Object));
+    expect(body.classifier).toEqual(expect.any(Object));
+    expect(typeof body.message).toBe("string");
   });
 
   test("classifier health (optional)", async ({ request }) => {
