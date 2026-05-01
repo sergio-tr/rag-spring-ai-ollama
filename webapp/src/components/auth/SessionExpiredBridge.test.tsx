@@ -9,10 +9,6 @@ vi.mock("@/navigation", () => ({
   useRouter: () => ({ replace }),
 }));
 
-vi.mock("next-intl", () => ({
-  useLocale: () => "en",
-}));
-
 vi.mock("@/lib/api-client", () => ({
   onApiUnauthorized: (cb: () => void) => {
     unauthorizedCb = cb;
@@ -32,6 +28,6 @@ describe("SessionExpiredBridge", () => {
     await act(async () => {
       unauthorizedCb?.();
     });
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/en/login"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
   });
 });

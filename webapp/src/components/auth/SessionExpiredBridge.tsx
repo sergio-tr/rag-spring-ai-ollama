@@ -3,7 +3,6 @@
 import { clearSessionCookie } from "@/features/auth/lib/session-client";
 import { onApiUnauthorized } from "@/lib/api-client";
 import { useRouter } from "@/navigation";
-import { useLocale } from "next-intl";
 import { useEffect } from "react";
 
 /**
@@ -12,15 +11,15 @@ import { useEffect } from "react";
  */
 export function SessionExpiredBridge() {
   const router = useRouter();
-  const locale = useLocale();
 
   useEffect(() => {
     return onApiUnauthorized(() => {
       void clearSessionCookie().then(() => {
-        router.replace(`/${locale}/login`);
+        // next-intl router applies the active locale; do not pass /{locale}/… again (would yield /en/en/login).
+        router.replace("/login");
       });
     });
-  }, [router, locale]);
+  }, [router]);
 
   return null;
 }
