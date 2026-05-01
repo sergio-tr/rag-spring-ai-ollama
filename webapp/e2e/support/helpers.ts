@@ -55,11 +55,9 @@ export async function createAndActivateProject(page: Page, projectName: string):
   await page.locator("#proj-name").fill(projectName);
   await page.getByRole("button", { name: /^(create|crear)$/i }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 20_000 });
-  // Project name can appear both in sidebar and in the card title; pick the clickable card entry.
-  await page.getByRole("button", { name: projectName, exact: true }).first().waitFor({ state: "visible" });
   const projectCard = page.locator('[data-slot="card"]').filter({ hasText: projectName }).first();
-  // The grid uses "Open/Abrir" to activate the project, then the button becomes "Active/Activo".
-  await projectCard.getByRole("button", { name: /^(open|abrir|activate|activar)$/i }).click();
+  await expect(projectCard).toBeVisible({ timeout: 20_000 });
+  // Create flow calls PUT …/activate and sets the client store; secondary control shows Active without opening chat.
   await expect(projectCard.getByRole("button", { name: /^(active|activo)$/i })).toBeVisible({ timeout: 20_000 });
 }
 
