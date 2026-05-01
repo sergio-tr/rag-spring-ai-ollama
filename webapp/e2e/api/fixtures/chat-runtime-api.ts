@@ -1,5 +1,6 @@
 import { expect, type APIRequestContext } from "@playwright/test";
 import { authHeaders } from "./auth";
+import { assertBodyNotHtml } from "./json-contract";
 import { productUrl } from "./env";
 
 export type LabJobAccepted = {
@@ -44,6 +45,7 @@ export async function postChatMessageAndPollTerminal(
   });
   const postStatus = postRes.status();
   const postText = await postRes.text();
+  assertBodyNotHtml(postText, "POST conversations/{id}/messages");
   expect(postStatus, postText).not.toBe(502);
   expect(postStatus, postText).not.toBe(500);
   expect(postStatus, postText).toBe(202);
@@ -59,6 +61,7 @@ export async function postChatMessageAndPollTerminal(
     });
     const pollStatus = pollRes.status();
     const pollText = await pollRes.text();
+    assertBodyNotHtml(pollText, `GET lab/jobs/${accepted.jobId}`);
     expect(pollStatus, pollText).not.toBe(502);
     expect(pollStatus, pollText).not.toBe(500);
     expect(pollStatus, pollText).toBe(200);
@@ -82,10 +85,16 @@ export async function patchConversation(
   body: { documentFilter?: string[]; title?: string },
 ): Promise<void> {
   const res = await request.patch(productUrl(`/conversations/${conversationId}`), {
-    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    headers: {
+      ...authHeaders(token),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
     data: body,
   });
-  expect(res.status(), await res.text()).toBe(200);
+  const patchText = await res.text();
+  assertBodyNotHtml(patchText, `PATCH conversations/${conversationId}`);
+  expect(res.status(), patchText).toBe(200);
 }
 
 export async function createActivatedProjectAndConversation(

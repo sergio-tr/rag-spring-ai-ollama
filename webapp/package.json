@@ -18,6 +18,7 @@
     "test:e2e:fullstack": "playwright test --project=chromium --grep @fullstack",
     "test:e2e:smoke": "playwright test --project=chromium --grep @smoke",
     "test:api": "node scripts/test-api.mjs",
+    "test:api:list": "cross-env PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test --project=api --list",
     "test:e2e:install": "playwright install --with-deps",
     "doc": "typedoc --options typedoc.json"
   },

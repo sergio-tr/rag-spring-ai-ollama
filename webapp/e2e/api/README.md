@@ -24,14 +24,23 @@
 
 ```bash
 cd webapp
-# API tests only — skips Next webServer
+# API tests only — skips Next webServer (requires Spring healthy at API_BASE_URL)
 npm run test:api
+
+# List API specs without starting Spring (no health probe)
+npm run test:api:list
 ```
 
-Uses `PLAYWRIGHT_SKIP_WEBSERVER=1` internally so `npm run start` is not spawned.
+`npm run test:api` uses `scripts/test-api.mjs`, which checks **`/actuator/health`** before running **`playwright test --project=api`**.
+
+## CI
+
+PR pipeline job **`playwright_api_smoke`** in [`.github/workflows/reusable-ci-core.yml`](../../.github/workflows/reusable-ci-core.yml) runs **`npm run test:api`** after **`core_webapp`** (same DAG as Vitest + UI smoke). **`core_done`** waits on **`playwright_api_smoke`** so Phase **8D** API specs are merge gates on PRs to **`dev`** (and **`main`/`master`**).
 
 ## Layout
 
 - `fixtures/env.ts`, `fixtures/auth.ts` — URLs and login helpers.
+- `fixtures/json-contract.ts` — guards so JSON clients never accept HTML/nginx-style error bodies (`assertBodyNotHtml`, `parseJsonExpectNonHtml`).
 - `system/system-smoke.chain.spec.ts` — serial smoke: health, auth, config, **lab/status** (datasets + capability flags), optional classifier, OpenAPI, readiness.
-- `auth/`, `projects/`, `documents/`, `chat/` — domain smoke specs (`@api`).
+- `system/api-errors.api.spec.ts` — unknown routes return JSON error envelopes, not HTML.
+- `auth/`, `projects/`, `documents/`, `chat/`, `lab/`, `me/`, `config/` — domain smoke specs (`@api`).
