@@ -6,6 +6,12 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { MoveConversationDialog } from "@/features/chat/components/MoveConversationDialog";
+import { documentFiltersEqual } from "@/features/chat/lib/chat-document-filter-sync";
+import {
+  findPresetById,
+  resolveConversationPresetSelectValue,
+  resolvePresetSelectLabel,
+} from "@/features/chat/lib/conversation-preset-ui";
 import {
   useConversationMessages,
   useConversations,
@@ -81,6 +87,8 @@ function ChatPageInner() {
   const [titleDraft, setTitleDraft] = useState("");
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingDocumentFilterRef = useRef<string[] | null>(null);
+  /** POST + async chat job in flight (distinct from streaming preview state). */
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     if (urlConversationId && urlConversationId !== conversationId) {
@@ -130,9 +138,23 @@ function ChatPageInner() {
   );
   const conversationNotFound = Boolean(conversationId && convs && !activeConv);
 
-  const convSyncKey = activeConv
-    ? `${activeConv.id}:${activeConv.presetId ?? ""}:${JSON.stringify(activeConv.documentFilter ?? [])}`
-    : "";
+  /** Stable key for server-side document filter only (avoids tying preset PATCH churn to checkbox sync). */
+  const documentFilterStableKey = useMemo(() => {
+    if (!activeConv) return "";
+    const sorted = JSON.stringify([...(activeConv.documentFilter ?? [])].sort());
+    return `${activeConv.id}:${sorted}`;
+  }, [activeConv]);
+
+  const presetSyncKey = useMemo(() => {
+    if (!activeConv) return "";
+    return `${activeConv.id}:${activeConv.presetId ?? ""}:${activeConv.effectivePresetId ?? ""}`;
+  }, [activeConv]);
+
+  const syntheticPresetOptionNeeded = useMemo(() => {
+    if (!presetSelectValue) return false;
+    if (!presets?.length) return true;
+    return !findPresetById(presets, presetSelectValue);
+  }, [presetSelectValue, presets]);
 
   useEffect(() => {
     const syncTimer = setTimeout(() => setTitleDraft(activeConv?.title ?? ""), 0);
@@ -140,31 +162,31 @@ function ChatPageInner() {
   }, [activeConv?.id, activeConv?.title]);
 
   useEffect(() => {
-    if (!activeConv || patchConv.isPending) return;
-    if (pendingDocumentFilterRef.current) {
-      const serverFilter = activeConv.documentFilter ?? [];
-      const pending = pendingDocumentFilterRef.current;
-      const matchesPending =
-        pending.length === serverFilter.length && pending.every((id) => serverFilter.includes(id));
-      if (matchesPending) {
-        pendingDocumentFilterRef.current = null;
-      } else {
+    if (!presetSyncKey || patchConv.isPending || !conversationId || !convs) return;
+    const conv = convs.find((c) => c.id === conversationId);
+    if (!conv) return;
+    const next = resolveConversationPresetSelectValue(conv);
+    setPresetSelectValue((prev) => (prev === next ? prev : next));
+  }, [presetSyncKey, patchConv.isPending, conversationId, convs]);
+
+  useEffect(() => {
+    if (!documentFilterStableKey || patchConv.isPending || !conversationId || !convs) return;
+    const conv = convs.find((c) => c.id === conversationId);
+    if (!conv) return;
+    const serverFilter = conv.documentFilter ?? [];
+    if (pendingDocumentFilterRef.current !== null) {
+      if (!documentFiltersEqual(serverFilter, pendingDocumentFilterRef.current)) {
         return;
       }
+      pendingDocumentFilterRef.current = null;
     }
-    const syncTimer = setTimeout(() => {
-      setPresetSelectValue(activeConv.presetId ?? "");
-      const df = activeConv.documentFilter;
-      if (df && df.length > 0) {
-        setLimitDocs(true);
-        setSelectedDocIds([...df]);
-      } else {
-        setLimitDocs(false);
-        setSelectedDocIds([]);
-      }
-    }, 0);
-    return () => clearTimeout(syncTimer);
-  }, [convSyncKey, activeConv, patchConv.isPending]);
+    const hasFilter = serverFilter.length > 0;
+    setLimitDocs((prev) => (prev === hasFilter ? prev : hasFilter));
+    setSelectedDocIds((prev) => {
+      if (documentFiltersEqual(prev, serverFilter)) return prev;
+      return [...serverFilter];
+    });
+  }, [documentFilterStableKey, patchConv.isPending, conversationId, convs]);
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
   const setStreamingText = useChatExplainStore((s) => s.setStreamingText);
@@ -337,7 +359,7 @@ function ChatPageInner() {
   );
 
   const send = useCallback(async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isSending || isStreaming) return;
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
@@ -349,6 +371,8 @@ function ChatPageInner() {
       llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
     };
     let targetConversationId = conversationId;
+    setIsSending(true);
+    setSendError(null);
     try {
       if (!targetConversationId) {
         const created = await createConv.mutateAsync();
@@ -368,18 +392,33 @@ function ChatPageInner() {
       await runChatJob(accepted, signal);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
+        setInput(text);
         return;
       }
+      setInput(text);
       setSendError(getSafeApiErrorMessage(e));
+    } finally {
+      setIsSending(false);
     }
-  }, [conversationId, createConv, input, llmModelChoice, runChatJob, selectConversation]);
+  }, [
+    conversationId,
+    createConv,
+    input,
+    isSending,
+    isStreaming,
+    llmModelChoice,
+    runChatJob,
+    selectConversation,
+  ]);
 
   const retryAssistant = useCallback(
     async (assistantMessageId: string) => {
-      if (!conversationId) return;
+      if (!conversationId || isSending) return;
       abortRef.current?.abort();
       abortRef.current = new AbortController();
       const signal = abortRef.current.signal;
+      setIsSending(true);
+      setSendError(null);
       try {
         const accepted = await apiFetch<LabJobAcceptedDto>(
           apiProductPath(`/conversations/${conversationId}/messages/${assistantMessageId}/retry`),
@@ -391,13 +430,15 @@ function ChatPageInner() {
           return;
         }
         setSendError(getSafeApiErrorMessage(e));
+      } finally {
+        setIsSending(false);
       }
     },
-    [conversationId, runChatJob],
+    [conversationId, isSending, runChatJob],
   );
 
   const saveUserEditAndRegenerate = useCallback(async () => {
-    if (!conversationId || !editingUserMessageId || !editBody.trim()) return;
+    if (!conversationId || !editingUserMessageId || !editBody.trim() || isSending) return;
     const userMsgId = editingUserMessageId;
     const text = editBody.trim();
     abortRef.current?.abort();
@@ -405,6 +446,7 @@ function ChatPageInner() {
     const signal = abortRef.current.signal;
     setEditError(null);
     setSendError(null);
+    setIsSending(true);
     try {
       const patchBody: PatchUserMessageBody = { content: text };
       await apiFetch<void>(apiProductPath(`/conversations/${conversationId}/messages/${userMsgId}`), {
@@ -436,8 +478,10 @@ function ChatPageInner() {
       }
       setEditError(t("editError"));
       setSendError(getSafeApiErrorMessage(e));
+    } finally {
+      setIsSending(false);
     }
-  }, [conversationId, editBody, editingUserMessageId, llmModelChoice, runChatJob, t]);
+  }, [conversationId, editBody, editingUserMessageId, isSending, llmModelChoice, runChatJob, t]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -452,13 +496,9 @@ function ChatPageInner() {
   }, [refetchMessages, resetStreaming, setStreaming]);
 
   const onPresetChange = (value: string) => {
-    if (!conversationId) return;
+    if (!conversationId || !value.trim()) return;
     setPresetSelectValue(value);
-    if (value === "") {
-      patchConv.mutate({ conversationId, body: { clearPreset: true } });
-    } else {
-      patchConv.mutate({ conversationId, body: { presetId: value } });
-    }
+    patchConv.mutate({ conversationId, body: { presetId: value } });
   };
 
   const onLimitDocsChange = (checked: boolean) => {
@@ -649,7 +689,14 @@ function ChatPageInner() {
                 aria-label={t("presetLabel")}
                 disabled={!!presetsError || patchConv.isPending}
               >
-                <option value="">{t("presetNone")}</option>
+                {syntheticPresetOptionNeeded ? (
+                  <option value={presetSelectValue}>
+                    {resolvePresetSelectLabel(presets, presetSelectValue, {
+                      systemSuffix: t("presetSystem"),
+                      serverDefault: t("presetServerDefault"),
+                    })}
+                  </option>
+                ) : null}
                 {presets?.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -775,7 +822,7 @@ function ChatPageInner() {
                       size="sm"
                       variant="secondary"
                       className="h-8"
-                      disabled={isStreaming || !editBody.trim()}
+                      disabled={isStreaming || isSending || !editBody.trim()}
                       onClick={() => void saveUserEditAndRegenerate()}
                     >
                       {t("saveAndRegenerate")}
@@ -821,7 +868,7 @@ function ChatPageInner() {
                       size="sm"
                       variant="outline"
                       className="mt-2 h-7 text-xs"
-                      disabled={isStreaming}
+                      disabled={isStreaming || isSending}
                       onClick={() => void retryAssistant(m.id)}
                     >
                       {t("retryAssistant")}
@@ -857,25 +904,36 @@ function ChatPageInner() {
               {t("patchError")}
             </p>
           )}
+          {isSending && !isStreaming ? (
+            <p className="text-muted-foreground text-xs" aria-live="polite">
+              {t("sending")}
+            </p>
+          ) : null}
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={t("placeholder")}
             rows={3}
             className="resize-none"
+            aria-busy={isSending || isStreaming}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Enter" && !e.shiftKey && !isSending && !isStreaming) {
                 e.preventDefault();
                 void send();
               }
             }}
-            disabled={false}
+            disabled={isSending || isStreaming}
           />
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" disabled={!isStreaming} onClick={() => stop()}>
               {t("stop")}
             </Button>
-            <Button type="button" size="sm" disabled={!input.trim()} onClick={() => void send()}>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!input.trim() || isSending || isStreaming}
+              onClick={() => void send()}
+            >
               {t("send")}
             </Button>
           </div>

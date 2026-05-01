@@ -59,3 +59,10 @@ function ensureSessionStorageWorks() {
 }
 
 ensureSessionStorageWorks();
+
+// Base UI ScrollArea schedules viewport measurement using Web Animations API (jsdom lacks it).
+if (typeof Element.prototype.getAnimations !== "function") {
+  Element.prototype.getAnimations = function mockGetAnimations() {
+    return [];
+  };
+}
