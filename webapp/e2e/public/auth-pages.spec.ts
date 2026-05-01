@@ -8,11 +8,20 @@ test.describe("Public auth pages", () => {
     await page.goto("/en/login", { waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page.locator("h1")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("#email")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#password")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: /show password|hide password/i })).toBeVisible({
+      timeout: 30_000,
+    });
   });
 
   test("register page shows title @smoke", async ({ page }) => {
     await page.goto("/en/register", { waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page.locator("h1")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#email")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#password")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: /show password|hide password/i })).toBeVisible({
+      timeout: 30_000,
+    });
   });
 
   test.describe("Google OAuth CTA (@oauth — requires NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED=true at build/start)", () => {
@@ -26,17 +35,34 @@ test.describe("Public auth pages", () => {
         await page.goto(path, { waitUntil: "domcontentloaded", timeout: 60_000 });
         const link = page.getByRole("link", { name: /continue with google/i });
         await expect(link).toBeVisible({ timeout: 30_000 });
-        // The href MUST be the absolute backend route, NOT prefixed by the active
-        // locale segment. Regression guard for the bug where next-intl <Link>
-        // rewrote the href to /en/api/v5/auth/oauth/google/start (HTTP 404).
-        await expect(link).toHaveAttribute(
-          "href",
-          /^\/api\/v5\/auth\/oauth\/google\/start\?locale=(en|es)$/,
-        );
-        // Belt-and-suspenders: the rendered href must not start with /en/ or /es/.
+        await expect(link).toHaveAttribute("href", "/api/v5/auth/oauth/google/start?locale=en");
         const href = await link.getAttribute("href");
         expect(href).not.toMatch(/^\/(en|es)\//);
       }
+    });
+
+    test("clicking Google CTA starts request to oauth start path @smoke", async ({ page }) => {
+      test.skip(
+        process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED !== "true",
+        "Build/start webapp with NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED=true to run OAuth UI checks.",
+      );
+      await page.goto("/en/login", { waitUntil: "domcontentloaded", timeout: 60_000 });
+      const expectedPath = "/api/v5/auth/oauth/google/start?locale=en";
+      let startRequestSeen = false;
+
+      await page.route(`**${expectedPath}`, async (route) => {
+        startRequestSeen = true;
+        await route.fulfill({
+          status: 302,
+          headers: { location: "https://accounts.google.com/o/oauth2/v2/auth" },
+          body: "",
+        });
+      });
+
+      await page.getByRole("link", { name: /continue with google/i }).click();
+      await expect
+        .poll(() => startRequestSeen, { timeout: 10_000 })
+        .toBeTruthy();
     });
   });
 });
