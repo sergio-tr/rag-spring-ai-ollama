@@ -11,6 +11,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
+import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.service.preset.PresetService;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import org.springframework.http.HttpStatus;
@@ -32,18 +33,21 @@ public class ConversationApplicationService {
     private final MessageRepository messageRepository;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final PresetService presetService;
+    private final ChatPresetDefaults chatPresetDefaults;
 
     public ConversationApplicationService(
             ProjectAccessService projectAccessService,
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
-            PresetService presetService) {
+            PresetService presetService,
+            ChatPresetDefaults chatPresetDefaults) {
         this.projectAccessService = projectAccessService;
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.presetService = presetService;
+        this.chatPresetDefaults = chatPresetDefaults;
     }
 
     public List<ConversationDto> listConversations(UUID userId, UUID projectId) {
@@ -51,7 +55,7 @@ public class ConversationApplicationService {
         return conversationRepository
                 .findByProject_IdAndUser_IdOrderByUpdatedAtDesc(projectId, userId)
                 .stream()
-                .map(ConversationApplicationService::toConversationDto)
+                .map(this::toConversationDto)
                 .toList();
     }
 
@@ -64,6 +68,7 @@ public class ConversationApplicationService {
         List<String> filter =
                 resolveAndValidateDocumentFilter(project.getId(), body != null ? body.documentFilter() : null);
         ConversationEntity c = ConversationEntity.create(project.getOwner(), project, title, filter);
+        chatPresetDefaults.loadDeterministicDefaultPreset().ifPresent(c::setPreset);
         return toConversationDto(conversationRepository.save(c));
     }
 
@@ -114,10 +119,11 @@ public class ConversationApplicationService {
                 .toList();
     }
 
-    private static ConversationDto toConversationDto(ConversationEntity c) {
+    private ConversationDto toConversationDto(ConversationEntity c) {
         UUID presetId = c.getPreset() != null ? c.getPreset().getId() : null;
         List<String> docs = c.getDocumentFilter() != null ? List.copyOf(c.getDocumentFilter()) : List.of();
-        return new ConversationDto(c.getId(), c.getTitle(), c.getUpdatedAt(), presetId, docs);
+        UUID effectivePresetId = chatPresetDefaults.effectivePresetIdForApi(presetId);
+        return new ConversationDto(c.getId(), c.getTitle(), c.getUpdatedAt(), presetId, docs, effectivePresetId);
     }
 
     /**

@@ -49,11 +49,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
 @Component
 public class RagExecutionOrchestrator {
 
+    private static final Logger log = LoggerFactory.getLogger(RagExecutionOrchestrator.class);
+
     private final WorkflowSelector workflowSelector;
+    private final DirectLlmWorkflow snapshotFallbackDirectLlmWorkflow;
     private final QueryUnderstandingPipeline queryUnderstandingPipeline;
     private final ExecutionContextFactory executionContextFactory;
     private final DeterministicToolStrategy deterministicToolStrategy;
@@ -68,6 +74,7 @@ public class RagExecutionOrchestrator {
 
     public RagExecutionOrchestrator(
             WorkflowSelector workflowSelector,
+            DirectLlmWorkflow snapshotFallbackDirectLlmWorkflow,
             QueryUnderstandingPipeline queryUnderstandingPipeline,
             ExecutionContextFactory executionContextFactory,
             DeterministicToolStrategy deterministicToolStrategy,
@@ -80,6 +87,7 @@ public class RagExecutionOrchestrator {
             AdaptiveRoutingStrategy adaptiveRoutingStrategy,
             JudgeStrategy judgeStrategy) {
         this.workflowSelector = workflowSelector;
+        this.snapshotFallbackDirectLlmWorkflow = snapshotFallbackDirectLlmWorkflow;
         this.queryUnderstandingPipeline = queryUnderstandingPipeline;
         this.executionContextFactory = executionContextFactory;
         this.deterministicToolStrategy = deterministicToolStrategy;
@@ -558,12 +566,9 @@ public class RagExecutionOrchestrator {
             DeterministicToolExecutionResult toolResult,
             FcGate fcGate,
             AdvisorSnapshot advisorSnapshot) {
-        ExecutionWorkflow workflow = workflowSelector.select(ctxForWorkflow);
+        ExecutionWorkflow workflow =
+                selectExecutableWorkflow(ctxForWorkflow, workflowSelector.select(ctxForWorkflow));
         String wname = workflow.workflowName();
-        if (requiresKnowledgeSnapshots(wname)
-                && ctxForWorkflow.knowledgeSnapshotSelection().orderedSnapshotIds().isEmpty()) {
-            throw RagServiceException.knowledgeSnapshotUnavailable();
-        }
         RagExecutionContextHolder.set(toLegacy(ctxForWorkflow));
         try {
             RagExecutionResult partial = workflow.execute(ctxForWorkflow);
@@ -782,6 +787,23 @@ public class RagExecutionOrchestrator {
                 shortCircuited,
                 Optional.of(fr),
                 fr.stageTraces());
+    }
+
+    /**
+     * Chat/product turns avoid failing when no ACTIVE knowledge snapshots exist: dense/full-corpus workflows fall back to
+     * {@link DirectLlmWorkflow} so greetings and general questions still get an LLM reply when allowed by config.
+     */
+    ExecutionWorkflow selectExecutableWorkflow(ExecutionContext ctx, ExecutionWorkflow selected) {
+        String requestedName = selected.workflowName();
+        if (requiresKnowledgeSnapshots(requestedName)
+                && ctx.knowledgeSnapshotSelection().orderedSnapshotIds().isEmpty()) {
+            log.warn(
+                    "chat_snapshot_fallback correlationId={} requestedWorkflow={} fallbackWorkflow=DirectLlmWorkflow reason=no_active_snapshots",
+                    ctx.correlationId(),
+                    requestedName);
+            return snapshotFallbackDirectLlmWorkflow;
+        }
+        return selected;
     }
 
     private static boolean requiresKnowledgeSnapshots(String workflowName) {

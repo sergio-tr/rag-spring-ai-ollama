@@ -26,18 +26,21 @@ public class ChatScopedRagConfigResolver {
     private final RuntimeConfigResolutionService runtimeConfigResolutionService;
     private final ConversationRepository conversationRepository;
     private final ObjectMapper objectMapper;
+    private final ChatPresetDefaults chatPresetDefaults;
 
     public ChatScopedRagConfigResolver(
             ConfigResolver configResolver,
             @Autowired(required = false) RuntimeConfigResolutionService runtimeConfigResolutionService,
             ConversationRepository conversationRepository,
             ObjectMapper objectMapper,
-            @Value("${rag.config.v2.enabled:false}") boolean configV2Enabled) {
+            @Value("${rag.config.v2.enabled:false}") boolean configV2Enabled,
+            ChatPresetDefaults chatPresetDefaults) {
         this.configResolver = configResolver;
         this.runtimeConfigResolutionService = runtimeConfigResolutionService;
         this.conversationRepository = conversationRepository;
         this.objectMapper = objectMapper;
         this.configV2Enabled = configV2Enabled;
+        this.chatPresetDefaults = chatPresetDefaults;
     }
 
     /**
@@ -110,6 +113,11 @@ public class ChatScopedRagConfigResolver {
         }
         if (c.getPreset() != null && c.getPreset().getValues() != null) {
             merged.putAll(c.getPreset().getValues());
+        } else {
+            chatPresetDefaults
+                    .loadDeterministicDefaultPreset()
+                    .filter(p -> p.getValues() != null && !p.getValues().isEmpty())
+                    .ifPresent(p -> merged.putAll(p.getValues()));
         }
         merged.putAll(c.getRuntimeOverride());
         return merged;
