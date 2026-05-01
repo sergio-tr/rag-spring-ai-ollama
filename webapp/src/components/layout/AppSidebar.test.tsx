@@ -8,6 +8,7 @@ import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
 import type { ProjectSummary } from "@/types/api";
 import { useAppStore } from "@/store/app.store";
+import { SETTINGS_LAST_PATH_STORAGE_KEY } from "@/features/settings/lib/settings-last-path";
 import { AppSidebar } from "./AppSidebar";
 
 vi.mock("@/lib/user-role", () => ({
@@ -187,6 +188,7 @@ describe("AppSidebar", () => {
     // from the role bootstrap effect in tests that do not care about it.
     apiFetchMock.mockRejectedValue(new Error("auth unavailable"));
     localStorage.removeItem("rag-sidebar");
+    sessionStorage.removeItem(SETTINGS_LAST_PATH_STORAGE_KEY);
     useAppStore.setState({ activeProject: null });
   });
 
@@ -196,6 +198,14 @@ describe("AppSidebar", () => {
     expect(screen.getByRole("link", { name: /projects/i })).toHaveAttribute("href", "/projects");
     expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings");
     expect(screen.getByText(/rag console/i)).toBeInTheDocument();
+  });
+
+  it("restores Settings sidebar href from sessionStorage after hydrate", async () => {
+    sessionStorage.setItem(SETTINGS_LAST_PATH_STORAGE_KEY, "/settings/account");
+    render(<AppSidebar />, { wrapper: Wrapper });
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings/account");
+    });
   });
 
   it("hides projects tree and actions when desktop rail is collapsed", () => {

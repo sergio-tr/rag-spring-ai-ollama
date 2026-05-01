@@ -1,6 +1,10 @@
 "use client";
 
 import { AppSubnavSectionLayout } from "@/components/layout/app-subnav-section-layout";
+import {
+  SettingsLastPathRecorder,
+  SettingsTabQueryNormalizer,
+} from "@/features/settings/components/SettingsNavigationPersistence";
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
@@ -18,14 +22,17 @@ export default function SettingsLayout({ children }: Readonly<{ children: ReactN
   const tabs = tabDefs.map((d) => ({ href: d.href, label: t(d.labelKey) }));
 
   return (
-    <AppSubnavSectionLayout
-      title={t("title")}
-      subtitle={t("subtitle")}
-      navAriaLabel={t("sectionsNavLabel")}
-      sectionRootHref="/settings"
-      tabs={tabs}
-    >
-      {children}
-    </AppSubnavSectionLayout>
+    <SettingsLastPathRecorder>
+      <SettingsTabQueryNormalizer />
+      <AppSubnavSectionLayout
+        title={t("title")}
+        subtitle={t("subtitle")}
+        navAriaLabel={t("sectionsNavLabel")}
+        sectionRootHref="/settings"
+        tabs={tabs}
+      >
+        {children}
+      </AppSubnavSectionLayout>
+    </SettingsLastPathRecorder>
   );
 }

@@ -43,6 +43,7 @@ import {
   readSidebarPersistence,
   type SidebarPersistence,
 } from "@/components/layout/sidebar-persistence";
+import { useSettingsSidebarHref } from "@/features/settings/hooks/use-settings-sidebar-href";
 
 const primaryLinks = [
   { href: "/projects" as const, key: "projects" as const, icon: FolderKanban },
@@ -85,6 +86,7 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
   const tNav = useTranslations("Nav");
   const tChat = useTranslations("Chat");
   const pathname = usePathname();
+  const settingsHref = useSettingsSidebarHref();
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -390,7 +392,7 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
 
       <div className="mt-auto flex shrink-0 flex-col gap-1 border-border border-t p-2">
         <Link
-          href="/settings"
+          href={settingsHref}
           title={
             railCollapsed && variant === "desktop" ? tNav("settingsPage") : undefined
           }
