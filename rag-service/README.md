@@ -254,7 +254,18 @@ If the LLM backend (Ollama) cannot be reached, the service returns **503** with 
 
 ## API documentation (generated)
 
-- **Javadoc:** `./mvnw javadoc:javadoc` → `target/site/apidocs/index.html`.
+- **Javadoc (HTML):** from **`rag-service/`**:
+
+  ```bash
+  ./mvnw -B -q javadoc:javadoc
+  ```
+
+  | Topic | Detail |
+  | ----- | ------ |
+  | **Output directory** | **`target/reports/apidocs/`** (open `index.html`; Maven `maven-javadoc-plugin` layout for this project) |
+  | **Git** | **Do not commit** generated HTML — Javadoc output is build-local or retrieved from CI. |
+  | **CI** | Workflow [`.github/workflows/reusable-ci-core.yml`](../.github/workflows/reusable-ci-core.yml) job **`core_backend`** runs `javadoc:javadoc` after `clean verify` and uploads **`rag-service/target/reports/apidocs/`** as artifact **`rag-service-javadoc`** (retention 14 days). |
+
 - **OpenAPI (springdoc):** when the app is running, **`GET /v3/api-docs`** (JSON) and **`/swagger-ui.html`** are **permitAll** in `SecurityConfiguration` — they cover `{product}` routes, `/api/auth`, and `/api/admin` in one document.
 - **Export to a file (for PR diffs / CI artifacts):** with the backend listening on port 9000 (default), from the **repository root**:
 

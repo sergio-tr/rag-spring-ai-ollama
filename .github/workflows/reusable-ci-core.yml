@@ -71,6 +71,14 @@ jobs:
         run: |
           cd rag-service
           ./mvnw -B -q javadoc:javadoc
+      - name: Upload Javadoc HTML
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rag-service-javadoc
+          path: rag-service/target/reports/apidocs/
+          retention-days: 14
+          if-no-files-found: error
 
   core_classifier:
     name: Query Classifier Service (Python)
@@ -136,6 +144,14 @@ jobs:
           if-no-files-found: warn
       - run: npm run build
       - run: npm run doc
+      - name: Upload TypeDoc HTML
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: webapp-typedoc-api
+          path: webapp/docs/api/
+          retention-days: 14
+          if-no-files-found: error
 
   core_webapp_e2e:
     name: Webapp E2E (Playwright smoke)

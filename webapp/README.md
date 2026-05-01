@@ -71,10 +71,18 @@ OpenAPI for the backend: `GET http://<backend>:9000/v3/api-docs` (see `rag-servi
 
 Layout and CI policy: **`e2e/README.md`**. **`@fullstack`** specs live under domain folders (`e2e/auth/`, `e2e/projects/`, …) and require seed credentials (`E2E_SEED_EMAIL` / `E2E_SEED_PASSWORD`, defaults `dev@local.test` / `dev`) plus a reachable API. Canonical strategy: [`docs/development/e2e-testing-strategy.md`](../docs/development/e2e-testing-strategy.md); config: `playwright.config.ts`.
 
-## TypeDoc
+## TypeDoc (generated HTML API docs)
+
+From **`webapp/`**:
 
 ```bash
 npm run doc
 ```
 
-Output: `docs/api/` (often gitignored).
+| Topic | Detail |
+| ----- | ------ |
+| **Output directory** | `webapp/docs/api/` (configured in [`typedoc.json`](typedoc.json); **`entryPoints`** include `src/app`, `src/components`, `src/features`, `src/hooks`, `src/store`, `src/lib`, `src/types`) |
+| **Git** | **Do not commit** generated HTML — `webapp/docs/api/` is listed in the repo root [`.gitignore`](../.gitignore). Treat docs as **local output or CI artifacts** only. |
+| **CI** | Workflow [`.github/workflows/reusable-ci-core.yml`](../.github/workflows/reusable-ci-core.yml) job **`core_webapp`** runs `npm run doc` after `npm run build` and uploads the folder as artifact **`webapp-typedoc-api`** (retention 14 days). Download from the workflow run’s **Artifacts** to browse offline. |
+
+Operational detail stays in this README per [`documentation-guidelines.md`](../docs/development/documentation-guidelines.md).
