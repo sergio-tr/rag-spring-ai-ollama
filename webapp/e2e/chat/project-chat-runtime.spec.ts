@@ -106,6 +106,24 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     const projectName = uniqueProjectName("e2e-limit-docs");
     await createAndActivateProject(page, projectName);
 
+    await page.getByRole("link", { name: /documents|documentos/i }).click();
+    await expect(page).toHaveURL(/\/en\/documents/);
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "e2e-limit-docs.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Limit retrieval checkbox needs at least one READY document.\n"),
+    });
+    await expect
+      .poll(
+        async () => {
+          const row = page.locator("tbody tr").filter({ hasText: "e2e-limit-docs.txt" });
+          if ((await row.count()) === 0) return false;
+          return (await row.getByText("READY", { exact: true }).count()) > 0;
+        },
+        { timeout: 120_000 },
+      )
+      .toBe(true);
+
     await page.getByRole("link", { name: /^chat$/i }).click();
     await page
       .getByRole("main")
@@ -119,7 +137,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await expect(limitCb).not.toBeChecked();
 
     await limitCb.click();
-    await expect(limitCb).toBeChecked();
+    await expect(limitCb).toBeChecked({ timeout: 15_000 });
 
     await page.getByRole("link", { name: /documents|documentos/i }).click();
     await expect(page).toHaveURL(/\/en\/documents/);

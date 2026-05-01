@@ -75,21 +75,25 @@ vi.mock("@/features/chat/hooks/use-conversations", () => ({
   }),
 }));
 
-vi.mock("@/features/documents/hooks/use-project-documents", () => ({
-  useProjectDocuments: () => ({
-    data: [
-      {
-        id: "d1",
-        fileName: "f.pdf",
-        status: "READY" as const,
-        chunkCount: 1,
-        errorMessage: null,
-        uploadedAt: "",
-        reindexedAt: null,
-      },
-    ],
-  }),
-}));
+vi.mock("@/features/documents/hooks/use-project-documents", () => {
+  const data = [
+    {
+      id: "d1",
+      fileName: "f.pdf",
+      status: "READY" as const,
+      chunkCount: 1,
+      errorMessage: null,
+      uploadedAt: "",
+      reindexedAt: null,
+    },
+  ];
+  return {
+    useProjectDocuments: () => ({
+      data,
+      refetch: vi.fn(async () => ({ data })),
+    }),
+  };
+});
 
 vi.mock("@/features/projects/hooks/use-projects", () => ({
   useProjectList: () => ({

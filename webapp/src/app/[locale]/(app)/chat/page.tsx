@@ -123,7 +123,7 @@ function ChatPageInner() {
     }
     return null;
   }, [messages]);
-  const { data: docs } = useProjectDocuments(projectId);
+  const { data: docs, refetch: refetchProjectDocuments } = useProjectDocuments(projectId);
   const { data: projectListData } = useProjectList(0, 64);
   const currentProject = useMemo(
     () => projectListData?.items?.find((p) => p.id === projectId),
@@ -298,13 +298,24 @@ function ChatPageInner() {
       return () => clearTimeout(t);
     }
     let cancelled = false;
+    const clearComposerTimer = setTimeout(() => setInput(""), 0);
     void apiFetch<ConversationDraftDto>(apiProductPath(`/conversations/${conversationId}/draft`))
       .then((d) => {
-        if (!cancelled) setTimeout(() => setInput(d.content ?? ""), 0);
+        if (cancelled) return;
+        const content = d.content ?? "";
+        setTimeout(() => {
+          setInput((prev) => {
+            if (prev.trim() !== "") {
+              return prev;
+            }
+            return content;
+          });
+        }, 0);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
+      clearTimeout(clearComposerTimer);
     };
   }, [conversationId]);
 
@@ -514,11 +525,18 @@ function ChatPageInner() {
       patchConv.mutate({ conversationId, body: { documentFilter: [] } });
       return;
     }
-    const ready = docs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [];
-    setLimitDocs(true);
-    setSelectedDocIds(ready);
-    pendingDocumentFilterRef.current = ready;
-    patchConv.mutate({ conversationId, body: { documentFilter: ready } });
+    void (async () => {
+      const { data: freshDocs } = await refetchProjectDocuments();
+      const ready =
+        freshDocs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [];
+      if (ready.length === 0) {
+        return;
+      }
+      setLimitDocs(true);
+      setSelectedDocIds(ready);
+      pendingDocumentFilterRef.current = ready;
+      patchConv.mutate({ conversationId, body: { documentFilter: ready } });
+    })();
   };
 
   const onDocToggle = (documentId: string, checked: boolean) => {
