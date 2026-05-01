@@ -47,6 +47,8 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Chat thread: readable line length on large screens; still width-full on narrow viewports */
+  --max-width-chat-readable: 42rem;
 }
 
 :root {

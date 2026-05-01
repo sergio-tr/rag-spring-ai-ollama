@@ -10,10 +10,10 @@ import { InlineHelpStatus } from "@/features/help/InlineHelpStatus";
 import { ChatConversationDocumentsSheet } from "@/features/chat/components/ChatConversationDocumentsSheet";
 import { DeleteConversationDialog } from "@/features/chat/components/DeleteConversationDialog";
 import { MoveConversationDialog } from "@/features/chat/components/MoveConversationDialog";
-import { documentFiltersEqual } from "@/features/chat/lib/chat-document-filter-sync";
 import {
+  CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
   findPresetById,
-  resolveConversationPresetSelectValue,
+  resolveChatPresetSelectValue,
   resolvePresetSelectLabel,
 } from "@/features/chat/lib/conversation-preset-ui";
 import {
@@ -33,7 +33,14 @@ import { useProjectList } from "@/features/projects/hooks/use-projects";
 import { useSyncActiveProjectFromChatUrl } from "@/features/projects/hooks/use-sync-active-project-from-chat-url";
 import { buildProjectScopedChatHref } from "@/features/projects/lib/open-project-navigation";
 import { ProjectVisual } from "@/features/projects/components/ProjectVisual";
-import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
+import {
+  ApiError,
+  apiFetch,
+  apiProductPath,
+  getSafeApiErrorMessage,
+  sanitizePlainErrorTextForUi,
+} from "@/lib/api-client";
+import { resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { cn } from "@/lib/utils";
 import { Link, useRouter } from "@/navigation";
@@ -97,16 +104,24 @@ function ChatPageInner() {
   const [editBody, setEditBody] = useState("");
   /** Empty string = backend default model. */
   const [llmModelChoice, setLlmModelChoice] = useState("");
-  const [presetSelectValue, setPresetSelectValue] = useState("");
-  const [limitDocs, setLimitDocs] = useState(false);
-  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [presetSelectValue, setPresetSelectValue] = useState(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
+  /** Scoped to `conversationId` so switching chats does not require clearing in an effect. */
+  const [limitDocsNoticeRecord, setLimitDocsNoticeRecord] = useState<{
+    conversationId: string | null;
+    message: string | null;
+  }>({ conversationId: null, message: null });
+  const limitDocsToggleNotice =
+    conversationId &&
+    limitDocsNoticeRecord.conversationId === conversationId &&
+    limitDocsNoticeRecord.message
+      ? limitDocsNoticeRecord.message
+      : null;
   const [docsSheetOpen, setDocsSheetOpen] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const [deleteDialogTarget, setDeleteDialogTarget] = useState<{ id: string; title: string } | null>(
     null,
   );
-  const selectedDocIdsRef = useRef<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -115,7 +130,6 @@ function ChatPageInner() {
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDocumentFilterRef = useRef<string[] | null>(null);
   /** POST + async chat job in flight (distinct from streaming preview state). */
   const [isSending, setIsSending] = useState(false);
   /** Local-only user bubble until the server list includes the same text. */
@@ -168,7 +182,11 @@ function ChatPageInner() {
     [projectListData?.items, projectId],
   );
   const { data: modelsCatalog, isError: modelsError, error: modelsQueryError } = useModelsCatalog();
-  const { data: presets, isError: presetsError } = useRagPresets();
+  const {
+    data: presets,
+    isError: presetsError,
+    isLoading: presetsLoading,
+  } = useRagPresets();
 
   const activeConv = useMemo(
     () => (conversationId && convs ? convs.find((c) => c.id === conversationId) : undefined),
@@ -176,27 +194,30 @@ function ChatPageInner() {
   );
   const conversationNotFound = Boolean(conversationId && convs && !activeConv);
 
-  /** Stable key for server-side document filter only (avoids tying preset PATCH churn to checkbox sync). */
-  const documentFilterStableKey = useMemo(() => {
-    if (!activeConv) return "";
-    const sorted = JSON.stringify([...(activeConv.documentFilter ?? [])].sort());
-    return `${activeConv.id}:${sorted}`;
-  }, [activeConv]);
+  /** Single source of truth: server-backed conversation row (optimistic updates inside {@link usePatchConversation}). */
+  const selectedDocIds = activeConv?.documentFilter ?? [];
+  const limitDocs = selectedDocIds.length > 0;
 
   const presetSyncKey = useMemo(() => {
     if (!activeConv) return "";
     return `${activeConv.id}:${activeConv.presetId ?? ""}:${activeConv.effectivePresetId ?? ""}`;
   }, [activeConv]);
 
+  const presetsCatalogEmpty = presets !== undefined && presets.length === 0 && !presetsError;
+
   const syntheticPresetOptionNeeded = useMemo(() => {
     if (!presetSelectValue) return false;
+    if (presetsLoading) return true;
     if (!presets?.length) return true;
     return !findPresetById(presets, presetSelectValue);
-  }, [presetSelectValue, presets]);
+  }, [presetSelectValue, presets, presetsLoading]);
+
+  const presetSelectDisabled =
+    !!presetsError || patchConv.isPending || presetsLoading || presetsCatalogEmpty;
 
   useEffect(() => {
-    selectedDocIdsRef.current = selectedDocIds;
-  }, [selectedDocIds]);
+    patchConv.reset();
+  }, [conversationId]); /* eslint-disable-line react-hooks/exhaustive-deps -- reset patch mutation only when switching chats */
 
   useEffect(() => {
     const syncTimer = setTimeout(() => setTitleDraft(activeConv?.title ?? ""), 0);
@@ -207,32 +228,13 @@ function ChatPageInner() {
     if (!presetSyncKey || patchConv.isPending || !conversationId || !convs) return;
     const conv = convs.find((c) => c.id === conversationId);
     if (!conv) return;
-    const next = resolveConversationPresetSelectValue(conv);
+    const next = resolveChatPresetSelectValue(conv, presets);
     const syncTimer = setTimeout(
       () => setPresetSelectValue((prev) => (prev === next ? prev : next)),
       0,
     );
     return () => clearTimeout(syncTimer);
-  }, [presetSyncKey, patchConv.isPending, conversationId, convs]);
-
-  useEffect(() => {
-    if (!documentFilterStableKey || patchConv.isPending || !conversationId || !convs) return;
-    const conv = convs.find((c) => c.id === conversationId);
-    if (!conv) return;
-    const serverFilter = conv.documentFilter ?? [];
-    if (pendingDocumentFilterRef.current !== null) {
-      if (!documentFiltersEqual(serverFilter, pendingDocumentFilterRef.current)) {
-        return;
-      }
-      pendingDocumentFilterRef.current = null;
-    }
-    const hasFilter = serverFilter.length > 0;
-    setLimitDocs((prev) => (prev === hasFilter ? prev : hasFilter));
-    setSelectedDocIds((prev) => {
-      if (documentFiltersEqual(prev, serverFilter)) return prev;
-      return [...serverFilter];
-    });
-  }, [documentFilterStableKey, patchConv.isPending, conversationId, convs]);
+  }, [presetSyncKey, patchConv.isPending, conversationId, convs, presets]);
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
   const setStreamingText = useChatExplainStore((s) => s.setStreamingText);
@@ -413,15 +415,22 @@ function ChatPageInner() {
 
         if (terminal.status === "FAILED") {
           setAssistantPhase("failed");
-          const hint =
-            terminal.errorMessage?.trim().slice(0, 280) || t("assistantJobFailedShort");
+          const sanitized = sanitizePlainErrorTextForUi(terminal.errorMessage, 280);
+          const hint = resolveChatJobFailureUserHint({
+            task: terminal,
+            errorMessageSanitized: sanitized,
+            t,
+          });
           setSendError(hint);
           useTraceStore.getState().addTraceEvent({
             section: "chat",
             action: "assistant_failed",
             message: t("traceAssistantFailed"),
             status: "error",
-            metadata: { jobId: accepted.jobId },
+            metadata: {
+              jobId: accepted.jobId,
+              ...(terminal.failureCode ? { failureCode: terminal.failureCode } : {}),
+            },
           });
         } else {
           setAssistantPhase(null);
@@ -505,7 +514,11 @@ function ChatPageInner() {
         status: "in_progress",
         metadata: { jobId: accepted.jobId },
       });
-      await refetchMessages();
+      try {
+        await refetchMessages();
+      } catch (refetchErr) {
+        setSendError(getSafeApiErrorMessage(refetchErr));
+      }
       await runChatJob(accepted, signal);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
@@ -560,7 +573,11 @@ function ChatPageInner() {
           status: "in_progress",
           metadata: { jobId: accepted.jobId },
         });
-        await refetchMessages();
+        try {
+          await refetchMessages();
+        } catch (refetchErr) {
+          setSendError(getSafeApiErrorMessage(refetchErr));
+        }
         await runChatJob(accepted, signal);
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
@@ -616,7 +633,11 @@ function ChatPageInner() {
       );
       setEditingUserMessageId(null);
       setEditBody("");
-      await refetchMessages();
+      try {
+        await refetchMessages();
+      } catch (refetchErr) {
+        setSendError(getSafeApiErrorMessage(refetchErr));
+      }
       await runChatJob(accepted, signal);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
@@ -679,20 +700,17 @@ function ChatPageInner() {
 
   const handleChatDocumentUpload = useCallback(
     async (files: FileList | null) => {
-      if (!files?.length || !conversationId || !projectId) return;
+      if (!files?.length || !conversationId || !projectId || !activeConv) return;
       setUploadError(null);
       setUploadNotice(null);
-      let merged = [...selectedDocIdsRef.current];
+      let merged = [...(activeConv.documentFilter ?? [])];
       for (const file of Array.from(files)) {
         try {
           const doc = await uploadDoc.mutateAsync(file);
           await refetchProjectDocuments();
           if (doc.status === "READY") {
-            if (limitDocs) {
+            if (merged.length > 0) {
               merged = Array.from(new Set([...merged, doc.id]));
-              setLimitDocs(true);
-              setSelectedDocIds(merged);
-              pendingDocumentFilterRef.current = merged;
               patchConv.mutate({ conversationId, body: { documentFilter: merged } });
             } else {
               setUploadNotice(t("documentsUploadAddedToProjectHint"));
@@ -706,23 +724,13 @@ function ChatPageInner() {
         }
       }
     },
-    [
-      conversationId,
-      projectId,
-      uploadDoc,
-      refetchProjectDocuments,
-      limitDocs,
-      patchConv,
-      t,
-    ],
+    [conversationId, projectId, activeConv, uploadDoc, refetchProjectDocuments, patchConv, t],
   );
 
   const onLimitDocsChange = (checked: boolean) => {
     if (!conversationId) return;
+    setLimitDocsNoticeRecord({ conversationId, message: null });
     if (!checked) {
-      setLimitDocs(false);
-      setSelectedDocIds([]);
-      pendingDocumentFilterRef.current = [];
       patchConv.mutate({ conversationId, body: { documentFilter: [] } });
       return;
     }
@@ -731,38 +739,28 @@ function ChatPageInner() {
       const ready =
         freshDocs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [];
       if (ready.length === 0) {
+        setLimitDocsNoticeRecord({ conversationId, message: t("limitDocumentsNoReadyHint") });
         return;
       }
-      setLimitDocs(true);
-      setSelectedDocIds(ready);
-      pendingDocumentFilterRef.current = ready;
       patchConv.mutate({ conversationId, body: { documentFilter: ready } });
     })();
   };
 
   const onDocToggle = (documentId: string, checked: boolean) => {
-    if (!conversationId) return;
+    if (!conversationId || !activeConv) return;
+    const current = [...(activeConv.documentFilter ?? [])];
     if (checked) {
-      const next = limitDocs
-        ? Array.from(new Set([...selectedDocIds, documentId]))
-        : [documentId];
-      setLimitDocs(true);
-      setSelectedDocIds(next);
-      pendingDocumentFilterRef.current = next;
+      const next =
+        current.length > 0 ? Array.from(new Set([...current, documentId])) : [documentId];
       patchConv.mutate({ conversationId, body: { documentFilter: next } });
       return;
     }
-    if (!limitDocs) return;
-    const next = selectedDocIds.filter((id) => id !== documentId);
+    if (current.length === 0) return;
+    const next = current.filter((id) => id !== documentId);
     if (next.length === 0) {
-      setLimitDocs(false);
-      setSelectedDocIds([]);
-      pendingDocumentFilterRef.current = [];
       patchConv.mutate({ conversationId, body: { documentFilter: [] } });
       return;
     }
-    setSelectedDocIds(next);
-    pendingDocumentFilterRef.current = next;
     patchConv.mutate({ conversationId, body: { documentFilter: next } });
   };
 
@@ -854,7 +852,11 @@ function ChatPageInner() {
           </div>
         </aside>
       )}
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div
+          data-testid="chat-readable-column"
+          className="mx-auto flex w-full min-h-0 min-w-0 max-w-chat-readable flex-1 flex-col gap-3 px-3 sm:px-4 md:px-6"
+        >
         {conversationId && active ? (
           <header className="flex flex-wrap items-end gap-3 border-border border-b pb-3">
             <div className="flex min-w-[10rem] items-center gap-2">
@@ -967,13 +969,14 @@ function ChatPageInner() {
                 value={presetSelectValue}
                 onChange={(e) => onPresetChange(e.target.value)}
                 aria-label={t("presetLabel")}
-                disabled={!!presetsError || patchConv.isPending}
+                disabled={presetSelectDisabled}
               >
                 {syntheticPresetOptionNeeded ? (
                   <option value={presetSelectValue}>
                     {resolvePresetSelectLabel(presets, presetSelectValue, {
                       systemSuffix: t("presetSystem"),
-                      serverDefault: t("presetServerDefault"),
+                      recommendedDefault: t("presetRecommendedDefault"),
+                      defaultConfiguration: t("presetDefaultConfiguration"),
                     })}
                   </option>
                 ) : null}
@@ -984,9 +987,19 @@ function ChatPageInner() {
                   </option>
                 ))}
               </select>
+              {presetsLoading && !presetsError ? (
+                <p className="text-muted-foreground text-xs" role="status">
+                  {t("presetCatalogLoading")}
+                </p>
+              ) : null}
+              {presetsCatalogEmpty ? (
+                <p className="text-muted-foreground text-xs" role="status">
+                  {t("presetCatalogEmpty")}
+                </p>
+              ) : null}
               {presetsError && <p className="text-destructive text-xs">{t("presetsLoadError")}</p>}
             </div>
-            <div className="flex min-w-[min(100%,14rem)] flex-1 flex-col gap-2 md:max-w-md">
+            <div className="flex min-w-[min(100%,14rem)] flex-1 flex-col gap-2">
               <div className="flex flex-wrap items-end gap-2">
                 <Label className="flex items-center gap-2">
                   <input
@@ -998,6 +1011,11 @@ function ChatPageInner() {
                   />
                   {t("limitDocuments")}
                 </Label>
+                {limitDocsToggleNotice ? (
+                  <p className="text-muted-foreground text-xs" role="status">
+                    {limitDocsToggleNotice}
+                  </p>
+                ) : null}
                 <Button
                   type="button"
                   size="sm"
@@ -1144,8 +1162,8 @@ function ChatPageInner() {
               key={m.id}
               className={
                 m.role === "USER"
-                  ? "ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm"
-                  : "mr-auto max-w-[85%] rounded-lg border bg-background px-3 py-2 text-sm"
+                  ? "ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
+                  : "mr-auto max-w-[85%] rounded-lg border bg-background px-3 py-2 text-sm leading-relaxed"
               }
             >
               {m.role === "USER" &&
@@ -1188,7 +1206,7 @@ function ChatPageInner() {
                 </div>
               ) : (
                 <>
-                  <p className="whitespace-pre-wrap">{m.content}</p>
+                  <p className="whitespace-pre-wrap break-words">{m.content}</p>
                   {m.role === "USER" && m.id === lastUserMessageId && (
                     <Button
                       type="button"
@@ -1229,13 +1247,13 @@ function ChatPageInner() {
               role="article"
               aria-label={t("optimisticUserAria")}
               data-testid="chat-optimistic-user"
-              className="ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm"
+              className="ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
             >
-              <p className="whitespace-pre-wrap">{optimisticUserContent}</p>
+              <p className="whitespace-pre-wrap break-words">{optimisticUserContent}</p>
             </div>
           ) : null}
           {showAssistantPipelineRow && assistantPipelineLabel ? (
-            <div className="mr-auto max-w-[85%]">
+            <div className="mr-auto max-w-[85%] w-full min-w-0">
               <InlineHelpStatus
                 status={assistantPipelineTraceStatus}
                 label={assistantPipelineLabel}
@@ -1243,13 +1261,13 @@ function ChatPageInner() {
             </div>
           ) : null}
           {isStreaming && streamingText && (
-            <div className="mr-auto max-w-[85%] rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm">
-              <p className="whitespace-pre-wrap">{streamingText}</p>
+            <div className="mr-auto max-w-[85%] rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm leading-relaxed">
+              <p className="whitespace-pre-wrap break-words">{streamingText}</p>
             </div>
           )}
           <div ref={bottomRef} />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full min-w-0 flex-col gap-2">
           {editError && (
             <p className="text-destructive break-words text-xs" role="alert">
               {editError}
@@ -1260,11 +1278,11 @@ function ChatPageInner() {
               {sendError}
             </p>
           )}
-          {patchConv.isError && (
+          {patchConv.isError ? (
             <p className="text-destructive text-xs" role="alert">
-              {t("patchError")}
+              {getSafeApiErrorMessage(patchConv.error)}
             </p>
-          )}
+          ) : null}
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -1293,6 +1311,7 @@ function ChatPageInner() {
               {t("send")}
             </Button>
           </div>
+        </div>
         </div>
         <DeleteConversationDialog
           open={Boolean(deleteDialogTarget)}
