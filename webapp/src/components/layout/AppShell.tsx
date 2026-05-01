@@ -1,17 +1,16 @@
 "use client";
 
-import { Menu, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { History, Menu } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppContextBreadcrumbGate } from "@/components/layout/AppContextBreadcrumb";
 import { AppSectionActionsGate } from "@/components/layout/AppSectionActions";
-import { CollapsiblePanel } from "@/components/layout/CollapsiblePanel";
+import { ActivityHelpSheet } from "@/components/layout/ActivityHelpSheet";
 import { ThemeLanguageMenu } from "@/components/layout/ThemeLanguageMenu";
 import { SessionExpiredBridge } from "@/components/auth/SessionExpiredBridge";
 import { clearSessionCookie } from "@/features/auth/lib/session-client";
-import { ExplainabilityPanel } from "@/features/rag/ExplainabilityPanel";
 import { cn } from "@/lib/utils";
 import { usePathname, useRouter } from "@/navigation";
 import { SidebarResizeHandle } from "@/components/layout/SidebarResizeHandle";
@@ -26,10 +25,10 @@ type AppShellProps = {
 
 export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
   const tNav = useTranslations("Nav");
-  const tPanel = useTranslations("Panel");
+  const tActivity = useTranslations("Activity");
   const router = useRouter();
   const pathname = usePathname();
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isChat = /\/chat(\/|$)/.test(pathname ?? "");
   const { railCollapsed, expandedWidthPx, toggleRailCollapsed, applyResizeDelta } = useSidebarShell();
@@ -89,11 +88,12 @@ export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-expanded={panelOpen}
-                aria-label={panelOpen ? tPanel("hideTipsPanel") : tPanel("showTipsPanel")}
-                onClick={() => setPanelOpen((o) => !o)}
+                aria-expanded={activityOpen}
+                aria-controls="activity-help-sheet"
+                aria-label={activityOpen ? tActivity("hideSheet") : tActivity("showSheet")}
+                onClick={() => setActivityOpen((o) => !o)}
               >
-                {panelOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
+                <History className="size-4" aria-hidden />
               </Button>
               <ThemeLanguageMenu />
             </div>
@@ -109,9 +109,12 @@ export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
             </div>
           </div>
         </main>
-        <CollapsiblePanel open={panelOpen}>
-          {isChat ? <ExplainabilityPanel /> : panelBody}
-        </CollapsiblePanel>
+        <ActivityHelpSheet
+          open={activityOpen}
+          onOpenChange={setActivityOpen}
+          isChatRoute={isChat}
+          intro={panelBody}
+        />
       </div>
 
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>

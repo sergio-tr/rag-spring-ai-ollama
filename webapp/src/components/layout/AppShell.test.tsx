@@ -40,12 +40,6 @@ vi.mock("@/components/layout/use-sidebar-shell", () => ({
   }),
 }));
 
-vi.mock("@/components/layout/CollapsiblePanel", () => ({
-  CollapsiblePanel: ({ children }: { children: React.ReactNode }) => (
-    <aside data-testid="panel-mock">{children}</aside>
-  ),
-}));
-
 vi.mock("@/components/layout/ThemeLanguageMenu", () => ({
   ThemeLanguageMenu: () => null,
 }));
@@ -74,6 +68,19 @@ describe("AppShell", () => {
     );
     const main = document.querySelector("main");
     expect(main?.querySelector('[data-testid="app-main-toolbar"]')).toBeTruthy();
+  });
+
+  it("does not use a persistent complementary tips aside (Phase 3B sheet pattern)", () => {
+    pathnameMock = "/projects";
+    render(
+      <IntlTestProvider locale="en">
+        <AppShell panelBody={null}>
+          <span>y</span>
+        </AppShell>
+      </IntlTestProvider>,
+    );
+    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /open activity and tips/i })).toBeInTheDocument();
   });
 
   it("does not render Sign out in the main toolbar (sidebar/footer only)", () => {
