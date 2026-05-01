@@ -1,6 +1,7 @@
 "use client";
 
 import { AppSubnavSectionLayout } from "@/components/layout/app-subnav-section-layout";
+import { LabBackgroundJobBanner } from "@/features/lab/components/lab-background-job-banner";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
@@ -24,7 +25,10 @@ export default function LabLayout({ children }: { children: ReactNode }) {
       sectionRootHref="/lab"
       tabs={tabs}
     >
-      {children}
+      <div className="space-y-4">
+        <LabBackgroundJobBanner />
+        {children}
+      </div>
     </AppSubnavSectionLayout>
   );
 }

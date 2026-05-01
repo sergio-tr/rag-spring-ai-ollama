@@ -6,6 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
 import { classifierModelsQueryKey } from "@/features/lab/hooks/use-classifier-registry";
+import {
+  createLabJobTraceDedupe,
+  emitLabJobTraceForTick,
+  traceLabJobQueued,
+  traceLabJobStoppedWaiting,
+} from "@/features/lab/lib/lab-job-trace";
+import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
@@ -30,7 +37,9 @@ export function LabClassifierTrainPanel(
   const [trainRunning, setTrainRunning] = useState(false);
   const [trainAccepted, setTrainAccepted] = useState<LabJobAcceptedDto | null>(null);
   const [trainStatus, setTrainStatus] = useState<AsyncTaskStatusDto | null>(null);
+  const [trainStoppedWaiting, setTrainStoppedWaiting] = useState(false);
   const trainAbortRef = useRef<AbortController | null>(null);
+  const trainTraceDedupeRef = useRef(createLabJobTraceDedupe());
 
   async function runTrain() {
     if (!trainFile) {
@@ -45,6 +54,10 @@ export function LabClassifierTrainPanel(
     setTrainOut(null);
     setTrainAccepted(null);
     setTrainStatus(null);
+    setTrainStoppedWaiting(false);
+    trainTraceDedupeRef.current = createLabJobTraceDedupe();
+    useLabJobSessionStore.getState().clearBackgroundHint();
+    let trainAsyncAccepted: LabJobAcceptedDto | null = null;
     try {
       const fd = new FormData();
       fd.append("file", trainFile);
@@ -77,16 +90,47 @@ export function LabClassifierTrainPanel(
         body: fd,
         signal,
       });
+      trainAsyncAccepted = accepted;
       setTrainAccepted(accepted);
-      const done = await followLabJob(accepted, (s) => setTrainStatus(s), {
-        mode: trainFollowMode,
-        signal,
-      });
+      if (!trainTraceDedupeRef.current.acceptedEmitted) {
+        trainTraceDedupeRef.current.acceptedEmitted = true;
+        traceLabJobQueued(accepted.jobId, t("traceJobQueued"));
+      }
+      const traceMessages = {
+        queued: t("traceJobQueued"),
+        running: t("traceJobRunning"),
+        completed: t("traceJobCompleted"),
+        failed: t("traceJobFailed"),
+        cancelled: t("traceJobCancelled"),
+      };
+      const done = await followLabJob(
+        accepted,
+        (s) => {
+          setTrainStatus(s);
+          emitLabJobTraceForTick(trainTraceDedupeRef.current, s, accepted.jobId, traceMessages);
+        },
+        {
+          mode: trainFollowMode,
+          signal,
+        },
+      );
       setTrainOut(done.result);
       void qc.invalidateQueries({ queryKey: classifierModelsQueryKey });
+      const hint = useLabJobSessionStore.getState().backgroundHint;
+      if (hint?.jobId === accepted.jobId) {
+        useLabJobSessionStore.getState().clearBackgroundHint();
+      }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         setTrainErr(t("jobCancelled"));
+        setTrainStoppedWaiting(true);
+        if (trainAsyncAccepted?.jobId) {
+          traceLabJobStoppedWaiting(trainAsyncAccepted.jobId, t("traceStoppedWaiting"));
+          useLabJobSessionStore.getState().setBackgroundHint({
+            jobId: trainAsyncAccepted.jobId,
+            stoppedWaiting: true,
+          });
+        }
       } else {
         setTrainErr(e instanceof Error ? e.message : t("evalError"));
       }
@@ -169,6 +213,7 @@ export function LabClassifierTrainPanel(
             accepted={trainAccepted}
             taskStatus={trainStatus}
             queuedHint={!!trainAccepted && !trainStatus}
+            stoppedWaiting={trainStoppedWaiting}
           />
         ) : null}
         {trainOut != null ? (
@@ -197,7 +242,9 @@ export function LabClassifierEvalPanel(
   const [evalRunning, setEvalRunning] = useState(false);
   const [evalAccepted, setEvalAccepted] = useState<LabJobAcceptedDto | null>(null);
   const [evalStatus, setEvalStatus] = useState<AsyncTaskStatusDto | null>(null);
+  const [evalStoppedWaiting, setEvalStoppedWaiting] = useState(false);
   const evalAbortRef = useRef<AbortController | null>(null);
+  const evalTraceDedupeRef = useRef(createLabJobTraceDedupe());
 
   async function runEval() {
     evalAbortRef.current?.abort();
@@ -208,6 +255,10 @@ export function LabClassifierEvalPanel(
     setEvalOut(null);
     setEvalAccepted(null);
     setEvalStatus(null);
+    setEvalStoppedWaiting(false);
+    evalTraceDedupeRef.current = createLabJobTraceDedupe();
+    useLabJobSessionStore.getState().clearBackgroundHint();
+    let evalAsyncAccepted: LabJobAcceptedDto | null = null;
     try {
       const fd = new FormData();
       if (evalFile) {
@@ -242,16 +293,47 @@ export function LabClassifierEvalPanel(
         body: evalFile ? fd : undefined,
         signal,
       });
+      evalAsyncAccepted = accepted;
       setEvalAccepted(accepted);
-      const done = await followLabJob(accepted, (s) => setEvalStatus(s), {
-        mode: evalFollowMode,
-        signal,
-      });
+      if (!evalTraceDedupeRef.current.acceptedEmitted) {
+        evalTraceDedupeRef.current.acceptedEmitted = true;
+        traceLabJobQueued(accepted.jobId, t("traceJobQueued"));
+      }
+      const traceMessages = {
+        queued: t("traceJobQueued"),
+        running: t("traceJobRunning"),
+        completed: t("traceJobCompleted"),
+        failed: t("traceJobFailed"),
+        cancelled: t("traceJobCancelled"),
+      };
+      const done = await followLabJob(
+        accepted,
+        (s) => {
+          setEvalStatus(s);
+          emitLabJobTraceForTick(evalTraceDedupeRef.current, s, accepted.jobId, traceMessages);
+        },
+        {
+          mode: evalFollowMode,
+          signal,
+        },
+      );
       setEvalOut(done.result);
       void qc.invalidateQueries({ queryKey: classifierModelsQueryKey });
+      const hint = useLabJobSessionStore.getState().backgroundHint;
+      if (hint?.jobId === accepted.jobId) {
+        useLabJobSessionStore.getState().clearBackgroundHint();
+      }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         setEvalErr(t("jobCancelled"));
+        setEvalStoppedWaiting(true);
+        if (evalAsyncAccepted?.jobId) {
+          traceLabJobStoppedWaiting(evalAsyncAccepted.jobId, t("traceStoppedWaiting"));
+          useLabJobSessionStore.getState().setBackgroundHint({
+            jobId: evalAsyncAccepted.jobId,
+            stoppedWaiting: true,
+          });
+        }
       } else {
         setEvalErr(e instanceof Error ? e.message : t("evalError"));
       }
@@ -329,6 +411,7 @@ export function LabClassifierEvalPanel(
             accepted={evalAccepted}
             taskStatus={evalStatus}
             queuedHint={!!evalAccepted && !evalStatus}
+            stoppedWaiting={evalStoppedWaiting}
           />
         ) : null}
         {evalOut != null ? (

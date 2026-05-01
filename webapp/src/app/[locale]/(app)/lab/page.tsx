@@ -2,19 +2,29 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { HelpPopover } from "@/features/help/HelpPopover";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import { useTranslations } from "next-intl";
 
 export default function LabOverviewPage() {
   const t = useTranslations("Lab");
+  const tHelp = useTranslations("Help");
   const { data: status, isError, isLoading, refetch } = useLabStatus();
 
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader>
-          <CardTitle>{t("overviewTitle")}</CardTitle>
-          <CardDescription>{t("overviewDescription")}</CardDescription>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <CardTitle>{t("overviewTitle")}</CardTitle>
+            <CardDescription>{t("overviewDescription")}</CardDescription>
+          </div>
+          <HelpPopover
+            triggerAriaLabel={tHelp("labOverviewTriggerLabel")}
+            title={tHelp("labOverviewTitle")}
+            message={tHelp("labOverviewMessage")}
+            details={tHelp("labOverviewDetails")}
+          />
         </CardHeader>
         <CardContent className="space-y-4">
           {isError && (

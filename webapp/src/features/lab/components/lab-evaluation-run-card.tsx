@@ -5,6 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
+import {
+  createLabJobTraceDedupe,
+  emitLabJobTraceForTick,
+  traceLabJobQueued,
+  traceLabJobStoppedWaiting,
+} from "@/features/lab/lib/lab-job-trace";
+import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
 import type { LabJobFollowMode } from "@/lib/lab-job-follow";
@@ -48,7 +55,9 @@ export function LabEvaluationRunCard({
   const [accepted, setAccepted] = useState<LabJobAcceptedDto | null>(null);
   const [taskStatus, setTaskStatus] = useState<AsyncTaskStatusDto | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [stoppedWaiting, setStoppedWaiting] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const traceDedupeRef = useRef(createLabJobTraceDedupe());
 
   const datasetsReady = labStatus?.datasets.enabled ?? false;
 
@@ -61,6 +70,10 @@ export function LabEvaluationRunCard({
     setResult(null);
     setAccepted(null);
     setTaskStatus(null);
+    setStoppedWaiting(false);
+    traceDedupeRef.current = createLabJobTraceDedupe();
+    useLabJobSessionStore.getState().clearBackgroundHint();
+    let asyncAccepted: LabJobAcceptedDto | null = null;
     try {
       const params = new URLSearchParams();
       if (syncMode) {
@@ -80,15 +93,46 @@ export function LabEvaluationRunCard({
       }
 
       const acc = await apiFetch<LabJobAcceptedDto>(url, { method: "POST", signal });
+      asyncAccepted = acc;
       setAccepted(acc);
-      const done = await followLabJob(acc, (s) => setTaskStatus(s), {
-        mode: followMode,
-        signal,
-      });
+      if (!traceDedupeRef.current.acceptedEmitted) {
+        traceDedupeRef.current.acceptedEmitted = true;
+        traceLabJobQueued(acc.jobId, t("traceJobQueued"));
+      }
+      const traceMessages = {
+        queued: t("traceJobQueued"),
+        running: t("traceJobRunning"),
+        completed: t("traceJobCompleted"),
+        failed: t("traceJobFailed"),
+        cancelled: t("traceJobCancelled"),
+      };
+      const done = await followLabJob(
+        acc,
+        (s) => {
+          setTaskStatus(s);
+          emitLabJobTraceForTick(traceDedupeRef.current, s, acc.jobId, traceMessages);
+        },
+        {
+          mode: followMode,
+          signal,
+        },
+      );
       setResult(done.result);
+      const hint = useLabJobSessionStore.getState().backgroundHint;
+      if (hint?.jobId === acc.jobId) {
+        useLabJobSessionStore.getState().clearBackgroundHint();
+      }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         setErr(t("jobCancelled"));
+        setStoppedWaiting(true);
+        if (asyncAccepted?.jobId) {
+          traceLabJobStoppedWaiting(asyncAccepted.jobId, t("traceStoppedWaiting"));
+          useLabJobSessionStore.getState().setBackgroundHint({
+            jobId: asyncAccepted.jobId,
+            stoppedWaiting: true,
+          });
+        }
       } else {
         setErr(e instanceof Error ? e.message : t("evalError"));
       }
@@ -185,7 +229,12 @@ export function LabEvaluationRunCard({
           ) : null}
 
           {syncMode || (!accepted && !taskStatus) ? null : (
-            <LabJobPanel accepted={accepted} taskStatus={taskStatus} queuedHint={!!accepted && !taskStatus} />
+            <LabJobPanel
+              accepted={accepted}
+              taskStatus={taskStatus}
+              queuedHint={!!accepted && !taskStatus}
+              stoppedWaiting={stoppedWaiting}
+            />
           )}
 
           {result != null ? (
