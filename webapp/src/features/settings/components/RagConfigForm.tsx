@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm, type Resolver } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -23,41 +31,10 @@ import {
   useUserRagConfigQuery,
 } from "@/features/settings/hooks/use-rag-config";
 import { buildConfigValuesSchema, type ConfigFormValues } from "@/features/settings/lib/build-config-zod";
+import { labelProjectConfigField } from "@/features/settings/lib/project-config-field-copy";
+import { mergePayload, pickFormValues } from "@/features/settings/lib/rag-config-values";
 
 type Mode = "user" | "project";
-
-function pickFormValues(
-  config: Record<string, unknown> | undefined,
-  keys: string[],
-): ConfigFormValues {
-  const o: ConfigFormValues = {};
-  for (const k of keys) {
-    const v = config?.[k];
-    if (v === undefined || v === null) continue;
-    o[k] = v as string | number | boolean;
-  }
-  return o;
-}
-
-function mergePayload(
-  base: Record<string, unknown> | undefined,
-  values: ConfigFormValues,
-  keys: string[],
-): Record<string, unknown> {
-  const next: Record<string, unknown> = base ? { ...base } : {};
-  for (const k of keys) {
-    const v = values[k];
-    if (v === undefined) {
-      continue;
-    }
-    if (typeof v === "string" && v.trim() === "") {
-      delete next[k];
-    } else {
-      next[k] = v;
-    }
-  }
-  return next;
-}
 
 type RagConfigFormProps = {
   mode: Mode;
@@ -106,6 +83,8 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const saving = mode === "user" ? putUser.isPending : putProject.isPending;
   const clearing = delProject.isPending;
 
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+
   async function onSubmit(values: ConfigFormValues) {
     const payload = mergePayload(configData, values, editableKeys);
     if (mode === "user") {
@@ -115,9 +94,15 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
     }
   }
 
-  async function clearProjectOverrides() {
+  async function confirmClearProjectOverrides() {
     await delProject.mutateAsync();
     form.reset({});
+    setClearDialogOpen(false);
+  }
+
+  function fieldLabel(fieldKey: string): string {
+    if (mode !== "project") return fieldKey;
+    return labelProjectConfigField(fieldKey, (key) => t(key as never));
   }
 
   if (mode === "project" && !projectId) {
@@ -138,8 +123,14 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
         <CardDescription>
           {mode === "user"
             ? t("userConfigFormDescription")
-            : t("projectConfigFormDescription", { id: projectId ?? "" })}
+            : t("projectConfigFormDescription")}
         </CardDescription>
+        {mode === "project" && projectId ? (
+          <details className="text-muted-foreground text-xs">
+            <summary className="cursor-pointer font-medium">{t("projectConfigAdvancedSummary")}</summary>
+            <p className="mt-2 leading-relaxed">{t("projectConfigAdvancedDetails", { projectId })}</p>
+          </details>
+        ) : null}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {(schemaQ.isLoading || configLoading) && (
@@ -154,84 +145,114 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
           <p className="text-muted-foreground text-sm">{t("configSchemaEmpty")}</p>
         )}
         {!loadError && fields.length > 0 && (
-          <form className="flex flex-col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
-            {fields
-              .filter((f) => f.userEditable)
-              .map((f) => (
-                <div key={f.key} className="flex flex-col gap-2">
-                  <Label htmlFor={`cfg-${f.key}`}>{f.key}</Label>
-                  {f.type === "boolean" ? (
-                    <Controller
-                      name={f.key}
-                      control={form.control}
-                      render={({ field }) => (
-                        <input
-                          id={`cfg-${f.key}`}
-                          type="checkbox"
-                          className="size-4"
-                          checked={Boolean(field.value)}
-                          onChange={(e) => field.onChange(e.target.checked)}
-                        />
-                      )}
-                    />
-                  ) : (
-                    <Input
-                      id={`cfg-${f.key}`}
-                      type={f.type === "integer" || f.type === "number" ? "number" : "text"}
-                      step={f.type === "integer" ? "1" : undefined}
-                      min={f.min != null ? String(f.min) : undefined}
-                      max={f.max != null ? String(f.max) : undefined}
-                      {...form.register(f.key, {
-                        setValueAs: (v) => {
-                          if (v === "" || v === null || v === undefined) return undefined;
-                          if (f.type === "integer" || f.type === "number") {
-                            const n = Number(v);
-                            return Number.isNaN(n) ? undefined : n;
-                          }
-                          return v;
-                        },
-                      })}
-                    />
-                  )}
-                </div>
-              ))}
-            {Object.keys(form.formState.errors).length > 0 && (
-              <p className="text-destructive text-sm" role="alert">
-                {t("configValidationError")}
-              </p>
-            )}
-            {(putUser.isError || putProject.isError) && (
-              <p className="text-destructive text-sm" role="alert">
-                {t("configSaveError")}
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={saving}>
-                {t("configSave")}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  if (configData && editableKeys.length) {
-                    form.reset(pickFormValues(configData, editableKeys));
-                  }
-                }}
-              >
-                {t("configReload")}
-              </Button>
-              {mode === "project" ? (
+          <>
+            <form className="flex flex-col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
+              {fields
+                .filter((f) => f.userEditable)
+                .map((f) => (
+                  <div key={f.key} className="flex flex-col gap-2">
+                    <Label htmlFor={`cfg-${f.key}`}>{fieldLabel(f.key)}</Label>
+                    {f.type === "boolean" ? (
+                      <Controller
+                        name={f.key}
+                        control={form.control}
+                        render={({ field }) => (
+                          <input
+                            id={`cfg-${f.key}`}
+                            type="checkbox"
+                            className="size-4"
+                            checked={Boolean(field.value)}
+                            onChange={(e) => field.onChange(e.target.checked)}
+                          />
+                        )}
+                      />
+                    ) : (
+                      <Input
+                        id={`cfg-${f.key}`}
+                        type={f.type === "integer" || f.type === "number" ? "number" : "text"}
+                        step={f.type === "integer" ? "1" : undefined}
+                        min={f.min != null ? String(f.min) : undefined}
+                        max={f.max != null ? String(f.max) : undefined}
+                        {...form.register(f.key, {
+                          setValueAs: (v) => {
+                            if (v === "" || v === null || v === undefined) return undefined;
+                            if (f.type === "integer" || f.type === "number") {
+                              const n = Number(v);
+                              return Number.isNaN(n) ? undefined : n;
+                            }
+                            return v;
+                          },
+                        })}
+                      />
+                    )}
+                  </div>
+                ))}
+              {Object.keys(form.formState.errors).length > 0 && (
+                <p className="text-destructive text-sm" role="alert">
+                  {t("configValidationError")}
+                </p>
+              )}
+              {(putUser.isError || putProject.isError) && (
+                <p className="text-destructive text-sm" role="alert">
+                  {t("configSaveError")}
+                </p>
+              )}
+              {mode === "project" && delProject.isError && (
+                <p className="text-destructive text-sm" role="alert">
+                  {t("configDeleteError")}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" disabled={saving}>
+                  {t("configSave")}
+                </Button>
                 <Button
                   type="button"
-                  variant="destructive"
-                  disabled={clearing}
-                  onClick={() => void clearProjectOverrides()}
+                  variant="outline"
+                  onClick={() => {
+                    if (configData && editableKeys.length) {
+                      form.reset(pickFormValues(configData, editableKeys));
+                    }
+                  }}
                 >
-                  {t("configDeleteProject")}
+                  {mode === "project" ? t("projectConfigRevertChanges") : t("configReload")}
                 </Button>
-              ) : null}
-            </div>
-          </form>
+                {mode === "project" ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={clearing}
+                    onClick={() => setClearDialogOpen(true)}
+                  >
+                    {t("projectConfigClearButton")}
+                  </Button>
+                ) : null}
+              </div>
+            </form>
+            {mode === "project" ? (
+              <Dialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
+                <DialogContent showCloseButton className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>{t("projectConfigClearDialogTitle")}</DialogTitle>
+                    <DialogDescription>{t("projectConfigClearDialogDescription")}</DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter className="gap-2 sm:gap-0">
+                    <Button type="button" variant="outline" onClick={() => setClearDialogOpen(false)}>
+                      {t("projectConfigClearDialogCancel")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={clearing}
+                      onClick={() => void confirmClearProjectOverrides()}
+                    >
+                      {t("projectConfigClearDialogConfirm")}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            ) : null}
+          </>
         )}
       </CardContent>
     </Card>

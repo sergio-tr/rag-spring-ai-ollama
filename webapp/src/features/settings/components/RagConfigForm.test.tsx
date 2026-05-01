@@ -12,6 +12,7 @@ const mutateState = {
   putProjectPending: false,
   putProjectError: false,
   delProjectPending: false,
+  delProjectError: false,
 };
 
 type ConfigField = {
@@ -50,7 +51,11 @@ vi.mock("@/features/settings/hooks/use-rag-config", () => ({
     isPending: mutateState.putProjectPending,
     isError: mutateState.putProjectError,
   }),
-  useDeleteProjectRagConfig: () => ({ mutateAsync: delProject, isPending: mutateState.delProjectPending }),
+  useDeleteProjectRagConfig: () => ({
+    mutateAsync: delProject,
+    isPending: mutateState.delProjectPending,
+    isError: mutateState.delProjectError,
+  }),
 }));
 
 import { RagConfigForm } from "./RagConfigForm";
@@ -74,6 +79,7 @@ describe("RagConfigForm", () => {
     mutateState.putProjectPending = false;
     mutateState.putProjectError = false;
     mutateState.delProjectPending = false;
+    mutateState.delProjectError = false;
   });
 
   it("renders no-active-project message in project mode without projectId", () => {
@@ -141,7 +147,34 @@ describe("RagConfigForm", () => {
     expect(screen.getByText(/no configurable fields/i)).toBeInTheDocument();
   });
 
-  it("shows project mode actions and clears overrides", async () => {
+  it("shows product-oriented project description without legacy HTTP copy in the card body", async () => {
+    mockSchemaState.data = { fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }] };
+    mockProjectState.data = { topK: 3 };
+    render(
+      <IntlTestProvider>
+        <RagConfigForm mode="project" projectId="p1" />
+      </IntlTestProvider>,
+    );
+    await waitFor(() => expect(screen.getByLabelText(/passages to retrieve/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Project overrides from GET/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/These values apply only while this project is selected/i)).toBeInTheDocument();
+  });
+
+  it("surfaces REST paths only inside the optional technical reference section", async () => {
+    mockSchemaState.data = { fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }] };
+    mockProjectState.data = { topK: 3 };
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <RagConfigForm mode="project" projectId="proj-77" />
+      </IntlTestProvider>,
+    );
+    await waitFor(() => expect(screen.getByText(/Technical reference/i)).toBeInTheDocument());
+    await user.click(screen.getByText(/Technical reference \(API\)/i));
+    expect(screen.getByText(/\/config\/project\/proj-77/)).toBeInTheDocument();
+  });
+
+  it("confirms before clearing project overrides and preserves DELETE semantics", async () => {
     mockSchemaState.data = { fields: [{ key: "temperature", type: "number", userEditable: true }] };
     mockProjectState.data = { temperature: 0.4 };
     delProject.mockResolvedValueOnce({});
@@ -152,10 +185,36 @@ describe("RagConfigForm", () => {
       </IntlTestProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: /clear project overrides/i }));
+    await user.click(screen.getByRole("button", { name: /remove project overrides/i }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^remove overrides$/i }));
     await waitFor(() => {
       expect(delProject).toHaveBeenCalled();
     });
+  });
+
+  it("merges unknown keys into project PUT payload like before", async () => {
+    mockSchemaState.data = {
+      fields: [{ key: "topK", type: "integer", userEditable: true, min: 1, max: 50 }],
+    };
+    mockProjectState.data = { topK: 4, futureClientFlag: true };
+    putProject.mockResolvedValueOnce({});
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <RagConfigForm mode="project" projectId="p9" />
+      </IntlTestProvider>,
+    );
+
+    const input = await screen.findByLabelText(/passages to retrieve/i);
+    await user.clear(input);
+    await user.type(input, "6");
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(putProject).toHaveBeenCalled());
+    expect(putProject).toHaveBeenCalledWith(
+      expect.objectContaining({ topK: 6, futureClientFlag: true }),
+    );
   });
 
   it("shows save error when mutate hook is in error state", () => {
