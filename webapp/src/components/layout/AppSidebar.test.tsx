@@ -20,6 +20,11 @@ vi.mock("@/lib/api-client", () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
+const { pushMock, replaceMock } = vi.hoisted(() => ({
+  pushMock: vi.fn(),
+  replaceMock: vi.fn(),
+}));
+
 vi.mock("@/navigation", () => ({
   Link: ({ href, children, className }: { href: string; children: ReactNode; className?: string }) => (
     <a href={href} className={className}>
@@ -27,10 +32,8 @@ vi.mock("@/navigation", () => ({
     </a>
   ),
   usePathname: () => "/projects",
-  useRouter: () => ({ push: pushMock, refresh: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: pushMock, refresh: vi.fn(), replace: replaceMock }),
 }));
-
-const pushMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -114,6 +117,11 @@ vi.mock("@/features/chat/hooks/use-conversations", () => ({
     isError: false,
   }),
   useCreateConversation: () => mockCreateConversation,
+  useDeleteConversation: () => ({
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+    reset: vi.fn(),
+  }),
 }));
 
 const mockCreateConversation: { isPending: boolean; mutateAsync: ReturnType<typeof vi.fn> } = {
@@ -134,6 +142,7 @@ describe("AppSidebar", () => {
 
   beforeEach(() => {
     pushMock.mockReset();
+    replaceMock.mockReset();
     activateProjectMutateAsync.mockClear();
     mockProjectsState.data = {
       items: [
@@ -251,7 +260,7 @@ describe("AppSidebar", () => {
     expect(expandProject).toHaveAttribute("aria-expanded", "false");
     await user.click(expandProject);
     expect(expandProject).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("button", { name: /chat one/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^chat one$/i })).toBeInTheDocument();
 
     await user.click(projectsToggle);
     expect(projectsToggle).toHaveAttribute("aria-expanded", "false");
@@ -310,7 +319,7 @@ describe("AppSidebar", () => {
     render(<AppSidebar />, { wrapper: Wrapper });
     await user.click(screen.getByRole("button", { name: /new conversation/i }));
     expect(mockCreateConversation.mutateAsync).toHaveBeenCalled();
-    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c42");
+    expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p1&conversationId=c42");
   });
 
   it("searches chats across projects and activates when selecting a different project", async () => {
@@ -320,12 +329,12 @@ describe("AppSidebar", () => {
     await user.click(screen.getByRole("button", { name: /search chat/i }));
     await user.type(screen.getByPlaceholderText(/chat title/i), "budget");
 
-    const match = await screen.findByRole("button", { name: /budget chat/i });
+    const match = await screen.findByRole("button", { name: /^budget chat open$/i });
     await user.click(match);
     expect(activateProjectMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ id: "p2", name: "Project Two" }),
     );
-    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c2");
+    expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p2&conversationId=c2");
   });
 
   it("searches chats without re-activating when project is already active", async () => {
@@ -336,11 +345,11 @@ describe("AppSidebar", () => {
     await user.click(screen.getByRole("button", { name: /search chat/i }));
     await user.type(screen.getByPlaceholderText(/chat title/i), "budget");
 
-    const match = await screen.findByRole("button", { name: /budget chat/i });
+    const match = await screen.findByRole("button", { name: /^budget chat open$/i });
     await user.click(match);
 
     expect(activateProjectMutateAsync).not.toHaveBeenCalled();
-    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c2");
+    expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p2&conversationId=c2");
   });
 
   it("opens project without conversationId when project has no chats", async () => {
@@ -348,7 +357,7 @@ describe("AppSidebar", () => {
     const user = userEvent.setup();
     render(<AppSidebar />, { wrapper: Wrapper });
     await user.click(screen.getByRole("button", { name: /^project one$/i }));
-    expect(pushMock).toHaveBeenCalledWith("/chat");
+    expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p1");
   });
 
   it("clears stale active project when it is not in the current list", async () => {
@@ -366,12 +375,12 @@ describe("AppSidebar", () => {
 
     const expandProjectOne = screen.getByRole("button", { name: /expand chats for project one/i });
     await user.click(expandProjectOne);
-    await user.click(screen.getByRole("button", { name: /chat one/i }));
+    await user.click(screen.getByRole("button", { name: /^chat one$/i }));
 
     expect(activateProjectMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ id: "p1", name: "Project One" }),
     );
-    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c1");
+    expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p1&conversationId=c1");
   });
 
   it("disables new conversation CTA while create is pending", () => {

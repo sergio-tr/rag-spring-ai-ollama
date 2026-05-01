@@ -19,8 +19,13 @@ import {
   inferMainSection,
   settingsTabKeyFromPath,
 } from "@/components/layout/context-breadcrumb-logic";
+import { DeleteConversationDialog } from "@/features/chat/components/DeleteConversationDialog";
+import { useConversations } from "@/features/chat/hooks/use-conversations";
+import { DeleteAllProjectDocumentsDialog } from "@/features/documents/components/DeleteAllProjectDocumentsDialog";
+import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
 import { NewProjectDialog } from "@/features/projects/components/NewProjectDialog";
 import { usePathname, useRouter } from "@/navigation";
+import { buildProjectScopedChatHref } from "@/features/projects/lib/open-project-navigation";
 import { useAppStore } from "@/store/app.store";
 import { cn } from "@/lib/utils";
 
@@ -68,77 +73,141 @@ function ProjectsSectionActions() {
 function DocumentsSectionActions() {
   const t = useTranslations("SectionActions");
   const qc = useQueryClient();
-  const projectId = useAppStore((s) => s.activeProject?.id);
+  const activeProject = useAppStore((s) => s.activeProject);
+  const projectId = activeProject?.id;
+  const docsQuery = useProjectDocuments(projectId);
+  const docCount = docsQuery.data?.length ?? 0;
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
 
   function refreshList() {
     if (!projectId) return;
     void qc.invalidateQueries({ queryKey: ["project-documents", projectId] });
   }
 
+  const deleteAllDisabled =
+    !projectId || docsQuery.isLoading || docsQuery.isError || docCount === 0;
+
   return (
-    <DropdownMenu>
-      <SectionMenuTrigger ariaLabel={t("documentsMenuLabel")} />
-      <DropdownMenuContent align="end" className="min-w-56">
-        <DropdownMenuItem disabled={!projectId} onClick={refreshList}>
-          <span className="flex flex-col items-start gap-0">
-            <span>{t("refreshDocumentList")}</span>
-            {!projectId ? <MenuHint>{t("needsActiveProject")}</MenuHint> : null}
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-          <span>{t("deleteAllDocuments")}</span>
-          <MenuHint>{t("deleteAllDocumentsUnavailable")}</MenuHint>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <SectionMenuTrigger ariaLabel={t("documentsMenuLabel")} />
+        <DropdownMenuContent align="end" className="min-w-56">
+          <DropdownMenuItem disabled={!projectId} onClick={refreshList}>
+            <span className="flex flex-col items-start gap-0">
+              <span>{t("refreshDocumentList")}</span>
+              {!projectId ? <MenuHint>{t("needsActiveProject")}</MenuHint> : null}
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={deleteAllDisabled}
+            className="flex flex-col items-start"
+            onClick={() => {
+              if (!deleteAllDisabled) setDeleteAllOpen(true);
+            }}
+          >
+            <span>{t("deleteAllDocuments")}</span>
+            {!projectId ? (
+              <MenuHint>{t("needsActiveProject")}</MenuHint>
+            ) : docsQuery.isLoading ? (
+              <MenuHint>{t("deleteAllDocumentsLoadingHint")}</MenuHint>
+            ) : docsQuery.isError ? (
+              <MenuHint>{t("deleteAllDocumentsLoadErrorHint")}</MenuHint>
+            ) : docCount === 0 ? (
+              <MenuHint>{t("deleteAllDocumentsEmptyHint")}</MenuHint>
+            ) : (
+              <MenuHint>{t("deleteAllDocumentsIterativeHint")}</MenuHint>
+            )}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DeleteAllProjectDocumentsDialog
+        open={deleteAllOpen}
+        onOpenChange={setDeleteAllOpen}
+        projectId={projectId}
+        projectName={activeProject?.name}
+      />
+    </>
   );
 }
 
 function ChatSectionActionsInner() {
   const t = useTranslations("SectionActions");
+  const router = useRouter();
   const searchParams = useSearchParams();
   const conversationId = searchParams?.get("conversationId")?.trim() ?? null;
   const activeProject = useAppStore((s) => s.activeProject);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const convsQ = useConversations(activeProject?.id);
+  const conversationTitle =
+    conversationId && convsQ.data
+      ? (convsQ.data.find((c) => c.id === conversationId)?.title ?? "")
+      : "";
 
   const needsProject = !activeProject?.id;
   const needsConversation = !conversationId;
 
   return (
-    <DropdownMenu>
-      <SectionMenuTrigger ariaLabel={t("chatMenuLabel")} />
-      <DropdownMenuContent align="end" className="min-w-60">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="text-muted-foreground font-normal">
-            {t("chatMenuPhaseNote")}
-          </DropdownMenuLabel>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-          <span>{t("chatMoveProject")}</span>
-          <MenuHint>{needsProject ? t("needsActiveProject") : t("chatActionDeferred")}</MenuHint>
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-          <span>{t("chatModel")}</span>
-          <MenuHint>{t("chatActionDeferred")}</MenuHint>
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-          <span>{t("chatPreset")}</span>
-          <MenuHint>{t("chatActionDeferred")}</MenuHint>
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-          <span>{t("chatLimitRetrieval")}</span>
-          <MenuHint>{t("chatActionDeferred")}</MenuHint>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-          <span>{t("chatDelete")}</span>
-          <MenuHint>
-            {needsConversation ? t("needsActiveConversation") : t("chatDeleteUnavailable")}
-          </MenuHint>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <SectionMenuTrigger ariaLabel={t("chatMenuLabel")} />
+        <DropdownMenuContent align="end" className="min-w-60">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="text-muted-foreground font-normal">
+              {t("chatMenuPhaseNote")}
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
+            <span>{t("chatMoveProject")}</span>
+            <MenuHint>{needsProject ? t("needsActiveProject") : t("chatActionDeferred")}</MenuHint>
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
+            <span>{t("chatModel")}</span>
+            <MenuHint>{t("chatActionDeferred")}</MenuHint>
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
+            <span>{t("chatPreset")}</span>
+            <MenuHint>{t("chatActionDeferred")}</MenuHint>
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
+            <span>{t("chatLimitRetrieval")}</span>
+            <MenuHint>{t("chatActionDeferred")}</MenuHint>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={needsProject || needsConversation}
+            variant={needsProject || needsConversation ? "default" : "destructive"}
+            className={
+              needsProject || needsConversation ? "flex cursor-not-allowed flex-col items-start opacity-60" : ""
+            }
+            onClick={() => {
+              if (!needsProject && !needsConversation) setDeleteOpen(true);
+            }}
+          >
+            <span>{t("chatDelete")}</span>
+            {needsProject ? (
+              <MenuHint>{t("needsActiveProject")}</MenuHint>
+            ) : needsConversation ? (
+              <MenuHint>{t("needsActiveConversation")}</MenuHint>
+            ) : null}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DeleteConversationDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        projectId={activeProject?.id}
+        conversationId={conversationId ?? undefined}
+        conversationTitle={conversationTitle}
+        onDeleted={() => {
+          if (activeProject?.id) {
+            router.push(buildProjectScopedChatHref(activeProject.id, null));
+          }
+        }}
+      />
+    </>
   );
 }
 

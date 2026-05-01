@@ -11,6 +11,7 @@ import {
   Search,
   Settings,
   Shield,
+  Trash2,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
@@ -23,10 +24,15 @@ import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, authApiPath } from "@/lib/api-client";
 import { useProjectList, useActivateProject } from "@/features/projects/hooks/use-projects";
+import { DeleteConversationDialog } from "@/features/chat/components/DeleteConversationDialog";
 import { useConversations, useCreateConversation } from "@/features/chat/hooks/use-conversations";
 import { useAppStore } from "@/store/app.store";
 import type { ProjectSummary } from "@/types/api";
 import { fetchLatestConversationId } from "@/features/projects/lib/open-project-in-chat";
+import {
+  buildProjectScopedChatHref,
+  buildProjectScopedDocumentsHref,
+} from "@/features/projects/lib/open-project-navigation";
 import { NewProjectDialog } from "@/features/projects/components/NewProjectDialog";
 import { ProjectVisual } from "@/features/projects/components/ProjectVisual";
 import { getStoredUserRole, setStoredUserRole } from "@/lib/user-role";
@@ -157,11 +163,18 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
       colorHex: p.colorHex,
     });
     const convId = await fetchLatestConversationId(queryClient, p.id);
-    if (convId) {
-      router.push(`/chat?conversationId=${encodeURIComponent(convId)}`);
-      return;
+    router.push(buildProjectScopedChatHref(p.id, convId));
+  }
+
+  function handleConversationDeleted(projectId: string, deletedConversationId: string) {
+    const urlPid = searchParams?.get("projectId")?.trim() ?? null;
+    if (
+      pathname?.includes("/chat") &&
+      selectedConversationId === deletedConversationId &&
+      urlPid === projectId
+    ) {
+      router.push(buildProjectScopedChatHref(projectId, null));
     }
-    router.push("/chat");
   }
 
   const createConversation = useCreateConversation(activeProject?.id);
@@ -234,7 +247,7 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
             onClick={async () => {
               if (!activeProject?.id) return;
               const c = await createConversation.mutateAsync();
-              router.push(`/chat?conversationId=${encodeURIComponent(c.id)}`);
+              router.push(buildProjectScopedChatHref(activeProject.id, c.id));
             }}
           >
             {tChat("newConversation")}
@@ -273,11 +286,12 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
                 expandedProjectIds={expandedProjectIds}
                 query={searchQuery}
                 activateProject={activate}
+                onConversationDeleted={handleConversationDeleted}
                 onPickConversation={(projectId, conversationId) => {
                   if (activeProject?.id !== projectId) {
                     // Activation happens in the picker; this is just a safety net for local state.
                   }
-                  router.push(`/chat?conversationId=${encodeURIComponent(conversationId)}`);
+                  router.push(buildProjectScopedChatHref(projectId, conversationId));
                   setSearchOpen(false);
                 }}
               />
@@ -319,10 +333,11 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
                     activateProject={activate}
                     openProjectInChat={openProjectInChat}
                     selectedConversationId={selectedConversationId}
-                    chatRouteActive={pathname === "/chat" || pathname?.startsWith("/chat/")}
+                    chatRouteActive={Boolean(pathname?.includes("/chat"))}
                     searchQuery={searchQuery}
-                    onSelectConversation={(conversationId) => {
-                      router.push(`/chat?conversationId=${encodeURIComponent(conversationId)}`);
+                    onConversationDeleted={handleConversationDeleted}
+                    onSelectConversation={(projectId, conversationId) => {
+                      router.push(buildProjectScopedChatHref(projectId, conversationId));
                     }}
                   />
                 ))
@@ -340,13 +355,21 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
           {primaryLinks
             .filter((l) => (l.key === "admin" ? canSeeAdmin : true))
             .map((item) => {
-              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const documentsHref =
+                item.key === "documents" && activeProject?.id
+                  ? buildProjectScopedDocumentsHref(activeProject.id)
+                  : item.href;
+              const href = item.key === "documents" ? documentsHref : item.href;
+              const active =
+                item.key === "documents"
+                  ? pathname === "/documents" || (pathname ?? "").startsWith("/documents/")
+                  : pathname === item.href || (pathname ?? "").startsWith(`${item.href}/`);
               const Icon = item.icon;
               const railOnly = railCollapsed && variant === "desktop";
               return (
                 <Link
-                  key={item.href}
-                  href={item.href}
+                  key={item.key}
+                  href={href}
                   title={railOnly ? tNav(item.key) : undefined}
                   className={cn(
                     "flex items-center gap-2 rounded-md py-2 text-sm transition-colors",
@@ -423,7 +446,8 @@ type SidebarProjectNodeProps = Readonly<{
   selectedConversationId: string | null;
   chatRouteActive: boolean;
   searchQuery: string;
-  onSelectConversation: (conversationId: string) => void;
+  onConversationDeleted: (projectId: string, conversationId: string) => void;
+  onSelectConversation: (projectId: string, conversationId: string) => void;
 }>;
 
 function SidebarProjectNode({
@@ -436,6 +460,7 @@ function SidebarProjectNode({
   selectedConversationId,
   chatRouteActive,
   searchQuery,
+  onConversationDeleted,
   onSelectConversation,
 }: SidebarProjectNodeProps) {
   // Avoid fan-out: only load conversations when expanded or active.
@@ -447,6 +472,9 @@ function SidebarProjectNode({
   const filtered = searchQuery
     ? convs.filter((c) => c.title.toLowerCase().includes(searchQuery))
     : convs;
+
+  const tChat = useTranslations("Chat");
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
 
   return (
     <div className="mt-1">
@@ -481,27 +509,54 @@ function SidebarProjectNode({
         {convsQ.isError ? <div className="text-destructive px-6 py-1 text-xs">Failed to load chats</div> : null}
         {!convsQ.isLoading && !convsQ.isError
           ? filtered.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                className={cn(
-                  "hover:bg-sidebar-accent/80 ml-4 w-[calc(100%-1rem)] rounded-md px-2 py-1 text-left text-xs",
-                  chatRouteActive &&
-                    selectedConversationId === c.id &&
-                    "bg-sidebar-accent text-sidebar-accent-foreground",
-                )}
-                onClick={async () => {
-                  if (activeProjectId !== project.id) {
-                    await activateProject(project);
-                  }
-                  onSelectConversation(c.id);
-                }}
-              >
-                <span className="line-clamp-1">{c.title}</span>
-              </button>
+              <div key={c.id} className="ml-4 flex w-[calc(100%-1rem)] items-center gap-1">
+                <button
+                  type="button"
+                  className={cn(
+                    "hover:bg-sidebar-accent/80 min-w-0 flex-1 rounded-md px-2 py-1 text-left text-xs",
+                    chatRouteActive &&
+                      selectedConversationId === c.id &&
+                      "bg-sidebar-accent text-sidebar-accent-foreground",
+                  )}
+                  onClick={async () => {
+                    if (activeProjectId !== project.id) {
+                      await activateProject(project);
+                    }
+                    onSelectConversation(project.id, c.id);
+                  }}
+                >
+                  <span className="line-clamp-1">{c.title}</span>
+                </button>
+                <button
+                  type="button"
+                  className="hover:bg-sidebar-accent/80 text-muted-foreground hover:text-destructive shrink-0 rounded-md p-1"
+                  aria-label={tChat("deleteConversationTriggerAria", {
+                    title: (c.title ?? "").trim() || tChat("deleteConversationUntitled"),
+                  })}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPendingDelete({ id: c.id, title: c.title ?? "" });
+                  }}
+                >
+                  <Trash2 className="size-3.5" aria-hidden />
+                </button>
+              </div>
             ))
           : null}
       </div>
+      <DeleteConversationDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+        projectId={project.id}
+        conversationId={pendingDelete?.id}
+        conversationTitle={pendingDelete?.title ?? ""}
+        onDeleted={() => {
+          const id = pendingDelete?.id;
+          if (id) onConversationDeleted(project.id, id);
+        }}
+      />
     </div>
   );
 }
@@ -512,6 +567,7 @@ type SearchChatsBodyProps = Readonly<{
   expandedProjectIds: string[];
   query: string;
   activateProject: (p: ProjectSummary) => Promise<void>;
+  onConversationDeleted: (projectId: string, conversationId: string) => void;
   onPickConversation: (projectId: string, conversationId: string) => void;
 }>;
 
@@ -521,6 +577,7 @@ function SearchChatsBody({
   expandedProjectIds,
   query,
   activateProject,
+  onConversationDeleted,
   onPickConversation,
 }: SearchChatsBodyProps) {
   const q = query.trim().toLowerCase();
@@ -576,6 +633,7 @@ function SearchChatsBody({
                 query={q}
                 activeProjectId={activeProjectId}
                 activateProject={activateProject}
+                onConversationDeleted={onConversationDeleted}
                 onPickConversation={onPickConversation}
               />
             );
@@ -591,6 +649,7 @@ type SearchProjectGroupProps = Readonly<{
   query: string;
   activeProjectId: string | null;
   activateProject: (p: ProjectSummary) => Promise<void>;
+  onConversationDeleted: (projectId: string, conversationId: string) => void;
   onPickConversation: (projectId: string, conversationId: string) => void;
 }>;
 
@@ -599,8 +658,11 @@ function SearchProjectGroup({
   query,
   activeProjectId,
   activateProject,
+  onConversationDeleted,
   onPickConversation,
 }: SearchProjectGroupProps) {
+  const tChat = useTranslations("Chat");
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
   const convsQ = useConversations(project.id);
   const convs = convsQ.data ?? [];
   const matches = convs.filter((c) => c.title.toLowerCase().includes(query));
@@ -614,21 +676,48 @@ function SearchProjectGroup({
       </div>
       {convsQ.isLoading ? <p className="text-muted-foreground text-xs">Loading chats…</p> : null}
       {matches.map((c) => (
-        <button
-          key={c.id}
-          type="button"
-          className="hover:bg-muted flex w-full items-center justify-between rounded-md px-2 py-1 text-left text-sm"
-          onClick={async () => {
-            if (activeProjectId !== project.id) {
-              await activateProject(project);
-            }
-            onPickConversation(project.id, c.id);
-          }}
-        >
-          <span className="truncate">{c.title}</span>
-          <span className="text-muted-foreground shrink-0 text-xs">Open</span>
-        </button>
+        <div key={c.id} className="flex items-center gap-1">
+          <button
+            type="button"
+            className="hover:bg-muted flex min-w-0 flex-1 items-center justify-between rounded-md px-2 py-1 text-left text-sm"
+            onClick={async () => {
+              if (activeProjectId !== project.id) {
+                await activateProject(project);
+              }
+              onPickConversation(project.id, c.id);
+            }}
+          >
+            <span className="truncate">{c.title}</span>
+            <span className="text-muted-foreground shrink-0 text-xs">Open</span>
+          </button>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-destructive shrink-0 rounded-md p-1"
+            aria-label={tChat("deleteConversationTriggerAria", {
+              title: (c.title ?? "").trim() || tChat("deleteConversationUntitled"),
+            })}
+            onClick={(e) => {
+              e.stopPropagation();
+              setPendingDelete({ id: c.id, title: c.title ?? "" });
+            }}
+          >
+            <Trash2 className="size-4" aria-hidden />
+          </button>
+        </div>
       ))}
+      <DeleteConversationDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(next) => {
+          if (!next) setPendingDelete(null);
+        }}
+        projectId={project.id}
+        conversationId={pendingDelete?.id}
+        conversationTitle={pendingDelete?.title ?? ""}
+        onDeleted={() => {
+          const id = pendingDelete?.id;
+          if (id) onConversationDeleted(project.id, id);
+        }}
+      />
     </div>
   );
 }

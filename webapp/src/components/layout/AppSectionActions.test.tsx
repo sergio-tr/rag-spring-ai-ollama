@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
@@ -35,6 +35,53 @@ vi.mock("@/features/projects/hooks/use-projects", () => ({
   }),
 }));
 
+const docsHooksMock = vi.hoisted(() => ({
+  snapshot: {
+    data: [] as { id: string }[],
+    isLoading: false,
+    isError: false,
+  },
+}));
+
+const chatDeleteMocks = vi.hoisted(() => ({
+  deleteMutateAsync: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/features/chat/hooks/use-conversations", () => ({
+  useConversations: () => ({
+    data: [
+      {
+        id: "c1",
+        title: "Chat A",
+        updatedAt: "",
+        presetId: null,
+        effectivePresetId: null,
+        documentFilter: [],
+      },
+    ],
+  }),
+  useDeleteConversation: () => ({
+    mutateAsync: chatDeleteMocks.deleteMutateAsync,
+    isPending: false,
+    reset: vi.fn(),
+  }),
+}));
+
+vi.mock("@/features/documents/hooks/use-project-documents", () => ({
+  useProjectDocuments: () => docsHooksMock.snapshot,
+  useDeleteAllProjectDocuments: () => ({
+    mutateAsync: vi.fn(),
+    reset: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
+}));
+
+vi.mock("@/features/documents/components/DeleteAllProjectDocumentsDialog", () => ({
+  DeleteAllProjectDocumentsDialog: () => <div data-testid="delete-all-documents-dialog-mock" />,
+}));
+
 function renderActions() {
   const qc = createTestQueryClient();
   return {
@@ -56,6 +103,8 @@ describe("AppSectionActions", () => {
     mockRefresh.mockClear();
     mockSearchParams.mockReturnValue(new URLSearchParams());
     useAppStore.setState({ activeProject: null });
+    docsHooksMock.snapshot = { data: [], isLoading: false, isError: false };
+    chatDeleteMocks.deleteMutateAsync.mockClear();
   });
 
   it("projects menu trigger has an accessible name", () => {
@@ -101,9 +150,34 @@ describe("AppSectionActions", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ["project-documents", "p1"] });
   });
 
-  it("chat menu shows deferred placeholders and does not navigate when toggled", async () => {
+  it("documents menu disables delete-all when the project document list is empty", async () => {
+    mockPathname.mockReturnValue("/documents");
+    useAppStore.setState({ activeProject: { id: "p1", name: "P1" } });
+    docsHooksMock.snapshot = { data: [], isLoading: false, isError: false };
+    const user = userEvent.setup();
+    renderActions();
+    await user.click(screen.getByRole("button", { name: /documents actions/i }));
+    expect(screen.getByRole("menuitem", { name: /delete all documents/i })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("documents menu enables delete-all when documents exist", async () => {
+    mockPathname.mockReturnValue("/documents");
+    useAppStore.setState({ activeProject: { id: "p1", name: "P1" } });
+    docsHooksMock.snapshot = { data: [{ id: "d1" }], isLoading: false, isError: false };
+    const user = userEvent.setup();
+    renderActions();
+    await user.click(screen.getByRole("button", { name: /documents actions/i }));
+    const item = screen.getByRole("menuitem", { name: /delete all documents/i });
+    expect(item).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("chat menu shows deferred placeholders except delete", async () => {
     mockPathname.mockReturnValue("/chat");
-    mockSearchParams.mockReturnValue(new URLSearchParams({ conversationId: "c1" }));
+    mockSearchParams.mockReturnValue(new URLSearchParams({ conversationId: "c1", projectId: "p1" }));
+    useAppStore.setState({ activeProject: { id: "p1", name: "P1" } });
     const user = userEvent.setup();
     renderActions();
     await user.click(screen.getByRole("button", { name: /chat actions/i }));
@@ -112,8 +186,37 @@ describe("AppSectionActions", () => {
       "true",
     );
     expect(screen.getByRole("menuitem", { name: /model/i })).toHaveAttribute("aria-disabled", "true");
+    const deleteItem = screen.getByRole("menuitem", { name: /^Delete chat$/i });
+    expect(deleteItem).not.toHaveAttribute("aria-disabled", "true");
     await user.click(screen.getByRole("menuitem", { name: /move to another project/i }));
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("chat delete confirmation cancel does not call API", async () => {
+    mockPathname.mockReturnValue("/chat");
+    mockSearchParams.mockReturnValue(new URLSearchParams({ conversationId: "c1", projectId: "p1" }));
+    useAppStore.setState({ activeProject: { id: "p1", name: "P1" } });
+    const user = userEvent.setup();
+    renderActions();
+    await user.click(screen.getByRole("button", { name: /chat actions/i }));
+    await user.click(screen.getByRole("menuitem", { name: /^Delete chat$/i }));
+    const dlg = await screen.findByRole("dialog");
+    await user.click(within(dlg).getByRole("button", { name: /^Cancel$/i }));
+    expect(chatDeleteMocks.deleteMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("chat delete confirmation calls API and clears conversation from route", async () => {
+    mockPathname.mockReturnValue("/chat");
+    mockSearchParams.mockReturnValue(new URLSearchParams({ conversationId: "c1", projectId: "p1" }));
+    useAppStore.setState({ activeProject: { id: "p1", name: "P1" } });
+    const user = userEvent.setup();
+    renderActions();
+    await user.click(screen.getByRole("button", { name: /chat actions/i }));
+    await user.click(screen.getByRole("menuitem", { name: /^Delete chat$/i }));
+    const dlg = await screen.findByRole("dialog");
+    await user.click(within(dlg).getByRole("button", { name: /^Delete chat$/i }));
+    expect(chatDeleteMocks.deleteMutateAsync).toHaveBeenCalledWith("c1");
+    expect(mockPush).toHaveBeenCalledWith("/chat?projectId=p1");
   });
 
   it("settings menu calls router.refresh for reload", async () => {
