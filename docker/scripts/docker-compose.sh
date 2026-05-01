@@ -328,7 +328,7 @@ if [ "$MODE" = dev ]; then
   if [ "$WITH_CLASSIFIER" = true ] || [ "$WITH_RAG_BACKEND" = true ]; then
     echo "  Classifier:  in Docker (compose.dev.yml: Dockerfile.dev + uvicorn --reload). --rag applies this override even without --classifier."
   else
-    echo "  Classifier:  cd classifier-service && uvicorn main:app --reload --reload-dir app --port 8000"
+    echo "  Classifier:  cd classifier-service && uvicorn uvicorn_entry:app --reload --reload-dir app --port 8000"
   fi
   if [ "$WITH_RAG_BACKEND" = true ]; then
     echo "  Backend:     in Docker (backend-dev) — hot reload via DevTools. Container port ${SERVER_PORT:-9000}."

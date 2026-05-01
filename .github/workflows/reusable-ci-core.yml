@@ -340,7 +340,7 @@ jobs:
       - name: Start classifier-service (uvicorn)
         run: |
           python -m pip install -r classifier-service/requirements.txt
-          nohup python -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir classifier-service \
+          nohup python -m uvicorn uvicorn_entry:app --host 127.0.0.1 --port 8000 --app-dir classifier-service \
             > /tmp/classifier-service.log 2>&1 &
           echo $! > /tmp/classifier-service.pid
 

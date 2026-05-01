@@ -83,6 +83,11 @@ public class ChatMessageWorkService {
     @Transactional
     public void applyAssistantError(UUID assistantMessageId, UUID conversationId, String publicMessage) {
         MessageEntity m = messageRepository.findById(assistantMessageId).orElseThrow();
+        String safe =
+                publicMessage != null && !publicMessage.isBlank()
+                        ? publicMessage.trim()
+                        : "Sorry, we could not generate a reply. Please try again.";
+        m.setContent(safe);
         m.setStatus(MessageProcessingStatus.ERROR);
         Map<String, Object> meta = m.getExecutionMetadata() != null
                 ? new LinkedHashMap<>(m.getExecutionMetadata())

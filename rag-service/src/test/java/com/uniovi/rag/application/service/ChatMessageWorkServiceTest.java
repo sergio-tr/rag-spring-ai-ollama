@@ -135,6 +135,7 @@ class ChatMessageWorkServiceTest {
 
         chatMessageWorkService.applyAssistantError(assistantId, convId, "oops");
 
+        assertThat(m.getContent()).isEqualTo("oops");
         assertThat(m.getStatus()).isEqualTo(MessageProcessingStatus.ERROR);
         assertThat(m.getExecutionMetadata()).containsEntry("error", "oops");
         assertThat(m.getExecutionMetadata()).containsEntry("prev", 1);
@@ -191,6 +192,21 @@ class ChatMessageWorkServiceTest {
         chatMessageWorkService.applyAssistantError(assistantId, convId, "e1");
 
         verify(messageRepository).save(m);
+        assertThat(m.getContent()).isEqualTo("e1");
         assertThat(m.getExecutionMetadata()).containsEntry("error", "e1");
+    }
+
+    @Test
+    void applyAssistantError_blankPublicMessageUsesGenericUserSafeCopy() {
+        UUID assistantId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        MessageEntity m = new MessageEntity();
+        when(messageRepository.findById(assistantId)).thenReturn(Optional.of(m));
+        when(conversationRepository.findById(convId)).thenReturn(Optional.empty());
+
+        chatMessageWorkService.applyAssistantError(assistantId, convId, "   ");
+
+        assertThat(m.getContent()).contains("could not generate");
+        assertThat(m.getStatus()).isEqualTo(MessageProcessingStatus.ERROR);
     }
 }

@@ -11,11 +11,15 @@ type Props = {
   label: string;
 };
 
+type GoogleGIconProps = Readonly<{
+  className?: string;
+}>;
+
 /**
  * Multicolor Google "G" mark as inline SVG (no external assets).
  * Paths follow the commonly used compact 24×24 brand-colored variant.
  */
-function GoogleGIcon({ className }: { className?: string }) {
+function GoogleGIcon({ className }: GoogleGIconProps) {
   return (
     <svg
       className={className}
@@ -52,7 +56,7 @@ function GoogleGIcon({ className }: { className?: string }) {
  * Uses {@link resolveBrowserProductApiUrl}: path-only when {@code NEXT_PUBLIC_API_BASE_URL} is empty (nginx same-origin),
  * absolute backend URL when that env points at Spring (needed if you browse {@code WEBAPP_HTTP_PORT} alone).
  */
-export function GoogleOAuthButton({ locale, label }: Props) {
+export function GoogleOAuthButton({ locale, label }: Readonly<Props>) {
   const href = `${resolveBrowserProductApiUrl(authApiPath("/oauth/google/start"))}?locale=${encodeURIComponent(locale)}`;
 
   return (

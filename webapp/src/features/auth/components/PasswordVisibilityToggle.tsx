@@ -18,7 +18,7 @@ const toggleClassName =
 /**
  * Icon-only password visibility control (lucide-react). Uses aria-pressed for toggle state.
  */
-export function PasswordVisibilityToggle(props: Props) {
+export function PasswordVisibilityToggle(props: Readonly<Props>) {
   const { visible, onToggle, showPasswordLabel, hidePasswordLabel } = props;
 
   return (

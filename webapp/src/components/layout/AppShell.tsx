@@ -62,8 +62,9 @@ export function AppShell({ children, panelBody }: Readonly<AppShellProps>) {
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div
             className={cn(
-              "mx-auto px-4 py-6 md:px-8",
-              isChat ? "max-w-none w-full" : "max-w-5xl",
+              "mx-auto w-full px-4 py-6 md:px-8",
+              /** Chat: readable column width; inner chat UI still uses full allocated width. */
+              isChat ? "max-w-6xl" : "max-w-5xl",
             )}
           >
             {children}

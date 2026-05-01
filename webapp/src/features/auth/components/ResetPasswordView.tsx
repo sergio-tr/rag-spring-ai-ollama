@@ -63,8 +63,8 @@ export function ResetPasswordView() {
 
   useEffect(() => {
     if (status !== "ok") return;
-    const id = window.setTimeout(() => router.replace("/login"), 2500);
-    return () => window.clearTimeout(id);
+    const id = globalThis.setTimeout(() => router.replace("/login"), 2500);
+    return () => globalThis.clearTimeout(id);
   }, [status, router]);
 
   async function onSubmit(values: Values) {

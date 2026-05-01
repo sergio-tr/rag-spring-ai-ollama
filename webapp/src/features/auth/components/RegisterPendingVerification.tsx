@@ -58,9 +58,9 @@ export function RegisterPendingVerification() {
         </p>
       )}
       {message && (
-        <p className="text-muted-foreground text-sm" role="status">
+        <output className="text-muted-foreground block text-sm" aria-live="polite">
           {message}
-        </p>
+        </output>
       )}
       {error && (
         <p className="text-destructive text-sm" role="alert">

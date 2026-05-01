@@ -108,6 +108,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
+                        mock(DirectLlmWorkflow.class),
                         qu,
                         factory,
                         tools,
@@ -193,6 +194,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
+                        mock(DirectLlmWorkflow.class),
                         qu,
                         factory,
                         tools,
@@ -254,6 +256,7 @@ class RagExecutionOrchestratorJudgeIntegrationTest {
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
+                        mock(DirectLlmWorkflow.class),
                         qu,
                         factory,
                         tools,

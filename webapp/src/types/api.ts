@@ -80,6 +80,8 @@ export type ConversationDto = {
   title: string;
   updatedAt: string;
   presetId?: string | null;
+  /** When `presetId` is null, backend-resolved default preset id for UX (e.g. Demo_Worst). */
+  effectivePresetId?: string | null;
   /** Project document UUIDs limiting retrieval; empty = all documents in the project. */
   documentFilter?: string[];
 };

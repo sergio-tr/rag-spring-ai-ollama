@@ -14,7 +14,7 @@ function toAbsoluteUrl(pathOrUrl: string): string {
 
 /**
  * Subscribe to GET {product}/lab/jobs/{id}/events (SSE) with Bearer auth.
- * Polling is the default in the UI because it shares the same auth path as {@link pollLabJob}.
+ * Polling is the default in the UI because it shares the same auth path as `pollLabJob` in `async-task.ts`.
  */
 export async function streamLabJob(
   streamPath: string,

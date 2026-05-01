@@ -131,6 +131,7 @@ class RagExecutionOrchestratorAdvisorTest {
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
+                        mock(DirectLlmWorkflow.class),
                         qu,
                         factory,
                         tools,
@@ -234,6 +235,7 @@ class RagExecutionOrchestratorAdvisorTest {
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
+                        mock(DirectLlmWorkflow.class),
                         qu,
                         factory,
                         tools,
@@ -347,6 +349,7 @@ class RagExecutionOrchestratorAdvisorTest {
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
+                        mock(DirectLlmWorkflow.class),
                         qu,
                         factory,
                         tools,

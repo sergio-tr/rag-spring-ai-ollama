@@ -2,13 +2,8 @@
 """Rewrite classifier-service/coverage.xml <source> paths for SonarCloud.
 
 SonarScanner uses the repository root as project base (see sonar-project.properties).
-Coverage.py writes <source> as the absolute path to ./app (e.g. /home/runner/.../classifier-service/app)
-or sometimes as ``app``. Sonar then cannot map Cobertura entries to indexed files under
-``classifier-service/app``.
-
-This script normalizes every <source> under <sources> to the repo-relative path
-``classifier-service/app``. Class ``filename`` attributes are already relative to that
-directory (e.g. ``config.py``, ``evaluation/evaluator.py``) and must not be rewritten.
+Coverage.py emits mixed Cobertura filenames; we normalize them so ``<source>classifier-service</source>``
+plus ``filename`` equals the repo path (``app/main.py``, ``app/evaluation/evaluator.py``, ``uvicorn_entry.py``).
 """
 
 from __future__ import annotations
@@ -17,23 +12,22 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-TARGET_SOURCE = "classifier-service/app"
+SOURCE_ROOT = "classifier-service"
 
 
-def normalize_source_text(text: str) -> str:
-    t = (text or "").strip().replace("\\", "/")
-    if not t:
-        return TARGET_SOURCE
-    if t == TARGET_SOURCE:
-        return TARGET_SOURCE
-    if t == "app":
-        return TARGET_SOURCE
-    marker = "classifier-service/app"
-    if marker in t:
-        return TARGET_SOURCE
-    if "classifier-service" in t and t.rstrip("/").endswith("/app"):
-        return TARGET_SOURCE
-    return t
+def _rewrite_class_filenames(root_el: ET.Element) -> None:
+    """Point every measured module under ``app/``; keep ``uvicorn_entry.py`` at classifier root."""
+
+    for cls_el in root_el.iter("class"):
+        fn = cls_el.get("filename")
+        if not fn:
+            continue
+        if fn == "uvicorn_entry.py":
+            continue
+        if fn.startswith("app/"):
+            continue
+        if fn.endswith(".py"):
+            cls_el.set("filename", f"app/{fn}")
 
 
 def main() -> int:
@@ -49,10 +43,13 @@ def main() -> int:
 
     tree = ET.parse(coverage_path)
     root_el = tree.getroot()
+
+    _rewrite_class_filenames(root_el)
+
     sources_el = root_el.find("sources")
     if sources_el is not None:
-        for source_el in sources_el.findall("source"):
-            source_el.text = normalize_source_text(source_el.text or "")
+        sources_el.clear()
+        ET.SubElement(sources_el, "source").text = SOURCE_ROOT
 
     with coverage_path.open("wb") as f:
         tree.write(f, encoding="utf-8", xml_declaration=True)

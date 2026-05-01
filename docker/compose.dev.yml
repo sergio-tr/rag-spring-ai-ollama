@@ -23,7 +23,7 @@ services:
       dockerfile: Dockerfile.dev
     volumes:
       - ../classifier-service/app:/app/app
-      - ../classifier-service/main.py:/app/main.py
+      - ../classifier-service/uvicorn_entry.py:/app/uvicorn_entry.py
     environment:
       PORT: ${PORT:-8000}
       MODELS_DIR: ${MODELS_DIR:-/app/models}

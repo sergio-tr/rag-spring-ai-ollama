@@ -9,4 +9,6 @@ public record ConversationDto(
         String title,
         Instant updatedAt,
         UUID presetId,
-        List<String> documentFilter) {}
+        List<String> documentFilter,
+        /** Preset id shown to clients when {@link #presetId} is null — deterministic default ({@code Demo_Worst}). */
+        UUID effectivePresetId) {}

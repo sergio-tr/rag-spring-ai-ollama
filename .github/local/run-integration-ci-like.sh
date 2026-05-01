@@ -154,7 +154,7 @@ start_classifier() {
     -v "${REPO_ROOT}:/repo" \
     -v "${PIP_CACHE_VOLUME}:/root/.cache/pip" \
     -w /repo/classifier-service \
-    python:3.11-slim bash -lc "pip install -q -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000" \
+          python:3.11-slim bash -lc "pip install -q -r requirements.txt && uvicorn uvicorn_entry:app --host 0.0.0.0 --port 8000" \
     >/dev/null
 }
 

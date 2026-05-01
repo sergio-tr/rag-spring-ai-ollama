@@ -25,5 +25,8 @@ class RagApiExceptionHandlerTest {
         assertEquals(503, res.getBody().status());
         assertEquals("LLM_UNAVAILABLE", res.getBody().code());
         assertNotNull(res.getBody().message());
+        assertFalse(
+                res.getBody().message().toLowerCase().contains("<html"),
+                "API envelope must not echo HTML error pages");
     }
 }
