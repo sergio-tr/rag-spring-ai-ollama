@@ -27,7 +27,10 @@ export function useCreateConversation(projectId: string | undefined) {
         body: JSON.stringify({}),
       }),
     onSuccess: () => {
-      if (projectId) void qc.invalidateQueries({ queryKey: convKey(projectId) });
+      if (projectId) {
+        void qc.invalidateQueries({ queryKey: convKey(projectId) });
+        void qc.invalidateQueries({ queryKey: ["projects"] });
+      }
     },
   });
 }
@@ -52,6 +55,22 @@ export function usePatchConversation(projectId: string | undefined) {
       }),
     onSuccess: () => {
       if (projectId) void qc.invalidateQueries({ queryKey: convKey(projectId) });
+    },
+  });
+}
+
+/** DELETE `/conversations/{conversationId}` → 204 No Content */
+export function useDeleteConversation(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (conversationId: string) =>
+      apiFetch<void>(apiProductPath(`/conversations/${conversationId}`), {
+        method: "DELETE",
+      }),
+    onSuccess: (_data, conversationId) => {
+      void qc.invalidateQueries({ queryKey: msgKey(conversationId) });
+      if (projectId) void qc.invalidateQueries({ queryKey: convKey(projectId) });
+      void qc.invalidateQueries({ queryKey: ["projects"] });
     },
   });
 }

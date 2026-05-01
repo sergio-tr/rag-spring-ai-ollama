@@ -7,6 +7,7 @@ import {
   useConversationMessages,
   useConversations,
   useCreateConversation,
+  useDeleteConversation,
   usePatchConversation,
 } from "./use-conversations";
 
@@ -65,5 +66,12 @@ describe("use-conversations", () => {
       body: { title: "T" },
     });
     expect(apiFetch).toHaveBeenCalled();
+  });
+
+  it("useDeleteConversation sends DELETE and invalidates caches", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce(undefined);
+    const { result } = renderHook(() => useDeleteConversation("p1"), { wrapper: wrap(qc) });
+    await result.current.mutateAsync("c1");
+    expect(apiFetch).toHaveBeenCalledWith("/conversations/c1", expect.objectContaining({ method: "DELETE" }));
   });
 });
