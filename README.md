@@ -48,7 +48,7 @@ RAG (Retrieval-Augmented Generation) system built with **Spring Boot**, **Spring
 cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
 
 # 4. Classifier with hot-reload (terminal 3)
-cd classifier-service && uvicorn main:app --reload --reload-dir app
+cd classifier-service && uvicorn uvicorn_entry:app --reload --reload-dir app
 
 # Default HTTP API base (see rag-service application properties).
 # Override with RAG_API_PRODUCT_BASE_PATH (Spring) and NEXT_PUBLIC_RAG_API_PREFIX (Next.js).
