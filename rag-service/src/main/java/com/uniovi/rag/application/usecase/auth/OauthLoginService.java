@@ -59,6 +59,8 @@ public class OauthLoginService {
     private final String googleClientSecret;
     private final String googleIssuer;
     private final String googleRedirectPath;
+    /** When true, append {@code prompt=select_account} so Google shows the account picker on each login start. */
+    private final boolean googlePromptSelectAccount;
 
     private final SecureRandom secureRandom = new SecureRandom();
     private final RestClient restClient = RestClient.create();
@@ -77,7 +79,8 @@ public class OauthLoginService {
             @Value("${rag.auth.oauth.google.client-secret:}") String googleClientSecret,
             @Value("${rag.auth.oauth.google.issuer:https://accounts.google.com}") String googleIssuer,
             @Value("${rag.auth.oauth.google.redirect-path:${rag.api.product-base-path}/auth/oauth/google/callback}")
-                    String googleRedirectPath) {
+                    String googleRedirectPath,
+            @Value("${rag.auth.oauth.google.prompt-select-account:true}") boolean googlePromptSelectAccount) {
         this.userAccountPort = userAccountPort;
         this.oauthIdentityRepository = oauthIdentityRepository;
         this.oauthLoginExchangeCodeRepository = oauthLoginExchangeCodeRepository;
@@ -91,6 +94,7 @@ public class OauthLoginService {
         this.googleClientSecret = googleClientSecret != null ? googleClientSecret : "";
         this.googleIssuer = googleIssuer != null ? googleIssuer : "https://accounts.google.com";
         this.googleRedirectPath = googleRedirectPath != null ? googleRedirectPath : "/auth/oauth/google/callback";
+        this.googlePromptSelectAccount = googlePromptSelectAccount;
     }
 
     public String googleStartUrl(String locale) {
@@ -106,12 +110,20 @@ public class OauthLoginService {
                 "OAuth Google authorization redirect_uri (must exactly match an Authorized redirect URI in Google Cloud Console): {}",
                 redirectUri);
         String state = createStateToken(resolvedLocale);
-        return "https://accounts.google.com/o/oauth2/v2/auth"
-                + "?client_id=" + urlEncode(googleClientId)
-                + "&redirect_uri=" + urlEncode(redirectUri)
-                + "&response_type=code"
-                + "&scope=" + urlEncode("openid email profile")
-                + "&state=" + urlEncode(state);
+        StringBuilder url = new StringBuilder("https://accounts.google.com/o/oauth2/v2/auth")
+                .append("?client_id=")
+                .append(urlEncode(googleClientId))
+                .append("&redirect_uri=")
+                .append(urlEncode(redirectUri))
+                .append("&response_type=code")
+                .append("&scope=")
+                .append(urlEncode("openid email profile"))
+                .append("&state=")
+                .append(urlEncode(state));
+        if (googlePromptSelectAccount) {
+            url.append("&prompt=").append(urlEncode("select_account"));
+        }
+        return url.toString();
     }
 
     @Transactional
