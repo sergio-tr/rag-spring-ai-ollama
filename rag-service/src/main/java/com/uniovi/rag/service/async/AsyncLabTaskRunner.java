@@ -99,9 +99,13 @@ public class AsyncLabTaskRunner {
         try {
             AsyncTaskEntity pre = asyncTaskRepository.findById(taskId).orElse(null);
             if (pre == null) {
+                log.warn(
+                        "async_task_missing taskId={} — runner ran before the row was visible (transaction ordering bug if recurring)",
+                        taskId);
                 return;
             }
             if (pre.getStatus() != AsyncTaskStatus.QUEUED) {
+                log.debug("async_task_skip taskId={} status={} — not queued (duplicate dispatch or already advanced)", taskId, pre.getStatus());
                 return;
             }
             type = pre.getTaskType();

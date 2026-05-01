@@ -7,6 +7,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.application.port.AfterCommitTaskScheduler;
 import com.uniovi.rag.service.async.lab.LabJobPayloadKeys;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import org.springframework.http.HttpStatus;
@@ -30,16 +31,19 @@ public class AsyncTaskService {
     private final UserRepository userRepository;
     private final ProjectAccessService projectAccessService;
     private final AsyncLabTaskRunner asyncLabTaskRunner;
+    private final AfterCommitTaskScheduler afterCommitTaskScheduler;
 
     public AsyncTaskService(
             AsyncTaskRepository asyncTaskRepository,
             UserRepository userRepository,
             ProjectAccessService projectAccessService,
-            AsyncLabTaskRunner asyncLabTaskRunner) {
+            AsyncLabTaskRunner asyncLabTaskRunner,
+            AfterCommitTaskScheduler afterCommitTaskScheduler) {
         this.asyncTaskRepository = asyncTaskRepository;
         this.userRepository = userRepository;
         this.projectAccessService = projectAccessService;
         this.asyncLabTaskRunner = asyncLabTaskRunner;
+        this.afterCommitTaskScheduler = afterCommitTaskScheduler;
     }
 
     @Transactional
@@ -230,8 +234,10 @@ public class AsyncTaskService {
         }
         AsyncTaskEntity e = AsyncTaskEntity.queued(user, project, type, payload, Instant.now());
         asyncTaskRepository.save(e);
-        asyncLabTaskRunner.execute(e.getId());
-        return e.getId();
+        UUID taskId = e.getId();
+        // Same pattern as ChatMessageApplicationService: @Async runner must see committed QUEUED row.
+        afterCommitTaskScheduler.scheduleAfterCommit(() -> asyncLabTaskRunner.execute(taskId));
+        return taskId;
     }
 
     @Transactional
