@@ -23,6 +23,8 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -36,6 +38,8 @@ import org.springframework.web.client.RestClient;
 
 @Service
 public class OauthLoginService {
+
+    private static final Logger log = LoggerFactory.getLogger(OauthLoginService.class);
 
     private static final String PROVIDER_GOOGLE = "google";
     private static final long EXCHANGE_TTL_SECONDS = 120;
@@ -98,6 +102,9 @@ public class OauthLoginService {
             throw new IllegalStateException("OAuth enabled but Google client-id is empty");
         }
         String redirectUri = buildRedirectUri();
+        log.debug(
+                "OAuth Google authorization redirect_uri (must exactly match an Authorized redirect URI in Google Cloud Console): {}",
+                redirectUri);
         String state = createStateToken(resolvedLocale);
         return "https://accounts.google.com/o/oauth2/v2/auth"
                 + "?client_id=" + urlEncode(googleClientId)
