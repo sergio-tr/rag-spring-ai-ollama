@@ -17,7 +17,7 @@ export type SsePostHandlersExtended = SsePostHandlers & {
 /**
  * POST + SSE (text/event-stream): parses Spring SseEmitter frames (event + data lines).
  *
- * Lifecycle: pass an {@link AbortSignal} to cancel the fetch and the body reader. There is **no** automatic
+ * Lifecycle: pass an `AbortSignal` to cancel the fetch and the body reader. There is **no** automatic
  * retry (avoids duplicate assistant messages). Use {@link createTraceparent} via the `traceparent` header for OTEL correlation.
  */
 export async function postSseJson(

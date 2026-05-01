@@ -49,9 +49,9 @@ export function authApiPath(path: string): string {
 }
 
 /**
- * Full browser URL for product API paths (e.g. OAuth {@code <a href>}).
- * When {@code NEXT_PUBLIC_API_BASE_URL} is empty/whitespace, returns a same-origin path for nginx reverse-proxy.
- * When set (e.g. {@code http://127.0.0.1:9000}), prefixes so navigation works if the UI is opened on the webapp port only.
+ * Full browser URL for product API paths (e.g. OAuth redirects using `<a href>`).
+ * When `NEXT_PUBLIC_API_BASE_URL` is empty/whitespace, returns a same-origin path for nginx reverse-proxy.
+ * When set (e.g. `http://127.0.0.1:9000`), prefixes so navigation works if the UI is opened on the webapp port only.
  */
 export function resolveBrowserProductApiUrl(path: string): string {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
