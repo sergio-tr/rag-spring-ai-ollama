@@ -24,6 +24,8 @@ Do **not** mix Path A and Path B in the same CI job (no Python Testcontainers al
 
 **Removed from pytest:** `GET {product}/projects` happy path after login — covered by Playwright API (`login.api.spec.ts`, `projects.api.spec.ts`, `system-smoke.chain.spec.ts`).
 
+**Phase 8E (JSON safety vs HTML):** `test_stack_integration.py` asserts authenticated **`GET {product}/lab/status`** shape, **`POST {product}/me/account/export`** **202** payload, and unknown product route **404** with **`application/json`** (via `_assert_json_response_not_html`).
+
 ## Location
 
 - Code: `tests/integration/`

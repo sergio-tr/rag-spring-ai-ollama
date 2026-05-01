@@ -26,6 +26,40 @@ class ApiErrorControllerUnitTest {
         assertThat(body).isNotNull();
         assertThat(body.status()).isEqualTo(404);
         assertThat(body.code()).isEqualTo("NOT_FOUND");
+        assertThat(body.success()).isFalse();
+        assertThat(body.error().code()).isEqualTo("NOT_FOUND");
+        assertThat(body.message().toLowerCase()).doesNotContain("<html");
+    }
+
+    @Test
+    void error_404_productPath_returnsSameEnvelopeShape() {
+        ApiErrorController controller = new ApiErrorController();
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setAttribute(RequestDispatcher.ERROR_STATUS_CODE, 404);
+        req.setAttribute(RequestDispatcher.ERROR_REQUEST_URI, "/api/v5/does-not-exist-route");
+
+        var res = controller.error(req);
+        assertThat(res.getBody()).isNotNull();
+        assertThat(res.getBody().success()).isFalse();
+        assertThat(res.getBody().error().code()).isEqualTo("NOT_FOUND");
+        assertThat(res.getHeaders().getContentType().toString()).contains("application/json");
+    }
+
+    @Test
+    void error_401_returnsUnauthorizedEnvelope_notHtml() {
+        ApiErrorController controller = new ApiErrorController();
+        MockHttpServletRequest req = new MockHttpServletRequest();
+        req.setAttribute(RequestDispatcher.ERROR_STATUS_CODE, 401);
+        req.setAttribute(RequestDispatcher.ERROR_REQUEST_URI, "/api/auth/me");
+
+        var res = controller.error(req);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        ApiErrorResponse body = res.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.code()).isEqualTo("UNAUTHENTICATED");
+        assertThat(body.success()).isFalse();
+        assertThat(body.error().code()).isEqualTo("UNAUTHENTICATED");
+        assertThat(body.message().toLowerCase()).doesNotContain("<html");
     }
 }
 
