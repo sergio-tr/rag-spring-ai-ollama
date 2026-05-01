@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -171,8 +172,33 @@ class AuthServiceTest {
 				"en");
 	}
 
+	private AuthService newServiceEmailAndMailEnabledDefaultLocale(String defaultLocale) {
+		return new AuthService(
+				userAccountPort,
+				passwordEncoder,
+				jwtService,
+				emailConfirmationTokenRepository,
+				passwordResetTokenRepository,
+				mailOutboxRepository,
+				true,
+				true,
+				true,
+				"no-reply@local.test",
+				"http://localhost:3000/",
+				3600,
+				3600,
+				false,
+				"",
+				"",
+				defaultLocale);
+	}
+
 	private static RegisterRequest registerRequest(String email) {
 		return new RegisterRequest("Name", email, "password123", "en", true, true, "v1", "v1");
+	}
+
+	private static RegisterRequest registerRequestWithLocale(String email, String locale) {
+		return new RegisterRequest("Name", email, "password123", locale, true, true, "v1", "v1");
 	}
 
 	@Test
@@ -328,7 +354,8 @@ class AuthServiceTest {
 		when(emailConfirmationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
 
 		assertThatThrownBy(() -> newServiceEmailAndMailEnabled().confirmEmail(new ConfirmEmailRequest("raw")))
-				.isInstanceOf(AuthTokenException.class);
+				.isInstanceOfSatisfying(AuthTokenException.class,
+						ex -> assertThat(ex.getCode()).isEqualTo("CONFIRM_TOKEN_ALREADY_USED"));
 	}
 
 	@Test
@@ -339,7 +366,36 @@ class AuthServiceTest {
 		when(emailConfirmationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
 
 		assertThatThrownBy(() -> newServiceEmailAndMailEnabled().confirmEmail(new ConfirmEmailRequest("raw")))
-				.isInstanceOf(AuthTokenException.class);
+				.isInstanceOfSatisfying(AuthTokenException.class,
+						ex -> assertThat(ex.getCode()).isEqualTo("CONFIRM_TOKEN_EXPIRED"));
+	}
+
+	@Test
+	void confirmEmail_unknownToken_throwsConfirmTokenInvalid() {
+		when(emailConfirmationTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> newServiceEmailAndMailEnabled().confirmEmail(new ConfirmEmailRequest("raw")))
+				.isInstanceOfSatisfying(AuthTokenException.class,
+						ex -> assertThat(ex.getCode()).isEqualTo("CONFIRM_TOKEN_INVALID"));
+	}
+
+	@Test
+	void confirmEmail_secondUseFails_afterSuccessfulConsumption() {
+		UserEntity u = mock(UserEntity.class);
+		EmailConfirmationTokenEntity tok = new EmailConfirmationTokenEntity();
+		tok.setUser(u);
+		tok.setConsumedAt(null);
+		tok.setExpiresAt(Instant.now().plusSeconds(60));
+		when(emailConfirmationTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
+		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+		newServiceEmailAndMailEnabled().confirmEmail(new ConfirmEmailRequest("raw"));
+
+		assertThat(tok.getConsumedAt()).isNotNull();
+
+		assertThatThrownBy(() -> newServiceEmailAndMailEnabled().confirmEmail(new ConfirmEmailRequest("raw")))
+				.isInstanceOfSatisfying(AuthTokenException.class,
+						ex -> assertThat(ex.getCode()).isEqualTo("CONFIRM_TOKEN_ALREADY_USED"));
 	}
 
 	@Test
@@ -387,6 +443,16 @@ class AuthServiceTest {
 	}
 
 	@Test
+	void forgotPassword_whenDisabled_doesNotPersistResetOrMail_evenWhenUserExists() {
+		newService().forgotPassword(
+				new ForgotPasswordRequest("exists@user.com", "en"), "127.0.0.1", "test-agent");
+
+		verify(userAccountPort, never()).findByEmailIgnoreCase(any());
+		verify(passwordResetTokenRepository, never()).save(any(PasswordResetTokenEntity.class));
+		verify(mailOutboxRepository, never()).save(any(MailOutboxEntity.class));
+	}
+
+	@Test
 	void resetPassword_invalidToken_throws() {
 		when(passwordResetTokenRepository.findByTokenHash(any())).thenReturn(Optional.empty());
 
@@ -423,6 +489,90 @@ class AuthServiceTest {
 	}
 
 	@Test
+	void resetPassword_secondUseFails_afterSuccessfulConsumption() {
+		UserEntity u = mock(UserEntity.class);
+		PasswordResetTokenEntity tok = new PasswordResetTokenEntity();
+		tok.setUser(u);
+		tok.setConsumedAt(null);
+		tok.setExpiresAt(Instant.now().plusSeconds(300));
+		when(passwordResetTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
+		when(passwordEncoder.encode("newpw")).thenReturn("encoded-new");
+		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+		newServicePasswordResetEnabled().resetPassword(new ResetPasswordRequest("raw", "newpw"));
+
+		assertThat(tok.getConsumedAt()).isNotNull();
+
+		assertThatThrownBy(() -> newServicePasswordResetEnabled()
+						.resetPassword(new ResetPasswordRequest("raw", "newpw")))
+				.isInstanceOfSatisfying(AuthTokenException.class,
+						ex -> assertThat(ex.getCode()).isEqualTo("RESET_TOKEN_ALREADY_USED"));
+	}
+
+	@Test
+	void resetPassword_then_login_oldPasswordFails_newPasswordSucceeds() {
+		UUID id = UUID.randomUUID();
+		UserEntity u = mock(UserEntity.class);
+		when(u.getId()).thenReturn(id);
+		lenient().when(u.getEmail()).thenReturn("user@test.com");
+		when(u.getName()).thenReturn("U");
+		when(u.getRole()).thenReturn(UserRole.USER);
+
+		PasswordResetTokenEntity tok = new PasswordResetTokenEntity();
+		tok.setUser(u);
+		tok.setConsumedAt(null);
+		tok.setExpiresAt(Instant.now().plusSeconds(300));
+		when(passwordResetTokenRepository.findByTokenHash(any())).thenReturn(Optional.of(tok));
+		when(passwordEncoder.encode("newpw")).thenReturn("encoded-new");
+		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+		newServicePasswordResetEnabled().resetPassword(new ResetPasswordRequest("raw", "newpw"));
+
+		when(userAccountPort.findByEmailIgnoreCase("user@test.com")).thenReturn(Optional.of(u));
+		when(u.getPasswordHash()).thenReturn("encoded-new");
+		when(passwordEncoder.matches("oldpw", "encoded-new")).thenReturn(false);
+
+		assertThatThrownBy(() -> newServicePasswordResetEnabled().login(new LoginRequest("user@test.com", "oldpw")))
+				.isInstanceOf(InvalidCredentialsException.class);
+
+		when(passwordEncoder.matches("newpw", "encoded-new")).thenReturn(true);
+		when(jwtService.createAccessToken(any(), any(), any())).thenReturn("acc");
+		when(jwtService.createRefreshToken(any())).thenReturn("ref");
+
+		LoginResponse loggedIn =
+				newServicePasswordResetEnabled().login(new LoginRequest("user@test.com", "newpw"));
+		assertThat(loggedIn.accessToken()).isEqualTo("acc");
+	}
+
+	@Test
+	void register_withNullLocale_usesDefaultLocaleInConfirmationLink() {
+		when(userAccountPort.findByEmailIgnoreCase("loc@user.com")).thenReturn(Optional.empty());
+		when(passwordEncoder.encode("password123")).thenReturn("encoded");
+		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+		newServiceEmailAndMailEnabledDefaultLocale("fr").register(
+				registerRequestWithLocale("loc@user.com", null));
+
+		ArgumentCaptor<MailOutboxEntity> outbox = ArgumentCaptor.forClass(MailOutboxEntity.class);
+		verify(mailOutboxRepository).save(outbox.capture());
+		assertThat(outbox.getValue().getBodyText()).contains("/fr/confirm-email?token=");
+	}
+
+	@Test
+	void register_withInvalidLocaleString_fallsBackToDefaultLocaleInConfirmationLink() {
+		when(userAccountPort.findByEmailIgnoreCase("loc2@user.com")).thenReturn(Optional.empty());
+		when(passwordEncoder.encode("password123")).thenReturn("encoded");
+		when(userAccountPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+		newServiceEmailAndMailEnabledDefaultLocale("de").register(
+				registerRequestWithLocale("loc2@user.com", "###not-a-locale###"));
+
+		ArgumentCaptor<MailOutboxEntity> outbox = ArgumentCaptor.forClass(MailOutboxEntity.class);
+		verify(mailOutboxRepository).save(outbox.capture());
+		assertThat(outbox.getValue().getBodyText()).contains("/de/confirm-email?token=");
+	}
+
+	@Test
 	void resendConfirmation_unverifiedUser_issuesNewTokenAndMail() {
 		UserEntity u = mock(UserEntity.class);
 		when(u.isEmailVerified()).thenReturn(false);
@@ -433,6 +583,20 @@ class AuthServiceTest {
 
 		verify(emailConfirmationTokenRepository).save(any(EmailConfirmationTokenEntity.class));
 		verify(mailOutboxRepository).save(any(MailOutboxEntity.class));
+	}
+
+	@Test
+	void resendConfirmation_unverifiedUser_twice_createsTwoOutboxRows() {
+		UserEntity u = mock(UserEntity.class);
+		when(u.isEmailVerified()).thenReturn(false);
+		when(u.getEmail()).thenReturn("twice@user.com");
+		when(userAccountPort.findByEmailIgnoreCase("twice@user.com")).thenReturn(Optional.of(u));
+
+		AuthService svc = newServiceEmailAndMailEnabled();
+		svc.resendConfirmation(new ResendConfirmationRequest("twice@user.com", "en"));
+		svc.resendConfirmation(new ResendConfirmationRequest("twice@user.com", "en"));
+
+		verify(mailOutboxRepository, times(2)).save(any(MailOutboxEntity.class));
 	}
 
 	@Test

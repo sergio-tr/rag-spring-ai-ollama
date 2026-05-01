@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest.auth;
 
 import com.uniovi.rag.application.usecase.auth.OauthLoginService;
+import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
 import com.uniovi.rag.interfaces.rest.support.ApiEarlyExceptionResolver;
@@ -85,6 +86,52 @@ class OauthControllerWebMvcTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"code\":\"\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void exchange_v5Route_unknownCode_returns401InvalidCredentials() throws Exception {
+        when(oauthLoginService.exchange("missing-exchange-code")).thenThrow(new InvalidCredentialsException());
+
+        mockMvc.perform(post("/api/v5/auth/oauth/exchange")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"missing-exchange-code\"}")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+    }
+
+    @Test
+    void callbackGoogle_providerError_redirectsToWebappWithOauthError() throws Exception {
+        when(oauthLoginService.handleGoogleCallback(isNull(), eq("st"), eq("access_denied")))
+                .thenReturn("http://localhost:3000/en/login?oauth=error");
+
+        mockMvc.perform(get("/api/v5/auth/oauth/google/callback")
+                        .param("state", "st")
+                        .param("error", "access_denied"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("http://localhost:3000/en/login?oauth=error"));
+    }
+
+    @Test
+    void callbackGoogle_missingCode_redirectsToWebappWithOauthError() throws Exception {
+        when(oauthLoginService.handleGoogleCallback(isNull(), eq("st"), isNull()))
+                .thenReturn("http://localhost:3000/en/login?oauth=error");
+
+        mockMvc.perform(get("/api/v5/auth/oauth/google/callback").param("state", "st"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("http://localhost:3000/en/login?oauth=error"));
+    }
+
+    @Test
+    void callbackGoogle_invalidState_redirectsToWebappWithInvalidStateQuery() throws Exception {
+        when(oauthLoginService.handleGoogleCallback(eq("c"), eq("bad-state"), isNull()))
+                .thenReturn("http://localhost:3000/en/login?oauth=invalid_state");
+
+        mockMvc.perform(get("/api/v5/auth/oauth/google/callback")
+                        .param("code", "c")
+                        .param("state", "bad-state"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("http://localhost:3000/en/login?oauth=invalid_state"));
     }
 
     @Test

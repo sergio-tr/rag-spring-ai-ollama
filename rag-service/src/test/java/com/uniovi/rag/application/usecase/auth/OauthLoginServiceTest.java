@@ -169,6 +169,46 @@ class OauthLoginServiceTest {
     }
 
     @Test
+    void exchange_unknownCode_throwsInvalidCredentials() {
+        when(oauthLoginExchangeCodeRepository.findByCodeHash(any())).thenReturn(Optional.empty());
+
+        OauthLoginService svc = new OauthLoginService(
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
+                true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
+                "/api/v5/auth/oauth/google/callback", true);
+        assertThatThrownBy(() -> svc.exchange("unknown-raw-code")).isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
+    void exchange_secondCallFails_afterSuccessfulExchange_singleUse() {
+        UserEntity u = mock(UserEntity.class);
+        when(u.getId()).thenReturn(UUID.randomUUID());
+        when(u.getEmail()).thenReturn("a@b.com");
+        when(u.getName()).thenReturn("N");
+
+        OauthLoginExchangeCodeEntity e = new OauthLoginExchangeCodeEntity();
+        e.setUser(u);
+        e.setCodeHash("h");
+        e.setCreatedAt(Instant.now());
+        e.setExpiresAt(Instant.now().plusSeconds(60));
+
+        when(oauthLoginExchangeCodeRepository.findByCodeHash(any())).thenReturn(Optional.of(e));
+        when(jwtService.createAccessToken(any(), any(), any())).thenReturn("acc");
+        when(jwtService.createRefreshToken(any())).thenReturn("ref");
+
+        OauthLoginService svc = new OauthLoginService(
+                userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
+                true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
+                "/api/v5/auth/oauth/google/callback", true);
+
+        svc.exchange("raw-code-value");
+
+        assertThat(e.getConsumedAt()).isNotNull();
+
+        assertThatThrownBy(() -> svc.exchange("raw-code-value")).isInstanceOf(InvalidCredentialsException.class);
+    }
+
+    @Test
     void googleStartUrl_enabled_buildsGoogleAuthorizationUrl() {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,

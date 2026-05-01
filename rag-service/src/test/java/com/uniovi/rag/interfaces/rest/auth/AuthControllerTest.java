@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
@@ -180,6 +181,66 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.status").value("REQUEST_ACCEPTED"))
                 .andExpect(jsonPath("$.message").value(
                         "If an account exists for that email, a reset link will be sent"));
+    }
+
+    @Test
+    void forgotPassword_distinctEmails_returnIdenticalNeutralBodies_forAntiEnumeration() throws Exception {
+        doNothing().when(authService).forgotPassword(any(), anyString(), anyString());
+        String existing =
+                mockMvc.perform(post(AUTH_BASE + "/forgot-password")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"email\":\"known@example.com\"}"))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        String unknown =
+                mockMvc.perform(post(AUTH_BASE + "/forgot-password")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"email\":\"ghost-not-found@example.com\"}"))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString();
+        assertEquals(existing, unknown);
+    }
+
+    @Test
+    void refresh_valid_returnsTokens() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(authService.refresh(any()))
+                .thenReturn(new LoginResponse(
+                        "acc",
+                        "ref",
+                        new AuthUserDto(id, "u@test.com", "User", "USER")));
+
+        mockMvc.perform(post(AUTH_BASE + "/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"rt\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").value("acc"))
+                .andExpect(jsonPath("$.refreshToken").value("ref"))
+                .andExpect(jsonPath("$.user.email").value("u@test.com"));
+    }
+
+    @Test
+    void refresh_invalidToken_returns401InvalidCredentials() throws Exception {
+        when(authService.refresh(any())).thenThrow(new InvalidCredentialsException());
+        mockMvc.perform(post(AUTH_BASE + "/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"bad\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"));
+    }
+
+    @Test
+    void login_emailNotVerified_returns403WithCode() throws Exception {
+        when(authService.login(any())).thenThrow(new EmailNotVerifiedException());
+        mockMvc.perform(post(AUTH_BASE + "/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"pending@example.com\",\"password\":\"secret\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("EMAIL_NOT_VERIFIED"));
     }
 
     @Test

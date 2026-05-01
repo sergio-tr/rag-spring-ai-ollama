@@ -10,6 +10,7 @@ import com.uniovi.rag.interfaces.rest.auth.AuthController;
 import com.uniovi.rag.interfaces.rest.auth.OauthController;
 import com.uniovi.rag.interfaces.rest.auth.dto.AuthUserDto;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
+import com.uniovi.rag.interfaces.rest.auth.dto.RegisterResponse;
 import com.uniovi.rag.interfaces.rest.support.ApiEarlyExceptionResolver;
 import com.uniovi.rag.interfaces.rest.support.ApiGlobalExceptionHandler;
 import com.uniovi.rag.interfaces.rest.support.RagApiExceptionHandler;
@@ -124,6 +125,65 @@ class AuthEndpointSecurityWebMvcTest {
 
         mockMvc.perform(get("/api/v5/auth/oauth/google/start"))
                 .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void legacy_oauthStart_withoutToken_isPublicAndRedirects() throws Exception {
+        when(oauthLoginService.googleStartUrl(any())).thenReturn("https://accounts.google.com/o/oauth2/v2/auth");
+
+        mockMvc.perform(get("/api/auth/oauth/google/start"))
+                .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void authRegister_withoutToken_returnsAccepted_whenPendingEmailVerification() throws Exception {
+        when(authService.register(any()))
+                .thenReturn(new RegisterResponse("PENDING_EMAIL_VERIFICATION", null));
+
+        mockMvc.perform(post("/api/v5/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                "{\"name\":\"N\",\"email\":\"new@example.com\",\"password\":\"password123\",\"acceptedPrivacyPolicy\":true,\"acceptedTerms\":true}")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING_EMAIL_VERIFICATION"));
+    }
+
+    @Test
+    void authForgotPassword_withoutToken_returnsOkNeutral() throws Exception {
+        mockMvc.perform(post("/api/v5/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"anyone@example.com\"}")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REQUEST_ACCEPTED"));
+    }
+
+    @Test
+    void authConfirmEmail_withoutToken_returnsOk() throws Exception {
+        mockMvc.perform(post("/api/v5/auth/confirm-email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"t\"}")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void authResendConfirmation_withoutToken_returnsOk() throws Exception {
+        mockMvc.perform(post("/api/v5/auth/resend-confirmation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"u@example.com\"}")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void authResetPassword_withoutToken_returnsOk() throws Exception {
+        mockMvc.perform(post("/api/v5/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"t\",\"newPassword\":\"password123\"}")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
     }
 
     @Test

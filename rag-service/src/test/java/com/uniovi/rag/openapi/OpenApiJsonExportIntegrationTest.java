@@ -110,5 +110,25 @@ class OpenApiJsonExportIntegrationTest {
         assertTrue(
                 !loginPost.has("security") || loginPost.path("security").isMissingNode() || loginPost.path("security").size() == 0,
                 "Public auth endpoints must not require bearerAuth");
+
+        JsonNode paths = json.path("paths");
+        assertPublicAuthOperation(paths, "/api/v5/auth/register", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/refresh", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/confirm-email", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/resend-confirmation", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/forgot-password", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/reset-password", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/oauth/google/start", "get");
+        assertPublicAuthOperation(paths, "/api/v5/auth/oauth/google/callback", "get");
+        assertPublicAuthOperation(paths, "/api/v5/auth/oauth/exchange", "post");
+    }
+
+    private static void assertPublicAuthOperation(JsonNode paths, String path, String method) {
+        JsonNode op = paths.path(path).path(method);
+        assertTrue(op.isObject(), "OpenAPI must include " + method.toUpperCase() + " " + path);
+        JsonNode sec = op.path("security");
+        assertTrue(
+                !op.has("security") || sec.isMissingNode() || (sec.isArray() && sec.size() == 0),
+                "Public auth operation must not require bearerAuth: " + method.toUpperCase() + " " + path);
     }
 }
