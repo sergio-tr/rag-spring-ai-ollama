@@ -58,6 +58,11 @@ export function RegisterForm() {
           termsVersion: termsVersion || undefined,
         }),
       });
+      if (data.status === "PENDING_EMAIL_VERIFICATION") {
+        router.push(`/register/pending?email=${encodeURIComponent(values.email)}`);
+        router.refresh();
+        return;
+      }
       if (!shouldCommitRegisterSessionAfterRegister(data)) {
         router.push(`/register/pending?email=${encodeURIComponent(values.email)}`);
         router.refresh();

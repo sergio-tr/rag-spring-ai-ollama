@@ -1,19 +1,18 @@
 import type { RegisterResponse } from "@/types/api";
 
 /**
- * When true, if the backend returns both PENDING_EMAIL_VERIFICATION and a login payload,
- * the webapp commits the session immediately instead of sending the user to the pending screen.
+ * Session is established only after explicit REGISTERED + token payload.
+ * Pending email verification never commits cookies (even if a malformed response included tokens).
  */
-export function shouldCommitRegisterSessionOnPending(): boolean {
-  return process.env.NEXT_PUBLIC_REGISTER_COMMIT_SESSION_ON_PENDING === "true";
-}
-
 export function shouldCommitRegisterSessionAfterRegister(data: RegisterResponse): boolean {
-  if (!data.login) {
+  if (data.status !== "REGISTERED") {
     return false;
   }
-  if (data.status !== "PENDING_EMAIL_VERIFICATION") {
-    return true;
-  }
-  return shouldCommitRegisterSessionOnPending();
+  const login = data.login;
+  return Boolean(
+    login?.accessToken &&
+      login.accessToken.length > 0 &&
+      login?.refreshToken &&
+      login.refreshToken.length > 0,
+  );
 }
