@@ -7,6 +7,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { HelpPopover } from "@/features/help/HelpPopover";
 import { InlineHelpStatus } from "@/features/help/InlineHelpStatus";
+import { ChatConversationDocumentsSheet } from "@/features/chat/components/ChatConversationDocumentsSheet";
+import { DeleteConversationDialog } from "@/features/chat/components/DeleteConversationDialog";
 import { MoveConversationDialog } from "@/features/chat/components/MoveConversationDialog";
 import { documentFiltersEqual } from "@/features/chat/lib/chat-document-filter-sync";
 import {
@@ -23,13 +25,18 @@ import {
 import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
 import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
 import { useRagPresets } from "@/features/chat/hooks/use-rag-presets";
-import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
+import {
+  useProjectDocuments,
+  useUploadProjectDocument,
+} from "@/features/documents/hooks/use-project-documents";
 import { useProjectList } from "@/features/projects/hooks/use-projects";
+import { useSyncActiveProjectFromChatUrl } from "@/features/projects/hooks/use-sync-active-project-from-chat-url";
+import { buildProjectScopedChatHref } from "@/features/projects/lib/open-project-navigation";
 import { ProjectVisual } from "@/features/projects/components/ProjectVisual";
 import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { cn } from "@/lib/utils";
-import { useRouter } from "@/navigation";
+import { Link, useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
 import { useChatExplainStore } from "@/store/chat-explain.store";
 import { useTraceStore } from "@/features/trace/trace.store";
@@ -39,7 +46,7 @@ import type {
   PatchUserMessageBody,
   PostMessageBody,
 } from "@/types/api";
-import { ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -72,6 +79,8 @@ function ChatPageInner() {
   const searchParams = useSearchParams();
   const active = useAppStore((s) => s.activeProject);
   const projectId = active?.id;
+  const urlProjectId = searchParams?.get?.("projectId")?.trim() || null;
+  useSyncActiveProjectFromChatUrl(urlProjectId);
   const urlConversationId = searchParams?.get?.("conversationId") ?? null;
   const [conversationId, setConversationId] = useState<string | null>(() => urlConversationId ?? null);
   const [convListCollapsed, setConvListCollapsed] = useState(() => {
@@ -91,6 +100,13 @@ function ChatPageInner() {
   const [presetSelectValue, setPresetSelectValue] = useState("");
   const [limitDocs, setLimitDocs] = useState(false);
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [docsSheetOpen, setDocsSheetOpen] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const [deleteDialogTarget, setDeleteDialogTarget] = useState<{ id: string; title: string } | null>(
+    null,
+  );
+  const selectedDocIdsRef = useRef<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -114,10 +130,14 @@ function ChatPageInner() {
     }
   }, [urlConversationId, conversationId]);
 
-  const selectConversation = useCallback((nextId: string) => {
-    setConversationId(nextId);
-    router.push(`/chat?conversationId=${encodeURIComponent(nextId)}`);
-  }, [router]);
+  const selectConversation = useCallback(
+    (nextId: string) => {
+      setConversationId(nextId);
+      if (!projectId) return;
+      router.push(buildProjectScopedChatHref(projectId, nextId));
+    },
+    [router, projectId],
+  );
 
   function persistConvListCollapsed(next: boolean) {
     setConvListCollapsed(next);
@@ -141,6 +161,7 @@ function ChatPageInner() {
     return null;
   }, [messages]);
   const { data: docs, refetch: refetchProjectDocuments } = useProjectDocuments(projectId);
+  const uploadDoc = useUploadProjectDocument(projectId);
   const { data: projectListData } = useProjectList(0, 64);
   const currentProject = useMemo(
     () => projectListData?.items?.find((p) => p.id === projectId),
@@ -172,6 +193,10 @@ function ChatPageInner() {
     if (!presets?.length) return true;
     return !findPresetById(presets, presetSelectValue);
   }, [presetSelectValue, presets]);
+
+  useEffect(() => {
+    selectedDocIdsRef.current = selectedDocIds;
+  }, [selectedDocIds]);
 
   useEffect(() => {
     const syncTimer = setTimeout(() => setTitleDraft(activeConv?.title ?? ""), 0);
@@ -652,6 +677,46 @@ function ChatPageInner() {
     patchConv.mutate({ conversationId, body: { presetId: value } });
   };
 
+  const handleChatDocumentUpload = useCallback(
+    async (files: FileList | null) => {
+      if (!files?.length || !conversationId || !projectId) return;
+      setUploadError(null);
+      setUploadNotice(null);
+      let merged = [...selectedDocIdsRef.current];
+      for (const file of Array.from(files)) {
+        try {
+          const doc = await uploadDoc.mutateAsync(file);
+          await refetchProjectDocuments();
+          if (doc.status === "READY") {
+            if (limitDocs) {
+              merged = Array.from(new Set([...merged, doc.id]));
+              setLimitDocs(true);
+              setSelectedDocIds(merged);
+              pendingDocumentFilterRef.current = merged;
+              patchConv.mutate({ conversationId, body: { documentFilter: merged } });
+            } else {
+              setUploadNotice(t("documentsUploadAddedToProjectHint"));
+            }
+          } else {
+            setUploadNotice(t("documentsUploadProcessingHint"));
+          }
+        } catch (e) {
+          setUploadError(getSafeApiErrorMessage(e));
+          break;
+        }
+      }
+    },
+    [
+      conversationId,
+      projectId,
+      uploadDoc,
+      refetchProjectDocuments,
+      limitDocs,
+      patchConv,
+      t,
+    ],
+  );
+
   const onLimitDocsChange = (checked: boolean) => {
     if (!conversationId) return;
     if (!checked) {
@@ -676,10 +741,19 @@ function ChatPageInner() {
   };
 
   const onDocToggle = (documentId: string, checked: boolean) => {
-    if (!conversationId || !limitDocs) return;
-    const next = checked
-      ? Array.from(new Set([...selectedDocIds, documentId]))
-      : selectedDocIds.filter((id) => id !== documentId);
+    if (!conversationId) return;
+    if (checked) {
+      const next = limitDocs
+        ? Array.from(new Set([...selectedDocIds, documentId]))
+        : [documentId];
+      setLimitDocs(true);
+      setSelectedDocIds(next);
+      pendingDocumentFilterRef.current = next;
+      patchConv.mutate({ conversationId, body: { documentFilter: next } });
+      return;
+    }
+    if (!limitDocs) return;
+    const next = selectedDocIds.filter((id) => id !== documentId);
     if (next.length === 0) {
       setLimitDocs(false);
       setSelectedDocIds([]);
@@ -693,7 +767,16 @@ function ChatPageInner() {
   };
 
   if (!projectId) {
-    return <p className="text-muted-foreground text-sm">{t("noActiveProject")}</p>;
+    return (
+      <div className="flex flex-col gap-3 text-muted-foreground text-sm">
+        <p>{t("noActiveProject")}</p>
+        <p>
+          <Link href="/projects" className="text-primary underline underline-offset-4">
+            {t("goToProjects")}
+          </Link>
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -742,16 +825,31 @@ function ChatPageInner() {
           </Button>
           <div className="flex max-h-48 flex-col gap-1 overflow-y-auto md:max-h-none md:flex-1">
             {convs?.map((c) => (
-              <Button
-                key={c.id}
-                type="button"
-                variant={conversationId === c.id ? "secondary" : "ghost"}
-                size="sm"
-                className="h-auto justify-start py-2 text-left"
-                onClick={() => selectConversation(c.id)}
-              >
-                <span className="line-clamp-2 text-xs">{c.title}</span>
-              </Button>
+              <div key={c.id} className="flex items-stretch gap-1">
+                <Button
+                  type="button"
+                  variant={conversationId === c.id ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-auto min-w-0 flex-1 justify-start py-2 text-left"
+                  onClick={() => selectConversation(c.id)}
+                >
+                  <span className="line-clamp-2 text-xs">{c.title}</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                  aria-label={t("deleteConversationTriggerAria", {
+                    title: (c.title ?? "").trim() || t("deleteConversationUntitled"),
+                  })}
+                  onClick={() =>
+                    setDeleteDialogTarget({ id: c.id, title: c.title ?? "" })
+                  }
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                </Button>
+              </div>
             ))}
           </div>
         </aside>
@@ -790,12 +888,28 @@ function ChatPageInner() {
                 className="h-9"
               />
             </div>
-            <div className="pb-0.5">
+            <div className="flex flex-wrap items-center gap-2 pb-0.5">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-destructive/50 text-destructive hover:bg-destructive/10"
+                data-testid="chat-header-delete"
+                onClick={() =>
+                  setDeleteDialogTarget({
+                    id: conversationId,
+                    title: activeConv?.title ?? "",
+                  })
+                }
+              >
+                {t("deleteConversationMenu")}
+              </Button>
               <MoveConversationDialog sourceProjectId={projectId} conversationId={conversationId} />
             </div>
           </header>
         ) : null}
         {conversationId && (
+          <>
           <div className="flex flex-col gap-3 rounded-lg border bg-card/20 p-3 text-sm md:flex-row md:flex-wrap md:items-end md:gap-4">
             <div className="flex w-full justify-end md:order-last md:w-auto md:flex-none md:justify-start">
               <HelpPopover
@@ -872,17 +986,57 @@ function ChatPageInner() {
               </select>
               {presetsError && <p className="text-destructive text-xs">{t("presetsLoadError")}</p>}
             </div>
-            <div className="min-w-[min(100%,14rem)] flex-1 flex-col gap-2 md:max-w-md">
-              <Label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className="size-4 rounded border"
-                  checked={limitDocs}
-                  onChange={(e) => onLimitDocsChange(e.target.checked)}
-                  disabled={!conversationId || patchConv.isPending}
-                />
-                {t("limitDocuments")}
-              </Label>
+            <div className="flex min-w-[min(100%,14rem)] flex-1 flex-col gap-2 md:max-w-md">
+              <div className="flex flex-wrap items-end gap-2">
+                <Label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="size-4 rounded border"
+                    checked={limitDocs}
+                    onChange={(e) => onLimitDocsChange(e.target.checked)}
+                    disabled={!conversationId || patchConv.isPending}
+                  />
+                  {t("limitDocuments")}
+                </Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={patchConv.isPending}
+                  onClick={() => setDocsSheetOpen(true)}
+                >
+                  {t("chatManageDocuments")}
+                </Button>
+              </div>
+              {limitDocs && selectedDocIds.length > 0 ? (
+                <div
+                  className="flex flex-wrap gap-1"
+                  data-testid="chat-selected-doc-chips"
+                >
+                  {selectedDocIds.map((id) => {
+                    const docLabel = docs?.find((d) => d.id === id)?.fileName ?? id;
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex max-w-full items-center gap-1 rounded-md border bg-muted/60 px-2 py-0.5 text-muted-foreground text-xs"
+                      >
+                        <span className="truncate" title={docLabel}>
+                          {docLabel}
+                        </span>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded px-1 hover:bg-muted hover:text-foreground"
+                          disabled={patchConv.isPending}
+                          aria-label={t("chatRemoveDocFromSelection", { name: docLabel })}
+                          onClick={() => onDocToggle(id, false)}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : null}
               {limitDocs && (
                 <ScrollArea className="h-32 rounded-md border p-2">
                   {docs?.length === 0 && (
@@ -912,6 +1066,29 @@ function ChatPageInner() {
               )}
             </div>
           </div>
+          {active ? (
+            <ChatConversationDocumentsSheet
+              open={docsSheetOpen}
+              onOpenChange={(next) => {
+                setDocsSheetOpen(next);
+                if (!next) {
+                  setUploadError(null);
+                  setUploadNotice(null);
+                }
+              }}
+              projectName={active.name}
+              docs={docs}
+              limitDocs={limitDocs}
+              selectedDocIds={selectedDocIds}
+              patchPending={patchConv.isPending}
+              uploadPending={uploadDoc.isPending}
+              uploadError={uploadError}
+              uploadNotice={uploadNotice}
+              onDocToggle={onDocToggle}
+              onUploadFiles={handleChatDocumentUpload}
+            />
+          ) : null}
+          </>
         )}
         <div
           ref={scrollAreaRef}
@@ -944,7 +1121,7 @@ function ChatPageInner() {
                   variant="outline"
                   onClick={() => {
                     setConversationId(null);
-                    router.push("/chat");
+                    router.push(buildProjectScopedChatHref(projectId, null));
                   }}
                 >
                   {t("backToConversations")}
@@ -954,7 +1131,7 @@ function ChatPageInner() {
                   size="sm"
                   onClick={() => {
                     setConversationId(null);
-                    router.push("/chat");
+                    router.push(buildProjectScopedChatHref(projectId, null));
                   }}
                 >
                   {t("startNewChat")}
@@ -1117,6 +1294,22 @@ function ChatPageInner() {
             </Button>
           </div>
         </div>
+        <DeleteConversationDialog
+          open={Boolean(deleteDialogTarget)}
+          onOpenChange={(next) => {
+            if (!next) setDeleteDialogTarget(null);
+          }}
+          projectId={projectId}
+          conversationId={deleteDialogTarget?.id}
+          conversationTitle={deleteDialogTarget?.title ?? ""}
+          onDeleted={() => {
+            const deletedId = deleteDialogTarget?.id;
+            if (deletedId && conversationId === deletedId && projectId) {
+              router.push(buildProjectScopedChatHref(projectId, null));
+              setConversationId(null);
+            }
+          }}
+        />
       </div>
     </div>
   );

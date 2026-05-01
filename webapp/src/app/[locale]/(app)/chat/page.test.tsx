@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
@@ -15,12 +15,18 @@ const chatExplainMocks = vi.hoisted(() => ({
   setStreaming: vi.fn(),
 }));
 
+const routerPushMock = vi.fn();
+
 vi.mock("@/navigation", () => ({
   Link: ({ children, href }: { children: React.ReactNode; href: string }) => (
     <a href={href}>{children}</a>
   ),
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push: routerPushMock, refresh: vi.fn() }),
   usePathname: () => "/en/chat",
+}));
+
+vi.mock("@/features/projects/hooks/use-sync-active-project-from-chat-url", () => ({
+  useSyncActiveProjectFromChatUrl: () => {},
 }));
 
 const followLabJob = vi.fn();
@@ -58,6 +64,7 @@ const mockConvRows: ConversationDto[] = [
 const conversationsQueryResult = { data: mockConvRows as ConversationDto[] };
 
 const patchMutate = vi.fn();
+const deleteMutateAsync = vi.fn().mockResolvedValue(undefined);
 const createMutateAsync = vi.fn().mockResolvedValue({
   id: "c2",
   title: "New",
@@ -79,6 +86,11 @@ vi.mock("@/features/chat/hooks/use-conversations", async (importOriginal) => {
       isPending: false,
       isError: false,
     }),
+    useDeleteConversation: () => ({
+      mutateAsync: deleteMutateAsync,
+      isPending: false,
+      reset: vi.fn(),
+    }),
     useMoveConversation: () => ({
       mutateAsync: vi.fn().mockResolvedValue(undefined),
       isPending: false,
@@ -87,25 +99,61 @@ vi.mock("@/features/chat/hooks/use-conversations", async (importOriginal) => {
   };
 });
 
-vi.mock("@/features/documents/hooks/use-project-documents", () => {
-  const data = [
-    {
-      id: "d1",
-      fileName: "f.pdf",
-      status: "READY" as const,
-      chunkCount: 1,
-      errorMessage: null,
-      uploadedAt: "",
-      reindexedAt: null,
-    },
-  ];
-  return {
-    useProjectDocuments: () => ({
-      data,
-      refetch: vi.fn(async () => ({ data })),
-    }),
+const docsMocks = vi.hoisted(() => {
+  const projectDocsDataRef = {
+    current: [
+      {
+        id: "d1",
+        fileName: "f.pdf",
+        status: "READY" as const,
+        chunkCount: 1,
+        errorMessage: null,
+        uploadedAt: "",
+        reindexedAt: null,
+        corpusScope: "PROJECT_SHARED" as const,
+        conversationId: null,
+        currentIndexSnapshotId: null,
+        indexSignatureHash: null,
+        storagePresent: true,
+      },
+      {
+        id: "d2",
+        fileName: "second.pdf",
+        status: "READY" as const,
+        chunkCount: 1,
+        errorMessage: null,
+        uploadedAt: "",
+        reindexedAt: null,
+        corpusScope: "PROJECT_SHARED" as const,
+        conversationId: null,
+        currentIndexSnapshotId: null,
+        indexSignatureHash: null,
+        storagePresent: true,
+      },
+    ],
   };
+  const uploadMutateAsyncMock = vi.fn();
+  const projectDocsRefetchMock = vi.fn(async () => ({ data: projectDocsDataRef.current }));
+  return { projectDocsDataRef, uploadMutateAsyncMock, projectDocsRefetchMock };
 });
+
+const { uploadMutateAsyncMock, projectDocsRefetchMock, projectDocsDataRef } = docsMocks;
+
+vi.mock("@/features/documents/hooks/use-project-documents", () => ({
+  useProjectDocuments: () => ({
+    get data() {
+      return projectDocsDataRef.current;
+    },
+    refetch: projectDocsRefetchMock,
+  }),
+  useUploadProjectDocument: () => ({
+    mutateAsync: uploadMutateAsyncMock,
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  }),
+}));
 
 vi.mock("@/features/projects/hooks/use-projects", () => ({
   useProjectList: () => ({
@@ -255,6 +303,53 @@ function renderChat() {
 
 describe("ChatPage", () => {
   beforeEach(() => {
+    uploadMutateAsyncMock.mockReset();
+    uploadMutateAsyncMock.mockResolvedValue({
+      id: "d-up",
+      fileName: "up.pdf",
+      status: "READY",
+      chunkCount: 0,
+      errorMessage: null,
+      uploadedAt: "",
+      reindexedAt: null,
+      corpusScope: "PROJECT_SHARED",
+      conversationId: null,
+      currentIndexSnapshotId: null,
+      indexSignatureHash: null,
+      storagePresent: true,
+    });
+    projectDocsRefetchMock.mockClear();
+    projectDocsRefetchMock.mockImplementation(async () => ({ data: projectDocsDataRef.current }));
+    projectDocsDataRef.current = [
+      {
+        id: "d1",
+        fileName: "f.pdf",
+        status: "READY",
+        chunkCount: 1,
+        errorMessage: null,
+        uploadedAt: "",
+        reindexedAt: null,
+        corpusScope: "PROJECT_SHARED",
+        conversationId: null,
+        currentIndexSnapshotId: null,
+        indexSignatureHash: null,
+        storagePresent: true,
+      },
+      {
+        id: "d2",
+        fileName: "second.pdf",
+        status: "READY",
+        chunkCount: 1,
+        errorMessage: null,
+        uploadedAt: "",
+        reindexedAt: null,
+        corpusScope: "PROJECT_SHARED",
+        conversationId: null,
+        currentIndexSnapshotId: null,
+        indexSignatureHash: null,
+        storagePresent: true,
+      },
+    ];
     chatMessagesStore = structuredClone(initialChatMessages);
     mockConvRows.length = 0;
     mockConvRows.push({
@@ -270,6 +365,8 @@ describe("ChatPage", () => {
       { id: "pr1", name: "P", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" },
     ];
     patchMutate.mockClear();
+    deleteMutateAsync.mockClear();
+    routerPushMock.mockClear();
     createMutateAsync.mockClear();
     useTraceStore.getState().clearTraceEvents();
     vi.mocked(apiFetch).mockImplementation(defaultApiFetch);
@@ -284,7 +381,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     expect(screen.getByRole("button", { name: /New conversation/i })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     const input = await screen.findByPlaceholderText(/Message/i);
     await user.type(input, "hello");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
@@ -310,7 +407,7 @@ describe("ChatPage", () => {
 
     const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     const input = await screen.findByPlaceholderText(/Message/i);
     await user.type(input, "hello");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
@@ -340,7 +437,7 @@ describe("ChatPage", () => {
     const addTrace = vi.spyOn(useTraceStore.getState(), "addTraceEvent");
     const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     const input = await screen.findByPlaceholderText(/Message/i);
     await user.type(input, "hello");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
@@ -370,7 +467,7 @@ describe("ChatPage", () => {
   it("drops optimistic bubble after server list includes the message without duplicate text nodes", async () => {
     const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     const input = await screen.findByPlaceholderText(/Message/i);
     await user.type(input, "hello");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
@@ -382,7 +479,7 @@ describe("ChatPage", () => {
   it("sends Buenos dias to the active conversation messages endpoint", async () => {
     const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     const input = await screen.findByPlaceholderText(/Message/i);
     await user.type(input, "Buenos dias");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
@@ -401,7 +498,7 @@ describe("ChatPage", () => {
     ragPresetsData = [];
     const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     expect(presetSelect).toHaveValue("cafe0001-0001-4001-8001-000000000001");
     expect(screen.getByRole("option", { name: /^Server default$/ })).toBeInTheDocument();
@@ -412,22 +509,95 @@ describe("ChatPage", () => {
   it("fires document filter patch exactly once when toggling limit retrieval", async () => {
     const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     const limitCb = await screen.findByRole("checkbox", { name: /Limit retrieval to selected documents/i });
     await user.click(limitCb);
+    await waitFor(() => {
+      expect(patchMutate).toHaveBeenCalledTimes(1);
+      const body = patchMutate.mock.calls[0][0].body as { documentFilter: string[] };
+      expect([...body.documentFilter].sort()).toEqual(["d1", "d2"]);
+    });
+  });
+
+  it("opens manage documents sheet from chat controls", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(/Documents for this chat/i)).toBeInTheDocument();
+  });
+
+  it("selecting a document in the sheet enables limit retrieval for that id", async () => {
+    const user = userEvent.setup();
+    patchMutate.mockClear();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
+    const sheetCb = await screen.findByRole("checkbox", { name: /Include second\.pdf/i });
+    await user.click(sheetCb);
     await waitFor(() =>
       expect(patchMutate).toHaveBeenCalledWith({
         conversationId: "c1",
-        body: { documentFilter: ["d1"] },
+        body: { documentFilter: ["d2"] },
       }),
     );
-    expect(patchMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("upload merges READY document into filter when limit retrieval is already on", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i }));
+    await waitFor(() => expect(patchMutate).toHaveBeenCalled());
+    patchMutate.mockClear();
+    await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
+    const input = await screen.findByLabelText(/Upload files to project/i);
+    const file = new File(["x"], "new.doc", { type: "application/msword" });
+    await user.upload(input, file);
+    await waitFor(() => expect(uploadMutateAsyncMock).toHaveBeenCalledWith(file));
+    await waitFor(() =>
+      expect(patchMutate).toHaveBeenCalledWith({
+        conversationId: "c1",
+        body: {
+          documentFilter: expect.arrayContaining(["d1", "d2", "d-up"]),
+        },
+      }),
+    );
+  });
+
+  it("shows controlled error when chat upload fails", async () => {
+    uploadMutateAsyncMock.mockRejectedValueOnce(new ApiError(413, "Payload too large", { kind: "http" }));
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
+    const input = await screen.findByLabelText(/Upload files to project/i);
+    await user.upload(input, new File(["x"], "big.bin"));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("removes a selected document via chip control", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i }));
+    await waitFor(() => expect(patchMutate).toHaveBeenCalled());
+    patchMutate.mockClear();
+    const removeBtn = await screen.findByRole("button", { name: /Remove f\.pdf from retrieval scope/i });
+    await user.click(removeBtn);
+    await waitFor(() =>
+      expect(patchMutate).toHaveBeenCalledWith({
+        conversationId: "c1",
+        body: { documentFilter: ["d2"] },
+      }),
+    );
   });
 
   it("does not toggle limit retrieval when conversation rows refresh with the same filter", async () => {
     const user = userEvent.setup();
     const { rerender, qc } = renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     const limitCb = await screen.findByRole("checkbox", { name: /Limit retrieval to selected documents/i });
     expect(limitCb).not.toBeChecked();
     patchMutate.mockClear();
@@ -472,7 +642,7 @@ describe("ChatPage", () => {
       return {};
     });
     renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     const input = await screen.findByPlaceholderText(/Message/i);
     await user.type(input, "x");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
@@ -502,7 +672,7 @@ describe("ChatPage", () => {
       return {};
     });
     renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     const input = await screen.findByPlaceholderText(/Message/i);
     await user.type(input, "q");
     await user.click(screen.getByRole("button", { name: /^Send$/i }));
@@ -513,7 +683,7 @@ describe("ChatPage", () => {
   it("renders assistant bodies for backend-controlled ERROR turns", async () => {
     const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     expect(
       await screen.findByText(/Answering without retrieval due to a temporary issue/i),
     ).toBeInTheDocument();
@@ -522,10 +692,46 @@ describe("ChatPage", () => {
   it("retries assistant on ERROR status after opening the conversation", async () => {
     const user = userEvent.setup();
     renderChat();
-    await user.click(screen.getByRole("button", { name: /T1/i }));
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await user.click(screen.getByRole("button", { name: /^Retry$/i }));
     await waitFor(() =>
       expect(apiFetch).toHaveBeenCalledWith("/conversations/c1/messages/m2/retry", expect.any(Object)),
     );
+  });
+
+  it("opens delete confirmation from chat header", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await user.click(screen.getByTestId("chat-header-delete"));
+    expect(await screen.findByRole("heading", { name: /Delete this chat/i })).toBeInTheDocument();
+  });
+
+  it("cancel on delete dialog does not call delete API", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await user.click(screen.getByTestId("chat-header-delete"));
+    const dlg = await screen.findByRole("dialog");
+    await user.click(within(dlg).getByRole("button", { name: /^Cancel$/i }));
+    expect(deleteMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("confirm delete calls API and navigates to project chat URL without conversation", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await user.click(screen.getByTestId("chat-header-delete"));
+    const dlg = await screen.findByRole("dialog");
+    await user.click(within(dlg).getByRole("button", { name: /^Delete chat$/i }));
+    expect(deleteMutateAsync).toHaveBeenCalledWith("c1");
+    expect(routerPushMock).toHaveBeenCalledWith("/chat?projectId=p1");
+  });
+
+  it("opens delete confirmation from conversation list trash control", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /Delete chat: T1/i }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 });
