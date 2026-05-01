@@ -44,7 +44,18 @@ describe("LoginForm", () => {
         <LoginForm />
       </IntlTestProvider>,
     );
-    expect(screen.queryByRole("link", { name: /continue with google/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("oauth-google-cta")).not.toBeInTheDocument();
+  });
+
+  it("hides Google CTA when oauth flag is unset", () => {
+    vi.unstubAllEnvs();
+    Reflect.deleteProperty(process.env, "NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED");
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    expect(screen.queryByTestId("oauth-google-cta")).not.toBeInTheDocument();
   });
 
   it("shows Google CTA when oauth flag is enabled and points to v5 start route", () => {
@@ -54,7 +65,7 @@ describe("LoginForm", () => {
         <LoginForm />
       </IntlTestProvider>,
     );
-    const googleLink = screen.getByRole("link", { name: /continue with google/i });
+    const googleLink = screen.getByRole("link", { name: "Continue with Google" });
     expect(googleLink).toBeInTheDocument();
     expect(googleLink.tagName).toBe("A");
     const href = googleLink.getAttribute("href") ?? "";
@@ -231,7 +242,18 @@ describe("RegisterForm", () => {
         <RegisterForm />
       </IntlTestProvider>,
     );
-    expect(screen.queryByRole("link", { name: /continue with google/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("oauth-google-cta")).not.toBeInTheDocument();
+  });
+
+  it("hides Google CTA when oauth flag is unset", () => {
+    vi.unstubAllEnvs();
+    Reflect.deleteProperty(process.env, "NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED");
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    expect(screen.queryByTestId("oauth-google-cta")).not.toBeInTheDocument();
   });
 
   it("shows Google CTA when oauth flag is enabled and points to v5 start route", () => {
@@ -241,7 +263,7 @@ describe("RegisterForm", () => {
         <RegisterForm />
       </IntlTestProvider>,
     );
-    const googleLink = screen.getByRole("link", { name: /continue with google/i });
+    const googleLink = screen.getByRole("link", { name: "Continue with Google" });
     expect(googleLink).toBeInTheDocument();
     expect(googleLink.tagName).toBe("A");
     const href = googleLink.getAttribute("href") ?? "";
