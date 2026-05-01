@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "@/lib/api-client";
+import { getApiBaseUrl, sanitizePlainErrorTextForUi } from "@/lib/api-client";
 import { getAccessToken } from "@/lib/access-token";
 import { createTraceparent } from "@/lib/traceparent";
 import type { AsyncTaskStatusDto } from "@/types/api";
@@ -81,7 +81,9 @@ export async function streamLabJob(
             onTick(dto);
             if (dto.terminal) {
               if (dto.status === "FAILED") {
-                throw new Error(dto.errorMessage || "Job failed");
+                const raw = dto.errorMessage ?? "Job failed";
+                const safe = sanitizePlainErrorTextForUi(raw, 280) || "Job failed";
+                throw new Error(safe);
               }
               return dto;
             }

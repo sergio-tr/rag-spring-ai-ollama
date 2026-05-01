@@ -238,6 +238,8 @@ export type AsyncTaskStatusDto = {
   updatedAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  /** Stable backend error code when a job fails (e.g. CHAT_DOCUMENT_SCOPE_EMPTY). */
+  failureCode?: string | null;
 };
 
 export type MessageDto = {
