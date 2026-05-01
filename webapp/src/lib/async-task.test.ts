@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pollAccountJob, pollLabJob, sleep } from "./async-task";
+import { LabJobPollTimeoutError, pollAccountJob, pollLabJob, sleep } from "./async-task";
 import * as apiClient from "./api-client";
 
 describe("sleep", () => {
@@ -59,6 +59,18 @@ describe("pollLabJob", () => {
 
     expect(apiClient.apiFetch).toHaveBeenCalledTimes(2);
     expect(ticks).toEqual(["RUNNING", "SUCCEEDED"]);
+  });
+
+  it("throws LabJobPollTimeoutError when maxWaitMs elapses on non-terminal job", async () => {
+    vi.mocked(apiClient.apiFetch).mockResolvedValue({
+      terminal: false,
+      status: "QUEUED",
+    } as never);
+
+    await expect(pollLabJob("j", () => {}, { intervalMs: 5, maxWaitMs: 40 })).rejects.toSatisfy(
+      (e: unknown): boolean =>
+        e instanceof LabJobPollTimeoutError && e.lastStatus?.status === "QUEUED",
+    );
   });
 
   it("does not throw on FAILED when throwOnFailed is false", async () => {

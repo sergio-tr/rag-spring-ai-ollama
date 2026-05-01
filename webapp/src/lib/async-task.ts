@@ -5,14 +5,33 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Local watchdog expiry while polling — the server job may still be running. */
+export class LabJobPollTimeoutError extends Error {
+  override readonly name = "LabJobPollTimeoutError";
+  readonly lastStatus: AsyncTaskStatusDto | null;
+
+  constructor(lastStatus: AsyncTaskStatusDto | null, message?: string) {
+    super(message ?? "Stopped watching — job may still be running on the server.");
+    this.lastStatus = lastStatus;
+  }
+}
+
 async function pollUntilTerminal(
   fetchStatus: () => Promise<AsyncTaskStatusDto>,
   onTick: (status: AsyncTaskStatusDto) => void,
-  options?: { intervalMs?: number; signal?: AbortSignal; throwOnFailed?: boolean },
+  options?: {
+    intervalMs?: number;
+    signal?: AbortSignal;
+    throwOnFailed?: boolean;
+    /** When set, stops polling after this duration (non-terminal jobs surface {@link LabJobPollTimeoutError}). */
+    maxWaitMs?: number;
+  },
 ): Promise<AsyncTaskStatusDto> {
   const intervalMs = options?.intervalMs ?? 900;
   const signal = options?.signal;
   const throwOnFailed = options?.throwOnFailed !== false;
+  const maxWaitMs = options?.maxWaitMs;
+  const startedAt = Date.now();
   for (;;) {
     if (signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
@@ -24,6 +43,9 @@ async function pollUntilTerminal(
         throw new Error(s.errorMessage || "Job failed");
       }
       return s;
+    }
+    if (maxWaitMs != null && Date.now() - startedAt >= maxWaitMs) {
+      throw new LabJobPollTimeoutError(s, "Stopped watching — job may still be running on the server.");
     }
     await sleep(intervalMs);
   }
@@ -51,7 +73,12 @@ export async function pollAccountJob(
 export async function pollLabJob(
   jobId: string,
   onTick: (status: AsyncTaskStatusDto) => void,
-  options?: { intervalMs?: number; signal?: AbortSignal; throwOnFailed?: boolean },
+  options?: {
+    intervalMs?: number;
+    signal?: AbortSignal;
+    throwOnFailed?: boolean;
+    maxWaitMs?: number;
+  },
 ): Promise<AsyncTaskStatusDto> {
   return pollUntilTerminal(
     () => apiFetch<AsyncTaskStatusDto>(apiProductPath(`/lab/jobs/${jobId}`)),

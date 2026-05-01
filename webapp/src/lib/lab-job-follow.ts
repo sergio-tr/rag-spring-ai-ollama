@@ -16,6 +16,8 @@ export async function followLabJob(
     intervalMs?: number;
     /** When false, terminal FAILED returns without throwing (e.g. chat assistant error persisted on message). */
     throwOnFailed?: boolean;
+    /** Polling mode only — caps local watch duration; server job may continue. */
+    maxWaitMs?: number;
   },
 ): Promise<AsyncTaskStatusDto> {
   const mode = options?.mode ?? "poll";
@@ -26,5 +28,6 @@ export async function followLabJob(
     signal: options?.signal,
     intervalMs: options?.intervalMs,
     throwOnFailed: options?.throwOnFailed,
+    maxWaitMs: options?.maxWaitMs,
   });
 }

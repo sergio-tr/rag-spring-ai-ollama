@@ -17,6 +17,8 @@ type LabJobPanelProps = {
   queuedHint?: boolean;
   /** User aborted local wait; server job may still run */
   stoppedWaiting?: boolean;
+  /** Monotonic seconds since async watch began (local UI clock). */
+  watchElapsedSeconds?: number;
 };
 
 /**
@@ -27,6 +29,7 @@ export function LabJobPanel({
   taskStatus,
   queuedHint = false,
   stoppedWaiting = false,
+  watchElapsedSeconds,
 }: LabJobPanelProps) {
   const t = useTranslations("Lab");
 
@@ -66,6 +69,16 @@ export function LabJobPanel({
           {friendlyFailure ? (
             <p className="text-muted-foreground text-xs" role="status">
               {friendlyFailure}
+            </p>
+          ) : null}
+          {watchElapsedSeconds != null &&
+          watchElapsedSeconds >= 0 &&
+          (phase === "queued" ||
+            phase === "running" ||
+            phase === "unknown_running" ||
+            phase === "stopped_waiting") ? (
+            <p className="text-muted-foreground text-xs" data-testid="lab-job-elapsed">
+              {t("jobElapsedWatching", { sec: watchElapsedSeconds })}
             </p>
           ) : null}
         </div>
