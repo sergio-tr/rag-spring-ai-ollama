@@ -82,10 +82,24 @@ public class MailOutboxDeliveryService {
             entry.setSentAt(Instant.now());
             mailOutboxRepository.save(entry);
         } catch (MailException | MessagingException | UnsupportedEncodingException ex) {
+            // The exception message comes from JavaMail / Spring Mail (e.g. Gmail "535-5.7.8 Username
+            // and Password not accepted"). It does not contain our credentials. We log it truncated
+            // and without the stack trace so operators can act, but logs stay safe.
             log.warn(
-                    "Mail outbox delivery failed; row remains pending (id={}, purpose={})",
+                    "Mail outbox delivery failed; row remains pending (id={}, purpose={}, error={}: {})",
                     entry.getId(),
-                    entry.getPurpose());
+                    entry.getPurpose(),
+                    ex.getClass().getSimpleName(),
+                    truncateForLog(ex.getMessage()));
         }
+    }
+
+    /** Truncates exception messages so SMTP errors stay readable without flooding logs. */
+    private static String truncateForLog(@Nullable String message) {
+        if (message == null) {
+            return "<no message>";
+        }
+        String single = message.replaceAll("\\s+", " ").trim();
+        return single.length() <= 240 ? single : single.substring(0, 240) + "…";
     }
 }
