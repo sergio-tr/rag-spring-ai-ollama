@@ -166,7 +166,11 @@ function ChatPageInner() {
     const conv = convs.find((c) => c.id === conversationId);
     if (!conv) return;
     const next = resolveConversationPresetSelectValue(conv);
-    setPresetSelectValue((prev) => (prev === next ? prev : next));
+    const syncTimer = setTimeout(
+      () => setPresetSelectValue((prev) => (prev === next ? prev : next)),
+      0,
+    );
+    return () => clearTimeout(syncTimer);
   }, [presetSyncKey, patchConv.isPending, conversationId, convs]);
 
   useEffect(() => {

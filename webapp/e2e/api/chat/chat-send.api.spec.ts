@@ -13,14 +13,17 @@ test.describe("Chat send API @api @chatRuntime", () => {
   }) => {
     const { email, password } = integrationCredentials();
     const token = await loginAndGetToken(request, email, password);
-    const { conversationId } = await createActivatedProjectAndConversation(request, token);
+    const { projectId, conversationId } = await createActivatedProjectAndConversation(request, token);
 
-    const convProbe = await request.get(productUrl(`/conversations/${conversationId}`), {
+    const convProbe = await request.get(productUrl(`/projects/${projectId}/conversations`), {
       headers: authHeaders(token),
     });
     expect(convProbe.status(), await convProbe.text()).toBe(200);
-    const convBefore = (await convProbe.json()) as ConversationDto;
-    const resolvedPreset = convBefore.presetId ?? convBefore.effectivePresetId ?? null;
+    const convList = (await convProbe.json()) as ConversationDto[];
+    const convBefore = convList.find((c) => c.id === conversationId);
+    expect(convBefore, "conversation should be listed under project").toBeTruthy();
+    const resolvedPreset =
+      convBefore!.presetId ?? convBefore!.effectivePresetId ?? null;
     expect(resolvedPreset, "presetId or effectivePresetId should be present from API").toBeTruthy();
     expect(String(resolvedPreset).toLowerCase()).not.toBe("none");
 
@@ -28,7 +31,7 @@ test.describe("Chat send API @api @chatRuntime", () => {
       pollTimeoutMs: 180_000,
     });
     expect(terminal.terminal).toBe(true);
-    expect(["DONE", "FAILED", "CANCELLED"]).toContain(terminal.status);
+    expect(["SUCCEEDED", "FAILED", "CANCELLED"]).toContain(terminal.status);
 
     const messagesRes = await request.get(productUrl(`/conversations/${conversationId}/messages`), {
       headers: authHeaders(token),

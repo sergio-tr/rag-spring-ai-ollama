@@ -139,7 +139,7 @@ vi.mock("@/features/chat/hooks/use-rag-presets", () => ({
   useRagPresets: () => ({ data: ragPresetsData, isError: false }),
 }));
 
-let mockMessages = [
+const mockMessages = [
   {
     id: "m1",
     role: "USER" as const,
