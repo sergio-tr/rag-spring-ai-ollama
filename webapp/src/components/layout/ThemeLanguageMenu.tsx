@@ -7,6 +7,7 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -29,6 +30,10 @@ export function ThemeLanguageMenu() {
     router.replace(pathname, { locale: next });
   }
 
+  function openSettingsPage() {
+    router.push("/settings");
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -39,36 +44,45 @@ export function ThemeLanguageMenu() {
         {tNav("settings")}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuLabel>{tNav("settings")}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
-          Theme
-        </DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => setTheme("light")}>
-          <Sun className="mr-2 size-4" />
-          {t("light")}
-          {theme === "light" ? " ✓" : ""}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("dark")}>
-          <Moon className="mr-2 size-4" />
-          {t("dark")}
-          {theme === "dark" ? " ✓" : ""}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("system")}>
-          <Monitor className="mr-2 size-4" />
-          {t("system")}
-          {theme === "system" ? " ✓" : ""}
+        <DropdownMenuItem
+          aria-label={tSettings("title")}
+          onClick={() => openSettingsPage()}
+        >
+          {tSettings("preferencesCardTitle")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
-          {tSettings("languageSection")}
-        </DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => switchLocale("en")}>
-          English{locale === "en" ? " ✓" : ""}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => switchLocale("es")}>
-          Español{locale === "es" ? " ✓" : ""}
-        </DropdownMenuItem>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
+            {tSettings("themeSection")}
+          </DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => setTheme("light")}>
+            <Sun className="mr-2 size-4" />
+            {t("light")}
+            {theme === "light" ? " ✓" : ""}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("dark")}>
+            <Moon className="mr-2 size-4" />
+            {t("dark")}
+            {theme === "dark" ? " ✓" : ""}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("system")}>
+            <Monitor className="mr-2 size-4" />
+            {t("system")}
+            {theme === "system" ? " ✓" : ""}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="text-muted-foreground text-xs font-normal">
+            {tSettings("languageSection")}
+          </DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => switchLocale("en")}>
+            English{locale === "en" ? " ✓" : ""}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => switchLocale("es")}>
+            Español{locale === "es" ? " ✓" : ""}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
