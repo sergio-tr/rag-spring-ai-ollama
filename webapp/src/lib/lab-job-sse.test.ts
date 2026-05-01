@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { streamLabJob } from "./lab-job-sse";
 import * as accessToken from "./access-token";
 import * as apiClient from "./api-client";
+import { apiProductPath } from "./api-client";
 
 function encodeLines(lines: string[]): Uint8Array {
   return new TextEncoder().encode(lines.join("\n") + "\n");
@@ -60,7 +61,7 @@ describe("streamLabJob", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((url: RequestInfo) => {
-        expect(String(url)).toBe("http://localhost:9000/api/v5/lab/jobs/e/events");
+        expect(String(url)).toBe(`http://localhost:9000${apiProductPath("/lab/jobs/e/events")}`);
         return Promise.resolve(
           mockFetchWithStream([
             encodeLines(['event: task', 'data: {"terminal":true,"status":"SUCCEEDED"}', ""]),
@@ -69,7 +70,7 @@ describe("streamLabJob", () => {
       }),
     );
 
-    await streamLabJob("/api/v5/lab/jobs/e/events", () => {});
+    await streamLabJob(apiProductPath("/lab/jobs/e/events"), () => {});
   });
 
   it("adds leading slash when streamPath has no slash prefix", async () => {

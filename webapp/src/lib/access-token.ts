@@ -1,6 +1,6 @@
 /**
  * Access JWT stored for cross-origin API calls to Spring (httpOnly cookies are not sent to another origin).
- * Refresh updates this value via {@link setAccessToken} after /api/auth/refresh.
+ * Refresh updates this value via {@link setAccessToken} after auth refresh endpoint calls.
  */
 const STORAGE_KEY = "rag_access_token";
 

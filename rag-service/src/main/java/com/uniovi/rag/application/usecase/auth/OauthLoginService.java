@@ -23,6 +23,8 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -36,6 +38,8 @@ import org.springframework.web.client.RestClient;
 
 @Service
 public class OauthLoginService {
+
+    private static final Logger log = LoggerFactory.getLogger(OauthLoginService.class);
 
     private static final String PROVIDER_GOOGLE = "google";
     private static final long EXCHANGE_TTL_SECONDS = 120;
@@ -55,6 +59,8 @@ public class OauthLoginService {
     private final String googleClientSecret;
     private final String googleIssuer;
     private final String googleRedirectPath;
+    /** When true, append {@code prompt=select_account} so Google shows the account picker on each login start. */
+    private final boolean googlePromptSelectAccount;
 
     private final SecureRandom secureRandom = new SecureRandom();
     private final RestClient restClient = RestClient.create();
@@ -72,7 +78,9 @@ public class OauthLoginService {
             @Value("${rag.auth.oauth.google.client-id:}") String googleClientId,
             @Value("${rag.auth.oauth.google.client-secret:}") String googleClientSecret,
             @Value("${rag.auth.oauth.google.issuer:https://accounts.google.com}") String googleIssuer,
-            @Value("${rag.auth.oauth.google.redirect-path:/api/auth/oauth/google/callback}") String googleRedirectPath) {
+            @Value("${rag.auth.oauth.google.redirect-path:${rag.api.product-base-path}/auth/oauth/google/callback}")
+                    String googleRedirectPath,
+            @Value("${rag.auth.oauth.google.prompt-select-account:true}") boolean googlePromptSelectAccount) {
         this.userAccountPort = userAccountPort;
         this.oauthIdentityRepository = oauthIdentityRepository;
         this.oauthLoginExchangeCodeRepository = oauthLoginExchangeCodeRepository;
@@ -85,45 +93,59 @@ public class OauthLoginService {
         this.googleClientId = googleClientId != null ? googleClientId : "";
         this.googleClientSecret = googleClientSecret != null ? googleClientSecret : "";
         this.googleIssuer = googleIssuer != null ? googleIssuer : "https://accounts.google.com";
-        this.googleRedirectPath = googleRedirectPath != null ? googleRedirectPath : "/api/auth/oauth/google/callback";
+        this.googleRedirectPath = googleRedirectPath != null ? googleRedirectPath : "/auth/oauth/google/callback";
+        this.googlePromptSelectAccount = googlePromptSelectAccount;
     }
 
-    public String googleStartUrl() {
+    public String googleStartUrl(String locale) {
+        String resolvedLocale = resolveLocale(locale);
         if (!oauthEnabled) {
-            return webappBaseUrl + "/en/login";
+            return webappBaseUrl + "/" + resolvedLocale + "/login";
         }
         if (googleClientId.isBlank()) {
             throw new IllegalStateException("OAuth enabled but Google client-id is empty");
         }
         String redirectUri = buildRedirectUri();
-        String state = createStateToken();
-        return "https://accounts.google.com/o/oauth2/v2/auth"
-                + "?client_id=" + urlEncode(googleClientId)
-                + "&redirect_uri=" + urlEncode(redirectUri)
-                + "&response_type=code"
-                + "&scope=" + urlEncode("openid email profile")
-                + "&state=" + urlEncode(state);
+        log.debug(
+                "OAuth Google authorization redirect_uri (must exactly match an Authorized redirect URI in Google Cloud Console): {}",
+                redirectUri);
+        String state = createStateToken(resolvedLocale);
+        StringBuilder url = new StringBuilder("https://accounts.google.com/o/oauth2/v2/auth")
+                .append("?client_id=")
+                .append(urlEncode(googleClientId))
+                .append("&redirect_uri=")
+                .append(urlEncode(redirectUri))
+                .append("&response_type=code")
+                .append("&scope=")
+                .append(urlEncode("openid email profile"))
+                .append("&state=")
+                .append(urlEncode(state));
+        if (googlePromptSelectAccount) {
+            url.append("&prompt=").append(urlEncode("select_account"));
+        }
+        return url.toString();
     }
 
     @Transactional
     public String handleGoogleCallback(String code, String state, String error) {
+        String resolvedLocale = extractLocaleFromState(state);
         if (!oauthEnabled) {
-            return webappBaseUrl + "/en/login";
+            return webappBaseUrl + "/" + resolvedLocale + "/login";
         }
         if (error != null && !error.isBlank()) {
-            return webappBaseUrl + "/en/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
         }
         if (code == null || code.isBlank()) {
-            return webappBaseUrl + "/en/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
         }
         if (!consumeStateToken(state)) {
-            return webappBaseUrl + "/en/login?oauth=invalid_state";
+            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=invalid_state";
         }
 
         Map<String, Object> tokenResponse = exchangeAuthCodeForTokens(code);
         String idToken = Optional.ofNullable(tokenResponse.get("id_token")).map(Object::toString).orElse("");
         if (idToken.isBlank()) {
-            return webappBaseUrl + "/en/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
         }
 
         Jwt jwt = googleIdTokenDecoder().decode(idToken);
@@ -131,12 +153,12 @@ public class OauthLoginService {
         String email = jwt.getClaimAsString("email");
         Boolean emailVerified = jwt.getClaimAsBoolean("email_verified");
         if (subject == null || subject.isBlank() || email == null || email.isBlank()) {
-            return webappBaseUrl + "/en/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
         }
 
         UserEntity user = resolveOrCreateUser(subject, email, Boolean.TRUE.equals(emailVerified));
         String exchangeCode = createExchangeCode(user);
-        return webappBaseUrl + "/en/oauth/callback/google?code=" + urlEncode(exchangeCode);
+        return webappBaseUrl + "/" + resolvedLocale + "/oauth/callback/google?code=" + urlEncode(exchangeCode);
     }
 
     @Transactional
@@ -176,6 +198,8 @@ public class OauthLoginService {
                             passwordEncoder.encode(randomPw));
                     created.setRole(UserRole.USER);
                     created.setCreatedAt(Instant.now());
+                    created.setEmailVerified(false);
+                    created.setEmailVerifiedAt(null);
                     return userAccountPort.save(created);
                 });
 
@@ -210,15 +234,16 @@ public class OauthLoginService {
         return raw;
     }
 
-    private String createStateToken() {
+    private String createStateToken(String locale) {
         String raw = randomToken(16);
-        String hash = sha256Hex(raw);
+        String state = raw + "." + resolveLocale(locale);
+        String hash = sha256Hex(state);
         OauthLoginStateTokenEntity e = new OauthLoginStateTokenEntity();
         e.setStateHash(hash);
         e.setCreatedAt(Instant.now());
         e.setExpiresAt(Instant.now().plusSeconds(STATE_TTL_SECONDS));
         oauthLoginStateTokenRepository.save(e);
-        return raw;
+        return state;
     }
 
     private boolean consumeStateToken(String state) {
@@ -242,7 +267,26 @@ public class OauthLoginService {
         return true;
     }
 
-    private Map<String, Object> exchangeAuthCodeForTokens(String code) {
+    private String extractLocaleFromState(String state) {
+        if (state == null || state.isBlank()) {
+            return "en";
+        }
+        String[] parts = state.trim().split("\\.");
+        return resolveLocale(parts.length > 1 ? parts[parts.length - 1] : null);
+    }
+
+    private String resolveLocale(String locale) {
+        if (locale == null) {
+            return "en";
+        }
+        String normalized = locale.trim().toLowerCase();
+        if (normalized.matches("^[a-z]{2}(-[a-z]{2})?$")) {
+            return normalized;
+        }
+        return "en";
+    }
+
+    Map<String, Object> exchangeAuthCodeForTokens(String code) {
         String redirectUri = buildRedirectUri();
         return restClient.post()
                 .uri("https://oauth2.googleapis.com/token")
@@ -256,7 +300,7 @@ public class OauthLoginService {
                 .body(Map.class);
     }
 
-    private JwtDecoder googleIdTokenDecoder() {
+    JwtDecoder googleIdTokenDecoder() {
         String jwks = "https://www.googleapis.com/oauth2/v3/certs";
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwks).build();
         decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(googleIssuer));

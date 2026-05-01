@@ -18,7 +18,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, authApiPath } from "@/lib/api-client";
 import { useProjectList, useActivateProject } from "@/features/projects/hooks/use-projects";
 import { useConversations, useCreateConversation } from "@/features/chat/hooks/use-conversations";
 import { useAppStore } from "@/store/app.store";
@@ -93,7 +93,7 @@ function AppSidebarContent() {
     let cancelled = false;
     void (async () => {
       try {
-        const me = await apiFetch<MeResponse>("/api/auth/me");
+        const me = await apiFetch<MeResponse>(authApiPath("/me"));
         if (cancelled) return;
         const nextRole = me.roleName ?? null;
         setRole(nextRole);

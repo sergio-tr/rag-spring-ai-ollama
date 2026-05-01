@@ -117,3 +117,5 @@ Deeper detail: [`docs/testing/README.md`](../testing/README.md), [`docs/operatio
 ## Related documentation boundaries
 
 When extending this hub, prefer edits under `docs/devops/**`, `docs/testing/**`, and cross-links from `docs/architecture/**` only when the system-level story changes. Do not use this document as justification to edit [`DATA_MODEL.md`](../architecture/DATA_MODEL.md) or [`configuration-resolution-model.md`](../architecture/configuration-resolution-model.md); those files follow their own change control.
+
+**Local Docker full-stack guide:** [Local Docker development — scripts, URLs, Ollama, HTTPS](local-docker-dev-guide.md).

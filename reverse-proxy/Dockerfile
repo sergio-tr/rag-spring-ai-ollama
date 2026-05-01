@@ -25,9 +25,10 @@ CMD ["/bin/sh", "-c", \
     API_PROXY_CONNECT_TIMEOUT=\"${API_PROXY_CONNECT_TIMEOUT:-10s}\" \
     API_PROXY_SEND_TIMEOUT=\"${API_PROXY_SEND_TIMEOUT:-180s}\" \
     API_PROXY_READ_TIMEOUT=\"${API_PROXY_READ_TIMEOUT:-180s}\" \
+    RAG_API_PRODUCT_BASE_PATH=\"${RAG_API_PRODUCT_BASE_PATH:-/api/v5}\" \
     API_CLIENT_MAX_BODY_SIZE=\"${API_CLIENT_MAX_BODY_SIZE:-50m}\" \
     WEB_CLIENT_MAX_BODY_SIZE=\"${WEB_CLIENT_MAX_BODY_SIZE:-20m}\" \
     CONTENT_SECURITY_POLICY=\"${CONTENT_SECURITY_POLICY:-default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: http: ws: wss:}\" \
-    && envsubst '$BACKEND_HOST $BACKEND_INTERNAL_PORT $WEBAPP_HOST $WEBAPP_INTERNAL_PORT $TLS_CERT_PATH $TLS_KEY_PATH $REVERSE_PROXY_ENFORCE_HTTPS $API_PROXY_CONNECT_TIMEOUT $API_PROXY_SEND_TIMEOUT $API_PROXY_READ_TIMEOUT $API_CLIENT_MAX_BODY_SIZE $WEB_CLIENT_MAX_BODY_SIZE $CONTENT_SECURITY_POLICY' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf \
+    && envsubst '$BACKEND_HOST $BACKEND_INTERNAL_PORT $WEBAPP_HOST $WEBAPP_INTERNAL_PORT $TLS_CERT_PATH $TLS_KEY_PATH $REVERSE_PROXY_ENFORCE_HTTPS $API_PROXY_CONNECT_TIMEOUT $API_PROXY_SEND_TIMEOUT $API_PROXY_READ_TIMEOUT $RAG_API_PRODUCT_BASE_PATH $API_CLIENT_MAX_BODY_SIZE $WEB_CLIENT_MAX_BODY_SIZE $CONTENT_SECURITY_POLICY' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf \
     && nginx -g 'daemon off;'"]
 

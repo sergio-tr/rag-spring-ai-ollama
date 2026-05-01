@@ -1,26 +1,15 @@
 /**
  * Browser API client for the Spring BFF.
  *
- * Env: `NEXT_PUBLIC_API_BASE_URL` (e.g. http://localhost:9000), `NEXT_PUBLIC_RAG_API_PREFIX` (default /api/v5).
+ * Env: `NEXT_PUBLIC_API_BASE_URL` (e.g. http://localhost:9000), `NEXT_PUBLIC_RAG_API_PREFIX` (falls back to **`/api/v5`** when unset).
  * Product routes: GET/POST/PATCH/DELETE `{prefix}/projects`, `{prefix}/projects/{id}/documents`,
  * GET/PUT `{prefix}/config/user`, GET/PUT/DELETE `{prefix}/config/project/{id}`, GET `{prefix}/config/schema`,
- * GET `{prefix}/presets`, POST/DELETE `{prefix}/presets/{id}`. Auth: `/api/auth/*`. See `webapp/README.md` and backend OpenAPI (`/v3/api-docs`).
+ * GET `{prefix}/presets`, POST/DELETE `{prefix}/presets/{id}`. Auth: `{prefix}/auth/*`. See `webapp/README.md` and backend OpenAPI (`/v3/api-docs`).
  */
 import { getAccessToken, setAccessToken } from "@/lib/access-token";
 import { createTraceparent } from "@/lib/traceparent";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:9000";
-
 const DEBUG_BODY_PREVIEW_CHARS = 500;
-
-function resolveApiUrl(path: string): string {
-  if (path.startsWith("http")) {
-    return path;
-  }
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${normalizedPath}`;
-}
 
 function normalizeProductApiPrefix(raw: string | undefined, fallback: string): string {
   const s = (raw ?? fallback).trim();
@@ -52,6 +41,33 @@ export function apiProductPath(path: string): string {
 
 export function getRagApiProductPrefix(): string {
   return RAG_API_PRODUCT_PREFIX;
+}
+
+export function authApiPath(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${RAG_API_PRODUCT_PREFIX}/auth${p}`;
+}
+
+/**
+ * Full browser URL for product API paths (e.g. OAuth {@code <a href>}).
+ * When {@code NEXT_PUBLIC_API_BASE_URL} is empty/whitespace, returns a same-origin path for nginx reverse-proxy.
+ * When set (e.g. {@code http://127.0.0.1:9000}), prefixes so navigation works if the UI is opened on the webapp port only.
+ */
+export function resolveBrowserProductApiUrl(path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const trimmed = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+  if (!trimmed) {
+    return normalizedPath;
+  }
+  return `${trimmed}${normalizedPath}`;
+}
+
+function resolveApiUrl(path: string): string {
+  if (path.startsWith("http")) {
+    return path;
+  }
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return resolveBrowserProductApiUrl(normalizedPath);
 }
 
 export type ApiClientOptions = RequestInit & {
@@ -119,7 +135,7 @@ async function tryRefreshOnce(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     try {
-      const res = await fetch("/api/auth/refresh", {
+      const res = await fetch(authApiPath("/refresh"), {
         method: "POST",
         credentials: "same-origin",
       });
@@ -508,6 +524,7 @@ function createDoRequest(
     });
 }
 
+/** Trimmed backend origin, or empty when using same-origin `/api/v5/*` (reverse-proxy). Read live from env. */
 export function getApiBaseUrl(): string {
-  return API_BASE;
+  return (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/$/, "");
 }

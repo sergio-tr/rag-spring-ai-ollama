@@ -201,7 +201,7 @@ describe("AppSidebar", () => {
     expect(screen.getByRole("link", { name: /^admin$/i })).toHaveAttribute("href", "/admin");
   });
 
-  it("shows Admin link when /api/auth/me returns ADMIN", async () => {
+  it("shows Admin link when auth me endpoint returns ADMIN", async () => {
     apiFetchMock.mockResolvedValueOnce({ roleName: "ADMIN" });
     render(<AppSidebar />, { wrapper: Wrapper });
     await waitFor(() => {

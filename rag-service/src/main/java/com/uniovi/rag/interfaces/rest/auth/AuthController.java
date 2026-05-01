@@ -4,6 +4,7 @@ import com.uniovi.rag.application.usecase.auth.AuthService;
 import com.uniovi.rag.application.port.out.UserAccountPort;
 import com.uniovi.rag.interfaces.rest.auth.dto.ConfirmEmailRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordRequest;
+import com.uniovi.rag.interfaces.rest.auth.dto.ForgotPasswordResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.LoginResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.MeResponse;
@@ -27,7 +28,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping({ "${rag.api.product-base-path}/auth", "/api/auth" })
 public class AuthController {
 
     private final AuthService authService;
@@ -78,10 +79,11 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public void forgotPassword(@Valid @RequestBody ForgotPasswordRequest body, HttpServletRequest request) {
+    public ForgotPasswordResponse forgotPassword(@Valid @RequestBody ForgotPasswordRequest body, HttpServletRequest request) {
         String ip = request != null ? request.getRemoteAddr() : null;
         String ua = request != null ? request.getHeader("User-Agent") : null;
         authService.forgotPassword(body, ip, ua);
+        return ForgotPasswordResponse.neutral();
     }
 
     @PostMapping("/reset-password")

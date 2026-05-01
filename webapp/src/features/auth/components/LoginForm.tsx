@@ -1,17 +1,18 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Link, useRouter } from "@/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
+import { ApiError, apiFetch, authApiPath } from "@/lib/api-client";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
 import { setStoredUserRole } from "@/lib/user-role";
 import { AuthEmailPasswordFields } from "@/features/auth/components/AuthEmailPasswordFields";
+import { GoogleOAuthButton } from "@/features/auth/components/GoogleOAuthButton";
 import {
-  loginSchema,
+  createLoginSchema,
   type LoginFormValues,
 } from "@/features/auth/schemas/auth-schemas";
 import type { LoginResponse } from "@/types/api";
@@ -42,19 +43,20 @@ function isEmailNotVerifiedApiError(error: ApiError): boolean {
 
 export function LoginForm() {
   const t = useTranslations("Auth");
+  const locale = useLocale();
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
   const oauthGoogleEnabled = process.env.NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED === "true";
 
   const form = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(createLoginSchema(t)),
     defaultValues: { email: "", password: "" },
   });
 
   async function onSubmit(values: LoginFormValues) {
     setFormError(null);
     try {
-      const data = await apiFetch<LoginResponse>("/api/auth/login", {
+      const data = await apiFetch<LoginResponse>(authApiPath("/login"), {
         method: "POST",
         skipCredentials: true,
         headers: { "Content-Type": "application/json" },
@@ -90,9 +92,10 @@ export function LoginForm() {
       noValidate
     >
       {oauthGoogleEnabled && (
-        <Link className={buttonVariants({ variant: "secondary" })} href="/api/auth/oauth/google/start">
-          {t("oauthGoogleCta")}
-        </Link>
+        <>
+          <GoogleOAuthButton locale={locale} label={t("oauthGoogleCta")} />
+          <p className="text-muted-foreground text-center text-xs">{t("oauthSeparator")}</p>
+        </>
       )}
       <AuthEmailPasswordFields
         register={form.register}

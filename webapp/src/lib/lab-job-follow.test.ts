@@ -3,12 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { followLabJob } from "./lab-job-follow";
 import * as asyncTask from "./async-task";
 import * as labJobSse from "./lab-job-sse";
+import { apiProductPath } from "./api-client";
 
 const accepted = {
   jobId: "job-1",
   status: "ACCEPTED",
-  pollPath: "/api/v5/lab/jobs/job-1",
-  streamPath: "/api/v5/lab/jobs/job-1/events",
+  pollPath: apiProductPath("/lab/jobs/job-1"),
+  streamPath: apiProductPath("/lab/jobs/job-1/events"),
 };
 
 describe("followLabJob", () => {

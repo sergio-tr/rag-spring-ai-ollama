@@ -57,6 +57,14 @@ describe("proxy middleware", () => {
     expect(handleI18n).toHaveBeenCalledWith(req);
   });
 
+  it("does not treat bare /api/* paths as protected app routes", async () => {
+    const { default: proxy } = await import("./proxy");
+    const req = new NextRequest(new URL("http://localhost/api/v5/auth/session"));
+    const res = proxy(req);
+    expect(res.status).toBe(200);
+    expect(handleI18n).toHaveBeenCalledWith(req);
+  });
+
   it.each(["/documents", "/settings", "/lab", "/admin"] as const)(
     "redirects unauthenticated users from %s",
     async (path) => {

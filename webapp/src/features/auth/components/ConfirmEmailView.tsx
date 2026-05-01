@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { buttonVariants } from "@/components/ui/button";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch, authApiPath } from "@/lib/api-client";
 import { Link } from "@/navigation";
 
 export function ConfirmEmailView() {
@@ -26,7 +26,7 @@ export function ConfirmEmailView() {
       setStatus("busy");
       setMessage(null);
       try {
-        await apiFetch("/api/auth/confirm-email", {
+        await apiFetch(authApiPath("/confirm-email"), {
           method: "POST",
           skipCredentials: true,
           headers: { "Content-Type": "application/json" },

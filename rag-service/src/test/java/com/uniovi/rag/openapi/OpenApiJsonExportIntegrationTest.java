@@ -104,11 +104,31 @@ class OpenApiJsonExportIntegrationTest {
         }
         assertTrue(hasBearer, "Protected operations must require bearerAuth");
 
-        // Public example: /api/auth/login should not require bearerAuth.
-        JsonNode loginPost = json.path("paths").path("/api/auth/login").path("post");
-        assertTrue(loginPost.isObject(), "OpenAPI must include /api/auth/login POST path");
+        // Public primary contract example: /api/v5/auth/login should not require bearerAuth.
+        JsonNode loginPost = json.path("paths").path("/api/v5/auth/login").path("post");
+        assertTrue(loginPost.isObject(), "OpenAPI must include /api/v5/auth/login POST path");
         assertTrue(
                 !loginPost.has("security") || loginPost.path("security").isMissingNode() || loginPost.path("security").size() == 0,
                 "Public auth endpoints must not require bearerAuth");
+
+        JsonNode paths = json.path("paths");
+        assertPublicAuthOperation(paths, "/api/v5/auth/register", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/refresh", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/confirm-email", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/resend-confirmation", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/forgot-password", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/reset-password", "post");
+        assertPublicAuthOperation(paths, "/api/v5/auth/oauth/google/start", "get");
+        assertPublicAuthOperation(paths, "/api/v5/auth/oauth/google/callback", "get");
+        assertPublicAuthOperation(paths, "/api/v5/auth/oauth/exchange", "post");
+    }
+
+    private static void assertPublicAuthOperation(JsonNode paths, String path, String method) {
+        JsonNode op = paths.path(path).path(method);
+        assertTrue(op.isObject(), "OpenAPI must include " + method.toUpperCase() + " " + path);
+        JsonNode sec = op.path("security");
+        assertTrue(
+                !op.has("security") || sec.isMissingNode() || (sec.isArray() && sec.size() == 0),
+                "Public auth operation must not require bearerAuth: " + method.toUpperCase() + " " + path);
     }
 }
