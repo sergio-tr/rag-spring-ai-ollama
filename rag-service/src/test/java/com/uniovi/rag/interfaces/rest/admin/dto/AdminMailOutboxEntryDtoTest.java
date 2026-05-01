@@ -4,6 +4,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.MailOutboxEntity;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -15,7 +16,7 @@ class AdminMailOutboxEntryDtoTest {
         Instant created = Instant.parse("2026-05-01T10:00:00Z");
         Instant sent = Instant.parse("2026-05-01T10:05:00Z");
         MailOutboxEntity e = new MailOutboxEntity();
-        org.springframework.test.util.ReflectionTestUtils.setField(e, "id", id);
+        ReflectionTestUtils.setField(e, "id", id);
         e.setCreatedAt(created);
         e.setPurpose("PASSWORD_RESET");
         e.setRecipient("u@example.com");
