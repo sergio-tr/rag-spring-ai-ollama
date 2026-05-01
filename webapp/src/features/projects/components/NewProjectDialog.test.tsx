@@ -88,4 +88,17 @@ describe("NewProjectDialog", () => {
     await user.click(screen.getByRole("button", { name: /^New project$/i }));
     expect(screen.getByRole("alert")).toHaveTextContent(/Could not create project/i);
   });
+
+  it("opens without a trigger when controlled via open + onOpenChange", () => {
+    const qc = createTestQueryClient();
+    render(
+      <QueryClientProvider client={qc}>
+        <IntlTestProvider>
+          <NewProjectDialog open onOpenChange={() => {}} />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^New project$/i })).toBeInTheDocument();
+  });
 });

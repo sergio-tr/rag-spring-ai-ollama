@@ -78,7 +78,7 @@ export default function SettingsAccountPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
+      <Card id="settings-account-export" className="scroll-mt-24">
         <CardHeader>
           <CardTitle>{t("accountExportTitle")}</CardTitle>
           <CardDescription>{t("accountExportDescription")}</CardDescription>
