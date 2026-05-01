@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement, type ReactNode } from "react";
 import * as apiClient from "@/lib/api-client";
-import { createTestQueryClient } from "@/test-utils/query-client";
+import { CHAT_DETERMINISTIC_DEFAULT_PRESET_ID } from "@/features/chat/lib/conversation-preset-ui";
 import {
+  mergeConversationPatchOptimistic,
   useConversationMessages,
   useConversations,
   useCreateConversation,
@@ -31,7 +32,12 @@ vi.mock("@/store/app.store", () => ({
 const apiFetch = vi.mocked(apiClient.apiFetch);
 
 function createWrapper() {
-  const qc = createTestQueryClient();
+  const qc = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 60_000 },
+      mutations: { retry: false },
+    },
+  });
   function Wrapper({ children }: { children: ReactNode }) {
     return createElement(QueryClientProvider, { client: qc }, children);
   }
@@ -41,6 +47,34 @@ function createWrapper() {
 const conv = { id: "c1", title: "T", updatedAt: "" };
 
 describe("use-conversations hooks", () => {
+  it("mergeConversationPatchOptimistic aligns effectivePresetId with presetId", () => {
+    const row = {
+      id: "c1",
+      title: "t",
+      updatedAt: "",
+      presetId: null as string | null,
+      effectivePresetId: null as string | null,
+      documentFilter: [] as string[],
+    };
+    const next = mergeConversationPatchOptimistic(row, { presetId: "pid-1" });
+    expect(next.presetId).toBe("pid-1");
+    expect(next.effectivePresetId).toBe("pid-1");
+  });
+
+  it("mergeConversationPatchOptimistic clears preset and restores deterministic effective id", () => {
+    const row = {
+      id: "c1",
+      title: "t",
+      updatedAt: "",
+      presetId: "x",
+      effectivePresetId: "x",
+      documentFilter: [] as string[],
+    };
+    const next = mergeConversationPatchOptimistic(row, { clearPreset: true });
+    expect(next.presetId).toBeNull();
+    expect(next.effectivePresetId).toBe(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
+  });
+
   beforeEach(() => {
     apiFetch.mockReset();
     setActiveProject.mockReset();
@@ -104,17 +138,31 @@ describe("use-conversations hooks", () => {
     expect(apiFetch).toHaveBeenCalledWith(expect.stringMatching(/\/conversations\/c1\/messages$/));
   });
 
-  it("usePatchConversation patches and invalidates conversations", async () => {
-    apiFetch.mockResolvedValueOnce(conv);
+  it("usePatchConversation patches and merges the conversation row into query cache", async () => {
+    const row = {
+      id: "c1",
+      title: "Old",
+      updatedAt: "t0",
+      presetId: null as string | null,
+      documentFilter: [] as string[],
+    };
+    apiFetch.mockResolvedValueOnce({
+      id: "c1",
+      title: "New",
+      updatedAt: "t1",
+      presetId: null,
+      documentFilter: [],
+    });
     const { wrapper, qc } = createWrapper();
-    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+    qc.setQueryData(["conversations", "p1"], [row]);
     const { result } = renderHook(() => usePatchConversation("p1"), { wrapper });
     await result.current.mutateAsync({ conversationId: "c1", body: { title: "New" } });
     expect(apiFetch).toHaveBeenCalledWith(
       expect.stringMatching(/\/conversations\/c1$/),
       expect.objectContaining({ method: "PATCH" }),
     );
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["conversations", "p1"] });
+    expect(qc.getQueryData<typeof row[]>(["conversations", "p1"])?.[0]?.title).toBe("New");
+    expect(qc.getQueryData<typeof row[]>(["conversations", "p1"])?.[0]?.updatedAt).toBe("t1");
   });
 
   it("useMoveConversation invalidates related keys and switches active project when moving from the active one", async () => {

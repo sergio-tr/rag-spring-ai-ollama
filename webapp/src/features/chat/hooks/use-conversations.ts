@@ -4,8 +4,36 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { useAppStore } from "@/store/app.store";
 import type { ConversationDto, MessageDto, PatchConversationBody } from "@/types/api";
+import { CHAT_DETERMINISTIC_DEFAULT_PRESET_ID } from "@/features/chat/lib/conversation-preset-ui";
 
 const convKey = (projectId: string) => ["conversations", projectId] as const;
+
+/** Applies PATCH fields locally for TanStack optimistic cache updates (order matches server merge semantics). */
+export function mergeConversationPatchOptimistic(
+  conv: ConversationDto,
+  body: PatchConversationBody,
+): ConversationDto {
+  const next = { ...conv };
+  if (body.title !== undefined) next.title = body.title;
+  if (body.clearPreset) {
+    next.presetId = null;
+    next.effectivePresetId = CHAT_DETERMINISTIC_DEFAULT_PRESET_ID;
+  } else if (body.presetId !== undefined) {
+    next.presetId = body.presetId;
+    next.effectivePresetId =
+      body.presetId != null && String(body.presetId).trim() !== ""
+        ? String(body.presetId).trim()
+        : CHAT_DETERMINISTIC_DEFAULT_PRESET_ID;
+  }
+  if (body.documentFilter !== undefined) {
+    next.documentFilter = [...(body.documentFilter ?? [])];
+  }
+  return next;
+}
+
+type PatchConversationContext = {
+  previous: ConversationDto[] | undefined;
+};
 const msgKey = (conversationId: string) => ["messages", conversationId] as const;
 
 export function useConversations(projectId: string | undefined) {
@@ -53,8 +81,34 @@ export function usePatchConversation(projectId: string | undefined) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
-    onSuccess: () => {
-      if (projectId) void qc.invalidateQueries({ queryKey: convKey(projectId) });
+    onMutate: async ({
+      conversationId,
+      body,
+    }: {
+      conversationId: string;
+      body: PatchConversationBody;
+    }): Promise<PatchConversationContext> => {
+      if (!projectId) return { previous: undefined };
+      await qc.cancelQueries({ queryKey: convKey(projectId) });
+      const previous = qc.getQueryData<ConversationDto[]>(convKey(projectId));
+      qc.setQueryData<ConversationDto[]>(convKey(projectId), (old) => {
+        if (!old) return old;
+        return old.map((c) =>
+          c.id === conversationId ? mergeConversationPatchOptimistic(c, body) : c,
+        );
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (!projectId || !ctx?.previous) return;
+      qc.setQueryData(convKey(projectId), ctx.previous);
+    },
+    onSuccess: (data, { conversationId }) => {
+      if (!projectId) return;
+      qc.setQueryData<ConversationDto[]>(convKey(projectId), (old) => {
+        if (!old) return old;
+        return old.map((c) => (c.id === conversationId ? data : c));
+      });
     },
   });
 }
