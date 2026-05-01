@@ -5,9 +5,11 @@ import { ProjectGrid } from "@/features/projects/components/ProjectGrid";
 import { useProjectList } from "@/features/projects/hooks/use-projects";
 import { useSyncActiveProjectWithList } from "@/features/projects/hooks/use-sync-active-project";
 import { useTranslations } from "next-intl";
+import { useAppStore } from "@/store/app.store";
 
 export default function ProjectsPage() {
   const t = useTranslations("Projects");
+  const activeProject = useAppStore((s) => s.activeProject);
   const { data, isLoading, isError } = useProjectList(0, 24);
   const items = data?.items ?? [];
   useSyncActiveProjectWithList(items);
@@ -34,6 +36,11 @@ export default function ProjectsPage() {
       {!isLoading && !isError && items.length === 0 && (
         <p className="text-muted-foreground text-sm">{t("empty")}</p>
       )}
+      {!isLoading && !isError && items.length > 0 && !activeProject ? (
+        <p className="text-muted-foreground text-sm" role="status">
+          {t("noActiveSelectionHint")}
+        </p>
+      ) : null}
       {!isLoading && !isError && items.length > 0 && (
         <ProjectGrid items={items} />
       )}
