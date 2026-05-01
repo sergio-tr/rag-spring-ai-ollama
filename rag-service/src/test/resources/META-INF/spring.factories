@@ -1,3 +1,0 @@
-# Test classpath only: JWT/OTLP fixes + JDBC for JPA (see SafeTestSecretsApplicationContextInitializer).
-org.springframework.context.ApplicationContextInitializer=\
-com.uniovi.rag.testsupport.SafeTestSecretsApplicationContextInitializer

@@ -1,8 +1,0 @@
-name: low_topk
-description: Project-scoped topK=3 (compare with high_topk).
-transport: product_chat
-product_chat:
-  product_base_path: /api/v5
-  rag_config:
-    topK: 3
-  post_message: {}

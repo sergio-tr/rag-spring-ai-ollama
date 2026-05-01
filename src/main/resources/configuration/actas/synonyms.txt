@@ -1,0 +1,8 @@
+[Sinónimos]
+asistente = participante, miembro presente, persona convocada
+quórum = número mínimo de asistentes, asistencia válida
+orden del día = agenda, puntos a tratar, temario
+decisión = acuerdo, resolución, determinación
+acta = registro, documento de reunión, minuta
+moderador = presidente, coordinador, facilitador
+votación = sufragio, elección, proceso de decisión
