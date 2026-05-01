@@ -1,0 +1,15 @@
+﻿ID de Dispositivo;Fecha de Revisión;Inspector;Voltaje (V);Corriente (A);Resistencia de Aislamiento (MΩ);Tierra (Ω);Pruebas Funcionales;Observaciones
+D001;15/01/2022;Juan Pérez;230;15.0;5.5;0.9;Correcto;Ninguna anomalía detectada.
+D002;10/02/2022;María González;110;12.0;4.8;1.2;Correcto;Revisión general satisfactoria.
+D001;20/06/2022;María González;230;16.0;6.2;0.8;Correcto;Revisión periódica satisfactoria.
+D003;05/07/2022;Carlos López;400;20.0;7.0;0.6;Correcto;Conexión a tierra optimizada.
+D001;10/12/2022;Carlos López;230;14.0;5.8;0.7;Correcto;Cierta oxidación en conexiones.
+D002;12/01/2023;Laura Martínez;110;11.5;4.6;1.1;Correcto;Sin observaciones adicionales.
+D003;18/03/2023;Pedro Sánchez;400;19.8;6.9;0.65;Correcto;Se recomienda mantenimiento en un año.
+D001;25/03/2023;Laura Martínez;230;15.5;6.0;0.85;Correcto;Se recomienda limpieza preventiva.
+D002;14/05/2023;Ana Fernández;110;12.2;4.9;1.0;Correcto;Sin anomalías detectadas.
+D003;20/07/2023;Juan Pérez;400;21.0;7.2;0.58;Correcto;Limpieza del área recomendada.
+D001;30/07/2023;Pedro Sánchez;230;15.0;5.9;0.9;Correcto;Sin observaciones adicionales.
+D003;11/09/2023;María González;400;19.5;6.7;0.62;Correcto;Ajuste en conexiones de tierra realizado.
+D002;05/10/2023;Carlos López;110;11.8;4.7;1.15;Correcto;Revisión periódica realizada.
+D001;12/11/2023;Ana Fernández;230;14.8;5.7;0.88;Correcto;Ajuste en conexiones de tierra realizado.

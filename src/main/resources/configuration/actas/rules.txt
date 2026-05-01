@@ -1,0 +1,7 @@
+[Reglas]
+1. Si una pregunta involucra fechas, verificar todas las actas de ese período.
+2. Para preguntas sobre asistencia, listar nombres completos de los asistentes.
+3. Si se pregunta por decisiones tomadas, proporcionar el acuerdo exacto registrado.
+4. Diferenciar entre propuestas discutidas y decisiones oficiales tomadas.
+5. Si una pregunta menciona un tema específico, buscar en el orden del día.
+6. En preguntas sobre quórum, indicar si se cumplió el mínimo requerido.

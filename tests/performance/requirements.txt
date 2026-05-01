@@ -1,2 +1,0 @@
-# Micro-benchmark scripts (retrieval_benchmark.py, llm_benchmark.py, infra_probe.py)
-PyYAML>=6.0.1

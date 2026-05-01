@@ -1,8 +1,0 @@
-# Default product chat — requires BENCHMARK_* env (token + project + conversation).
-name: baseline
-description: Product chat benchmark with default project config override (no chatModel override).
-transport: product_chat
-product_chat:
-  product_base_path: /api/v5
-  rag_config: {}
-  post_message: {}

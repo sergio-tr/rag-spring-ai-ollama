@@ -1,0 +1,6 @@
+[Conceptos Distintos]
+Asistente = Persona presente en la reunión, pero sin obligación de participar activamente.
+Moderador = Persona que dirige la reunión, pero no necesariamente toma decisiones.
+Quórum = Número mínimo de asistentes para que los acuerdos sean válidos.
+Orden_del_día = Puntos planificados a tratar en la reunión, distintos de los ruegos y preguntas.
+Decisión = Acuerdo oficial tomado por votación o consenso, distinto de una propuesta o sugerencia.
