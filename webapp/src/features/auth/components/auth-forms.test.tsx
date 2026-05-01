@@ -238,7 +238,7 @@ describe("RegisterForm", () => {
     expect(googleLink.getAttribute("href")).toContain("/api/v5/auth/oauth/google/start");
   });
 
-  it("toggles register password and repeat-password visibility independently", async () => {
+  it("uses one password visibility toggle for both password and repeat-password fields", async () => {
     vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "false");
     const user = userEvent.setup();
     render(
@@ -250,17 +250,15 @@ describe("RegisterForm", () => {
     const repeat = screen.getByLabelText(/repeat password/i);
     expect(pwd).toHaveAttribute("type", "password");
     expect(repeat).toHaveAttribute("type", "password");
+    expect(screen.queryAllByRole("button", { name: /show password/i })).toHaveLength(1);
 
     await user.click(screen.getByRole("button", { name: /^show password$/i }));
     expect(pwd).toHaveAttribute("type", "text");
-    expect(repeat).toHaveAttribute("type", "password");
-
-    await user.click(screen.getByRole("button", { name: /show repeated password/i }));
     expect(repeat).toHaveAttribute("type", "text");
 
     await user.click(screen.getByRole("button", { name: /^hide password$/i }));
     expect(pwd).toHaveAttribute("type", "password");
-    expect(repeat).toHaveAttribute("type", "text");
+    expect(repeat).toHaveAttribute("type", "password");
   });
 
   it("registers and navigates", async () => {
@@ -311,6 +309,35 @@ describe("RegisterForm", () => {
       expect(push).toHaveBeenCalledWith("/register/pending?email=a%40b.com"),
     );
     expect(commitSessionCookie).not.toHaveBeenCalled();
+  });
+
+  it("pending verification never commits session even if response incorrectly includes login tokens", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiFetch).mockResolvedValue({
+      status: "PENDING_EMAIL_VERIFICATION",
+      login: {
+        accessToken: "should-not-use",
+        refreshToken: "should-not-use",
+        user: { id: "1", email: "a@b.com", name: "N", role: "USER" },
+      },
+    });
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/display name/i), "N");
+    await user.type(screen.getByLabelText(/email/i), "a@b.com");
+    await user.type(screen.getByLabelText(/^password$/i), "secret12");
+    await user.type(screen.getByLabelText(/repeat password/i), "secret12");
+    await user.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
+    await user.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
+    await user.click(screen.getByRole("button", { name: /^Register$/i }));
+    await vi.waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/register/pending?email=a%40b.com"),
+    );
+    expect(commitSessionCookie).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalledWith("/projects");
   });
 
   it("shows register error on conflict", async () => {

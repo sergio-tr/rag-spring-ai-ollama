@@ -53,8 +53,8 @@ export function ResetPasswordView() {
 
   const [status, setStatus] = useState<"idle" | "busy" | "ok" | "error">(() => (token ? "idle" : "error"));
   const [message, setMessage] = useState<string | null>(() => (token ? null : t("resetPasswordMissingToken")));
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  /** One toggle controls both password fields (repeat-password UX). */
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   const form = useForm<Values>({
     resolver: zodResolver(zodSchema),
@@ -99,14 +99,14 @@ export function ResetPasswordView() {
           <div className="flex gap-2">
             <Input
               id="password"
-              type={showPassword ? "text" : "password"}
+              type={passwordVisible ? "text" : "password"}
               autoComplete="new-password"
               className="flex-1"
               {...form.register("password")}
             />
             <PasswordVisibilityToggle
-              visible={showPassword}
-              onToggle={() => setShowPassword((prev) => !prev)}
+              visible={passwordVisible}
+              onToggle={() => setPasswordVisible((prev) => !prev)}
               showPasswordLabel={t("showPassword")}
               hidePasswordLabel={t("hidePassword")}
             />
@@ -119,21 +119,12 @@ export function ResetPasswordView() {
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
-          <div className="flex gap-2">
-            <Input
-              id="confirmPassword"
-              type={showConfirm ? "text" : "password"}
-              autoComplete="new-password"
-              className="flex-1"
-              {...form.register("confirmPassword")}
-            />
-            <PasswordVisibilityToggle
-              visible={showConfirm}
-              onToggle={() => setShowConfirm((prev) => !prev)}
-              showPasswordLabel={t("showRepeatPassword")}
-              hidePasswordLabel={t("hideRepeatPassword")}
-            />
-          </div>
+          <Input
+            id="confirmPassword"
+            type={passwordVisible ? "text" : "password"}
+            autoComplete="new-password"
+            {...form.register("confirmPassword")}
+          />
           {form.formState.errors.confirmPassword && (
             <p className="text-destructive text-sm" role="alert">
               {form.formState.errors.confirmPassword.message}

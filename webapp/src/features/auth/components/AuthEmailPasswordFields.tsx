@@ -16,8 +16,8 @@ export function AuthEmailPasswordFields<TFieldValues extends FieldValues>(props:
   includeConfirmPassword?: boolean;
 }) {
   const { register, errors, t, passwordAutoComplete, includeConfirmPassword } = props;
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  /** One toggle for login (password only); same toggle controls both fields when confirm is shown (register). */
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   return (
     <>
@@ -35,14 +35,14 @@ export function AuthEmailPasswordFields<TFieldValues extends FieldValues>(props:
         <div className="flex gap-2">
           <Input
             id="password"
-            type={showPassword ? "text" : "password"}
+            type={passwordVisible ? "text" : "password"}
             autoComplete={passwordAutoComplete}
             className="flex-1"
             {...register("password" as never)}
           />
           <PasswordVisibilityToggle
-            visible={showPassword}
-            onToggle={() => setShowPassword((prev) => !prev)}
+            visible={passwordVisible}
+            onToggle={() => setPasswordVisible((prev) => !prev)}
             showPasswordLabel={t("showPassword")}
             hidePasswordLabel={t("hidePassword")}
           />
@@ -56,21 +56,12 @@ export function AuthEmailPasswordFields<TFieldValues extends FieldValues>(props:
       {includeConfirmPassword && (
         <div className="flex flex-col gap-2">
           <Label htmlFor="confirmPassword">{t("confirmPassword")}</Label>
-          <div className="flex gap-2">
-            <Input
-              id="confirmPassword"
-              type={showConfirmPassword ? "text" : "password"}
-              autoComplete="new-password"
-              className="flex-1"
-              {...register("confirmPassword" as never)}
-            />
-            <PasswordVisibilityToggle
-              visible={showConfirmPassword}
-              onToggle={() => setShowConfirmPassword((prev) => !prev)}
-              showPasswordLabel={t("showRepeatPassword")}
-              hidePasswordLabel={t("hideRepeatPassword")}
-            />
-          </div>
+          <Input
+            id="confirmPassword"
+            type={passwordVisible ? "text" : "password"}
+            autoComplete="new-password"
+            {...register("confirmPassword" as never)}
+          />
           {errors.confirmPassword && (
             <p className="text-destructive text-sm" role="alert">
               {(errors.confirmPassword as { message?: string }).message}
@@ -81,4 +72,3 @@ export function AuthEmailPasswordFields<TFieldValues extends FieldValues>(props:
     </>
   );
 }
-

@@ -50,7 +50,7 @@ describe("ResetPasswordView", () => {
     expect(screen.getByRole("button", { name: /set new password/i })).toBeDisabled();
   });
 
-  it("password visibility toggles use icon buttons with aria-pressed", async () => {
+  it("one icon toggle controls password and repeat-password visibility", async () => {
     mockToken = "t1";
     const user = userEvent.setup();
     render(
@@ -59,11 +59,15 @@ describe("ResetPasswordView", () => {
       </IntlTestProvider>,
     );
     const pwd = screen.getByLabelText(/^password$/i);
+    const repeat = screen.getByLabelText(/repeat password/i);
     expect(screen.getByRole("button", { name: /show password/i })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: /show repeated password/i })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /show password/i }));
     expect(pwd).toHaveAttribute("type", "text");
-    await user.click(screen.getByRole("button", { name: /show repeated password/i }));
-    expect(screen.getByLabelText(/repeat password/i)).toHaveAttribute("type", "text");
+    expect(repeat).toHaveAttribute("type", "text");
+    await user.click(screen.getByRole("button", { name: /hide password/i }));
+    expect(pwd).toHaveAttribute("type", "password");
+    expect(repeat).toHaveAttribute("type", "password");
   });
 
   it("submits when token exists and redirects to login after success", async () => {
