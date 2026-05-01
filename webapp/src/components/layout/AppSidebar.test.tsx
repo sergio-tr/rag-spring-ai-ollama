@@ -189,6 +189,34 @@ describe("AppSidebar", () => {
     expect(screen.getByText(/rag console/i)).toBeInTheDocument();
   });
 
+  it("hides projects tree and actions when desktop rail is collapsed", () => {
+    render(<AppSidebar variant="desktop" railCollapsed onToggleRailCollapsed={vi.fn()} />, {
+      wrapper: Wrapper,
+    });
+    expect(screen.queryByRole("button", { name: /^projects$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /new project/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Main")).toBeInTheDocument();
+  });
+
+  it("invokes onToggleRailCollapsed from desktop chrome toggle", async () => {
+    const user = userEvent.setup();
+    const onToggleRailCollapsed = vi.fn();
+    render(
+      <AppSidebar variant="desktop" railCollapsed={false} onToggleRailCollapsed={onToggleRailCollapsed} />,
+      { wrapper: Wrapper },
+    );
+    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
+    expect(onToggleRailCollapsed).toHaveBeenCalledTimes(1);
+  });
+
+  it("invokes onSignOut from sidebar footer when provided", async () => {
+    const user = userEvent.setup();
+    const onSignOut = vi.fn();
+    render(<AppSidebar onSignOut={onSignOut} />, { wrapper: Wrapper });
+    await user.click(screen.getByRole("button", { name: /^sign out$/i }));
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+  });
+
   it("hides Admin link for unknown/non-admin role", () => {
     render(<AppSidebar />, { wrapper: Wrapper });
     expect(screen.queryByRole("link", { name: /^admin$/i })).not.toBeInTheDocument();
@@ -294,7 +322,9 @@ describe("AppSidebar", () => {
 
     const match = await screen.findByRole("button", { name: /budget chat/i });
     await user.click(match);
-    expect(activateProjectMutateAsync).toHaveBeenCalledWith({ id: "p2", name: "Project Two" });
+    expect(activateProjectMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "p2", name: "Project Two" }),
+    );
     expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c2");
   });
 
@@ -338,7 +368,9 @@ describe("AppSidebar", () => {
     await user.click(expandProjectOne);
     await user.click(screen.getByRole("button", { name: /chat one/i }));
 
-    expect(activateProjectMutateAsync).toHaveBeenCalledWith({ id: "p1", name: "Project One" });
+    expect(activateProjectMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "p1", name: "Project One" }),
+    );
     expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c1");
   });
 

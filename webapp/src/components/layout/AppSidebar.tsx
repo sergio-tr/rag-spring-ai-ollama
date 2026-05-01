@@ -1,9 +1,12 @@
 "use client";
 
 import {
+  ChevronLeft,
+  ChevronRight,
   FileText,
   FlaskConical,
   FolderKanban,
+  LogOut,
   MessageSquare,
   Search,
   Settings,
@@ -29,6 +32,11 @@ import { ProjectVisual } from "@/features/projects/components/ProjectVisual";
 import { getStoredUserRole, setStoredUserRole } from "@/lib/user-role";
 import type { MeResponse } from "@/types/api";
 import { Suspense } from "react";
+import {
+  patchSidebarPersistence,
+  readSidebarPersistence,
+  type SidebarPersistence,
+} from "@/components/layout/sidebar-persistence";
 
 const primaryLinks = [
   { href: "/projects" as const, key: "projects" as const, icon: FolderKanban },
@@ -38,46 +46,36 @@ const primaryLinks = [
   { href: "/admin" as const, key: "admin" as const, icon: Shield },
 ];
 
-const STORAGE_KEY = "rag-sidebar";
+export type AppSidebarChromeProps = Readonly<{
+  variant?: "desktop" | "drawer";
+  railCollapsed?: boolean;
+  onToggleRailCollapsed?: () => void;
+  /** Called after in-sidebar navigation (e.g. close mobile drawer). */
+  onNavigate?: () => void;
+  /** Sign out (session clear + redirect); rendered in sidebar footer when provided. */
+  onSignOut?: () => void;
+}>;
 
-type SidebarPersistence = {
-  projectsCollapsed: boolean;
-  expandedProjectIds: string[];
-};
-
-function readSidebarPersistence(): SidebarPersistence {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { projectsCollapsed: false, expandedProjectIds: [] };
-    const parsed = JSON.parse(raw) as Partial<SidebarPersistence>;
-    return {
-      projectsCollapsed: Boolean(parsed.projectsCollapsed),
-      expandedProjectIds: Array.isArray(parsed.expandedProjectIds)
-        ? parsed.expandedProjectIds.filter((id): id is string => typeof id === "string")
-        : [],
-    };
-  } catch {
-    return { projectsCollapsed: false, expandedProjectIds: [] };
-  }
-}
-
-function writeSidebarPersistence(next: SidebarPersistence) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    /* ignore */
-  }
-}
-
-export function AppSidebar() {
+export function AppSidebar(props?: AppSidebarChromeProps) {
   return (
-    <Suspense fallback={<aside className="flex w-[260px] shrink-0 flex-col border-border border-r bg-sidebar" />}>
-      <AppSidebarContent />
+    <Suspense
+      fallback={
+        <aside className="flex h-full w-[260px] shrink-0 flex-col border-border border-r bg-sidebar" />
+      }
+    >
+      <AppSidebarContent variant="desktop" {...props} />
     </Suspense>
   );
 }
 
-function AppSidebarContent() {
+function AppSidebarContent(props?: AppSidebarChromeProps) {
+  const {
+    variant = "desktop",
+    railCollapsed = false,
+    onToggleRailCollapsed,
+    onNavigate,
+    onSignOut,
+  } = props ?? {};
   const tNav = useTranslations("Nav");
   const tChat = useTranslations("Chat");
   const pathname = usePathname();
@@ -126,17 +124,10 @@ function AppSidebarContent() {
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>(initialPersisted.expandedProjectIds);
   const expandedSet = useMemo(() => new Set(expandedProjectIds), [expandedProjectIds]);
 
-  function writePersisted(next: { projectsCollapsed?: boolean; expandedProjectIds?: string[] }) {
-    writeSidebarPersistence({
-      projectsCollapsed: next.projectsCollapsed ?? projectsCollapsed,
-      expandedProjectIds: next.expandedProjectIds ?? expandedProjectIds,
-    });
-  }
-
   function toggleProjectsCollapsed() {
     setProjectsCollapsed((v) => {
       const next = !v;
-      writePersisted({ projectsCollapsed: next });
+      patchSidebarPersistence({ projectsCollapsed: next });
       return next;
     });
   }
@@ -144,17 +135,27 @@ function AppSidebarContent() {
   function toggleProjectExpanded(projectId: string) {
     setExpandedProjectIds((prev) => {
       const next = prev.includes(projectId) ? prev.filter((id) => id !== projectId) : [...prev, projectId];
-      writePersisted({ expandedProjectIds: next });
+      patchSidebarPersistence({ expandedProjectIds: next });
       return next;
     });
   }
 
   async function activate(p: ProjectSummary) {
-    await activateProject.mutateAsync({ id: p.id, name: p.name });
+    await activateProject.mutateAsync({
+      id: p.id,
+      name: p.name,
+      iconKey: p.iconKey,
+      colorHex: p.colorHex,
+    });
   }
 
   async function openProjectInChat(p: ProjectSummary) {
-    await activateProject.mutateAsync({ id: p.id, name: p.name });
+    await activateProject.mutateAsync({
+      id: p.id,
+      name: p.name,
+      iconKey: p.iconKey,
+      colorHex: p.colorHex,
+    });
     const convId = await fetchLatestConversationId(queryClient, p.id);
     if (convId) {
       router.push(`/chat?conversationId=${encodeURIComponent(convId)}`);
@@ -170,18 +171,60 @@ function AppSidebarContent() {
 
   const searchQuery = searchText.trim().toLowerCase();
 
+  const showExpandedChrome = !railCollapsed || variant === "drawer";
+
   return (
-    <aside className="flex w-[260px] shrink-0 flex-col border-border border-r bg-sidebar text-sidebar-foreground">
-      <div className="flex h-14 items-center justify-between border-border border-b px-3">
-        <Link href="/projects" className="flex items-center gap-2">
-          <div className="bg-sidebar-accent text-sidebar-accent-foreground flex size-7 items-center justify-center rounded-md text-xs font-semibold">
+    <aside
+      id={variant === "drawer" ? "app-sidebar-drawer" : "app-sidebar"}
+      className={cn(
+        "flex h-full min-h-0 w-full shrink-0 flex-col overflow-x-hidden bg-sidebar text-sidebar-foreground",
+        variant === "desktop" ? "border-border border-r" : "",
+      )}
+    >
+      <div className="flex h-14 shrink-0 items-center gap-1 border-border border-b px-2">
+        {variant === "desktop" && onToggleRailCollapsed ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0"
+            aria-expanded={!railCollapsed}
+            aria-controls="app-sidebar"
+            aria-label={railCollapsed ? tNav("sidebarExpand") : tNav("sidebarCollapse")}
+            onClick={onToggleRailCollapsed}
+          >
+            {railCollapsed ? (
+              <ChevronRight className="size-4" aria-hidden />
+            ) : (
+              <ChevronLeft className="size-4" aria-hidden />
+            )}
+          </Button>
+        ) : (
+          <span className="w-0 shrink-0" aria-hidden />
+        )}
+        <Link
+          href="/projects"
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2 rounded-md py-1",
+            railCollapsed && variant === "desktop" ? "justify-center px-0" : "px-1",
+          )}
+          onClick={() => onNavigate?.()}
+        >
+          <div className="bg-sidebar-accent text-sidebar-accent-foreground flex size-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold">
             RC
           </div>
-          <span className="font-semibold text-sm tracking-tight">RAG Console</span>
+          <span
+            className={cn(
+              "truncate font-semibold text-sm tracking-tight",
+              railCollapsed && variant === "desktop" && "sr-only",
+            )}
+          >
+            RAG Console
+          </span>
         </Link>
       </div>
 
-      <div className="border-border border-b p-2">
+      <div className="border-border border-b p-2" hidden={!showExpandedChrome}>
         <div className="flex flex-col gap-2">
           <NewProjectDialog triggerClassName="w-full" />
           <Button
@@ -243,8 +286,8 @@ function AppSidebarContent() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        <div className="mb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
+        <div className="mb-2" hidden={!showExpandedChrome}>
           <button
             type="button"
             className="hover:bg-sidebar-accent/80 flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm"
@@ -299,38 +342,72 @@ function AppSidebarContent() {
             .map((item) => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               const Icon = item.icon;
+              const railOnly = railCollapsed && variant === "desktop";
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  title={railOnly ? tNav(item.key) : undefined}
                   className={cn(
-                    "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors",
+                    "flex items-center gap-2 rounded-md py-2 text-sm transition-colors",
+                    railOnly ? "justify-center px-2" : "px-2",
                     active
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
                       : "hover:bg-sidebar-accent/80",
                   )}
+                  onClick={() => onNavigate?.()}
                 >
                   <Icon className="size-4 shrink-0" aria-hidden />
-                  <span className="truncate">{tNav(item.key)}</span>
+                  <span className={cn("truncate", railOnly && "sr-only")}>{tNav(item.key)}</span>
                 </Link>
               );
             })}
         </nav>
       </div>
 
-      <div className="border-border border-t p-2">
+      <div className="mt-auto flex shrink-0 flex-col gap-1 border-border border-t p-2">
         <Link
           href="/settings"
+          title={
+            railCollapsed && variant === "desktop" ? tNav("settingsPage") : undefined
+          }
           className={cn(
-            "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors",
+            "flex items-center gap-2 rounded-md py-2 text-sm transition-colors",
+            railCollapsed && variant === "desktop" ? "justify-center px-2" : "px-2",
             pathname === "/settings" || pathname.startsWith("/settings/")
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
               : "hover:bg-sidebar-accent/80",
           )}
+          onClick={() => onNavigate?.()}
         >
           <Settings className="size-4 shrink-0" aria-hidden />
-          <span className="truncate">{tNav("settingsPage")}</span>
+          <span className={cn("truncate", railCollapsed && variant === "desktop" && "sr-only")}>
+            {tNav("settingsPage")}
+          </span>
         </Link>
+        {onSignOut ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            title={railCollapsed && variant === "desktop" ? tNav("signOut") : undefined}
+            className={cn(
+              "text-sidebar-foreground hover:bg-sidebar-accent/80 h-auto justify-start gap-2 py-2 font-normal",
+              railCollapsed && variant === "desktop" ? "justify-center px-2" : "px-2",
+            )}
+            onClick={() => {
+              if (variant === "drawer") {
+                onNavigate?.();
+              }
+              onSignOut();
+            }}
+          >
+            <LogOut className="size-4 shrink-0" aria-hidden />
+            <span className={cn("truncate", railCollapsed && variant === "desktop" && "sr-only")}>
+              {tNav("signOut")}
+            </span>
+          </Button>
+        ) : null}
       </div>
     </aside>
   );
