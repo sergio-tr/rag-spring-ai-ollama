@@ -15,7 +15,6 @@ Copy `.env.example` to `.env` (or use `./docker/scripts/create-env-webapp.sh` fr
 | `NEXT_PUBLIC_TIMEZONE` | IANA timezone for next-intl (e.g. `UTC`). |
 | `NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME` / `NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME` | Cookie names for session route handlers. |
 | `NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED` | Show “Continue with Google” button (requires backend OAuth enabled and configured). |
-| `NEXT_PUBLIC_REGISTER_COMMIT_SESSION_ON_PENDING` | Optional: `"true"` commits JWT cookies when register returns pending verification **and** includes tokens (defaults to pending screen). |
 
 **Product API usage (non-exhaustive):** under `NEXT_PUBLIC_RAG_API_PREFIX` (default in `.env.example`): `GET/POST/PATCH/DELETE …/projects`, `PUT …/activate`, `GET/POST …/projects/{id}/documents`, `GET/PUT …/me/preferences`, `GET/PUT …/me/personalization`, `GET …/me/summary`, `GET …/me/documents`, `POST …/me/account/export` (202) + `GET …/me/account/jobs/{id}` + `GET …/me/account/export/{id}/download`, `GET/PUT …/config/user` (legacy; prefer `/me/*` for UI prefs), `GET/PUT/DELETE …/config/project/{id}`, `GET …/config/schema`, `GET/POST/DELETE …/presets`. Auth (via `authApiPath`): `{NEXT_PUBLIC_RAG_API_PREFIX}/auth/login`, `…/register` (**may return 202** when email confirmation is enabled), `…/confirm-email`, `…/forgot-password`, `…/reset-password`, `…/me`, **OAuth** `GET …/oauth/google/start`, `GET …/oauth/google/callback` (backend redirect), `POST …/oauth/exchange` (SPA callback page), refresh via the BFF cookie route (see `src/lib/api-client.ts`). With default prefix **`/api/v5`**, the Google button targets **`/api/v5/auth/oauth/google/start`**. Legacy `/api/auth/*` may still work during transition. Canonical contract: OpenAPI from the backend (`/v3/api-docs` when enabled) and `src/lib/api-client.ts`.
 
@@ -57,7 +56,7 @@ OpenAPI for the backend: `GET http://<backend>:9000/v3/api-docs` (see `rag-servi
 
 ## Authentication and long sessions
 
-`apiFetch` attaches the JWT, retries once on **401** via `/api/auth/refresh`, then throws. If the session cannot be refreshed, **`SessionExpiredBridge`** redirects to `/{locale}/login`. Login and register calls use `skipCredentials: true` and do not trigger that redirect.
+`apiFetch` attaches the JWT, retries once on **401** via the BFF route **`{NEXT_PUBLIC_RAG_API_PREFIX}/auth/refresh`** (default **`/api/v5/auth/refresh`**), then throws. If the session cannot be refreshed, **`SessionExpiredBridge`** redirects to `/{locale}/login`. Login and register calls use `skipCredentials: true` and do not trigger that redirect.
 
 ## E2E
 

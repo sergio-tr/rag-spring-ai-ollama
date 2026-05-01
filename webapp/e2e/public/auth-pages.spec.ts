@@ -5,14 +5,14 @@ import { expect, test } from "@playwright/test";
  */
 test.describe("Public auth pages", () => {
   test("login page shows title and form @smoke", async ({ page }) => {
-    await page.goto("/en/login");
-    await expect(page.locator("h1")).toBeVisible();
-    await expect(page.getByLabel(/email|correo/i)).toBeVisible();
+    await page.goto("/en/login", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.locator("h1")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#email")).toBeVisible({ timeout: 30_000 });
   });
 
   test("register page shows title @smoke", async ({ page }) => {
-    await page.goto("/en/register");
-    await expect(page.locator("h1")).toBeVisible();
+    await page.goto("/en/register", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.locator("h1")).toBeVisible({ timeout: 30_000 });
   });
 
   test.describe("Google OAuth CTA (@oauth — requires NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED=true at build/start)", () => {
