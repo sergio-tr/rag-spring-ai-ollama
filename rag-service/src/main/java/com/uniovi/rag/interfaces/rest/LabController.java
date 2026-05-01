@@ -65,7 +65,9 @@ public class LabController {
         } catch (Exception ignored) {
             qaSize = 0;
         }
-        m.put("datasets", Map.of("enabled", evaluationService.isEvaluationDataLoaded(), "questionCount", qaSize));
+        // Lab gates on bundled benchmark catalog availability — NOT AbstractEvaluationService#dataLoaded, which only flips true after loadData* runs (typically when an evaluation starts).
+        boolean datasetsReady = qaSize > 0;
+        m.put("datasets", Map.of("enabled", datasetsReady, "questionCount", qaSize));
         m.put(
                 "evaluations",
                 Map.of(

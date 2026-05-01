@@ -79,15 +79,27 @@ class LabControllerWebMvcTest {
     }
 
     @Test
-    void status_returnsOk() throws Exception {
-        when(evaluationService.isEvaluationDataLoaded()).thenReturn(false);
+    void status_returnsOk_withDisabledCatalog_whenNoQuestions() throws Exception {
         when(evaluationService.getQuestionsAndAnswers()).thenReturn(Map.of());
         when(classifierLabClient.isConfigured()).thenReturn(true);
 
         mockMvc.perform(get(path("/lab/status")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").exists())
-                .andExpect(jsonPath("$.datasets.questionCount").value(0));
+                .andExpect(jsonPath("$.datasets.questionCount").value(0))
+                .andExpect(jsonPath("$.datasets.enabled").value(false));
+    }
+
+    @Test
+    void status_enablesDatasets_whenBenchmarkCatalogHasQuestions_evenIfCorpusNotPrimed() throws Exception {
+        when(evaluationService.getQuestionsAndAnswers())
+                .thenReturn(Map.of("What year?", "2024"));
+        when(classifierLabClient.isConfigured()).thenReturn(false);
+
+        mockMvc.perform(get(path("/lab/status")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.datasets.questionCount").value(1))
+                .andExpect(jsonPath("$.datasets.enabled").value(true));
     }
 
     @Test
