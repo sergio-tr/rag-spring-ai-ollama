@@ -5,13 +5,14 @@ import { useLocale, useTranslations } from "next-intl";
 import { Link, useRouter } from "@/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, apiFetch, authApiPath } from "@/lib/api-client";
 import { commitSessionCookie } from "@/features/auth/lib/session-client";
 import { setStoredUserRole } from "@/lib/user-role";
 import { AuthEmailPasswordFields } from "@/features/auth/components/AuthEmailPasswordFields";
+import { GoogleOAuthButton } from "@/features/auth/components/GoogleOAuthButton";
 import {
   createRegisterSchema,
   type RegisterFormValues,
@@ -105,18 +106,7 @@ export function RegisterForm() {
     >
       {oauthGoogleEnabled && (
         <>
-          {/*
-           * Plain <a> on purpose: this is an absolute backend API URL that
-           * issues a 302 to Google. Using next-intl's <Link> here would
-           * prepend the active locale (e.g. /en/api/v5/...) and 404.
-           */}
-          <a
-            className={buttonVariants({ variant: "secondary" })}
-            data-testid="oauth-google-cta"
-            href={`${authApiPath("/oauth/google/start")}?locale=${encodeURIComponent(locale)}`}
-          >
-            {t("oauthGoogleCta")}
-          </a>
+          <GoogleOAuthButton locale={locale} label={t("oauthGoogleCta")} />
           <p className="text-muted-foreground text-center text-xs">{t("oauthSeparator")}</p>
         </>
       )}
