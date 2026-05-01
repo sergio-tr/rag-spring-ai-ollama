@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { HelpPopover } from "@/features/help/HelpPopover";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +21,7 @@ import { useState } from "react";
 
 export function ClassifierRegistrySection() {
   const t = useTranslations("Lab");
+  const tHelp = useTranslations("Help");
   const { data: labStatus } = useLabStatus();
   const activeProject = useAppStore((s) => s.activeProject);
   const classifierOk = labStatus?.classifier.configured ?? false;
@@ -34,12 +36,19 @@ export function ClassifierRegistrySection() {
   return (
     <>
       <Card>
-        <CardHeader>
-          <CardTitle>{t("registryTitle")}</CardTitle>
-          <CardDescription>{t("registryDescription")}</CardDescription>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <CardTitle>{t("registryTitle")}</CardTitle>
+            <CardDescription>{t("registryDescription")}</CardDescription>
+          </div>
+          <HelpPopover
+            triggerAriaLabel={tHelp("registryHelpTriggerLabel")}
+            title={tHelp("registryHelpTitle")}
+            message={tHelp("registryHelpMessage")}
+            details={tHelp("registryHelpDetails")}
+          />
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-muted-foreground text-xs">{t("registryAdrNote")}</p>
           {error && (
             <p className="text-destructive text-sm" role="alert">
               {t("registryLoadError")}

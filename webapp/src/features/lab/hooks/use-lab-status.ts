@@ -6,9 +6,7 @@ import type { LabStatusResponse } from "@/types/api";
 
 export const labStatusQueryKey = ["lab", "status"] as const;
 
-/**
- * GET {product}/lab/status — feature flags for Lab UI (datasets, classifier proxy, async jobs).
- */
+/** Loads Lab capability flags for the overview (datasets, evaluations, classifier wiring). */
 export function useLabStatus() {
   return useQuery({
     queryKey: labStatusQueryKey,

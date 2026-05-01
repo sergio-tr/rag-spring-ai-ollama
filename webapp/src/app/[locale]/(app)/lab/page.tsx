@@ -35,7 +35,12 @@ export default function LabOverviewPage() {
           {isLoading && !status && <p className="text-muted-foreground text-sm">{t("statusLoading")}</p>}
           {status && (
             <>
-              <p className="text-muted-foreground text-sm">{status.message}</p>
+              {status.message?.trim() ? (
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-muted-foreground">{t("statusServerNoteToggle")}</summary>
+                  <p className="text-muted-foreground mt-2 text-xs">{status.message}</p>
+                </details>
+              ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
                 <Card className="border-dashed">
                   <CardHeader className="pb-2">
@@ -100,14 +105,18 @@ export default function LabOverviewPage() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("obsTitle")}</CardTitle>
-          <CardDescription>{t("obsDescription")}</CardDescription>
+        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <CardTitle className="text-base">{t("obsTitle")}</CardTitle>
+            <CardDescription>{t("obsDescription")}</CardDescription>
+          </div>
+          <HelpPopover
+            triggerAriaLabel={tHelp("labObservabilityTriggerLabel")}
+            title={tHelp("labObservabilityTitle")}
+            message={tHelp("labObservabilityMessage")}
+            details={tHelp("labObservabilityDetails")}
+          />
         </CardHeader>
-        <CardContent className="text-muted-foreground space-y-2 text-sm">
-          <p>{t("obsTraceparent")}</p>
-          <p>{t("obsCompose")}</p>
-        </CardContent>
       </Card>
     </div>
   );
