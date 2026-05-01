@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { ChatConversationDocumentsSheet } from "./ChatConversationDocumentsSheet";
@@ -47,7 +47,7 @@ describe("ChatConversationDocumentsSheet", () => {
     expect(onDocToggle).toHaveBeenCalledWith("d1", true);
   });
 
-  it("shows upload error alert", () => {
+  it("shows upload error alert", async () => {
     render(
       <IntlTestProvider locale="en">
         <ChatConversationDocumentsSheet
@@ -66,7 +66,10 @@ describe("ChatConversationDocumentsSheet", () => {
         />
       </IntlTestProvider>,
     );
-    expect(screen.getByRole("alert")).toHaveTextContent("Something failed");
+    // ScrollArea (Radix) schedules layout state after mount; waitFor wraps updates in act(...).
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Something failed");
+    });
   });
 
   it("forwards file selection to upload handler", async () => {
