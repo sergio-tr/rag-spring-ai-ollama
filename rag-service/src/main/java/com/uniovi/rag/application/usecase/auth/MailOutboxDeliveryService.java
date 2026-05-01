@@ -2,6 +2,7 @@ package com.uniovi.rag.application.usecase.auth;
 
 import com.uniovi.rag.infrastructure.persistence.MailOutboxRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.MailOutboxEntity;
+import jakarta.annotation.PostConstruct;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
@@ -51,6 +52,19 @@ public class MailOutboxDeliveryService {
         this.mailFromName = mailFromName != null ? mailFromName.trim() : "RAG App";
     }
 
+    @PostConstruct
+    void warnIfFromAddressMissing() {
+        if (!mailEnabled || mailSender == null) {
+            return;
+        }
+        if (mailFrom.isBlank()) {
+            log.warn(
+                    "Mail delivery is enabled but rag.auth.mail.from is blank; SMTP From cannot be built "
+                            + "(JavaMail AddressException). Set RAG_AUTH_MAIL_FROM to your Gmail address "
+                            + "(normally the same value as SPRING_MAIL_USERNAME), then recreate the backend container.");
+        }
+    }
+
     @Scheduled(
             fixedDelayString = "${rag.auth.mail.delivery-interval-ms:15000}",
             initialDelayString = "${rag.auth.mail.delivery-initial-delay-ms:5000}")
@@ -86,12 +100,26 @@ public class MailOutboxDeliveryService {
             // and Password not accepted"). It does not contain our credentials. We log it truncated
             // and without the stack trace so operators can act, but logs stay safe.
             log.warn(
-                    "Mail outbox delivery failed; row remains pending (id={}, purpose={}, error={}: {})",
+                    "Mail outbox delivery failed; row remains pending (id={}, purpose={}, recipientDomain={}, error={}: {})",
                     entry.getId(),
                     entry.getPurpose(),
+                    recipientDomain(entry.getRecipient()),
                     ex.getClass().getSimpleName(),
                     truncateForLog(ex.getMessage()));
         }
+    }
+
+    /** Domain part only — avoids logging full recipient addresses in operational logs. */
+    static String recipientDomain(@Nullable String recipient) {
+        if (recipient == null || recipient.isBlank()) {
+            return "<unknown>";
+        }
+        String trimmed = recipient.trim();
+        int at = trimmed.lastIndexOf('@');
+        if (at < 1 || at == trimmed.length() - 1) {
+            return "<invalid>";
+        }
+        return trimmed.substring(at + 1);
     }
 
     /** Truncates exception messages so SMTP errors stay readable without flooding logs. */
