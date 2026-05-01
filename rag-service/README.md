@@ -133,8 +133,14 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 | `rag.auth.email-confirmation.token-ttl-seconds` / `RAG_AUTH_EMAIL_CONFIRMATION_TOKEN_TTL_SECONDS` | Email confirmation token TTL (seconds). | `3600` |
 | `rag.auth.password-reset.enabled` / `RAG_AUTH_PASSWORD_RESET_ENABLED` | Enable forgot/reset password. Forgot password is anti-enumeration (always **200**). | `false` |
 | `rag.auth.password-reset.token-ttl-seconds` / `RAG_AUTH_PASSWORD_RESET_TOKEN_TTL_SECONDS` | Password reset token TTL (seconds). | `3600` |
-| `rag.auth.mail.enabled` / `RAG_AUTH_MAIL_ENABLED` | When true, auth flows queue mails into `mail_outbox` (outbox-only in this repo; delivery is external). | `false` |
-| `rag.auth.mail.from` / `RAG_AUTH_MAIL_FROM` | Mail “From” header embedded into outbox payloads. | `no-reply@local.test` |
+| `rag.auth.mail.enabled` / `RAG_AUTH_MAIL_ENABLED` | When true, registration confirmation and password-reset emails are written to `mail_outbox` and delivered by `MailOutboxDeliveryService` via Spring Mail (SMTP). | `false` |
+| `rag.auth.mail.from` / `RAG_AUTH_MAIL_FROM` | SMTP “From” address (`MimeMessage`); must be non-empty when mail is enabled. For Gmail, use the same mailbox as `SPRING_MAIL_USERNAME`. Blank → `AddressException: Empty address`, rows stay pending (`sent_at` null). | `no-reply@local.test` |
+| `rag.auth.mail.from-name` / `RAG_AUTH_MAIL_FROM_NAME` | Display name for the From header. | `RAG App` |
+| `SPRING_MAIL_HOST` / `SPRING_MAIL_PORT` | SMTP server (Gmail: `smtp.gmail.com`, `587`). | Unit tests: `127.0.0.1` / `3025` (`application-test.properties`) |
+| `SPRING_MAIL_USERNAME` | SMTP login user; for Gmail, the full Gmail address (requires App Password when 2FA is on). | — |
+| `SPRING_MAIL_PASSWORD` | SMTP password; for Gmail, a 16-character App Password (not the normal account password). | — |
+| `SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH` | Set `true` for Gmail submission. | `true` |
+| `SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE` | Set `true` for STARTTLS on port 587. | `true` |
 | `rag.auth.webapp-base-url` / `RAG_AUTH_WEBAPP_BASE_URL` | Base URL used for links in email templates (confirm + reset). | `http://localhost:3000` |
 | `rag.auth.backend-base-url` / `RAG_AUTH_BACKEND_BASE_URL` | Base URL used for OAuth redirect URIs (backend callback). | `http://localhost:9000` |
 | `rag.auth.oauth.enabled` / `RAG_AUTH_OAUTH_ENABLED` | Enable Google OAuth. **Primary routes:** `{rag.api.product-base-path}/auth/oauth/*` (default **`/api/v5/auth/oauth/*`**). Legacy **`/api/auth/oauth/*`** remains temporarily mapped. Uses persisted state tokens + exchange codes. | `false` |
@@ -142,6 +148,7 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 | `rag.auth.oauth.google.client-secret` / `RAG_AUTH_OAUTH_GOOGLE_CLIENT_SECRET` | Google OAuth client secret. | — |
 | `rag.auth.oauth.google.issuer` / `RAG_AUTH_OAUTH_GOOGLE_ISSUER` | Expected issuer for Google ID tokens. | `https://accounts.google.com` |
 | `rag.auth.oauth.google.redirect-path` / `RAG_AUTH_OAUTH_GOOGLE_REDIRECT_PATH` | Backend callback path appended to `rag.auth.backend-base-url`. Default: **`{rag.api.product-base-path}/auth/oauth/google/callback`** → `/api/v5/auth/oauth/google/callback` when product base is `/api/v5`. Register this URI in Google Cloud Console. | `${rag.api.product-base-path}/auth/oauth/google/callback` |
+| `rag.auth.oauth.google.prompt-select-account` / `RAG_AUTH_OAUTH_GOOGLE_PROMPT_SELECT_ACCOUNT` | When **true**, adds `prompt=select_account` to Google's authorization URL so users pick an account again after **app** logout (logout here does not sign the user out of Google). Set **false** to allow Google's default session reuse. | `true` |
 | `rag.classifier.service.url` | Classifier service URL (backend) | `http://localhost:8000` |
 
 **Google OAuth — `redirect_uri_mismatch`:** Google Cloud Console **Authorized redirect URIs** must list the exact URL the backend sends: concatenate `rag.auth.backend-base-url` and `rag.auth.oauth.google.redirect-path` with **no** extra slash between them (unless your base URL already ends with `/`). Match is strict: scheme, host, port, path, and trailing slash must be identical. Examples with the default redirect path `/api/v5/auth/oauth/google/callback`: if `RAG_AUTH_BACKEND_BASE_URL=http://localhost:9000`, register `http://localhost:9000/api/v5/auth/oauth/google/callback`; if you terminate TLS/nginx on `http://localhost` and set `RAG_AUTH_BACKEND_BASE_URL=http://localhost`, register `http://localhost/api/v5/auth/oauth/google/callback`. At **DEBUG**, `OauthLoginService` logs only that composed `redirect_uri` when building the Google authorize URL (no client secret, state, codes, or tokens).
