@@ -116,6 +116,17 @@ describe("LoginForm", () => {
     await user.type(screen.getByLabelText(/^password$/i), "secret1234");
     await user.click(screen.getByRole("button", { name: /^Continue$/i }));
     await vi.waitFor(() => expect(commitSessionCookie).toHaveBeenCalled());
+    expect(apiFetch).toHaveBeenCalledWith(
+      authApiPath("/login"),
+      expect.objectContaining({
+        method: "POST",
+        skipCredentials: true,
+      }),
+    );
+    expect(commitSessionCookie).toHaveBeenCalledWith({
+      accessToken: "a",
+      refreshToken: "r",
+    });
     expect(push).toHaveBeenCalledWith("/projects");
   });
 
@@ -219,6 +230,16 @@ describe("LoginForm", () => {
     expect(screen.getByRole("link", { name: /forgot password/i })).toBeInTheDocument();
   });
 
+  it("renders email and password fields", () => {
+    render(
+      <IntlTestProvider>
+        <LoginForm />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+  });
+
   it("toggles login password visibility with icon button", async () => {
     const user = userEvent.setup();
     render(
@@ -310,6 +331,46 @@ describe("RegisterForm", () => {
       "href",
       "http://127.0.0.1:9000/api/v5/auth/oauth/google/start?locale=en",
     );
+  });
+
+  it("blocks registration when repeat password does not match without calling the API", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "false");
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/display name/i), "N");
+    await user.type(screen.getByLabelText(/email/i), "a@b.com");
+    await user.type(screen.getByLabelText(/^password$/i), "secret12");
+    await user.type(screen.getByLabelText(/repeat password/i), "secret99");
+    await user.click(screen.getByRole("checkbox", { name: /privacy policy/i }));
+    await user.click(screen.getByRole("checkbox", { name: /terms and conditions/i }));
+    await user.click(screen.getByRole("button", { name: /^Register$/i }));
+    await vi.waitFor(() =>
+      expect(screen.getByText(/passwords do not match/i)).toBeInTheDocument(),
+    );
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("requires legal acceptance before submitting", async () => {
+    vi.stubEnv("NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED", "false");
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <RegisterForm />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/display name/i), "N");
+    await user.type(screen.getByLabelText(/email/i), "a@b.com");
+    await user.type(screen.getByLabelText(/^password$/i), "secret12");
+    await user.type(screen.getByLabelText(/repeat password/i), "secret12");
+    await user.click(screen.getByRole("button", { name: /^Register$/i }));
+    await vi.waitFor(() =>
+      expect(screen.getAllByText(/must accept privacy policy and terms/i).length).toBeGreaterThan(0),
+    );
+    expect(apiFetch).not.toHaveBeenCalled();
   });
 
   it("uses one password visibility toggle for both password and repeat-password fields", async () => {

@@ -1,24 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { IntlTestProvider } from "@/test-utils/intl";
 import { ApiError } from "@/lib/api-client";
+import { IntlTestProvider } from "@/test-utils/intl";
 
-const apiFetch = vi.fn();
-vi.mock("@/lib/api-client", () => ({
-  apiFetch: (...a: unknown[]) => apiFetch(...a),
-  authApiPath: (path: string) => `/api/test/auth${path.startsWith("/") ? path : `/${path}`}`,
-  ApiError: class ApiError extends Error {
-    constructor(
-      public status: number,
-      message: string,
-      public meta?: { rawBodyPreview?: string },
-    ) {
-      super(message);
-      this.name = "ApiError";
-    }
-  },
-}));
+vi.mock("@/lib/api-client", async (orig) => {
+  const mod = await orig<typeof import("@/lib/api-client")>();
+  return { ...mod, apiFetch: vi.fn() };
+});
 
 const replace = vi.fn();
 vi.mock("@/navigation", () => ({
@@ -31,12 +20,13 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(mockToken ? `token=${encodeURIComponent(mockToken)}` : ""),
 }));
 
+import { apiFetch, authApiPath } from "@/lib/api-client";
 import { ResetPasswordView } from "./ResetPasswordView";
 
 describe("ResetPasswordView", () => {
   beforeEach(() => {
     mockToken = "";
-    apiFetch.mockReset();
+    vi.mocked(apiFetch).mockReset();
     replace.mockReset();
   });
 
@@ -70,9 +60,26 @@ describe("ResetPasswordView", () => {
     expect(repeat).toHaveAttribute("type", "password");
   });
 
-  it("submits when token exists and redirects to login after success", async () => {
+  it("blocks mismatched repeat password client-side without calling API", async () => {
     mockToken = "t1";
-    apiFetch.mockResolvedValueOnce({});
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <ResetPasswordView />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/^password$/i), "12345678");
+    await user.type(screen.getByLabelText(/repeat password/i), "87654321");
+    await user.click(screen.getByRole("button", { name: /set new password/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/do not match/i),
+    );
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("posts reset-password and redirects to login after success", async () => {
+    mockToken = "t1";
+    vi.mocked(apiFetch).mockResolvedValueOnce({});
 
     const user = userEvent.setup();
     render(
@@ -83,13 +90,15 @@ describe("ResetPasswordView", () => {
     await user.type(screen.getByLabelText(/^password$/i), "12345678");
     await user.type(screen.getByLabelText(/repeat password/i), "12345678");
     await user.click(screen.getByRole("button", { name: /set new password/i }));
-    expect(apiFetch).toHaveBeenCalled();
+    const [url] = vi.mocked(apiFetch).mock.calls[0]!;
+    expect(url).toBe(authApiPath("/reset-password"));
+    expect(url).toBe("/api/v5/auth/reset-password");
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"), { timeout: 4000 });
   });
 
   it("shows localized message for expired reset token code", async () => {
     mockToken = "t1";
-    apiFetch.mockRejectedValueOnce(
+    vi.mocked(apiFetch).mockRejectedValueOnce(
       new ApiError(400, "Bad request", {
         kind: "http",
         rawBodyPreview: JSON.stringify({ code: "RESET_TOKEN_EXPIRED" }),
@@ -111,9 +120,53 @@ describe("ResetPasswordView", () => {
     expect(screen.getByRole("button", { name: /set new password/i })).not.toBeDisabled();
   });
 
+  it("shows invalid token message for RESET_TOKEN_INVALID", async () => {
+    mockToken = "t1";
+    vi.mocked(apiFetch).mockRejectedValueOnce(
+      new ApiError(400, "Bad request", {
+        kind: "http",
+        rawBodyPreview: JSON.stringify({ code: "RESET_TOKEN_INVALID" }),
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <ResetPasswordView />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/^password$/i), "12345678");
+    await user.type(screen.getByLabelText(/repeat password/i), "12345678");
+    await user.click(screen.getByRole("button", { name: /set new password/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/invalid/i),
+    );
+  });
+
+  it("shows reused token message for RESET_TOKEN_ALREADY_USED", async () => {
+    mockToken = "t1";
+    vi.mocked(apiFetch).mockRejectedValueOnce(
+      new ApiError(400, "Bad request", {
+        kind: "http",
+        rawBodyPreview: JSON.stringify({ code: "RESET_TOKEN_ALREADY_USED" }),
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <ResetPasswordView />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/^password$/i), "12345678");
+    await user.type(screen.getByLabelText(/repeat password/i), "12345678");
+    await user.click(screen.getByRole("button", { name: /set new password/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/already used/i),
+    );
+  });
+
   it("disables submit after successful reset", async () => {
     mockToken = "t1";
-    apiFetch.mockResolvedValueOnce({});
+    vi.mocked(apiFetch).mockResolvedValueOnce({});
 
     const user = userEvent.setup();
     render(
@@ -128,5 +181,21 @@ describe("ResetPasswordView", () => {
       expect(screen.getByRole("button", { name: /set new password/i })).toBeDisabled();
     });
   });
-});
 
+  it("shows success status copy after reset", async () => {
+    mockToken = "t1";
+    vi.mocked(apiFetch).mockResolvedValueOnce({});
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <ResetPasswordView />
+      </IntlTestProvider>,
+    );
+    await user.type(screen.getByLabelText(/^password$/i), "12345678");
+    await user.type(screen.getByLabelText(/repeat password/i), "12345678");
+    await user.click(screen.getByRole("button", { name: /set new password/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(/password updated/i),
+    );
+  });
+});
