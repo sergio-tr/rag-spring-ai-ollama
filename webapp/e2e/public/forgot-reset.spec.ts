@@ -1,21 +1,20 @@
 import { expect, test } from "@playwright/test";
 
 async function typeResetPasswords(page: import("@playwright/test").Page, password: string, repeat: string) {
-  const passwordInput = page.locator("#password");
-  const repeatPasswordInput = page.locator("#confirmPassword");
+  const form = page.locator("form").first();
+  const passwordInput = form.locator("#password");
+  const repeatPasswordInput = form.locator("#confirmPassword");
   await expect(passwordInput).toBeVisible();
   await expect(repeatPasswordInput).toBeVisible();
-  await passwordInput.click();
-  await passwordInput.type(password);
-  await repeatPasswordInput.click();
-  await repeatPasswordInput.type(repeat);
+  await passwordInput.fill(password);
+  await repeatPasswordInput.fill(repeat);
   await expect(passwordInput).toHaveValue(password);
   await expect(repeatPasswordInput).toHaveValue(repeat);
 }
 
 test.describe("Forgot/reset public flows", () => {
   test("forgot-password submits and shows neutral success @smoke", async ({ page }) => {
-    await page.route("**/api/v5/auth/forgot-password", async (route) => {
+    await page.route("**/auth/forgot-password**", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -28,8 +27,7 @@ test.describe("Forgot/reset public flows", () => {
     const emailInput = form.locator("#email");
     await expect(emailInput).toBeVisible();
     await expect(emailInput).toBeEnabled();
-    await emailInput.click();
-    await emailInput.type("user@example.com");
+    await emailInput.fill("user@example.com");
     await expect(emailInput).toHaveValue("user@example.com");
     await form.getByRole("button", { name: /send reset link/i }).click();
     await expect(page.getByRole("status")).toContainText(/if an account exists/i, { timeout: 10_000 });
@@ -37,7 +35,7 @@ test.describe("Forgot/reset public flows", () => {
 
   test("reset-password validates repeat-password mismatch client-side @smoke", async ({ page }) => {
     let resetCalled = false;
-    await page.route("**/api/v5/auth/reset-password", async (route) => {
+    await page.route("**/auth/reset-password**", async (route) => {
       resetCalled = true;
       await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
     });
@@ -54,7 +52,7 @@ test.describe("Forgot/reset public flows", () => {
   });
 
   test("reset-password shows invalid/reused token errors when backend returns codes @smoke", async ({ page }) => {
-    await page.route("**/api/v5/auth/reset-password", async (route, request) => {
+    await page.route("**/auth/reset-password**", async (route, request) => {
       const payload = request.postDataJSON() as { token?: string };
       const code = payload?.token === "invalid-token" ? "RESET_TOKEN_INVALID" : "RESET_TOKEN_ALREADY_USED";
       await route.fulfill({
