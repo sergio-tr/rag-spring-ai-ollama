@@ -5,6 +5,7 @@ import {
   createLabJobTraceDedupe,
   emitLabJobTraceForTick,
   traceLabJobQueued,
+  traceLabJobResumedWatching,
   traceLabJobStoppedWaiting,
 } from "./lab-job-trace";
 
@@ -62,5 +63,24 @@ describe("lab-job-trace", () => {
     emitLabJobTraceForTick(d, task({ status: "SUCCEEDED", terminal: true }), "j1", messages);
     emitLabJobTraceForTick(d, task({ status: "SUCCEEDED", terminal: true }), "j1", messages);
     expect(useTraceStore.getState().events.filter((e) => e.action === "lab_job_completed")).toHaveLength(1);
+  });
+
+  it("traceLabJobResumedWatching emits one lab trace row per call", () => {
+    traceLabJobResumedWatching("jid", "resumed");
+    traceLabJobResumedWatching("jid", "resumed again");
+    expect(useTraceStore.getState().events.filter((e) => e.action === "lab_job_resumed_watching")).toHaveLength(2);
+  });
+
+  it("emitLabJobTraceForTick transitions running once then completed once for one job id", () => {
+    traceLabJobQueued("jid", "queued copy");
+    const d = createLabJobTraceDedupe();
+    emitLabJobTraceForTick(d, task({ status: "RUNNING", terminal: false }), "jid", messages);
+    emitLabJobTraceForTick(d, task({ status: "RUNNING", terminal: false }), "jid", messages);
+    emitLabJobTraceForTick(d, task({ status: "SUCCEEDED", terminal: true }), "jid", messages);
+    emitLabJobTraceForTick(d, task({ status: "SUCCEEDED", terminal: true }), "jid", messages);
+    const actions = useTraceStore.getState().events.map((e) => e.action);
+    expect(actions.filter((a) => a === "lab_job_queued")).toHaveLength(1);
+    expect(actions.filter((a) => a === "lab_job_running")).toHaveLength(1);
+    expect(actions.filter((a) => a === "lab_job_completed")).toHaveLength(1);
   });
 });

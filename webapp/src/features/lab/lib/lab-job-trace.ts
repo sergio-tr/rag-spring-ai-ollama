@@ -80,6 +80,16 @@ export function traceLabJobStoppedWaiting(jobId: string, message: string): void 
   });
 }
 
+export function traceLabJobResumedWatching(jobId: string, message: string): void {
+  useTraceStore.getState().addTraceEvent({
+    section: "lab",
+    action: "lab_job_resumed_watching",
+    message,
+    status: "info",
+    metadata: { jobId },
+  });
+}
+
 /**
  * Emit trace events once per logical phase for polling/SSE ticks.
  * Job-accepted trace should be emitted separately via {@link traceLabJobQueued}.
