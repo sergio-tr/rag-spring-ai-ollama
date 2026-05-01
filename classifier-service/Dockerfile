@@ -15,7 +15,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Application (app/ + entrypoint)
-COPY main.py ./
+COPY uvicorn_entry.py ./
 COPY app/ ./app/
 # Runtime fix-ups for legacy model artifacts
 COPY scripts/ ./scripts/
@@ -26,4 +26,4 @@ COPY data/ ./data/
 
 EXPOSE ${PORT}
 
-CMD ["sh", "-c", "python ./scripts/fix-keras-vocab-utf8.py \"${MODEL_PATH:-${MODELS_DIR}/default/model.keras}\" || true; uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "python ./scripts/fix-keras-vocab-utf8.py \"${MODEL_PATH:-${MODELS_DIR}/default/model.keras}\" || true; uvicorn uvicorn_entry:app --host 0.0.0.0 --port ${PORT}"]

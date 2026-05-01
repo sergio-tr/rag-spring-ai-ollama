@@ -49,7 +49,7 @@ These were moved from `rag-service/src/main/resources/python/` and are the singl
 ```bash
 pip install -r requirements.txt
 # Ensure models/default/model.keras and models/default/labels.txt exist
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn uvicorn_entry:app --host 0.0.0.0 --port 8000
 ```
 
 Or with Docker (from repo root):
@@ -65,7 +65,7 @@ The RAG backend is configured via `RAG_CLASSIFIER_SERVICE_URL` (default `http://
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | 8000 | Server port. |
-| `UVICORN_HOST` | `127.0.0.1` | Bind address for `python main.py` (local). Set to `0.0.0.0` when the process must listen on all interfaces (Docker/Compose already pass `--host 0.0.0.0` to uvicorn). |
+| `UVICORN_HOST` | `127.0.0.1` | Bind address for `python uvicorn_entry.py` (local). Set to `0.0.0.0` when the process must listen on all interfaces (Docker/Compose already pass `--host 0.0.0.0` to uvicorn). |
 | `MODELS_DIR` | models | Directory for default and trained models. |
 | `DATA_DIR` | data | Directory for default datasets. |
 | `DEFAULT_MODEL_ID` | default | Model id used when none is specified. |

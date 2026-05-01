@@ -1,14 +1,14 @@
 [run]
-# Source directories to measure (package lives under ./app when cwd is classifier-service/)
-source = app
-
-# Do not use relative_files=true here: it flattens Cobertura filenames (__init__.py at root) and SonarCloud
-# (project base = repo root, sonar.sources=classifier-service/app) cannot match coverage entries.
+# ``app`` tree + root ``uvicorn_entry.py`` (distinct name avoids Cobertura collision with ``app/main.py``).
+source =
+    app
+    uvicorn_entry.py
 
 # Omit files that don't need coverage measurement
 omit =
     tests/*
     tests/**/*
+    scripts/*
     venv/*
     */__pycache__/*
     */site-packages/*

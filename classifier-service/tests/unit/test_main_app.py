@@ -66,3 +66,25 @@ def test_validation_exception_handler_returns_envelope():
     body = r.json()
     assert body["success"] is False
     assert body["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_http_exception_handler_maps_unknown_dict_detail():
+    app = create_app()
+
+    @app.get("/_boom4")
+    def _boom4():
+        raise HTTPException(status_code=400, detail={"unexpected": True})
+
+    c = TestClient(app)
+    r = c.get("/_boom4")
+    assert r.status_code == 400
+    body = r.json()
+    assert body["success"] is False
+    assert "unexpected" in body["error"]["message"]
+
+
+def test_lifespan_runs_with_test_client_context_manager():
+    """Startup hook loads default model (or logs warning); exercise lifespan branches."""
+    with TestClient(create_app()) as client:
+        r = client.get("/health")
+        assert r.status_code == 200

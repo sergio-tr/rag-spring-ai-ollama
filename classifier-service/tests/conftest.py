@@ -13,7 +13,7 @@ os.environ.setdefault("MODELS_DIR", "models")
 @pytest.fixture
 def client():
     """HTTP client for the FastAPI app."""
-    from main import app
+    from uvicorn_entry import app
     from fastapi.testclient import TestClient
     return TestClient(app)
 

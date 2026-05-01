@@ -25,7 +25,7 @@ bl = _load_baseline_lib()
 
 def test_service_root_points_to_classifier_service():
     root = bl.service_root()
-    assert (root / "main.py").exists() or (root / "app").is_dir()
+    assert (root / "uvicorn_entry.py").exists() or (root / "app").is_dir()
 
 
 def test_default_paths_exist():

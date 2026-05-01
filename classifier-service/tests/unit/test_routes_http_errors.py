@@ -12,13 +12,13 @@ from app.exceptions import ClassificationError, ModelNotFoundError, ValidationEr
 
 @pytest.fixture
 def app_client():
-    from main import app
+    from uvicorn_entry import app
 
     return TestClient(app)
 
 
 def test_classify_validation_error_returns_400(app_client: TestClient):
-    from main import app
+    from uvicorn_entry import app
 
     c = app.state.container
     orig = c._classification_service
@@ -33,7 +33,7 @@ def test_classify_validation_error_returns_400(app_client: TestClient):
 
 
 def test_classify_model_not_found_returns_404(app_client: TestClient):
-    from main import app
+    from uvicorn_entry import app
 
     c = app.state.container
     orig = c._classification_service
@@ -48,7 +48,7 @@ def test_classify_model_not_found_returns_404(app_client: TestClient):
 
 
 def test_classify_classification_error_returns_503(app_client: TestClient):
-    from main import app
+    from uvicorn_entry import app
 
     c = app.state.container
     orig = c._classification_service
