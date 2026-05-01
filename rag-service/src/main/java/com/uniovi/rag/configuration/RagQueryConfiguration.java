@@ -29,6 +29,7 @@ import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
 import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.service.query.LLMResponseValidatorService;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -258,6 +259,7 @@ public class RagQueryConfiguration {
             ExecutionContextFactory executionContextFactory,
             RagExecutionOrchestrator ragExecutionOrchestrator,
             RuntimeTracePersistenceService runtimeTracePersistenceService,
+            KnowledgeDocumentRepository knowledgeDocumentRepository,
             RagImplementationProperties implProps,
             @Autowired(required = false) ObservabilitySupport observability
     ) {
@@ -281,7 +283,8 @@ public class RagQueryConfiguration {
                         ragExecutionOrchestrator,
                         runtimeTracePersistenceService,
                         chatClient,
-                        ollamaConnectivityChecker);
+                        ollamaConnectivityChecker,
+                        knowledgeDocumentRepository);
                 break;
         }
         if (observability != null) {

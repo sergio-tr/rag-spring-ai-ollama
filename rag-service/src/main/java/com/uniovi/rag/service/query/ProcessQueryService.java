@@ -9,6 +9,7 @@ import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTraceP
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.infrastructure.observability.Loggable;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.interfaces.rest.support.ConnectivityFailureDetector;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import org.springframework.ai.chat.client.ChatClient;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,6 +38,7 @@ public class ProcessQueryService implements QueryService, Loggable {
     private final RuntimeTracePersistenceService runtimeTracePersistenceService;
     private final ChatClient chatClient;
     private final OllamaConnectivityChecker ollamaConnectivityChecker;
+    private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final ObjectProvider<ProcessQueryService> selfProvider;
 
     public ProcessQueryService(
@@ -43,13 +46,15 @@ public class ProcessQueryService implements QueryService, Loggable {
             RagExecutionOrchestrator ragExecutionOrchestrator,
             RuntimeTracePersistenceService runtimeTracePersistenceService,
             ChatClient chatClient,
-            OllamaConnectivityChecker ollamaConnectivityChecker) {
+            OllamaConnectivityChecker ollamaConnectivityChecker,
+            KnowledgeDocumentRepository knowledgeDocumentRepository) {
         this(
                 executionContextFactory,
                 ragExecutionOrchestrator,
                 runtimeTracePersistenceService,
                 chatClient,
                 ollamaConnectivityChecker,
+                knowledgeDocumentRepository,
                 null);
     }
 
@@ -60,12 +65,14 @@ public class ProcessQueryService implements QueryService, Loggable {
             RuntimeTracePersistenceService runtimeTracePersistenceService,
             ChatClient chatClient,
             OllamaConnectivityChecker ollamaConnectivityChecker,
+            KnowledgeDocumentRepository knowledgeDocumentRepository,
             ObjectProvider<ProcessQueryService> selfProvider) {
         this.executionContextFactory = executionContextFactory;
         this.ragExecutionOrchestrator = ragExecutionOrchestrator;
         this.runtimeTracePersistenceService = runtimeTracePersistenceService;
         this.chatClient = chatClient;
         this.ollamaConnectivityChecker = ollamaConnectivityChecker;
+        this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.selfProvider =
                 selfProvider != null
                         ? selfProvider
@@ -136,6 +143,7 @@ public class ProcessQueryService implements QueryService, Loggable {
                 return QueryResponse.fromLLM(errorResponse);
             }
             ollamaConnectivityChecker.prepareForQuery(chatModel);
+            validateChatDocumentFilter(projectId, documentFilter);
             ExecutionContext ctx =
                     executionContextFactory.buildForChatMessage(
                             userId,
@@ -150,6 +158,36 @@ public class ProcessQueryService implements QueryService, Loggable {
             throw e;
         } catch (Exception e) {
             return handleUnexpected(query, e);
+        }
+    }
+
+    /**
+     * When the UI limits retrieval to explicit document ids, ensure those ids exist in the project before running RAG.
+     */
+    private void validateChatDocumentFilter(UUID projectId, List<String> documentFilter) {
+        if (documentFilter == null || documentFilter.isEmpty()) {
+            return;
+        }
+        List<UUID> ids = new ArrayList<>(documentFilter.size());
+        for (String raw : documentFilter) {
+            if (raw == null || raw.isBlank()) {
+                continue;
+            }
+            try {
+                ids.add(UUID.fromString(raw.trim()));
+            } catch (IllegalArgumentException ex) {
+                throw RagServiceException.chatDocumentFilterInvalid();
+            }
+        }
+        if (ids.isEmpty()) {
+            throw RagServiceException.chatDocumentScopeEmpty();
+        }
+        if (knowledgeDocumentRepository == null) {
+            return;
+        }
+        long matches = knowledgeDocumentRepository.countByProject_IdAndIdIn(projectId, ids);
+        if (matches == 0) {
+            throw RagServiceException.chatDocumentScopeEmpty();
         }
     }
 

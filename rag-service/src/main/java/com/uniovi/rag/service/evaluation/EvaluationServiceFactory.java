@@ -244,7 +244,8 @@ public class EvaluationServiceFactory {
                 ragExecutionOrchestrator,
                 runtimeTracePersistenceService,
                 chatClient,
-                ollamaConnectivityChecker);
+                ollamaConnectivityChecker,
+                null);
     }
 
     /**

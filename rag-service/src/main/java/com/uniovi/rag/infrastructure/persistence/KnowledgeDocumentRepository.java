@@ -70,6 +70,8 @@ public interface KnowledgeDocumentRepository extends JpaRepository<KnowledgeDocu
 
     long countByProject_Id(UUID projectId);
 
+    long countByProject_IdAndIdIn(UUID projectId, List<UUID> ids);
+
     List<KnowledgeDocumentEntity> findByConversation_IdAndCorpusScope(UUID conversationId, CorpusScope corpusScope);
 
     List<KnowledgeDocumentEntity> findByProject_IdAndCorpusScopeOrderByIdAsc(UUID projectId, CorpusScope corpusScope);

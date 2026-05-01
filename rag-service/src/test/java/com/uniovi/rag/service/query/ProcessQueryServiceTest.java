@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.query;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.domain.exception.ErrorCode;
 import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
@@ -20,6 +21,7 @@ import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
 import java.net.ConnectException;
@@ -34,6 +36,7 @@ import org.springframework.web.client.ResourceAccessException;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class ProcessQueryServiceTest {
@@ -43,6 +46,7 @@ class ProcessQueryServiceTest {
     private RuntimeTracePersistenceService runtimeTracePersistenceService;
     private ChatClient chatClient;
     private OllamaConnectivityChecker ollamaConnectivityChecker;
+    private KnowledgeDocumentRepository knowledgeDocumentRepository;
     private ProcessQueryService service;
 
     @BeforeEach
@@ -52,14 +56,17 @@ class ProcessQueryServiceTest {
         runtimeTracePersistenceService = mock(RuntimeTracePersistenceService.class);
         chatClient = ChatClientTestSupport.clientWithUserPromptReturning("error-llm-message");
         ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
+        knowledgeDocumentRepository = mock(KnowledgeDocumentRepository.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
+        when(knowledgeDocumentRepository.countByProject_IdAndIdIn(any(), any())).thenReturn(1L);
         service =
                 new ProcessQueryService(
                         executionContextFactory,
                         ragExecutionOrchestrator,
                         runtimeTracePersistenceService,
                         chatClient,
-                        ollamaConnectivityChecker);
+                        ollamaConnectivityChecker,
+                        knowledgeDocumentRepository);
     }
 
     private static ResolvedRuntimeConfig minimalResolved(RagConfig rag) {
@@ -248,6 +255,7 @@ class ProcessQueryServiceTest {
                         runtimeTracePersistenceService,
                         chatClient,
                         ollamaConnectivityChecker,
+                        knowledgeDocumentRepository,
                         provider));
         when(provider.getIfAvailable()).thenReturn(self);
 
@@ -259,5 +267,37 @@ class ProcessQueryServiceTest {
         QueryResponse r = self.generateResponseForChat("q", null, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), List.of());
         assertEquals("x", r.getAnswer());
         verify(provider).getIfAvailable();
+    }
+
+    @Test
+    void generateResponseForChat_invalidDocumentUuid_throwsBeforeOrchestrator() {
+        UUID uid = UUID.randomUUID();
+        UUID pid = UUID.randomUUID();
+        UUID conv = UUID.randomUUID();
+        RagServiceException ex =
+                assertThrows(
+                        RagServiceException.class,
+                        () ->
+                                service.generateResponseForChat(
+                                        "q", null, uid, pid, conv, List.of("not-a-uuid")));
+        assertEquals(ErrorCode.CHAT_DOCUMENT_FILTER_INVALID, ex.getErrorCode());
+        verify(ragExecutionOrchestrator, never()).execute(any());
+    }
+
+    @Test
+    void generateResponseForChat_selectedDocsNotInProject_throwsBeforeOrchestrator() {
+        when(knowledgeDocumentRepository.countByProject_IdAndIdIn(any(), any())).thenReturn(0L);
+        UUID uid = UUID.randomUUID();
+        UUID pid = UUID.randomUUID();
+        UUID conv = UUID.randomUUID();
+        UUID doc = UUID.randomUUID();
+        RagServiceException ex =
+                assertThrows(
+                        RagServiceException.class,
+                        () ->
+                                service.generateResponseForChat(
+                                        "q", null, uid, pid, conv, List.of(doc.toString())));
+        assertEquals(ErrorCode.CHAT_DOCUMENT_SCOPE_EMPTY, ex.getErrorCode());
+        verify(ragExecutionOrchestrator, never()).execute(any());
     }
 }
