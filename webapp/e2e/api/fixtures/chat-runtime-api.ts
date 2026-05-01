@@ -17,6 +17,7 @@ export type LabJobStatusBody = {
   result: Record<string, unknown> | null;
   errorMessage: string | null;
   terminal: boolean;
+  failureCode?: string | null;
 };
 
 export type ConversationDto = {
@@ -73,6 +74,20 @@ export async function postChatMessageAndPollTerminal(
 }
 
 /** Creates a fresh project, activates it, and opens an empty conversation (API-only). */
+/** PATCH `{product}/conversations/{id}` (subset of fields). */
+export async function patchConversation(
+  request: APIRequestContext,
+  token: string,
+  conversationId: string,
+  body: { documentFilter?: string[]; title?: string },
+): Promise<void> {
+  const res = await request.patch(productUrl(`/conversations/${conversationId}`), {
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    data: body,
+  });
+  expect(res.status(), await res.text()).toBe(200);
+}
+
 export async function createActivatedProjectAndConversation(
   request: APIRequestContext,
   token: string,

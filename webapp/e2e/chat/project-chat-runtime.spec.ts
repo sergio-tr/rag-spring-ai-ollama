@@ -27,7 +27,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
       page.getByRole("main").getByRole("button", { name: /^send$|^enviar$/i }),
     ).toBeVisible({ timeout: 15_000 });
 
-    await expect(page.locator("main .max-w-6xl")).toBeVisible();
+    await expect(page.getByTestId("chat-readable-column")).toBeVisible();
 
     const preset = page.getByRole("combobox", { name: /preset/i });
     await expect(preset).toBeVisible({ timeout: 15_000 });
