@@ -2,7 +2,7 @@ tensorflow>=2.15.0
 pandas
 openpyxl
 scikit-learn>=1.0.0
-matplotlib>=3.7.0
+matplotlib>=3.10.9
 seaborn>=0.12.0
 aiofiles>=24.1.0
 fastapi>=0.109.0
