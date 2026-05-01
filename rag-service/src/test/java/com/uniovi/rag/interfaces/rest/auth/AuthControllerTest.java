@@ -102,7 +102,8 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"N\",\"email\":\"a@b.com\",\"password\":\"password123\"}"))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.status").value("PENDING_EMAIL_VERIFICATION"));
+                .andExpect(jsonPath("$.status").value("PENDING_EMAIL_VERIFICATION"))
+                .andExpect(jsonPath("$.login").doesNotExist());
     }
 
     @Test
