@@ -15,6 +15,7 @@ import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagConfigurationEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -43,7 +44,7 @@ class ChatScopedRagConfigResolverTest {
 
         ChatScopedRagConfigResolver cut =
                 new ChatScopedRagConfigResolver(
-                        configResolver, null, repo, om, false);
+                        configResolver, null, repo, om, false, emptyChatPresetDefaults());
 
         assertSame(expected, cut.resolveForExecutionContext(null));
         Mockito.verifyNoInteractions(repo);
@@ -62,7 +63,7 @@ class ChatScopedRagConfigResolverTest {
 
         ChatScopedRagConfigResolver cut =
                 new ChatScopedRagConfigResolver(
-                        configResolver, null, repo, om, false);
+                        configResolver, null, repo, om, false, emptyChatPresetDefaults());
 
         assertSame(expected, cut.resolveForExecutionContext(ctx));
     }
@@ -92,7 +93,7 @@ class ChatScopedRagConfigResolverTest {
 
         ChatScopedRagConfigResolver cut =
                 new ChatScopedRagConfigResolver(
-                        configResolver, null, repo, om, false);
+                        configResolver, null, repo, om, false, emptyChatPresetDefaults());
 
         assertSame(base, cut.resolveForExecutionContext(ctx));
     }
@@ -124,7 +125,7 @@ class ChatScopedRagConfigResolverTest {
 
         ChatScopedRagConfigResolver cut =
                 new ChatScopedRagConfigResolver(
-                        configResolver, runtime, repo, om, true);
+                        configResolver, runtime, repo, om, true, emptyChatPresetDefaults());
 
         RagConfig out = cut.resolveForChat(uid, pid, cid);
         assertSame(core, out);
@@ -138,7 +139,8 @@ class ChatScopedRagConfigResolverTest {
                         null,
                         mock(ConversationRepository.class),
                         new ObjectMapper(),
-                        false);
+                        false,
+                        emptyChatPresetDefaults());
 
         assertNull(cut.mergedConversationConfigAsJson(null));
     }
@@ -159,11 +161,46 @@ class ChatScopedRagConfigResolverTest {
 
         ChatScopedRagConfigResolver cut =
                 new ChatScopedRagConfigResolver(
-                        configResolver, null, repo, om, false);
+                        configResolver, null, repo, om, false, emptyChatPresetDefaults());
 
         JsonNode node = cut.mergedConversationConfigAsJson(cid);
         assertNotNull(node);
         assertNotNull(node.get("useAdvisor"));
+    }
+
+    @Test
+    void mergedConversationConfigAsJson_mergesDeterministicDemoWorstWhenPresetNull() {
+        ConfigResolver configResolver = mock(ConfigResolver.class);
+        ConversationRepository repo = mock(ConversationRepository.class);
+        ObjectMapper om = new ObjectMapper();
+        UUID cid = UUID.randomUUID();
+        RagConfigurationEntity cfgEnt = mock(RagConfigurationEntity.class);
+        when(cfgEnt.getValues()).thenReturn(Map.of());
+        ConversationEntity conv = mock(ConversationEntity.class);
+        when(conv.getConfig()).thenReturn(cfgEnt);
+        when(conv.getPreset()).thenReturn(null);
+        when(conv.getRuntimeOverride()).thenReturn(Map.of());
+        when(repo.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
+
+        RagPresetEntity demoWorst = mock(RagPresetEntity.class);
+        when(demoWorst.getValues()).thenReturn(Map.of("useRetrieval", false, "toolsEnabled", false));
+
+        ChatPresetDefaults defaults = mock(ChatPresetDefaults.class);
+        when(defaults.loadDeterministicDefaultPreset()).thenReturn(Optional.of(demoWorst));
+
+        ChatScopedRagConfigResolver cut =
+                new ChatScopedRagConfigResolver(configResolver, null, repo, om, false, defaults);
+
+        JsonNode node = cut.mergedConversationConfigAsJson(cid);
+        assertNotNull(node);
+        assertNotNull(node.get("useRetrieval"));
+        assertNotNull(node.get("toolsEnabled"));
+    }
+
+    private static ChatPresetDefaults emptyChatPresetDefaults() {
+        ChatPresetDefaults d = mock(ChatPresetDefaults.class);
+        when(d.loadDeterministicDefaultPreset()).thenReturn(Optional.empty());
+        return d;
     }
 
     private static RagConfig sampleRagConfig() {

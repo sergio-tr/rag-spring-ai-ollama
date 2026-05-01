@@ -90,6 +90,7 @@ class RagExecutionOrchestratorClarificationTest {
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
+                        mock(DirectLlmWorkflow.class),
                         qu,
                         factory,
                         tools,
@@ -242,6 +243,7 @@ class RagExecutionOrchestratorClarificationTest {
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
+                        mock(DirectLlmWorkflow.class),
                         qu,
                         factory,
                         tools,

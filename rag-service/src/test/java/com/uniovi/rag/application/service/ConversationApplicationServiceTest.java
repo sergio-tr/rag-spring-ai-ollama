@@ -14,10 +14,13 @@ import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.service.preset.PresetService;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -32,9 +35,11 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -58,8 +63,23 @@ class ConversationApplicationServiceTest {
     @Mock
     private PresetService presetService;
 
+    @Mock
+    private ChatPresetDefaults chatPresetDefaults;
+
     @InjectMocks
     private ConversationApplicationService service;
+
+    @BeforeEach
+    void stubChatPresetDefaults() {
+        lenient().when(chatPresetDefaults.loadDeterministicDefaultPreset()).thenReturn(Optional.empty());
+        lenient()
+                .when(chatPresetDefaults.effectivePresetIdForApi(any()))
+                .thenAnswer(
+                        inv -> {
+                            UUID id = inv.getArgument(0, UUID.class);
+                            return id != null ? id : ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID;
+                        });
+    }
 
     @Test
     void listMessages_returnsEmptyWhenNoMessages() {
@@ -92,6 +112,7 @@ class ConversationApplicationServiceTest {
         assertThat(out).hasSize(1);
         assertEquals(cid, out.getFirst().id());
         assertEquals("T", out.getFirst().title());
+        assertEquals(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID, out.getFirst().effectivePresetId());
     }
 
     @Test
@@ -113,6 +134,36 @@ class ConversationApplicationServiceTest {
 
         ConversationDto dto = service.createConversation(userId, projectId, new CreateConversationRequest(null, null));
         assertThat(dto.title()).isEqualTo("New chat");
+        assertEquals(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID, dto.effectivePresetId());
+    }
+
+    @Test
+    void createConversation_setsDeterministicDemoWorstEntityWhenMigrationRowPresent() {
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UserEntity owner = mock(UserEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(project.getOwner()).thenReturn(owner);
+        when(project.getId()).thenReturn(projectId);
+        when(projectAccessService.requireOwnedProject(userId, projectId)).thenReturn(project);
+
+        RagPresetEntity demoWorst = mock(RagPresetEntity.class);
+        when(demoWorst.getId()).thenReturn(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID);
+        when(chatPresetDefaults.loadDeterministicDefaultPreset()).thenReturn(Optional.of(demoWorst));
+
+        when(conversationRepository.save(any(ConversationEntity.class)))
+                .thenAnswer(
+                        inv -> {
+                            ConversationEntity e = inv.getArgument(0);
+                            ReflectionTestUtils.setField(e, "id", UUID.randomUUID());
+                            return e;
+                        });
+
+        service.createConversation(userId, projectId, new CreateConversationRequest(null, null));
+
+        ArgumentCaptor<ConversationEntity> cap = ArgumentCaptor.forClass(ConversationEntity.class);
+        verify(conversationRepository).save(cap.capture());
+        assertSame(demoWorst, cap.getValue().getPreset());
     }
 
     @Test

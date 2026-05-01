@@ -87,4 +87,14 @@ class MessageStreamControllerTest {
                 .andExpect(jsonPath("$.pollPath").value(path("/lab/jobs/") + jobId))
                 .andExpect(jsonPath("$.streamPath").value(path("/lab/jobs/") + jobId + "/events"));
     }
+
+    @Test
+    void postMessage_spanishGreeting_returnsAcceptedNot5xx() throws Exception {
+        mockMvc.perform(
+                        post(path("/conversations/{id}/messages"), conversationId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"content\":\"Buenos dias\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"));
+    }
 }

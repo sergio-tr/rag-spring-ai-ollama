@@ -4,6 +4,7 @@ package com.uniovi.rag.interfaces.rest;
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ConversationApplicationService;
 import com.uniovi.rag.application.service.MoveConversationApplicationService;
+import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
@@ -102,7 +103,8 @@ class ProjectConversationsControllerWebMvcTest {
                         "Chat",
                         Instant.parse("2024-06-01T12:00:00Z"),
                         null,
-                        List.of()));
+                        List.of(),
+                        ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID));
 
         mockMvc.perform(
                         post(path("/projects/" + projectId + "/conversations"))

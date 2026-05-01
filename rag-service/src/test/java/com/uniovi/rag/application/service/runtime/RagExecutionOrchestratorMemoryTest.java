@@ -79,6 +79,7 @@ class RagExecutionOrchestratorMemoryTest {
         RagExecutionOrchestrator orchestrator =
                 new RagExecutionOrchestrator(
                         workflowSelector,
+                        mock(DirectLlmWorkflow.class),
                         qu,
                         factory,
                         tools,

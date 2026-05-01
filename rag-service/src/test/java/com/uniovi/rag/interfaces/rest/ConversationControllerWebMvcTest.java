@@ -8,6 +8,7 @@ import com.uniovi.rag.interfaces.rest.dto.ChatMessageAcceptedDto;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDto;
 import com.uniovi.rag.interfaces.rest.dto.PatchUserMessageRequest;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -105,7 +106,12 @@ class ConversationControllerWebMvcTest {
         UUID conv = UUID.randomUUID();
         when(conversationApplicationService.patchConversation(eq(userId), eq(conv), any()))
                 .thenReturn(new ConversationDto(
-                        conv, "Renamed", Instant.parse("2024-07-01T00:00:00Z"), null, List.of("d1")));
+                        conv,
+                        "Renamed",
+                        Instant.parse("2024-07-01T00:00:00Z"),
+                        null,
+                        List.of("d1"),
+                        ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID));
 
         mockMvc.perform(
                         patch(path("/conversations/") + conv)
