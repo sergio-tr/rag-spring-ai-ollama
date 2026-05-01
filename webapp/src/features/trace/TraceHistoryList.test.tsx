@@ -36,4 +36,20 @@ describe("TraceHistoryList", () => {
     expect(screen.getByText("send_started")).toBeInTheDocument();
     expect(screen.queryByText("secret-correlation-xyz")).not.toBeInTheDocument();
   });
+
+  it("renders trace message as plain text without injecting HTML nodes", () => {
+    useTraceStore.getState().addTraceEvent({
+      section: "global",
+      action: "sanitized_display",
+      message: '<img src="x" alt="">evil',
+      status: "info",
+    });
+    const { container } = render(
+      <IntlTestProvider locale="en">
+        <TraceHistoryList />
+      </IntlTestProvider>,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByText(/<img/i)).toBeInTheDocument();
+  });
 });

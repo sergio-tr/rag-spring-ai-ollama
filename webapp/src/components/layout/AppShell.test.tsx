@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { AppShell } from "./AppShell";
 
@@ -19,7 +20,9 @@ vi.mock("@/store/app.store", () => ({
 }));
 
 vi.mock("@/components/layout/AppSidebar", () => ({
-  AppSidebar: () => <div data-testid="sidebar-mock" />,
+  AppSidebar: ({ variant }: { variant?: string }) => (
+    <div data-testid="sidebar-mock" data-variant={variant ?? "desktop"} />
+  ),
 }));
 
 vi.mock("@/components/layout/AppContextBreadcrumb", () => ({
@@ -94,6 +97,23 @@ describe("AppShell", () => {
     );
     const toolbar = screen.getByTestId("app-main-toolbar");
     expect(within(toolbar).queryByRole("button", { name: /sign out/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the mobile navigation drawer and mounts drawer-variant sidebar", async () => {
+    pathnameMock = "/projects";
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider locale="en">
+        <AppShell panelBody={null}>
+          <span>x</span>
+        </AppShell>
+      </IntlTestProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /open navigation menu/i }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      screen.getAllByTestId("sidebar-mock").some((el) => el.getAttribute("data-variant") === "drawer"),
+    ).toBe(true);
   });
 
   beforeEach(() => {
