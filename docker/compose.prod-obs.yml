@@ -1,0 +1,22 @@
+# Prod-local hardening for observability UIs: keep Jaeger/Prometheus/Grafana internal.
+# Use with docker-compose.yml + compose.obs.yml + profile observability + compose.prod.yml.
+services:
+  jaeger:
+    ports: []
+    networks:
+      - private
+
+  prometheus:
+    ports: []
+    networks:
+      - private
+
+  grafana:
+    ports: []
+    networks:
+      - private
+
+  otel-collector:
+    ports: []
+    networks:
+      - private

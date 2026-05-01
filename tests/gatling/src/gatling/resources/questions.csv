@@ -1,0 +1,6 @@
+question,complexity
+What is retrieval augmented generation?,simple
+Summarize the project goals in one sentence.,simple
+List two risks of running load tests against a live LLM.,simple
+Compare tool-augmented RAG versus plain retrieval-only baselines for factual QA with citations and note latency trade-offs.,complex
+Given multiple document chunks with conflicting dates, outline a reasoning chain to resolve the user question before answering.,complex

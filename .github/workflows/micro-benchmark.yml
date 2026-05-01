@@ -1,0 +1,87 @@
+# Optional Python micro-benchmarks (retrieval / infra probe). Not a load test — no PR gates.
+name: Micro-benchmark (Python)
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Backend base URL (leave empty to use variable BENCHMARK_BASE_URL)"
+        required: false
+        type: string
+      scenario:
+        description: "Scenario name under tests/performance/scenarios/"
+        required: false
+        default: "baseline"
+        type: string
+      family:
+        description: "retrieval or llm"
+        required: false
+        default: "retrieval"
+        type: choice
+        options:
+          - retrieval
+          - llm
+  schedule:
+    - cron: "0 7 * * 1"
+
+concurrency:
+  group: micro-benchmark-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  micro-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BENCHMARK_BASE_URL: ${{ vars.BENCHMARK_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Apply dispatch base URL override
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.base_url != ''
+        run: echo "BENCHMARK_BASE_URL=${{ github.event.inputs.base_url }}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install benchmark deps
+        run: pip install -r tests/performance/requirements.txt
+
+      - name: Run retrieval micro-benchmark
+        if: env.BENCHMARK_BASE_URL != ''
+        env:
+          BENCHMARK_BEARER_TOKEN: ${{ secrets.BENCHMARK_BEARER_TOKEN }}
+          BENCHMARK_PROJECT_ID: ${{ vars.BENCHMARK_PROJECT_ID }}
+          BENCHMARK_CONVERSATION_ID: ${{ vars.BENCHMARK_CONVERSATION_ID }}
+        run: |
+          case "${{ github.event_name }}" in
+            workflow_dispatch)
+              FAMILY="${{ github.event.inputs.family }}"
+              SCEN="${{ github.event.inputs.scenario }}"
+              ;;
+            *)
+              FAMILY="retrieval"
+              SCEN="baseline"
+              ;;
+          esac
+          python tests/performance/retrieval_benchmark.py \
+            --backend-base-url "$BENCHMARK_BASE_URL" \
+            --family "$FAMILY" \
+            --scenario "$SCEN" \
+            --repetitions 3 \
+            --warmup 1 \
+            --concurrency 1 \
+            --output-json benchmark-report.json
+
+      - name: Skip notice (no base URL)
+        if: env.BENCHMARK_BASE_URL == ''
+        run: echo "Skipping benchmark — set repository variable BENCHMARK_BASE_URL or workflow dispatch base_url"
+
+      - name: Upload benchmark JSON
+        if: env.BENCHMARK_BASE_URL != ''
+        uses: actions/upload-artifact@v6
+        with:
+          name: micro-benchmark-report-${{ github.run_id }}
+          path: benchmark-report.json
+          retention-days: 30

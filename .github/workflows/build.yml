@@ -1,0 +1,48 @@
+name: Build (no tests)
+
+on:
+  # Manual tool only: CI (ci.yml) is the authoritative gate for PRs and pushes.
+  # Keep this workflow as an ad-hoc compile-only signal when needed.
+  workflow_dispatch: {}
+
+jobs:
+  backend:
+    name: Backend (Java) Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+
+      - name: Build (skip tests)
+        run: |
+          cd rag-service
+          chmod +x mvnw
+          ./mvnw -B -DskipTests package
+
+  classifier-service:
+    name: Query Classifier Service (Python) Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd classifier-service
+          pip install -r requirements.txt
+
+      - name: Compile Python (no tests)
+        run: |
+          cd classifier-service
+          python -m compileall -q .
+

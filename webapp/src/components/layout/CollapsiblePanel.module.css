@@ -1,0 +1,28 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+  transition:
+    width 200ms ease,
+    opacity 200ms ease;
+  overflow: hidden;
+}
+
+.open {
+  width: min(22rem, 36vw);
+  opacity: 1;
+}
+
+.closed {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.inner {
+  min-width: min(22rem, 36vw);
+  height: 100%;
+  padding: 1rem;
+}

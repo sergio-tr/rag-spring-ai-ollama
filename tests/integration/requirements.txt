@@ -1,0 +1,6 @@
+# Host integration tests: pytest drives HTTP against an already running stack (Docker or local).
+# Optional: testcontainers + psycopg for local DB smoke only (INTEGRATION_USE_TESTCONTAINERS=1).
+pytest>=7.4.0
+httpx>=0.27.0
+testcontainers[postgres]>=4.0.0
+psycopg[binary]>=3.1.0

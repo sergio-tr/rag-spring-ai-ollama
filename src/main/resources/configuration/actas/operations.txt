@@ -1,6 +1,0 @@
-[Operaciones]
-Conteo_Asistentes = Contar el número de asistentes en cada reunión.
-Verificación Quórum = Confirmar si se alcanzó el quórum mínimo en cada acta.
-Frecuencia Temas = Analizar cuántas veces se ha discutido un mismo tema en distintas reuniones.
-Decisiones Recurrentes = Identificar acuerdos que se han tomado en más de una reunión.
-Comparación Presupuestos = Evaluar cambios en los presupuestos aprobados a lo largo del tiempo.

@@ -1,0 +1,31 @@
+%% Ollama wiring matrix — composite URL wins over defaults in env files
+flowchart TB
+  subgraph hostpath [Host Ollama default backend container]
+    H2["docker-compose.yml without profile ollama"]
+    H1["SPRING_AI_OLLAMA_BASE_URL http://host.docker.internal:11434"]
+    H2 --> H1
+  end
+
+  subgraph localgpu [Ollama in Compose GPU]
+    L0[docker-compose.yml profile ollama + compose.gpu.yml]
+    L2["service ollama NVIDIA volume ollama_data"]
+    L3["backend SPRING_AI_OLLAMA_BASE_URL http://ollama:11434"]
+    L0 --> L2 --> L3
+  end
+
+  subgraph localgpu_dev [Dev JVM targeting container Ollama]
+    LD2["compose.dev.yml backend-dev + profile ollama"]
+    LD2 --> L2
+  end
+
+  subgraph remote [Remote or host Ollama same compose files]
+    R1["rag-service/.env OLLAMA_BASE_URL SPRING_AI_OLLAMA_BASE_URL"]
+    R2["docker-compose.yml and compose.dev.yml interpolate into backend and backend-dev"]
+    R1 --> R2
+  end
+
+  subgraph gpuonly [GPU without local Ollama container]
+    G1["up.sh --gpu --ollama-remote skips profile ollama"]
+    G2["compose.gpu.yml classifier NVIDIA LLM URL still from rag-service/.env"]
+    G1 --> G2
+  end

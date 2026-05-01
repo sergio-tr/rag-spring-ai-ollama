@@ -1,0 +1,31 @@
+%% Logical integrations between runnable units — ports and health rules: docker/docker-compose.yml
+flowchart LR
+  subgraph clients [Clients]
+    BR[Browser]
+  end
+
+  subgraph edge [Edge optional]
+    NX[Nginx reverse-proxy]
+  end
+
+  subgraph app [Application tier]
+    FE[Next.js webapp]
+    BE[Spring Boot rag-service]
+    CL[FastAPI classifier-service]
+  end
+
+  subgraph data [Data and LLM runtime]
+    PG[("PostgreSQL pgvector")]
+    OL[Ollama HTTP API]
+  end
+
+  BR -->|HTTP HTTPS| NX
+  BR -.->|dev direct optional| FE
+  BR -.->|dev direct optional| BE
+  NX -->|UI and stream| FE
+  NX -->|REST SSE /api actuator| BE
+  FE -->|NEXT_PUBLIC API base| NX
+  FE -.->|bypass proxy in dev| BE
+  BE -->|JDBC| PG
+  BE -->|HTTP JSON classify| CL
+  BE -->|chat embeddings| OL

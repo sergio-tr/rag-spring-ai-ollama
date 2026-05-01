@@ -1,0 +1,36 @@
+# Spring apps: OTLP + infra profile when using the observability stack (profile observability in docker-compose.yml).
+# Merge with: docker compose -f docker-compose.yml -f compose.obs.yml --profile observability …
+services:
+  backend:
+    environment:
+      SERVER_PORT: ${OBS_INTERNAL_BACKEND_ACTUATOR:-9000}
+      SPRING_PROFILES_ACTIVE: docker,infra
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: rag-backend
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: otlp
+      MANAGEMENT_OTLP_TRACING_EXPORT_ENABLED: "true"
+      MANAGEMENT_OTLP_TRACING_ENDPOINT: http://otel-collector:4318/v1/traces
+      MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "true"
+      MANAGEMENT_OTLP_METRICS_EXPORT_URL: http://otel-collector:4318/v1/metrics
+      MANAGEMENT_METRICS_EXPORT_OTLP_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      classifier-service:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      ollama:
+        condition: service_started
+        required: false
+
+  classifier-service:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: classifier-service
+      OTEL_METRICS_EXPORTER: otlp
+      OTEL_TRACES_EXPORTER: otlp
+    depends_on:
+      otel-collector:
+        condition: service_started
