@@ -6,20 +6,48 @@ import {
   useDeleteProjectDocument,
   useProjectDocuments,
 } from "@/features/documents/hooks/use-project-documents";
+import { useSyncActiveProjectFromDocumentsUrl } from "@/features/projects/hooks/use-sync-active-project-from-documents-url";
+import { buildProjectScopedDocumentsHref } from "@/features/projects/lib/open-project-navigation";
+import { ApiError } from "@/lib/api-client";
 import { useAppStore } from "@/store/app.store";
+import { Link, useRouter } from "@/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 
-export default function DocumentsPage() {
+function DocumentsPageFallback() {
   const t = useTranslations("Documents");
+  return <p className="text-muted-foreground text-sm">{t("loading")}</p>;
+}
+
+export default function DocumentsPage() {
+  return (
+    <Suspense fallback={<DocumentsPageFallback />}>
+      <DocumentsPageInner />
+    </Suspense>
+  );
+}
+
+function DocumentsPageInner() {
+  const t = useTranslations("Documents");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlProjectId = searchParams?.get("projectId")?.trim() || null;
+  useSyncActiveProjectFromDocumentsUrl(urlProjectId);
+
   const active = useAppStore((s) => s.activeProject);
   const projectId = active?.id;
   const qc = useQueryClient();
-  const { data, isLoading, isError } = useProjectDocuments(projectId);
+  const { data, isLoading, isError, error } = useProjectDocuments(projectId);
   const del = useDeleteProjectDocument(projectId);
   const rows = useMemo(() => data ?? [], [data]);
+
+  useEffect(() => {
+    if (!projectId || urlProjectId) return;
+    router.replace(buildProjectScopedDocumentsHref(projectId));
+  }, [projectId, urlProjectId, router]);
 
   const hasIngesting = useMemo(
     () => rows.some((d) => d.status === "INGESTING"),
@@ -35,7 +63,16 @@ export default function DocumentsPage() {
   }, [hasIngesting, projectId, qc]);
 
   if (!projectId) {
-    return <p className="text-muted-foreground text-sm">{t("noActiveProject")}</p>;
+    return (
+      <div className="flex flex-col gap-3 text-muted-foreground text-sm">
+        <p>{t("noActiveProject")}</p>
+        <p>
+          <Link href="/projects" className="text-primary underline underline-offset-4">
+            {t("goToProjects")}
+          </Link>
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -43,13 +80,22 @@ export default function DocumentsPage() {
       <div>
         <h1 className="font-semibold text-2xl tracking-tight">{t("title")}</h1>
         <p className="text-muted-foreground text-sm">{t("subtitle")}</p>
+        {active?.name ? (
+          <p className="text-muted-foreground text-xs">{t("scopedSubtitle", { name: active.name })}</p>
+        ) : null}
       </div>
       <DocumentUploadZone projectId={projectId} />
       {isLoading && <p className="text-muted-foreground text-sm">{t("loading")}</p>}
       {isError && (
-        <p className="text-destructive text-sm" role="alert">
-          {t("loadError")}
-        </p>
+        <div
+          role="alert"
+          className="space-y-1 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm"
+        >
+          <p className="font-medium">{t("loadError")}</p>
+          {error instanceof ApiError ? (
+            <p className="text-muted-foreground text-xs">{error.message}</p>
+          ) : null}
+        </div>
       )}
       {!isLoading && !isError && rows.length === 0 && (
         <p className="text-muted-foreground text-sm">{t("empty")}</p>

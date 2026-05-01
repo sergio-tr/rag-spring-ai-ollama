@@ -6,6 +6,8 @@ import type { ProjectDocumentDto } from "@/types/api";
 
 const docsKey = (projectId: string) => ["project-documents", projectId] as const;
 
+const projectsListPrefix = ["projects"] as const;
+
 export function useProjectDocuments(projectId: string | undefined) {
   return useQuery({
     queryKey: projectId ? docsKey(projectId) : ["project-documents", "none"],
@@ -28,7 +30,10 @@ export function useUploadProjectDocument(projectId: string | undefined) {
       });
     },
     onSuccess: () => {
-      if (projectId) void qc.invalidateQueries({ queryKey: docsKey(projectId) });
+      if (projectId) {
+        void qc.invalidateQueries({ queryKey: docsKey(projectId) });
+        void qc.invalidateQueries({ queryKey: projectsListPrefix });
+      }
     },
   });
 }
@@ -43,7 +48,35 @@ export function useDeleteProjectDocument(projectId: string | undefined) {
       });
     },
     onSuccess: () => {
-      if (projectId) void qc.invalidateQueries({ queryKey: docsKey(projectId) });
+      if (projectId) {
+        void qc.invalidateQueries({ queryKey: docsKey(projectId) });
+        void qc.invalidateQueries({ queryKey: projectsListPrefix });
+      }
+    },
+  });
+}
+
+/**
+ * No bulk DELETE API — sequential per-document deletes scoped to `projectId` only.
+ */
+export function useDeleteAllProjectDocuments(projectId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!projectId) throw new Error("no_project");
+      const list = await apiFetch<ProjectDocumentDto[]>(
+        apiProductPath(`/projects/${projectId}/documents`),
+      );
+      for (const doc of list) {
+        await apiFetch(apiProductPath(`/projects/${projectId}/documents/${doc.id}`), {
+          method: "DELETE",
+        });
+      }
+    },
+    onSuccess: () => {
+      if (!projectId) return;
+      void qc.invalidateQueries({ queryKey: docsKey(projectId) });
+      void qc.invalidateQueries({ queryKey: projectsListPrefix });
     },
   });
 }
