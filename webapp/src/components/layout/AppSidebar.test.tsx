@@ -215,6 +215,8 @@ describe("AppSidebar", () => {
     expect(screen.queryByRole("button", { name: /^projects$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /new project/i })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Main")).toBeInTheDocument();
+    const brand = screen.getByRole("link", { name: /rag console/i });
+    expect(brand.querySelector("img")).toHaveAttribute("src", "/logo.svg");
   });
 
   it("invokes onToggleRailCollapsed from desktop chrome toggle", async () => {

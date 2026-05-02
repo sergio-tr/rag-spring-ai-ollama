@@ -225,9 +225,14 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
           )}
           onClick={() => onNavigate?.()}
         >
-          <div className="bg-sidebar-accent text-sidebar-accent-foreground flex size-7 shrink-0 items-center justify-center rounded-md text-xs font-semibold">
-            RC
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element -- local SVG brand mark */}
+          <img
+            src="/logo.svg"
+            alt=""
+            width={28}
+            height={28}
+            className="size-7 max-h-7 max-w-7 shrink-0 object-contain dark:brightness-0 dark:invert"
+          />
           <span
             className={cn(
               "truncate font-semibold text-sm tracking-tight",

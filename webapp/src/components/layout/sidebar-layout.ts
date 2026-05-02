@@ -4,8 +4,8 @@ export const DEFAULT_SIDEBAR_WIDTH_PX = 260;
 /** Minimum expanded sidebar width (readable labels + controls). */
 export const MIN_SIDEBAR_WIDTH_PX = 200;
 
-/** Narrow rail width when the shell sidebar is collapsed to icons only. */
-export const RAIL_WIDTH_PX = 56;
+/** Narrow rail width when the shell sidebar is collapsed to icons only (logo + rail icons need slight breathing room). */
+export const RAIL_WIDTH_PX = 72;
 
 /** Fraction of viewport usable as maximum sidebar width (~33%). */
 export const SIDEBAR_MAX_VIEWPORT_FRACTION = 0.33;
