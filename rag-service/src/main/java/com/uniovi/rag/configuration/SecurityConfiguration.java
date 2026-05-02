@@ -89,7 +89,10 @@ public class SecurityConfiguration {
     @Bean
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     public CorsConfigurationSource corsConfigurationSource(
-            @Value("${rag.cors.allowed-origins:http://localhost:3000}") String allowedOrigins) {
+            @Value(
+                            "${rag.cors.allowed-origins:http://localhost:*,http://127.0.0.1:*,"
+                                    + "https://localhost:*,https://127.0.0.1:*}")
+                    String allowedOrigins) {
         return buildCors(allowedOrigins);
     }
 
@@ -99,7 +102,11 @@ public class SecurityConfiguration {
                 .filter(s -> !s.isEmpty())
                 .collect(Collectors.toList());
         if (patterns.isEmpty()) {
-            patterns = List.of("http://localhost:3000");
+            patterns = List.of(
+                    "http://localhost:*",
+                    "http://127.0.0.1:*",
+                    "https://localhost:*",
+                    "https://127.0.0.1:*");
         }
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
