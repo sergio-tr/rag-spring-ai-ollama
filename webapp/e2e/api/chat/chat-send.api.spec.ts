@@ -1,11 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { authHeaders, loginAndGetToken } from "../fixtures/auth";
-import {
-  createActivatedProjectAndConversation,
-  patchConversation,
-  postChatMessageAndPollTerminal,
-  type ConversationDto,
-} from "../fixtures/chat-runtime-api";
+import { createActivatedProjectAndConversation, postChatMessageAndPollTerminal, type ConversationDto } from "../fixtures/chat-runtime-api";
+import { parseJsonExpectNonHtml } from "../fixtures/json-contract";
 import { integrationCredentials, productUrl } from "../fixtures/env";
 
 test.describe("Chat send API @api @chatRuntime", () => {
@@ -42,25 +38,31 @@ test.describe("Chat send API @api @chatRuntime", () => {
     expect(messages.some((m) => m.role === "USER" && m.content.includes("Buenos dias"))).toBe(true);
   });
 
-  test("mismatched documentFilter: terminal FAILED exposes failureCode and JSON poll body stays non-HTML", async ({
+  test("PATCH conversation rejects documentFilter id not in project with JSON 400, not HTML", async ({
     request,
   }) => {
     const { email, password } = integrationCredentials();
     const token = await loginAndGetToken(request, email, password);
     const { conversationId } = await createActivatedProjectAndConversation(request, token);
 
-    await patchConversation(request, token, conversationId, {
-      documentFilter: ["00000000-0000-4000-8000-000000000001"],
+    const res = await request.patch(productUrl(`/conversations/${conversationId}`), {
+      headers: {
+        ...authHeaders(token),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      data: { documentFilter: ["00000000-0000-4000-8000-000000000001"] },
     });
-
-    const terminal = await postChatMessageAndPollTerminal(request, token, conversationId, "Hello with bad scope", {
-      pollTimeoutMs: 180_000,
-    });
-    expect(terminal.terminal).toBe(true);
-    expect(terminal.status).toBe("FAILED");
-    expect(terminal.failureCode).toBe("CHAT_DOCUMENT_SCOPE_EMPTY");
-    expect((terminal.errorMessage ?? "").toLowerCase()).not.toContain("<html");
-    expect(terminal.result?.phase).toBe("failed");
+    const raw = await res.text();
+    expect(res.status(), raw).toBe(400);
+    const body = parseJsonExpectNonHtml(raw, "PATCH conversations documentFilter") as {
+      success?: boolean;
+      message?: string;
+      code?: string;
+    };
+    expect(body.success).toBe(false);
+    expect(String(body.message ?? "").toLowerCase()).toContain("not in project");
+    expect(String(body.message ?? "").toLowerCase()).not.toContain("<html");
   });
 
   test("empty project: POST chat message avoids gateway 5xx", async ({ request }) => {
