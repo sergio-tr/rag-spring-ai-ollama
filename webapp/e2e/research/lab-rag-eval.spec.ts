@@ -14,10 +14,16 @@ test.describe("Lab RAG evaluation", () => {
     await expect(page.getByRole("heading", { name: /research lab|laboratorio/i }).first()).toBeVisible({
       timeout: 20_000,
     });
-    // Accept either: enabled action, or an explicit warning that datasets/evaluations are disabled.
-    const disabledWarn = page.getByText(/evaluation dataset is not loaded|dataset|datos.*no.*cargad/i).first();
     const runButton = page.getByTestId("lab-rag-run");
-    await expect(disabledWarn).toBeVisible({ timeout: 20_000 });
-    await expect(runButton).toBeDisabled();
+    await expect(runButton).toBeVisible({ timeout: 20_000 });
+    // Copy matches `Lab.datasetsDisabledWarn` (EN/ES) or legacy "dataset … not loaded" strings.
+    const disabledPattern =
+      /benchmark questions are unavailable|evaluation dataset is not loaded|preguntas de benchmark no están disponibles|dataset|datos.*cargad/i;
+    const disabledWarn = page.getByText(disabledPattern).first();
+    if (await disabledWarn.isVisible().catch(() => false)) {
+      await expect(runButton).toBeDisabled();
+    } else {
+      await expect(runButton).toBeEnabled();
+    }
   });
 });

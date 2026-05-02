@@ -13,8 +13,6 @@ test.describe("Project and chat", () => {
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
-    await expect(
-      page.getByRole("main").getByRole("button", { name: /new conversation|nueva conversación/i }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("chat-new-conversation")).toBeVisible({ timeout: 15_000 });
   });
 });

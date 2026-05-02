@@ -812,6 +812,7 @@ function ChatPageInner() {
             type="button"
             size="sm"
             className="w-full"
+            data-testid="chat-new-conversation"
             disabled={createConv.isPending}
             onClick={async () => {
               const c = await createConv.mutateAsync();

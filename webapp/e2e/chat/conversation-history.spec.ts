@@ -11,18 +11,12 @@ test.describe("Conversation history", () => {
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
     await sendChatMessage(page, "First thread message");
     // Smoke-level assertion: user message is rendered (job completion can vary by backend flags).
     await expect(page.getByText("First thread message")).toBeVisible({ timeout: 10_000 });
 
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
     await expect(page).toHaveURL(/conversationId=/);
     const firstConversationUrl = page.url();
     await expect(page.getByPlaceholder(/message|mensaje/i)).toBeEnabled({ timeout: 15_000 });

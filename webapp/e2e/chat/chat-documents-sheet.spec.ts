@@ -12,6 +12,7 @@ test.describe("Chat manage documents sheet @fullstack", () => {
 
     await page.getByRole("link", { name: /documents|documentos/i }).click();
     await expect(page).toHaveURL(/\/en\/documents/);
+    await expect(page).toHaveURL(/[?&]projectId=/, { timeout: 15_000 });
 
     await page.locator('input[type="file"]').setInputFiles({
       name: "e2e-p8-sheet-doc.txt",
@@ -30,10 +31,7 @@ test.describe("Chat manage documents sheet @fullstack", () => {
       .toBe(true);
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
 
     await page.getByRole("button", { name: /manage project documents/i }).click();
     await expect(page.getByRole("heading", { name: /Documents for this chat/i })).toBeVisible({

@@ -12,7 +12,7 @@ test.describe("Projects core", () => {
     const name = uniqueProjectName("e2e-s5");
     await createAndActivateProject(page, name);
     await expect(
-      page.locator('[data-slot="card"]').filter({ hasText: name }).getByRole("button", { name: /active|activo/i }),
+      page.locator('[data-slot="card"]').filter({ hasText: name }).getByRole("button", { name: /^(Active|Activo)$/i }),
     ).toBeVisible();
   });
 
@@ -21,6 +21,7 @@ test.describe("Projects core", () => {
     const name = uniqueProjectName("e2e-s5-docs");
     await createAndActivateProject(page, name);
     await page.goto("/en/documents");
+    await expect(page).toHaveURL(/[?&]projectId=/, { timeout: 15_000 });
     await expect(page.getByRole("heading", { name: /^documents$/i })).toBeVisible({ timeout: 15_000 });
   });
 });

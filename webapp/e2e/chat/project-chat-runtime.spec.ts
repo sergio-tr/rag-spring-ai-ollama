@@ -18,10 +18,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
 
     await expect(
       page.getByRole("main").getByRole("button", { name: /^send$|^enviar$/i }),
@@ -53,10 +50,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
 
     await sendChatMessage(page, "Buenos dias");
     await expect(page.getByText("Buenos dias")).toBeVisible({ timeout: 15_000 });
@@ -86,10 +80,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
 
     await sendChatMessage(page, "Buenos dias");
 
@@ -108,6 +99,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
 
     await page.getByRole("link", { name: /documents|documentos/i }).click();
     await expect(page).toHaveURL(/\/en\/documents/);
+    await expect(page).toHaveURL(/[?&]projectId=/, { timeout: 15_000 });
     await page.locator('input[type="file"]').setInputFiles({
       name: "e2e-limit-docs.txt",
       mimeType: "text/plain",
@@ -125,10 +117,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
       .toBe(true);
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
 
     const limitCb = page.getByRole("checkbox", {
       name: /limit retrieval to selected documents|limitar la recuperación/i,
@@ -141,6 +130,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
 
     await page.getByRole("link", { name: /documents|documentos/i }).click();
     await expect(page).toHaveURL(/\/en\/documents/);
+    await expect(page).toHaveURL(/[?&]projectId=/, { timeout: 15_000 });
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
@@ -182,10 +172,7 @@ test.describe("Nginx same-origin chat @fullstack @nginx @chatRuntime", () => {
     await createAndActivateProject(page, uniqueProjectName("e2e-nginx"));
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
 
     await sendChatMessage(page, "Buenos dias");
     await expect(page.getByText("Buenos dias")).toBeVisible({ timeout: 30_000 });
@@ -216,10 +203,7 @@ test.describe("Classifier unavailable (manual ops) @fullstack @manual @chatRunti
     await createAndActivateProject(page, uniqueProjectName("e2e-class-down"));
 
     await page.getByRole("link", { name: /^chat$/i }).click();
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
 
     await sendChatMessage(page, "Buenos dias");
     await waitForLatestAssistantNonEmpty(page, 180_000);

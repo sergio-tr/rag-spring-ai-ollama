@@ -17,6 +17,7 @@ test.describe("Chat RAG", () => {
 
     await page.getByRole("link", { name: /documents|documentos/i }).click();
     await expect(page).toHaveURL(/\/en\/documents/);
+    await expect(page).toHaveURL(/[?&]projectId=/, { timeout: 15_000 });
     await page.locator('input[type="file"]').setInputFiles({
       name: "e2e-sources.txt",
       mimeType: "text/plain",
@@ -34,10 +35,7 @@ test.describe("Chat RAG", () => {
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
     await sendChatMessage(page, "What is in my project documents?");
 
     await expect(page.getByText(/could not send message/i)).toHaveCount(0);

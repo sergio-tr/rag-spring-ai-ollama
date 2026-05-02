@@ -1,6 +1,30 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { adminEmail, adminPassword, seedEmail, seedPassword } from "../fixtures/users";
 
+/**
+ * Runs before the first document load on this page so client UI does not start in a state where
+ * chat actions are hidden (persisted rail collapse + conversation list collapse).
+ */
+async function registerE2eLayoutPersistenceReset(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      sessionStorage.removeItem("chat-conv-list-collapsed");
+    } catch {
+      /* ignore */
+    }
+    try {
+      const raw = localStorage.getItem("rag-sidebar");
+      if (!raw) return;
+      const o = JSON.parse(raw) as Record<string, unknown>;
+      if (!o || typeof o !== "object") return;
+      o.shellCollapsed = false;
+      localStorage.setItem("rag-sidebar", JSON.stringify(o));
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
 const apiBase = () =>
   (
     process.env.NEXT_PUBLIC_API_BASE_URL ??
@@ -29,6 +53,7 @@ export async function authHeadersFromPage(page: Page): Promise<Record<string, st
 
 /** Logs in with Flyway seed credentials and waits for the projects page. */
 export async function loginAsSeedUser(page: Page): Promise<void> {
+  await registerE2eLayoutPersistenceReset(page);
   await page.goto("/en/login", { waitUntil: "domcontentloaded" });
   const emailInput = page.getByLabel(/email|correo/i);
   const passwordInput = page.getByLabel(/^password$/i);
@@ -57,12 +82,15 @@ export async function createAndActivateProject(page: Page, projectName: string):
   await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 20_000 });
   const projectCard = page.locator('[data-slot="card"]').filter({ hasText: projectName }).first();
   await expect(projectCard).toBeVisible({ timeout: 20_000 });
-  // Create flow calls PUT …/activate and sets the client store; secondary control shows Active without opening chat.
-  await expect(projectCard.getByRole("button", { name: /^(active|activo)$/i })).toBeVisible({ timeout: 20_000 });
+  // Require the actual active marker — not "Set active only", which also contains the substring "active".
+  await expect(projectCard.getByRole("button", { name: /^(Active|Activo)$/i })).toBeVisible({
+    timeout: 20_000,
+  });
 }
 
 /** ADMIN user seeded when Spring profile {@code e2e} is active (see E2eAdminUserSeeder). */
 export async function loginAsE2eAdmin(page: Page): Promise<void> {
+  await registerE2eLayoutPersistenceReset(page);
   await page.goto("/en/login", { waitUntil: "domcontentloaded" });
   const emailInput = page.getByLabel(/email|correo/i);
   const passwordInput = page.getByLabel(/^password$/i);
@@ -91,9 +119,7 @@ function chatComposerLocators(page: Page): {
   return {
     textarea: page.getByPlaceholder(/message|mensaje/i),
     sendButton: page.getByRole("button", { name: /^send$|^enviar$/i }),
-    newConversationButton: page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i }),
+    newConversationButton: page.getByTestId("chat-new-conversation"),
   };
 }
 
@@ -155,6 +181,15 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
     return;
   }
 
+  const expandConvList = page.getByRole("button", {
+    name: /Show conversation list|Mostrar lista de conversaciones/i,
+  });
+  try {
+    await expect(newConversationButton).toBeVisible({ timeout: 3_000 });
+  } catch {
+    await expandConvList.click({ timeout: 5_000 });
+    await expect(newConversationButton).toBeVisible({ timeout: 8_000 });
+  }
   await newConversationButton.click();
   await prepareComposer();
   if (await clickSendWhenEnabled(sendEnabledTimeoutMs)) {

@@ -13,10 +13,7 @@ test.describe("Chat delete conversation @fullstack", () => {
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
 
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
     await sendChatMessage(page, "delete-me-marker");
 
     const deleteConversationBtn = page.getByRole("button", { name: /Delete chat:/i });

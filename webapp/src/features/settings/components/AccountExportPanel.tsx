@@ -251,7 +251,7 @@ export function AccountExportPanel() {
   const requestDisabled = followingBusy || (!!lastStatus && !lastStatus.terminal);
 
   return (
-    <Card id="settings-account-export" className="scroll-mt-24">
+    <Card id="settings-account-export" data-testid="settings-account-export" className="scroll-mt-24">
       <CardHeader>
         <CardTitle>{t("accountExportTitle")}</CardTitle>
         <CardDescription>{t("accountExportDescription")}</CardDescription>

@@ -15,6 +15,7 @@ test.describe("Phase 8 project documents chat journey @fullstack", () => {
     await createAndActivateProject(page, name);
 
     await page.getByRole("link", { name: /documents|documentos/i }).click();
+    await expect(page).toHaveURL(/[?&]projectId=/, { timeout: 15_000 });
     await expect(page.getByRole("heading", { name: /^documents$/i })).toBeVisible({ timeout: 15_000 });
 
     await page.locator('input[type="file"]').setInputFiles({
@@ -35,10 +36,7 @@ test.describe("Phase 8 project documents chat journey @fullstack", () => {
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
 
     await sendChatMessage(page, "Phase 8 journey ping");
     await expect(page.getByText("Phase 8 journey ping")).toBeVisible({ timeout: 20_000 });

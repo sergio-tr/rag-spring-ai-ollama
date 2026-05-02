@@ -12,6 +12,26 @@ import type {
 
 const projectsKey = ["projects"] as const;
 
+/** Merge POST /projects result into cached list pages before refetch (avoids clearing active via stale rows). */
+function prependCreatedProjectToProjectListCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  created: ProjectSummary,
+): void {
+  queryClient.setQueriesData<ProjectListResponse>({ queryKey: projectsKey }, (old) => {
+    if (!old) {
+      return { items: [created], total: 1 };
+    }
+    if (old.items.some((p) => p.id === created.id)) {
+      return old;
+    }
+    return {
+      ...old,
+      items: [created, ...old.items],
+      total: old.total + 1,
+    };
+  });
+}
+
 export function useProjectList(page = 0, size = 24) {
   return useQuery({
     queryKey: [...projectsKey, page, size],
@@ -43,6 +63,7 @@ export function useCreateProject() {
     },
     onSuccess: (created) => {
       setActiveProject(activeProjectFromSummary(created));
+      prependCreatedProjectToProjectListCaches(queryClient, created);
       void queryClient.invalidateQueries({ queryKey: projectsKey });
       void queryClient.invalidateQueries({ queryKey: ["config", "project", created.id] });
     },

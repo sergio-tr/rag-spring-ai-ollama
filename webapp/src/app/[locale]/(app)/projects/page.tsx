@@ -12,7 +12,9 @@ export default function ProjectsPage() {
   const activeProject = useAppStore((s) => s.activeProject);
   const { data, isLoading, isError } = useProjectList(0, 24);
   const items = data?.items ?? [];
-  useSyncActiveProjectWithList(items);
+  // Pass undefined until the first list payload exists — `[]` from `data?.items ?? []` when `data` is
+  // still undefined would clear activeProject (create flow: invalidate after POST+activate).
+  useSyncActiveProjectWithList(data === undefined ? undefined : items);
 
   return (
     <div className="flex flex-col gap-6">

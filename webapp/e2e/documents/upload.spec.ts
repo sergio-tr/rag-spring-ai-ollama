@@ -13,6 +13,7 @@ test.describe("Documents", () => {
 
     await page.getByRole("link", { name: /documents|documentos/i }).click();
     await expect(page).toHaveURL(/\/en\/documents/);
+    await expect(page).toHaveURL(/[?&]projectId=/, { timeout: 15_000 });
 
     await page.locator('input[type="file"]').setInputFiles(sampleTextFilePath());
 
