@@ -131,6 +131,13 @@ function notifyUnauthorized(): void {
 
 let refreshPromise: Promise<boolean> | null = null;
 
+/**
+ * Single-flight refresh via same-origin BFF route (httpOnly refresh cookie). Exported for SSE and schedulers.
+ */
+export async function tryRefreshAccessToken(): Promise<boolean> {
+  return tryRefreshOnce();
+}
+
 async function tryRefreshOnce(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
@@ -147,6 +154,9 @@ async function tryRefreshOnce(): Promise<boolean> {
       } | null;
       if (body?.accessToken) {
         setAccessToken(body.accessToken);
+        void import("@/lib/auth-access-scheduler").then((mod) =>
+          mod.scheduleAccessTokenRefreshFromJwt(body.accessToken),
+        );
       }
       return true;
     } catch {

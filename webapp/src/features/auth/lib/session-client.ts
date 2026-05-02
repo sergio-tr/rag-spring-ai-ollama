@@ -1,5 +1,9 @@
 import { authApiPath } from "@/lib/api-client";
 import { setAccessToken } from "@/lib/access-token";
+import {
+  clearScheduledAccessTokenRefresh,
+  scheduleAccessTokenRefreshFromJwt,
+} from "@/lib/auth-access-scheduler";
 import { setStoredUserRole } from "@/lib/user-role";
 
 /**
@@ -19,9 +23,11 @@ export async function commitSessionCookie(tokens: {
     throw new Error("session_cookie_failed");
   }
   setAccessToken(tokens.accessToken);
+  scheduleAccessTokenRefreshFromJwt(tokens.accessToken);
 }
 
 export async function clearSessionCookie(): Promise<void> {
+  clearScheduledAccessTokenRefresh();
   setAccessToken(null);
   setStoredUserRole(null);
   await fetch(authApiPath("/logout"), {
