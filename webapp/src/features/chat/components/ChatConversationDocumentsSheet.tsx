@@ -49,7 +49,11 @@ export function ChatConversationDocumentsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden sm:max-w-md">
+      <SheetContent
+        data-testid="chat-documents-sheet"
+        side="right"
+        className="flex w-full flex-col gap-0 overflow-hidden sm:max-w-md"
+      >
         <SheetHeader>
           <SheetTitle>{t("documentsSheetTitle")}</SheetTitle>
           <SheetDescription>
@@ -106,6 +110,7 @@ export function ChatConversationDocumentsSheet({
                   >
                     <input
                       type="checkbox"
+                      data-testid={`chat-document-include-checkbox-${d.id}`}
                       className="mt-0.5 size-3.5 shrink-0 rounded border"
                       checked={selectedDocIds.includes(d.id)}
                       disabled={d.status !== "READY" || patchPending}
@@ -129,7 +134,13 @@ export function ChatConversationDocumentsSheet({
         </div>
 
         <SheetFooter className="border-border border-t">
-          <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="chat-documents-sheet-close"
+            onClick={() => onOpenChange(false)}
+          >
             {t("documentsSheetDone")}
           </Button>
         </SheetFooter>

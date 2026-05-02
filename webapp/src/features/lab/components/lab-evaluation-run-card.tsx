@@ -320,7 +320,10 @@ export function LabEvaluationRunCard({
           )}
 
           {datasetsReady ? null : (
-            <output className="block text-amber-600 text-sm dark:text-amber-500">
+            <output
+              data-testid="lab-datasets-disabled-warn"
+              className="block text-amber-600 text-sm dark:text-amber-500"
+            >
               {t("datasetsDisabledWarn")}
             </output>
           )}

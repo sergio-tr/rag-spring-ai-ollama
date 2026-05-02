@@ -57,7 +57,7 @@ export function DeleteConversationDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent data-testid="chat-delete-confirm-dialog">
         <DialogHeader>
           <DialogTitle>{t("deleteConversationTitle")}</DialogTitle>
           <DialogDescription>
@@ -75,6 +75,7 @@ export function DeleteConversationDialog({
           </Button>
           <Button
             type="button"
+            data-testid="chat-delete-confirm-button"
             variant="destructive"
             disabled={del.isPending || !ready}
             onClick={() => void confirm()}

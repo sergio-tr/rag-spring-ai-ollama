@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
@@ -43,10 +43,6 @@ const docsHooksMock = vi.hoisted(() => ({
   },
 }));
 
-const chatDeleteMocks = vi.hoisted(() => ({
-  deleteMutateAsync: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock("@/features/chat/hooks/use-conversations", () => ({
   useConversations: () => ({
     data: [
@@ -61,7 +57,7 @@ vi.mock("@/features/chat/hooks/use-conversations", () => ({
     ],
   }),
   useDeleteConversation: () => ({
-    mutateAsync: chatDeleteMocks.deleteMutateAsync,
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
     isPending: false,
     reset: vi.fn(),
   }),
@@ -104,7 +100,6 @@ describe("AppSectionActions", () => {
     mockSearchParams.mockReturnValue(new URLSearchParams());
     useAppStore.setState({ activeProject: null });
     docsHooksMock.snapshot = { data: [], isLoading: false, isError: false };
-    chatDeleteMocks.deleteMutateAsync.mockClear();
   });
 
   it("projects menu trigger has an accessible name", () => {
@@ -174,49 +169,13 @@ describe("AppSectionActions", () => {
     expect(item).not.toHaveAttribute("aria-disabled", "true");
   });
 
-  it("chat menu shows deferred placeholders except delete", async () => {
+  it("chat section renders toolbar overflow (same control as chat page registers)", () => {
     mockPathname.mockReturnValue("/chat");
     mockSearchParams.mockReturnValue(new URLSearchParams({ conversationId: "c1", projectId: "p1" }));
     useAppStore.setState({ activeProject: { id: "p1", name: "P1" } });
-    const user = userEvent.setup();
     renderActions();
-    await user.click(screen.getByRole("button", { name: /chat actions/i }));
-    expect(screen.getByRole("menuitem", { name: /move to another project/i })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByRole("menuitem", { name: /model/i })).toHaveAttribute("aria-disabled", "true");
-    const deleteItem = screen.getByRole("menuitem", { name: /^Delete chat$/i });
-    expect(deleteItem).not.toHaveAttribute("aria-disabled", "true");
-    await user.click(screen.getByRole("menuitem", { name: /move to another project/i }));
-    expect(mockPush).not.toHaveBeenCalled();
-  });
-
-  it("chat delete confirmation cancel does not call API", async () => {
-    mockPathname.mockReturnValue("/chat");
-    mockSearchParams.mockReturnValue(new URLSearchParams({ conversationId: "c1", projectId: "p1" }));
-    useAppStore.setState({ activeProject: { id: "p1", name: "P1" } });
-    const user = userEvent.setup();
-    renderActions();
-    await user.click(screen.getByRole("button", { name: /chat actions/i }));
-    await user.click(screen.getByRole("menuitem", { name: /^Delete chat$/i }));
-    const dlg = await screen.findByRole("dialog");
-    await user.click(within(dlg).getByRole("button", { name: /^Cancel$/i }));
-    expect(chatDeleteMocks.deleteMutateAsync).not.toHaveBeenCalled();
-  });
-
-  it("chat delete confirmation calls API and clears conversation from route", async () => {
-    mockPathname.mockReturnValue("/chat");
-    mockSearchParams.mockReturnValue(new URLSearchParams({ conversationId: "c1", projectId: "p1" }));
-    useAppStore.setState({ activeProject: { id: "p1", name: "P1" } });
-    const user = userEvent.setup();
-    renderActions();
-    await user.click(screen.getByRole("button", { name: /chat actions/i }));
-    await user.click(screen.getByRole("menuitem", { name: /^Delete chat$/i }));
-    const dlg = await screen.findByRole("dialog");
-    await user.click(within(dlg).getByRole("button", { name: /^Delete chat$/i }));
-    expect(chatDeleteMocks.deleteMutateAsync).toHaveBeenCalledWith("c1");
-    expect(mockPush).toHaveBeenCalledWith("/chat?projectId=p1");
+    expect(screen.getByTestId("chat-actions-menu-trigger")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /chat actions/i })).toBeInTheDocument();
   });
 
   it("settings menu calls router.refresh for reload", async () => {

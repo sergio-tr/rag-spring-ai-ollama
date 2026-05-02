@@ -11,6 +11,8 @@ import type {
   ProjectDocumentDto,
 } from "@/types/api";
 import { mergeConversationPatchOptimistic } from "@/features/chat/hooks/use-conversations";
+import { ChatToolbarOverflowMenu } from "@/features/chat/components/ChatToolbarOverflowMenu";
+import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import ChatPage from "./page";
 
 /** Stable references — page effects depend on these store actions; new vi.fn() each render would clear optimistic UI every paint. */
@@ -326,6 +328,20 @@ vi.mock("@/store/chat-explain.store", () => ({
     }),
 }));
 
+/** Mirrors AppShell: toolbar overflow reads chat state from the chat page via the chat toolbar store. */
+function ChatPageWithToolbar() {
+  return (
+    <>
+      <ChatToolbarOverflowMenu />
+      <ChatPage />
+    </>
+  );
+}
+
+async function openChatToolbarOverflow(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByTestId("chat-actions-menu-trigger"));
+}
+
 function renderChat() {
   const qc = new QueryClient({
     defaultOptions: {
@@ -337,7 +353,7 @@ function renderChat() {
   const view = render(
     <QueryClientProvider client={qc}>
       <IntlTestProvider>
-        <ChatPage />
+        <ChatPageWithToolbar />
       </IntlTestProvider>
     </QueryClientProvider>,
   );
@@ -643,6 +659,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     expect(presetSelect).toHaveValue("cafe0001-0001-4001-8001-000000000001");
     expect(screen.getByRole("option", { name: /^Recommended default$/ })).toBeInTheDocument();
@@ -659,6 +676,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     expect(presetSelect).toHaveValue("pr1");
     expect(screen.getByRole("option", { name: /^P$/ })).toBeInTheDocument();
@@ -670,6 +688,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     expect(presetSelect).toBeDisabled();
     expect(screen.getByRole("option", { name: /^Default configuration$/ })).toBeInTheDocument();
@@ -690,6 +709,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     await waitFor(() => expect(presetSelect).toHaveValue("s"));
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
@@ -699,6 +719,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     const limitCb = await screen.findByRole("checkbox", { name: /Limit retrieval to selected documents/i });
     await user.click(limitCb);
     await waitFor(() => {
@@ -713,6 +734,7 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText(/Documents for this chat/i)).toBeInTheDocument();
@@ -723,6 +745,7 @@ describe("ChatPage", () => {
     vi.mocked(apiFetch).mockClear();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
     const sheetCb = await screen.findByRole("checkbox", { name: /Include second\.pdf/i });
     await user.click(sheetCb);
@@ -737,9 +760,11 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     await user.click(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i }));
     await waitFor(() => expect(patchConversationApiCalls().length).toBeGreaterThanOrEqual(1));
     vi.mocked(apiFetch).mockClear();
+    await openChatToolbarOverflow(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
     const input = await screen.findByLabelText(/Upload files to project/i);
     const file = new File(["x"], "new.doc", { type: "application/msword" });
@@ -759,21 +784,25 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
     const input = await screen.findByLabelText(/Upload files to project/i);
     await user.upload(input, new File(["x"], "big.bin"));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
-  it("removes a selected document via chip control", async () => {
+  it("removes a selected document via documents sheet when limiting retrieval", async () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     await user.click(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i }));
     await waitFor(() => expect(patchConversationApiCalls().length).toBeGreaterThanOrEqual(1));
     vi.mocked(apiFetch).mockClear();
-    const removeBtn = await screen.findByRole("button", { name: /Remove f\.pdf from retrieval scope/i });
-    await user.click(removeBtn);
+    await openChatToolbarOverflow(user);
+    await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
+    const togglePdf = await screen.findByRole("checkbox", { name: /Include f\.pdf/i });
+    await user.click(togglePdf);
     await waitFor(() => {
       expect(patchConversationApiCalls().length).toBeGreaterThanOrEqual(1);
       const [, init] = patchConversationApiCalls()[patchConversationApiCalls().length - 1];
@@ -801,9 +830,12 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     await user.click(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i }));
-    expect(await screen.findByRole("status")).toHaveTextContent(/READY/i);
-    expect(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i })).not.toBeChecked();
+    await waitFor(() =>
+      expect(useChatToolbarStore.getState().api?.limitDocsToggleNotice ?? "").toMatch(/READY/i),
+    );
+    expect(useChatToolbarStore.getState().api?.limitDocs).toBe(false);
   });
 
   it("shows controlled error when limit retrieval PATCH fails", async () => {
@@ -822,15 +854,18 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     await user.click(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/documentFilter rejected/i);
+    await openChatToolbarOverflow(user);
     expect(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i })).not.toBeChecked();
   });
 
   it("does not toggle limit retrieval when conversation rows refresh with the same filter", async () => {
     const user = userEvent.setup();
-    const { rerender, qc } = renderChat();
+    const { qc } = renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
     const limitCb = await screen.findByRole("checkbox", { name: /Limit retrieval to selected documents/i });
     expect(limitCb).not.toBeChecked();
     const patchCountBefore = patchConversationApiCalls().length;
@@ -841,17 +876,8 @@ describe("ChatPage", () => {
     };
     qc.setQueryData(["conversations", "p1"], structuredClone(mockConvRows));
 
-    rerender(
-      <QueryClientProvider client={qc}>
-        <IntlTestProvider>
-          <ChatPage />
-        </IntlTestProvider>
-      </QueryClientProvider>,
-    );
-
-    const limitAfter = await screen.findByRole("checkbox", { name: /Limit retrieval to selected documents/i });
-    expect(limitAfter).not.toBeChecked();
-    expect(patchConversationApiCalls().length).toBe(patchCountBefore);
+    await waitFor(() => expect(patchConversationApiCalls().length).toBe(patchCountBefore));
+    await waitFor(() => expect(useChatToolbarStore.getState().api?.limitDocs).toBe(false));
   });
 
   it("sanitizes HTML gateway bodies in send errors", async () => {
@@ -932,11 +958,12 @@ describe("ChatPage", () => {
     );
   });
 
-  it("opens delete confirmation from chat header", async () => {
+  it("opens delete confirmation from toolbar overflow", async () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await user.click(screen.getByTestId("chat-header-delete"));
+    await openChatToolbarOverflow(user);
+    await user.click(screen.getByRole("menuitem", { name: /^Delete chat$/i }));
     expect(await screen.findByRole("heading", { name: /Delete this chat/i })).toBeInTheDocument();
   });
 
@@ -944,7 +971,8 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await user.click(screen.getByTestId("chat-header-delete"));
+    await openChatToolbarOverflow(user);
+    await user.click(screen.getByRole("menuitem", { name: /^Delete chat$/i }));
     const dlg = await screen.findByRole("dialog");
     await user.click(within(dlg).getByRole("button", { name: /^Cancel$/i }));
     expect(deleteMutateAsync).not.toHaveBeenCalled();
@@ -954,7 +982,8 @@ describe("ChatPage", () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
-    await user.click(screen.getByTestId("chat-header-delete"));
+    await openChatToolbarOverflow(user);
+    await user.click(screen.getByRole("menuitem", { name: /^Delete chat$/i }));
     const dlg = await screen.findByRole("dialog");
     await user.click(within(dlg).getByRole("button", { name: /^Delete chat$/i }));
     expect(deleteMutateAsync).toHaveBeenCalledWith("c1");

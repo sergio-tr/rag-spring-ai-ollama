@@ -3,7 +3,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { HelpPopover } from "@/features/help/HelpPopover";
 import { InlineHelpStatus } from "@/features/help/InlineHelpStatus";
@@ -14,7 +13,6 @@ import {
   CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
   findPresetById,
   resolveChatPresetSelectValue,
-  resolvePresetSelectLabel,
 } from "@/features/chat/lib/conversation-preset-ui";
 import {
   useConversationMessages,
@@ -42,7 +40,6 @@ import {
 } from "@/lib/api-client";
 import { resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
 import { followLabJob } from "@/lib/lab-job-follow";
-import { cn } from "@/lib/utils";
 import { Link, useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
 import { useChatExplainStore } from "@/store/chat-explain.store";
@@ -57,6 +54,7 @@ import { ChevronDown, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
 
@@ -122,6 +120,7 @@ function ChatPageInner() {
   const [deleteDialogTarget, setDeleteDialogTarget] = useState<{ id: string; title: string } | null>(
     null,
   );
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -290,6 +289,15 @@ function ChatPageInner() {
     }
     return t("modelsLoadError");
   }, [modelsError, modelsQueryError, t]);
+
+  const presetLabelOpts = useMemo(
+    () => ({
+      systemSuffix: t("presetSystem"),
+      recommendedDefault: t("presetRecommendedDefault"),
+      defaultConfiguration: t("presetDefaultConfiguration"),
+    }),
+    [t],
+  );
 
   /** Cancel in-flight chat job when switching project, conversation, or unmounting. */
   useEffect(() => {
@@ -692,11 +700,14 @@ function ChatPageInner() {
   const assistantPipelineTraceStatus =
     assistantPhase === "failed" || sendError ? "error" : "in_progress";
 
-  const onPresetChange = (value: string) => {
-    if (!conversationId || !value.trim()) return;
-    setPresetSelectValue(value);
-    patchConv.mutate({ conversationId, body: { presetId: value } });
-  };
+  const onPresetChange = useCallback(
+    (value: string) => {
+      if (!conversationId || !value.trim()) return;
+      setPresetSelectValue(value);
+      patchConv.mutate({ conversationId, body: { presetId: value } });
+    },
+    [conversationId, patchConv],
+  );
 
   const handleChatDocumentUpload = useCallback(
     async (files: FileList | null) => {
@@ -727,24 +738,27 @@ function ChatPageInner() {
     [conversationId, projectId, activeConv, uploadDoc, refetchProjectDocuments, patchConv, t],
   );
 
-  const onLimitDocsChange = (checked: boolean) => {
-    if (!conversationId) return;
-    setLimitDocsNoticeRecord({ conversationId, message: null });
-    if (!checked) {
-      patchConv.mutate({ conversationId, body: { documentFilter: [] } });
-      return;
-    }
-    void (async () => {
-      const { data: freshDocs } = await refetchProjectDocuments();
-      const ready =
-        freshDocs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [];
-      if (ready.length === 0) {
-        setLimitDocsNoticeRecord({ conversationId, message: t("limitDocumentsNoReadyHint") });
+  const onLimitDocsChange = useCallback(
+    (checked: boolean) => {
+      if (!conversationId) return;
+      setLimitDocsNoticeRecord({ conversationId, message: null });
+      if (!checked) {
+        patchConv.mutate({ conversationId, body: { documentFilter: [] } });
         return;
       }
-      patchConv.mutate({ conversationId, body: { documentFilter: ready } });
-    })();
-  };
+      void (async () => {
+        const { data: freshDocs } = await refetchProjectDocuments();
+        const ready =
+          freshDocs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [];
+        if (ready.length === 0) {
+          setLimitDocsNoticeRecord({ conversationId, message: t("limitDocumentsNoReadyHint") });
+          return;
+        }
+        patchConv.mutate({ conversationId, body: { documentFilter: ready } });
+      })();
+    },
+    [conversationId, patchConv, refetchProjectDocuments, t],
+  );
 
   const onDocToggle = (documentId: string, checked: boolean) => {
     if (!conversationId || !activeConv) return;
@@ -764,6 +778,61 @@ function ChatPageInner() {
     patchConv.mutate({ conversationId, body: { documentFilter: next } });
   };
 
+  useEffect(() => {
+    if (!projectId) {
+      useChatToolbarStore.getState().setApi(null);
+      return;
+    }
+    useChatToolbarStore.getState().setApi({
+      projectId,
+      conversationId,
+      openDeleteForActiveConversation: () => {
+        if (!conversationId) return;
+        setDeleteDialogTarget({ id: conversationId, title: activeConv?.title ?? "" });
+      },
+      openMoveDialog: () => setMoveDialogOpen(true),
+      openDocumentsSheet: () => setDocsSheetOpen(true),
+      llmModelChoice,
+      setLlmModelChoice,
+      modelsCatalog,
+      modelsError,
+      modelsErrorMessage: modelsErrorMessage ?? "",
+      presetSelectValue,
+      onPresetChange,
+      presets,
+      presetsError,
+      presetsLoading,
+      presetSelectDisabled,
+      syntheticPresetOptionNeeded,
+      presetLabelOpts,
+      limitDocs,
+      onLimitDocsChange,
+      limitDocsToggleNotice,
+      patchConvPending: patchConv.isPending,
+    });
+    return () => useChatToolbarStore.getState().setApi(null);
+  }, [
+    projectId,
+    conversationId,
+    activeConv?.title,
+    llmModelChoice,
+    modelsCatalog,
+    modelsError,
+    modelsErrorMessage,
+    presetSelectValue,
+    onPresetChange,
+    presets,
+    presetsError,
+    presetsLoading,
+    presetSelectDisabled,
+    syntheticPresetOptionNeeded,
+    presetLabelOpts,
+    limitDocs,
+    onLimitDocsChange,
+    limitDocsToggleNotice,
+    patchConv.isPending,
+  ]);
+
   if (!projectId) {
     return (
       <div className="flex flex-col gap-3 text-muted-foreground text-sm">
@@ -778,7 +847,7 @@ function ChatPageInner() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] min-h-[420px] flex-col gap-3 md:flex-row">
+    <div className="flex h-[calc(100dvh-7rem)] min-h-[420px] flex-col gap-2 md:flex-row md:gap-3">
       {convListCollapsed ? (
         <div className="flex w-full shrink-0 flex-col items-stretch gap-2 border-border border-b pb-2 md:w-auto md:border-b-0 md:border-r md:pb-0 md:pr-2">
           <Button
@@ -795,7 +864,10 @@ function ChatPageInner() {
           <p className="text-muted-foreground hidden text-xs md:block md:max-w-[7rem]">{t("sidebarCollapsedHint")}</p>
         </div>
       ) : (
-        <aside className="flex w-full shrink-0 flex-col gap-2 border-border border-b pb-3 md:w-52 md:border-b-0 md:border-r md:pb-0 md:pr-3">
+        <aside
+          data-testid="chat-conversation-sidebar"
+          className="flex w-full shrink-0 flex-col gap-2 border-border border-b pb-2 md:w-44 md:max-w-[13rem] md:border-b-0 md:border-r md:pb-0 md:pr-2 lg:w-48 lg:max-w-[14rem]"
+        >
           <div className="flex items-center justify-end">
             <Button
               type="button"
@@ -822,11 +894,16 @@ function ChatPageInner() {
           >
             {t("newConversation")}
           </Button>
-          <div className="flex max-h-48 flex-col gap-1 overflow-y-auto md:max-h-none md:flex-1">
+          <div
+            data-testid="conversation-list"
+            className="flex max-h-48 flex-col gap-1 overflow-y-auto md:max-h-none md:flex-1"
+          >
             {convs?.map((c) => (
               <div key={c.id} className="flex items-stretch gap-1">
                 <Button
                   type="button"
+                  data-testid={`conversation-item-${c.id}`}
+                  aria-current={conversationId === c.id ? "true" : undefined}
                   variant={conversationId === c.id ? "secondary" : "ghost"}
                   size="sm"
                   className="h-auto min-w-0 flex-1 justify-start py-2 text-left"
@@ -853,68 +930,47 @@ function ChatPageInner() {
           </div>
         </aside>
       )}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div
           data-testid="chat-readable-column"
-          className="mx-auto flex w-full min-h-0 min-w-0 max-w-chat-readable flex-1 flex-col gap-3 px-3 sm:px-4 md:px-6"
+          className="mx-auto flex w-full min-h-0 min-w-0 max-w-chat-readable flex-1 flex-col gap-3 px-2 sm:px-3 md:px-5"
         >
         {conversationId && active ? (
-          <header className="flex flex-wrap items-end gap-3 border-border border-b pb-3">
-            <div className="flex min-w-[10rem] items-center gap-2">
-              <ProjectVisual
-                iconKey={currentProject?.iconKey}
-                colorHex={currentProject?.colorHex}
-                dotClassName="inline-block size-3 shrink-0 rounded-full border border-border"
-              />
-              <span className="truncate font-medium text-sm">{active.name}</span>
+          <header className="flex flex-wrap items-end gap-3 gap-y-2 border-border border-b pb-3">
+            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+              <div className="flex min-w-[10rem] items-center gap-2">
+                <ProjectVisual
+                  iconKey={currentProject?.iconKey}
+                  colorHex={currentProject?.colorHex}
+                  dotClassName="inline-block size-3 shrink-0 rounded-full border border-border"
+                />
+                <span className="truncate font-medium text-sm">{active.name}</span>
+              </div>
+              <div className="flex min-w-[min(100%,14rem)] flex-1 flex-col gap-1">
+                <Label htmlFor="chat-title" className="text-muted-foreground text-xs">
+                  {t("chatTitleLabel")}
+                </Label>
+                <Input
+                  id="chat-title"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={() => {
+                    if (!conversationId || !activeConv) return;
+                    const next = titleDraft.trim();
+                    if (next === (activeConv.title ?? "").trim()) return;
+                    patchConv.mutate(
+                      { conversationId, body: { title: next } },
+                      {
+                        onError: () => setTitleDraft(activeConv.title ?? ""),
+                      },
+                    );
+                  }}
+                  disabled={patchConv.isPending}
+                  className="h-9"
+                />
+              </div>
             </div>
-            <div className="flex min-w-[min(100%,14rem)] flex-1 flex-col gap-1">
-              <Label htmlFor="chat-title" className="text-muted-foreground text-xs">
-                {t("chatTitleLabel")}
-              </Label>
-              <Input
-                id="chat-title"
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                onBlur={() => {
-                  if (!conversationId || !activeConv) return;
-                  const next = titleDraft.trim();
-                  if (next === (activeConv.title ?? "").trim()) return;
-                  patchConv.mutate(
-                    { conversationId, body: { title: next } },
-                    {
-                      onError: () => setTitleDraft(activeConv.title ?? ""),
-                    },
-                  );
-                }}
-                disabled={patchConv.isPending}
-                className="h-9"
-              />
-            </div>
-            <div className="flex flex-wrap items-center gap-2 pb-0.5">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="border-destructive/50 text-destructive hover:bg-destructive/10"
-                data-testid="chat-header-delete"
-                onClick={() =>
-                  setDeleteDialogTarget({
-                    id: conversationId,
-                    title: activeConv?.title ?? "",
-                  })
-                }
-              >
-                {t("deleteConversationMenu")}
-              </Button>
-              <MoveConversationDialog sourceProjectId={projectId} conversationId={conversationId} />
-            </div>
-          </header>
-        ) : null}
-        {conversationId && (
-          <>
-          <div className="flex flex-col gap-3 rounded-lg border bg-card/20 p-3 text-sm md:flex-row md:flex-wrap md:items-end md:gap-4">
-            <div className="flex w-full justify-end md:order-last md:w-auto md:flex-none md:justify-start">
+            <div className="flex shrink-0 flex-col items-end gap-1 pb-0.5 sm:flex-row sm:items-center">
               <HelpPopover
                 triggerAriaLabel={tHelp("chatControlsTriggerLabel")}
                 title={tHelp("chatControlsTitle")}
@@ -922,193 +978,30 @@ function ChatPageInner() {
                 details={tHelp("chatControlsDetails")}
               />
             </div>
-            <div className="flex min-w-[12rem] flex-1 flex-col gap-1">
-              <Label htmlFor="chat-llm-model">{t("modelLabel")}</Label>
-              <select
-                id="chat-llm-model"
-                className={cn(
-                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
-                  modelsError && "border-destructive",
-                )}
-                value={llmModelChoice}
-                onChange={(e) => setLlmModelChoice(e.target.value)}
-                aria-label={t("modelLabel")}
-                disabled={!!modelsError}
-              >
-                <option value="">{t("modelDefault")}</option>
-                {modelsCatalog?.allowlist
-                  ?.filter((e) => e.type === "LLM")
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map((m) => {
-                    const usable = m.inAllowlist && m.installedInOllama;
-                    return (
-                      <option key={m.name} value={m.name} disabled={!usable}>
-                        {m.name}
-                        {!m.installedInOllama ? ` (${t("modelNotInstalled")})` : ""}
-                        {!m.inAllowlist ? ` (${t("modelNotAllowlisted")})` : ""}
-                      </option>
-                    );
-                  })}
-              </select>
-              {modelsError && (
-                <p className="text-destructive text-xs" role="alert">
-                  {modelsErrorMessage}
-                </p>
-              )}
-              {!modelsError && !modelsCatalog?.ollamaReachable && (
-                <p className="text-muted-foreground text-xs">{t("ollamaUnreachable")}</p>
-              )}
-            </div>
-            <div className="flex min-w-[12rem] flex-1 flex-col gap-1">
-              <Label htmlFor="chat-preset">{t("presetLabel")}</Label>
-              <select
-                id="chat-preset"
-                className={cn(
-                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
-                  presetsError && "border-destructive",
-                )}
-                value={presetSelectValue}
-                onChange={(e) => onPresetChange(e.target.value)}
-                aria-label={t("presetLabel")}
-                disabled={presetSelectDisabled}
-              >
-                {syntheticPresetOptionNeeded ? (
-                  <option value={presetSelectValue}>
-                    {resolvePresetSelectLabel(presets, presetSelectValue, {
-                      systemSuffix: t("presetSystem"),
-                      recommendedDefault: t("presetRecommendedDefault"),
-                      defaultConfiguration: t("presetDefaultConfiguration"),
-                    })}
-                  </option>
-                ) : null}
-                {presets?.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                    {p.system ? ` (${t("presetSystem")})` : ""}
-                  </option>
-                ))}
-              </select>
-              {presetsLoading && !presetsError ? (
-                <p className="text-muted-foreground text-xs" role="status">
-                  {t("presetCatalogLoading")}
-                </p>
-              ) : null}
-              {presetsCatalogEmpty ? (
-                <p className="text-muted-foreground text-xs" role="status">
-                  {t("presetCatalogEmpty")}
-                </p>
-              ) : null}
-              {presetsError && <p className="text-destructive text-xs">{t("presetsLoadError")}</p>}
-            </div>
-            <div className="flex min-w-[min(100%,14rem)] flex-1 flex-col gap-2">
-              <div className="flex flex-wrap items-end gap-2">
-                <Label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    className="size-4 rounded border"
-                    checked={limitDocs}
-                    onChange={(e) => onLimitDocsChange(e.target.checked)}
-                    disabled={!conversationId || patchConv.isPending}
-                  />
-                  {t("limitDocuments")}
-                </Label>
-                {limitDocsToggleNotice ? (
-                  <p className="text-muted-foreground text-xs" role="status">
-                    {limitDocsToggleNotice}
-                  </p>
-                ) : null}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={patchConv.isPending}
-                  onClick={() => setDocsSheetOpen(true)}
-                >
-                  {t("chatManageDocuments")}
-                </Button>
-              </div>
-              {limitDocs && selectedDocIds.length > 0 ? (
-                <div
-                  className="flex flex-wrap gap-1"
-                  data-testid="chat-selected-doc-chips"
-                >
-                  {selectedDocIds.map((id) => {
-                    const docLabel = docs?.find((d) => d.id === id)?.fileName ?? id;
-                    return (
-                      <span
-                        key={id}
-                        className="inline-flex max-w-full items-center gap-1 rounded-md border bg-muted/60 px-2 py-0.5 text-muted-foreground text-xs"
-                      >
-                        <span className="truncate" title={docLabel}>
-                          {docLabel}
-                        </span>
-                        <button
-                          type="button"
-                          className="shrink-0 rounded px-1 hover:bg-muted hover:text-foreground"
-                          disabled={patchConv.isPending}
-                          aria-label={t("chatRemoveDocFromSelection", { name: docLabel })}
-                          onClick={() => onDocToggle(id, false)}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {limitDocs && (
-                <ScrollArea className="h-32 rounded-md border p-2">
-                  {docs?.length === 0 && (
-                    <p className="text-muted-foreground text-xs">{t("noDocumentsInProject")}</p>
-                  )}
-                  {docs?.map((d) => (
-                    <label
-                      key={d.id}
-                      className="flex cursor-pointer items-start gap-2 py-1 text-xs"
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 size-3.5 shrink-0 rounded border"
-                        checked={selectedDocIds.includes(d.id)}
-                        disabled={d.status !== "READY" || patchConv.isPending}
-                        onChange={(e) => onDocToggle(d.id, e.target.checked)}
-                      />
-                      <span className="break-all">
-                        {d.fileName}
-                        {d.status !== "READY" ? (
-                          <span className="text-muted-foreground"> ({d.status})</span>
-                        ) : null}
-                      </span>
-                    </label>
-                  ))}
-                </ScrollArea>
-              )}
-            </div>
-          </div>
-          {active ? (
-            <ChatConversationDocumentsSheet
-              open={docsSheetOpen}
-              onOpenChange={(next) => {
-                setDocsSheetOpen(next);
-                if (!next) {
-                  setUploadError(null);
-                  setUploadNotice(null);
-                }
-              }}
-              projectName={active.name}
-              docs={docs}
-              limitDocs={limitDocs}
-              selectedDocIds={selectedDocIds}
-              patchPending={patchConv.isPending}
-              uploadPending={uploadDoc.isPending}
-              uploadError={uploadError}
-              uploadNotice={uploadNotice}
-              onDocToggle={onDocToggle}
-              onUploadFiles={handleChatDocumentUpload}
-            />
-          ) : null}
-          </>
-        )}
+          </header>
+        ) : null}
+        {conversationId && active ? (
+          <ChatConversationDocumentsSheet
+            open={docsSheetOpen}
+            onOpenChange={(next) => {
+              setDocsSheetOpen(next);
+              if (!next) {
+                setUploadError(null);
+                setUploadNotice(null);
+              }
+            }}
+            projectName={active.name}
+            docs={docs}
+            limitDocs={limitDocs}
+            selectedDocIds={selectedDocIds}
+            patchPending={patchConv.isPending}
+            uploadPending={uploadDoc.isPending}
+            uploadError={uploadError}
+            uploadNotice={uploadNotice}
+            onDocToggle={onDocToggle}
+            onUploadFiles={handleChatDocumentUpload}
+          />
+        ) : null}
         <div
           ref={scrollAreaRef}
           className="relative min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border bg-card/30 p-3"
@@ -1175,7 +1068,7 @@ function ChatPageInner() {
                     value={editBody}
                     onChange={(e) => setEditBody(e.target.value)}
                     rows={4}
-                    className="resize-none border-primary-foreground/30 bg-background text-foreground"
+                    className="resize-none border-border bg-card text-card-foreground placeholder:text-muted-foreground dark:bg-card dark:text-card-foreground"
                     disabled={isStreaming}
                   />
                   <div className="flex flex-wrap gap-2">
@@ -1285,6 +1178,7 @@ function ChatPageInner() {
             </p>
           ) : null}
           <Textarea
+            data-testid="chat-message-composer"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={t("placeholder")}
@@ -1306,6 +1200,7 @@ function ChatPageInner() {
             <Button
               type="button"
               size="sm"
+              data-testid="chat-send-button"
               disabled={!input.trim() || isSending || isStreaming}
               onClick={() => void send()}
             >
@@ -1314,6 +1209,13 @@ function ChatPageInner() {
           </div>
         </div>
         </div>
+        <MoveConversationDialog
+          sourceProjectId={projectId}
+          conversationId={conversationId}
+          showTrigger={false}
+          open={moveDialogOpen}
+          onOpenChange={setMoveDialogOpen}
+        />
         <DeleteConversationDialog
           open={Boolean(deleteDialogTarget)}
           onOpenChange={(next) => {

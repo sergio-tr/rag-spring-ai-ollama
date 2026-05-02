@@ -1,17 +1,14 @@
 "use client";
 
 import { MoreVertical } from "lucide-react";
-import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Suspense, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -19,13 +16,11 @@ import {
   inferMainSection,
   settingsTabKeyFromPath,
 } from "@/components/layout/context-breadcrumb-logic";
-import { DeleteConversationDialog } from "@/features/chat/components/DeleteConversationDialog";
-import { useConversations } from "@/features/chat/hooks/use-conversations";
+import { ChatToolbarOverflowMenu } from "@/features/chat/components/ChatToolbarOverflowMenu";
 import { DeleteAllProjectDocumentsDialog } from "@/features/documents/components/DeleteAllProjectDocumentsDialog";
 import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
 import { NewProjectDialog } from "@/features/projects/components/NewProjectDialog";
 import { usePathname, useRouter } from "@/navigation";
-import { buildProjectScopedChatHref } from "@/features/projects/lib/open-project-navigation";
 import { useAppStore } from "@/store/app.store";
 import { cn } from "@/lib/utils";
 
@@ -131,92 +126,8 @@ function DocumentsSectionActions() {
   );
 }
 
-function ChatSectionActionsInner() {
-  const t = useTranslations("SectionActions");
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const conversationId = searchParams?.get("conversationId")?.trim() ?? null;
-  const activeProject = useAppStore((s) => s.activeProject);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-
-  const convsQ = useConversations(activeProject?.id);
-  const conversationTitle =
-    conversationId && convsQ.data
-      ? (convsQ.data.find((c) => c.id === conversationId)?.title ?? "")
-      : "";
-
-  const needsProject = !activeProject?.id;
-  const needsConversation = !conversationId;
-
-  return (
-    <>
-      <DropdownMenu>
-        <SectionMenuTrigger ariaLabel={t("chatMenuLabel")} />
-        <DropdownMenuContent align="end" className="min-w-60">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel className="text-muted-foreground font-normal">
-              {t("chatMenuPhaseNote")}
-            </DropdownMenuLabel>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-            <span>{t("chatMoveProject")}</span>
-            <MenuHint>{needsProject ? t("needsActiveProject") : t("chatActionDeferred")}</MenuHint>
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-            <span>{t("chatModel")}</span>
-            <MenuHint>{t("chatActionDeferred")}</MenuHint>
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-            <span>{t("chatPreset")}</span>
-            <MenuHint>{t("chatActionDeferred")}</MenuHint>
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled className="flex cursor-not-allowed flex-col items-start opacity-60">
-            <span>{t("chatLimitRetrieval")}</span>
-            <MenuHint>{t("chatActionDeferred")}</MenuHint>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            disabled={needsProject || needsConversation}
-            variant={needsProject || needsConversation ? "default" : "destructive"}
-            className={
-              needsProject || needsConversation ? "flex cursor-not-allowed flex-col items-start opacity-60" : ""
-            }
-            onClick={() => {
-              if (!needsProject && !needsConversation) setDeleteOpen(true);
-            }}
-          >
-            <span>{t("chatDelete")}</span>
-            {needsProject ? (
-              <MenuHint>{t("needsActiveProject")}</MenuHint>
-            ) : needsConversation ? (
-              <MenuHint>{t("needsActiveConversation")}</MenuHint>
-            ) : null}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <DeleteConversationDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        projectId={activeProject?.id}
-        conversationId={conversationId ?? undefined}
-        conversationTitle={conversationTitle}
-        onDeleted={() => {
-          if (activeProject?.id) {
-            router.push(buildProjectScopedChatHref(activeProject.id, null));
-          }
-        }}
-      />
-    </>
-  );
-}
-
 function ChatSectionActions() {
-  return (
-    <Suspense fallback={null}>
-      <ChatSectionActionsInner />
-    </Suspense>
-  );
+  return <ChatToolbarOverflowMenu />;
 }
 
 function SettingsSectionActions({ pathname }: Readonly<{ pathname: string }>) {
