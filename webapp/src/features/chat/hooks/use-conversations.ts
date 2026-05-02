@@ -89,14 +89,16 @@ export function usePatchConversation(projectId: string | undefined) {
       body: PatchConversationBody;
     }): Promise<PatchConversationContext> => {
       if (!projectId) return { previous: undefined };
-      await qc.cancelQueries({ queryKey: convKey(projectId) });
       const previous = qc.getQueryData<ConversationDto[]>(convKey(projectId));
+      // Apply optimistic cache update synchronously before any await so isPending does not
+      // leave controlled inputs (e.g. document sheet checkboxes) disabled while still stale.
       qc.setQueryData<ConversationDto[]>(convKey(projectId), (old) => {
         if (!old) return old;
         return old.map((c) =>
           c.id === conversationId ? mergeConversationPatchOptimistic(c, body) : c,
         );
       });
+      await qc.cancelQueries({ queryKey: convKey(projectId) });
       return { previous };
     },
     onError: (_err, _vars, ctx) => {

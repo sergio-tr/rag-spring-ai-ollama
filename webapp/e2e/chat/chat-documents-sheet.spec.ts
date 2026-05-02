@@ -2,8 +2,11 @@ import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
 import { createAndActivateProject, loginAsSeedUser } from "../support/helpers";
 
+const DOC_NAME = "e2e-p8-sheet-doc.txt";
+
 /**
- * Phase 8C — chat-side document scope UI (sheet + READY doc checkbox), without requiring upload inside the sheet.
+ * Chat document scope sheet: open via ⋮ overflow → Manage project documents.
+ * Assertions are scoped to {@link #chat-documents-sheet} to avoid duplicate global Close buttons (sheet chrome + footer).
  */
 test.describe("Chat manage documents sheet @fullstack", () => {
   test("opens sheet and toggles READY document inclusion @fullstack", async ({ page }) => {
@@ -15,14 +18,14 @@ test.describe("Chat manage documents sheet @fullstack", () => {
     await expect(page).toHaveURL(/[?&]projectId=/, { timeout: 15_000 });
 
     await page.locator('input[type="file"]').setInputFiles({
-      name: "e2e-p8-sheet-doc.txt",
+      name: DOC_NAME,
       mimeType: "text/plain",
       buffer: Buffer.from("sheet inclusion marker.\n"),
     });
     await expect
       .poll(
         async () => {
-          const row = page.locator("tbody tr").filter({ hasText: "e2e-p8-sheet-doc.txt" });
+          const row = page.locator("tbody tr").filter({ hasText: DOC_NAME });
           if ((await row.count()) === 0) return false;
           return (await row.getByText("READY", { exact: true }).count()) > 0;
         },
@@ -32,20 +35,26 @@ test.describe("Chat manage documents sheet @fullstack", () => {
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await page.getByTestId("chat-new-conversation").click();
+    await expect(page.getByTestId("chat-message-composer")).toBeEnabled({ timeout: 15_000 });
 
-    await page.getByRole("button", { name: /manage project documents/i }).click();
-    await expect(page.getByRole("heading", { name: /Documents for this chat/i })).toBeVisible({
+    await page.getByTestId("chat-actions-menu-trigger").click();
+    await page.getByTestId("chat-open-documents-sheet").click();
+
+    const sheet = page.getByTestId("chat-documents-sheet");
+    await expect(sheet.getByRole("heading", { name: /Documents for this chat/i })).toBeVisible({
       timeout: 15_000,
     });
 
-    const docCheckbox = page.getByRole("checkbox", {
-      name: /Include e2e-p8-sheet-doc\.txt in retrieval scope/i,
-    });
+    const checkboxLabel = new RegExp(`Include ${DOC_NAME.replace(".", "\\.")} in retrieval scope`, "i");
+    const docCheckbox = sheet.getByRole("checkbox", { name: checkboxLabel });
     await expect(docCheckbox).toBeVisible();
-    await docCheckbox.check();
-    await expect(docCheckbox).toBeChecked();
 
-    await page.getByRole("button", { name: /^Close$/i }).click();
-    await expect(page.getByRole("heading", { name: /Documents for this chat/i })).not.toBeVisible();
+    await docCheckbox.setChecked(true);
+    await expect
+      .poll(async () => docCheckbox.isChecked(), { timeout: 20_000, intervals: [100, 250, 500] })
+      .toBe(true);
+
+    await sheet.getByTestId("chat-documents-sheet-close").click();
+    await expect(sheet).toBeHidden({ timeout: 15_000 });
   });
 });

@@ -116,9 +116,10 @@ function chatComposerLocators(page: Page): {
   sendButton: Locator;
   newConversationButton: Locator;
 } {
+  const column = page.getByTestId("chat-readable-column");
   return {
-    textarea: page.getByPlaceholder(/message|mensaje/i),
-    sendButton: page.getByRole("button", { name: /^send$|^enviar$/i }),
+    textarea: column.getByTestId("chat-message-composer"),
+    sendButton: column.getByTestId("chat-send-button"),
     newConversationButton: page.getByTestId("chat-new-conversation"),
   };
 }
@@ -141,6 +142,9 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
   const { textarea, sendButton, newConversationButton } = chatComposerLocators(page);
 
   async function prepareComposer(): Promise<void> {
+    if (page.isClosed()) {
+      throw new Error("sendChatMessage: page is already closed.");
+    }
     await expect(textarea).toBeVisible({ timeout: textareaReadyTimeoutMs });
     await expect(textarea).toBeEnabled({ timeout: textareaReadyTimeoutMs });
     await textarea.fill(message);
@@ -171,6 +175,9 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
     return;
   }
 
+  if (page.isClosed()) {
+    throw new Error("sendChatMessage: page closed before composer recovery.");
+  }
   await textarea.clear();
   await textarea.fill(message);
   if (await clickSendWhenEnabled(recoverySendTimeoutMs)) {

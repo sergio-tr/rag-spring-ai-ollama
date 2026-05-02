@@ -22,6 +22,17 @@ test.describe("Offline shell smoke", () => {
     await expect(page.getByText(/Show tips panel/i)).toHaveCount(0);
   });
 
+  test("main toolbar renders on mobile viewport without horizontal clip @smoke", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/en/settings", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await expect(page.getByTestId("app-main-toolbar")).toBeVisible({ timeout: 30_000 });
+    const clip = await page.evaluate(() => {
+      const el = document.documentElement;
+      return { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth };
+    });
+    expect(clip.scrollWidth).toBeLessThanOrEqual(clip.clientWidth + 1);
+  });
+
   test("settings tab query normalizes to segmented URL @smoke", async ({ page }) => {
     await page.goto("/en/settings?tab=user", { waitUntil: "domcontentloaded", timeout: 60_000 });
     await expect(page).toHaveURL(/\/en\/settings\/user/, { timeout: 15_000 });

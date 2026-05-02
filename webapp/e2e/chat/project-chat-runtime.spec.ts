@@ -26,6 +26,9 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
 
     await expect(page.getByTestId("chat-readable-column")).toBeVisible();
 
+    await page.getByTestId("chat-actions-menu-trigger").click();
+    await expect(page.getByRole("menuitem", { name: /^delete chat$/i })).toBeVisible({ timeout: 15_000 });
+
     const preset = page.getByRole("combobox", { name: /preset/i });
     await expect(preset).toBeVisible({ timeout: 15_000 });
     await expect(preset).not.toHaveValue("");
@@ -119,6 +122,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await page.getByRole("link", { name: /^chat$/i }).click();
     await page.getByTestId("chat-new-conversation").click();
 
+    await page.getByTestId("chat-actions-menu-trigger").click();
     const limitCb = page.getByRole("checkbox", {
       name: /limit retrieval to selected documents|limitar la recuperación/i,
     });
@@ -139,6 +143,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await expect(sidebarButtons.first()).toBeVisible({ timeout: 15_000 });
     await sidebarButtons.first().click();
 
+    await page.getByTestId("chat-actions-menu-trigger").click();
     const limitAgain = page.getByRole("checkbox", {
       name: /limit retrieval to selected documents|limitar la recuperación/i,
     });
