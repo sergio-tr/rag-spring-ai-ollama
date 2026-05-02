@@ -67,6 +67,22 @@ OpenAPI for the backend: `GET http://<backend>:9000/v3/api-docs` (see `rag-servi
 
 `apiFetch` attaches the JWT, retries once on **401** via the BFF route **`{NEXT_PUBLIC_RAG_API_PREFIX}/auth/refresh`** (default **`/api/v5/auth/refresh`**), then throws. If the session cannot be refreshed, **`SessionExpiredBridge`** redirects to `/{locale}/login`. Login and register calls use `skipCredentials: true` and do not trigger that redirect.
 
+After a successful session commit, the webapp schedules a **silent refresh** about **two minutes before** the access JWT `exp` (`src/lib/auth-access-scheduler.ts`), so active users are less likely to hit 401 during SSE or ordinary requests. Backend defaults (override via env): access token **3600s**, refresh token **604800s** — see `rag-service/src/main/resources/application.properties` (`rag.jwt.access-ttl-seconds`, `rag.jwt.refresh-ttl-seconds`).
+
+### Local HTTP / LAN / mobile smoke
+
+- **`npm run dev`** — listens on `localhost:3000` only (default Next dev server).
+- **`npm run dev:lan`** — binds **`0.0.0.0:3000`** so other devices on the LAN can load `http://<your-host-ip>:3000`.
+- Point **`NEXT_PUBLIC_API_BASE_URL`** at a backend URL reachable from the phone (often `http://<your-host-ip>:9000`).
+- Add that browser origin to **`RAG_CORS_ALLOWED_ORIGINS`** on Spring (comma-separated patterns). Dev defaults allow `http(s)://localhost:*` and `http(s)://127.0.0.1:*` only — **not** arbitrary LAN IPs.
+
+### HTTPS in local dev
+
+- Prefer the **reverse-proxy** profile described in **`docker/compose.dev-proxy.yml`** (HTTP on `${REVERSE_PROXY_DEV_HTTP_PORT:-80}`, HTTPS on `${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}`). Mount TLS material via `TLS_CERT_PATH` / `TLS_KEY_PATH` (see `reverse-proxy` Dockerfile / README). Tools such as **[mkcert](https://github.com/FiloSottile/mkcert)** are suitable for generating trusted local certificates.
+- Alternatively terminate TLS only on Next (custom server) — not the default in this repo; proxy path keeps one origin for browser + BFF cookies.
+
+**Chat layout / toolbar overflow (product notes):** [`docs/frontend/chat-layout.md`](../docs/frontend/chat-layout.md).
+
 ## E2E
 
 Layout and CI policy: **`e2e/README.md`**. **`@fullstack`** specs live under domain folders (`e2e/auth/`, `e2e/projects/`, …) and require seed credentials (`E2E_SEED_EMAIL` / `E2E_SEED_PASSWORD`, defaults `dev@local.test` / `dev`) plus a reachable API. Canonical strategy: [`docs/development/e2e-testing-strategy.md`](../docs/development/e2e-testing-strategy.md); config: `playwright.config.ts`.
