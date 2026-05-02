@@ -35,7 +35,12 @@ describe("followLabJob", () => {
     expect(asyncTask.pollLabJob).toHaveBeenCalledWith(
       "job-1",
       onTick,
-      expect.objectContaining({ signal: undefined, intervalMs: undefined, throwOnFailed: undefined }),
+      expect.objectContaining({
+        signal: undefined,
+        intervalMs: undefined,
+        throwOnFailed: undefined,
+        maxWaitMs: undefined,
+      }),
     );
     expect(labJobSse.streamLabJob).not.toHaveBeenCalled();
   });
@@ -64,6 +69,17 @@ describe("followLabJob", () => {
       signal: ac.signal,
       intervalMs: 100,
       throwOnFailed: false,
+      maxWaitMs: undefined,
     });
+  });
+
+  it("forwards maxWaitMs for classifier poll watchdog (Phase 6C)", async () => {
+    await followLabJob(accepted, () => {}, { maxWaitMs: 120_000 });
+
+    expect(asyncTask.pollLabJob).toHaveBeenCalledWith(
+      "job-1",
+      expect.any(Function),
+      expect.objectContaining({ maxWaitMs: 120_000 }),
+    );
   });
 });

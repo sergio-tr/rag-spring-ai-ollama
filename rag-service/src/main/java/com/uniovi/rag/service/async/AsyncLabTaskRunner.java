@@ -8,6 +8,7 @@ import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.service.async.lab.LabJobHandler;
+import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
 import com.uniovi.rag.service.async.lab.LabJobPayloadKeys;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.tracing.Tracer;
@@ -35,6 +36,8 @@ import java.util.UUID;
 public class AsyncLabTaskRunner {
 
     private static final Logger log = LoggerFactory.getLogger(AsyncLabTaskRunner.class);
+
+    private static final int SHORT_FAILURE_MESSAGE_MAX_LEN = 600;
 
     private final AsyncTaskRepository asyncTaskRepository;
     private final AsyncTaskMutationService mutation;
@@ -96,9 +99,13 @@ public class AsyncLabTaskRunner {
         try {
             AsyncTaskEntity pre = asyncTaskRepository.findById(taskId).orElse(null);
             if (pre == null) {
+                log.warn(
+                        "async_task_missing taskId={} — runner ran before the row was visible (transaction ordering bug if recurring)",
+                        taskId);
                 return;
             }
             if (pre.getStatus() != AsyncTaskStatus.QUEUED) {
+                log.debug("async_task_skip taskId={} status={} — not queued (duplicate dispatch or already advanced)", taskId, pre.getStatus());
                 return;
             }
             type = pre.getTaskType();
@@ -161,16 +168,19 @@ public class AsyncLabTaskRunner {
     private static String shortMessage(Throwable e) {
         if (e instanceof ResponseStatusException rse) {
             String r = rse.getReason();
-            if (r != null) {
-                return r;
+            if (r != null && !r.isBlank()) {
+                return UserFacingErrorSanitizer.sanitizeOrDefault(
+                        r, SHORT_FAILURE_MESSAGE_MAX_LEN, rse.getStatusCode().toString());
             }
             String msg = e.getMessage();
-            if (msg != null) {
-                return msg;
+            if (msg != null && !msg.isBlank()) {
+                return UserFacingErrorSanitizer.sanitizeOrDefault(
+                        msg, SHORT_FAILURE_MESSAGE_MAX_LEN, rse.getStatusCode().toString());
             }
             return rse.getStatusCode().toString();
         }
         String fallback = e.getMessage();
-        return fallback != null ? fallback : e.getClass().getSimpleName();
+        String raw = fallback != null ? fallback : e.getClass().getSimpleName();
+        return UserFacingErrorSanitizer.sanitizeOrDefault(raw, SHORT_FAILURE_MESSAGE_MAX_LEN, e.getClass().getSimpleName());
     }
 }

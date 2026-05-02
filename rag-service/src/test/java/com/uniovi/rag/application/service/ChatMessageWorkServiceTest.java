@@ -197,6 +197,21 @@ class ChatMessageWorkServiceTest {
     }
 
     @Test
+    void applyAssistantError_stripsHtmlBodies() {
+        UUID assistantId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        MessageEntity m = new MessageEntity();
+        when(messageRepository.findById(assistantId)).thenReturn(Optional.of(m));
+        when(conversationRepository.findById(convId)).thenReturn(Optional.empty());
+
+        chatMessageWorkService.applyAssistantError(
+                assistantId, convId, "<html><body>502 Bad Gateway</body></html>");
+
+        assertThat(m.getContent()).contains("could not generate");
+        assertThat(m.getExecutionMetadata()).containsEntry("error", m.getContent());
+    }
+
+    @Test
     void applyAssistantError_blankPublicMessageUsesGenericUserSafeCopy() {
         UUID assistantId = UUID.randomUUID();
         UUID convId = UUID.randomUUID();

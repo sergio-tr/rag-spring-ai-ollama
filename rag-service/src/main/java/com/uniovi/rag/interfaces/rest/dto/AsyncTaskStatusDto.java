@@ -15,4 +15,6 @@ public record AsyncTaskStatusDto(
         Instant createdAt,
         Instant updatedAt,
         Instant startedAt,
-        Instant completedAt) {}
+        Instant completedAt,
+        /** Present when {@link #status} is terminal failure and backend attached a structured code (e.g. {@code CHAT_DOCUMENT_SCOPE_EMPTY}). */
+        String failureCode) {}

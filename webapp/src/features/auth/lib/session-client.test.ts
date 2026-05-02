@@ -2,6 +2,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { commitSessionCookie, clearSessionCookie } from "./session-client";
 import { authApiPath } from "@/lib/api-client";
 
+const schedulerMocks = vi.hoisted(() => ({
+  scheduleAccessTokenRefreshFromJwt: vi.fn(),
+  clearScheduledAccessTokenRefresh: vi.fn(),
+}));
+
+vi.mock("@/lib/auth-access-scheduler", () => ({
+  scheduleAccessTokenRefreshFromJwt: schedulerMocks.scheduleAccessTokenRefreshFromJwt,
+  clearScheduledAccessTokenRefresh: schedulerMocks.clearScheduledAccessTokenRefresh,
+}));
+
 vi.mock("@/lib/access-token", () => ({
   setAccessToken: vi.fn(),
 }));
@@ -11,6 +21,8 @@ describe("session-client", () => {
   beforeEach(() => {
     fetchMock.mockReset();
     globalThis.fetch = fetchMock as typeof fetch;
+    schedulerMocks.scheduleAccessTokenRefreshFromJwt.mockClear();
+    schedulerMocks.clearScheduledAccessTokenRefresh.mockClear();
   });
 
   it("commitSessionCookie posts tokens and sets access token on success", async () => {
@@ -22,6 +34,7 @@ describe("session-client", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(setAccessToken).toHaveBeenCalledWith("a");
+    expect(schedulerMocks.scheduleAccessTokenRefreshFromJwt).toHaveBeenCalledWith("a");
   });
 
   it("commitSessionCookie throws when session route fails", async () => {
@@ -34,6 +47,7 @@ describe("session-client", () => {
     const { setAccessToken } = await import("@/lib/access-token");
     await clearSessionCookie();
     expect(setAccessToken).toHaveBeenCalledWith(null);
+    expect(schedulerMocks.clearScheduledAccessTokenRefresh).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledWith(authApiPath("/logout"), expect.any(Object));
   });
 });

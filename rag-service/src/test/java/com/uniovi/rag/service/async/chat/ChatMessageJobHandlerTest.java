@@ -201,7 +201,7 @@ class ChatMessageJobHandlerTest {
         handler.run(task, mutation);
 
         verify(chatMessageWorkService).applyAssistantError(asstId, convId, "public-msg");
-        verify(mutation).markFailed(taskId, "public-msg");
+        verify(mutation).markFailed(taskId, "public-msg", "INTERNAL_ERROR");
         verify(cancellationRegistry).clear(taskId);
     }
 
@@ -227,6 +227,32 @@ class ChatMessageJobHandlerTest {
 
         verify(chatMessageWorkService).applyAssistantError(asstId, convId, "boom");
         verify(mutation).markFailed(taskId, "boom");
+        verify(cancellationRegistry).clear(taskId);
+    }
+
+    @Test
+    void run_genericException_withHtml_doesNotLeakMarkupToAssistantOrTask() {
+        UUID taskId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        UUID asstId = UUID.randomUUID();
+
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
+        UserEntity user = mockUser();
+        ProjectEntity project = mockProject();
+        when(task.getId()).thenReturn(taskId);
+        when(task.getUser()).thenReturn(user);
+        when(task.getProject()).thenReturn(project);
+        when(task.getRequestPayload()).thenReturn(validPayload(convId, asstId));
+
+        when(cancellationRegistry.isCancelled(taskId)).thenReturn(false);
+        when(processQueryService.generateResponseForChat(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("<html><body>502</body></html>"));
+
+        handler.run(task, mutation);
+
+        verify(chatMessageWorkService)
+                .applyAssistantError(asstId, convId, "Something went wrong while generating a reply.");
+        verify(mutation).markFailed(taskId, "Something went wrong while generating a reply.");
         verify(cancellationRegistry).clear(taskId);
     }
 

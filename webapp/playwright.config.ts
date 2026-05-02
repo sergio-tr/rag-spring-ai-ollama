@@ -11,9 +11,10 @@ const retries = process.env.PLAYWRIGHT_RETRIES
     : 0;
 const testTimeout = Number.parseInt(process.env.PLAYWRIGHT_TEST_TIMEOUT_MS ?? "30000", 10);
 const expectTimeout = Number.parseInt(process.env.PLAYWRIGHT_EXPECT_TIMEOUT_MS ?? "10000", 10);
+/** Default cap keeps smoke specs stable against a single `next start` instance (parallel contention caused flaky auth forms). */
 const workers = process.env.PLAYWRIGHT_WORKERS
   ? Number.parseInt(process.env.PLAYWRIGHT_WORKERS, 10)
-  : undefined;
+  : 2;
 
 export default defineConfig({
   testDir: "./e2e",

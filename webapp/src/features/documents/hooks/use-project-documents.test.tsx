@@ -1,60 +1,62 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { renderHook } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { createTestQueryClient } from "@/test-utils/query-client";
-import {
-  useDeleteProjectDocument,
-  useProjectDocuments,
-  useUploadProjectDocument,
-} from "./use-project-documents";
-
-vi.mock("@/lib/api-client", () => ({
-  apiFetch: vi.fn(),
-  apiProductPath: (p: string) => p,
-}));
-
+import type { ProjectDocumentDto } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
+import { useDeleteAllProjectDocuments } from "./use-project-documents";
 
-function wrap(qc: ReturnType<typeof createTestQueryClient>) {
-  return function W({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+vi.mock("@/lib/api-client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api-client")>("@/lib/api-client");
+  return {
+    ...actual,
+    apiFetch: vi.fn(),
+    apiProductPath: (p: string) => p,
   };
-}
+});
 
-describe("use-project-documents", () => {
-  const qc = createTestQueryClient();
+const doc = (id: string, fileName: string): ProjectDocumentDto => ({
+  id,
+  fileName,
+  status: "READY",
+  chunkCount: 1,
+  errorMessage: null,
+  uploadedAt: "2026-01-01T00:00:00Z",
+  reindexedAt: null,
+  corpusScope: "PROJECT_SHARED",
+  conversationId: null,
+  currentIndexSnapshotId: null,
+  indexSignatureHash: null,
+  storagePresent: true,
+});
 
-  beforeEach(() => vi.mocked(apiFetch).mockReset());
+describe("useDeleteAllProjectDocuments", () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
-  it("lists documents", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce([]);
-    const { result } = renderHook(() => useProjectDocuments("p1"), { wrapper: wrap(qc) });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  function wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  }
+
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+    qc.clear();
   });
 
-  it("uploads document", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce({
-      id: "d1",
-      fileName: "a.txt",
-      status: "READY",
-      chunkCount: 0,
-      errorMessage: null,
-      uploadedAt: "",
-      reindexedAt: null,
-    });
-    const { result } = renderHook(() => useUploadProjectDocument("p1"), { wrapper: wrap(qc) });
-    await result.current.mutateAsync(new File(["x"], "a.txt"));
-  });
+  it("lists documents then issues one DELETE per id for the same project only", async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce([doc("d1", "a.pdf"), doc("d2", "b.pdf")])
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined);
 
-  it("upload throws without project", async () => {
-    const { result } = renderHook(() => useUploadProjectDocument(undefined), { wrapper: wrap(qc) });
-    await expect(result.current.mutateAsync(new File([], "a.txt"))).rejects.toThrow("no_project");
-  });
+    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
 
-  it("deletes document", async () => {
-    vi.mocked(apiFetch).mockResolvedValueOnce(undefined);
-    const { result } = renderHook(() => useDeleteProjectDocument("p1"), { wrapper: wrap(qc) });
-    await result.current.mutateAsync("d1");
+    const { result } = renderHook(() => useDeleteAllProjectDocuments("p-scope"), { wrapper });
+    await result.current.mutateAsync();
+
+    expect(apiFetch).toHaveBeenCalledTimes(3);
+    expect(String(vi.mocked(apiFetch).mock.calls[1]?.[0])).toContain("/projects/p-scope/documents/d1");
+    expect(String(vi.mocked(apiFetch).mock.calls[2]?.[0])).toContain("/projects/p-scope/documents/d2");
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["project-documents", "p-scope"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["projects"] });
   });
 });

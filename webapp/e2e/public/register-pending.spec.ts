@@ -10,7 +10,7 @@ test.describe("Register pending flow", () => {
     const email = uniqueEmail();
     let sessionPostCount = 0;
 
-    await page.route("**/api/v5/auth/register", async (route) => {
+    await page.route("**/auth/register**", async (route) => {
       await route.fulfill({
         status: 202,
         contentType: "application/json",
@@ -20,7 +20,7 @@ test.describe("Register pending flow", () => {
         }),
       });
     });
-    await page.route("**/api/v5/auth/session", async (route) => {
+    await page.route("**/auth/session**", async (route) => {
       sessionPostCount += 1;
       await route.fulfill({ status: 500, body: "should-not-be-called" });
     });
@@ -31,10 +31,8 @@ test.describe("Register pending flow", () => {
     const emailInput = form.locator("#email");
     await expect(nameInput).toBeVisible();
     await expect(emailInput).toBeVisible();
-    await nameInput.click();
-    await nameInput.type("Pending User");
-    await emailInput.click();
-    await emailInput.type(email);
+    await nameInput.fill("Pending User");
+    await emailInput.fill(email);
     await expect(nameInput).toHaveValue("Pending User");
     await expect(emailInput).toHaveValue(email);
     await form.getByLabel(/^password$/i).fill("Password123!");

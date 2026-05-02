@@ -131,6 +131,13 @@ function notifyUnauthorized(): void {
 
 let refreshPromise: Promise<boolean> | null = null;
 
+/**
+ * Single-flight refresh via same-origin BFF route (httpOnly refresh cookie). Exported for SSE and schedulers.
+ */
+export async function tryRefreshAccessToken(): Promise<boolean> {
+  return tryRefreshOnce();
+}
+
 async function tryRefreshOnce(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
@@ -147,6 +154,9 @@ async function tryRefreshOnce(): Promise<boolean> {
       } | null;
       if (body?.accessToken) {
         setAccessToken(body.accessToken);
+        void import("@/lib/auth-access-scheduler").then((mod) =>
+          mod.scheduleAccessTokenRefreshFromJwt(body.accessToken),
+        );
       }
       return true;
     } catch {
@@ -179,7 +189,18 @@ export type ApiErrorMeta = {
 
 function looksLikeHtml(body: string): boolean {
   const t = body.trim().toLowerCase();
-  return t.startsWith("<!doctype html") || t.startsWith("<html");
+  return (
+    t.startsWith("<!doctype html") ||
+    t.startsWith("<html") ||
+    (t.includes("<html") && t.includes("</")) ||
+    (t.includes("<body") && t.includes("</body"))
+  );
+}
+
+/** Backend job `errorMessage` values must never be shown raw when they look like stacks. */
+function looksLikeStackTrace(s: string): boolean {
+  const atFrames = s.match(/\n\s*at\s+/g);
+  return (atFrames?.length ?? 0) >= 2;
 }
 
 function trimSafeMessage(s: string, max = 280): string {
@@ -335,6 +356,17 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/**
+ * Sanitize plain-text hints from async jobs or similar (no HTML pages, no stack dumps).
+ */
+export function sanitizePlainErrorTextForUi(raw: string | undefined | null, maxLen = 280): string {
+  const t = (raw ?? "").trim();
+  if (!t) return "";
+  if (looksLikeHtml(t)) return "";
+  if (looksLikeStackTrace(t)) return "";
+  return trimSafeMessage(t, maxLen);
 }
 
 /**

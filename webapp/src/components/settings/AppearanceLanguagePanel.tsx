@@ -6,11 +6,14 @@ import { useTheme } from "next-themes";
 import { usePathname, useRouter } from "@/navigation";
 import type { AppLocale } from "@/i18n/routing";
 import { Button } from "@/components/ui/button";
+import { HelpPopover } from "@/features/help/HelpPopover";
+import { InlineHelpStatus } from "@/features/help/InlineHelpStatus";
 import { cn } from "@/lib/utils";
 
 export function AppearanceLanguagePanel({ className }: { className?: string }) {
   const t = useTranslations("Theme");
   const tSettings = useTranslations("Settings");
+  const tHelp = useTranslations("Help");
   const { theme, setTheme } = useTheme();
   const locale = useLocale() as AppLocale;
   const router = useRouter();
@@ -23,9 +26,20 @@ export function AppearanceLanguagePanel({ className }: { className?: string }) {
   return (
     <div className={cn("flex flex-col gap-8", className)}>
       <section aria-labelledby="settings-theme-heading">
-        <h2 id="settings-theme-heading" className="mb-3 font-medium text-sm">
-          {tSettings("themeSection")}
-        </h2>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <h2 id="settings-theme-heading" className="font-medium text-sm">
+            {tSettings("themeSection")}
+          </h2>
+          <HelpPopover
+            triggerAriaLabel={tHelp("settingsAppearanceTriggerLabel")}
+            title={tHelp("settingsAppearanceTitle")}
+            message={tHelp("settingsAppearanceMessage")}
+            details={tHelp("settingsAppearanceDetails")}
+            learnMoreHref="/settings"
+            learnMoreLabel={tHelp("settingsAppearanceLearnMore")}
+          />
+        </div>
+        <InlineHelpStatus status="info" label={tHelp("settingsAppearanceInline")} className="mb-3" />
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"

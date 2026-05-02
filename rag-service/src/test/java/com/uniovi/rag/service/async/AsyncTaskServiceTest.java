@@ -8,6 +8,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.application.port.AfterCommitTaskScheduler;
 import com.uniovi.rag.service.async.lab.LabJobPayloadKeys;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import org.junit.jupiter.api.Test;
@@ -28,8 +29,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -48,11 +49,14 @@ class AsyncTaskServiceTest {
     @Mock
     private AsyncLabTaskRunner asyncLabTaskRunner;
 
+    @Mock
+    private AfterCommitTaskScheduler afterCommitTaskScheduler;
+
     @InjectMocks
     private AsyncTaskService asyncTaskService;
 
     @Test
-    void submitEvalLlm_enqueuesAndStartsRunner() {
+    void submitEvalLlm_schedulesRunnerAfterCommit_thenRunnableStartsLabRunner() {
         UUID userId = UUID.randomUUID();
         UserEntity user = mock(UserEntity.class);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
@@ -67,7 +71,11 @@ class AsyncTaskServiceTest {
         UUID taskId = asyncTaskService.submitEvalLlm(userId);
 
         assertThat(taskId).isNotNull();
-        verify(asyncLabTaskRunner).execute(eq(taskId));
+        verify(asyncLabTaskRunner, never()).execute(any());
+        ArgumentCaptor<Runnable> runCap = ArgumentCaptor.forClass(Runnable.class);
+        verify(afterCommitTaskScheduler).scheduleAfterCommit(runCap.capture());
+        runCap.getValue().run();
+        verify(asyncLabTaskRunner).execute(taskId);
         ArgumentCaptor<AsyncTaskEntity> cap = ArgumentCaptor.forClass(AsyncTaskEntity.class);
         verify(asyncTaskRepository).save(cap.capture());
         assertThat(cap.getValue().getTaskType()).isEqualTo(AsyncTaskType.EVAL_LLM);

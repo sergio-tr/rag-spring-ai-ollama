@@ -1,6 +1,30 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { adminEmail, adminPassword, seedEmail, seedPassword } from "../fixtures/users";
 
+/**
+ * Runs before the first document load on this page so client UI does not start in a state where
+ * chat actions are hidden (persisted rail collapse + conversation list collapse).
+ */
+async function registerE2eLayoutPersistenceReset(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      sessionStorage.removeItem("chat-conv-list-collapsed");
+    } catch {
+      /* ignore */
+    }
+    try {
+      const raw = localStorage.getItem("rag-sidebar");
+      if (!raw) return;
+      const o = JSON.parse(raw) as Record<string, unknown>;
+      if (!o || typeof o !== "object") return;
+      o.shellCollapsed = false;
+      localStorage.setItem("rag-sidebar", JSON.stringify(o));
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
 const apiBase = () =>
   (
     process.env.NEXT_PUBLIC_API_BASE_URL ??
@@ -29,6 +53,7 @@ export async function authHeadersFromPage(page: Page): Promise<Record<string, st
 
 /** Logs in with Flyway seed credentials and waits for the projects page. */
 export async function loginAsSeedUser(page: Page): Promise<void> {
+  await registerE2eLayoutPersistenceReset(page);
   await page.goto("/en/login", { waitUntil: "domcontentloaded" });
   const emailInput = page.getByLabel(/email|correo/i);
   const passwordInput = page.getByLabel(/^password$/i);
@@ -55,16 +80,17 @@ export async function createAndActivateProject(page: Page, projectName: string):
   await page.locator("#proj-name").fill(projectName);
   await page.getByRole("button", { name: /^(create|crear)$/i }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 20_000 });
-  // Project name can appear both in sidebar and in the card title; pick the clickable card entry.
-  await page.getByRole("button", { name: projectName, exact: true }).first().waitFor({ state: "visible" });
   const projectCard = page.locator('[data-slot="card"]').filter({ hasText: projectName }).first();
-  // The grid uses "Open/Abrir" to activate the project, then the button becomes "Active/Activo".
-  await projectCard.getByRole("button", { name: /^(open|abrir|activate|activar)$/i }).click();
-  await expect(projectCard.getByRole("button", { name: /^(active|activo)$/i })).toBeVisible({ timeout: 20_000 });
+  await expect(projectCard).toBeVisible({ timeout: 20_000 });
+  // Require the actual active marker — not "Set active only", which also contains the substring "active".
+  await expect(projectCard.getByRole("button", { name: /^(Active|Activo)$/i })).toBeVisible({
+    timeout: 20_000,
+  });
 }
 
 /** ADMIN user seeded when Spring profile {@code e2e} is active (see E2eAdminUserSeeder). */
 export async function loginAsE2eAdmin(page: Page): Promise<void> {
+  await registerE2eLayoutPersistenceReset(page);
   await page.goto("/en/login", { waitUntil: "domcontentloaded" });
   const emailInput = page.getByLabel(/email|correo/i);
   const passwordInput = page.getByLabel(/^password$/i);
@@ -90,12 +116,11 @@ function chatComposerLocators(page: Page): {
   sendButton: Locator;
   newConversationButton: Locator;
 } {
+  const column = page.getByTestId("chat-readable-column");
   return {
-    textarea: page.getByPlaceholder(/message|mensaje/i),
-    sendButton: page.getByRole("button", { name: /^send$|^enviar$/i }),
-    newConversationButton: page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i }),
+    textarea: column.getByTestId("chat-message-composer"),
+    sendButton: column.getByTestId("chat-send-button"),
+    newConversationButton: page.getByTestId("chat-new-conversation"),
   };
 }
 
@@ -117,6 +142,9 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
   const { textarea, sendButton, newConversationButton } = chatComposerLocators(page);
 
   async function prepareComposer(): Promise<void> {
+    if (page.isClosed()) {
+      throw new Error("sendChatMessage: page is already closed.");
+    }
     await expect(textarea).toBeVisible({ timeout: textareaReadyTimeoutMs });
     await expect(textarea).toBeEnabled({ timeout: textareaReadyTimeoutMs });
     await textarea.fill(message);
@@ -147,6 +175,9 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
     return;
   }
 
+  if (page.isClosed()) {
+    throw new Error("sendChatMessage: page closed before composer recovery.");
+  }
   await textarea.clear();
   await textarea.fill(message);
   if (await clickSendWhenEnabled(recoverySendTimeoutMs)) {
@@ -157,6 +188,15 @@ export async function sendChatMessage(page: Page, message: string, options?: Sen
     return;
   }
 
+  const expandConvList = page.getByRole("button", {
+    name: /Show conversation list|Mostrar lista de conversaciones/i,
+  });
+  try {
+    await expect(newConversationButton).toBeVisible({ timeout: 3_000 });
+  } catch {
+    await expandConvList.click({ timeout: 5_000 });
+    await expect(newConversationButton).toBeVisible({ timeout: 8_000 });
+  }
   await newConversationButton.click();
   await prepareComposer();
   if (await clickSendWhenEnabled(sendEnabledTimeoutMs)) {

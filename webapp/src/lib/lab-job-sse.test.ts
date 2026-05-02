@@ -147,6 +147,23 @@ describe("streamLabJob", () => {
     await expect(streamLabJob("/e", () => {})).rejects.toThrow("No response body");
   });
 
+  it("throws Job failed when FAILED carries HTML-like errorMessage", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        mockFetchWithStream([
+          encodeLines([
+            "event: task",
+            'data: {"terminal":true,"status":"FAILED","errorMessage":"<html><body>502</body></html>"}',
+            "",
+          ]),
+        ]),
+      ),
+    );
+
+    await expect(streamLabJob("/e", () => {})).rejects.toThrow("Job failed");
+  });
+
   it("throws on terminal FAILED", async () => {
     vi.stubGlobal(
       "fetch",

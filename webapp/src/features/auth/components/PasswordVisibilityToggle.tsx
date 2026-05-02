@@ -2,7 +2,7 @@
 
 import { Eye, EyeOff } from "lucide-react";
 
-type Props = {
+type Props = Readonly<{
   /** When true, password characters are visible (text input). */
   visible: boolean;
   onToggle: () => void;
@@ -10,7 +10,7 @@ type Props = {
   showPasswordLabel: string;
   /** Accessible name when password is visible (action: conceal). */
   hidePasswordLabel: string;
-};
+}>;
 
 const toggleClassName =
   "inline-flex h-9 shrink-0 items-center justify-center rounded-md border border-input bg-background px-2 text-muted-foreground outline-none hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
@@ -18,7 +18,7 @@ const toggleClassName =
 /**
  * Icon-only password visibility control (lucide-react). Uses aria-pressed for toggle state.
  */
-export function PasswordVisibilityToggle(props: Readonly<Props>) {
+export function PasswordVisibilityToggle(props: Props) {
   const { visible, onToggle, showPasswordLabel, hidePasswordLabel } = props;
 
   return (

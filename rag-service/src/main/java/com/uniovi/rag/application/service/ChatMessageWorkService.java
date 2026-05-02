@@ -6,6 +6,7 @@ import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.MessageRepository;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
+import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
 import io.micrometer.tracing.Tracer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,8 @@ import java.util.UUID;
  */
 @Service
 public class ChatMessageWorkService {
+
+    private static final int ASSISTANT_ERROR_MESSAGE_MAX_LEN = 600;
 
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
@@ -84,15 +87,16 @@ public class ChatMessageWorkService {
     public void applyAssistantError(UUID assistantMessageId, UUID conversationId, String publicMessage) {
         MessageEntity m = messageRepository.findById(assistantMessageId).orElseThrow();
         String safe =
-                publicMessage != null && !publicMessage.isBlank()
-                        ? publicMessage.trim()
-                        : "Sorry, we could not generate a reply. Please try again.";
+                UserFacingErrorSanitizer.sanitizeOrDefault(
+                        publicMessage,
+                        ASSISTANT_ERROR_MESSAGE_MAX_LEN,
+                        "Sorry, we could not generate a reply. Please try again.");
         m.setContent(safe);
         m.setStatus(MessageProcessingStatus.ERROR);
         Map<String, Object> meta = m.getExecutionMetadata() != null
                 ? new LinkedHashMap<>(m.getExecutionMetadata())
                 : new LinkedHashMap<>();
-        meta.put("error", publicMessage);
+        meta.put("error", safe);
         m.setExecutionMetadata(meta);
         messageRepository.save(m);
         touchConversation(conversationId);

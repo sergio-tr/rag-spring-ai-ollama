@@ -16,6 +16,7 @@ import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
+import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import com.uniovi.rag.service.query.QueryService;
 import com.uniovi.rag.service.query.ResponseValidator;
@@ -184,6 +185,7 @@ class RagQueryConfigurationTest {
                         mock(ExecutionContextFactory.class),
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
+                        mock(KnowledgeDocumentRepository.class),
                         impl,
                         null);
         assertInstanceOf(SimpleQueryService.class, qs);
@@ -204,6 +206,7 @@ class RagQueryConfigurationTest {
                         mock(ExecutionContextFactory.class),
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
+                        mock(KnowledgeDocumentRepository.class),
                         impl,
                         null);
         assertInstanceOf(SimpleProcessQueryService.class, qs);
@@ -224,6 +227,7 @@ class RagQueryConfigurationTest {
                         mock(ExecutionContextFactory.class),
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
+                        mock(KnowledgeDocumentRepository.class),
                         impl,
                         null);
         assertInstanceOf(ProcessQueryService.class, qs);
@@ -245,6 +249,7 @@ class RagQueryConfigurationTest {
                         mock(ExecutionContextFactory.class),
                         mock(RagExecutionOrchestrator.class),
                         mock(RuntimeTracePersistenceService.class),
+                        mock(KnowledgeDocumentRepository.class),
                         impl,
                         obs);
         assertInstanceOf(TracedQueryService.class, qs);

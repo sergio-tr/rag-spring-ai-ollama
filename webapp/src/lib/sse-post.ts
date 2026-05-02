@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from "@/lib/api-client";
+import { getApiBaseUrl, tryRefreshAccessToken } from "@/lib/api-client";
 import { getAccessToken } from "@/lib/access-token";
 import { createTraceparent } from "@/lib/traceparent";
 import type { StreamDonePayload } from "@/types/api";
@@ -30,14 +30,17 @@ export async function postSseJson(
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = path.startsWith("http") ? path : `${base}${normalizedPath}`;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "text/event-stream",
-    traceparent: createTraceparent(),
-  };
-  const bearer = getAccessToken();
-  if (bearer) {
-    headers.Authorization = `Bearer ${bearer}`;
+  function authHeaders(): Record<string, string> {
+    const h: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      traceparent: createTraceparent(),
+    };
+    const bearer = getAccessToken();
+    if (bearer) {
+      h.Authorization = `Bearer ${bearer}`;
+    }
+    return h;
   }
 
   if (signal?.aborted) {
@@ -59,7 +62,7 @@ export async function postSseJson(
       res = await fetch(url, {
         method: "POST",
         credentials: "include",
-        headers,
+        headers: authHeaders(),
         body: JSON.stringify(body),
         signal,
       });
@@ -70,6 +73,28 @@ export async function postSseJson(
       }
       handlers.onError?.(e instanceof Error ? e.message : String(e), "NETWORK");
       return;
+    }
+
+    if (res.status === 401) {
+      const refreshed = await tryRefreshAccessToken();
+      if (refreshed) {
+        try {
+          res = await fetch(url, {
+            method: "POST",
+            credentials: "include",
+            headers: authHeaders(),
+            body: JSON.stringify(body),
+            signal,
+          });
+        } catch (e) {
+          if (signal?.aborted || isAbortError(e)) {
+            handlers.onAbort?.();
+            return;
+          }
+          handlers.onError?.(e instanceof Error ? e.message : String(e), "NETWORK");
+          return;
+        }
+      }
     }
 
     if (!res.ok) {

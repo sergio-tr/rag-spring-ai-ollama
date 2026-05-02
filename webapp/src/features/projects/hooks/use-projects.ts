@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
-import { useAppStore } from "@/store/app.store";
+import { activeProjectFromSummary, useAppStore } from "@/store/app.store";
 import type {
   ActivateProjectResponse,
   CreateProjectBody,
@@ -11,6 +11,26 @@ import type {
 } from "@/types/api";
 
 const projectsKey = ["projects"] as const;
+
+/** Merge POST /projects result into cached list pages before refetch (avoids clearing active via stale rows). */
+function prependCreatedProjectToProjectListCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  created: ProjectSummary,
+): void {
+  queryClient.setQueriesData<ProjectListResponse>({ queryKey: projectsKey }, (old) => {
+    if (!old) {
+      return { items: [created], total: 1 };
+    }
+    if (old.items.some((p) => p.id === created.id)) {
+      return old;
+    }
+    return {
+      ...old,
+      items: [created, ...old.items],
+      total: old.total + 1,
+    };
+  });
+}
 
 export function useProjectList(page = 0, size = 24) {
   return useQuery({
@@ -42,7 +62,8 @@ export function useCreateProject() {
       return created;
     },
     onSuccess: (created) => {
-      setActiveProject({ id: created.id, name: created.name });
+      setActiveProject(activeProjectFromSummary(created));
+      prependCreatedProjectToProjectListCaches(queryClient, created);
       void queryClient.invalidateQueries({ queryKey: projectsKey });
       void queryClient.invalidateQueries({ queryKey: ["config", "project", created.id] });
     },
@@ -83,7 +104,7 @@ export function usePatchProject() {
     onSuccess: (updated) => {
       void queryClient.invalidateQueries({ queryKey: projectsKey });
       if (active?.id === updated.id) {
-        setActiveProject({ id: updated.id, name: updated.name });
+        setActiveProject(activeProjectFromSummary(updated));
       }
     },
   });
@@ -113,7 +134,14 @@ export function useActivateProject() {
   const setActiveProject = useAppStore((s) => s.setActiveProject);
 
   return useMutation({
-    mutationFn: async (vars: { id: string; name: string }) => {
+    mutationFn: async (
+      vars: {
+        id: string;
+        name: string;
+        iconKey?: string | null;
+        colorHex?: string | null;
+      },
+    ) => {
       const res = await apiFetch<ActivateProjectResponse>(
         apiProductPath(`/projects/${vars.id}/activate`),
         { method: "PUT" },
@@ -122,7 +150,14 @@ export function useActivateProject() {
     },
     onSuccess: async (_data, vars) => {
       void queryClient.invalidateQueries({ queryKey: projectsKey });
-      setActiveProject({ id: vars.id, name: vars.name });
+      setActiveProject(
+        activeProjectFromSummary({
+          id: vars.id,
+          name: vars.name,
+          iconKey: vars.iconKey,
+          colorHex: vars.colorHex,
+        }),
+      );
       void queryClient.invalidateQueries({ queryKey: ["config", "project", vars.id] });
     },
     onError: (err) => {

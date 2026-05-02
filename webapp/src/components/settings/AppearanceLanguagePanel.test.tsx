@@ -12,6 +12,9 @@ vi.mock("next-themes", () => ({
 }));
 
 vi.mock("@/navigation", () => ({
+  Link: ({ children, href }: { children: React.ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
   usePathname: () => "/settings",
   useRouter: () => ({ replace }),
 }));

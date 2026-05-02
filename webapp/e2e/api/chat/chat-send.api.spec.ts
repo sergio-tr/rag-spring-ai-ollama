@@ -1,10 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { authHeaders, loginAndGetToken } from "../fixtures/auth";
-import {
-  createActivatedProjectAndConversation,
-  postChatMessageAndPollTerminal,
-  type ConversationDto,
-} from "../fixtures/chat-runtime-api";
+import { createActivatedProjectAndConversation, postChatMessageAndPollTerminal, type ConversationDto } from "../fixtures/chat-runtime-api";
+import { parseJsonExpectNonHtml } from "../fixtures/json-contract";
 import { integrationCredentials, productUrl } from "../fixtures/env";
 
 test.describe("Chat send API @api @chatRuntime", () => {
@@ -39,6 +36,33 @@ test.describe("Chat send API @api @chatRuntime", () => {
     expect(messagesRes.status(), await messagesRes.text()).toBe(200);
     const messages = (await messagesRes.json()) as Array<{ role: string; content: string }>;
     expect(messages.some((m) => m.role === "USER" && m.content.includes("Buenos dias"))).toBe(true);
+  });
+
+  test("PATCH conversation rejects documentFilter id not in project with JSON 400, not HTML", async ({
+    request,
+  }) => {
+    const { email, password } = integrationCredentials();
+    const token = await loginAndGetToken(request, email, password);
+    const { conversationId } = await createActivatedProjectAndConversation(request, token);
+
+    const res = await request.patch(productUrl(`/conversations/${conversationId}`), {
+      headers: {
+        ...authHeaders(token),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      data: { documentFilter: ["00000000-0000-4000-8000-000000000001"] },
+    });
+    const raw = await res.text();
+    expect(res.status(), raw).toBe(400);
+    const body = parseJsonExpectNonHtml(raw, "PATCH conversations documentFilter") as {
+      success?: boolean;
+      message?: string;
+      code?: string;
+    };
+    expect(body.success).toBe(false);
+    expect(String(body.message ?? "").toLowerCase()).toContain("not in project");
+    expect(String(body.message ?? "").toLowerCase()).not.toContain("<html");
   });
 
   test("empty project: POST chat message avoids gateway 5xx", async ({ request }) => {

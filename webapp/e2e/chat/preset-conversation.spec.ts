@@ -22,10 +22,7 @@ test.describe("Preset on conversation", () => {
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);
-    await page
-      .getByRole("main")
-      .getByRole("button", { name: /new conversation|nueva conversación/i })
-      .click();
+    await page.getByTestId("chat-new-conversation").click();
     const textarea = page.getByPlaceholder(/message|mensaje/i);
     await expect(textarea).toBeEnabled({ timeout: 15_000 });
 

@@ -111,7 +111,8 @@ class MeAccountControllerWebMvcTest {
                                 Instant.parse("2025-01-01T00:00:00Z"),
                                 Instant.parse("2025-01-01T00:00:01Z"),
                                 Instant.parse("2025-01-01T00:00:02Z"),
-                                Instant.parse("2025-01-01T00:00:03Z")));
+                                Instant.parse("2025-01-01T00:00:03Z"),
+                                null));
 
         mockMvc.perform(get(path("/me/account/jobs/{id}"), taskId))
                 .andExpect(status().isOk())

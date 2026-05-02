@@ -8,6 +8,7 @@ import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
 import type { ProjectSummary } from "@/types/api";
 import { useAppStore } from "@/store/app.store";
+import { SETTINGS_LAST_PATH_STORAGE_KEY } from "@/features/settings/lib/settings-last-path";
 import { AppSidebar } from "./AppSidebar";
 
 vi.mock("@/lib/user-role", () => ({
@@ -20,6 +21,11 @@ vi.mock("@/lib/api-client", () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
+const { pushMock, replaceMock } = vi.hoisted(() => ({
+  pushMock: vi.fn(),
+  replaceMock: vi.fn(),
+}));
+
 vi.mock("@/navigation", () => ({
   Link: ({ href, children, className }: { href: string; children: ReactNode; className?: string }) => (
     <a href={href} className={className}>
@@ -27,10 +33,8 @@ vi.mock("@/navigation", () => ({
     </a>
   ),
   usePathname: () => "/projects",
-  useRouter: () => ({ push: pushMock, refresh: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: pushMock, refresh: vi.fn(), replace: replaceMock }),
 }));
-
-const pushMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -114,6 +118,11 @@ vi.mock("@/features/chat/hooks/use-conversations", () => ({
     isError: false,
   }),
   useCreateConversation: () => mockCreateConversation,
+  useDeleteConversation: () => ({
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+    reset: vi.fn(),
+  }),
 }));
 
 const mockCreateConversation: { isPending: boolean; mutateAsync: ReturnType<typeof vi.fn> } = {
@@ -134,6 +143,7 @@ describe("AppSidebar", () => {
 
   beforeEach(() => {
     pushMock.mockReset();
+    replaceMock.mockReset();
     activateProjectMutateAsync.mockClear();
     mockProjectsState.data = {
       items: [
@@ -178,6 +188,7 @@ describe("AppSidebar", () => {
     // from the role bootstrap effect in tests that do not care about it.
     apiFetchMock.mockRejectedValue(new Error("auth unavailable"));
     localStorage.removeItem("rag-sidebar");
+    sessionStorage.removeItem(SETTINGS_LAST_PATH_STORAGE_KEY);
     useAppStore.setState({ activeProject: null });
   });
 
@@ -187,6 +198,44 @@ describe("AppSidebar", () => {
     expect(screen.getByRole("link", { name: /projects/i })).toHaveAttribute("href", "/projects");
     expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings");
     expect(screen.getByText(/rag console/i)).toBeInTheDocument();
+  });
+
+  it("restores Settings sidebar href from sessionStorage after hydrate", async () => {
+    sessionStorage.setItem(SETTINGS_LAST_PATH_STORAGE_KEY, "/settings/account");
+    render(<AppSidebar />, { wrapper: Wrapper });
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings/account");
+    });
+  });
+
+  it("hides projects tree and actions when desktop rail is collapsed", () => {
+    render(<AppSidebar variant="desktop" railCollapsed onToggleRailCollapsed={vi.fn()} />, {
+      wrapper: Wrapper,
+    });
+    expect(screen.queryByRole("button", { name: /^projects$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /new project/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Main")).toBeInTheDocument();
+    const brand = screen.getByRole("link", { name: /rag console/i });
+    expect(brand.querySelector("img")).toHaveAttribute("src", "/logo.svg");
+  });
+
+  it("invokes onToggleRailCollapsed from desktop chrome toggle", async () => {
+    const user = userEvent.setup();
+    const onToggleRailCollapsed = vi.fn();
+    render(
+      <AppSidebar variant="desktop" railCollapsed={false} onToggleRailCollapsed={onToggleRailCollapsed} />,
+      { wrapper: Wrapper },
+    );
+    await user.click(screen.getByRole("button", { name: /collapse sidebar/i }));
+    expect(onToggleRailCollapsed).toHaveBeenCalledTimes(1);
+  });
+
+  it("invokes onSignOut from sidebar footer when provided", async () => {
+    const user = userEvent.setup();
+    const onSignOut = vi.fn();
+    render(<AppSidebar onSignOut={onSignOut} />, { wrapper: Wrapper });
+    await user.click(screen.getByRole("button", { name: /^sign out$/i }));
+    expect(onSignOut).toHaveBeenCalledTimes(1);
   });
 
   it("hides Admin link for unknown/non-admin role", () => {
@@ -223,7 +272,7 @@ describe("AppSidebar", () => {
     expect(expandProject).toHaveAttribute("aria-expanded", "false");
     await user.click(expandProject);
     expect(expandProject).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("button", { name: /chat one/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^chat one$/i })).toBeInTheDocument();
 
     await user.click(projectsToggle);
     expect(projectsToggle).toHaveAttribute("aria-expanded", "false");
@@ -282,7 +331,7 @@ describe("AppSidebar", () => {
     render(<AppSidebar />, { wrapper: Wrapper });
     await user.click(screen.getByRole("button", { name: /new conversation/i }));
     expect(mockCreateConversation.mutateAsync).toHaveBeenCalled();
-    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c42");
+    expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p1&conversationId=c42");
   });
 
   it("searches chats across projects and activates when selecting a different project", async () => {
@@ -292,10 +341,12 @@ describe("AppSidebar", () => {
     await user.click(screen.getByRole("button", { name: /search chat/i }));
     await user.type(screen.getByPlaceholderText(/chat title/i), "budget");
 
-    const match = await screen.findByRole("button", { name: /budget chat/i });
+    const match = await screen.findByRole("button", { name: /^budget chat open$/i });
     await user.click(match);
-    expect(activateProjectMutateAsync).toHaveBeenCalledWith({ id: "p2", name: "Project Two" });
-    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c2");
+    expect(activateProjectMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "p2", name: "Project Two" }),
+    );
+    expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p2&conversationId=c2");
   });
 
   it("searches chats without re-activating when project is already active", async () => {
@@ -306,11 +357,11 @@ describe("AppSidebar", () => {
     await user.click(screen.getByRole("button", { name: /search chat/i }));
     await user.type(screen.getByPlaceholderText(/chat title/i), "budget");
 
-    const match = await screen.findByRole("button", { name: /budget chat/i });
+    const match = await screen.findByRole("button", { name: /^budget chat open$/i });
     await user.click(match);
 
     expect(activateProjectMutateAsync).not.toHaveBeenCalled();
-    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c2");
+    expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p2&conversationId=c2");
   });
 
   it("opens project without conversationId when project has no chats", async () => {
@@ -318,7 +369,7 @@ describe("AppSidebar", () => {
     const user = userEvent.setup();
     render(<AppSidebar />, { wrapper: Wrapper });
     await user.click(screen.getByRole("button", { name: /^project one$/i }));
-    expect(pushMock).toHaveBeenCalledWith("/chat");
+    expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p1");
   });
 
   it("clears stale active project when it is not in the current list", async () => {
@@ -336,10 +387,12 @@ describe("AppSidebar", () => {
 
     const expandProjectOne = screen.getByRole("button", { name: /expand chats for project one/i });
     await user.click(expandProjectOne);
-    await user.click(screen.getByRole("button", { name: /chat one/i }));
+    await user.click(screen.getByRole("button", { name: /^chat one$/i }));
 
-    expect(activateProjectMutateAsync).toHaveBeenCalledWith({ id: "p1", name: "Project One" });
-    expect(pushMock).toHaveBeenCalledWith("/chat?conversationId=c1");
+    expect(activateProjectMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "p1", name: "Project One" }),
+    );
+    expect(pushMock).toHaveBeenCalledWith("/chat?projectId=p1&conversationId=c1");
   });
 
   it("disables new conversation CTA while create is pending", () => {

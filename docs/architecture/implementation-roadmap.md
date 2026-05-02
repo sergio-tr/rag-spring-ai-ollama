@@ -42,7 +42,7 @@ For each block, implementation planning must state:
 
 ### What already exists
 
-- Substantial code in blocks **2** (docker/compose), **5** (partial — query pipeline), **4** (partial — ingestion/vectors), **9** (partial — lab endpoints), **11** (webapp).
+- Substantial code in blocks **2** (docker/compose), **5** (partial — query pipeline), **4** (partial — ingestion/vectors), **9** (partial — lab endpoints), **11** (webapp). Chat shell/toolbar and dev session/CORS notes are summarized in the **post-closure** section of [`docs/frontend/chat-layout.md`](../frontend/chat-layout.md).
 - ADRs 0001–0004 predate this roadmap; **0005–0011** added with new phase.
 
 ### What is partial

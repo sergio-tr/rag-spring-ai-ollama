@@ -11,6 +11,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
 
@@ -32,6 +33,13 @@ class DatasetMinuteEvaluationServiceTest {
     void getQuestionsAndAnswers_returnsNonNullMap() {
         Map<String, String> qa = service.getQuestionsAndAnswers();
         assertNotNull(qa);
+    }
+
+    /** Guards packaged workbook regression — Lab status enables runs only when this catalog is non-empty. */
+    @Test
+    void getQuestionsAndAnswers_loadsBundledEvaluationWorkbook() {
+        Map<String, String> qa = service.getQuestionsAndAnswers();
+        assertFalse(qa.isEmpty(), "evaluation/evaluation_dataset.xlsx should ship rows on the classpath");
     }
 
     @Test

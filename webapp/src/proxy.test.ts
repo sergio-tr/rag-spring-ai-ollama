@@ -75,4 +75,24 @@ describe("proxy middleware", () => {
       expect(res.headers.get("location")).toBe("http://localhost/en/login");
     },
   );
+
+  it.each([
+    ["/en/en/login", "/en/login"],
+    ["/es/es/login", "/es/login"],
+    ["/en/en/settings", "/en/settings"],
+  ] as const)("redirects duplicate locale prefix %s → %s", async (fromPath, toPath) => {
+    const { default: proxy } = await import("./proxy");
+    const req = new NextRequest(new URL(`http://localhost${fromPath}`));
+    const res = proxy(req);
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(`http://localhost${toPath}`);
+  });
+
+  it("preserves query string when deduping duplicate locale segments", async () => {
+    const { default: proxy } = await import("./proxy");
+    const req = new NextRequest(new URL("http://localhost/en/en/login?next=%2Fprojects"));
+    const res = proxy(req);
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("http://localhost/en/login?next=%2Fprojects");
+  });
 });

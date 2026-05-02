@@ -81,6 +81,7 @@ class LabJobControllerWebMvcTest {
                                 Instant.parse("2025-01-01T00:00:00Z"),
                                 Instant.parse("2025-01-01T00:00:01Z"),
                                 Instant.parse("2025-01-01T00:00:02Z"),
+                                null,
                                 null));
 
         mockMvc.perform(get(path("/lab/jobs/{id}"), taskId))

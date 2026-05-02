@@ -3,14 +3,16 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { HelpPopover } from "@/features/help/HelpPopover";
+import { InlineHelpStatus } from "@/features/help/InlineHelpStatus";
+import { ChatConversationDocumentsSheet } from "@/features/chat/components/ChatConversationDocumentsSheet";
+import { DeleteConversationDialog } from "@/features/chat/components/DeleteConversationDialog";
 import { MoveConversationDialog } from "@/features/chat/components/MoveConversationDialog";
-import { documentFiltersEqual } from "@/features/chat/lib/chat-document-filter-sync";
 import {
+  CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
   findPresetById,
-  resolveConversationPresetSelectValue,
-  resolvePresetSelectLabel,
+  resolveChatPresetSelectValue,
 } from "@/features/chat/lib/conversation-preset-ui";
 import {
   useConversationMessages,
@@ -18,29 +20,51 @@ import {
   useCreateConversation,
   usePatchConversation,
 } from "@/features/chat/hooks/use-conversations";
+import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
 import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
 import { useRagPresets } from "@/features/chat/hooks/use-rag-presets";
-import { useProjectDocuments } from "@/features/documents/hooks/use-project-documents";
+import {
+  useProjectDocuments,
+  useUploadProjectDocument,
+} from "@/features/documents/hooks/use-project-documents";
 import { useProjectList } from "@/features/projects/hooks/use-projects";
+import { useSyncActiveProjectFromChatUrl } from "@/features/projects/hooks/use-sync-active-project-from-chat-url";
+import { buildProjectScopedChatHref } from "@/features/projects/lib/open-project-navigation";
 import { ProjectVisual } from "@/features/projects/components/ProjectVisual";
-import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
+import {
+  ApiError,
+  apiFetch,
+  apiProductPath,
+  getSafeApiErrorMessage,
+  sanitizePlainErrorTextForUi,
+} from "@/lib/api-client";
+import { resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
 import { followLabJob } from "@/lib/lab-job-follow";
-import { cn } from "@/lib/utils";
-import { useRouter } from "@/navigation";
+import { Link, useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
 import { useChatExplainStore } from "@/store/chat-explain.store";
+import { useTraceStore } from "@/features/trace/trace.store";
 import type {
   ConversationDraftDto,
   LabJobAcceptedDto,
   PatchUserMessageBody,
   PostMessageBody,
 } from "@/types/api";
-import { ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
+
+type AssistantPipelinePhase =
+  | "sending"
+  | "contacting"
+  | "processing"
+  | "receiving"
+  | "failed"
+  | null;
 
 async function cancelChatJob(jobId: string, signal?: AbortSignal): Promise<void> {
   await apiFetch<void>(apiProductPath(`/lab/jobs/${jobId}/cancel`), {
@@ -55,10 +79,13 @@ function isAssistantRetryable(status: string | null | undefined): boolean {
 
 function ChatPageInner() {
   const t = useTranslations("Chat");
+  const tHelp = useTranslations("Help");
   const router = useRouter();
   const searchParams = useSearchParams();
   const active = useAppStore((s) => s.activeProject);
   const projectId = active?.id;
+  const urlProjectId = searchParams?.get?.("projectId")?.trim() || null;
+  useSyncActiveProjectFromChatUrl(urlProjectId);
   const urlConversationId = searchParams?.get?.("conversationId") ?? null;
   const [conversationId, setConversationId] = useState<string | null>(() => urlConversationId ?? null);
   const [convListCollapsed, setConvListCollapsed] = useState(() => {
@@ -75,9 +102,25 @@ function ChatPageInner() {
   const [editBody, setEditBody] = useState("");
   /** Empty string = backend default model. */
   const [llmModelChoice, setLlmModelChoice] = useState("");
-  const [presetSelectValue, setPresetSelectValue] = useState("");
-  const [limitDocs, setLimitDocs] = useState(false);
-  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [presetSelectValue, setPresetSelectValue] = useState(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
+  /** Scoped to `conversationId` so switching chats does not require clearing in an effect. */
+  const [limitDocsNoticeRecord, setLimitDocsNoticeRecord] = useState<{
+    conversationId: string | null;
+    message: string | null;
+  }>({ conversationId: null, message: null });
+  const limitDocsToggleNotice =
+    conversationId &&
+    limitDocsNoticeRecord.conversationId === conversationId &&
+    limitDocsNoticeRecord.message
+      ? limitDocsNoticeRecord.message
+      : null;
+  const [docsSheetOpen, setDocsSheetOpen] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const [deleteDialogTarget, setDeleteDialogTarget] = useState<{ id: string; title: string } | null>(
+    null,
+  );
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -86,9 +129,12 @@ function ChatPageInner() {
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDocumentFilterRef = useRef<string[] | null>(null);
   /** POST + async chat job in flight (distinct from streaming preview state). */
   const [isSending, setIsSending] = useState(false);
+  /** Local-only user bubble until the server list includes the same text. */
+  const [optimisticUserContent, setOptimisticUserContent] = useState<string | null>(null);
+  /** Visible pipeline stages between send and a terminal assistant outcome. */
+  const [assistantPhase, setAssistantPhase] = useState<AssistantPipelinePhase>(null);
 
   useEffect(() => {
     if (urlConversationId && urlConversationId !== conversationId) {
@@ -97,10 +143,14 @@ function ChatPageInner() {
     }
   }, [urlConversationId, conversationId]);
 
-  const selectConversation = useCallback((nextId: string) => {
-    setConversationId(nextId);
-    router.push(`/chat?conversationId=${encodeURIComponent(nextId)}`);
-  }, [router]);
+  const selectConversation = useCallback(
+    (nextId: string) => {
+      setConversationId(nextId);
+      if (!projectId) return;
+      router.push(buildProjectScopedChatHref(projectId, nextId));
+    },
+    [router, projectId],
+  );
 
   function persistConvListCollapsed(next: boolean) {
     setConvListCollapsed(next);
@@ -124,13 +174,18 @@ function ChatPageInner() {
     return null;
   }, [messages]);
   const { data: docs, refetch: refetchProjectDocuments } = useProjectDocuments(projectId);
+  const uploadDoc = useUploadProjectDocument(projectId);
   const { data: projectListData } = useProjectList(0, 64);
   const currentProject = useMemo(
     () => projectListData?.items?.find((p) => p.id === projectId),
     [projectListData?.items, projectId],
   );
   const { data: modelsCatalog, isError: modelsError, error: modelsQueryError } = useModelsCatalog();
-  const { data: presets, isError: presetsError } = useRagPresets();
+  const {
+    data: presets,
+    isError: presetsError,
+    isLoading: presetsLoading,
+  } = useRagPresets();
 
   const activeConv = useMemo(
     () => (conversationId && convs ? convs.find((c) => c.id === conversationId) : undefined),
@@ -138,23 +193,30 @@ function ChatPageInner() {
   );
   const conversationNotFound = Boolean(conversationId && convs && !activeConv);
 
-  /** Stable key for server-side document filter only (avoids tying preset PATCH churn to checkbox sync). */
-  const documentFilterStableKey = useMemo(() => {
-    if (!activeConv) return "";
-    const sorted = JSON.stringify([...(activeConv.documentFilter ?? [])].sort());
-    return `${activeConv.id}:${sorted}`;
-  }, [activeConv]);
+  /** Single source of truth: server-backed conversation row (optimistic updates inside {@link usePatchConversation}). */
+  const selectedDocIds = activeConv?.documentFilter ?? [];
+  const limitDocs = selectedDocIds.length > 0;
 
   const presetSyncKey = useMemo(() => {
     if (!activeConv) return "";
     return `${activeConv.id}:${activeConv.presetId ?? ""}:${activeConv.effectivePresetId ?? ""}`;
   }, [activeConv]);
 
+  const presetsCatalogEmpty = presets !== undefined && presets.length === 0 && !presetsError;
+
   const syntheticPresetOptionNeeded = useMemo(() => {
     if (!presetSelectValue) return false;
+    if (presetsLoading) return true;
     if (!presets?.length) return true;
     return !findPresetById(presets, presetSelectValue);
-  }, [presetSelectValue, presets]);
+  }, [presetSelectValue, presets, presetsLoading]);
+
+  const presetSelectDisabled =
+    !!presetsError || patchConv.isPending || presetsLoading || presetsCatalogEmpty;
+
+  useEffect(() => {
+    patchConv.reset();
+  }, [conversationId]); /* eslint-disable-line react-hooks/exhaustive-deps -- reset patch mutation only when switching chats */
 
   useEffect(() => {
     const syncTimer = setTimeout(() => setTitleDraft(activeConv?.title ?? ""), 0);
@@ -165,32 +227,13 @@ function ChatPageInner() {
     if (!presetSyncKey || patchConv.isPending || !conversationId || !convs) return;
     const conv = convs.find((c) => c.id === conversationId);
     if (!conv) return;
-    const next = resolveConversationPresetSelectValue(conv);
+    const next = resolveChatPresetSelectValue(conv, presets);
     const syncTimer = setTimeout(
       () => setPresetSelectValue((prev) => (prev === next ? prev : next)),
       0,
     );
     return () => clearTimeout(syncTimer);
-  }, [presetSyncKey, patchConv.isPending, conversationId, convs]);
-
-  useEffect(() => {
-    if (!documentFilterStableKey || patchConv.isPending || !conversationId || !convs) return;
-    const conv = convs.find((c) => c.id === conversationId);
-    if (!conv) return;
-    const serverFilter = conv.documentFilter ?? [];
-    if (pendingDocumentFilterRef.current !== null) {
-      if (!documentFiltersEqual(serverFilter, pendingDocumentFilterRef.current)) {
-        return;
-      }
-      pendingDocumentFilterRef.current = null;
-    }
-    const hasFilter = serverFilter.length > 0;
-    setLimitDocs((prev) => (prev === hasFilter ? prev : hasFilter));
-    setSelectedDocIds((prev) => {
-      if (documentFiltersEqual(prev, serverFilter)) return prev;
-      return [...serverFilter];
-    });
-  }, [documentFilterStableKey, patchConv.isPending, conversationId, convs]);
+  }, [presetSyncKey, patchConv.isPending, conversationId, convs, presets]);
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
   const setStreamingText = useChatExplainStore((s) => s.setStreamingText);
@@ -231,7 +274,7 @@ function ChatPageInner() {
     } else {
       setShowJumpToBottom(true);
     }
-  }, [messages, conversationId, streamingText]);
+  }, [messages, conversationId, streamingText, optimisticUserContent]);
 
   const modelsErrorMessage = useMemo(() => {
     if (!modelsError) return null;
@@ -246,6 +289,15 @@ function ChatPageInner() {
     }
     return t("modelsLoadError");
   }, [modelsError, modelsQueryError, t]);
+
+  const presetLabelOpts = useMemo(
+    () => ({
+      systemSuffix: t("presetSystem"),
+      recommendedDefault: t("presetRecommendedDefault"),
+      defaultConfiguration: t("presetDefaultConfiguration"),
+    }),
+    [t],
+  );
 
   /** Cancel in-flight chat job when switching project, conversation, or unmounting. */
   useEffect(() => {
@@ -265,6 +317,11 @@ function ChatPageInner() {
       resetStreaming();
       setStreaming(false);
     }
+    const resetUiTimer = setTimeout(() => {
+      setOptimisticUserContent(null);
+      setAssistantPhase(null);
+    }, 0);
+    return () => clearTimeout(resetUiTimer);
   }, [conversationId, projectId, resetStreaming, setStreaming]);
 
   /** Load persisted draft when opening a conversation. */
@@ -339,15 +396,20 @@ function ChatPageInner() {
     async (accepted: LabJobAcceptedDto, signal: AbortSignal) => {
       resetStreaming();
       setLastDone(null);
-      setSendError(null);
       setStreaming(true);
+      setAssistantPhase("processing");
       activeJobIdRef.current = accepted.jobId;
+      let streamingSeen = false;
       try {
-        await followLabJob(
+        const terminal = await followLabJob(
           accepted,
           (s) => {
             const streamed = s.result?.streamedAnswer;
-            if (typeof streamed === "string") {
+            if (typeof streamed === "string" && streamed.length > 0) {
+              if (!streamingSeen) {
+                streamingSeen = true;
+                setAssistantPhase("receiving");
+              }
               setStreamingText(streamed);
             }
           },
@@ -357,20 +419,60 @@ function ChatPageInner() {
         setLastDone(null);
         resetStreaming();
         setStreaming(false);
-        void refetchMessages();
+        await refetchMessages();
+
+        if (terminal.status === "FAILED") {
+          setAssistantPhase("failed");
+          const sanitized = sanitizePlainErrorTextForUi(terminal.errorMessage, 280);
+          const hint = resolveChatJobFailureUserHint({
+            task: terminal,
+            errorMessageSanitized: sanitized,
+            t,
+          });
+          setSendError(hint);
+          useTraceStore.getState().addTraceEvent({
+            section: "chat",
+            action: "assistant_failed",
+            message: t("traceAssistantFailed"),
+            status: "error",
+            metadata: {
+              jobId: accepted.jobId,
+              ...(terminal.failureCode ? { failureCode: terminal.failureCode } : {}),
+            },
+          });
+        } else {
+          setAssistantPhase(null);
+          setSendError(null);
+          useTraceStore.getState().addTraceEvent({
+            section: "chat",
+            action: "assistant_response_received",
+            message: t("traceAssistantCompleted"),
+            status: "success",
+            metadata: { jobId: accepted.jobId },
+          });
+        }
       } catch (e) {
         activeJobIdRef.current = null;
         setStreaming(false);
         resetStreaming();
         if (e instanceof DOMException && e.name === "AbortError") {
+          setAssistantPhase(null);
           return;
         }
+        setAssistantPhase("failed");
         setSendError(getSafeApiErrorMessage(e));
+        useTraceStore.getState().addTraceEvent({
+          section: "chat",
+          action: "assistant_failed",
+          message: t("traceAssistantFailed"),
+          status: "error",
+          metadata: { jobId: accepted.jobId },
+        });
       } finally {
         setStreaming(false);
       }
     },
-    [refetchMessages, resetStreaming, setLastDone, setStreaming, setStreamingText],
+    [refetchMessages, resetStreaming, setLastDone, setStreaming, setStreamingText, t],
   );
 
   const send = useCallback(async () => {
@@ -380,7 +482,15 @@ function ChatPageInner() {
     const signal = abortRef.current.signal;
     setEditError(null);
     const text = input.trim();
+    useTraceStore.getState().addTraceEvent({
+      section: "chat",
+      action: "message_submitted",
+      message: t("traceMessageSubmitted"),
+      status: "info",
+    });
+    setOptimisticUserContent(text);
     setInput("");
+    setAssistantPhase("sending");
     const body: PostMessageBody = {
       content: text,
       llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
@@ -404,14 +514,36 @@ function ChatPageInner() {
           signal,
         },
       );
+      setAssistantPhase("contacting");
+      useTraceStore.getState().addTraceEvent({
+        section: "chat",
+        action: "assistant_processing_started",
+        message: t("traceAssistantStarted"),
+        status: "in_progress",
+        metadata: { jobId: accepted.jobId },
+      });
+      try {
+        await refetchMessages();
+      } catch (refetchErr) {
+        setSendError(getSafeApiErrorMessage(refetchErr));
+      }
       await runChatJob(accepted, signal);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         setInput(text);
+        setOptimisticUserContent(null);
+        setAssistantPhase(null);
         return;
       }
+      setAssistantPhase("failed");
       setInput(text);
       setSendError(getSafeApiErrorMessage(e));
+      useTraceStore.getState().addTraceEvent({
+        section: "chat",
+        action: "message_submit_failed",
+        message: t("traceMessageSubmitFailed"),
+        status: "error",
+      });
     } finally {
       setIsSending(false);
     }
@@ -422,8 +554,10 @@ function ChatPageInner() {
     isSending,
     isStreaming,
     llmModelChoice,
+    refetchMessages,
     runChatJob,
     selectConversation,
+    t,
   ]);
 
   const retryAssistant = useCallback(
@@ -434,22 +568,43 @@ function ChatPageInner() {
       const signal = abortRef.current.signal;
       setIsSending(true);
       setSendError(null);
+      setAssistantPhase("sending");
       try {
         const accepted = await apiFetch<LabJobAcceptedDto>(
           apiProductPath(`/conversations/${conversationId}/messages/${assistantMessageId}/retry`),
           { method: "POST", signal },
         );
+        useTraceStore.getState().addTraceEvent({
+          section: "chat",
+          action: "assistant_processing_started",
+          message: t("traceAssistantStarted"),
+          status: "in_progress",
+          metadata: { jobId: accepted.jobId },
+        });
+        try {
+          await refetchMessages();
+        } catch (refetchErr) {
+          setSendError(getSafeApiErrorMessage(refetchErr));
+        }
         await runChatJob(accepted, signal);
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
+          setAssistantPhase(null);
           return;
         }
+        setAssistantPhase("failed");
         setSendError(getSafeApiErrorMessage(e));
+        useTraceStore.getState().addTraceEvent({
+          section: "chat",
+          action: "message_submit_failed",
+          message: t("traceMessageSubmitFailed"),
+          status: "error",
+        });
       } finally {
         setIsSending(false);
       }
     },
-    [conversationId, isSending, runChatJob],
+    [conversationId, isSending, refetchMessages, runChatJob, t],
   );
 
   const saveUserEditAndRegenerate = useCallback(async () => {
@@ -486,6 +641,11 @@ function ChatPageInner() {
       );
       setEditingUserMessageId(null);
       setEditBody("");
+      try {
+        await refetchMessages();
+      } catch (refetchErr) {
+        setSendError(getSafeApiErrorMessage(refetchErr));
+      }
       await runChatJob(accepted, signal);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
@@ -496,7 +656,7 @@ function ChatPageInner() {
     } finally {
       setIsSending(false);
     }
-  }, [conversationId, editBody, editingUserMessageId, isSending, llmModelChoice, runChatJob, t]);
+  }, [conversationId, editBody, editingUserMessageId, isSending, llmModelChoice, refetchMessages, runChatJob, t]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -507,61 +667,187 @@ function ChatPageInner() {
     }
     resetStreaming();
     setStreaming(false);
+    setAssistantPhase(null);
     void refetchMessages();
   }, [refetchMessages, resetStreaming, setStreaming]);
 
-  const onPresetChange = (value: string) => {
-    if (!conversationId || !value.trim()) return;
-    setPresetSelectValue(value);
-    patchConv.mutate({ conversationId, body: { presetId: value } });
-  };
+  const optimisticVisible =
+    Boolean(optimisticUserContent?.trim()) && !optimisticConsumed(messages, optimisticUserContent);
 
-  const onLimitDocsChange = (checked: boolean) => {
-    if (!conversationId) return;
-    if (!checked) {
-      setLimitDocs(false);
-      setSelectedDocIds([]);
-      pendingDocumentFilterRef.current = [];
-      patchConv.mutate({ conversationId, body: { documentFilter: [] } });
-      return;
+  const assistantPipelineLabel = useMemo(() => {
+    if (assistantPhase === "failed" || sendError) {
+      return sendError ?? t("assistantPhaseFailed");
     }
-    void (async () => {
-      const { data: freshDocs } = await refetchProjectDocuments();
-      const ready =
-        freshDocs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [];
-      if (ready.length === 0) {
+    switch (assistantPhase) {
+      case "sending":
+        return t("assistantPhaseSending");
+      case "contacting":
+        return t("assistantPhaseContacting");
+      case "processing":
+        return t("assistantPhaseProcessing");
+      case "receiving":
+        return t("assistantPhaseReceiving");
+      default:
+        return "";
+    }
+  }, [assistantPhase, sendError, t]);
+
+  const showAssistantPipelineRow =
+    !(streamingText?.trim()) &&
+    Boolean(assistantPipelineLabel) &&
+    (isSending || isStreaming || assistantPhase !== null);
+
+  const assistantPipelineTraceStatus =
+    assistantPhase === "failed" || sendError ? "error" : "in_progress";
+
+  const onPresetChange = useCallback(
+    (value: string) => {
+      if (!conversationId || !value.trim()) return;
+      setPresetSelectValue(value);
+      patchConv.mutate({ conversationId, body: { presetId: value } });
+    },
+    [conversationId, patchConv],
+  );
+
+  const handleChatDocumentUpload = useCallback(
+    async (files: FileList | null) => {
+      if (!files?.length || !conversationId || !projectId || !activeConv) return;
+      setUploadError(null);
+      setUploadNotice(null);
+      let merged = [...(activeConv.documentFilter ?? [])];
+      for (const file of Array.from(files)) {
+        try {
+          const doc = await uploadDoc.mutateAsync(file);
+          await refetchProjectDocuments();
+          if (doc.status === "READY") {
+            if (merged.length > 0) {
+              merged = Array.from(new Set([...merged, doc.id]));
+              patchConv.mutate({ conversationId, body: { documentFilter: merged } });
+            } else {
+              setUploadNotice(t("documentsUploadAddedToProjectHint"));
+            }
+          } else {
+            setUploadNotice(t("documentsUploadProcessingHint"));
+          }
+        } catch (e) {
+          setUploadError(getSafeApiErrorMessage(e));
+          break;
+        }
+      }
+    },
+    [conversationId, projectId, activeConv, uploadDoc, refetchProjectDocuments, patchConv, t],
+  );
+
+  const onLimitDocsChange = useCallback(
+    (checked: boolean) => {
+      if (!conversationId) return;
+      setLimitDocsNoticeRecord({ conversationId, message: null });
+      if (!checked) {
+        patchConv.mutate({ conversationId, body: { documentFilter: [] } });
         return;
       }
-      setLimitDocs(true);
-      setSelectedDocIds(ready);
-      pendingDocumentFilterRef.current = ready;
-      patchConv.mutate({ conversationId, body: { documentFilter: ready } });
-    })();
-  };
+      void (async () => {
+        const { data: freshDocs } = await refetchProjectDocuments();
+        const ready =
+          freshDocs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [];
+        if (ready.length === 0) {
+          setLimitDocsNoticeRecord({ conversationId, message: t("limitDocumentsNoReadyHint") });
+          return;
+        }
+        patchConv.mutate({ conversationId, body: { documentFilter: ready } });
+      })();
+    },
+    [conversationId, patchConv, refetchProjectDocuments, t],
+  );
 
   const onDocToggle = (documentId: string, checked: boolean) => {
-    if (!conversationId || !limitDocs) return;
-    const next = checked
-      ? Array.from(new Set([...selectedDocIds, documentId]))
-      : selectedDocIds.filter((id) => id !== documentId);
+    if (!conversationId || !activeConv) return;
+    const current = [...(activeConv.documentFilter ?? [])];
+    if (checked) {
+      const next =
+        current.length > 0 ? Array.from(new Set([...current, documentId])) : [documentId];
+      patchConv.mutate({ conversationId, body: { documentFilter: next } });
+      return;
+    }
+    if (current.length === 0) return;
+    const next = current.filter((id) => id !== documentId);
     if (next.length === 0) {
-      setLimitDocs(false);
-      setSelectedDocIds([]);
-      pendingDocumentFilterRef.current = [];
       patchConv.mutate({ conversationId, body: { documentFilter: [] } });
       return;
     }
-    setSelectedDocIds(next);
-    pendingDocumentFilterRef.current = next;
     patchConv.mutate({ conversationId, body: { documentFilter: next } });
   };
 
+  useEffect(() => {
+    if (!projectId) {
+      useChatToolbarStore.getState().setApi(null);
+      return;
+    }
+    useChatToolbarStore.getState().setApi({
+      projectId,
+      conversationId,
+      openDeleteForActiveConversation: () => {
+        if (!conversationId) return;
+        setDeleteDialogTarget({ id: conversationId, title: activeConv?.title ?? "" });
+      },
+      openMoveDialog: () => setMoveDialogOpen(true),
+      openDocumentsSheet: () => setDocsSheetOpen(true),
+      llmModelChoice,
+      setLlmModelChoice,
+      modelsCatalog,
+      modelsError,
+      modelsErrorMessage: modelsErrorMessage ?? "",
+      presetSelectValue,
+      onPresetChange,
+      presets,
+      presetsError,
+      presetsLoading,
+      presetSelectDisabled,
+      syntheticPresetOptionNeeded,
+      presetLabelOpts,
+      limitDocs,
+      onLimitDocsChange,
+      limitDocsToggleNotice,
+      patchConvPending: patchConv.isPending,
+    });
+    return () => useChatToolbarStore.getState().setApi(null);
+  }, [
+    projectId,
+    conversationId,
+    activeConv?.title,
+    llmModelChoice,
+    modelsCatalog,
+    modelsError,
+    modelsErrorMessage,
+    presetSelectValue,
+    onPresetChange,
+    presets,
+    presetsError,
+    presetsLoading,
+    presetSelectDisabled,
+    syntheticPresetOptionNeeded,
+    presetLabelOpts,
+    limitDocs,
+    onLimitDocsChange,
+    limitDocsToggleNotice,
+    patchConv.isPending,
+  ]);
+
   if (!projectId) {
-    return <p className="text-muted-foreground text-sm">{t("noActiveProject")}</p>;
+    return (
+      <div className="flex flex-col gap-3 text-muted-foreground text-sm">
+        <p>{t("noActiveProject")}</p>
+        <p>
+          <Link href="/projects" className="text-primary underline underline-offset-4">
+            {t("goToProjects")}
+          </Link>
+        </p>
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] min-h-[420px] flex-col gap-3 md:flex-row">
+    <div className="flex h-[calc(100dvh-7rem)] min-h-[420px] flex-col gap-2 md:flex-row md:gap-3">
       {convListCollapsed ? (
         <div className="flex w-full shrink-0 flex-col items-stretch gap-2 border-border border-b pb-2 md:w-auto md:border-b-0 md:border-r md:pb-0 md:pr-2">
           <Button
@@ -578,7 +864,10 @@ function ChatPageInner() {
           <p className="text-muted-foreground hidden text-xs md:block md:max-w-[7rem]">{t("sidebarCollapsedHint")}</p>
         </div>
       ) : (
-        <aside className="flex w-full shrink-0 flex-col gap-2 border-border border-b pb-3 md:w-52 md:border-b-0 md:border-r md:pb-0 md:pr-3">
+        <aside
+          data-testid="chat-conversation-sidebar"
+          className="flex w-full shrink-0 flex-col gap-2 border-border border-b pb-2 md:w-44 md:max-w-[13rem] md:border-b-0 md:border-r md:pb-0 md:pr-2 lg:w-48 lg:max-w-[14rem]"
+        >
           <div className="flex items-center justify-end">
             <Button
               type="button"
@@ -595,6 +884,7 @@ function ChatPageInner() {
             type="button"
             size="sm"
             className="w-full"
+            data-testid="chat-new-conversation"
             disabled={createConv.isPending}
             onClick={async () => {
               const c = await createConv.mutateAsync();
@@ -604,171 +894,114 @@ function ChatPageInner() {
           >
             {t("newConversation")}
           </Button>
-          <div className="flex max-h-48 flex-col gap-1 overflow-y-auto md:max-h-none md:flex-1">
+          <div
+            data-testid="conversation-list"
+            className="flex max-h-48 flex-col gap-1 overflow-y-auto md:max-h-none md:flex-1"
+          >
             {convs?.map((c) => (
-              <Button
-                key={c.id}
-                type="button"
-                variant={conversationId === c.id ? "secondary" : "ghost"}
-                size="sm"
-                className="h-auto justify-start py-2 text-left"
-                onClick={() => selectConversation(c.id)}
-              >
-                <span className="line-clamp-2 text-xs">{c.title}</span>
-              </Button>
+              <div key={c.id} className="flex items-stretch gap-1">
+                <Button
+                  type="button"
+                  data-testid={`conversation-item-${c.id}`}
+                  aria-current={conversationId === c.id ? "true" : undefined}
+                  variant={conversationId === c.id ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-auto min-w-0 flex-1 justify-start py-2 text-left"
+                  onClick={() => selectConversation(c.id)}
+                >
+                  <span className="line-clamp-2 text-xs">{c.title}</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
+                  aria-label={t("deleteConversationTriggerAria", {
+                    title: (c.title ?? "").trim() || t("deleteConversationUntitled"),
+                  })}
+                  onClick={() =>
+                    setDeleteDialogTarget({ id: c.id, title: c.title ?? "" })
+                  }
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                </Button>
+              </div>
             ))}
           </div>
         </aside>
       )}
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div
+          data-testid="chat-readable-column"
+          className="mx-auto flex w-full min-h-0 min-w-0 max-w-chat-readable flex-1 flex-col gap-3 px-2 sm:px-3 md:px-5"
+        >
         {conversationId && active ? (
-          <header className="flex flex-wrap items-end gap-3 border-border border-b pb-3">
-            <div className="flex min-w-[10rem] items-center gap-2">
-              <ProjectVisual
-                iconKey={currentProject?.iconKey}
-                colorHex={currentProject?.colorHex}
-                dotClassName="inline-block size-3 shrink-0 rounded-full border border-border"
-              />
-              <span className="truncate font-medium text-sm">{active.name}</span>
+          <header className="flex flex-wrap items-end gap-3 gap-y-2 border-border border-b pb-3">
+            <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
+              <div className="flex min-w-[10rem] items-center gap-2">
+                <ProjectVisual
+                  iconKey={currentProject?.iconKey}
+                  colorHex={currentProject?.colorHex}
+                  dotClassName="inline-block size-3 shrink-0 rounded-full border border-border"
+                />
+                <span className="truncate font-medium text-sm">{active.name}</span>
+              </div>
+              <div className="flex min-w-[min(100%,14rem)] flex-1 flex-col gap-1">
+                <Label htmlFor="chat-title" className="text-muted-foreground text-xs">
+                  {t("chatTitleLabel")}
+                </Label>
+                <Input
+                  id="chat-title"
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={() => {
+                    if (!conversationId || !activeConv) return;
+                    const next = titleDraft.trim();
+                    if (next === (activeConv.title ?? "").trim()) return;
+                    patchConv.mutate(
+                      { conversationId, body: { title: next } },
+                      {
+                        onError: () => setTitleDraft(activeConv.title ?? ""),
+                      },
+                    );
+                  }}
+                  disabled={patchConv.isPending}
+                  className="h-9"
+                />
+              </div>
             </div>
-            <div className="flex min-w-[min(100%,14rem)] flex-1 flex-col gap-1">
-              <Label htmlFor="chat-title" className="text-muted-foreground text-xs">
-                {t("chatTitleLabel")}
-              </Label>
-              <Input
-                id="chat-title"
-                value={titleDraft}
-                onChange={(e) => setTitleDraft(e.target.value)}
-                onBlur={() => {
-                  if (!conversationId || !activeConv) return;
-                  const next = titleDraft.trim();
-                  if (next === (activeConv.title ?? "").trim()) return;
-                  patchConv.mutate(
-                    { conversationId, body: { title: next } },
-                    {
-                      onError: () => setTitleDraft(activeConv.title ?? ""),
-                    },
-                  );
-                }}
-                disabled={patchConv.isPending}
-                className="h-9"
+            <div className="flex shrink-0 flex-col items-end gap-1 pb-0.5 sm:flex-row sm:items-center">
+              <HelpPopover
+                triggerAriaLabel={tHelp("chatControlsTriggerLabel")}
+                title={tHelp("chatControlsTitle")}
+                message={tHelp("chatControlsMessage")}
+                details={tHelp("chatControlsDetails")}
               />
-            </div>
-            <div className="pb-0.5">
-              <MoveConversationDialog sourceProjectId={projectId} conversationId={conversationId} />
             </div>
           </header>
         ) : null}
-        {conversationId && (
-          <div className="flex flex-col gap-3 rounded-lg border bg-card/20 p-3 text-sm md:flex-row md:flex-wrap md:items-end md:gap-4">
-            <div className="flex min-w-[12rem] flex-1 flex-col gap-1">
-              <Label htmlFor="chat-llm-model">{t("modelLabel")}</Label>
-              <select
-                id="chat-llm-model"
-                className={cn(
-                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
-                  modelsError && "border-destructive",
-                )}
-                value={llmModelChoice}
-                onChange={(e) => setLlmModelChoice(e.target.value)}
-                aria-label={t("modelLabel")}
-                disabled={!!modelsError}
-              >
-                <option value="">{t("modelDefault")}</option>
-                {modelsCatalog?.allowlist
-                  ?.filter((e) => e.type === "LLM")
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map((m) => {
-                    const usable = m.inAllowlist && m.installedInOllama;
-                    return (
-                      <option key={m.name} value={m.name} disabled={!usable}>
-                        {m.name}
-                        {!m.installedInOllama ? ` (${t("modelNotInstalled")})` : ""}
-                        {!m.inAllowlist ? ` (${t("modelNotAllowlisted")})` : ""}
-                      </option>
-                    );
-                  })}
-              </select>
-              {modelsError && (
-                <p className="text-destructive text-xs" role="alert">
-                  {modelsErrorMessage}
-                </p>
-              )}
-              {!modelsError && !modelsCatalog?.ollamaReachable && (
-                <p className="text-muted-foreground text-xs">{t("ollamaUnreachable")}</p>
-              )}
-            </div>
-            <div className="flex min-w-[12rem] flex-1 flex-col gap-1">
-              <Label htmlFor="chat-preset">{t("presetLabel")}</Label>
-              <select
-                id="chat-preset"
-                className={cn(
-                  "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
-                  presetsError && "border-destructive",
-                )}
-                value={presetSelectValue}
-                onChange={(e) => onPresetChange(e.target.value)}
-                aria-label={t("presetLabel")}
-                disabled={!!presetsError || patchConv.isPending}
-              >
-                {syntheticPresetOptionNeeded ? (
-                  <option value={presetSelectValue}>
-                    {resolvePresetSelectLabel(presets, presetSelectValue, {
-                      systemSuffix: t("presetSystem"),
-                      serverDefault: t("presetServerDefault"),
-                    })}
-                  </option>
-                ) : null}
-                {presets?.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                    {p.system ? ` (${t("presetSystem")})` : ""}
-                  </option>
-                ))}
-              </select>
-              {presetsError && <p className="text-destructive text-xs">{t("presetsLoadError")}</p>}
-            </div>
-            <div className="min-w-[min(100%,14rem)] flex-1 flex-col gap-2 md:max-w-md">
-              <Label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  className="size-4 rounded border"
-                  checked={limitDocs}
-                  onChange={(e) => onLimitDocsChange(e.target.checked)}
-                  disabled={!conversationId || patchConv.isPending}
-                />
-                {t("limitDocuments")}
-              </Label>
-              {limitDocs && (
-                <ScrollArea className="h-32 rounded-md border p-2">
-                  {docs?.length === 0 && (
-                    <p className="text-muted-foreground text-xs">{t("noDocumentsInProject")}</p>
-                  )}
-                  {docs?.map((d) => (
-                    <label
-                      key={d.id}
-                      className="flex cursor-pointer items-start gap-2 py-1 text-xs"
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 size-3.5 shrink-0 rounded border"
-                        checked={selectedDocIds.includes(d.id)}
-                        disabled={d.status !== "READY" || patchConv.isPending}
-                        onChange={(e) => onDocToggle(d.id, e.target.checked)}
-                      />
-                      <span className="break-all">
-                        {d.fileName}
-                        {d.status !== "READY" ? (
-                          <span className="text-muted-foreground"> ({d.status})</span>
-                        ) : null}
-                      </span>
-                    </label>
-                  ))}
-                </ScrollArea>
-              )}
-            </div>
-          </div>
-        )}
+        {conversationId && active ? (
+          <ChatConversationDocumentsSheet
+            open={docsSheetOpen}
+            onOpenChange={(next) => {
+              setDocsSheetOpen(next);
+              if (!next) {
+                setUploadError(null);
+                setUploadNotice(null);
+              }
+            }}
+            projectName={active.name}
+            docs={docs}
+            limitDocs={limitDocs}
+            selectedDocIds={selectedDocIds}
+            patchPending={patchConv.isPending}
+            uploadPending={uploadDoc.isPending}
+            uploadError={uploadError}
+            uploadNotice={uploadNotice}
+            onDocToggle={onDocToggle}
+            onUploadFiles={handleChatDocumentUpload}
+          />
+        ) : null}
         <div
           ref={scrollAreaRef}
           className="relative min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border bg-card/30 p-3"
@@ -800,7 +1033,7 @@ function ChatPageInner() {
                   variant="outline"
                   onClick={() => {
                     setConversationId(null);
-                    router.push("/chat");
+                    router.push(buildProjectScopedChatHref(projectId, null));
                   }}
                 >
                   {t("backToConversations")}
@@ -810,7 +1043,7 @@ function ChatPageInner() {
                   size="sm"
                   onClick={() => {
                     setConversationId(null);
-                    router.push("/chat");
+                    router.push(buildProjectScopedChatHref(projectId, null));
                   }}
                 >
                   {t("startNewChat")}
@@ -823,8 +1056,8 @@ function ChatPageInner() {
               key={m.id}
               className={
                 m.role === "USER"
-                  ? "ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm"
-                  : "mr-auto max-w-[85%] rounded-lg border bg-background px-3 py-2 text-sm"
+                  ? "ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
+                  : "mr-auto max-w-[85%] rounded-lg border bg-background px-3 py-2 text-sm leading-relaxed"
               }
             >
               {m.role === "USER" &&
@@ -835,7 +1068,7 @@ function ChatPageInner() {
                     value={editBody}
                     onChange={(e) => setEditBody(e.target.value)}
                     rows={4}
-                    className="resize-none border-primary-foreground/30 bg-background text-foreground"
+                    className="resize-none border-border bg-card text-card-foreground placeholder:text-muted-foreground dark:bg-card dark:text-card-foreground"
                     disabled={isStreaming}
                   />
                   <div className="flex flex-wrap gap-2">
@@ -867,7 +1100,7 @@ function ChatPageInner() {
                 </div>
               ) : (
                 <>
-                  <p className="whitespace-pre-wrap">{m.content}</p>
+                  <p className="whitespace-pre-wrap break-words">{m.content}</p>
                   {m.role === "USER" && m.id === lastUserMessageId && (
                     <Button
                       type="button"
@@ -903,14 +1136,32 @@ function ChatPageInner() {
               )}
             </div>
           ))}
+          {optimisticVisible ? (
+            <div
+              role="article"
+              aria-label={t("optimisticUserAria")}
+              data-testid="chat-optimistic-user"
+              className="ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
+            >
+              <p className="whitespace-pre-wrap break-words">{optimisticUserContent}</p>
+            </div>
+          ) : null}
+          {showAssistantPipelineRow && assistantPipelineLabel ? (
+            <div className="mr-auto max-w-[85%] w-full min-w-0">
+              <InlineHelpStatus
+                status={assistantPipelineTraceStatus}
+                label={assistantPipelineLabel}
+              />
+            </div>
+          ) : null}
           {isStreaming && streamingText && (
-            <div className="mr-auto max-w-[85%] rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm">
-              <p className="whitespace-pre-wrap">{streamingText}</p>
+            <div className="mr-auto max-w-[85%] rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-sm leading-relaxed">
+              <p className="whitespace-pre-wrap break-words">{streamingText}</p>
             </div>
           )}
           <div ref={bottomRef} />
         </div>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full min-w-0 flex-col gap-2">
           {editError && (
             <p className="text-destructive break-words text-xs" role="alert">
               {editError}
@@ -921,17 +1172,13 @@ function ChatPageInner() {
               {sendError}
             </p>
           )}
-          {patchConv.isError && (
+          {patchConv.isError ? (
             <p className="text-destructive text-xs" role="alert">
-              {t("patchError")}
-            </p>
-          )}
-          {isSending && !isStreaming ? (
-            <p className="text-muted-foreground text-xs" aria-live="polite">
-              {t("sending")}
+              {getSafeApiErrorMessage(patchConv.error)}
             </p>
           ) : null}
           <Textarea
+            data-testid="chat-message-composer"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={t("placeholder")}
@@ -953,6 +1200,7 @@ function ChatPageInner() {
             <Button
               type="button"
               size="sm"
+              data-testid="chat-send-button"
               disabled={!input.trim() || isSending || isStreaming}
               onClick={() => void send()}
             >
@@ -960,6 +1208,30 @@ function ChatPageInner() {
             </Button>
           </div>
         </div>
+        </div>
+        <MoveConversationDialog
+          sourceProjectId={projectId}
+          conversationId={conversationId}
+          showTrigger={false}
+          open={moveDialogOpen}
+          onOpenChange={setMoveDialogOpen}
+        />
+        <DeleteConversationDialog
+          open={Boolean(deleteDialogTarget)}
+          onOpenChange={(next) => {
+            if (!next) setDeleteDialogTarget(null);
+          }}
+          projectId={projectId}
+          conversationId={deleteDialogTarget?.id}
+          conversationTitle={deleteDialogTarget?.title ?? ""}
+          onDeleted={() => {
+            const deletedId = deleteDialogTarget?.id;
+            if (deletedId && conversationId === deletedId && projectId) {
+              router.push(buildProjectScopedChatHref(projectId, null));
+              setConversationId(null);
+            }
+          }}
+        />
       </div>
     </div>
   );

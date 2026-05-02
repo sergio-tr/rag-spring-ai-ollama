@@ -9,7 +9,7 @@ type CollapsiblePanelProps = {
   children: React.ReactNode;
 };
 
-/** Right rail (ChatGPT-style); open/close control lives in AppShell header. */
+/** Legacy right rail; the app shell uses the Activity help sheet (Phase 3B) instead. Kept for tests/reuse. */
 export function CollapsiblePanel({ open, children }: CollapsiblePanelProps) {
   const t = useTranslations("Panel");
 

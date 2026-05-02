@@ -24,6 +24,14 @@ test.describe("Public auth pages", () => {
     });
   });
 
+  test("login and register pages have no locale-prefixed /api anchor hrefs @smoke", async ({ page }) => {
+    for (const path of ["/en/login", "/en/register"] as const) {
+      await page.goto(path, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      const bad = page.locator('a[href^="/en/api"], a[href^="/es/api"]');
+      await expect(bad).toHaveCount(0);
+    }
+  });
+
   test.describe("Google OAuth CTA (@oauth — requires NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED=true at build/start)", () => {
     test("login and register show Continue with Google linking to v5 start path", async ({ page }) => {
       test.skip(

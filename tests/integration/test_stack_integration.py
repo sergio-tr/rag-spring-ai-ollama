@@ -131,6 +131,17 @@ def _assert_requires_auth(r: httpx.Response) -> None:
     assert r.status_code in (401, 403), r.text
 
 
+def _assert_json_response_not_html(r: httpx.Response) -> dict:
+    """Fail fast if an API response looks like an HTML or nginx error page instead of JSON."""
+    raw = r.text
+    head = raw.lstrip()[:32].lower()
+    assert not head.startswith("<!doctype"), raw[:500]
+    assert not head.startswith("<html"), raw[:500]
+    ct = (r.headers.get("content-type") or "").lower()
+    assert "application/json" in ct, (ct, raw[:200])
+    return r.json()
+
+
 def _login_access_token(
     http_client: httpx.Client,
     backend_base: str,
@@ -564,6 +575,79 @@ class TestBackendProductApi:
         fv = sbody.get("fields")
         assert isinstance(fv, list) and len(fv) >= 1
 
+    def test_unknown_product_route_returns_json_404_not_html(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token (seed user missing or wrong INTEGRATION_LOGIN_*).")
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
+        try:
+            r = http_client.get(
+                f"{backend_base}{product_api_base}/no-such-endpoint-phase8e-contract",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 404, r.text
+        body = _assert_json_response_not_html(r)
+        assert body.get("success") is False
+        err = body.get("error") or {}
+        assert err.get("code"), body
+
+
+class TestBackendAccountExportApi:
+    """Account export async contract (Phase 7 UX — backend poll/download paths)."""
+
+    def test_export_post_returns_202_json_not_html(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token (seed user missing or wrong INTEGRATION_LOGIN_*).")
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
+        try:
+            r = http_client.post(
+                f"{backend_base}{product_api_base}/me/account/export",
+                headers=headers,
+                timeout=60.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 202, r.text
+        body = _assert_json_response_not_html(r)
+        job_id = body.get("jobId")
+        assert job_id is not None and len(str(job_id)) > 0
+        poll_path = body.get("pollPath")
+        assert isinstance(poll_path, str) and "/me/account/jobs/" in poll_path
+
 
 class TestBackendOpenApi:
     """springdoc OpenAPI JSON at /v3/api-docs (permitAll — no JWT)."""
@@ -611,6 +695,37 @@ class TestBackendLabJobs:
             _skip_if_unreachable(e)
             raise
         _assert_requires_auth(r)
+
+    def test_lab_status_authenticated_json_contract_not_html(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        """datasets.enabled must reflect benchmark catalog question count (see LabController#status)."""
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token (seed user missing or wrong INTEGRATION_LOGIN_*).")
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        try:
+            r = http_client.get(f"{backend_base}{product_api_base}/lab/status", headers=headers, timeout=30.0)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert r.status_code == 200, r.text
+        body = _assert_json_response_not_html(r)
+        datasets = body.get("datasets") or {}
+        assert isinstance(datasets.get("enabled"), bool)
+        assert isinstance(datasets.get("questionCount"), int)
+        assert body.get("evaluations") is not None
+        assert body.get("classifier") is not None
+        assert isinstance(body.get("message"), str)
 
     def test_lab_eval_rag_async_returns_202_and_pollable_job(
         self,

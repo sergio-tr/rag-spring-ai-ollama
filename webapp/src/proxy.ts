@@ -1,6 +1,7 @@
 import createMiddleware from "next-intl/middleware";
 import { type NextRequest, NextResponse } from "next/server";
 import { AUTH_ACCESS_COOKIE_NAME } from "@/lib/auth-cookie";
+import { dedupeRepeatedLocaleSegments } from "@/i18n/dedupe-locale-path";
 import { routing } from "@/i18n/routing";
 
 // Force default locale to routing.defaultLocale (ignore Accept-Language).
@@ -29,11 +30,18 @@ function localeFromPath(pathname: string): string {
 }
 
 export default function proxy(request: NextRequest) {
+  const pathnameRaw = request.nextUrl.pathname;
+  const pathname = dedupeRepeatedLocaleSegments(pathnameRaw);
+  if (pathname !== pathnameRaw) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname;
+    return NextResponse.redirect(url);
+  }
+
   if (process.env.NEXT_PUBLIC_SKIP_AUTH === "true") {
     return handleI18n(request);
   }
 
-  const pathname = request.nextUrl.pathname;
   const bare = stripLocale(pathname);
   const isAppRoute =
     bare.startsWith("/projects") ||

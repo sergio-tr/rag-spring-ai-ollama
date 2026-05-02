@@ -8,6 +8,10 @@ import { ClassifierRegistrySection } from "./classifier-registry-section";
 
 const refetch = vi.fn();
 
+vi.mock("@/features/help/HelpPopover", () => ({
+  HelpPopover: () => <button type="button">Help</button>,
+}));
+
 vi.mock("@/features/lab/hooks/use-lab-status", () => ({
   useLabStatus: () => ({ data: { classifier: { configured: true } } }),
 }));

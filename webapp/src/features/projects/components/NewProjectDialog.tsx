@@ -30,11 +30,24 @@ type FormValues = z.infer<typeof schema>;
 type NewProjectDialogProps = {
   /** Optional extra classes for the dialog trigger button. */
   triggerClassName?: string;
+  /**
+   * Controlled mode: omit the default trigger and drive open state from the parent
+   * (e.g. section actions menu). Both must be set together.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
-export function NewProjectDialog({ triggerClassName }: Readonly<NewProjectDialogProps>) {
+export function NewProjectDialog({
+  triggerClassName,
+  open: controlledOpen,
+  onOpenChange,
+}: Readonly<NewProjectDialogProps>) {
   const t = useTranslations("Projects");
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const controlled = controlledOpen !== undefined && onOpenChange !== undefined;
+  const open = controlled ? controlledOpen : uncontrolledOpen;
+  const setOpen = controlled ? onOpenChange : setUncontrolledOpen;
   const create = useCreateProject();
 
   const form = useForm<FormValues>({
@@ -57,9 +70,11 @@ export function NewProjectDialog({ triggerClassName }: Readonly<NewProjectDialog
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger type="button" className={cn(buttonVariants(), triggerClassName)}>
-        {t("newProject")}
-      </DialogTrigger>
+      {!controlled ? (
+        <DialogTrigger type="button" className={cn(buttonVariants(), triggerClassName)}>
+          {t("newProject")}
+        </DialogTrigger>
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("createTitle")}</DialogTitle>

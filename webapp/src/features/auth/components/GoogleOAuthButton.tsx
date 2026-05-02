@@ -4,12 +4,12 @@ import { authApiPath, resolveBrowserProductApiUrl } from "@/lib/api-client";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-type Props = {
+type Props = Readonly<{
   /** Active next-intl locale (sent as query param to the backend OAuth start endpoint). */
   locale: string;
   /** Visible label and accessible name (e.g. next-intl `Auth.oauthGoogleCta`). */
   label: string;
-};
+}>;
 
 type GoogleGIconProps = Readonly<{
   className?: string;
@@ -56,7 +56,7 @@ function GoogleGIcon({ className }: GoogleGIconProps) {
  * Uses {@link resolveBrowserProductApiUrl}: path-only when {@code NEXT_PUBLIC_API_BASE_URL} is empty (nginx same-origin),
  * absolute backend URL when that env points at Spring (needed if you browse {@code WEBAPP_HTTP_PORT} alone).
  */
-export function GoogleOAuthButton({ locale, label }: Readonly<Props>) {
+export function GoogleOAuthButton({ locale, label }: Props) {
   const href = `${resolveBrowserProductApiUrl(authApiPath("/oauth/google/start"))}?locale=${encodeURIComponent(locale)}`;
 
   return (

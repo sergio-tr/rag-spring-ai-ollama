@@ -5,6 +5,7 @@ import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.application.service.ChatMessageWorkService;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.async.lab.LabJobHandler;
 import com.uniovi.rag.service.chat.ChatRetrievalSourceContributor;
@@ -28,6 +29,8 @@ import org.springframework.stereotype.Component;
 public class ChatMessageJobHandler implements LabJobHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ChatMessageJobHandler.class);
+
+    private static final int GENERIC_FAILURE_MESSAGE_MAX_LEN = 600;
 
     private final ProcessQueryService processQueryService;
     private final ChatRetrievalSourceContributor chatRetrievalSourceContributor;
@@ -132,10 +135,14 @@ public class ChatMessageJobHandler implements LabJobHandler {
         } catch (RagServiceException e) {
             log.warn("Chat job {} failed: {}", taskId, e.getMessage());
             chatMessageWorkService.applyAssistantError(assistantId, conversationId, e.getPublicMessage());
-            mutation.markFailed(taskId, e.getPublicMessage());
+            mutation.markFailed(taskId, e.getPublicMessage(), e.getErrorCode().name());
         } catch (Exception e) {
             log.warn("Chat job {} failed", taskId, e);
-            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            String msg =
+                    UserFacingErrorSanitizer.sanitizeOrDefault(
+                            e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName(),
+                            GENERIC_FAILURE_MESSAGE_MAX_LEN,
+                            "Something went wrong while generating a reply.");
             chatMessageWorkService.applyAssistantError(assistantId, conversationId, msg);
             mutation.markFailed(taskId, msg);
         } finally {

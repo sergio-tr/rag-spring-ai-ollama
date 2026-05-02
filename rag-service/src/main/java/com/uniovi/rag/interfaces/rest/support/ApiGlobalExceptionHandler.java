@@ -5,6 +5,7 @@ import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
 import com.uniovi.rag.interfaces.rest.auth.EmailNotVerifiedException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
+import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.support.dto.ApiErrorResponse;
 import com.uniovi.rag.interfaces.rest.support.dto.ApiValidationError;
 import jakarta.validation.ConstraintViolationException;
@@ -178,6 +179,16 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 HttpStatus.NOT_FOUND,
                 safeCode(ex.getCode(), "NOT_FOUND"),
                 safeMessage(ex.getPublicMessage(), "Not found"),
+                null));
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNotFound(NotFoundException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(build(
+                request,
+                HttpStatus.NOT_FOUND,
+                "NOT_FOUND",
+                safeMessage(ex.getMessage(), "Not found"),
                 null));
     }
 

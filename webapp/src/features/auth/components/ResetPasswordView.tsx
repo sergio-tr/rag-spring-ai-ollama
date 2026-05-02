@@ -136,7 +136,7 @@ export function ResetPasswordView() {
             className={
               status === "error" ? "text-destructive text-sm" : "text-muted-foreground text-sm"
             }
-            role={status === "error" ? "alert" : "status"}
+            {...(status === "error" ? { role: "alert" as const } : {})}
           >
             {message}
           </output>

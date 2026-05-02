@@ -15,19 +15,28 @@ import { useProjectList } from "@/features/projects/hooks/use-projects";
 import { useTranslations } from "next-intl";
 import { Fragment, useId, useMemo, useState } from "react";
 
-type MoveConversationDialogProps = {
+type MoveConversationDialogProps = Readonly<{
   sourceProjectId: string;
   conversationId: string | null;
-};
+  /** When false, the dialog is opened only via {@code open}/{@code onOpenChange} (e.g. shell overflow menu). */
+  showTrigger?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}>;
 
 export function MoveConversationDialog({
   sourceProjectId,
   conversationId,
-}: Readonly<MoveConversationDialogProps>) {
+  showTrigger = true,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+}: MoveConversationDialogProps) {
   const t = useTranslations("Chat");
   const tProj = useTranslations("Projects");
   const selectId = useId();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const [destinationId, setDestinationId] = useState("");
   const move = useMoveConversation();
 
@@ -60,16 +69,18 @@ export function MoveConversationDialog({
 
   return (
     <Fragment>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="w-full"
-        disabled={!conversationId}
-        onClick={() => setOpen(true)}
-      >
-        {t("moveConversation")}
-      </Button>
+      {showTrigger ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="w-full"
+          disabled={!conversationId}
+          onClick={() => setOpen(true)}
+        >
+          {t("moveConversation")}
+        </Button>
+      ) : null}
       <Dialog
         open={open}
         onOpenChange={(next) => {

@@ -25,7 +25,7 @@ Copy `.env.example` to `.env` (or use `./docker/scripts/create-env-webapp.sh` fr
 >
 > The Google CTA on `/login` and `/register` reads `NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED` and targets `/api/v5/auth/oauth/google/start` as a plain `<a>` (full-page navigation), not a next-intl `<Link>`, so the browser does not prepend the active locale to that API path. **Google Cloud Console** must list the backend callback URL exactly as composed from `RAG_AUTH_BACKEND_BASE_URL` + `RAG_AUTH_OAUTH_GOOGLE_REDIRECT_PATH` (see `rag-service/README.md` and `rag-service/.env.example`) to avoid `redirect_uri_mismatch`.
 
-**Product API usage (non-exhaustive):** under `NEXT_PUBLIC_RAG_API_PREFIX` (default in `.env.example`): `GET/POST/PATCH/DELETE …/projects`, `PUT …/activate`, `GET/POST …/projects/{id}/documents`, `GET/PUT …/me/preferences`, `GET/PUT …/me/personalization`, `GET …/me/summary`, `GET …/me/documents`, `POST …/me/account/export` (202) + `GET …/me/account/jobs/{id}` + `GET …/me/account/export/{id}/download`, `GET/PUT …/config/user` (legacy; prefer `/me/*` for UI prefs), `GET/PUT/DELETE …/config/project/{id}`, `GET …/config/schema`, `GET/POST/DELETE …/presets`. Auth (via `authApiPath`): `{NEXT_PUBLIC_RAG_API_PREFIX}/auth/login`, `…/register` (**may return 202** when email confirmation is enabled), `…/confirm-email`, `…/forgot-password`, `…/reset-password`, `…/me`, **OAuth** `GET …/oauth/google/start`, `GET …/oauth/google/callback` (backend redirect), `POST …/oauth/exchange` (SPA callback page), refresh via the BFF cookie route (see `src/lib/api-client.ts`). With default prefix **`/api/v5`**, the Google button targets **`/api/v5/auth/oauth/google/start`**. Legacy `/api/auth/*` may still work during transition. Canonical contract: OpenAPI from the backend (`/v3/api-docs` when enabled) and `src/lib/api-client.ts`.
+**Product API usage (non-exhaustive):** under `NEXT_PUBLIC_RAG_API_PREFIX` (default in `.env.example`): `GET/POST/PATCH/DELETE …/projects`, `PUT …/activate`, `GET/POST …/projects/{id}/documents`, `GET/PUT …/me/preferences`, `GET/PUT …/me/personalization` (Settings → User config: structured locale/theme fields; optional read-only JSON diagnostics), `GET …/me/summary`, `GET …/me/documents` (Settings → Data: plain-language usage summary and document library; optional collapsible API reference), `POST …/me/account/export` (202) + `GET …/me/account/jobs/{id}` + `GET …/me/account/export/{id}/download` (Settings → Account: persisted job lifecycle, resume after navigation, trace + explicit ZIP download), `GET/PUT …/config/user` (legacy; prefer `/me/*` for UI prefs), `GET/PUT/DELETE …/config/project/{id}` (Settings → Project: schema-driven fields; destructive clear uses a confirmation dialog), `GET …/config/schema`, `GET/POST/DELETE …/presets` (Settings → Presets: structured fields + read-only payload preview; JSON paste/export under Advanced). Auth (via `authApiPath`): `{NEXT_PUBLIC_RAG_API_PREFIX}/auth/login`, `…/register` (**may return 202** when email confirmation is enabled), `…/confirm-email`, `…/forgot-password`, `…/reset-password`, `…/me`, **OAuth** `GET …/oauth/google/start`, `GET …/oauth/google/callback` (backend redirect), `POST …/oauth/exchange` (SPA callback page), refresh via the BFF cookie route (see `src/lib/api-client.ts`). With default prefix **`/api/v5`**, the Google button targets **`/api/v5/auth/oauth/google/start`**. Legacy `/api/auth/*` may still work during transition. Canonical contract: OpenAPI from the backend (`/v3/api-docs` when enabled) and `src/lib/api-client.ts`.
 
 ### Chat (SSE + conversation context)
 
@@ -37,9 +37,9 @@ Use **`PATCH {product}/conversations/{id}`** from the same UI for `presetId` / `
 
 ### Research Lab
 
-Routes under `src/app/[locale]/(app)/lab/`: **`useLabStatus`** (`src/features/lab/hooks/use-lab-status.ts`) calls **`GET {product}/lab/status`** to enable/disable evaluation buttons and show classifier availability. Long operations use **`POST {product}/lab/evaluations/*`** and **`POST {product}/lab/classifier/*`** with default **async** (**HTTP 202** + `LabJobAcceptedDto`). Progress is tracked with **`followLabJob`** (`src/lib/lab-job-follow.ts`): **polling** via `GET {product}/lab/jobs/{id}` (`src/lib/async-task.ts`) or **SSE** via `GET …/events` (`src/lib/lab-job-sse.ts`). Optional **`?sync=true`** returns inline JSON for quick local checks. Lab results are **reports only** (ADR 0001 — no silent writes to presets or project config).
+Routes under `src/app/[locale]/(app)/lab/`: **`useLabStatus`** (`src/features/lab/hooks/use-lab-status.ts`) calls **`GET {product}/lab/status`** to enable/disable evaluation buttons and show classifier availability. Long operations use **`POST {product}/lab/evaluations/*`** and **`POST {product}/lab/classifier/*`** with default **async** (**HTTP 202** + `LabJobAcceptedDto`). Progress is tracked with **`followLabJob`** (`src/lib/lab-job-follow.ts`): **polling** via `GET {product}/lab/jobs/{id}` (`src/lib/async-task.ts`) or **SSE** via `GET …/events` (`src/lib/lab-job-sse.ts`). Optional **`?sync=true`** returns inline JSON for quick local checks. **Within the same browser tab**, recent async Lab jobs are summarized in **`useLabJobSessionStore`** (`src/features/lab/store/lab-job-session.store.ts`) with **`sessionStorage`** persistence (bounded list) so navigating between Lab subsections or revisiting Lab can show **resume / stale job / completed** messaging via **`LabBackgroundJobBanner`**. Lab results are **reports only** (ADR 0001 — no silent writes to presets or project config).
 
-Playwright specs under `e2e/research/` (Lab) may skip or time out if the classifier URL is unset or evaluation data is not loaded; see messages in the Lab UI when `datasets.enabled` is false.
+Playwright specs under `e2e/research/` (Lab) may skip or time out if the classifier URL is unset or the bundled benchmark workbook is unavailable (`datasets.enabled` follows `datasets.questionCount` > 0 from `GET {product}/lab/status`).
 
 ## Commands
 
@@ -67,14 +67,38 @@ OpenAPI for the backend: `GET http://<backend>:9000/v3/api-docs` (see `rag-servi
 
 `apiFetch` attaches the JWT, retries once on **401** via the BFF route **`{NEXT_PUBLIC_RAG_API_PREFIX}/auth/refresh`** (default **`/api/v5/auth/refresh`**), then throws. If the session cannot be refreshed, **`SessionExpiredBridge`** redirects to `/{locale}/login`. Login and register calls use `skipCredentials: true` and do not trigger that redirect.
 
+After a successful session commit, the webapp schedules a **silent refresh** about **two minutes before** the access JWT `exp` (`src/lib/auth-access-scheduler.ts`), so active users are less likely to hit 401 during SSE or ordinary requests. Backend defaults (override via env): access token **3600s**, refresh token **604800s** — see `rag-service/src/main/resources/application.properties` (`rag.jwt.access-ttl-seconds`, `rag.jwt.refresh-ttl-seconds`).
+
+### Local HTTP / LAN / mobile smoke
+
+- **`npm run dev`** — listens on `localhost:3000` only (default Next dev server).
+- **`npm run dev:lan`** — binds **`0.0.0.0:3000`** so other devices on the LAN can load `http://<your-host-ip>:3000`.
+- Point **`NEXT_PUBLIC_API_BASE_URL`** at a backend URL reachable from the phone (often `http://<your-host-ip>:9000`).
+- Add that browser origin to **`RAG_CORS_ALLOWED_ORIGINS`** on Spring (comma-separated patterns). Dev defaults allow `http(s)://localhost:*` and `http(s)://127.0.0.1:*` only — **not** arbitrary LAN IPs.
+
+### HTTPS in local dev
+
+- Prefer the **reverse-proxy** profile described in **`docker/compose.dev-proxy.yml`** (HTTP on `${REVERSE_PROXY_DEV_HTTP_PORT:-80}`, HTTPS on `${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}`). Mount TLS material via `TLS_CERT_PATH` / `TLS_KEY_PATH` (see `reverse-proxy` Dockerfile / README). Tools such as **[mkcert](https://github.com/FiloSottile/mkcert)** are suitable for generating trusted local certificates.
+- Alternatively terminate TLS only on Next (custom server) — not the default in this repo; proxy path keeps one origin for browser + BFF cookies.
+
+**Chat layout / toolbar overflow (product notes):** [`docs/frontend/chat-layout.md`](../docs/frontend/chat-layout.md).
+
 ## E2E
 
 Layout and CI policy: **`e2e/README.md`**. **`@fullstack`** specs live under domain folders (`e2e/auth/`, `e2e/projects/`, …) and require seed credentials (`E2E_SEED_EMAIL` / `E2E_SEED_PASSWORD`, defaults `dev@local.test` / `dev`) plus a reachable API. Canonical strategy: [`docs/development/e2e-testing-strategy.md`](../docs/development/e2e-testing-strategy.md); config: `playwright.config.ts`.
 
-## TypeDoc
+## TypeDoc (generated HTML API docs)
+
+From **`webapp/`**:
 
 ```bash
 npm run doc
 ```
 
-Output: `docs/api/` (often gitignored).
+| Topic | Detail |
+| ----- | ------ |
+| **Output directory** | `webapp/docs/api/` (configured in [`typedoc.json`](typedoc.json); **`entryPoints`** include `src/app`, `src/components`, `src/features`, `src/hooks`, `src/store`, `src/lib`, `src/types`) |
+| **Git** | **Do not commit** generated HTML — `webapp/docs/api/` is listed in the repo root [`.gitignore`](../.gitignore). Treat docs as **local output or CI artifacts** only. |
+| **CI** | Workflow [`.github/workflows/reusable-ci-core.yml`](../.github/workflows/reusable-ci-core.yml) job **`core_webapp`** runs `npm run doc` after `npm run build` and uploads the folder as artifact **`webapp-typedoc-api`** (retention 14 days). Download from the workflow run’s **Artifacts** to browse offline. |
+
+Operational detail stays in this README per [`documentation-guidelines.md`](../docs/development/documentation-guidelines.md).

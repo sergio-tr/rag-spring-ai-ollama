@@ -11,6 +11,7 @@ import {
   getRagApiProductPrefix,
   getSafeApiErrorMessage,
   onApiUnauthorized,
+  sanitizePlainErrorTextForUi,
 } from "./api-client";
 import * as accessToken from "./access-token";
 
@@ -642,5 +643,25 @@ describe("apiDownloadBlob", () => {
     });
 
     await apiDownloadBlob("/a", { skipCredentials: true });
+  });
+});
+
+describe("sanitizePlainErrorTextForUi", () => {
+  it("returns trimmed plain text", () => {
+    expect(sanitizePlainErrorTextForUi("  hello  ", 100)).toBe("hello");
+  });
+
+  it("returns empty for HTML-looking bodies", () => {
+    expect(sanitizePlainErrorTextForUi("<html><body>x</body></html>", 80)).toBe("");
+  });
+
+  it("returns empty for multi-line stack traces", () => {
+    const stack = `java.lang.Error: x\n\tat com.example.A.a(A.java:1)\n\tat com.example.B.b(B.java:2)`;
+    expect(sanitizePlainErrorTextForUi(stack, 200)).toBe("");
+  });
+
+  it("truncates long harmless messages", () => {
+    const long = "x".repeat(400);
+    expect(sanitizePlainErrorTextForUi(long, 50).length).toBeLessThanOrEqual(52);
   });
 });
