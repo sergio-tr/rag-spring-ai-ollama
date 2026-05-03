@@ -44,7 +44,7 @@ public class ResolvedConfigSnapshotEntityMapper {
             Map<String, Object> knowledgeBuildProjectionNested) {
 
         public ResolvedConfigSnapshotInsertContext {
-            Objects.requireNonNull(creatingUserId, "creatingUserId");
+            Objects.requireNonNull(creatingUserId, PROVENANCE_CREATING_USER_ID);
             Objects.requireNonNull(configHash, "configHash");
             conversationId = Objects.requireNonNullElseGet(conversationId, Optional::empty);
             messageId = Objects.requireNonNullElseGet(messageId, Optional::empty);
