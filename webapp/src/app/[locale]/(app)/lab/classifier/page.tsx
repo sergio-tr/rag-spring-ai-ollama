@@ -22,9 +22,7 @@ export default function LabClassifierPage() {
     <div className="flex flex-col gap-6">
       <p className="text-muted-foreground border-l-4 border-primary/40 pl-3 text-sm">{t("adrDisclaimer")}</p>
       {classifierOk ? null : (
-        <p className="text-amber-600 text-sm dark:text-amber-500" role="status">
-          {t("classifierNotConfiguredWarn")}
-        </p>
+        <output className="text-amber-600 block text-sm dark:text-amber-500">{t("classifierNotConfiguredWarn")}</output>
       )}
 
       <Card>

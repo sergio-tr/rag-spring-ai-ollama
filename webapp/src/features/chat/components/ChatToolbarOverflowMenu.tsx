@@ -16,17 +16,11 @@ import { resolvePresetSelectLabel } from "@/features/chat/lib/conversation-prese
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { cn } from "@/lib/utils";
 
-function MenuHint({
-  children,
-  role,
-}: Readonly<{ children: React.ReactNode; role?: "status" }>) {
+function MenuHint({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <span
-      role={role}
-      className="text-muted-foreground mt-0.5 block max-w-[18rem] text-xs font-normal leading-snug"
-    >
+    <output className="text-muted-foreground mt-0.5 block max-w-[18rem] text-xs font-normal leading-snug">
       {children}
-    </span>
+    </output>
   );
 }
 
@@ -139,9 +133,7 @@ export function ChatToolbarOverflowMenu() {
               <p className="text-muted-foreground text-xs">{tChat("presetCatalogLoading")}</p>
             ) : null}
             {api?.presets?.length === 0 && !api.presetsError ? (
-              <p className="text-muted-foreground text-xs" role="status">
-                {tChat("presetCatalogEmpty")}
-              </p>
+              <output className="text-muted-foreground block text-xs">{tChat("presetCatalogEmpty")}</output>
             ) : null}
             {api?.presetsError ? <p className="text-destructive text-xs">{tChat("presetsLoadError")}</p> : null}
           </div>
@@ -164,9 +156,7 @@ export function ChatToolbarOverflowMenu() {
               />
               <span>{tChat("limitDocuments")}</span>
             </label>
-            {api?.limitDocsToggleNotice ? (
-              <MenuHint role="status">{api.limitDocsToggleNotice}</MenuHint>
-            ) : null}
+            {api?.limitDocsToggleNotice ? <MenuHint>{api.limitDocsToggleNotice}</MenuHint> : null}
             <button
               type="button"
               data-testid="chat-open-documents-sheet"

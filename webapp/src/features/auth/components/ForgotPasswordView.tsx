@@ -58,11 +58,9 @@ export function ForgotPasswordView() {
             </p>
           )}
         </div>
-        {message && (
-          <p className="text-muted-foreground text-sm" role="status">
-            {message}
-          </p>
-        )}
+        {message ? (
+          <output className="text-muted-foreground block text-sm">{message}</output>
+        ) : null}
         <Button type="submit" disabled={status === "busy" || status === "done"}>
           {t("forgotPasswordCta")}
         </Button>

@@ -53,7 +53,7 @@ import type {
 import { ChevronDown, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
@@ -75,6 +75,18 @@ async function cancelChatJob(jobId: string, signal?: AbortSignal): Promise<void>
 
 function isAssistantRetryable(status: string | null | undefined): boolean {
   return status === "ERROR" || status === "CANCELLED";
+}
+
+/** Defers draft hydration so nested callbacks stay shallow (Sonar nesting limit). */
+function scheduleHydrateComposerFromDraft(
+  content: string,
+  isCancelled: () => boolean,
+  setInput: Dispatch<SetStateAction<string>>,
+): void {
+  setTimeout(() => {
+    if (isCancelled()) return;
+    setInput((prev) => (prev.trim() === "" ? content : prev));
+  }, 0);
 }
 
 function ChatPageInner() {
@@ -202,7 +214,7 @@ function ChatPageInner() {
     return `${activeConv.id}:${activeConv.presetId ?? ""}:${activeConv.effectivePresetId ?? ""}`;
   }, [activeConv]);
 
-  const presetsCatalogEmpty = presets !== undefined && presets.length === 0 && !presetsError;
+  const presetsCatalogEmpty = !presetsError && presets?.length === 0;
 
   const syntheticPresetOptionNeeded = useMemo(() => {
     if (!presetSelectValue) return false;
@@ -359,15 +371,7 @@ function ChatPageInner() {
     void apiFetch<ConversationDraftDto>(apiProductPath(`/conversations/${conversationId}/draft`))
       .then((d) => {
         if (cancelled) return;
-        const content = d.content ?? "";
-        setTimeout(() => {
-          setInput((prev) => {
-            if (prev.trim() !== "") {
-              return prev;
-            }
-            return content;
-          });
-        }, 0);
+        scheduleHydrateComposerFromDraft(d.content ?? "", () => cancelled, setInput);
       })
       .catch(() => {});
     return () => {
@@ -1137,14 +1141,13 @@ function ChatPageInner() {
             </div>
           ))}
           {optimisticVisible ? (
-            <div
-              role="article"
+            <article
               aria-label={t("optimisticUserAria")}
               data-testid="chat-optimistic-user"
               className="ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
             >
               <p className="whitespace-pre-wrap break-words">{optimisticUserContent}</p>
-            </div>
+            </article>
           ) : null}
           {showAssistantPipelineRow && assistantPipelineLabel ? (
             <div className="mr-auto max-w-[85%] w-full min-w-0">

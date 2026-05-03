@@ -22,8 +22,7 @@ const variantClass: Record<TraceStatus, string> = {
  */
 export function InlineHelpStatus({ status, label, className }: InlineHelpStatusProps) {
   return (
-    <p
-      role="status"
+    <output
       aria-live={status === "in_progress" ? "polite" : undefined}
       className={cn(
         "inline-flex max-w-full items-center rounded-md border px-2 py-1 text-xs font-medium",
@@ -33,6 +32,6 @@ export function InlineHelpStatus({ status, label, className }: InlineHelpStatusP
       )}
     >
       <span className="truncate">{label}</span>
-    </p>
+    </output>
   );
 }

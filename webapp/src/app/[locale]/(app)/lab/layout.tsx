@@ -12,7 +12,7 @@ const tabDefs = [
   { href: "/lab/classifier", labelKey: "labClassifier" as const },
 ];
 
-export default function LabLayout({ children }: { children: ReactNode }) {
+export default function LabLayout({ children }: Readonly<{ children: ReactNode }>) {
   const t = useTranslations("Lab");
   const tabs = tabDefs.map((d) => ({ href: d.href, label: t(d.labelKey) }));
 
