@@ -169,7 +169,17 @@ class RuntimeTraceReplayInputLoaderTest {
                         resolved.provenance());
         ResolvedConfigSnapshotEntityMapper mapper = new ResolvedConfigSnapshotEntityMapper(om);
         ResolvedConfigSnapshotEntity e =
-                mapper.toNewEntity(resolved, domainSnap, userId, "hash", Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(projectId), null);
+                mapper.toNewEntity(
+                        resolved,
+                        domainSnap,
+                        ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.of(
+                                userId,
+                                "hash",
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.of(projectId)));
         e.setId(id);
         Map<String, Object> prov = new LinkedHashMap<>();
         prov.put(ResolvedConfigSnapshotEntityMapper.PROVENANCE_SCHEMA_VERSION, ResolvedConfigSnapshotEntityMapper.SNAPSHOT_SCHEMA_VERSION);

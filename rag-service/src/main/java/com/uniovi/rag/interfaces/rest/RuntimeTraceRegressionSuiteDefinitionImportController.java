@@ -51,9 +51,7 @@ public class RuntimeTraceRegressionSuiteDefinitionImportController {
             UUID createdId = importService.importDefinitionZip(body, userId);
             String location = productBasePath + "/runtime-trace-regression-suite-definitions/" + createdId;
             return ResponseEntity.created(URI.create(location)).build();
-        } catch (RuntimeTraceRegressionSuiteDefinitionImportRejectedException ex) {
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalArgumentException ex) {
+        } catch (RuntimeTraceRegressionSuiteDefinitionImportRejectedException | IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
         } catch (IllegalStateException ex) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();

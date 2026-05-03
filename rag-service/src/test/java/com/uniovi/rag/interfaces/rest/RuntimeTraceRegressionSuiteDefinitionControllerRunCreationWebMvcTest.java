@@ -94,12 +94,17 @@ class RuntimeTraceRegressionSuiteDefinitionControllerRunCreationWebMvcTest {
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunImportPreviewService runImportPreviewService;
 
+    @MockitoBean
+    private DefinitionRunZipServiceBundle runZipServices;
+
     private UUID userId;
     private UUID definitionId;
     private UUID conversationId;
 
     @BeforeEach
     void setUp() {
+        DefinitionRunZipBundleStubbing.linkMockBundleToZipServices(
+                runZipServices, runExportService, runImportService, runImportPreviewService);
         userId = UUID.randomUUID();
         definitionId = UUID.randomUUID();
         conversationId = UUID.randomUUID();

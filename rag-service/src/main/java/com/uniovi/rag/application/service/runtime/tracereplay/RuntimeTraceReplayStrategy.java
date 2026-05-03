@@ -30,7 +30,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -123,7 +122,7 @@ public class RuntimeTraceReplayStrategy {
                         true,
                         Optional.of(kind),
                         List.of("replay_pin=" + kind),
-                        normalizedInputs(ctxAfterQu, plan),
+                        normalizedInputs(plan),
                         Optional.empty(),
                         Optional.empty());
         DeterministicToolExecutionResult toolResult = deterministicToolExecutor.execute(decision, ctxAfterQu, plan);
@@ -312,7 +311,7 @@ public class RuntimeTraceReplayStrategy {
                 || "ChunkDenseMetadataWorkflow".equals(workflowName);
     }
 
-    private static Map<String, String> normalizedInputs(ExecutionContext ctx, QueryPlan plan) {
+    private static Map<String, String> normalizedInputs(QueryPlan plan) {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("queryText", plan.rewrittenQueryText());
         m.put("correlationId", plan.correlationId());

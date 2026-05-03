@@ -77,6 +77,9 @@ class RuntimeTraceRegressionSuiteDefinitionDetailGetFdParityWebMvcTest {
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunImportPreviewService runImportPreviewService;
 
+    @MockitoBean
+    private DefinitionRunZipServiceBundle runZipServices;
+
     private static ObjectMapper fd4ObjectMapper() {
         return new ObjectMapper()
                 .registerModule(new JavaTimeModule())
@@ -90,6 +93,8 @@ class RuntimeTraceRegressionSuiteDefinitionDetailGetFdParityWebMvcTest {
 
     @BeforeEach
     void setUp() {
+        DefinitionRunZipBundleStubbing.linkMockBundleToZipServices(
+                runZipServices, runExportService, runImportService, runImportPreviewService);
         userId = UUID.randomUUID();
         definitionId = UUID.randomUUID();
         RagPrincipal principal = new RagPrincipal(userId, "u@test", "USER");

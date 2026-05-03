@@ -6,7 +6,6 @@ import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTr
 import com.uniovi.rag.application.service.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportArtifact;
-import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportService;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunexport.RuntimeTraceRegressionSuiteRunExportSizeExceededException;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportRejectedException;
 import com.uniovi.rag.application.service.runtime.traceregressionsuiterunimport.RuntimeTraceRegressionSuiteRunImportService;
@@ -24,8 +23,6 @@ import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTrace
 import com.uniovi.rag.domain.runtime.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionUserSummary;
 import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSnapshot;
 import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSourceType;
-import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionByConversationEntryDto;
-import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionByTraceIdsEntryDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionDetailDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionListResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.traceregressionsuitedefinition.RuntimeTraceRegressionSuiteDefinitionSummaryDto;
@@ -77,14 +74,8 @@ import java.util.UUID;
  * {@link RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUserAndDefinition} only (no global
  * {@link RuntimeTraceRegressionSuiteRunPersistenceService#deleteRunForUser(UUID, UUID)}).
  *
- * <p>P53: definition-scoped run ZIP {@code GET …/export} — gate then {@link RuntimeTraceRegressionSuiteRunExportService#exportRunZipForDefinition}
- * only (controller does not call {@link RuntimeTraceRegressionSuiteRunPersistenceService} on that path).
- *
- * <p>P54: definition-gated run ZIP {@code POST …/runs/import} — gate before body read, then
- * {@link RuntimeTraceRegressionSuiteRunImportService#importRunZipForDefinition} only (no {@code createRun} in this controller).
- *
- * <p>P55: definition-gated run ZIP preview {@code POST …/runs/import/preview} — gate before body read, then
- * {@link RuntimeTraceRegressionSuiteRunImportPreviewService#previewImportZipForDefinition} only (no persistence, no import service on that path).
+ * <p>P53–P55: definition-scoped run ZIP export / import / preview — gated routes delegate to the corresponding services exposed via
+ * {@link DefinitionRunZipServiceBundle}.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}")
@@ -102,9 +93,7 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
     private final RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
     private final ObjectMapper strictMutationMapper;
     private final String productBasePath;
-    private final RuntimeTraceRegressionSuiteRunExportService runExportService;
-    private final RuntimeTraceRegressionSuiteRunImportService runImportService;
-    private final RuntimeTraceRegressionSuiteRunImportPreviewService runImportPreviewService;
+    private final DefinitionRunZipServiceBundle runZipServices;
 
     public RuntimeTraceRegressionSuiteDefinitionController(
             RuntimeTraceRegressionSuiteDefinitionService definitionService,
@@ -113,17 +102,13 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             @Qualifier(RegressionSuiteDefinitionMutationJacksonConfiguration.DEFINITION_MUTATION_STRICT_OBJECT_MAPPER)
                     ObjectMapper strictMutationMapper,
             @Value("${rag.api.product-base-path}") String productBasePath,
-            RuntimeTraceRegressionSuiteRunExportService runExportService,
-            RuntimeTraceRegressionSuiteRunImportService runImportService,
-            RuntimeTraceRegressionSuiteRunImportPreviewService runImportPreviewService) {
+            DefinitionRunZipServiceBundle runZipServices) {
         this.definitionService = definitionService;
         this.suiteService = suiteService;
         this.runPersistenceService = runPersistenceService;
         this.strictMutationMapper = strictMutationMapper;
         this.productBasePath = productBasePath;
-        this.runExportService = runExportService;
-        this.runImportService = runImportService;
-        this.runImportPreviewService = runImportPreviewService;
+        this.runZipServices = runZipServices;
     }
 
     @PostMapping(value = "/runtime-trace-regression-suite-definitions", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -428,7 +413,7 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
             throw new NotFoundException("definition not found");
         }
         try {
-            return toZipResponse(runExportService.exportRunZipForDefinition(runId, userId, definitionId));
+            return toZipResponse(runZipServices.runExportService().exportRunZipForDefinition(runId, userId, definitionId));
         } catch (NotFoundException ex) {
             return ResponseEntity.notFound().build();
         } catch (RuntimeTraceRegressionSuiteRunExportSizeExceededException ex) {
@@ -461,12 +446,10 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         }
         byte[] body = bodyOpt.get();
         try {
-            UUID createdId = runImportService.importRunZipForDefinition(body, userId, definitionId);
+            UUID createdId = runZipServices.runImportService().importRunZipForDefinition(body, userId, definitionId);
             String location = productBasePath + "/runtime-trace-regression-suite-runs/" + createdId;
             return ResponseEntity.created(URI.create(location)).build();
-        } catch (RuntimeTraceRegressionSuiteRunImportRejectedException ex) {
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalArgumentException ex) {
+        } catch (RuntimeTraceRegressionSuiteRunImportRejectedException | IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
         }
     }
@@ -497,11 +480,9 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
         byte[] body = bodyOpt.get();
         try {
             RuntimeTraceRegressionSuiteRunImportPreviewResponseDto dto =
-                    runImportPreviewService.previewImportZipForDefinition(body, definitionId);
+                    runZipServices.runImportPreviewService().previewImportZipForDefinition(body, definitionId);
             return ResponseEntity.ok(dto);
-        } catch (RuntimeTraceRegressionSuiteRunImportPreviewRejectedException ex) {
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalArgumentException ex) {
+        } catch (RuntimeTraceRegressionSuiteRunImportPreviewRejectedException | IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
         }
     }
@@ -607,53 +588,53 @@ public class RuntimeTraceRegressionSuiteDefinitionController {
 
     private static boolean isUpsertAdapterValid(RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto) {
         List<RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto> entries = dto.entries();
+        if (!upsertEntriesStructureOk(entries)) {
+            return false;
+        }
+        if (!upsertNameOk(dto.name())) {
+            return false;
+        }
+        if (!upsertDescriptionOk(dto.description())) {
+            return false;
+        }
+        return entries.stream().allMatch(RuntimeTraceRegressionSuiteDefinitionController::upsertEntryPayloadOk);
+    }
+
+    private static boolean upsertEntriesStructureOk(List<RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto> entries) {
         if (entries == null || entries.size() < ENTRIES_MIN || entries.size() > ENTRIES_MAX) {
             return false;
         }
-        for (RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto e : entries) {
-            if (e == null) {
-                return false;
-            }
-        }
+        return entries.stream().noneMatch(Objects::isNull);
+    }
 
-        String name = dto.name();
+    private static boolean upsertNameOk(String name) {
         if (name == null || name.trim().isEmpty()) {
             return false;
         }
         String trimmedName = name.trim();
-        if (trimmedName.length() < NAME_MIN_LEN || trimmedName.length() > NAME_MAX_LEN) {
-            return false;
-        }
+        return trimmedName.length() >= NAME_MIN_LEN && trimmedName.length() <= NAME_MAX_LEN;
+    }
 
-        String description = dto.description();
-        if (description != null) {
-            String dTrim = description.trim();
-            if (!dTrim.isEmpty() && dTrim.length() > DESCRIPTION_MAX_LEN) {
+    private static boolean upsertDescriptionOk(String description) {
+        if (description == null) {
+            return true;
+        }
+        String dTrim = description.trim();
+        return dTrim.isEmpty() || dTrim.length() <= DESCRIPTION_MAX_LEN;
+    }
+
+    private static boolean upsertEntryPayloadOk(RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto e) {
+        if (e instanceof RuntimeTraceRegressionSuiteDefinitionUpsertByTraceIdsEntryRequestDto w3) {
+            List<UUID> traceIds = w3.getTraceIds();
+            if (traceIds == null || traceIds.stream().anyMatch(Objects::isNull)) {
                 return false;
             }
+            return traceIds.size() <= TRACE_IDS_MAX;
         }
-
-        for (RuntimeTraceRegressionSuiteDefinitionUpsertEntryRequestDto e : entries) {
-            if (e instanceof RuntimeTraceRegressionSuiteDefinitionUpsertByTraceIdsEntryRequestDto w3) {
-                List<UUID> traceIds = w3.getTraceIds();
-                if (traceIds == null) {
-                    return false;
-                }
-                if (traceIds.stream().anyMatch(Objects::isNull)) {
-                    return false;
-                }
-                if (traceIds.size() > TRACE_IDS_MAX) {
-                    return false;
-                }
-            } else if (e instanceof RuntimeTraceRegressionSuiteDefinitionUpsertByConversationEntryRequestDto w4) {
-                if (w4.getConversationId() == null) {
-                    return false;
-                }
-            } else {
-                return false;
-            }
+        if (e instanceof RuntimeTraceRegressionSuiteDefinitionUpsertByConversationEntryRequestDto w4) {
+            return w4.getConversationId() != null;
         }
-        return true;
+        return false;
     }
 
     private static CreateDefinitionCommand toCreateCommand(RuntimeTraceRegressionSuiteDefinitionUpsertRequestDto dto) {

@@ -26,6 +26,11 @@ public class RuntimeTraceRegressionSuiteDefinitionImportPreviewService {
 
     public static final long MAX_PREVIEW_ZIP_BYTES = 2097152L;
 
+    private static final String MANIFEST_KEY_EXPORT_KIND = "exportKind";
+    private static final String MANIFEST_KEY_SCHEMA_VERSION = "schemaVersion";
+    private static final String MANIFEST_KEY_TRUNCATED = "truncated";
+    private static final String MANIFEST_KEY_ZIP_SIZE_BYTES = "zipSizeBytes";
+
     private final ObjectMapper objectMapper;
 
     public RuntimeTraceRegressionSuiteDefinitionImportPreviewService() {
@@ -67,24 +72,24 @@ public class RuntimeTraceRegressionSuiteDefinitionImportPreviewService {
     }
 
     private void validateManifest(JsonNode root, int bodyLength) {
-        if (!root.hasNonNull("exportKind")
-                || !root.get("exportKind").isTextual()
-                || !"REGRESSION_SUITE_DEFINITION".equals(root.get("exportKind").asText())) {
+        if (!root.hasNonNull(MANIFEST_KEY_EXPORT_KIND)
+                || !root.get(MANIFEST_KEY_EXPORT_KIND).isTextual()
+                || !"REGRESSION_SUITE_DEFINITION".equals(root.get(MANIFEST_KEY_EXPORT_KIND).asText())) {
             throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid manifest");
         }
-        if (!root.has("schemaVersion")
-                || !root.get("schemaVersion").isIntegralNumber()
-                || root.get("schemaVersion").intValue() != 1) {
+        if (!root.has(MANIFEST_KEY_SCHEMA_VERSION)
+                || !root.get(MANIFEST_KEY_SCHEMA_VERSION).isIntegralNumber()
+                || root.get(MANIFEST_KEY_SCHEMA_VERSION).intValue() != 1) {
             throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid manifest");
         }
-        if (!root.has("truncated")
-                || !root.get("truncated").isBoolean()
-                || root.get("truncated").booleanValue()) {
+        if (!root.has(MANIFEST_KEY_TRUNCATED)
+                || !root.get(MANIFEST_KEY_TRUNCATED).isBoolean()
+                || root.get(MANIFEST_KEY_TRUNCATED).booleanValue()) {
             throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid manifest");
         }
-        if (!root.has("zipSizeBytes")
-                || !root.get("zipSizeBytes").isIntegralNumber()
-                || root.get("zipSizeBytes").longValue() != (long) bodyLength) {
+        if (!root.has(MANIFEST_KEY_ZIP_SIZE_BYTES)
+                || !root.get(MANIFEST_KEY_ZIP_SIZE_BYTES).isIntegralNumber()
+                || root.get(MANIFEST_KEY_ZIP_SIZE_BYTES).longValue() != bodyLength) {
             throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid manifest");
         }
     }
@@ -96,11 +101,7 @@ public class RuntimeTraceRegressionSuiteDefinitionImportPreviewService {
             if (e1 == null || e1.isDirectory() || entryNameIsDirectory(e1.getName())) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip");
             }
-            try {
-                ZipIoGuards.requireSafeEntryName(e1.getName());
-            } catch (IOException ex) {
-                throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip", ex);
-            }
+            requireSafeZipEntryName(e1.getName());
             if (!"manifest.json".equals(e1.getName()) || e1.getMethod() != ZipEntry.STORED) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip");
             }
@@ -111,11 +112,7 @@ public class RuntimeTraceRegressionSuiteDefinitionImportPreviewService {
             if (e2 == null || e2.isDirectory() || entryNameIsDirectory(e2.getName())) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip");
             }
-            try {
-                ZipIoGuards.requireSafeEntryName(e2.getName());
-            } catch (IOException ex) {
-                throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip", ex);
-            }
+            requireSafeZipEntryName(e2.getName());
             if (!"definition.json".equals(e2.getName()) || e2.getMethod() != ZipEntry.STORED) {
                 throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip");
             }
@@ -134,5 +131,13 @@ public class RuntimeTraceRegressionSuiteDefinitionImportPreviewService {
 
     private static boolean entryNameIsDirectory(String name) {
         return name != null && name.endsWith("/");
+    }
+
+    private static void requireSafeZipEntryName(String entryName) {
+        try {
+            ZipIoGuards.requireSafeEntryName(entryName);
+        } catch (IOException ex) {
+            throw new RuntimeTraceRegressionSuiteDefinitionImportPreviewRejectedException("invalid zip", ex);
+        }
     }
 }

@@ -8,7 +8,6 @@ import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayRequest;
 import com.uniovi.rag.domain.runtime.tracereplay.RuntimeTraceReplayResult;
 import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchItemOutcome;
 import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchItemResult;
-import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchMode;
 import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchOutcome;
 import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchRequest;
 import com.uniovi.rag.domain.runtime.tracereplaybatch.RuntimeTraceReplayBatchResult;
