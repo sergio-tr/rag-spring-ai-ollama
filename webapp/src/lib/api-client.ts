@@ -197,10 +197,41 @@ function looksLikeHtml(body: string): boolean {
   );
 }
 
-/** Backend job `errorMessage` values must never be shown raw when they look like stacks. */
+/** ASCII whitespace roughly matching `\s` for stack-frame detection (linear-time; avoids regex ReDoS). */
+function isAsciiLikeWhitespace(c: number): boolean {
+  return c === 9 || c === 10 || c === 11 || c === 12 || c === 13 || c === 32;
+}
+
+/**
+ * Backend job errorMessage values must never be shown raw when they look like stacks.
+ *
+ * Equivalent intent to matching `\n` + optional ASCII-like whitespace + `at` + whitespace, twice or more,
+ * without super-linear regex backtracking (Sonar S5852).
+ */
 function looksLikeStackTrace(s: string): boolean {
-  const atFrames = s.match(/\n\s*at\s+/g);
-  return (atFrames?.length ?? 0) >= 2;
+  let count = 0;
+  let searchFrom = 0;
+  while (searchFrom < s.length) {
+    const nl = s.indexOf("\n", searchFrom);
+    if (nl === -1) {
+      break;
+    }
+    let j = nl + 1;
+    while (j < s.length && isAsciiLikeWhitespace(s.charCodeAt(j))) {
+      j++;
+    }
+    const at0 = s.charCodeAt(j);
+    const at1 = s.charCodeAt(j + 1);
+    const afterAt = s.charCodeAt(j + 2);
+    if (at0 === 97 && at1 === 116 && isAsciiLikeWhitespace(afterAt)) {
+      count++;
+      if (count >= 2) {
+        return true;
+      }
+    }
+    searchFrom = nl + 1;
+  }
+  return false;
 }
 
 function trimSafeMessage(s: string, max = 280): string {
@@ -237,7 +268,7 @@ function extractValidationDetails(parsed: unknown): Record<string, unknown> | un
   }
   const errors = o.errors;
   if (Array.isArray(errors)) {
-    return { errors: errors as unknown[] };
+    return { errors };
   }
   return undefined;
 }
@@ -255,8 +286,10 @@ function buildSafeMessage(args: {
   if (status === 403) return "Forbidden.";
   if (status === 404) return "Not found.";
 
-  const fromJson = parsedJson !== null ? extractJsonDetail(parsedJson) : null;
-  if (fromJson) return fromJson;
+  const fromJson = parsedJson === null ? null : extractJsonDetail(parsedJson);
+  if (fromJson !== null && fromJson !== "") {
+    return fromJson;
+  }
 
   if (kind === "html" || contentType?.includes("text/html") || looksLikeHtml(bodyText)) {
     if (status === 502 || status === 503 || status === 504) {
@@ -293,7 +326,8 @@ function classifyErrorBody(contentType: string | null, bodyText: string): {
 } {
   if (contentType?.includes("application/json")) {
     try {
-      return { bodyKind: "json", parsedJson: JSON.parse(bodyText) as unknown };
+      const parsedJson: unknown = JSON.parse(bodyText);
+      return { bodyKind: "json", parsedJson };
     } catch {
       return { bodyKind: "text", parsedJson: null };
     }
@@ -301,7 +335,8 @@ function classifyErrorBody(contentType: string | null, bodyText: string): {
   const trimmed = bodyText.trim();
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
-      return { bodyKind: "json", parsedJson: JSON.parse(bodyText) as unknown };
+      const parsedJson: unknown = JSON.parse(bodyText);
+      return { bodyKind: "json", parsedJson };
     } catch {
       /* fall through */
     }
@@ -378,6 +413,44 @@ export function getSafeApiErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function throwIfNetworkFailure(e: unknown, url: string, method: string): never {
+  const isAbort = e instanceof DOMException && e.name === "AbortError";
+  throw new ApiError(0, isAbort ? "Request was cancelled." : "Network error. Check connection and server availability.", {
+    kind: isAbort ? "abort" : "network",
+    url,
+    method,
+  });
+}
+
+async function fetchProductOnce(
+  doRequest: () => Promise<Response>,
+  url: string,
+  method: string,
+): Promise<Response> {
+  try {
+    return await doRequest();
+  } catch (e) {
+    throwIfNetworkFailure(e, url, method);
+  }
+}
+
+async function preferFreshResponseAfter401(
+  res: Response,
+  doRequest: () => Promise<Response>,
+  skipCredentials: boolean | undefined,
+  url: string,
+  method: string,
+): Promise<Response> {
+  if (res.status !== 401 || skipCredentials) {
+    return res;
+  }
+  const refreshed = await tryRefreshOnce();
+  if (!refreshed) {
+    return res;
+  }
+  return fetchProductOnce(doRequest, url, method);
+}
+
 /**
  * Typed fetch to the Spring (or BFF) API with trace context and session cookies.
  */
@@ -403,33 +476,8 @@ export async function apiFetch<T = unknown>(
     allowFormDataContentTypeRemoval: true,
   });
 
-  let res: Response;
-  try {
-    res = await doRequest();
-  } catch (e) {
-    const isAbort = e instanceof DOMException && e.name === "AbortError";
-    throw new ApiError(0, isAbort ? "Request was cancelled." : "Network error. Check connection and server availability.", {
-      kind: isAbort ? "abort" : "network",
-      url,
-      method,
-    });
-  }
-
-  if (res.status === 401 && !skipCredentials) {
-    const refreshed = await tryRefreshOnce();
-    if (refreshed) {
-      try {
-        res = await doRequest();
-      } catch (e) {
-        const isAbort = e instanceof DOMException && e.name === "AbortError";
-        throw new ApiError(0, isAbort ? "Request was cancelled." : "Network error. Check connection and server availability.", {
-          kind: isAbort ? "abort" : "network",
-          url,
-          method,
-        });
-      }
-    }
-  }
+  let res = await fetchProductOnce(doRequest, url, method);
+  res = await preferFreshResponseAfter401(res, doRequest, skipCredentials, url, method);
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -479,33 +527,8 @@ export async function apiDownloadBlob(path: string, options: ApiClientOptions = 
     allowFormDataContentTypeRemoval: false,
   });
 
-  let res: Response;
-  try {
-    res = await doRequest();
-  } catch (e) {
-    const isAbort = e instanceof DOMException && e.name === "AbortError";
-    throw new ApiError(0, isAbort ? "Request was cancelled." : "Network error. Check connection and server availability.", {
-      kind: isAbort ? "abort" : "network",
-      url,
-      method,
-    });
-  }
-
-  if (res.status === 401 && !skipCredentials) {
-    const refreshed = await tryRefreshOnce();
-    if (refreshed) {
-      try {
-        res = await doRequest();
-      } catch (e) {
-        const isAbort = e instanceof DOMException && e.name === "AbortError";
-        throw new ApiError(0, isAbort ? "Request was cancelled." : "Network error. Check connection and server availability.", {
-          kind: isAbort ? "abort" : "network",
-          url,
-          method,
-        });
-      }
-    }
-  }
+  let res = await fetchProductOnce(doRequest, url, method);
+  res = await preferFreshResponseAfter401(res, doRequest, skipCredentials, url, method);
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

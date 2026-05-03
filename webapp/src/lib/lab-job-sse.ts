@@ -12,6 +12,26 @@ function toAbsoluteUrl(pathOrUrl: string): string {
   return `${base}${p}`;
 }
 
+function parseAsyncTaskStatusLine(raw: string, currentEvent: string): AsyncTaskStatusDto | null {
+  const isTaskEvent = currentEvent === "task" || currentEvent === "";
+  if (!isTaskEvent && !raw.startsWith("{")) {
+    return null;
+  }
+  return JSON.parse(raw) as AsyncTaskStatusDto;
+}
+
+function finishOrThrowOnFailedTerminal(dto: AsyncTaskStatusDto): AsyncTaskStatusDto | null {
+  if (!dto.terminal) {
+    return null;
+  }
+  if (dto.status === "FAILED") {
+    const rawMsg = dto.errorMessage ?? "Job failed";
+    const safe = sanitizePlainErrorTextForUi(rawMsg, 280) || "Job failed";
+    throw new Error(safe);
+  }
+  return dto;
+}
+
 /**
  * Subscribe to GET {product}/lab/jobs/{id}/events (SSE) with Bearer auth.
  * Polling is the default in the UI because it shares the same auth path as `pollLabJob` in `async-task.ts`.
@@ -72,20 +92,15 @@ export async function streamLabJob(
           if (raw === "" || raw === "[DONE]") {
             continue;
           }
-          const isTaskEvent = currentEvent === "task" || currentEvent === "";
-          if (!isTaskEvent && !raw.startsWith("{")) {
-            continue;
-          }
           try {
-            const dto = JSON.parse(raw) as AsyncTaskStatusDto;
+            const dto = parseAsyncTaskStatusLine(raw, currentEvent);
+            if (dto === null) {
+              continue;
+            }
             onTick(dto);
-            if (dto.terminal) {
-              if (dto.status === "FAILED") {
-                const raw = dto.errorMessage ?? "Job failed";
-                const safe = sanitizePlainErrorTextForUi(raw, 280) || "Job failed";
-                throw new Error(safe);
-              }
-              return dto;
+            const finished = finishOrThrowOnFailedTerminal(dto);
+            if (finished !== null) {
+              return finished;
             }
           } catch (e) {
             if (e instanceof SyntaxError) {
