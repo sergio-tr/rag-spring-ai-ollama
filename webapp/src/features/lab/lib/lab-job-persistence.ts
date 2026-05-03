@@ -126,7 +126,8 @@ export function pickLatestRecordForSection(
 ): PersistedLabJobRecord | null {
   const filtered = records.filter((r) => r.sectionKey === sectionKey);
   if (filtered.length === 0) return null;
-  return filtered.slice(1).reduce((a, b) => (a.lastUpdatedMs >= b.lastUpdatedMs ? a : b), filtered[0]);
+  const [head, ...tail] = filtered;
+  return tail.reduce((a, b) => (a.lastUpdatedMs >= b.lastUpdatedMs ? a : b), head);
 }
 
 function recordIsTerminal(rec: PersistedLabJobRecord): boolean {
@@ -143,8 +144,11 @@ export function pickPrimaryLabBannerRecord(records: readonly PersistedLabJobReco
   });
   if (visible.length === 0) return null;
 
-  const newest = (xs: PersistedLabJobRecord[]) =>
-    xs.length === 0 ? null : xs.slice(1).reduce((a, b) => (a.lastUpdatedMs >= b.lastUpdatedMs ? a : b), xs[0]);
+  const newest = (xs: PersistedLabJobRecord[]): PersistedLabJobRecord | null => {
+    if (xs.length === 0) return null;
+    const [head, ...tail] = xs;
+    return tail.reduce((a, b) => (a.lastUpdatedMs >= b.lastUpdatedMs ? a : b), head);
+  };
 
   const stale = visible.filter((r) => r.staleNotFound);
   const pickedStale = newest(stale);

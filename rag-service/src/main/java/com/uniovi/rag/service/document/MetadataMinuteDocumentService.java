@@ -31,7 +31,16 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final int UNICODE_TEXT_REGEX_FLAGS =
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ;
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ;
+
+    /** Header/explanation lines stripped from LLM bullet lists (Unicode-aware case). */
+    private static final Pattern CLEAN_LLM_HEADER_LINE_PATTERN = Pattern.compile(
+            "^(?:aquí|here|below|estos|these|lista|list|a continuación|following).*$", UNICODE_TEXT_REGEX_FLAGS);
+
+    /** Minute metadata labels to exclude from entity extraction (Unicode-aware case). */
+    private static final Pattern ENTITY_METADATA_STOPWORD_PATTERN = Pattern.compile(
+            "(Fecha|Lugar|Hora|Asistentes|Orden|Día|Reunión|Acta|Presidente|Secretario)",
+            UNICODE_TEXT_REGEX_FLAGS);
 
     private static final String TIME_PATTERN_HH_MM = "HH:mm";
 
@@ -74,10 +83,36 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             "(?i)(?:Orden|Agenda|Puntos):?\\s*((?:[•·▪▫◦‣⁃*\\-]|\\d+[.)])\\s*[^\\n]{1,4000}(?:\\n(?!Ruegos|Preguntas|Clausura|Asistentes|No habiendo)[^\\n]{0,4000}){0,2000})",
             Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ);
 
+    /** Flags shared by multi-line {@code Orden del día} body matchers (DOTALL + Unicode + canonical equivalence). */
+    private static final int AGENDA_BODY_REGEX_FLAGS =
+            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ;
+
+    private static final Pattern AGENDA_BODY_AFTER_ORDEN_PATTERN_1 = Pattern.compile(
+            "(?i)Orden del día:?\\s*(.*)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos y preguntas|No habiendo más asuntos|Clausura|$))",
+            AGENDA_BODY_REGEX_FLAGS);
+
+    private static final Pattern AGENDA_BODY_AFTER_ORDEN_PATTERN_2 = Pattern.compile(
+            "(?i)Orden del día:?\\s*(.*)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|Asistentes|$))",
+            AGENDA_BODY_REGEX_FLAGS);
+
+    private static final Pattern AGENDA_BODY_AFTER_ORDEN_PATTERN_3 = Pattern.compile(
+            "(?i)ORDEN DEL DÍA:?\\s*(.*)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|$))",
+            AGENDA_BODY_REGEX_FLAGS);
+
+    private static final Pattern AGENDA_BODY_AFTER_ORDEN_IN_ATTENDEES_TAIL = Pattern.compile(
+            "(?i)Orden del día:?\\s*(.*)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|No habiendo)|$)",
+            AGENDA_BODY_REGEX_FLAGS);
+
     /** Filters descriptive attendee lines (not person names) using Unicode-aware matching. */
     private static final Pattern ATTENDEE_DESCRIPTOR_NOISE_PATTERN = Pattern.compile(
             ".*(cuenta|asistencia|propietarios|lista|firmada|reunión|quórum|suficiente|validez|acuerdos|tomados|declara).*",
             UNICODE_TEXT_REGEX_FLAGS);
+
+    /**
+     * Numbered list lines ({@code 1. item}). Possessive quantifiers avoid polynomial backtracking (Sonar java:S5852).
+     */
+    private static final Pattern NUMBERED_LIST_ITEM_PATTERN = Pattern.compile(
+            "\\d++\\.\\s*+([^\\n]++)(?=\\n\\d++\\.|\\n|$)", Pattern.MULTILINE);
 
     /** Marks start of the attendees section (line-based parsing avoids heavy alternation in one regex). */
     private static final Pattern ASISTENTES_HEADER = Pattern.compile("(?i)Asistentes:");
@@ -444,7 +479,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 .map(String::trim)
                 .filter(line -> !line.isEmpty())
                 // Remove lines that might be headers or explanations
-                .filter(line -> !line.matches("(?i)^(?:aquí|here|below|estos|these|lista|list|a continuación|following).*"))
+                .filter(line -> !CLEAN_LLM_HEADER_LINE_PATTERN.matcher(line).matches())
                 // Remove separators (lines with only dashes, equals, asterisks)
                 .filter(line -> !line.matches("^[-=*_]{3,}"))
                 // Filter very short lines (probably not useful content)
@@ -523,7 +558,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             String entity = matcher.group(1).trim();
             // Filter out common words and short entities
             if (entity.length() > 3 && 
-                !entity.matches("(?i)(Fecha|Lugar|Hora|Asistentes|Orden|Día|Reunión|Acta|Presidente|Secretario)")) {
+                !ENTITY_METADATA_STOPWORD_PATTERN.matcher(entity).matches()) {
                 uniqueEntities.add(entity);
             }
         }
@@ -1685,7 +1720,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         // Look for pattern: ":" followed by names separated by commas
-        Pattern pattern = Pattern.compile(":\\s*([^\\n]+?)(?=\\n|$)", Pattern.MULTILINE);
+        Pattern pattern = Pattern.compile(":\\s*([^\\n]+)(?=\\n|$)", Pattern.MULTILINE);
         Matcher matcher = pattern.matcher(text);
         
         if (matcher.find()) {
@@ -1789,7 +1824,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (items.isEmpty()) {
             // Pattern for bullet points (•)
             Pattern pattern1 = Pattern.compile("•\\s*([^•\\n]+)(?=\\s*•|\\n|$)", Pattern.MULTILINE);
-            Matcher matcher1 = pattern1.matcher(text);
+            Matcher matcher1 = RegexSafety.matcher(pattern1, text, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
             while (matcher1.find()) {
                 String item = matcher1.group(1).trim();
                 item = stripParentheticalSuffix(item);
@@ -1800,8 +1835,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             
             // Pattern for dashes (-)
             if (items.isEmpty()) {
-                Pattern pattern2 = Pattern.compile("(?:^|\\n)\\s*-\\s*([^\\n\\-]+?)(?=\\s*-|\\n|$)", Pattern.MULTILINE);
-                Matcher matcher2 = pattern2.matcher(text);
+                Pattern pattern2 = Pattern.compile("(?:^|\\n)\\s*-\\s*([^\\n\\-]+)(?=\\s*-|\\n|$)", Pattern.MULTILINE);
+                Matcher matcher2 = RegexSafety.matcher(pattern2, text, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
                 while (matcher2.find()) {
                     String item = matcher2.group(1).trim();
                     item = stripParentheticalSuffix(item);
@@ -1813,8 +1848,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             
             // Pattern for asterisks (*)
             if (items.isEmpty()) {
-                Pattern pattern3 = Pattern.compile("(?:^|\\n)\\s*\\*\\s*([^\\n\\*]+?)(?=\\s*\\*|\\n|$)", Pattern.MULTILINE);
-                Matcher matcher3 = pattern3.matcher(text);
+                Pattern pattern3 = Pattern.compile("(?:^|\\n)\\s*\\*\\s*([^\\n\\*]+)(?=\\s*\\*|\\n|$)", Pattern.MULTILINE);
+                Matcher matcher3 = RegexSafety.matcher(pattern3, text, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
                 while (matcher3.find()) {
                     String item = matcher3.group(1).trim();
                     item = stripParentheticalSuffix(item);
@@ -1826,8 +1861,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             
             // Pattern for numbered lists (1., 2., etc.)
             if (items.isEmpty()) {
-                Pattern pattern4 = Pattern.compile("\\d+\\.\\s*([^\\n]+?)(?=\\n\\d+\\.|\\n|$)", Pattern.MULTILINE);
-                Matcher matcher4 = pattern4.matcher(text);
+                Matcher matcher4 =
+                        RegexSafety.matcher(NUMBERED_LIST_ITEM_PATTERN, text, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
                 while (matcher4.find()) {
                     String item = matcher4.group(1).trim();
                     item = stripParentheticalSuffix(item);
@@ -1873,9 +1908,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (bulletCount == maxCount) return "•";
         if (dashCount == maxCount) return "-";
         if (asteriskCount == maxCount) return "*";
-        if (numberCount == maxCount) return "1."; // Represent numbered lists
-        
-        return null;
+        // When maxCount >= 2, at least one counter equals maxCount; if not bullet/dash/asterisk, it is numbered.
+        return "1.";
     }
     
     /**
@@ -2069,73 +2103,47 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         String bounded = RegexSafety.truncateString(content, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
         // Ensure we have newlines (content may have been normalized with wrong regex in the past)
         String normalized = bounded.contains("\n") ? bounded : bounded.replaceAll("(?<=[.!])\\s+", "\n");
-        
-        // Pattern 1: "Agenda:" until newline + optional bullet + "Any other business" or "No further business"
-        Pattern pattern = Pattern.compile(
-            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos y preguntas|No habiendo más asuntos|Clausura|$))",
-            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ
-        );
-        Matcher matcher = pattern.matcher(normalized);
-        if (matcher.find()) {
-            String block = matcher.group(1).trim();
-            if (!block.isEmpty()) {
-                return block;
-            }
+
+        String block = agendaBodyNonEmptyGroup1(AGENDA_BODY_AFTER_ORDEN_PATTERN_1, normalized);
+        if (block != null) {
+            return block;
         }
-        
-        // Pattern 2: "Agenda:" until any next section (more flexible; optional bullet before keyword)
-        pattern = Pattern.compile(
-            "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|Asistentes|$))",
-            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ
-        );
-        matcher = pattern.matcher(normalized);
-        if (matcher.find()) {
-            String block = matcher.group(1).trim();
-            if (!block.isEmpty()) {
-                return block;
-            }
+        block = agendaBodyNonEmptyGroup1(AGENDA_BODY_AFTER_ORDEN_PATTERN_2, normalized);
+        if (block != null) {
+            return block;
         }
-        
-        // Pattern 3: "ORDEN DEL DÍA" (capital letters) until next section
-        pattern = Pattern.compile(
-            "(?i)ORDEN DEL DÍA:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|$))",
-            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ
-        );
-        matcher = pattern.matcher(normalized);
-        if (matcher.find()) {
-            String block = matcher.group(1).trim();
-            if (!block.isEmpty()) {
-                return block;
-            }
+        block = agendaBodyNonEmptyGroup1(AGENDA_BODY_AFTER_ORDEN_PATTERN_3, normalized);
+        if (block != null) {
+            return block;
         }
-        
-        // Pattern 4: Search for section that contains numbered or bulleted items after "Asistentes:"
+
         String afterAttendees = extractBlock(normalized, "(?i)Asistentes:", "(?i)(?:Ruegos|Preguntas|Clausura|No habiendo|$)");
         if (afterAttendees != null && !afterAttendees.trim().isEmpty()) {
-            // Search for "Agenda:" block within that section
-            Pattern ordenPattern = Pattern.compile(
-                "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|No habiendo)|$)",
-                Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ
-            );
-            Matcher ordenMatcher = ordenPattern.matcher(afterAttendees);
-            if (ordenMatcher.find()) {
-                String block = ordenMatcher.group(1).trim();
-                if (!block.isEmpty() && block.length() > 10) {
-                    return block;
-                }
-            }
-        }
-        
-        // Pattern 5: Search for any block with numbered or bulleted items that seems to be agenda
-        matcher = RegexSafety.matcher(AGENDA_LIKE_BULLET_BLOCK_PATTERN, normalized, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
-        if (matcher.find()) {
-            String block = matcher.group(1).trim();
-            if (!block.isEmpty() && block.length() > 10) {
+            block = agendaBodyNonEmptyGroup1(AGENDA_BODY_AFTER_ORDEN_IN_ATTENDEES_TAIL, afterAttendees);
+            if (block != null && block.length() > 10) {
                 return block;
             }
         }
-        
+
+        Matcher matcher = RegexSafety.matcher(AGENDA_LIKE_BULLET_BLOCK_PATTERN, normalized, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
+        if (matcher.find()) {
+            String bulletBlock = matcher.group(1).trim();
+            if (!bulletBlock.isEmpty() && bulletBlock.length() > 10) {
+                return bulletBlock;
+            }
+        }
+
         return null;
+    }
+
+    /** First capturing group trimmed; {@code null} when absent or blank after trim. */
+    private static String agendaBodyNonEmptyGroup1(Pattern pattern, CharSequence input) {
+        Matcher matcher = pattern.matcher(input);
+        if (!matcher.find()) {
+            return null;
+        }
+        String body = matcher.group(1).trim();
+        return body.isEmpty() ? null : body;
     }
     
     /**
@@ -2203,7 +2211,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             return "";
         }
         String bounded = RegexSafety.truncateString(text, RegexSafety.MAX_DOCUMENT_TEXT_FOR_REGEX);
-        Pattern pattern = Pattern.compile(startRegex + "(.*?)" + endRegex, Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern pattern = Pattern.compile(startRegex + "(.*)" + endRegex, Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(bounded);
         return matcher.find() ? matcher.group(1).trim() : "";
     }

@@ -22,7 +22,7 @@ public final class GeneralKnowledgeQueryDetector {
      * Obvious general / joke / small-talk intents (ES + EN).
      */
     private static final Pattern GENERAL_OR_CONVERSATIONAL = Pattern.compile(
-            "\\b(chiste|chistes|broma|bromas|joke|jokes|hazme re[ií]r|"
+            "\\b(chistes?|bromas?|jokes?|hazme re[ií]r|"
                     + "cu[eé]ntame un chiste|cu[eé]ntame una broma|"
                     + "tell me a joke|make me laugh)\\b",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);

@@ -67,12 +67,29 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
     [projectId, upload],
   );
 
+  const activateFilePicker = useCallback(() => {
+    inputRef.current?.click();
+  }, []);
+
   return (
     <div
+      role="group"
+      tabIndex={0}
+      aria-label={t("dropHint")}
       className={cn(
-        "flex min-h-[140px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-6 transition-colors",
+        "flex min-h-[140px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed p-6 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         drag ? "border-primary bg-muted/40" : "border-border bg-muted/20",
       )}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("button")) return;
+        activateFilePicker();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          activateFilePicker();
+        }
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         setDrag(true);
@@ -92,7 +109,7 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
         multiple
         onChange={(e) => onFiles(e.target.files)}
       />
-      <Button type="button" variant="secondary" size="sm" onClick={() => inputRef.current?.click()}>
+      <Button type="button" variant="secondary" size="sm" onClick={activateFilePicker}>
         {t("browse")}
       </Button>
       {upload.isError && (

@@ -6,9 +6,10 @@ Application source lives in this monorepo; **behavioural truth** is code + migra
 
 ## Images
 
-Backend, classifier, webapp, and infra images are **Linux OCI** images. [`.github/workflows/build-images.yml`](../../.github/workflows/build-images.yml) pushes each service to GHCR with:
+Backend, classifier, webapp, and infra images are **Linux OCI** images. [`.github/workflows/build-images.yml`](../../.github/workflows/build-images.yml) runs when a GitHub **Release** is **published** (or manually via `workflow_dispatch`), verifies that **[`ci.yml`](../../.github/workflows/ci.yml)** completed successfully for the resolved commit, then pushes each service to GHCR with:
 
-- **`<github_sha>`** (full commit SHA) — **canonical tag** for reproducible deploy and rollback documentation. Prefer `docker pull ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<SHA>` when consuming images from [`build-images.yml`](../../.github/workflows/build-images.yml). Repository Compose files under `docker/` use **`build:`** with local contexts; pin bases via `.env` (see [`docker/README.md`](../../docker/README.md)).
+- **`<release_tag>`** (e.g. `v1.0.0`) — Git tag from the release event; **manual runs** may supply an extra tag via workflow input instead.
+- **`<commit_sha>`** (full commit SHA) — **canonical tag** for reproducible deploy and rollback documentation. Prefer `docker pull ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<SHA>` when consuming images from [`build-images.yml`](../../.github/workflows/build-images.yml). Repository Compose files under `docker/` use **`build:`** with local contexts; pin bases via `.env` (see [`docker/README.md`](../../docker/README.md)).
 - **`latest`** — updated on each successful build; **not** a contract for production rollback; use only for ad-hoc convenience.
 
 Digest may be recorded in release notes as extra evidence; the **primary** operational reference is the SHA tag.

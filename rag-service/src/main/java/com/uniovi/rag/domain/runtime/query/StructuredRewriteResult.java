@@ -19,9 +19,9 @@ public record StructuredRewriteResult(
     public static final String STRATEGY_STRUCTURED_V1 = "STRUCTURED_V1";
 
     public StructuredRewriteResult {
-        rewrittenQueryText = Objects.requireNonNull(rewrittenQueryText, "rewrittenQueryText");
+        Objects.requireNonNull(rewrittenQueryText, "rewrittenQueryText");
         rewriteNotes = List.copyOf(Objects.requireNonNull(rewriteNotes, "rewriteNotes"));
-        rewriteStrategyId = Objects.requireNonNull(rewriteStrategyId, "rewriteStrategyId");
+        Objects.requireNonNull(rewriteStrategyId, "rewriteStrategyId");
         targetEntities = List.copyOf(Objects.requireNonNull(targetEntities, "targetEntities"));
         targetAttributes = List.copyOf(Objects.requireNonNull(targetAttributes, "targetAttributes"));
         targetAction = Objects.requireNonNullElseGet(targetAction, Optional::empty);

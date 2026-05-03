@@ -34,23 +34,23 @@ public record QueryPlan(
 
     public QueryPlan {
         queryPlanVersion = requireSupportedQueryPlanVersion(queryPlanVersion);
-        rawUserQuery = Objects.requireNonNull(rawUserQuery, "rawUserQuery");
-        effectivePlanningInputText = Objects.requireNonNull(effectivePlanningInputText, "effectivePlanningInputText");
-        normalizedQueryText = Objects.requireNonNull(normalizedQueryText, "normalizedQueryText");
-        rewrittenQueryText = Objects.requireNonNull(rewrittenQueryText, "rewrittenQueryText");
-        classifierLabel = Objects.requireNonNull(classifierLabel, "classifierLabel");
+        Objects.requireNonNull(rawUserQuery, "rawUserQuery");
+        Objects.requireNonNull(effectivePlanningInputText, "effectivePlanningInputText");
+        Objects.requireNonNull(normalizedQueryText, "normalizedQueryText");
+        Objects.requireNonNull(rewrittenQueryText, "rewrittenQueryText");
+        Objects.requireNonNull(classifierLabel, "classifierLabel");
         classifierQueryType = Objects.requireNonNullElseGet(classifierQueryType, Optional::empty);
-        classifierStatus = Objects.requireNonNull(classifierStatus, "classifierStatus");
-        queryIntent = Objects.requireNonNull(queryIntent, "queryIntent");
+        Objects.requireNonNull(classifierStatus, "classifierStatus");
+        Objects.requireNonNull(queryIntent, "queryIntent");
         slots = Map.copyOf(Objects.requireNonNull(slots, "slots"));
         targetEntities = List.copyOf(Objects.requireNonNull(targetEntities, "targetEntities"));
         targetAttributes = List.copyOf(Objects.requireNonNull(targetAttributes, "targetAttributes"));
-        entityExtractionResult = Objects.requireNonNull(entityExtractionResult, "entityExtractionResult");
-        structuredRewriteResult = Objects.requireNonNull(structuredRewriteResult, "structuredRewriteResult");
-        expectedAnswerShape = Objects.requireNonNull(expectedAnswerShape, "expectedAnswerShape");
-        ambiguityAssessment = Objects.requireNonNull(ambiguityAssessment, "ambiguityAssessment");
-        correlationId = Objects.requireNonNull(correlationId, "correlationId");
-        classifierModelIdUsed = Objects.requireNonNull(classifierModelIdUsed, "classifierModelIdUsed");
+        Objects.requireNonNull(entityExtractionResult, "entityExtractionResult");
+        Objects.requireNonNull(structuredRewriteResult, "structuredRewriteResult");
+        Objects.requireNonNull(expectedAnswerShape, "expectedAnswerShape");
+        Objects.requireNonNull(ambiguityAssessment, "ambiguityAssessment");
+        Objects.requireNonNull(correlationId, "correlationId");
+        Objects.requireNonNull(classifierModelIdUsed, "classifierModelIdUsed");
         pipelineNotes = List.copyOf(Objects.requireNonNull(pipelineNotes, "pipelineNotes"));
     }
 

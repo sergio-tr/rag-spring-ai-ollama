@@ -27,7 +27,7 @@ public record RetrievalRequest(
         boolean documentAllowlistIsAll) {
 
     public RetrievalRequest {
-        queryText = Objects.requireNonNull(queryText, "queryText");
+        Objects.requireNonNull(queryText, "queryText");
         slots = Map.copyOf(Objects.requireNonNull(slots, "slots"));
         targetEntities = List.copyOf(Objects.requireNonNull(targetEntities, "targetEntities"));
         targetAttributes = List.copyOf(Objects.requireNonNull(targetAttributes, "targetAttributes"));

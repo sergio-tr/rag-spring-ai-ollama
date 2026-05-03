@@ -11,6 +11,7 @@ import {
   getRagApiProductPrefix,
   getSafeApiErrorMessage,
   onApiUnauthorized,
+  resolveBrowserProductApiUrl,
   sanitizePlainErrorTextForUi,
 } from "./api-client";
 import * as accessToken from "./access-token";
@@ -159,8 +160,26 @@ describe("apiFetch", () => {
     vi.unstubAllEnvs();
   });
 
+  it("resolveBrowserProductApiUrl keeps same-origin path when base URL unset", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "");
+    expect(resolveBrowserProductApiUrl("/api/v5/projects")).toBe("/api/v5/projects");
+    expect(resolveBrowserProductApiUrl("relative")).toBe("/relative");
+    vi.unstubAllEnvs();
+  });
+
+  it("resolveBrowserProductApiUrl prefixes trimmed absolute base", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://127.0.0.1:9000/");
+    expect(resolveBrowserProductApiUrl("/api/v5/me")).toBe("http://127.0.0.1:9000/api/v5/me");
+    vi.unstubAllEnvs();
+  });
+
   it("builds apiProductPath without leading slash on argument", () => {
     expect(apiProductPath("projects")).toBe(`${getRagApiProductPrefix()}/projects`);
+  });
+
+  it("authApiPath places auth segment under product prefix", () => {
+    expect(authApiPath("/refresh")).toBe(`${getRagApiProductPrefix()}/auth/refresh`);
+    expect(authApiPath("whoami")).toBe(`${getRagApiProductPrefix()}/auth/whoami`);
   });
 
   it("ignores listener errors in notifyUnauthorized", async () => {
@@ -474,6 +493,40 @@ describe("apiFetch", () => {
 });
 
 describe("createHttpApiError", () => {
+  it("extracts validation details from errors array", () => {
+    const err = createHttpApiError({
+      status: 400,
+      bodyText: JSON.stringify({ errors: ["one", "two"] }),
+      headers: new Headers({ "content-type": "application/json" }),
+      requestUrl: "http://example.test/api/x",
+      method: "POST",
+    });
+    expect(err.meta?.details).toEqual({ errors: ["one", "two"] });
+  });
+
+  it("uses plain-text fallback when JSON content-type body is invalid JSON", () => {
+    const err = createHttpApiError({
+      status: 422,
+      bodyText: "{broken",
+      headers: new Headers({ "content-type": "application/json" }),
+      requestUrl: "http://example.test/api/x",
+      method: "POST",
+    });
+    expect(err.message).toContain("{broken");
+    expect(err.meta?.kind).toBe("http");
+  });
+
+  it("returns Not found for 404 responses", () => {
+    const err = createHttpApiError({
+      status: 404,
+      bodyText: "",
+      headers: new Headers(),
+      requestUrl: "http://example.test/api/missing",
+      method: "GET",
+    });
+    expect(err.message).toMatch(/not found/i);
+  });
+
   it("extracts validation details from fieldErrors", () => {
     const err = createHttpApiError({
       status: 400,

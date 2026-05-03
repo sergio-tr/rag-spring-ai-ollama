@@ -13,8 +13,14 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
+import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.query.ClassifierStatus;
+import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
+import com.uniovi.rag.domain.runtime.query.ExpectedAnswerShape;
+import com.uniovi.rag.domain.runtime.query.NormalizedQuery;
+import com.uniovi.rag.domain.runtime.query.QueryIntent;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import com.uniovi.rag.infrastructure.classifier.QueryClassifier;
 import com.uniovi.rag.service.analyser.QueryAnalyser;
 import java.util.List;
@@ -31,6 +37,33 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class DefaultQueryUnderstandingPipelineTest {
+
+    private static RagConfig rag(boolean nerEnabled, boolean toolsEnabled) {
+        return new RagConfig(
+                false,
+                nerEnabled,
+                toolsEnabled,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                5,
+                0.2,
+                "llm",
+                "emb",
+                "cls",
+                "reason",
+                false,
+                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                MaterializationStrategy.CHUNK_LEVEL);
+    }
 
     private static ExecutionContext ctx(RagConfig rag, String q) {
         ResolvedRuntimeConfig resolved =
@@ -76,32 +109,53 @@ class DefaultQueryUnderstandingPipelineTest {
                 Optional.empty());
     }
 
+    private static ExecutionContext ctxPlanning(RagConfig rag, String rawUserQuery, String effectivePlanningInput) {
+        ResolvedRuntimeConfig resolved =
+                new ResolvedRuntimeConfig(
+                        rag,
+                        CapabilitySet.fromRagConfig(rag),
+                        CompatibilityResult.ok(),
+                        ReindexImpact.none(),
+                        new SystemPromptLayers("", "", "", ""),
+                        "sys",
+                        new ConfigProvenance(null, null, null, List.of(), null, null),
+                        rag);
+        return new ExecutionContext(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                rawUserQuery,
+                RuntimeOperationKind.CHAT_MESSAGE,
+                resolved,
+                "sys",
+                KnowledgeSnapshotSelection.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                "corr",
+                List.of("all"),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                "",
+                effectivePlanningInput,
+                Optional.empty(),
+                ConversationMemoryOutcome.DISABLED_BY_CONFIG,
+                List.of(),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                Optional.empty(),
+                Optional.empty());
+    }
+
     @Test
     void buildPlan_alwaysProducesValidQueryPlan_andFrozenStageOrder() {
-        RagConfig rag =
-                new RagConfig(
-                false,
-                true,
-                true,
-                false,
-                false,
-                false,
-                false,
-                false,
-                true,
-                false,
-                false,
-                false,
-                5,
-                0.2,
-                "llm",
-                "emb",
-                "cls",
-                "reason",
-                false,
-                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
-                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                MaterializationStrategy.CHUNK_LEVEL);
+        RagConfig rag = rag(true, true);
 
         QueryClassifier classifier = mock(QueryClassifier.class);
         when(classifier.classify(anyString())).thenReturn(QueryType.FILTER_AND_LIST);
@@ -155,30 +209,7 @@ class DefaultQueryUnderstandingPipelineTest {
 
     @Test
     void classifierDisabled_whenToolsDisabled() {
-        RagConfig rag =
-                new RagConfig(
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                true,
-                false,
-                false,
-                false,
-                5,
-                0.2,
-                "llm",
-                "emb",
-                "cls",
-                "reason",
-                false,
-                RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
-                RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
-                MaterializationStrategy.CHUNK_LEVEL);
+        RagConfig rag = rag(false, false);
 
         QueryClassifier classifier = mock(QueryClassifier.class);
         QueryClassifierAdapter adapter = new DefaultQueryClassifierAdapter(classifier);
@@ -188,6 +219,253 @@ class DefaultQueryUnderstandingPipelineTest {
         assertTrue(outcome.classifierQueryType().isEmpty());
         assertEquals(ClassifierStatus.DISABLED, outcome.classifierStatus());
         verifyNoInteractions(classifier);
+    }
+
+    @Test
+    void buildPlan_blankEffectiveInputFallsBackToRaw_andRecordsWhitespaceNotes() {
+        RagConfig cfg = rag(true, true);
+        QueryClassifierAdapter classifierAdapter = mock(QueryClassifierAdapter.class);
+        when(classifierAdapter.classify(any(), anyString()))
+                .thenReturn(
+                        new QueryClassifierAdapter.ClassifierOutcome(
+                                "FILTER_AND_LIST",
+                                Optional.of(QueryType.FILTER_AND_LIST),
+                                ClassifierStatus.OK,
+                                "cls",
+                                "OK"));
+
+        NamedEntityExtractionAdapter ner = mock(NamedEntityExtractionAdapter.class);
+        when(ner.extract(any(), anyString())).thenReturn(EntityExtractionResult.emptyWithNote(""));
+
+        StructuredQueryRewriter rewriter = mock(StructuredQueryRewriter.class);
+        when(rewriter.rewrite(any(), any(), anyString(), any(), any(), any()))
+                .thenAnswer(
+                        inv ->
+                                StructuredRewriteResult.identityDisabled(
+                                        ((NormalizedQuery) inv.getArgument(1)).normalizedText(), null));
+
+        QueryIntentResolver intentResolver = mock(QueryIntentResolver.class);
+        when(intentResolver.resolve(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(QueryIntent.LIST);
+
+        ExpectedAnswerShapeResolver shapeResolver = mock(ExpectedAnswerShapeResolver.class);
+        when(shapeResolver.resolve(any(), any())).thenReturn(ExpectedAnswerShape.LIST);
+
+        AmbiguityAssessmentService ambiguityAssessmentService = mock(AmbiguityAssessmentService.class);
+        when(ambiguityAssessmentService.assess(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(AmbiguityAssessment.sufficient());
+
+        DefaultQueryUnderstandingPipeline pipeline =
+                new DefaultQueryUnderstandingPipeline(
+                        classifierAdapter,
+                        ner,
+                        rewriter,
+                        intentResolver,
+                        shapeResolver,
+                        ambiguityAssessmentService);
+
+        ExecutionContext executionContext = ctxPlanning(cfg, null, "   ");
+        QueryPlan plan = pipeline.buildPlan(executionContext);
+
+        assertEquals("", plan.rawUserQuery());
+        assertEquals("", plan.normalizedQueryText());
+        assertTrue(plan.pipelineNotes().getFirst().contains("blank_query"));
+
+        executionContext = ctxPlanning(cfg, "unused", "  hello   world  ");
+        plan = pipeline.buildPlan(executionContext);
+        assertEquals("unused", plan.rawUserQuery());
+        assertEquals("hello world", plan.normalizedQueryText());
+        assertTrue(String.join(" ", plan.pipelineNotes()).contains("whitespace_normalized"));
+    }
+
+    @Test
+    void buildPlan_stageStatuses_reflectClassifierNerAndRewriteOutcomes() {
+        RagConfig cfg = rag(true, true);
+
+        QueryClassifierAdapter classifierAdapter = mock(QueryClassifierAdapter.class);
+        when(classifierAdapter.classify(any(), anyString()))
+                .thenReturn(
+                        new QueryClassifierAdapter.ClassifierOutcome(
+                                "UNCLASSIFIED",
+                                Optional.empty(),
+                                ClassifierStatus.INVALID_OUTPUT,
+                                "mid",
+                                "bad"));
+
+        NamedEntityExtractionAdapter ner = mock(NamedEntityExtractionAdapter.class);
+        when(ner.extract(any(), anyString()))
+                .thenReturn(EntityExtractionResult.emptyWithNote("FALLBACK: ner"));
+
+        StructuredQueryRewriter rewriter = mock(StructuredQueryRewriter.class);
+        when(rewriter.rewrite(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(StructuredRewriteResult.identityFallback("norm", "bad json"));
+
+        QueryIntentResolver intentResolver = mock(QueryIntentResolver.class);
+        when(intentResolver.resolve(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(QueryIntent.UNKNOWN);
+
+        ExpectedAnswerShapeResolver shapeResolver = mock(ExpectedAnswerShapeResolver.class);
+        when(shapeResolver.resolve(any(), any())).thenReturn(ExpectedAnswerShape.UNKNOWN);
+
+        AmbiguityAssessmentService ambiguityAssessmentService = mock(AmbiguityAssessmentService.class);
+        when(ambiguityAssessmentService.assess(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(AmbiguityAssessment.sufficient());
+
+        DefaultQueryUnderstandingPipeline pipeline =
+                new DefaultQueryUnderstandingPipeline(
+                        classifierAdapter,
+                        ner,
+                        rewriter,
+                        intentResolver,
+                        shapeResolver,
+                        ambiguityAssessmentService);
+
+        QueryPlan plan = pipeline.buildPlan(ctx(cfg, "q"));
+
+        assertTrue(plan.pipelineNotes().get(1).contains("qu_classify"));
+        assertTrue(plan.pipelineNotes().get(1).contains("qu_status=FALLBACK"));
+
+        assertTrue(plan.pipelineNotes().get(2).contains("qu_extract_entities"));
+        assertTrue(plan.pipelineNotes().get(2).contains("qu_status=ERROR"));
+
+        assertTrue(plan.pipelineNotes().get(3).contains("qu_rewrite"));
+        assertTrue(plan.pipelineNotes().get(3).contains("qu_status=ERROR"));
+    }
+
+    @Test
+    void buildPlan_toolsDisabled_marksRewriteDisabled_andSkipsRealRewriterIntegration() {
+        RagConfig cfg = rag(true, false);
+
+        QueryClassifierAdapter classifierAdapter = mock(QueryClassifierAdapter.class);
+        when(classifierAdapter.classify(any(), anyString()))
+                .thenReturn(
+                        new QueryClassifierAdapter.ClassifierOutcome(
+                                "UNCLASSIFIED",
+                                Optional.empty(),
+                                ClassifierStatus.UNAVAILABLE,
+                                "mid",
+                                "down"));
+
+        NamedEntityExtractionAdapter ner = mock(NamedEntityExtractionAdapter.class);
+        when(ner.extract(any(), anyString())).thenReturn(EntityExtractionResult.emptyWithNote(""));
+
+        StructuredQueryRewriter rewriter = mock(StructuredQueryRewriter.class);
+        when(rewriter.rewrite(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(StructuredRewriteResult.identityDisabled("norm", "tools off"));
+
+        QueryIntentResolver intentResolver = mock(QueryIntentResolver.class);
+        when(intentResolver.resolve(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(QueryIntent.UNKNOWN);
+
+        ExpectedAnswerShapeResolver shapeResolver = mock(ExpectedAnswerShapeResolver.class);
+        when(shapeResolver.resolve(any(), any())).thenReturn(ExpectedAnswerShape.UNKNOWN);
+
+        AmbiguityAssessmentService ambiguityAssessmentService = mock(AmbiguityAssessmentService.class);
+        when(ambiguityAssessmentService.assess(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(AmbiguityAssessment.sufficient());
+
+        DefaultQueryUnderstandingPipeline pipeline =
+                new DefaultQueryUnderstandingPipeline(
+                        classifierAdapter,
+                        ner,
+                        rewriter,
+                        intentResolver,
+                        shapeResolver,
+                        ambiguityAssessmentService);
+
+        QueryPlan plan = pipeline.buildPlan(ctx(cfg, "x"));
+        assertTrue(plan.pipelineNotes().get(3).contains("qu_status=DISABLED"));
+        assertTrue(plan.pipelineNotes().get(1).contains("qu_status=ERROR"));
+    }
+
+    @Test
+    void buildPlan_rewriteNotesDisabled_branch_whenToolsEnabled() {
+        RagConfig cfg = rag(true, true);
+
+        QueryClassifierAdapter classifierAdapter = mock(QueryClassifierAdapter.class);
+        when(classifierAdapter.classify(any(), anyString()))
+                .thenReturn(
+                        new QueryClassifierAdapter.ClassifierOutcome(
+                                "OK",
+                                Optional.of(QueryType.FILTER_AND_LIST),
+                                ClassifierStatus.OK,
+                                "m",
+                                "OK"));
+
+        NamedEntityExtractionAdapter ner = mock(NamedEntityExtractionAdapter.class);
+        when(ner.extract(any(), anyString())).thenReturn(EntityExtractionResult.emptyWithNote(""));
+
+        StructuredQueryRewriter rewriter = mock(StructuredQueryRewriter.class);
+        when(rewriter.rewrite(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(StructuredRewriteResult.identityDisabled("norm", "skipped"));
+
+        QueryIntentResolver intentResolver = mock(QueryIntentResolver.class);
+        when(intentResolver.resolve(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(QueryIntent.LIST);
+
+        ExpectedAnswerShapeResolver shapeResolver = mock(ExpectedAnswerShapeResolver.class);
+        when(shapeResolver.resolve(any(), any())).thenReturn(ExpectedAnswerShape.LIST);
+
+        AmbiguityAssessmentService ambiguityAssessmentService = mock(AmbiguityAssessmentService.class);
+        when(ambiguityAssessmentService.assess(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(AmbiguityAssessment.sufficient());
+
+        DefaultQueryUnderstandingPipeline pipeline =
+                new DefaultQueryUnderstandingPipeline(
+                        classifierAdapter,
+                        ner,
+                        rewriter,
+                        intentResolver,
+                        shapeResolver,
+                        ambiguityAssessmentService);
+
+        QueryPlan plan = pipeline.buildPlan(ctx(cfg, "list"));
+        assertTrue(plan.pipelineNotes().get(3).contains("qu_status=DISABLED"));
+    }
+
+    @Test
+    void buildPlan_nerDisabled_marksEntityStageDisabled() {
+        RagConfig cfg = rag(false, true);
+
+        QueryClassifierAdapter classifierAdapter = mock(QueryClassifierAdapter.class);
+        when(classifierAdapter.classify(any(), anyString()))
+                .thenReturn(
+                        new QueryClassifierAdapter.ClassifierOutcome(
+                                "OK",
+                                Optional.of(QueryType.FILTER_AND_LIST),
+                                ClassifierStatus.OK,
+                                "m",
+                                "OK"));
+
+        NamedEntityExtractionAdapter ner = mock(NamedEntityExtractionAdapter.class);
+        when(ner.extract(any(), anyString())).thenReturn(EntityExtractionResult.emptyWithNote("note"));
+
+        StructuredQueryRewriter rewriter = mock(StructuredQueryRewriter.class);
+        when(rewriter.rewrite(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(StructuredRewriteResult.identityDisabled("norm", null));
+
+        QueryIntentResolver intentResolver = mock(QueryIntentResolver.class);
+        when(intentResolver.resolve(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(QueryIntent.LIST);
+
+        ExpectedAnswerShapeResolver shapeResolver = mock(ExpectedAnswerShapeResolver.class);
+        when(shapeResolver.resolve(any(), any())).thenReturn(ExpectedAnswerShape.LIST);
+
+        AmbiguityAssessmentService ambiguityAssessmentService = mock(AmbiguityAssessmentService.class);
+        when(ambiguityAssessmentService.assess(any(), any(), anyString(), any(), any(), any()))
+                .thenReturn(AmbiguityAssessment.sufficient());
+
+        DefaultQueryUnderstandingPipeline pipeline =
+                new DefaultQueryUnderstandingPipeline(
+                        classifierAdapter,
+                        ner,
+                        rewriter,
+                        intentResolver,
+                        shapeResolver,
+                        ambiguityAssessmentService);
+
+        QueryPlan plan = pipeline.buildPlan(ctx(cfg, "q"));
+        assertTrue(plan.pipelineNotes().get(2).contains("qu_status=DISABLED"));
     }
 }
 

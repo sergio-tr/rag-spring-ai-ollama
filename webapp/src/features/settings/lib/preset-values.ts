@@ -10,7 +10,7 @@ export function findKeysRejectedBySanitizer(source: Record<string, unknown>): st
   for (const k of Object.keys(source)) {
     if (!SANITIZED_RAG_CONFIG_KEY_SET.has(k)) rejected.push(k);
   }
-  return rejected.sort((a, b) => a.localeCompare(b));
+  return rejected.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "accent", numeric: true }));
 }
 
 /** Split JSON import into structured-editable keys vs allowed-but-not-in-form extras (e.g. embeddingModel). */

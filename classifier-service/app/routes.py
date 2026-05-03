@@ -67,6 +67,44 @@ def get_container(request: Request) -> ServiceContainer:
 
 ServiceContainerDep = Annotated[ServiceContainer, Depends(get_container)]
 
+# Defaults belong on the parameter (`= ...`), not inside Query/Form/File, when using Annotated (FastAPI).
+
+ClassifyModelIdQuery = Annotated[
+    str | None,
+    Query(alias="modelId", description="Model id (alternative to body)"),
+]
+
+TrainExcelUpload = Annotated[
+    UploadFile,
+    File(..., description="Excel dataset with columns Question and QueryType"),
+]
+TrainModelNameForm = Annotated[str, Form(..., description="Label/name for the trained model (tag)")]
+TrainLabelsJsonForm = Annotated[
+    str | None,
+    Form(
+        description='Optional JSON array of class names, e.g. ["COUNT_DOCUMENTS", "SUMMARIZE_MEETING"]',
+    ),
+]
+TrainLabelsFileUpload = Annotated[
+    UploadFile | None,
+    File(description="Optional labels file (one label per line, like query_type_labels.txt)"),
+]
+TrainEpochsForm = Annotated[int, Form(description="Training epochs (default 50)")]
+TrainBatchSizeForm = Annotated[int, Form(description="Batch size (default 8)")]
+
+EvaluateModelIdQuery = Annotated[
+    str | None,
+    Query(alias="modelId", description="Model tag to evaluate; default model if omitted"),
+]
+EvaluateIncludeImagesQuery = Annotated[
+    bool,
+    Query(alias="includeImages", description="Include base64 PNG images in response"),
+]
+EvaluateDatasetFile = Annotated[
+    UploadFile | None,
+    File(description="Optional evaluation dataset Excel; uses default if omitted"),
+]
+
 
 @router.get("/health")
 def health(container: ServiceContainerDep):
@@ -89,9 +127,7 @@ def models(container: ServiceContainerDep):
 def classify(
     req: ClassifyRequest,
     container: ServiceContainerDep,
-    model_id: str | None = Query(
-        None, alias="modelId", description="Model id (alternative to body)"
-    ),
+    model_id: ClassifyModelIdQuery = None,
 ):
     """
     Classifies a query. Expects body {"query": "...", "modelId": "default"} (modelId optional).
@@ -134,12 +170,12 @@ def classify(
 @router.post("/train", response_model=dict, responses=TRAIN_OPENAPI_RESPONSES)
 async def train_endpoint(
     container: ServiceContainerDep,
-    file: UploadFile = File(..., description="Excel dataset with columns Question and QueryType"),
-    model_name: str = Form(..., description="Label/name for the trained model (tag)"),
-    labels: str | None = Form(None, description="Optional JSON array of class names, e.g. [\"COUNT_DOCUMENTS\", \"SUMMARIZE_MEETING\"]"),
-    labels_file: UploadFile | None = File(None, description="Optional labels file (one label per line, like query_type_labels.txt)"),
-    epochs: int = Form(50),
-    batch_size: int = Form(8),
+    file: TrainExcelUpload,
+    model_name: TrainModelNameForm,
+    labels: TrainLabelsJsonForm = None,
+    labels_file: TrainLabelsFileUpload = None,
+    epochs: TrainEpochsForm = 50,
+    batch_size: TrainBatchSizeForm = 8,
 ):
     """Trains a new model from the uploaded dataset and registers it under the given name (tag). Optional labels define class order/whitelist."""
     require_excel_upload(file)
@@ -202,13 +238,9 @@ async def train_endpoint(
 @router.post("/evaluate", response_model=dict, responses=EVAL_OPENAPI_RESPONSES)
 async def evaluate_endpoint(
     container: ServiceContainerDep,
-    model_id: str | None = Query(
-        None, alias="modelId", description="Model tag to evaluate; default model if omitted"
-    ),
-    include_images: bool = Query(
-        True, alias="includeImages", description="Include base64 PNG images in response"
-    ),
-    file: UploadFile | None = File(None, description="Optional evaluation dataset Excel; uses default if omitted"),
+    model_id: EvaluateModelIdQuery = None,
+    include_images: EvaluateIncludeImagesQuery = True,
+    file: EvaluateDatasetFile = None,
 ):
     """
     Evaluates a model by tag on an evaluation dataset. Returns classification report, confusion matrix,

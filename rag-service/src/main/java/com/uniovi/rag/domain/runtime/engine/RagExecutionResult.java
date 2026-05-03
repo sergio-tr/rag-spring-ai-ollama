@@ -25,12 +25,35 @@ public record RagExecutionResult(
         List<ExecutionStageTrace> workflowStageTraces,
         Optional<RetrievalDiagnostics> retrievalDiagnostics) {
 
-    public RagExecutionResult {
-        usedKnowledgeSnapshotIds = List.copyOf(usedKnowledgeSnapshotIds);
-        workflowStageTraces = List.copyOf(workflowStageTraces);
-        usedResolvedConfigSnapshotId = Objects.requireNonNullElseGet(usedResolvedConfigSnapshotId, Optional::empty);
-        usedConfigHash = Objects.requireNonNullElseGet(usedConfigHash, Optional::empty);
-        retrievalDiagnostics = Objects.requireNonNullElseGet(retrievalDiagnostics, Optional::empty);
+    /** Canonical ctor normalizes nullable Optional components (explicit body avoids record compact ctor Sonar noise). */
+    public RagExecutionResult(
+            String answerText,
+            String workflowName,
+            boolean retrievalUsed,
+            boolean metadataUsed,
+            Optional<UUID> usedResolvedConfigSnapshotId,
+            Optional<String> usedConfigHash,
+            List<UUID> usedKnowledgeSnapshotIds,
+            ExecutionTrace executionTrace,
+            String toolUsedLabel,
+            QueryType queryTypeForLegacy,
+            boolean usedTool,
+            List<ExecutionStageTrace> workflowStageTraces,
+            Optional<RetrievalDiagnostics> retrievalDiagnostics) {
+        this.answerText = answerText;
+        this.workflowName = workflowName;
+        this.retrievalUsed = retrievalUsed;
+        this.metadataUsed = metadataUsed;
+        this.usedResolvedConfigSnapshotId =
+                Objects.requireNonNullElseGet(usedResolvedConfigSnapshotId, Optional::empty);
+        this.usedConfigHash = Objects.requireNonNullElseGet(usedConfigHash, Optional::empty);
+        this.usedKnowledgeSnapshotIds = List.copyOf(usedKnowledgeSnapshotIds);
+        this.executionTrace = executionTrace;
+        this.toolUsedLabel = toolUsedLabel;
+        this.queryTypeForLegacy = queryTypeForLegacy;
+        this.usedTool = usedTool;
+        this.workflowStageTraces = List.copyOf(workflowStageTraces);
+        this.retrievalDiagnostics = Objects.requireNonNullElseGet(retrievalDiagnostics, Optional::empty);
     }
 
     public static RagExecutionResult withPlaceholderTrace(

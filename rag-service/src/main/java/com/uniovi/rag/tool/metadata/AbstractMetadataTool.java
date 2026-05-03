@@ -1767,7 +1767,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * SOLUTION 1.2: Made more permissive - accepts documents with at least one relevant field OR basic metadata fields.
      */
     private boolean hasMetadataFields(Document doc, String[] relevantFields) {
-        if (doc == null || doc.getMetadata() == null) {
+        if (doc == null) {
             return false;
         }
         
@@ -1807,7 +1807,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Used for less strict filtering when strict filtering removes too many documents.
      */
     private boolean hasBasicMetadata(Document doc) {
-        if (doc == null || doc.getMetadata() == null) {
+        if (doc == null) {
             return false;
         }
         
@@ -2273,10 +2273,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         // Fallback: explicit string match for "menos de diez" / "menos de 10" so filter is always applied
-        String q = query == null ? "" : query.toLowerCase().trim();
+        String q = query.toLowerCase().trim();
         String qNorm = Normalizer.normalize(q, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
-        if (qNorm.contains("menos de diez") || qNorm.contains("menos de 10")
-                || qNorm.contains("menos de diez personas") || qNorm.contains("menos de 10 personas")) {
+        if (qNorm.contains("menos de diez") || qNorm.contains("menos de 10")) {
             log().info("Attendees count query fallback: detected 'menos de diez' (or variant), using less_than 10");
             return new AttendeesCountQueryInfo("less_than", 10);
         }
@@ -2462,7 +2461,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             ),
             // Pattern 5: "attended [Full Name]" (e.g. "In which meetings did X attend?")
             Pattern.compile(
-                "(?:asistió|attend(?:ed|ee))\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
+                "(?:asistió|attendees|attendee|attended)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
                 UNICODE_CASE_INSENSITIVE
             ),
             // Pattern 6: "meetings attended [Name]" - name at end before ?
@@ -3812,12 +3811,10 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     protected String getDocumentIdFromDoc(Document doc) {
         if (doc == null) return null;
         Map<String, Object> metadata = doc.getMetadata();
-        if (metadata != null) {
-            String id = safeGetString(metadata, "document_id");
-            if (id != null && !id.isBlank()) return id;
-            id = safeGetString(metadata, "id");
-            if (id != null && !id.isBlank()) return id;
-        }
+        String id = safeGetString(metadata, "document_id");
+        if (id != null && !id.isBlank()) return id;
+        id = safeGetString(metadata, "id");
+        if (id != null && !id.isBlank()) return id;
         return doc.getId();
     }
 
@@ -3826,7 +3823,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Tries multiple metadata field names and returns normalized date string or null.
      */
     protected String getDocumentDate(Document doc) {
-        if (doc == null || doc.getMetadata() == null) {
+        if (doc == null) {
             return null;
         }
         Map<String, Object> metadata = doc.getMetadata();
@@ -3905,19 +3902,17 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         String[] otherDateFields = {"fecha", "meeting_date", "document_date"};
         for (String field : otherDateFields) {
             Object fieldValue = metadata.get(field);
-            if (fieldValue == null) {
-                continue;
-            }
-            String dateStr = fieldValue.toString().trim();
-            if (dateStr.isEmpty()) {
-                continue;
-            }
-            LocalDate parsed = parseDateFlexible(dateStr);
-            if (parsed != null) {
-                String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
-                log().debug("Parsed and normalized date from field '{}' for document {}: {} -> {}",
-                        field, doc.getId(), dateStr, normalized);
-                return normalized;
+            if (fieldValue != null) {
+                String dateStr = fieldValue.toString().trim();
+                if (!dateStr.isEmpty()) {
+                    LocalDate parsed = parseDateFlexible(dateStr);
+                    if (parsed != null) {
+                        String normalized = parsed.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                        log().debug("Parsed and normalized date from field '{}' for document {}: {} -> {}",
+                                field, doc.getId(), dateStr, normalized);
+                        return normalized;
+                    }
+                }
             }
         }
         return null;
@@ -3949,105 +3944,100 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return docs != null ? docs : new ArrayList<>();
         }
 
-        // Parse requested date
         LocalDate requestedLocalDate = parseDateFlexible(requestedDate);
         if (requestedLocalDate == null) {
             log().warn("Could not parse requested date: {}, returning all documents", requestedDate);
-            return docs; // Can't parse, return all (don't filter)
+            return docs;
         }
 
         String requestedNormalized = requestedLocalDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
-        log().debug("Validating {} documents against requested date: {} (normalized: {})", 
-                   docs.size(), requestedDate, requestedNormalized);
+        log().debug("Validating {} documents against requested date: {} (normalized: {})",
+                docs.size(), requestedDate, requestedNormalized);
 
-        // Filter documents by date
         List<Document> filtered = docs.stream()
-                .filter(doc -> {
-                    String docDate = getDocumentDate(doc);
-                    if (docDate == null) {
-                        log().debug("Document {} has no date, excluding from date-filtered results", doc.getId());
-                        return false; // Exclude documents without date when filtering by date
-                    }
-
-                    // getDocumentDate should return ISO format, but parse again to be safe
-                    // First check if already in ISO format
-                    LocalDate docLocalDate = null;
-                    try {
-                        docLocalDate = LocalDate.parse(docDate, DateTimeFormatter.ISO_LOCAL_DATE);
-                    } catch (DateTimeParseException ignored) {
-                        // Not ISO format, try flexible parsing
-                        docLocalDate = parseDateFlexible(docDate);
-                    }
-                    
-                    if (docLocalDate == null) {
-                        log().warn("Could not parse document date '{}' for document {}, excluding. Requested date: {}", 
-                                  docDate, doc.getId(), requestedNormalized);
-                        return false; // Can't parse, exclude
-                    }
-
-                    String docNormalized = docLocalDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
-                    boolean matches = docNormalized.equals(requestedNormalized);
-                    
-                    if (matches) {
-                        log().debug("Document {} matches requested date: {} ({})", 
-                                   doc.getId(), docDate, docNormalized);
-                    } else {
-                        log().debug("Document {} date mismatch: {} ({}) vs requested {} ({})", 
-                                   doc.getId(), docDate, docNormalized, requestedDate, requestedNormalized);
-                    }
-                    
-                    return matches;
-                })
+                .filter(doc -> documentMatchesRequestedDate(doc, requestedNormalized, requestedDate))
                 .toList();
 
-        log().info("Date validation: {} documents matched date {} (normalized: {}) out of {} total documents", 
-                  filtered.size(), requestedDate, requestedNormalized, docs.size());
-        
-        // Enhanced logging: show sample document dates when no matches found
+        log().info("Date validation: {} documents matched date {} (normalized: {}) out of {} total documents",
+                filtered.size(), requestedDate, requestedNormalized, docs.size());
+
         if (filtered.isEmpty() && !docs.isEmpty()) {
-            List<String> sampleDates = docs.stream()
-                    .limit(5)
-                    .map(doc -> {
-                        Map<String, Object> docMetadata = doc.getMetadata();
-                        String dateIso = docMetadata != null && docMetadata.containsKey(METADATA_KEY_DATE_ISO) ?
-                                        docMetadata.get(METADATA_KEY_DATE_ISO).toString() : null;
-                        String dateRaw = docMetadata != null && docMetadata.containsKey("date") ? 
-                                        docMetadata.get("date").toString() : null;
-                        
-                        String date = getDocumentDate(doc);
-                        StringBuilder info = new StringBuilder();
-                        if (date != null) {
-                            try {
-                                LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE);
-                                info.append(date).append(" (ISO)");
-                            } catch (DateTimeParseException e) {
-                                LocalDate parsed = parseDateFlexible(date);
-                                info.append(date).append(parsed != null ? 
-                                    " (parsed: " + parsed.format(DateTimeFormatter.ISO_LOCAL_DATE) + ")" : 
-                                    " (parse failed)");
-                            }
-                        } else {
-                            info.append("no date");
-                        }
-                        
-                        // Add metadata info for debugging
-                        if (dateIso != null) {
-                            info.append(" [date_iso: ").append(dateIso).append("]");
-                        }
-                        if (dateRaw != null) {
-                            info.append(" [date_raw: ").append(dateRaw).append("]");
-                        }
-                        
-                        return info.toString();
-                    })
-                    .toList();
-            log().debug("Date validation failed: Requested date {} (normalized: {}) not found. " +
-                      "This may indicate: 1) date_iso missing in metadata, 2) date parsing failed, or 3) dates don't match (e.g. date not in corpus). " +
-                      "Sample document dates: {}",
-                      requestedDate, requestedNormalized, sampleDates);
+            logDateValidationMismatchSamples(docs, requestedDate, requestedNormalized);
         }
 
         return filtered;
+    }
+
+    private boolean documentMatchesRequestedDate(Document doc, String requestedNormalized, String requestedDateLabel) {
+        String docDate = getDocumentDate(doc);
+        if (docDate == null) {
+            log().debug("Document {} has no date, excluding from date-filtered results", doc.getId());
+            return false;
+        }
+        LocalDate docLocalDate = parseDocumentDateToLocalDate(docDate);
+        if (docLocalDate == null) {
+            log().warn("Could not parse document date '{}' for document {}, excluding. Requested date: {}",
+                    docDate, doc.getId(), requestedNormalized);
+            return false;
+        }
+        String docNormalized = docLocalDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        boolean matches = docNormalized.equals(requestedNormalized);
+        if (matches) {
+            log().debug("Document {} matches requested date: {} ({})", doc.getId(), docDate, docNormalized);
+        } else {
+            log().debug("Document {} date mismatch: {} ({}) vs requested {} ({})",
+                    doc.getId(), docDate, docNormalized, requestedDateLabel, requestedNormalized);
+        }
+        return matches;
+    }
+
+    private LocalDate parseDocumentDateToLocalDate(String docDate) {
+        try {
+            return LocalDate.parse(docDate, DateTimeFormatter.ISO_LOCAL_DATE);
+        } catch (DateTimeParseException ignored) {
+            return parseDateFlexible(docDate);
+        }
+    }
+
+    private void logDateValidationMismatchSamples(List<Document> docs, String requestedDate, String requestedNormalized) {
+        List<String> sampleDates = docs.stream().limit(5).map(this::formatDocumentDateSampleForLog).toList();
+        log().debug("Date validation failed: Requested date {} (normalized: {}) not found. "
+                        + "This may indicate: 1) date_iso missing in metadata, 2) date parsing failed, or 3) dates don't match (e.g. date not in corpus). "
+                        + "Sample document dates: {}",
+                requestedDate, requestedNormalized, sampleDates);
+    }
+
+    private String formatDocumentDateSampleForLog(Document doc) {
+        Map<String, Object> docMetadata = doc.getMetadata();
+        String dateIso = docMetadata.containsKey(METADATA_KEY_DATE_ISO)
+                ? docMetadata.get(METADATA_KEY_DATE_ISO).toString()
+                : null;
+        String dateRaw = docMetadata.containsKey("date") ? docMetadata.get("date").toString() : null;
+
+        String date = getDocumentDate(doc);
+        StringBuilder info = new StringBuilder();
+        if (date != null) {
+            try {
+                LocalDate.parse(date, DateTimeFormatter.ISO_LOCAL_DATE);
+                info.append(date).append(" (ISO)");
+            } catch (DateTimeParseException e) {
+                LocalDate parsed = parseDateFlexible(date);
+                info.append(date).append(parsed != null
+                        ? " (parsed: " + parsed.format(DateTimeFormatter.ISO_LOCAL_DATE) + ")"
+                        : " (parse failed)");
+            }
+        } else {
+            info.append("no date");
+        }
+
+        if (dateIso != null) {
+            info.append(" [date_iso: ").append(dateIso).append("]");
+        }
+        if (dateRaw != null) {
+            info.append(" [date_raw: ").append(dateRaw).append("]");
+        }
+
+        return info.toString();
     }
 
     /**
@@ -4058,7 +4048,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * @return List of attendee names
      */
     protected List<String> extractAttendeesFromMetadata(Document doc) {
-        if (doc == null || doc.getMetadata() == null) {
+        if (doc == null) {
             return new ArrayList<>();
         }
 
@@ -4075,23 +4065,30 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             return;
         }
         if (attendeesObj instanceof List<?> attendeesList) {
-            for (Object item : attendeesList) {
-                if (item != null) {
-                    String attendee = item.toString().trim();
-                    if (!attendee.isEmpty()) {
-                        attendees.add(attendee);
-                    }
-                }
-            }
+            appendAttendeesFromList(attendeesList, attendees);
             return;
         }
         if (attendeesObj instanceof String attendeesStr) {
-            String[] parts = attendeesStr.split("[,\n•]");
-            for (String part : parts) {
-                String attendee = part.trim();
-                if (attendee.isEmpty()) {
-                    continue;
+            appendAttendeesFromDelimitedString(attendeesStr, attendees);
+        }
+    }
+
+    private static void appendAttendeesFromList(List<?> attendeesList, List<String> attendees) {
+        for (Object item : attendeesList) {
+            if (item != null) {
+                String attendee = item.toString().trim();
+                if (!attendee.isEmpty()) {
+                    attendees.add(attendee);
                 }
+            }
+        }
+    }
+
+    private static void appendAttendeesFromDelimitedString(String attendeesStr, List<String> attendees) {
+        String[] parts = attendeesStr.split("[,\n•]");
+        for (String part : parts) {
+            String attendee = part.trim();
+            if (!attendee.isEmpty()) {
                 attendee = attendee.replaceAll("\\([^)]*\\)", "").trim();
                 if (!attendee.isEmpty()) {
                     attendees.add(attendee);
@@ -4124,7 +4121,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * @return Integer count or null if not available
      */
     protected Integer getAttendeesCount(Document doc) {
-        if (doc == null || doc.getMetadata() == null) {
+        if (doc == null) {
             return null;
         }
         
@@ -4135,7 +4132,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         if (fromAttendeesCount != null) {
             return fromAttendeesCount;
         }
-        Integer fromNumberOfAttendees = parseIntegerMetadataField(metadata.get("numberOfAttendees"), "numberOfAttendees");
+        Integer fromNumberOfAttendees = parseIntegerMetadataField(
+                metadata.get(METADATA_KEY_NUMBER_OF_ATTENDEES), METADATA_KEY_NUMBER_OF_ATTENDEES);
         if (fromNumberOfAttendees != null) {
             return fromNumberOfAttendees;
         }
