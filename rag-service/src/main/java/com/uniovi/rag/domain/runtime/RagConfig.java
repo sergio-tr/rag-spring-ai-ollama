@@ -296,7 +296,7 @@ public record RagConfig(
         m.put("naiveFullCorpusInPromptEnabled", naiveFullCorpusInPromptEnabled);
         m.put("naiveFullCorpusMaxChars", naiveFullCorpusMaxChars);
         m.put("advancedRetrievalMaxContextChars", advancedRetrievalMaxContextChars);
-        m.put("materializationStrategy", materializationStrategy.name());
+        m.put(JSON_MATERIALIZATION_STRATEGY, materializationStrategy.name());
         return m;
     }
 }
