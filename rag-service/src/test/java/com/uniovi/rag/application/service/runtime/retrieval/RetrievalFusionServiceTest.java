@@ -1,0 +1,91 @@
+package com.uniovi.rag.application.service.runtime.retrieval;
+
+import com.uniovi.rag.domain.runtime.query.EntityExtractionResult;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalFusionMode;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievedContextSet;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class RetrievalFusionServiceTest {
+
+    private final RetrievalFusionService fusion = new RetrievalFusionService();
+
+    @Test
+    void fuse_rrf_ordersAndCaps() {
+        UUID s = UUID.randomUUID();
+        RetrievalRequest req = baseRequest(RetrievalMode.HYBRID_DENSE_SPARSE);
+        RetrievalCandidate d1 =
+                new RetrievalCandidate(
+                        s + ":doc1:0",
+                        "a",
+                        Map.of("document_id", "doc1", "indexSnapshotId", s.toString(), "chunk_index", 0),
+                        0.1,
+                        Double.NaN,
+                        1,
+                        0,
+                        s,
+                        0.01);
+        RetrievalCandidate d2 =
+                new RetrievalCandidate(
+                        s + ":doc2:0",
+                        "b",
+                        Map.of("document_id", "doc2", "indexSnapshotId", s.toString(), "chunk_index", 0),
+                        0.2,
+                        Double.NaN,
+                        2,
+                        0,
+                        s,
+                        0.02);
+        RetrievalCandidate sp =
+                new RetrievalCandidate(
+                        s + ":doc1:0",
+                        "a",
+                        Map.of("document_id", "doc1", "indexSnapshotId", s.toString(), "chunk_index", 0),
+                        Double.NaN,
+                        0.5,
+                        0,
+                        1,
+                        s,
+                        0.03);
+
+        RetrievedContextSet out = fusion.fuse(req, List.of(d1, d2), List.of(sp));
+
+        assertThat(out.fusionModeUsed()).contains(RetrievalFusionMode.RRF_ONLY);
+        assertThat(out.denseInputCount()).isEqualTo(2);
+        assertThat(out.sparseInputCount()).isEqualTo(1);
+        assertThat(out.candidates()).isNotEmpty();
+        assertThat(out.candidates().getFirst().candidateId()).isEqualTo(d1.candidateId());
+    }
+
+    private static RetrievalRequest baseRequest(RetrievalMode mode) {
+        UUID sid = UUID.randomUUID();
+        UUID pid = UUID.randomUUID();
+        return new RetrievalRequest(
+                "query",
+                Map.of(),
+                List.of(),
+                List.of(),
+                EntityExtractionResult.emptyWithNote(""),
+                mode,
+                5,
+                5,
+                10,
+                5,
+                24_000,
+                50,
+                List.of(sid),
+                pid,
+                Optional.empty(),
+                List.of("all"),
+                true);
+    }
+}

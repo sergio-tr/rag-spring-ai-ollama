@@ -1,0 +1,29 @@
+%% Build context directories for docker compose services — prod may pull GHCR images instead of build
+flowchart TB
+  subgraph svc [Compose service image sources]
+    PG[postgres]
+    CF[classifier-service]
+    BE[backend or backend-dev]
+    FE[webapp]
+    OL[ollama optional]
+    RP[reverse-proxy optional dev]
+  end
+
+  PG --> DCTX[(db/)]
+  CF --> CCTX[(classifier-service/)]
+  BE --> BCTX[(rag-service/)]
+  FE --> FCTX[(webapp/)]
+  OL --> OCTX[(ollama/)]
+  RP --> RCTX[(reverse-proxy/)]
+
+  subgraph obs [Observability compose.obs.yml]
+    OTC[otel-collector]
+    JGR[jaeger]
+    PRM[prometheus]
+    GRF[grafana]
+  end
+
+  OTC --> ODIR[(observability/)]
+  JGR --> ODIR
+  PRM --> ODIR
+  GRF --> ODIR

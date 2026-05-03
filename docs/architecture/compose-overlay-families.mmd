@@ -1,0 +1,28 @@
+%% Grouping: merge order = docker/scripts/docker-compose.sh
+flowchart TB
+  BASE[docker-compose.yml core + optional profiles]
+
+  subgraph devfam [Developer overlays]
+    D1[compose.dev.yml backend-dev hot reload]
+    D4[compose.dev-proxy.yml nginx + profile proxy]
+    D5[compose.rag-dev-obs.yml OTLP targets for backend-dev]
+  end
+
+  subgraph ollfam [Ollama and GPU]
+    G0[compose.gpu.yml NVIDIA for classifier optional]
+    G3["Ollama HTTP URL from rag-service/.env in docker-compose.yml and compose.dev.yml"]
+  end
+
+  subgraph tel [Telemetry and logs]
+    T1[compose.obs.yml Spring OTLP for backend + classifier]
+    T4[compose.prod-obs.yml prod wiring for obs]
+  end
+
+  subgraph prodfam [Production style]
+    P1[compose.prod.yml hardened proxy and networks]
+  end
+
+  BASE --- devfam
+  BASE --- ollfam
+  BASE --- tel
+  BASE --- prodfam

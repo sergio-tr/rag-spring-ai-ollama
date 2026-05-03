@@ -1,0 +1,97 @@
+# Development: classifier with hot-reload (uvicorn) + optional Spring backend in Docker (backend-dev).
+#
+# Included in the Compose chain when you use --classifier and/or --rag (./docker/scripts/up.sh dev …).
+# - --classifier only: classifier override; backend-dev does NOT start unless you name it in `up`.
+# - --rag: enables Compose profile "rag" → starts backend-dev in addition to the classifier (same Dockerfile.dev override).
+#
+# Typical hybrid (backend and classifier on the host):
+#   ./docker/scripts/up.sh dev [--obs …]
+#   cd rag-service && ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+#   cd classifier-service && uvicorn …
+#
+# Full stack in Docker with reload:
+#   ./docker/scripts/up.sh dev --rag [--obs] [--gpu|…]
+#   See rag-service/Dockerfile.dev and rag-service/scripts/docker-dev-entrypoint.sh
+#
+# With --obs and --rag, compose.rag-dev-obs.yml fixes OTLP for backend-dev (compose.obs.yml only patches service "backend").
+#
+services:
+  # Override classifier-service: bind-mount source + Dockerfile.dev (uvicorn --reload)
+  classifier-service:
+    build:
+      context: ../classifier-service
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ../classifier-service/app:/app/app
+      - ../classifier-service/uvicorn_entry.py:/app/uvicorn_entry.py
+    environment:
+      PORT: ${PORT:-8000}
+      MODELS_DIR: ${MODELS_DIR:-/app/models}
+      DATA_DIR: ${DATA_DIR:-/app/data}
+      TF_CPP_MIN_LOG_LEVEL: "2"
+      GLOG_minloglevel: "2"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/health', timeout=5)\" || exit 1"]
+      interval: 10s
+      timeout: 8s
+      retries: 5
+      start_period: 60s
+
+  # Built/started only when profile "rag" is active (./docker/scripts/up.sh dev --rag …).
+  backend-dev:
+    profiles:
+      - rag
+    build:
+      context: ../rag-service
+      dockerfile: Dockerfile.dev
+      args:
+        JDK_BASE_IMAGE: ${RAG_JAVA_JDK_BASE_IMAGE:-eclipse-temurin:21-jdk}
+        SERVER_PORT: ${SERVER_PORT:-9000}
+    env_file:
+      - ../db/.env
+      - ../rag-service/.env
+    ports:
+      - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-9000}
+      RAG_DEV_POLL_INTERVAL: ${RAG_DEV_POLL_INTERVAL:-2}
+      SPRING_PROFILES_ACTIVE: dev
+      SPRING_MAIN_ALLOW_CIRCULAR_REFERENCES: "true"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-vectordb}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${PORT:-8000}
+      # Ollama URL: same rag-service/.env keys as production backend (host.docker.internal, ollama:11434, etc.).
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      SPRING_AI_OLLAMA_BASE_URL: ${SPRING_AI_OLLAMA_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
+    volumes:
+      - ../rag-service:/app
+      - rag_m2_cache:/root/.m2
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-collation-bootstrap:
+        condition: service_completed_successfully
+      classifier-service:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+        required: false
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${SERVER_PORT:-9000}/actuator/health/liveness >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    restart: unless-stopped
+
+  # Dev full stack (--rag): order webapp after backend-dev (profile rag).
+  webapp:
+    depends_on:
+      backend-dev:
+        condition: service_started
+
+volumes:
+  rag_m2_cache:

@@ -1,0 +1,33 @@
+%% Observability data flow when compose.obs.yml is active
+%% Port names and env: observability/.env.example observability/README.md
+flowchart LR
+  subgraph exporters [Instrumented services]
+    BE[Spring Boot Actuator OTLP]
+    CLF[Classifier OTLP]
+  end
+
+  subgraph collector [OTEL Collector]
+    OC[otel-collector]
+  end
+
+  subgraph backends [Telemetry backends]
+    J[Jaeger traces]
+    P[Prometheus metrics]
+  end
+
+  subgraph viz [Visualization]
+    G[Grafana dashboards]
+  end
+
+  BE -->|OTLP HTTP| OC
+  CLF -->|OTLP HTTP| OC
+  OC --> J
+  OC --> P
+  P --> G
+
+  subgraph logs [When profile logs]
+    PT[Promtail]
+    L[Loki]
+  end
+  PT --> L
+  L --> G

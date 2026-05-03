@@ -1,0 +1,40 @@
+[run]
+# ``app`` tree + root ``uvicorn_entry.py`` (distinct name avoids Cobertura collision with ``app/main.py``).
+source =
+    app
+    uvicorn_entry.py
+
+# Omit files that don't need coverage measurement
+omit =
+    tests/*
+    tests/**/*
+    scripts/*
+    venv/*
+    */__pycache__/*
+    */site-packages/*
+
+# Enable branch coverage (more accurate; SonarCloud uses it)
+branch = true
+
+[report]
+# Minimum coverage to pass (mirrors SonarCloud quality gate)
+fail_under = 80
+
+# Exclude lines from coverage measurement
+exclude_lines =
+    # Standard pragmas
+    pragma: no cover
+    # Abstract method bodies
+    raise NotImplementedError
+    # Defensive imports
+    if TYPE_CHECKING:
+    # Unreachable else on exhaustive match
+    assert False
+
+[xml]
+# Path written by `pytest --cov-report=xml` — matches sonar-project.properties
+output = coverage.xml
+
+[html]
+# Local HTML report (not sent to SonarCloud; for local inspection)
+directory = htmlcov

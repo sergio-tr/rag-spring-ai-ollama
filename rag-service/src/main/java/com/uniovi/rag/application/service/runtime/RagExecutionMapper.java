@@ -1,0 +1,22 @@
+package com.uniovi.rag.application.service.runtime;
+
+import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
+
+public final class RagExecutionMapper {
+
+    private RagExecutionMapper() {
+    }
+
+    public static QueryResponse toQueryResponse(RagExecutionResult result) {
+        QueryType qt = result.queryTypeForLegacy();
+        if (result.usedTool()) {
+            return QueryResponse.fromTool(
+                    result.answerText(),
+                    result.toolUsedLabel() != null ? result.toolUsedLabel() : "tool",
+                    qt);
+        }
+        return QueryResponse.fromLLM(result.answerText(), qt);
+    }
+}

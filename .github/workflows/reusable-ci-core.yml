@@ -1,0 +1,1086 @@
+# Full PR DAG: core → integration → e2e_fullstack → sonar → performance (main/master PRs only).
+# Invoked only from ci.yml (workflow_call). Single YAML so `needs:` is explicit.
+name: Reusable CI PR pipeline
+
+on:
+  workflow_call:
+
+# Single source of truth for Next.js public env in this workflow.
+# Jobs may override NEXT_PUBLIC_API_BASE_URL when the browser must target 127.0.0.1 instead of localhost.
+env:
+  NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
+  NEXT_PUBLIC_API_BASE_URL: http://localhost:9000
+  # Opt into Node.js 24 for JavaScript-based GitHub Actions (Node 20 deprecation on runners).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  # Must match .github/ci/postgres-service-image.env (verified by verify-pinned-postgres-image.sh).
+  POSTGRES_SERVICE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
+
+jobs:
+  core_backend:
+    name: Backend (Java)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        # Do NOT use `env.*` in `services.<id>.image` (context may be unsupported).
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_JWT_SECRET: test-secret-key-for-jwt-signing-must-be-long-enough-32
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify pinned Postgres image references
+        run: bash ./.github/scripts/verify-pinned-postgres-image.sh
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+      - uses: ./.github/actions/prepare-postgres-for-rag-tests
+      - name: Build and test
+        run: |
+          cd rag-service
+          chmod +x mvnw
+          ./mvnw -B clean verify
+      - name: Upload Maven test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rag-service-maven-test-reports
+          path: |
+            rag-service/target/surefire-reports/
+            rag-service/target/failsafe-reports/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Javadoc
+        run: |
+          cd rag-service
+          ./mvnw -B -q javadoc:javadoc
+      - name: Upload Javadoc HTML
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: rag-service-javadoc
+          path: rag-service/target/reports/apidocs/
+          retention-days: 14
+          if-no-files-found: error
+
+  core_classifier:
+    name: Query Classifier Service (Python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          cd classifier-service
+          pip install -r requirements.txt
+      - name: Run tests with coverage gate
+        run: |
+          cd classifier-service
+          pytest tests/ -v
+      - name: Upload Python coverage.xml
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: classifier-coverage-xml
+          path: classifier-service/coverage.xml
+          retention-days: 7
+          if-no-files-found: warn
+
+  core_webapp:
+    name: Webapp (Next.js)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-npm-webapp
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: webapp/package.json
+          package-manager-cache: false
+      - run: npm install --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - id: vitest_coverage
+        run: npm run test:coverage
+      - name: Append coverage summary to job summary
+        if: success()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "### Vitest coverage summary" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat coverage/coverage-summary.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload coverage report
+        if: ${{ always() && (steps.vitest_coverage.outcome == 'success' || steps.vitest_coverage.outcome == 'failure') }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: webapp-coverage
+          path: webapp/coverage/
+          retention-days: 14
+          if-no-files-found: warn
+      - run: npm run build
+      - run: npm run doc
+      - name: Upload TypeDoc HTML
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: webapp-typedoc-api
+          path: webapp/docs/api/
+          retention-days: 14
+          if-no-files-found: error
+
+  core_webapp_e2e:
+    name: Webapp E2E (Playwright smoke)
+    runs-on: ubuntu-latest
+    needs: [core_webapp]
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/cache-npm-webapp
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: webapp/package.json
+          package-manager-cache: false
+      - name: Install and build
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Run Playwright (excludes @fullstack)
+        run: npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-smoke-report
+          path: webapp/playwright-report/
+          retention-days: 7
+
+  core_done:
+    name: Core stages complete
+    runs-on: ubuntu-latest
+    needs: [core_backend, core_classifier, core_webapp_e2e, playwright_api_smoke]
+    timeout-minutes: 5
+    steps:
+      - run: echo "Core pipeline stages passed."
+
+  integration:
+    name: Stack integration (pytest)
+    runs-on: ubuntu-latest
+    needs: [core_done]
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      INTEGRATION_USE_TESTCONTAINERS: "0"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
+      RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      RAG_API_PRODUCT_BASE_PATH: /api/v5
+      INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+      INTEGRATION_CHECK_OBS: "0"
+      INTEGRATION_BACKEND_URL: http://127.0.0.1:9000
+      INTEGRATION_CLASSIFIER_URL: http://127.0.0.1:8000
+      INTEGRATION_ADMIN_EMAIL: admin@e2e.local
+      INTEGRATION_ADMIN_PASSWORD: e2e
+      INTEGRATION_RAG_PRODUCT_BASE_PATH: /api/v5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+      - uses: ./.github/actions/prepare-postgres-for-rag-tests
+      - name: Start Spring Boot (profile e2e)
+        run: |
+          cd rag-service
+          chmod +x mvnw
+          nohup ./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e \
+            > /tmp/spring-integration.log 2>&1 &
+          echo $! > /tmp/spring-integration.pid
+      - name: Wait for Actuator health
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:9000/actuator/health >/dev/null 2>&1; then
+              echo "Backend healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-integration.log || true
+          exit 1
+      - name: Seed e2e admin user (for pytest)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
+            INSERT INTO users (id, email, password_hash, name, role, created_at)
+            VALUES ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP)
+            ON CONFLICT (email) DO NOTHING;
+          "
+      - name: Readiness check (informational; 200 or 503)
+        run: |
+          code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/actuator/health/readiness || true)"
+          if [ "$code" != "200" ] && [ "$code" != "503" ]; then
+            echo "::warning::Unexpected readiness status: HTTP $code"
+          else
+            echo "Readiness status: HTTP $code"
+          fi
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install integration test deps
+        run: pip install -r tests/integration/requirements.txt
+      - name: pytest (stack integration)
+        run: python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py
+      - name: Stop Spring Boot
+        if: always()
+        run: |
+          if [ -f /tmp/spring-integration.pid ]; then kill "$(cat /tmp/spring-integration.pid)" 2>/dev/null || true; fi
+      - name: Upload Spring log on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: spring-integration-log
+          path: /tmp/spring-integration.log
+          retention-days: 7
+      - name: Print Spring log tail on failure
+        if: failure()
+        run: tail -n 200 /tmp/spring-integration.log || true
+
+  integration_classifier_required:
+    name: Stack integration (pytest) + classifier required
+    runs-on: ubuntu-latest
+    needs: [core_done]
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      INTEGRATION_USE_TESTCONTAINERS: "0"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
+      RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      RAG_API_PRODUCT_BASE_PATH: /api/v5
+      INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+      INTEGRATION_CHECK_OBS: "0"
+      INTEGRATION_BACKEND_URL: http://127.0.0.1:9000
+      INTEGRATION_CLASSIFIER_URL: http://127.0.0.1:8000
+      INTEGRATION_ADMIN_EMAIL: admin@e2e.local
+      INTEGRATION_ADMIN_PASSWORD: e2e
+      INTEGRATION_STRICT: "1"
+      INTEGRATION_REQUIRE_CLASSIFIER: "1"
+      # Model-loaded is NOT required in CI by default (connectivity is the primary gate).
+      INTEGRATION_REQUIRE_CLASSIFIER_MODEL: "0"
+      INTEGRATION_RAG_PRODUCT_BASE_PATH: /api/v5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+      - uses: ./.github/actions/prepare-postgres-for-rag-tests
+
+      - name: Start Spring Boot (profile e2e)
+        run: |
+          cd rag-service
+          chmod +x mvnw
+          nohup ./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e \
+            > /tmp/spring-integration-classifier.log 2>&1 &
+          echo $! > /tmp/spring-integration-classifier.pid
+
+      - name: Start classifier-service (uvicorn)
+        run: |
+          python -m pip install -r classifier-service/requirements.txt
+          nohup python -m uvicorn uvicorn_entry:app --host 127.0.0.1 --port 8000 --app-dir classifier-service \
+            > /tmp/classifier-service.log 2>&1 &
+          echo $! > /tmp/classifier-service.pid
+
+      - name: Wait for backend + classifier health
+        run: |
+          set -euo pipefail
+          backend_ok=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:9000/actuator/health >/dev/null 2>&1; then
+              echo "Backend healthy"
+              backend_ok=1
+              break
+            fi
+            sleep 2
+          done
+          classifier_ok=0
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              echo "Classifier healthy"
+              classifier_ok=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$backend_ok" = "1" ] && [ "$classifier_ok" = "1" ]; then
+            echo "Backend + classifier healthy"
+            exit 0
+          fi
+          echo "--- backend log (tail) ---"
+          tail -n 200 /tmp/spring-integration-classifier.log || true
+          echo "--- classifier log (tail) ---"
+          tail -n 200 /tmp/classifier-service.log || true
+          exit 1
+      - name: Seed e2e admin user (for pytest)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
+            INSERT INTO users (id, email, password_hash, name, role, created_at)
+            VALUES ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP)
+            ON CONFLICT (email) DO NOTHING;
+          "
+
+      - name: Install integration test deps
+        run: pip install -r tests/integration/requirements.txt
+
+      - name: pytest (stack integration; classifier required)
+        run: python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py
+
+      - name: Stop services
+        if: always()
+        run: |
+          if [ -f /tmp/spring-integration-classifier.pid ]; then kill "$(cat /tmp/spring-integration-classifier.pid)" 2>/dev/null || true; fi
+          if [ -f /tmp/classifier-service.pid ]; then kill "$(cat /tmp/classifier-service.pid)" 2>/dev/null || true; fi
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: stack-integration-classifier-required-logs
+          path: |
+            /tmp/spring-integration-classifier.log
+            /tmp/classifier-service.log
+          retention-days: 7
+      - name: Print logs tail on failure
+        if: failure()
+        run: |
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-integration-classifier.log || true
+          echo "--- classifier log (tail) ---"
+          tail -n 200 /tmp/classifier-service.log || true
+
+  docker_build_smoke:
+    name: Docker build smoke (no push)
+    runs-on: ubuntu-latest
+    needs: [core_done]
+    # Release-quality lane: run on PRs to main/master and on push to main/master.
+    # Do not run on PRs targeting dev by default (avoid Docker-heavy compute on integration PRs).
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'master')) }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Build rag-service image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./rag-service
+          push: false
+      - name: Build classifier-service image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./classifier-service
+          push: false
+      - name: Build webapp image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./webapp
+          push: false
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=http://localhost:9000
+            NEXT_PUBLIC_RAG_API_PREFIX=/api/v5
+            NEXT_PUBLIC_TIMEZONE=UTC
+      - name: Build db image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./db
+          push: false
+          build-args: |
+            POSTGRES_BASE_IMAGE=${{ env.POSTGRES_SERVICE_IMAGE }}
+      - name: Build reverse-proxy image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./reverse-proxy
+          push: false
+
+  compose_structural_guard:
+    name: Compose structural guard (no Docker)
+    runs-on: ubuntu-latest
+    needs: [core_done]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install PyYAML for compose_guard
+        run: python3 -m pip install --user -q pyyaml
+      - name: Create .env files
+        run: bash ./docker/scripts/create-env-all.sh --force
+      - name: Compose policy guard (structural rules, same as docker-compose-ci)
+        run: |
+          set -euo pipefail
+          python3 docker/scripts/compose_guard.py \
+            --only-rules image_forbidden,yaml_error,build_invalid,build_missing_context,build_missing_dockerfile \
+            2>&1 | tee /tmp/compose-structural-guard.log
+      - name: Upload compose guard log on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: compose-structural-guard-log
+          path: /tmp/compose-structural-guard.log
+          retention-days: 7
+          if-no-files-found: warn
+
+  e2e_fullstack:
+    name: E2E fullstack (Playwright @fullstack)
+    runs-on: ubuntu-latest
+    # Dev PR gate requires fullstack E2E; keep it independent from Docker-heavy lanes.
+    needs: [integration, integration_classifier_required, compose_structural_guard]
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000,https://127.0.0.1:8443,https://localhost:8443
+      RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+      # In proxy mode, browser calls same-origin /api/v5.
+      NEXT_PUBLIC_API_BASE_URL: ""
+      NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
+      # Admin UI smoke requires backend profile=e2e admin seeding.
+      E2E_ADMIN_ENABLED: "1"
+      REVERSE_PROXY_HTTP_PORT: "8080"
+      REVERSE_PROXY_HTTPS_PORT: "8443"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+      - uses: ./.github/actions/prepare-postgres-for-rag-tests
+      - name: Start Spring Boot (profile e2e)
+        run: |
+          cd rag-service
+          chmod +x mvnw
+          nohup ./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e \
+            > /tmp/spring-e2e.log 2>&1 &
+          echo $! > /tmp/spring-e2e.pid
+      - name: Wait for Actuator health
+        run: |
+          set -euo pipefail
+          # Readiness is a better gate than generic /health for auth-dependent E2E.
+          for i in $(seq 1 120); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/actuator/health/readiness || true)"
+            if [ "$code" = "200" ]; then
+              echo "Backend ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- readiness never became 200; diagnostics ---"
+          curl -sS http://127.0.0.1:9000/actuator/health || true
+          echo ""
+          curl -sS http://127.0.0.1:9000/actuator/health/readiness || true
+          echo ""
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-e2e.log || true
+          exit 1
+      - name: Seed deterministic e2e users
+        shell: bash
+        run: |
+          set -euo pipefail
+          PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
+            INSERT INTO users (id, email, password_hash, name, role, created_at, email_verified, email_verified_at)
+            VALUES
+              ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP),
+              ('e2e0ad00-0000-4000-8000-000000000002', 'dev@local.test', '{noop}dev', 'Dev User', 'USER', CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP)
+            ON CONFLICT (email) DO UPDATE
+            SET
+              password_hash = EXCLUDED.password_hash,
+              name = EXCLUDED.name,
+              role = EXCLUDED.role,
+              email_verified = true,
+              email_verified_at = COALESCE(users.email_verified_at, CURRENT_TIMESTAMP);
+          "
+      - name: Wait for e2e seed login to be available
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            code="$(
+              curl -sS -o /dev/null -w '%{http_code}' \
+                -H 'Content-Type: application/json' \
+                -d '{"email":"dev@local.test","password":"dev"}' \
+                http://127.0.0.1:9000/api/auth/login || true
+            )"
+            if [ "$code" = "200" ]; then
+              echo "Seed login OK"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Seed login not ready after waiting."
+          echo "--- backend health (diagnostic) ---"
+          curl -sS http://127.0.0.1:9000/actuator/health || true
+          echo ""
+          echo "--- backend readiness (diagnostic; 200 or 503) ---"
+          curl -sS http://127.0.0.1:9000/actuator/health/readiness || true
+          echo ""
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-e2e.log || true
+          exit 1
+      - name: Wait for e2e admin login to be available
+        env:
+          E2E_ADMIN_EMAIL: admin@e2e.local
+          E2E_ADMIN_PASSWORD: e2e
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            code="$(
+              curl -sS -o /dev/null -w '%{http_code}' \
+                -H 'Content-Type: application/json' \
+                -d "{\"email\":\"${E2E_ADMIN_EMAIL}\",\"password\":\"${E2E_ADMIN_PASSWORD}\"}" \
+                http://127.0.0.1:9000/api/auth/login || true
+            )"
+            if [ "$code" = "200" ]; then
+              echo "Admin login OK"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Admin login not ready after waiting."
+          echo "--- backend health (diagnostic) ---"
+          curl -sS http://127.0.0.1:9000/actuator/health || true
+          echo ""
+          echo "--- backend readiness (diagnostic; 200 or 503) ---"
+          curl -sS http://127.0.0.1:9000/actuator/health/readiness || true
+          echo ""
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-e2e.log || true
+          exit 1
+      - name: Readiness check (informational; 200 or 503)
+        run: |
+          code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/actuator/health/readiness || true)"
+          if [ "$code" != "200" ] && [ "$code" != "503" ]; then
+            echo "::warning::Unexpected readiness status: HTTP $code"
+          else
+            echo "Readiness status: HTTP $code"
+          fi
+      - uses: ./.github/actions/cache-npm-webapp
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: webapp/package.json
+          package-manager-cache: false
+      - name: Build and start Next.js for proxy mode
+        working-directory: webapp
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          nohup npm run start -- -H 0.0.0.0 -p 3000 > /tmp/webapp-e2e.log 2>&1 &
+          echo $! > /tmp/webapp-e2e.pid
+
+      - name: Wait for webapp health
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3000 >/dev/null 2>&1; then
+              echo "Webapp healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- webapp log (tail) ---"
+          tail -n 200 /tmp/webapp-e2e.log || true
+          exit 1
+
+      - name: Start reverse-proxy container (HTTPS)
+        run: |
+          docker build -t rag-reverse-proxy-ci reverse-proxy
+          docker run -d --name rag-reverse-proxy-ci \
+            --add-host=host-gateway.internal:host-gateway \
+            -p ${REVERSE_PROXY_HTTP_PORT}:80 \
+            -p ${REVERSE_PROXY_HTTPS_PORT}:443 \
+            -e BACKEND_HOST=host-gateway.internal \
+            -e BACKEND_INTERNAL_PORT=9000 \
+            -e WEBAPP_HOST=host-gateway.internal \
+            -e WEBAPP_INTERNAL_PORT=3000 \
+            -e REVERSE_PROXY_ENFORCE_HTTPS=1 \
+            -e API_CLIENT_MAX_BODY_SIZE=50m \
+            -e API_PROXY_CONNECT_TIMEOUT=10s \
+            -e API_PROXY_SEND_TIMEOUT=180s \
+            -e API_PROXY_READ_TIMEOUT=180s \
+            rag-reverse-proxy-ci
+
+      - name: Wait for proxy health
+        run: |
+          for i in $(seq 1 90); do
+            if curl -skf https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}/ >/dev/null 2>&1; then
+              echo "Proxy healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- proxy logs ---"
+          docker logs rag-reverse-proxy-ci || true
+          exit 1
+
+      - name: Run @fullstack Playwright through proxy
+        working-directory: webapp
+        env:
+          E2E_ALLOW_INSECURE_COOKIES: "true"
+          E2E_LOGIN_TIMEOUT_MS: "12000"
+          PLAYWRIGHT_IGNORE_HTTPS_ERRORS: "1"
+          PLAYWRIGHT_WORKERS: "1"
+          PLAYWRIGHT_RETRIES: "1"
+          PLAYWRIGHT_SKIP_WEBSERVER: "1"
+          PLAYWRIGHT_EXPECT_TIMEOUT_MS: "10000"
+          PLAYWRIGHT_TEST_TIMEOUT_MS: "30000"
+          PLAYWRIGHT_BASE_URL: https://127.0.0.1:8443
+          API_BASE_URL: https://127.0.0.1:8443
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e:fullstack
+      - name: Stop services
+        if: always()
+        run: |
+          docker logs rag-reverse-proxy-ci > /tmp/proxy-e2e.log 2>&1 || true
+          if [ -f /tmp/spring-e2e.pid ]; then kill "$(cat /tmp/spring-e2e.pid)" 2>/dev/null || true; fi
+          if [ -f /tmp/webapp-e2e.pid ]; then kill "$(cat /tmp/webapp-e2e.pid)" 2>/dev/null || true; fi
+          docker rm -f rag-reverse-proxy-ci 2>/dev/null || true
+      - name: Upload Spring log on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: spring-e2e-log
+          path: /tmp/spring-e2e.log
+          retention-days: 7
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-fullstack-report
+          path: webapp/playwright-report/
+          retention-days: 7
+      - name: Upload webapp/proxy logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: webapp-proxy-e2e-log
+          path: |
+            /tmp/webapp-e2e.log
+            /tmp/proxy-e2e.log
+          retention-days: 7
+
+  playwright_api_smoke:
+    name: Operator API smoke (Playwright request)
+    runs-on: ubuntu-latest
+    needs: [core_webapp]
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
+      RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+      # Playwright API targets Spring directly; it does not run Next.js.
+      API_BASE_URL: http://127.0.0.1:9000
+      PLAYWRIGHT_SKIP_WEBSERVER: "1"
+      INTEGRATION_LOGIN_EMAIL: dev@local.test
+      INTEGRATION_LOGIN_PASSWORD: dev
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+      - uses: ./.github/actions/prepare-postgres-for-rag-tests
+
+      - name: Start Spring Boot (profile e2e)
+        run: |
+          cd rag-service
+          chmod +x mvnw
+          nohup ./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e \
+            > /tmp/spring-playwright-api.log 2>&1 &
+          echo $! > /tmp/spring-playwright-api.pid
+
+      - name: Wait for Actuator health
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:9000/actuator/health >/dev/null 2>&1; then
+              echo "Backend healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-playwright-api.log || true
+          exit 1
+
+      - name: Cache npm (webapp)
+        uses: ./.github/actions/cache-npm-webapp
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: webapp/package.json
+          package-manager-cache: false
+      - name: Install webapp dependencies
+        working-directory: webapp
+        run: npm install --no-audit --no-fund
+      - name: Install Playwright browsers
+        working-directory: webapp
+        run: npx playwright install --with-deps chromium
+      - name: Run Playwright API tests
+        working-directory: webapp
+        run: npm run test:api
+
+      - name: Stop Spring Boot
+        if: always()
+        run: |
+          if [ -f /tmp/spring-playwright-api.pid ]; then kill "$(cat /tmp/spring-playwright-api.pid)" 2>/dev/null || true; fi
+
+      - name: Upload logs/reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-api-smoke-artifacts
+          path: |
+            /tmp/spring-playwright-api.log
+            webapp/playwright-report/
+          retention-days: 7
+      - name: Print Spring log tail on failure
+        if: failure()
+        run: tail -n 200 /tmp/spring-playwright-api.log || true
+
+  sonar:
+    name: SonarCloud Scan
+    runs-on: ubuntu-latest
+    needs: [e2e_fullstack]
+    # Release-quality lane: run on PRs to main/master and on push to main/master.
+    # Skip fork PRs (secrets are unavailable by default).
+    if: >-
+      ${{
+        (github.event_name == 'push' || (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'master')))
+        && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+      }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: write
+    services:
+      postgres:
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_JWT_SECRET: test-secret-key-for-jwt-signing-must-be-long-enough-32
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+      - name: Ensure Maven wrapper is executable
+        working-directory: rag-service
+        run: chmod +x mvnw
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: classifier-service/requirements.txt
+      - uses: ./.github/actions/prepare-postgres-for-rag-tests
+      - name: Build backend and generate Java coverage (mvn verify)
+        working-directory: rag-service
+        run: ./mvnw -B clean verify --no-transfer-progress
+        env:
+          MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "false"
+      - name: Copy Maven dependencies for SonarCloud
+        working-directory: rag-service
+        run: ./mvnw -B dependency:copy-dependencies -DoutputDirectory=target/dependency --no-transfer-progress
+      - name: Install Python dependencies
+        working-directory: classifier-service
+        run: pip install -r requirements.txt
+      # Same command as core_classifier (pytest.ini addopts apply). Previously Sonar used a narrower
+      # path list than core_classifier, which could report green while tests/test_api.py failed.
+      - name: Run classifier tests with coverage
+        working-directory: classifier-service
+        run: |
+          pytest tests/ -v
+          python scripts/patch_coverage_xml_for_sonar.py
+        env:
+          MODELS_DIR: ./models
+          DATA_DIR: ./data
+      - uses: ./.github/actions/cache-npm-webapp
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: webapp/package.json
+          package-manager-cache: false
+      - name: Install webapp dependencies and generate LCOV
+        working-directory: webapp
+        run: |
+          npm install --no-audit --no-fund
+          npm run test:coverage
+          node scripts/patch-lcov-paths.mjs
+      - name: Require SONAR_TOKEN for SonarCloud
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::error::SONAR_TOKEN is missing. Add the repository secret (SonarCloud → Account → Security). Fork PRs do not receive repository secrets by default."
+            exit 1
+          fi
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  performance:
+    name: Performance (Gatling + infra probe)
+    runs-on: ubuntu-latest
+    needs: [sonar]
+    if: github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'master')
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+      RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000
+      REVERSE_PROXY_HTTP_PORT: "8080"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+      - uses: ./.github/actions/prepare-postgres-for-rag-tests
+      - name: Start Spring Boot (profile e2e)
+        run: |
+          cd rag-service
+          chmod +x mvnw
+          nohup ./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e \
+            > /tmp/spring-perf.log 2>&1 &
+          echo $! > /tmp/spring-perf.pid
+      - name: Wait for Actuator health
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:9000/actuator/health >/dev/null 2>&1; then
+              echo "Backend healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-perf.log || true
+          exit 1
+      - name: Start reverse-proxy container (HTTP)
+        run: |
+          docker build -t rag-reverse-proxy-perf reverse-proxy
+          docker run -d --name rag-reverse-proxy-perf \
+            --add-host=host.docker.internal:host-gateway \
+            -p ${REVERSE_PROXY_HTTP_PORT}:80 \
+            -e BACKEND_HOST=host.docker.internal \
+            -e BACKEND_INTERNAL_PORT=9000 \
+            -e WEBAPP_HOST=host.docker.internal \
+            -e WEBAPP_INTERNAL_PORT=3000 \
+            -e REVERSE_PROXY_ENFORCE_HTTPS=0 \
+            -e API_CLIENT_MAX_BODY_SIZE=50m \
+            -e API_PROXY_CONNECT_TIMEOUT=10s \
+            -e API_PROXY_SEND_TIMEOUT=180s \
+            -e API_PROXY_READ_TIMEOUT=180s \
+            rag-reverse-proxy-perf
+      - name: Wait for proxy API route
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:${REVERSE_PROXY_HTTP_PORT}/actuator/health >/dev/null 2>&1; then
+              echo "Proxy route healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs rag-reverse-proxy-perf || true
+          exit 1
+      - name: Grant execute permission for gradlew
+        run: chmod +x tests/gatling/gradlew
+      - name: Gatling smoke (ActuatorHealthSimulation)
+        working-directory: tests/gatling
+        env:
+          GATLING_BASE_URL: http://127.0.0.1:8080
+          GATLING_HEALTH_USERS: "8"
+          GATLING_HEALTH_DURATION_SEC: "20"
+        run: |
+          set -e
+          ./gradlew --no-daemon gatlingRun --simulation simulations.ActuatorHealthSimulation
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Infra micro-benchmark (actuator health probe)
+        run: |
+          pip install -r tests/performance/requirements.txt
+          python tests/performance/infra_probe.py \
+            --backend-base-url http://127.0.0.1:8080 \
+            --repetitions 5 \
+            --warmup 1 \
+            --concurrency 1 \
+            --timeout-s 30 \
+            --output-json /tmp/infra-probe-ci.json
+      - name: Stop services
+        if: always()
+        run: |
+          docker logs rag-reverse-proxy-perf > /tmp/proxy-perf.log 2>&1 || true
+          if [ -f /tmp/spring-perf.pid ]; then kill "$(cat /tmp/spring-perf.pid)" 2>/dev/null || true; fi
+          docker rm -f rag-reverse-proxy-perf 2>/dev/null || true
+      - name: Print Spring log on failure
+        if: failure()
+        run: tail -n 200 /tmp/spring-perf.log || true
+      - name: Upload Gatling reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gatling-reports-pr
+          path: tests/gatling/build/reports/gatling/
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: Upload perf probe and proxy logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: perf-proxy-probe
+          path: |
+            /tmp/infra-probe-ci.json
+            /tmp/proxy-perf.log
+          retention-days: 14
+          if-no-files-found: warn

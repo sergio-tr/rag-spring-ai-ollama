@@ -1,0 +1,414 @@
+# Main stack and optional tiers (profiles). Env: db/.env, classifier-service/.env, rag-service/.env, webapp/.env, observability/.env as needed.
+# Profiles: observability | logs | infra | ollama | proxy (dev overlays in compose.dev.yml)
+# Run: ./docker/scripts/up.sh dev|prod …  or  cd docker && docker compose --env-file … up -d
+services:
+  postgres:
+    build:
+      context: ../db
+      dockerfile: Dockerfile
+      args:
+        # Source of truth: db/.env(.example). CI also enforces the canonical pgvector pin.
+        POSTGRES_BASE_IMAGE: ${POSTGRES_BASE_IMAGE:-pgvector/pgvector:0.8.2-pg16-bookworm}
+    env_file:
+      - ../db/.env
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-vectordb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../db/init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-vectordb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # One-shot: refresh collation + reindex (handles libc/ICU upgrades on existing volumes).
+  # Runs before backend/backend-dev connects to avoid "collation version mismatch" warnings and subtle ordering bugs.
+  postgres-collation-bootstrap:
+    build:
+      context: ../db
+      dockerfile: postgres-monitor-bootstrap/Dockerfile
+      args:
+        POSTGRES_MONITOR_BOOTSTRAP_BASE_IMAGE: ${POSTGRES_MONITOR_BOOTSTRAP_BASE_IMAGE:-postgres:16-alpine}
+    env_file:
+      - ../db/.env
+    environment:
+      # psql reads PGPASSWORD; we keep credentials in db/.env as POSTGRES_*.
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        echo "Postgres collation bootstrap: waiting for DB..."
+        # pg_isready is available in the postgres base image.
+        pg_isready -h postgres -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-vectordb}"
+        echo "Postgres collation bootstrap: refreshing collation version for '${POSTGRES_DB:-vectordb}'..."
+        psql -v ON_ERROR_STOP=1 -h postgres -U "${POSTGRES_USER:-postgres}" -d postgres \
+          -c "ALTER DATABASE \"${POSTGRES_DB:-vectordb}\" REFRESH COLLATION VERSION;"
+        echo "Postgres collation bootstrap: reindexing database '${POSTGRES_DB:-vectordb}'..."
+        psql -v ON_ERROR_STOP=1 -h postgres -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-vectordb}" \
+          -c "REINDEX DATABASE \"${POSTGRES_DB:-vectordb}\";"
+        echo "Postgres collation bootstrap: done."
+    restart: "no"
+
+  classifier-service:
+    build:
+      context: ../classifier-service
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${CLASSIFIER_PYTHON_BASE_IMAGE:-python:3.11-slim}
+        PORT: ${PORT:-8000}
+        MODELS_DIR: ${MODELS_DIR:-/app/models}
+        DATA_DIR: ${DATA_DIR:-/app/data}
+    env_file:
+      - ../classifier-service/.env
+    ports:
+      - "${CLASSIFIER_SERVICE_PORT:-8000}:${PORT:-8000}"
+    environment:
+      PORT: ${PORT:-8000}
+      MODELS_DIR: ${MODELS_DIR:-/app/models}
+      DATA_DIR: ${DATA_DIR:-/app/data}
+      # Quieter TensorFlow / CUDA INFO logs when no GPU (still may print one absl line at startup).
+      TF_CPP_MIN_LOG_LEVEL: "2"
+      GLOG_minloglevel: "2"
+    restart: unless-stopped
+    healthcheck:
+      # Process up and /health returns 200. Stricter checks (model loaded, classify OK) are in the backend Actuator readiness.
+      test: ["CMD-SHELL", "python -c \"import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/health', timeout=5)\" || exit 1"]
+      interval: 10s
+      timeout: 8s
+      retries: 5
+      start_period: 60s
+
+  backend:
+    build:
+      context: ../rag-service
+      dockerfile: Dockerfile
+      args:
+        JDK_BASE_IMAGE: ${RAG_JAVA_JDK_BASE_IMAGE:-eclipse-temurin:21-jdk}
+        JRE_BASE_IMAGE: ${RAG_JAVA_JRE_BASE_IMAGE:-eclipse-temurin:21-jre-alpine}
+        SERVER_PORT: ${SERVER_PORT:-9000}
+    env_file:
+      - ../db/.env
+      - ../rag-service/.env
+    ports:
+      - "${BACKEND_PORT:-9000}:${SERVER_PORT:-9000}"
+    environment:
+      SERVER_PORT: ${SERVER_PORT:-9000}
+      SPRING_MAIN_ALLOW_CIRCULAR_REFERENCES: ${SPRING_MAIN_ALLOW_CIRCULAR_REFERENCES:-true}
+      # Disables OTLP to localhost inside the JVM; compose.obs.yml adds profile "infra" and sets OTEL_* to the collector.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
+      # DB connection (same user/password as in db/.env)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-vectordb}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      # Ollama URL: set OLLAMA_BASE_URL and/or SPRING_AI_OLLAMA_BASE_URL in rag-service/.env (e.g. host, ollama:11434, or LAN IP).
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      SPRING_AI_OLLAMA_BASE_URL: ${SPRING_AI_OLLAMA_BASE_URL:-${OLLAMA_BASE_URL:-http://host.docker.internal:11434}}
+      SPRING_AI_OLLAMA_CHAT_MODEL: ${SPRING_AI_OLLAMA_CHAT_MODEL:-gemma3:4b}
+      SPRING_AI_OLLAMA_EMBEDDING_MODEL: ${SPRING_AI_OLLAMA_EMBEDDING_MODEL:-mxbai-embed-large}
+      RAG_CLASSIFIER_SERVICE_URL: http://classifier-service:${PORT:-8000}
+      # Keep container health independent from "model loaded" gates.
+      RAG_HEALTH_CLASSIFIER_REQUIRE_MODEL_LOADED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-collation-bootstrap:
+        condition: service_completed_successfully
+      classifier-service:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+        required: false
+      ollama:
+        condition: service_started
+        required: false
+    healthcheck:
+      # Container liveness: avoid readiness groups (they include ollama/classifier model loaded).
+      # We treat "UP" or "DOWN" health as liveness; JVM being reachable is enough for Docker orchestration.
+      test: ["CMD-SHELL", "curl -sS --max-time 8 http://127.0.0.1:${SERVER_PORT:-9000}/actuator/health >/dev/null || exit 1"]
+      interval: 20s
+      timeout: 12s
+      retries: 6
+      start_period: 90s
+    restart: unless-stopped
+
+  webapp:
+    build:
+      context: ../webapp
+      dockerfile: Dockerfile
+      args:
+        # CI can set WEBAPP_NEXT_PUBLIC_*; otherwise values come from ../webapp/.env (NEXT_PUBLIC_*).
+        NEXT_PUBLIC_API_BASE_URL: ${WEBAPP_NEXT_PUBLIC_API_BASE_URL:-${NEXT_PUBLIC_API_BASE_URL:-}}
+        NEXT_PUBLIC_RAG_API_PREFIX: ${WEBAPP_NEXT_PUBLIC_RAG_API_PREFIX:-${NEXT_PUBLIC_RAG_API_PREFIX:-/api/v5}}
+        NEXT_PUBLIC_TIMEZONE: ${WEBAPP_NEXT_PUBLIC_TIMEZONE:-${NEXT_PUBLIC_TIMEZONE:-UTC}}
+        NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED: ${WEBAPP_NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED:-${NEXT_PUBLIC_OAUTH_GOOGLE_ENABLED:-}}
+        NEXT_PUBLIC_LEGAL_PRIVACY_VERSION: ${WEBAPP_NEXT_PUBLIC_LEGAL_PRIVACY_VERSION:-${NEXT_PUBLIC_LEGAL_PRIVACY_VERSION:-}}
+        NEXT_PUBLIC_LEGAL_TERMS_VERSION: ${WEBAPP_NEXT_PUBLIC_LEGAL_TERMS_VERSION:-${NEXT_PUBLIC_LEGAL_TERMS_VERSION:-}}
+        NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME: ${WEBAPP_NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME:-${NEXT_PUBLIC_AUTH_ACCESS_COOKIE_NAME:-}}
+        NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME: ${WEBAPP_NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME:-${NEXT_PUBLIC_AUTH_REFRESH_COOKIE_NAME:-}}
+    ports:
+      # Host:container — ports come from ../webapp/.env (WEBAPP_HTTP_PORT, WEBAPP_CONTAINER_PORT).
+      - "${WEBAPP_HTTP_PORT:-80}:${WEBAPP_CONTAINER_PORT:-3000}"
+    env_file:
+      - ../webapp/.env
+    environment:
+      # PORT must match WEBAPP_CONTAINER_PORT / nginx WEBAPP_INTERNAL_PORT. Other keys come from env_file.
+      PORT: ${WEBAPP_CONTAINER_PORT:-3000}
+
+  mailpit:
+    profiles:
+      - dev-mail
+    build:
+      context: ./mailpit
+      dockerfile: Dockerfile
+      args:
+        MAILPIT_BASE_IMAGE: ${MAILPIT_BASE_IMAGE:-axllent/mailpit:v1.29.7}
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_HTTP_PORT:-8025}:8025"
+    restart: unless-stopped
+
+  # --- Optional: Loki + Promtail (profile logs) ---
+  loki:
+    profiles:
+      - logs
+    build:
+      context: ../observability/loki
+      dockerfile: Dockerfile
+      args:
+        LOKI_BASE_IMAGE: ${LOKI_BASE_IMAGE:-grafana/loki:2.9.6}
+    volumes:
+      - ../observability/loki/config.yml.template:/config.yml.template:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - sed "s/__LOKI_HTTP_PORT__/${OBS_INTERNAL_LOKI_HTTP:-3100}/g" /config.yml.template > /tmp/loki.yml && exec /usr/bin/loki -config.file=/tmp/loki.yml
+    ports:
+      - "${LOKI_HOST_PORT:-3100}:${OBS_INTERNAL_LOKI_HTTP:-3100}"
+    restart: unless-stopped
+
+  promtail:
+    profiles:
+      - logs
+    build:
+      context: ../observability/promtail
+      dockerfile: Dockerfile
+      args:
+        PROMTAIL_BASE_IMAGE: ${PROMTAIL_BASE_IMAGE:-grafana/promtail:2.9.6}
+    volumes:
+      - ../observability/promtail/config.yml.template:/config.yml.template:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - sed -e "s/__LOKI_HTTP_PORT__/${OBS_INTERNAL_LOKI_HTTP:-3100}/g" -e "s/__PROMTAIL_HTTP_PORT__/${OBS_INTERNAL_PROMTAIL_HTTP:-9080}/g" /config.yml.template > /tmp/promtail.yml && exec /usr/bin/promtail -config.file=/tmp/promtail.yml
+    ports:
+      - "${PROMTAIL_HOST_PORT:-9080}:${OBS_INTERNAL_PROMTAIL_HTTP:-9080}"
+    restart: unless-stopped
+    depends_on:
+      - loki
+
+  # --- Optional: host/container metrics (profile infra; cAdvisor also needs profile cadvisor) ---
+  node-exporter:
+    profiles:
+      - infra
+    build:
+      context: ../observability/node-exporter
+      dockerfile: Dockerfile
+      args:
+        NODE_EXPORTER_BASE_IMAGE: ${NODE_EXPORTER_BASE_IMAGE:-prom/node-exporter:v1.7.0}
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host/root"
+      - "--no-collector.softnet"
+      - "--no-collector.netstat"
+      - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|host|mnt)(/|$)|^/run/user(/|$)"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    ports:
+      - "${NODE_EXPORTER_HOST_PORT:-9100}:9100"
+    restart: unless-stopped
+
+  cadvisor:
+    profiles:
+      - cadvisor
+    build:
+      context: ../observability/cadvisor
+      dockerfile: Dockerfile
+      args:
+        CADVISOR_BASE_IMAGE: ${CADVISOR_BASE_IMAGE:-gcr.io/cadvisor/cadvisor:v0.49.1}
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "${CADVISOR_HOST_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  # --- Optional: OpenTelemetry + Jaeger + Prometheus + Grafana (profile observability) ---
+  # One-shot: initdb.d does not re-run on existing volumes; this creates POSTGRES_MONITOR_* before otel scrapes.
+  postgres-monitor-bootstrap:
+    profiles:
+      - observability
+    build:
+      context: ../db
+      dockerfile: postgres-monitor-bootstrap/Dockerfile
+      args:
+        POSTGRES_MONITOR_BOOTSTRAP_BASE_IMAGE: ${POSTGRES_MONITOR_BOOTSTRAP_BASE_IMAGE:-postgres:16-alpine}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../db/.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-vectordb}
+    volumes:
+      - ../db/scripts/ensure-postgres-monitor-role.sh:/ensure.sh:ro
+    entrypoint: ["/bin/sh", "/ensure.sh"]
+    restart: "no"
+
+  otel-collector:
+    profiles:
+      - observability
+    build:
+      context: ../observability/otel-collector
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${OTEL_COLLECTOR_BASE_IMAGE:-otel/opentelemetry-collector-contrib:0.102.0}
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-monitor-bootstrap:
+        condition: service_completed_successfully
+    env_file:
+      # db/.env first: POSTGRES_MONITOR_* must match postgres_exporter password (see db/init/01-monitor-user.sh).
+      - ../db/.env
+      - ../observability/.env
+    volumes:
+      - ../observability/otel-collector/config.yaml:/etc/otel-collector-config.yaml
+    environment:
+      OTEL_COLLECTOR_LOG_LEVEL: ${OTEL_COLLECTOR_LOG_LEVEL:-info}
+      OBS_INTERNAL_OTEL_OTLP_GRPC: ${OBS_INTERNAL_OTEL_OTLP_GRPC:-4317}
+      OBS_INTERNAL_OTEL_OTLP_HTTP: ${OBS_INTERNAL_OTEL_OTLP_HTTP:-4318}
+      OBS_INTERNAL_OTEL_PROM_EXPORT: ${OBS_INTERNAL_OTEL_PROM_EXPORT:-8889}
+      OBS_PG_ENDPOINT: ${OBS_PG_ENDPOINT:-postgres:5432}
+      # Single-level defaults: nested ${A:-${B:-c}} is unreliable across Compose versions. Source of truth is db/.env (same as postgres init).
+      OBS_PG_EXPORTER_USER: ${POSTGRES_MONITOR_USER:-postgres_exporter}
+      OBS_PG_EXPORTER_PASSWORD: ${POSTGRES_MONITOR_PASSWORD:-postgres_exporter}
+      OBS_PG_DB: ${OBS_PG_DB:-vectordb}
+      OBS_OTEL_EXPORT_JAEGER_ENDPOINT: ${OBS_OTEL_EXPORT_JAEGER_ENDPOINT:-jaeger:4317}
+    ports:
+      - "${OTEL_GRPC_PORT:-4317}:${OBS_INTERNAL_OTEL_OTLP_GRPC:-4317}"
+      - "${OTEL_HTTP_PORT:-4318}:${OBS_INTERNAL_OTEL_OTLP_HTTP:-4318}"
+      - "${OTEL_PROMETHEUS_SCRAPE_PORT:-8889}:${OBS_INTERNAL_OTEL_PROM_EXPORT:-8889}"
+    restart: unless-stopped
+
+  jaeger:
+    profiles:
+      - observability
+    build:
+      context: ../observability/jaeger
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${JAEGER_BASE_IMAGE:-jaegertracing/jaeger:2.16.0}
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:${OBS_INTERNAL_JAEGER_UI:-16686}"
+      - "${JAEGER_COLLECTOR_PORT:-14268}:${OBS_INTERNAL_JAEGER_COLLECTOR_HTTP:-14268}"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    restart: unless-stopped
+
+  prometheus:
+    profiles:
+      - observability
+    build:
+      context: ../observability/prometheus
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${PROMETHEUS_BASE_IMAGE:-prom/prometheus:v2.52.0}
+    environment:
+      OBS_INTERNAL_BACKEND_ACTUATOR: ${OBS_INTERNAL_BACKEND_ACTUATOR:-9000}
+      OBS_INTERNAL_OTEL_PROM_EXPORT: ${OBS_INTERNAL_OTEL_PROM_EXPORT:-8889}
+      OBS_INTERNAL_PROMETHEUS: ${OBS_INTERNAL_PROMETHEUS:-9090}
+    volumes:
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:${OBS_INTERNAL_PROMETHEUS:-9090}"
+    restart: unless-stopped
+    depends_on:
+      - otel-collector
+
+  grafana:
+    profiles:
+      - observability
+    build:
+      context: ../observability/grafana
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${GRAFANA_BASE_IMAGE:-grafana/grafana:11.2.0}
+    ports:
+      - "${GRAFANA_PORT:-3000}:${OBS_INTERNAL_GRAFANA:-3000}"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-CHANGE_ME}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_HTTP_PORT: ${OBS_INTERNAL_GRAFANA:-3000}
+      OBS_INTERNAL_PROMETHEUS: ${OBS_INTERNAL_PROMETHEUS:-9090}
+      OBS_INTERNAL_JAEGER_UI: ${OBS_INTERNAL_JAEGER_UI:-16686}
+      OBS_INTERNAL_LOKI_HTTP: ${OBS_INTERNAL_LOKI_HTTP:-3100}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../observability/grafana/provisioning:/mnt/repo-provisioning:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+      - jaeger
+
+  # --- Optional: Ollama in Docker (profile ollama); set OLLAMA_BASE_URL=http://ollama:11434 via ollama/.env when using this profile ---
+  ollama:
+    profiles:
+      - ollama
+    build:
+      context: ../ollama
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${OLLAMA_BASE_IMAGE:-ollama/ollama:latest}
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+  ollama_data:

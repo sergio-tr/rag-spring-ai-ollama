@@ -1,0 +1,618 @@
+package com.uniovi.rag.interfaces.rest;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteService;
+import com.uniovi.rag.application.service.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunPersistenceService;
+import com.uniovi.rag.configuration.RegressionSuiteRestJacksonConfiguration;
+import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteOutcome;
+import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteResult;
+import com.uniovi.rag.domain.runtime.traceregressionsuite.RuntimeTraceRegressionSuiteSummary;
+import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunId;
+import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSnapshot;
+import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSourceType;
+import com.uniovi.rag.domain.runtime.traceregressionsuiterun.RuntimeTraceRegressionSuiteRunSummary;
+import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.testsupport.RagApiTestPaths;
+import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.core.env.Environment;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebMvcTest(controllers = RuntimeTraceRegressionSuiteRunController.class)
+@ContextConfiguration(classes = RagWebMvcTestApplication.class)
+@AutoConfigureMockMvc(addFilters = false)
+@Import({RuntimeTraceRegressionSuiteRunController.class, RegressionSuiteRestJacksonConfiguration.class})
+@ActiveProfiles("test")
+@TestPropertySource(properties = "rag.api.product-base-path=/api/v1")
+class RuntimeTraceRegressionSuiteRunControllerTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final String VALID_EMPTY_ENTRIES_JSON = "{\"entries\":[]}";
+
+    @Autowired
+    private Environment environment;
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    private String productBase() {
+        return RagApiTestPaths.productBasePath(environment);
+    }
+
+    private String postExplicitRuns() {
+        return RagApiTestPaths.path(environment, "/runtime-trace-regression-suite-runs");
+    }
+
+    @MockitoBean
+    private RuntimeTraceRegressionSuiteRunPersistenceService runPersistenceService;
+
+    @MockitoBean
+    private RuntimeTraceRegressionSuiteService suiteService;
+
+    private UUID userId;
+    private UUID runId;
+    private UUID conversationId;
+
+    @BeforeEach
+    void setUp() {
+        userId = UUID.randomUUID();
+        runId = UUID.randomUUID();
+        conversationId = UUID.randomUUID();
+        RagPrincipal principal = new RagPrincipal(userId, "u@test", "USER");
+        UsernamePasswordAuthenticationToken auth =
+                new UsernamePasswordAuthenticationToken(
+                        principal, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+    }
+
+    @AfterEach
+    void clearSecurity() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void list_noQueryString_emptyService_returns200_emptyRuns() throws Exception {
+        when(runPersistenceService.listSummariesForUser(userId)).thenReturn(List.of());
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs"))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"runs\":[]}", true));
+        verify(runPersistenceService, times(1)).listSummariesForUser(any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).createRun(any(), any(), any(), any());
+        verify(suiteService, never()).execute(any());
+    }
+
+    @Test
+    void list_noQueryString_twoSummaries_preservesOrder_andSingleRootKey() throws Exception {
+        UUID id1 = UUID.randomUUID();
+        UUID id2 = UUID.randomUUID();
+        Instant t = Instant.parse("2024-01-01T00:00:00Z");
+        List<RuntimeTraceRegressionSuiteRunSummary> rows =
+                List.of(
+                        new RuntimeTraceRegressionSuiteRunSummary(
+                                new RuntimeTraceRegressionSuiteRunId(id1),
+                                RuntimeTraceRegressionSuiteRunSourceType.AD_HOC,
+                                Optional.empty(),
+                                RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS,
+                                t,
+                                1,
+                                1,
+                                1,
+                                0,
+                                0),
+                        new RuntimeTraceRegressionSuiteRunSummary(
+                                new RuntimeTraceRegressionSuiteRunId(id2),
+                                RuntimeTraceRegressionSuiteRunSourceType.SAVED_DEFINITION,
+                                Optional.of(UUID.randomUUID()),
+                                RuntimeTraceRegressionSuiteOutcome.COMPLETED_WITH_ENTRY_EXECUTION_FAILURES,
+                                t,
+                                2,
+                                2,
+                                0,
+                                1,
+                                0));
+        when(runPersistenceService.listSummariesForUser(userId)).thenReturn(rows);
+        MvcResult result =
+                mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs"))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.runs.length()").value(2))
+                        .andExpect(jsonPath("$.runs[0].id").value(id1.toString()))
+                        .andExpect(jsonPath("$.runs[1].id").value(id2.toString()))
+                        .andReturn();
+        assertThat(result.getResponse().getContentAsString()).doesNotContain("hibernateLazyInitializer");
+        JsonNode root = OBJECT_MAPPER.readTree(result.getResponse().getContentAsString());
+        Set<String> top = new HashSet<>();
+        root.fieldNames().forEachRemaining(top::add);
+        assertThat(top).containsExactly("runs");
+        verify(runPersistenceService, times(1)).listSummariesForUser(any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(suiteService, never()).execute(any());
+    }
+
+    @Test
+    void list_queryParam_returns400_emptyBody() throws Exception {
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs").queryParam("x", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(""));
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(suiteService, never()).execute(any());
+    }
+
+    @Test
+    void detail_validUuid_queryParam_returns400_emptyBody() throws Exception {
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId).queryParam("x", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(""));
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+        verify(suiteService, never()).execute(any());
+    }
+
+    @Test
+    void detail_validUuid_snapshot_returns200_strictTopLevelKeys() throws Exception {
+        RuntimeTraceRegressionSuiteRunSnapshot snap =
+                new RuntimeTraceRegressionSuiteRunSnapshot(
+                        new RuntimeTraceRegressionSuiteRunId(runId),
+                        userId,
+                        RuntimeTraceRegressionSuiteRunSourceType.AD_HOC,
+                        Optional.empty(),
+                        RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS,
+                        new RuntimeTraceRegressionSuiteSummary(1, 1, 1, 0, 0),
+                        Instant.parse("2024-03-01T12:00:00Z"),
+                        List.of());
+        when(runPersistenceService.loadByIdForUser(runId, userId)).thenReturn(Optional.of(snap));
+        MvcResult result =
+                mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.id").value(runId.toString()))
+                        .andExpect(jsonPath("$.definitionId").value(nullValue()))
+                        .andExpect(jsonPath("$.entries").isArray())
+                        .andExpect(jsonPath("$.entries", hasSize(0)))
+                        .andReturn();
+        assertThat(result.getResponse().getContentAsString()).doesNotContain("hibernateLazyInitializer");
+        JsonNode root = OBJECT_MAPPER.readTree(result.getResponse().getContentAsString());
+        Set<String> names = new HashSet<>();
+        root.fieldNames().forEachRemaining(names::add);
+        assertThat(names)
+                .hasSize(11)
+                .isEqualTo(
+                        Set.of(
+                                "id",
+                                "sourceType",
+                                "definitionId",
+                                "suiteOutcome",
+                                "createdAt",
+                                "requestedEntryCount",
+                                "processedEntryCount",
+                                "batchReturnedCount",
+                                "executionFailedCount",
+                                "batchNotAttemptedSubcount",
+                                "entries"));
+        verify(runPersistenceService, times(1)).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+        verify(runPersistenceService, never()).createRun(any(), any(), any(), any());
+        verify(suiteService, never()).execute(any());
+    }
+
+    static Stream<Arguments> detailEmptyOptionalCases() {
+        return Stream.of(Arguments.of(UUID.randomUUID(), "unknown"), Arguments.of(UUID.randomUUID(), "wrong_owner"));
+    }
+
+    @ParameterizedTest(name = "{1}")
+    @MethodSource("detailEmptyOptionalCases")
+    void detail_emptyOptional_returns404(UUID id, String ignoredLabel) throws Exception {
+        when(runPersistenceService.loadByIdForUser(id, userId)).thenReturn(Optional.empty());
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}", id))
+                .andExpect(status().isNotFound())
+                .andExpect(
+                        r ->
+                                assertThat(r.getResolvedException())
+                                        .isInstanceOf(NotFoundException.class)
+                                        .hasMessage("run not found"));
+        verify(runPersistenceService, times(1)).loadByIdForUser(id, userId);
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+        verify(suiteService, never()).execute(any());
+    }
+
+    @Test
+    void detail_malformedUuid_returns400_emptyBody() throws Exception {
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs/{id}", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(""));
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+        verify(suiteService, never()).execute(any());
+    }
+
+    @Test
+    void p46_p49_exposes_two_post_two_get_one_delete_mappings() {
+        long post =
+                Arrays.stream(RuntimeTraceRegressionSuiteRunController.class.getDeclaredMethods())
+                        .filter(m -> m.isAnnotationPresent(PostMapping.class))
+                        .count();
+        long get =
+                Arrays.stream(RuntimeTraceRegressionSuiteRunController.class.getDeclaredMethods())
+                        .filter(m -> m.isAnnotationPresent(GetMapping.class))
+                        .count();
+        long delete =
+                Arrays.stream(RuntimeTraceRegressionSuiteRunController.class.getDeclaredMethods())
+                        .filter(m -> m.isAnnotationPresent(DeleteMapping.class))
+                        .count();
+        assertThat(post).isEqualTo(2);
+        assertThat(get).isEqualTo(2);
+        assertThat(delete).isEqualTo(1);
+    }
+
+    @Test
+    void post_explicit_valid_empty_suite_completed_outcome_returns_201_location_and_persists() throws Exception {
+        UUID createdId = UUID.randomUUID();
+        RuntimeTraceRegressionSuiteResult result =
+                outcomeResult(RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS);
+        when(suiteService.execute(any())).thenReturn(result);
+        when(runPersistenceService.createRun(
+                        eq(userId), eq(RuntimeTraceRegressionSuiteRunSourceType.AD_HOC), eq(Optional.empty()), any()))
+                .thenReturn(createdId);
+
+        mockMvc.perform(
+                        post(postExplicitRuns())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_EMPTY_ENTRIES_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(content().string(""))
+                .andExpect(
+                        header()
+                                .string(
+                                        HttpHeaders.LOCATION,
+                                        productBase() + "/runtime-trace-regression-suite-runs/" + createdId));
+
+        verify(suiteService, times(1)).execute(any());
+        verify(runPersistenceService, times(1))
+                .createRun(
+                        eq(userId),
+                        eq(RuntimeTraceRegressionSuiteRunSourceType.AD_HOC),
+                        eq(Optional.empty()),
+                        any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+    }
+
+    @Test
+    void post_conversation_valid_uuid_body_completed_outcome_returns_201_same_location_rule() throws Exception {
+        UUID createdId = UUID.randomUUID();
+        RuntimeTraceRegressionSuiteResult result =
+                outcomeResult(RuntimeTraceRegressionSuiteOutcome.COMPLETED_ALL_BATCH_RETURNS);
+        when(suiteService.execute(any())).thenReturn(result);
+        when(runPersistenceService.createRun(
+                        eq(userId), eq(RuntimeTraceRegressionSuiteRunSourceType.AD_HOC), eq(Optional.empty()), any()))
+                .thenReturn(createdId);
+
+        mockMvc.perform(
+                        post(
+                                        productBase()
+                                                + "/conversations/{cid}/runtime-trace-regression-suite-runs",
+                                        conversationId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_EMPTY_ENTRIES_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(content().string(""))
+                .andExpect(
+                        header()
+                                .string(
+                                        HttpHeaders.LOCATION,
+                                        productBase() + "/runtime-trace-regression-suite-runs/" + createdId));
+
+        verify(suiteService, times(1)).execute(any());
+        verify(runPersistenceService, times(1))
+                .createRun(
+                        eq(userId),
+                        eq(RuntimeTraceRegressionSuiteRunSourceType.AD_HOC),
+                        eq(Optional.empty()),
+                        any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+    }
+
+    @Test
+    void post_explicit_query_string_returns_400_never_execute_or_createRun() throws Exception {
+        mockMvc.perform(
+                        post(postExplicitRuns())
+                                .queryParam("x", "1")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_EMPTY_ENTRIES_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(""));
+
+        verify(suiteService, never()).execute(any());
+        verify(runPersistenceService, never()).createRun(any(), any(), any(), any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+    }
+
+    @Test
+    void post_explicit_malformed_json_returns_400_never_execute_or_createRun() throws Exception {
+        mockMvc.perform(post(postExplicitRuns()).contentType(MediaType.APPLICATION_JSON).content("{"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(""));
+
+        verify(suiteService, never()).execute(any());
+        verify(runPersistenceService, never()).createRun(any(), any(), any(), any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+    }
+
+    @Test
+    void post_conversation_invalid_path_uuid_returns_400_never_execute_or_createRun() throws Exception {
+        mockMvc.perform(
+                        post(productBase() + "/conversations/{cid}/runtime-trace-regression-suite-runs", "not-a-uuid")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_EMPTY_ENTRIES_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(""));
+
+        verify(suiteService, never()).execute(any());
+        verify(runPersistenceService, never()).createRun(any(), any(), any(), any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+    }
+
+    @Test
+    void post_explicit_not_attempted_returns_400_execute_once_never_createRun() throws Exception {
+        RuntimeTraceRegressionSuiteResult result = outcomeResult(RuntimeTraceRegressionSuiteOutcome.NOT_ATTEMPTED);
+        when(suiteService.execute(any())).thenReturn(result);
+
+        mockMvc.perform(
+                        post(postExplicitRuns())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_EMPTY_ENTRIES_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(""));
+
+        verify(suiteService, times(1)).execute(any());
+        verify(runPersistenceService, never()).createRun(any(), any(), any(), any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+    }
+
+    @Test
+    void post_explicit_empty_suite_outcome_returns_201_createRun_once() throws Exception {
+        UUID createdId = UUID.randomUUID();
+        RuntimeTraceRegressionSuiteResult result = outcomeResult(RuntimeTraceRegressionSuiteOutcome.EMPTY_SUITE);
+        when(suiteService.execute(any())).thenReturn(result);
+        when(runPersistenceService.createRun(
+                        eq(userId), eq(RuntimeTraceRegressionSuiteRunSourceType.AD_HOC), eq(Optional.empty()), any()))
+                .thenReturn(createdId);
+
+        mockMvc.perform(
+                        post(postExplicitRuns())
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_EMPTY_ENTRIES_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(header().string(HttpHeaders.LOCATION, postExplicitRuns() + "/" + createdId));
+
+        verify(suiteService, times(1)).execute(any());
+        verify(runPersistenceService, times(1))
+                .createRun(
+                        eq(userId),
+                        eq(RuntimeTraceRegressionSuiteRunSourceType.AD_HOC),
+                        eq(Optional.empty()),
+                        any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+    }
+
+    @Test
+    void p49_t1_delete_success_returns_204_empty_body_no_location_headers() throws Exception {
+        when(runPersistenceService.deleteRunForUser(eq(runId), eq(userId))).thenReturn(true);
+        mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId))
+                .andExpect(status().isNoContent())
+                .andExpect(
+                        r -> {
+                            assertThat(r.getResponse().getContentAsByteArray().length).isZero();
+                            assertThat(r.getResponse().getHeader(HttpHeaders.LOCATION)).isNull();
+                            assertThat(r.getResponse().getHeader(HttpHeaders.CONTENT_LOCATION)).isNull();
+                        });
+        verify(runPersistenceService, times(1)).deleteRunForUser(eq(runId), eq(userId));
+        verifyDeletePathDoesNotTouchGetPostServices();
+    }
+
+    @Test
+    void p49_t2_delete_missing_run_returns_404_empty_body_no_location_headers() throws Exception {
+        when(runPersistenceService.deleteRunForUser(eq(runId), eq(userId))).thenReturn(false);
+        mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId))
+                .andExpect(status().isNotFound())
+                .andExpect(
+                        r -> {
+                            assertThat(r.getResponse().getContentAsByteArray().length).isZero();
+                            assertThat(r.getResponse().getHeader(HttpHeaders.LOCATION)).isNull();
+                            assertThat(r.getResponse().getHeader(HttpHeaders.CONTENT_LOCATION)).isNull();
+                        });
+        verify(runPersistenceService, times(1)).deleteRunForUser(eq(runId), eq(userId));
+        verifyDeletePathDoesNotTouchGetPostServices();
+    }
+
+    @Test
+    void p49_t3_delete_wrong_owner_returns_404_empty_body_no_location_headers() throws Exception {
+        when(runPersistenceService.deleteRunForUser(eq(runId), eq(userId))).thenReturn(false);
+        mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId))
+                .andExpect(status().isNotFound())
+                .andExpect(
+                        r -> {
+                            assertThat(r.getResponse().getContentAsByteArray().length).isZero();
+                            assertThat(r.getResponse().getHeader(HttpHeaders.LOCATION)).isNull();
+                            assertThat(r.getResponse().getHeader(HttpHeaders.CONTENT_LOCATION)).isNull();
+                        });
+        verify(runPersistenceService, times(1)).deleteRunForUser(eq(runId), eq(userId));
+        verifyDeletePathDoesNotTouchGetPostServices();
+    }
+
+    @Test
+    void p49_t4_delete_query_string_returns_400_never_deleteRunForUser() throws Exception {
+        mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId).queryParam("x", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        r -> {
+                            assertThat(r.getResponse().getContentAsByteArray().length).isZero();
+                            assertThat(r.getResponse().getHeader(HttpHeaders.LOCATION)).isNull();
+                            assertThat(r.getResponse().getHeader(HttpHeaders.CONTENT_LOCATION)).isNull();
+                        });
+        verify(runPersistenceService, never()).deleteRunForUser(any(), any());
+        verifyDeletePathDoesNotTouchGetPostServices();
+    }
+
+    @Test
+    void p49_t5_delete_malformed_uuid_returns_400_never_deleteRunForUser() throws Exception {
+        mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-runs/{id}", "not-a-uuid"))
+                .andExpect(status().isBadRequest())
+                .andExpect(
+                        r -> {
+                            assertThat(r.getResponse().getContentAsByteArray().length).isZero();
+                            assertThat(r.getResponse().getHeader(HttpHeaders.LOCATION)).isNull();
+                            assertThat(r.getResponse().getHeader(HttpHeaders.CONTENT_LOCATION)).isNull();
+                        });
+        verify(runPersistenceService, never()).deleteRunForUser(any(), any());
+        verifyDeletePathDoesNotTouchGetPostServices();
+    }
+
+    @Test
+    void p49_t9_inOrder_deleteRunForUser_called_once_as_only_delete() throws Exception {
+        when(runPersistenceService.deleteRunForUser(eq(runId), eq(userId))).thenReturn(true);
+        mockMvc.perform(delete(productBase() + "/runtime-trace-regression-suite-runs/{id}", runId))
+                .andExpect(status().isNoContent());
+        InOrder inOrder = inOrder(runPersistenceService);
+        inOrder.verify(runPersistenceService).deleteRunForUser(eq(runId), eq(userId));
+        verifyNoMoreInteractions(runPersistenceService);
+    }
+
+    @Test
+    void p49_t10_get_list_compat_unchanged() throws Exception {
+        when(runPersistenceService.listSummariesForUser(userId)).thenReturn(List.of());
+        mockMvc.perform(get(productBase() + "/runtime-trace-regression-suite-runs"))
+                .andExpect(status().isOk())
+                .andExpect(content().json("{\"runs\":[]}", true));
+        verify(runPersistenceService, times(1)).listSummariesForUser(eq(userId));
+    }
+
+    @Test
+    void p49_t11_post_explicit_empty_suite_outcome_compat_unchanged() throws Exception {
+        UUID createdId = UUID.randomUUID();
+        RuntimeTraceRegressionSuiteResult result = outcomeResult(RuntimeTraceRegressionSuiteOutcome.EMPTY_SUITE);
+        when(suiteService.execute(any())).thenReturn(result);
+        when(runPersistenceService.createRun(
+                        eq(userId), eq(RuntimeTraceRegressionSuiteRunSourceType.AD_HOC), eq(Optional.empty()), any()))
+                .thenReturn(createdId);
+
+        mockMvc.perform(
+                        post(productBase() + "/runtime-trace-regression-suite-runs")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_EMPTY_ENTRIES_JSON))
+                .andExpect(status().isCreated())
+                .andExpect(
+                        header()
+                                .string(
+                                        HttpHeaders.LOCATION,
+                                        productBase() + "/runtime-trace-regression-suite-runs/" + createdId));
+
+        verify(suiteService, times(1)).execute(any());
+        verify(runPersistenceService, times(1))
+                .createRun(
+                        eq(userId),
+                        eq(RuntimeTraceRegressionSuiteRunSourceType.AD_HOC),
+                        eq(Optional.empty()),
+                        any());
+    }
+
+    private void verifyDeletePathDoesNotTouchGetPostServices() {
+        verify(runPersistenceService, never()).createRun(any(), any(), any(), any());
+        verify(runPersistenceService, never()).loadByIdForUser(any(), any());
+        verify(runPersistenceService, never()).listSummariesForUser(any());
+        verify(suiteService, never()).execute(any());
+    }
+
+    @Test
+    void post_conversation_success_passes_same_result_instance_to_createRun() throws Exception {
+        UUID createdId = UUID.randomUUID();
+        RuntimeTraceRegressionSuiteResult result =
+                outcomeResult(RuntimeTraceRegressionSuiteOutcome.COMPLETED_WITH_ENTRY_EXECUTION_FAILURES);
+        when(suiteService.execute(any())).thenReturn(result);
+        when(runPersistenceService.createRun(
+                        eq(userId), eq(RuntimeTraceRegressionSuiteRunSourceType.AD_HOC), eq(Optional.empty()), any()))
+                .thenReturn(createdId);
+
+        mockMvc.perform(
+                        post(
+                                        productBase()
+                                                + "/conversations/{cid}/runtime-trace-regression-suite-runs",
+                                        conversationId)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VALID_EMPTY_ENTRIES_JSON))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<RuntimeTraceRegressionSuiteResult> resultCaptor =
+                ArgumentCaptor.forClass(RuntimeTraceRegressionSuiteResult.class);
+        verify(runPersistenceService)
+                .createRun(
+                        eq(userId),
+                        eq(RuntimeTraceRegressionSuiteRunSourceType.AD_HOC),
+                        eq(Optional.empty()),
+                        resultCaptor.capture());
+        assertThat(resultCaptor.getValue()).isSameAs(result);
+    }
+
+    private static RuntimeTraceRegressionSuiteResult outcomeResult(RuntimeTraceRegressionSuiteOutcome outcome) {
+        return new RuntimeTraceRegressionSuiteResult(
+                outcome, new RuntimeTraceRegressionSuiteSummary(0, 0, 0, 0, 0), List.of());
+    }
+}

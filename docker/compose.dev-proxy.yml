@@ -1,0 +1,39 @@
+# Optional dev entrypoint: nginx routes / -> webapp, /api/* and /actuator/* -> backend-dev.
+# Enable with ./docker/scripts/docker-compose.sh up dev --rag --proxy (adds --profile proxy).
+
+services:
+  backend-dev:
+    ports: []
+
+  webapp:
+    ports: []
+
+  reverse-proxy:
+    profiles:
+      - proxy
+    build:
+      context: ../reverse-proxy
+      dockerfile: Dockerfile
+    depends_on:
+      backend-dev:
+        condition: service_started
+      webapp:
+        condition: service_started
+    ports:
+      - "${REVERSE_PROXY_DEV_HTTP_PORT:-80}:80"
+      - "${REVERSE_PROXY_DEV_HTTPS_PORT:-8444}:443"
+    environment:
+      BACKEND_HOST: backend-dev
+      BACKEND_INTERNAL_PORT: ${SERVER_PORT:-9000}
+      WEBAPP_HOST: webapp
+      WEBAPP_INTERNAL_PORT: ${WEBAPP_CONTAINER_PORT:-3000}
+      REVERSE_PROXY_ENFORCE_HTTPS: ${REVERSE_PROXY_ENFORCE_HTTPS:-0}
+      API_PROXY_CONNECT_TIMEOUT: ${API_PROXY_CONNECT_TIMEOUT:-10s}
+      API_PROXY_SEND_TIMEOUT: ${API_PROXY_SEND_TIMEOUT:-180s}
+      API_PROXY_READ_TIMEOUT: ${API_PROXY_READ_TIMEOUT:-180s}
+      RAG_API_PRODUCT_BASE_PATH: ${RAG_API_PRODUCT_BASE_PATH:-${NEXT_PUBLIC_RAG_API_PREFIX:-/api/v5}}
+      API_CLIENT_MAX_BODY_SIZE: ${API_CLIENT_MAX_BODY_SIZE:-50m}
+      WEB_CLIENT_MAX_BODY_SIZE: ${WEB_CLIENT_MAX_BODY_SIZE:-20m}
+      TLS_CERT_PATH: ${TLS_CERT_PATH:-/etc/nginx/certs/tls.crt}
+      TLS_KEY_PATH: ${TLS_KEY_PATH:-/etc/nginx/certs/tls.key}
+    restart: unless-stopped

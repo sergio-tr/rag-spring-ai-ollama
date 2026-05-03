@@ -1,0 +1,66 @@
+services:
+  # Backend only exposed through reverse proxy in prod local
+  backend:
+    ports: []
+    environment:
+      # In prod local/prod we don't use ddl-auto=update. It is controlled by migrations (Flyway).
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
+    networks:
+      - public
+      - private
+
+  postgres:
+    # Do not expose Postgres on the host in prod local
+    ports: []
+    networks:
+      - private
+
+  classifier-service:
+    ports: []
+    networks:
+      - private
+
+  webapp:
+    ports: []
+    networks:
+      - public
+    depends_on:
+      backend:
+        condition: service_started
+
+  # Web entrypoint: terminate HTTP/TLS and route / -> webapp, /api/* -> backend.
+
+  reverse-proxy:
+    build:
+      context: ../reverse-proxy
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+      - webapp
+    ports:
+      # HTTP entrypoint for the webapp + API (TLS on 443 can be wired later).
+      - "${REVERSE_PROXY_HTTP_PORT:-80}:80"
+      - "${REVERSE_PROXY_HTTPS_PORT:-8443}:443"
+    environment:
+      # envsubst substitutes these into nginx.conf (see reverse-proxy/Dockerfile).
+      BACKEND_HOST: backend
+      BACKEND_INTERNAL_PORT: ${SERVER_PORT:-9000}
+      WEBAPP_HOST: webapp
+      WEBAPP_INTERNAL_PORT: ${WEBAPP_CONTAINER_PORT:-3000}
+      REVERSE_PROXY_ENFORCE_HTTPS: ${REVERSE_PROXY_ENFORCE_HTTPS:-1}
+      API_PROXY_CONNECT_TIMEOUT: ${API_PROXY_CONNECT_TIMEOUT:-10s}
+      API_PROXY_SEND_TIMEOUT: ${API_PROXY_SEND_TIMEOUT:-180s}
+      API_PROXY_READ_TIMEOUT: ${API_PROXY_READ_TIMEOUT:-180s}
+      RAG_API_PRODUCT_BASE_PATH: ${RAG_API_PRODUCT_BASE_PATH:-${NEXT_PUBLIC_RAG_API_PREFIX:-/api/v5}}
+      API_CLIENT_MAX_BODY_SIZE: ${API_CLIENT_MAX_BODY_SIZE:-50m}
+      WEB_CLIENT_MAX_BODY_SIZE: ${WEB_CLIENT_MAX_BODY_SIZE:-20m}
+      TLS_CERT_PATH: ${TLS_CERT_PATH:-/etc/nginx/certs/tls.crt}
+      TLS_KEY_PATH: ${TLS_KEY_PATH:-/etc/nginx/certs/tls.key}
+    networks:
+      - public
+    restart: unless-stopped
+
+networks:
+  public:
+  private:
+

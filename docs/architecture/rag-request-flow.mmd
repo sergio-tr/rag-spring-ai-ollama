@@ -1,0 +1,41 @@
+%% RAG and product request paths — Spring internals are indicative
+%% API prefixes configurable see rag-service README
+flowchart TB
+  subgraph client [Client]
+    UI[Next.js]
+  end
+
+  subgraph ingress [Spring ingress]
+    SEC[Security chain]
+    V5[Product API v5]
+    LEG[Legacy RAG v4]
+  end
+
+  subgraph resolve [Resolution]
+    CFG[ConfigResolver merged layers]
+    SNAP[Optional resolved_config_snapshot persist]
+  end
+
+  subgraph core [Orchestration]
+    PIPE[RAG execution orchestrator workflows]
+    QU[Query understanding retrieval generation]
+    STORE[(PostgreSQL pgvector)]
+  end
+
+  subgraph external [External HTTP]
+    OLL[Ollama embeddings and chat]
+    CLF[classifier-service]
+  end
+
+  UI -->|Bearer JWT product| SEC
+  SEC --> V5
+  UI -.->|legacy tooling| LEG
+  V5 --> CFG
+  LEG --> CFG
+  CFG --> SNAP
+  CFG --> PIPE
+  PIPE --> QU
+  QU --> STORE
+  QU --> OLL
+  QU -.->|optional classify| CLF
+  V5 -.->|SSE chat stream| PIPE

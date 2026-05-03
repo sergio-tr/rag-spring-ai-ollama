@@ -1,0 +1,237 @@
+# E2E-01 / E2E-02: Next.js + Spring Boot + Postgres (Flyway seed user). Heavier than e2e.yml — not on every webapp-only PR.
+name: E2E fullstack (Playwright + API)
+
+on:
+  # Manual tool only: the authoritative CI DAG (ci.yml → reusable-ci-core.yml)
+  # already runs fullstack E2E on PRs and on push to main/master.
+  workflow_dispatch: {}
+concurrency:
+  group: e2e-fullstack-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  POSTGRES_SERVICE_IMAGE: pgvector/pgvector:0.8.2-pg16-bookworm
+
+jobs:
+  playwright-fullstack:
+    name: Playwright @fullstack
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        # Do NOT use `env.*` in `services.<id>.image` (context may be unsupported).
+        image: ${{ vars.POSTGRES_SERVICE_IMAGE }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vectordb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectordb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/vectordb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      RAG_CORS_ALLOWED_ORIGINS: http://127.0.0.1:3000,http://localhost:3000,https://127.0.0.1:8443,https://localhost:8443
+      RAG_JWT_SECRET: e2e-ci-jwt-secret-must-be-at-least-32-chars
+      RAG_TEST_USE_TESTCONTAINERS_DATASOURCE: "false"
+      INTEGRATION_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+      REVERSE_PROXY_HTTP_PORT: "8080"
+      REVERSE_PROXY_HTTPS_PORT: "8443"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
+          cache: maven
+
+      - name: Prepare Postgres for tests (extensions, integration DB)
+        uses: ./.github/actions/prepare-postgres-for-rag-tests
+
+      - name: Start Spring Boot (profile e2e)
+        run: |
+          cd rag-service
+          chmod +x mvnw
+          nohup ./mvnw -B -DskipTests spring-boot:run -Dspring-boot.run.profiles=e2e \
+            > /tmp/spring-e2e.log 2>&1 &
+          echo $! > /tmp/spring-e2e.pid
+
+      - name: Wait for backend readiness
+        run: |
+          for i in $(seq 1 120); do
+            if curl -fsS http://127.0.0.1:9000/actuator/health/readiness >/dev/null 2>&1; then
+              echo "Backend ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-e2e.log || true
+          exit 1
+
+      - name: Seed deterministic e2e users
+        shell: bash
+        run: |
+          set -euo pipefail
+          PGPASSWORD=postgres psql -h localhost -U postgres -d vectordb -v ON_ERROR_STOP=1 -c "
+            INSERT INTO users (id, email, password_hash, name, role, created_at, email_verified, email_verified_at)
+            VALUES
+              ('e2e0ad00-0000-4000-8000-000000000001', 'admin@e2e.local', '{noop}e2e', 'E2E Admin', 'ADMIN', CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP),
+              ('e2e0ad00-0000-4000-8000-000000000002', 'dev@local.test', '{noop}dev', 'Dev User', 'USER', CURRENT_TIMESTAMP, true, CURRENT_TIMESTAMP)
+            ON CONFLICT (email) DO UPDATE
+            SET
+              password_hash = EXCLUDED.password_hash,
+              name = EXCLUDED.name,
+              role = EXCLUDED.role,
+              email_verified = true,
+              email_verified_at = COALESCE(users.email_verified_at, CURRENT_TIMESTAMP);
+          "
+
+      - name: Wait for e2e seed login to be available
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            code="$(
+              curl -sS -o /dev/null -w '%{http_code}' \
+                -H 'Content-Type: application/json' \
+                -d '{"email":"dev@local.test","password":"dev"}' \
+                http://127.0.0.1:9000/api/auth/login || true
+            )"
+            if [ "$code" = "200" ]; then
+              echo "Seed login OK"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Seed login not ready after waiting."
+          echo "--- backend health (diagnostic) ---"
+          curl -sS http://127.0.0.1:9000/actuator/health || true
+          echo ""
+          echo "--- backend readiness (diagnostic; 200 or 503) ---"
+          curl -sS http://127.0.0.1:9000/actuator/health/readiness || true
+          echo ""
+          echo "--- spring log (tail) ---"
+          tail -n 200 /tmp/spring-e2e.log || true
+          exit 1
+
+      - name: Cache npm (webapp)
+        uses: ./.github/actions/cache-npm-webapp
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: webapp/package.json
+          package-manager-cache: false
+
+      - name: Build and start Next.js for proxy mode
+        working-directory: webapp
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ""
+          NEXT_PUBLIC_RAG_API_PREFIX: /api/v5
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          nohup env npm run start -- -H 0.0.0.0 -p 3000 > /tmp/webapp-e2e.log 2>&1 &
+          echo $! > /tmp/webapp-e2e.pid
+
+      - name: Wait for webapp health
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3000 >/dev/null 2>&1; then
+              echo "Webapp healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- webapp log (tail) ---"
+          tail -n 200 /tmp/webapp-e2e.log || true
+          exit 1
+
+      - name: Start reverse-proxy container (HTTPS)
+        run: |
+          docker build -t rag-reverse-proxy-ci reverse-proxy
+          docker run -d --name rag-reverse-proxy-ci \
+            --add-host=host-gateway.internal:host-gateway \
+            -p ${REVERSE_PROXY_HTTP_PORT}:80 \
+            -p ${REVERSE_PROXY_HTTPS_PORT}:443 \
+            -e BACKEND_HOST=host-gateway.internal \
+            -e BACKEND_INTERNAL_PORT=9000 \
+            -e WEBAPP_HOST=host-gateway.internal \
+            -e WEBAPP_INTERNAL_PORT=3000 \
+            -e REVERSE_PROXY_ENFORCE_HTTPS=1 \
+            -e API_CLIENT_MAX_BODY_SIZE=50m \
+            -e API_PROXY_CONNECT_TIMEOUT=10s \
+            -e API_PROXY_SEND_TIMEOUT=180s \
+            -e API_PROXY_READ_TIMEOUT=180s \
+            rag-reverse-proxy-ci
+
+      - name: Wait for proxy health
+        run: |
+          for i in $(seq 1 90); do
+            if curl -skf https://127.0.0.1:${REVERSE_PROXY_HTTPS_PORT}/ >/dev/null 2>&1; then
+              echo "Proxy healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "--- proxy logs ---"
+          docker logs rag-reverse-proxy-ci || true
+          exit 1
+
+      - name: Install Playwright and run @fullstack through proxy
+        working-directory: webapp
+        env:
+          E2E_ALLOW_INSECURE_COOKIES: "true"
+          E2E_LOGIN_TIMEOUT_MS: "12000"
+          PLAYWRIGHT_IGNORE_HTTPS_ERRORS: "1"
+          PLAYWRIGHT_WORKERS: "1"
+          PLAYWRIGHT_RETRIES: "1"
+          PLAYWRIGHT_SKIP_WEBSERVER: "1"
+          PLAYWRIGHT_EXPECT_TIMEOUT_MS: "10000"
+          PLAYWRIGHT_TEST_TIMEOUT_MS: "30000"
+          PLAYWRIGHT_BASE_URL: https://127.0.0.1:8443
+          API_BASE_URL: https://127.0.0.1:8443
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e:fullstack
+
+      - name: Stop services
+        if: always()
+        run: |
+          docker logs rag-reverse-proxy-ci > /tmp/proxy-e2e.log 2>&1 || true
+          if [ -f /tmp/spring-e2e.pid ]; then kill "$(cat /tmp/spring-e2e.pid)" 2>/dev/null || true; fi
+          if [ -f /tmp/webapp-e2e.pid ]; then kill "$(cat /tmp/webapp-e2e.pid)" 2>/dev/null || true; fi
+          docker rm -f rag-reverse-proxy-ci 2>/dev/null || true
+
+      - name: Upload Spring log on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: spring-e2e-log
+          path: /tmp/spring-e2e.log
+          retention-days: 7
+
+      - name: Upload webapp/proxy logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: webapp-proxy-e2e-logs
+          path: |
+            /tmp/webapp-e2e.log
+            /tmp/proxy-e2e.log
+          retention-days: 7
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-fullstack-report
+          path: webapp/playwright-report/
+          retention-days: 7
