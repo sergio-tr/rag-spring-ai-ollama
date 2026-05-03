@@ -1377,8 +1377,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         if (lastEnd == null) {
             return null;
         }
-        String normalizedEnd = normalizeTime(lastEnd);
-        return normalizedEnd;
+        return normalizeTime(lastEnd);
     }
 
     private String extractTimeFromFirstLinesHeuristic(String content, boolean isStartTime) {
