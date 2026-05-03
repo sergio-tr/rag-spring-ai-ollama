@@ -12,6 +12,7 @@ import com.uniovi.rag.infrastructure.config.ResolvedRuntimeConfigHasher;
 import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.mapper.ResolvedConfigSnapshotEntityMapper;
+import com.uniovi.rag.infrastructure.persistence.mapper.ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext;
 import com.uniovi.rag.interfaces.rest.dto.CreateResolvedConfigSnapshotRequest;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotCreatedResponse;
 import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotResponse;
@@ -59,14 +60,14 @@ public class ResolvedConfigSnapshotApplicationService {
                 resolvedConfigSnapshotEntityMapper.toNewEntity(
                         resolved,
                         domainSnapshot,
-                        userId,
-                        hash,
-                        Optional.ofNullable(req.conversationId()),
-                        Optional.ofNullable(req.messageId()),
-                        Optional.ofNullable(req.jobId()),
-                        Optional.ofNullable(req.correlationId()).filter(s -> !s.isBlank()),
-                        Optional.of(req.projectId()),
-                        null);
+                        ResolvedConfigSnapshotInsertContext.of(
+                                userId,
+                                hash,
+                                Optional.ofNullable(req.conversationId()),
+                                Optional.ofNullable(req.messageId()),
+                                Optional.ofNullable(req.jobId()),
+                                Optional.ofNullable(req.correlationId()).filter(s -> !s.isBlank()),
+                                Optional.of(req.projectId())));
         entity = resolvedConfigSnapshotRepository.save(entity);
         return new ResolvedConfigSnapshotCreatedResponse(entity.getId(), entity.getConfigHash(), entity.getCreatedAt());
     }
@@ -96,14 +97,14 @@ public class ResolvedConfigSnapshotApplicationService {
                 resolvedConfigSnapshotEntityMapper.toNewEntity(
                         resolved,
                         domainSnapshot,
-                        userId,
-                        hash,
-                        conversationId,
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of(projectId),
-                        null);
+                        ResolvedConfigSnapshotInsertContext.of(
+                                userId,
+                                hash,
+                                conversationId,
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.of(projectId)));
         return resolvedConfigSnapshotRepository.save(entity);
     }
 
@@ -125,14 +126,15 @@ public class ResolvedConfigSnapshotApplicationService {
                 resolvedConfigSnapshotEntityMapper.toNewEntity(
                         resolved,
                         domainSnapshot,
-                        userId,
-                        hash,
-                        conversationId,
-                        Optional.empty(),
-                        Optional.empty(),
-                        correlationId,
-                        Optional.of(projectId),
-                        knowledgeNested);
+                        ResolvedConfigSnapshotInsertContext.of(
+                                        userId,
+                                        hash,
+                                        conversationId,
+                                        Optional.empty(),
+                                        Optional.empty(),
+                                        correlationId,
+                                        Optional.of(projectId))
+                                .withKnowledge(knowledgeNested));
         return resolvedConfigSnapshotRepository.save(entity);
     }
 

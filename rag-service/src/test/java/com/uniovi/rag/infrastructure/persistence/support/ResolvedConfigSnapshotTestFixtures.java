@@ -81,14 +81,14 @@ public final class ResolvedConfigSnapshotTestFixtures {
                 mapper.toNewEntity(
                         resolved,
                         domainSnap,
-                        creatingUserId,
-                        configHash,
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.ofNullable(projectId),
-                        null);
+                        ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.of(
+                                creatingUserId,
+                                configHash,
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.ofNullable(projectId)));
         return e;
     }
 }

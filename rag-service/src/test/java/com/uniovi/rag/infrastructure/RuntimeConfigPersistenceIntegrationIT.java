@@ -150,7 +150,16 @@ class RuntimeConfigPersistenceIntegrationIT {
         UUID owner = UUID.randomUUID();
         ResolvedConfigSnapshotEntity entity =
                 resolvedConfigSnapshotEntityMapper.toNewEntity(
-                        resolved, snap, owner, hash, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+                        resolved,
+                        snap,
+                        ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.of(
+                                owner,
+                                hash,
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty()));
         entity = resolvedConfigSnapshotRepository.save(entity);
         resolvedConfigSnapshotRepository.flush();
         entityManager.clear();

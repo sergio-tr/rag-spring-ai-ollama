@@ -10,6 +10,7 @@ import com.uniovi.rag.interfaces.rest.dto.ResolvedConfigSnapshotResponse;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -29,42 +30,10 @@ public class ResolvedConfigSnapshotEntityMapper {
     public static final String PROVENANCE_CORRELATION_ID = "correlationId";
     public static final String PROVENANCE_PROJECT_ID = "projectId";
 
-    private static final TypeReference<Map<String, Object>> MAP_STRING_OBJECT = new TypeReference<>() {};
-
-    private final ObjectMapper objectMapper;
-
-    public ResolvedConfigSnapshotEntityMapper(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
-
-    public ResolvedConfigSnapshotEntity toNewEntity(
-            ResolvedRuntimeConfig resolved,
-            ResolvedConfigSnapshot domainSnapshot,
-            UUID creatingUserId,
-            String configHash,
-            Optional<UUID> conversationId,
-            Optional<UUID> messageId,
-            Optional<UUID> jobId,
-            Optional<String> correlationId) {
-        return toNewEntity(
-                resolved,
-                domainSnapshot,
-                creatingUserId,
-                configHash,
-                conversationId,
-                messageId,
-                jobId,
-                correlationId,
-                Optional.empty(),
-                null);
-    }
-
     /**
-     * @param knowledgeBuildProjectionNested merged under {@link com.uniovi.rag.application.service.knowledge.KnowledgeBuildProjectionMapper#PAYLOAD_KEY}
+     * Optional linkage columns plus optional {@link KnowledgeBuildProjectionMapper#PAYLOAD_KEY} nested payload.
      */
-    public ResolvedConfigSnapshotEntity toNewEntity(
-            ResolvedRuntimeConfig resolved,
-            ResolvedConfigSnapshot domainSnapshot,
+    public record ResolvedConfigSnapshotInsertContext(
             UUID creatingUserId,
             String configHash,
             Optional<UUID> conversationId,
@@ -73,13 +42,72 @@ public class ResolvedConfigSnapshotEntityMapper {
             Optional<String> correlationId,
             Optional<UUID> projectId,
             Map<String, Object> knowledgeBuildProjectionNested) {
+
+        public ResolvedConfigSnapshotInsertContext {
+            Objects.requireNonNull(creatingUserId, "creatingUserId");
+            Objects.requireNonNull(configHash, "configHash");
+            conversationId = Objects.requireNonNullElseGet(conversationId, Optional::empty);
+            messageId = Objects.requireNonNullElseGet(messageId, Optional::empty);
+            jobId = Objects.requireNonNullElseGet(jobId, Optional::empty);
+            correlationId = Objects.requireNonNullElseGet(correlationId, Optional::empty);
+            projectId = Objects.requireNonNullElseGet(projectId, Optional::empty);
+        }
+
+        /** Snapshot row without {@code knowledge_build_projection} payload merging. */
+        public static ResolvedConfigSnapshotInsertContext of(
+                UUID creatingUserId,
+                String configHash,
+                Optional<UUID> conversationId,
+                Optional<UUID> messageId,
+                Optional<UUID> jobId,
+                Optional<String> correlationId,
+                Optional<UUID> projectId) {
+            return new ResolvedConfigSnapshotInsertContext(
+                    creatingUserId,
+                    configHash,
+                    conversationId,
+                    messageId,
+                    jobId,
+                    correlationId,
+                    projectId,
+                    null);
+        }
+
+        public ResolvedConfigSnapshotInsertContext withKnowledge(Map<String, Object> knowledgeBuildProjectionNested) {
+            return new ResolvedConfigSnapshotInsertContext(
+                    creatingUserId,
+                    configHash,
+                    conversationId,
+                    messageId,
+                    jobId,
+                    correlationId,
+                    projectId,
+                    knowledgeBuildProjectionNested);
+        }
+    }
+
+    private static final TypeReference<Map<String, Object>> MAP_STRING_OBJECT = new TypeReference<>() {};
+
+    private final ObjectMapper objectMapper;
+
+    public ResolvedConfigSnapshotEntityMapper(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * @param ctx {@link ResolvedConfigSnapshotInsertContext#knowledgeBuildProjectionNested()} merged under
+     *     {@link KnowledgeBuildProjectionMapper#PAYLOAD_KEY} when non-null and non-empty
+     */
+    public ResolvedConfigSnapshotEntity toNewEntity(
+            ResolvedRuntimeConfig resolved,
+            ResolvedConfigSnapshot domainSnapshot,
+            ResolvedConfigSnapshotInsertContext ctx) {
         ResolvedConfigSnapshotEntity e = ResolvedConfigSnapshotEntity.newForInsert();
         e.setCreatedAt(Instant.now());
         Map<String, Object> payload = new LinkedHashMap<>(resolved.resolvedCoreConfig().toValueMap());
-        if (knowledgeBuildProjectionNested != null && !knowledgeBuildProjectionNested.isEmpty()) {
-            payload.put(
-                    KnowledgeBuildProjectionMapper.PAYLOAD_KEY,
-                    knowledgeBuildProjectionNested);
+        Map<String, Object> knowledgeNested = ctx.knowledgeBuildProjectionNested();
+        if (knowledgeNested != null && !knowledgeNested.isEmpty()) {
+            payload.put(KnowledgeBuildProjectionMapper.PAYLOAD_KEY, knowledgeNested);
         }
         e.setPayloadJsonb(payload);
         e.setCapabilitySetJsonb(toJsonMap(resolved.capabilitySet()));
@@ -90,11 +118,12 @@ public class ResolvedConfigSnapshotEntityMapper {
                 resolved.effectiveSystemPrompt() != null && !resolved.effectiveSystemPrompt().isBlank()
                         ? resolved.effectiveSystemPrompt()
                         : "");
-        e.setConfigHash(configHash);
-        conversationId.ifPresent(e::setConversationId);
-        messageId.ifPresent(e::setMessageId);
-        jobId.ifPresent(e::setJobId);
-        e.setProvenanceJsonb(buildProvenanceJson(domainSnapshot, creatingUserId, correlationId, projectId));
+        e.setConfigHash(ctx.configHash());
+        ctx.conversationId().ifPresent(e::setConversationId);
+        ctx.messageId().ifPresent(e::setMessageId);
+        ctx.jobId().ifPresent(e::setJobId);
+        e.setProvenanceJsonb(
+                buildProvenanceJson(domainSnapshot, ctx.creatingUserId(), ctx.correlationId(), ctx.projectId()));
         return e;
     }
 

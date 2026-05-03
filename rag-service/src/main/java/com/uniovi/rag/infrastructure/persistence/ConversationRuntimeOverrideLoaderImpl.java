@@ -34,6 +34,6 @@ public class ConversationRuntimeOverrideLoaderImpl implements ConversationRuntim
                 .filter(c -> c.getUser() != null && userId.equals(c.getUser().getId()))
                 .map(ConversationEntity::getRuntimeOverride)
                 .filter(m -> m != null && !m.isEmpty())
-                .map(m -> objectMapper.valueToTree(m));
+                .map(objectMapper::valueToTree);
     }
 }
