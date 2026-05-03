@@ -26,7 +26,7 @@ public class DefaultQueryIntentResolver implements QueryIntentResolver {
         // 1) Classifier wins when non-neutral and OK
         Optional<QueryType> cqt = Objects.requireNonNullElseGet(classifierQueryType, Optional::empty);
         if (classifierStatus == ClassifierStatus.OK && cqt.isPresent()) {
-            return mapClassifierType(cqt.orElseThrow());
+            return mapClassifierType(cqt.get());
         }
 
         // 2) Rewrite targetAction only when classifier is neutral/non-authoritative
@@ -34,7 +34,7 @@ public class DefaultQueryIntentResolver implements QueryIntentResolver {
         Optional<QueryIntent> fromRewrite =
                 targetAction.map(DefaultQueryIntentResolver::mapTargetAction).filter(i -> i != QueryIntent.UNKNOWN);
         if (fromRewrite.isPresent()) {
-            return fromRewrite.orElseThrow();
+            return fromRewrite.get();
         }
 
         return heuristicIntent(normalized.normalizedText().toLowerCase(Locale.ROOT), entities);

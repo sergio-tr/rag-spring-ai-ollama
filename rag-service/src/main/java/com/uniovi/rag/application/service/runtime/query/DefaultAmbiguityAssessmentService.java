@@ -35,7 +35,8 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
         if (classifierStatus == ClassifierStatus.OK && cqt.isPresent()
                 && targetAction.isPresent()) {
             String action = targetAction.get().trim().toUpperCase(Locale.ROOT);
-            String classifier = cqt.orElseThrow().name().toUpperCase(Locale.ROOT);
+            QueryType classifierType = cqt.get();
+            String classifier = classifierType.name().toUpperCase(Locale.ROOT);
             if (!action.isBlank() && !classifier.isBlank() && !classifier.contains(action)) {
                 reasons.add("CONFLICT: classifier=" + classifier + " rewriteAction=" + action);
                 return new AmbiguityAssessment(AmbiguityStatus.CONFLICTING_CUES, reasons, List.of());

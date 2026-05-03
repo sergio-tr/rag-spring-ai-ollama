@@ -40,7 +40,6 @@ public final class RuntimeTraceRegressionSuiteDefinitionValidation {
 
     /** Returns normalized description to persist, or empty if absent/blank after trim. */
     public static Optional<String> normalizeDescription(Optional<String> description) {
-        Objects.requireNonNull(description, "description");
         if (description.isEmpty()) {
             return Optional.empty();
         }

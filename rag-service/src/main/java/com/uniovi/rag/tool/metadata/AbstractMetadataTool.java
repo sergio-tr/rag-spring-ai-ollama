@@ -2462,7 +2462,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             ),
             // Pattern 5: "attended [Full Name]" (e.g. "In which meetings did X attend?")
             Pattern.compile(
-                "(?:asistió|attend(?:ed|ee))\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
+                "(?:asistió|attendees|attendee|attended)\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
                 UNICODE_CASE_INSENSITIVE
             ),
             // Pattern 6: "meetings attended [Name]" - name at end before ?
