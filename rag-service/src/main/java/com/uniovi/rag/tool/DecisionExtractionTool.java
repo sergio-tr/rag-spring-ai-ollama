@@ -11,7 +11,6 @@ import com.uniovi.rag.util.RegexSafety;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Enhanced DecisionExtractionTool for extracting decisions from meeting minutes with intelligent NER analysis.
@@ -107,13 +106,10 @@ public class DecisionExtractionTool extends AbstractTool {
         String content = doc.getText();
         String date = extractor.extractDate(content);
         for (String fragment : extractDecisions(content, query)) {
-            if (fragment == null || fragment.trim().isEmpty()) {
-                continue;
+            if (fragment != null && !fragment.trim().isEmpty()
+                    && (!requireExplicitRelevance || isDecisionRelevantToQuery(fragment, query))) {
+                decisions.add(formatDecisionLine(date, fragment));
             }
-            if (requireExplicitRelevance && !isDecisionRelevantToQuery(fragment, query)) {
-                continue;
-            }
-            decisions.add(formatDecisionLine(date, fragment));
         }
     }
 
@@ -131,6 +127,21 @@ public class DecisionExtractionTool extends AbstractTool {
                 .collect(Collectors.toList());
     }
 
+    private static boolean isSentenceTerminator(char c) {
+        return c == '.' || c == ':' || c == '?' || c == '!';
+    }
+
+    /** Updates consecutive newline count; resets when a non-whitespace character is seen. */
+    private static int updateNewlineRun(char c, int newlineRun) {
+        if (c == '\n' || c == '\r') {
+            return newlineRun + 1;
+        }
+        if (!Character.isWhitespace(c)) {
+            return 0;
+        }
+        return newlineRun;
+    }
+
     private static List<String> splitIntoFragments(String text) {
         if (text == null || text.isBlank()) {
             return List.of();
@@ -144,16 +155,10 @@ public class DecisionExtractionTool extends AbstractTool {
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
             buf.append(c);
-            if (c == '.' || c == ':' || c == '?' || c == '!') {
+            if (isSentenceTerminator(c)) {
                 sawTerminator = true;
             }
-            if (c == '\n' || c == '\r') {
-                newlineRun++;
-            } else if (Character.isWhitespace(c)) {
-                // keep whitespace
-            } else {
-                newlineRun = 0;
-            }
+            newlineRun = updateNewlineRun(c, newlineRun);
             if (sawTerminator && newlineRun >= 1) {
                 String frag = buf.toString().trim();
                 if (!frag.isEmpty()) {

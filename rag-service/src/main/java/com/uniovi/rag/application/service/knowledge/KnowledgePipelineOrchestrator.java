@@ -43,6 +43,9 @@ public class KnowledgePipelineOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(KnowledgePipelineOrchestrator.class);
 
+    private static final String ETL_STAGE_INGEST_TEMP_FILE = "ingest_temp_file";
+    private static final String ETL_STAGE_REBUILD_SCOPE = "rebuild_scope";
+
     private final JdbcTemplate jdbcTemplate;
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final BinaryStoragePort binaryStoragePort;
@@ -113,7 +116,7 @@ public class KnowledgePipelineOrchestrator {
         }
         KnowledgeIndexSnapshotEntity building = null;
         try {
-            recordEtlEvent("ingest_temp_file", "started");
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
             persistBinaryAndUpdateRow(projectId, projectDocumentId, tempFile, contentType, row);
             final KnowledgeDocumentEntity rowReloaded =
                     knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
@@ -174,10 +177,10 @@ public class KnowledgePipelineOrchestrator {
             rowDone.setErrorMessage(null);
             rowDone.setReindexedAt(Instant.now());
             knowledgeDocumentRepository.save(rowDone);
-            recordEtlEvent("ingest_temp_file", "success");
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
             log.info("Knowledge pipeline completed for project document {} (snapshot {})", projectDocumentId, building.getId());
         } catch (Exception e) {
-            recordEtlEvent("ingest_temp_file", "failure");
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
             log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
             if (building != null) {
                 knowledgeSnapshotService.deleteVectorsForSnapshotId(building.getId());
@@ -281,7 +284,7 @@ public class KnowledgePipelineOrchestrator {
         }
         KnowledgeIndexSnapshotEntity building = null;
         try {
-            recordEtlEvent("rebuild_scope", "started");
+            recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "started");
             IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, projection);
             String indexSigHex = sig.indexSigHex();
             String snapshotSigHex = sig.snapshotSigHex();
@@ -334,11 +337,11 @@ public class KnowledgePipelineOrchestrator {
                 d.setReindexedAt(now);
                 knowledgeDocumentRepository.save(d);
             }
-            recordEtlEvent("rebuild_scope", "success");
+            recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "success");
             log.info("rebuildScope completed snapshot {} for project {}", building.getId(), projectId);
             return building.getId();
         } catch (Exception e) {
-            recordEtlEvent("rebuild_scope", "failure");
+            recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "failure");
             log.error("rebuildScope failed: {}", e.getMessage(), e);
             if (building != null) {
                 knowledgeSnapshotService.deleteVectorsForSnapshotId(building.getId());
@@ -392,15 +395,10 @@ public class KnowledgePipelineOrchestrator {
     }
 
     private boolean eligibleForRebuild(KnowledgeDocumentEntity d, UUID triggerDocumentId) {
-        if (d.getId().equals(triggerDocumentId) && d.getStatus() == ProjectDocumentStatus.INGESTING) {
-            return true;
-        }
-        if (d.getStatus() == ProjectDocumentStatus.READY
-                && d.getStorageUri() != null
-                && !d.getStorageUri().isBlank()) {
-            return true;
-        }
-        return false;
+        return (d.getId().equals(triggerDocumentId) && d.getStatus() == ProjectDocumentStatus.INGESTING)
+                || (d.getStatus() == ProjectDocumentStatus.READY
+                        && d.getStorageUri() != null
+                        && !d.getStorageUri().isBlank());
     }
 
     public void deleteVectorChunksForDocument(UUID projectDocumentId) {

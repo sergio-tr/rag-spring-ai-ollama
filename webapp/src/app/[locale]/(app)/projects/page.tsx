@@ -39,9 +39,7 @@ export default function ProjectsPage() {
         <p className="text-muted-foreground text-sm">{t("empty")}</p>
       )}
       {!isLoading && !isError && items.length > 0 && !activeProject ? (
-        <p className="text-muted-foreground text-sm" role="status">
-          {t("noActiveSelectionHint")}
-        </p>
+        <output className="text-muted-foreground block text-sm">{t("noActiveSelectionHint")}</output>
       ) : null}
       {!isLoading && !isError && items.length > 0 && (
         <ProjectGrid items={items} />

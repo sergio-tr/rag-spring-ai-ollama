@@ -22,7 +22,6 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,6 +41,7 @@ public class OauthLoginService {
     private static final Logger log = LoggerFactory.getLogger(OauthLoginService.class);
 
     private static final String PROVIDER_GOOGLE = "google";
+    private static final String REL_PATH_LOGIN_OAUTH_ERROR = "/login?oauth=error";
     private static final long EXCHANGE_TTL_SECONDS = 120;
     private static final long STATE_TTL_SECONDS = 300;
 
@@ -62,6 +62,15 @@ public class OauthLoginService {
     /** When true, append {@code prompt=select_account} so Google shows the account picker on each login start. */
     private final boolean googlePromptSelectAccount;
 
+    /** Google OAuth 2.0 authorization endpoint (must match provider docs for the configured client). */
+    private final String googleAuthorizationUri;
+
+    /** Token endpoint for exchanging an authorization code (RFC 6749). */
+    private final String googleTokenUri;
+
+    /** JWK Set URI for validating Google ID tokens. */
+    private final String googleJwkSetUri;
+
     private final SecureRandom secureRandom = new SecureRandom();
     private final RestClient restClient = RestClient.create();
 
@@ -80,7 +89,12 @@ public class OauthLoginService {
             @Value("${rag.auth.oauth.google.issuer:https://accounts.google.com}") String googleIssuer,
             @Value("${rag.auth.oauth.google.redirect-path:${rag.api.product-base-path}/auth/oauth/google/callback}")
                     String googleRedirectPath,
-            @Value("${rag.auth.oauth.google.prompt-select-account:true}") boolean googlePromptSelectAccount) {
+            @Value("${rag.auth.oauth.google.prompt-select-account:true}") boolean googlePromptSelectAccount,
+            @Value("${rag.auth.oauth.google.authorization-uri:https://accounts.google.com/o/oauth2/v2/auth}")
+                    String googleAuthorizationUri,
+            @Value("${rag.auth.oauth.google.token-uri:https://oauth2.googleapis.com/token}") String googleTokenUri,
+            @Value("${rag.auth.oauth.google.jwk-set-uri:https://www.googleapis.com/oauth2/v3/certs}")
+                    String googleJwkSetUri) {
         this.userAccountPort = userAccountPort;
         this.oauthIdentityRepository = oauthIdentityRepository;
         this.oauthLoginExchangeCodeRepository = oauthLoginExchangeCodeRepository;
@@ -95,6 +109,10 @@ public class OauthLoginService {
         this.googleIssuer = googleIssuer != null ? googleIssuer : "https://accounts.google.com";
         this.googleRedirectPath = googleRedirectPath != null ? googleRedirectPath : "/auth/oauth/google/callback";
         this.googlePromptSelectAccount = googlePromptSelectAccount;
+        this.googleAuthorizationUri =
+                nonBlankOrDefault(googleAuthorizationUri, "https://accounts.google.com/o/oauth2/v2/auth");
+        this.googleTokenUri = nonBlankOrDefault(googleTokenUri, "https://oauth2.googleapis.com/token");
+        this.googleJwkSetUri = nonBlankOrDefault(googleJwkSetUri, "https://www.googleapis.com/oauth2/v3/certs");
     }
 
     public String googleStartUrl(String locale) {
@@ -110,7 +128,7 @@ public class OauthLoginService {
                 "OAuth Google authorization redirect_uri (must exactly match an Authorized redirect URI in Google Cloud Console): {}",
                 redirectUri);
         String state = createStateToken(resolvedLocale);
-        StringBuilder url = new StringBuilder("https://accounts.google.com/o/oauth2/v2/auth")
+        StringBuilder url = new StringBuilder(googleAuthorizationUri)
                 .append("?client_id=")
                 .append(urlEncode(googleClientId))
                 .append("&redirect_uri=")
@@ -133,10 +151,10 @@ public class OauthLoginService {
             return webappBaseUrl + "/" + resolvedLocale + "/login";
         }
         if (error != null && !error.isBlank()) {
-            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + REL_PATH_LOGIN_OAUTH_ERROR;
         }
         if (code == null || code.isBlank()) {
-            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + REL_PATH_LOGIN_OAUTH_ERROR;
         }
         if (!consumeStateToken(state)) {
             return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=invalid_state";
@@ -145,7 +163,7 @@ public class OauthLoginService {
         Map<String, Object> tokenResponse = exchangeAuthCodeForTokens(code);
         String idToken = Optional.ofNullable(tokenResponse.get("id_token")).map(Object::toString).orElse("");
         if (idToken.isBlank()) {
-            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + REL_PATH_LOGIN_OAUTH_ERROR;
         }
 
         Jwt jwt = googleIdTokenDecoder().decode(idToken);
@@ -153,7 +171,7 @@ public class OauthLoginService {
         String email = jwt.getClaimAsString("email");
         Boolean emailVerified = jwt.getClaimAsBoolean("email_verified");
         if (subject == null || subject.isBlank() || email == null || email.isBlank()) {
-            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + REL_PATH_LOGIN_OAUTH_ERROR;
         }
 
         UserEntity user = resolveOrCreateUser(subject, email, Boolean.TRUE.equals(emailVerified));
@@ -289,7 +307,7 @@ public class OauthLoginService {
     Map<String, Object> exchangeAuthCodeForTokens(String code) {
         String redirectUri = buildRedirectUri();
         return restClient.post()
-                .uri("https://oauth2.googleapis.com/token")
+                .uri(googleTokenUri)
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body("code=" + urlEncode(code)
                         + "&client_id=" + urlEncode(googleClientId)
@@ -301,8 +319,7 @@ public class OauthLoginService {
     }
 
     JwtDecoder googleIdTokenDecoder() {
-        String jwks = "https://www.googleapis.com/oauth2/v3/certs";
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwks).build();
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(googleJwkSetUri).build();
         decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(googleIssuer));
         return decoder;
     }
@@ -337,6 +354,13 @@ public class OauthLoginService {
         } catch (Exception e) {
             throw new IllegalStateException("sha256 unavailable", e);
         }
+    }
+
+    private static String nonBlankOrDefault(String raw, String def) {
+        if (raw == null || raw.isBlank()) {
+            return def;
+        }
+        return raw.trim();
     }
 
     private static String normalizeBaseUrl(String raw) {

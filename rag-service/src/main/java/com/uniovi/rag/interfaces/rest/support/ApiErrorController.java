@@ -16,8 +16,19 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>This controller intentionally returns JSON for all errors. The branch goal requires JSON for
  * all `/api/**` error responses; returning JSON universally avoids accidental HTML leakage.
+ *
+ * <p><strong>Error dispatch and HTTP methods:</strong> When the container forwards a failed request to
+ * {@code /error}, the {@linkplain HttpServletRequest#getMethod() original method} is preserved (Servlet
+ * spec / Spring Boot behaviour). A failed {@code POST} must still hit this mapping as {@code POST}.
+ * Restricting to “safe” methods only would break JSON error bodies for non-GET API calls.
+ *
+ * <p><strong>Security:</strong> This handler is side-effect free: it reads only {@code ERROR_*}
+ * request attributes and builds a response; it does not mutate server state, execute privileged logic,
+ * or consume the request body. CSRF protections on state-changing routes remain on the application
+ * endpoints that perform mutations; {@code /error} does not substitute for those operations.
  */
 @RestController
+@SuppressWarnings("java:S3752") // Accept-all methods required by Servlet error dispatch; mapping is read-only JSON (see class Javadoc).
 public class ApiErrorController implements ErrorController {
 
     @RequestMapping("/error")

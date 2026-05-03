@@ -1,19 +1,10 @@
 package com.uniovi.rag.configuration;
 
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
-import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
-import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.guard.QueryDateExtractor;
-import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
-import com.uniovi.rag.service.ranker.ResponseRanker;
-import com.uniovi.rag.service.reasoning.ReasoningStrategy;
-import com.uniovi.rag.service.query.ResponseValidator;
-import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
 import com.uniovi.rag.testsupport.ClassifierClientTestSupport;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
@@ -36,19 +27,10 @@ class RagEvaluationConfigurationTest {
         ChatClient chatClient = mock(ChatClient.class);
         PgVectorStore vectorStore = mock(PgVectorStore.class);
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        ResponseValidator responseValidator = mock(ResponseValidator.class);
-        DocumentContentExtractor documentContentExtractor = mock(DocumentContentExtractor.class);
         OllamaConnectivityChecker ollamaConnectivityChecker = mock(OllamaConnectivityChecker.class);
-        MetadataLlmResponseCacheService metadataLlmResponseCacheService = mock(MetadataLlmResponseCacheService.class);
-        ModelCatalogPort modelCatalogPort = mock(ModelCatalogPort.class);
-        ChatScopedRagConfigResolver chatScopedRagConfigResolver = mock(ChatScopedRagConfigResolver.class);
         ExecutionContextFactory executionContextFactory = mock(ExecutionContextFactory.class);
         RagExecutionOrchestrator ragExecutionOrchestrator = mock(RagExecutionOrchestrator.class);
         RuntimeTracePersistenceService runtimeTracePersistenceService = mock(RuntimeTracePersistenceService.class);
-        ReasoningStrategy reasoningStrategy = mock(ReasoningStrategy.class);
-        ResponseRanker responseRanker = mock(ResponseRanker.class);
-        PostRetrievalProcessor postRetrievalProcessor = mock(PostRetrievalProcessor.class);
-        QueryDateExtractor queryDateExtractor = mock(QueryDateExtractor.class);
         doNothing().when(ollamaConnectivityChecker).prepareForQuery(any());
 
         EvaluationServiceFactory factory = config.evaluationServiceFactory(
@@ -61,8 +43,6 @@ class RagEvaluationConfigurationTest {
                 "default",
                 5000,
                 400,
-                responseValidator,
-                documentContentExtractor,
                 "COT",
                 1,
                 350,
@@ -70,19 +50,11 @@ class RagEvaluationConfigurationTest {
                 500,
                 200,
                 ollamaConnectivityChecker,
-                metadataLlmResponseCacheService,
-                modelCatalogPort,
-                chatScopedRagConfigResolver,
                 executionContextFactory,
                 ragExecutionOrchestrator,
                 runtimeTracePersistenceService,
-                reasoningStrategy,
-                responseRanker,
-                postRetrievalProcessor,
-                queryDateExtractor,
-                false,
-                null
-        );
+                false);
+
         assertNotNull(factory);
     }
 }

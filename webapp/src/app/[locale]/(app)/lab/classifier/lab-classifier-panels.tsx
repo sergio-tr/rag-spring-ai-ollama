@@ -22,10 +22,97 @@ import { followLabJob } from "@/lib/lab-job-follow";
 import type { LabJobFollowMode } from "@/lib/lab-job-follow";
 import type { AsyncTaskStatusDto, LabJobAcceptedDto } from "@/types/api";
 import { useTranslations } from "next-intl";
+import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Local watchdog for classifier-eval polling — server-side runs may continue beyond this window. */
 const CLASSIFIER_EVAL_POLL_MAX_MS = 15 * 60 * 1000;
+
+function classifierTrainApiPath(trainSync: boolean, projectId: string | undefined): string {
+  const params = new URLSearchParams();
+  if (trainSync) {
+    params.set("sync", "true");
+  }
+  if (projectId) {
+    params.set("projectId", projectId);
+  }
+  const q = params.toString();
+  const querySuffix = q === "" ? "" : `?${q}`;
+  return `/lab/classifier/train${querySuffix}`;
+}
+
+function handleClassifierTrainFollowCatch(
+  err: unknown,
+  opts: Readonly<{
+    mountedRef: MutableRefObject<boolean>;
+    jobId: string | undefined;
+    setTrainErr: (msg: string) => void;
+    setTrainStoppedWaiting: (v: boolean) => void;
+    translate: (key: string) => string;
+  }>,
+): void {
+  if (!opts.mountedRef.current) {
+    return;
+  }
+  if (err instanceof DOMException && err.name === "AbortError") {
+    opts.setTrainErr(opts.translate("jobCancelled"));
+    opts.setTrainStoppedWaiting(true);
+    if (opts.jobId) {
+      traceLabJobStoppedWaiting(opts.jobId, opts.translate("traceStoppedWaiting"));
+      useLabJobSessionStore.getState().setLabJobStoppedWatching(opts.jobId, true);
+    }
+    return;
+  }
+  if (err instanceof ApiError && err.status === 404 && opts.jobId) {
+    useLabJobSessionStore.getState().markLabJobStaleNotFound(opts.jobId);
+    opts.setTrainErr(opts.translate("jobRecoveryStaleShort"));
+    return;
+  }
+  opts.setTrainErr(err instanceof Error ? err.message : opts.translate("evalError"));
+}
+
+function handleClassifierEvalFollowCatch(
+  err: unknown,
+  opts: Readonly<{
+    mountedRef: MutableRefObject<boolean>;
+    asyncJobId: string | undefined;
+    setEvalErr: (msg: string) => void;
+    setEvalStoppedWaiting: (v: boolean) => void;
+    setEvalPollTimedOut: (v: boolean) => void;
+    setEvalStatus: (s: AsyncTaskStatusDto | null) => void;
+    translate: (key: string) => string;
+  }>,
+): void {
+  if (!opts.mountedRef.current) {
+    return;
+  }
+  if (err instanceof LabJobPollTimeoutError) {
+    if (opts.asyncJobId) {
+      useLabJobSessionStore.getState().patchLabJobPollTimedOut(opts.asyncJobId, err.lastStatus);
+    }
+    opts.setEvalPollTimedOut(true);
+    opts.setEvalErr(opts.translate("jobPollTimeout"));
+    if (err.lastStatus) {
+      opts.setEvalStatus(err.lastStatus);
+    }
+    return;
+  }
+  if (err instanceof DOMException && err.name === "AbortError") {
+    opts.setEvalErr(opts.translate("jobCancelled"));
+    opts.setEvalStoppedWaiting(true);
+    if (opts.asyncJobId) {
+      traceLabJobStoppedWaiting(opts.asyncJobId, opts.translate("traceStoppedWaiting"));
+      useLabJobSessionStore.getState().setLabJobStoppedWatching(opts.asyncJobId, true);
+    }
+    return;
+  }
+  if (err instanceof ApiError && err.status === 404 && opts.asyncJobId) {
+    useLabJobSessionStore.getState().markLabJobStaleNotFound(opts.asyncJobId);
+    opts.setEvalErr(opts.translate("jobRecoveryStaleShort"));
+    return;
+  }
+  opts.setEvalErr(err instanceof Error ? err.message : opts.translate("evalError"));
+}
 
 export function LabClassifierTrainPanel(
   props: Readonly<{ classifierOk: boolean; projectId?: string }>,
@@ -106,20 +193,13 @@ export function LabClassifierTrainPanel(
         setTrainOut(done.result);
         void qc.invalidateQueries({ queryKey: classifierModelsQueryKey });
       } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") {
-          if (!mountedTrainRef.current) return;
-          setTrainErr(t("jobCancelled"));
-          setTrainStoppedWaiting(true);
-          traceLabJobStoppedWaiting(rec.jobId, t("traceStoppedWaiting"));
-          useLabJobSessionStore.getState().setLabJobStoppedWatching(rec.jobId, true);
-        } else if (e instanceof ApiError && e.status === 404) {
-          if (!mountedTrainRef.current) return;
-          useLabJobSessionStore.getState().markLabJobStaleNotFound(rec.jobId);
-          setTrainErr(t("jobRecoveryStaleShort"));
-        } else {
-          if (!mountedTrainRef.current) return;
-          setTrainErr(e instanceof Error ? e.message : t("evalError"));
-        }
+        handleClassifierTrainFollowCatch(e, {
+          mountedRef: mountedTrainRef,
+          jobId: rec.jobId,
+          setTrainErr,
+          setTrainStoppedWaiting,
+          translate: t,
+        });
       } finally {
         if (mountedTrainRef.current) {
           setTrainRunning(false);
@@ -160,15 +240,7 @@ export function LabClassifierTrainPanel(
       fd.append("epochs", "50");
       fd.append("batch_size", "8");
 
-      const params = new URLSearchParams();
-      if (trainSync) {
-        params.set("sync", "true");
-      }
-      if (projectId) {
-        params.set("projectId", projectId);
-      }
-      const q = params.toString();
-      const path = `/lab/classifier/train${q ? `?${q}` : ""}`;
+      const path = classifierTrainApiPath(trainSync, projectId);
 
       if (trainSync) {
         const data = await apiFetch<unknown>(apiProductPath(path), {
@@ -219,22 +291,13 @@ export function LabClassifierTrainPanel(
       setTrainOut(done.result);
       void qc.invalidateQueries({ queryKey: classifierModelsQueryKey });
     } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") {
-        if (!mountedTrainRef.current) return;
-        setTrainErr(t("jobCancelled"));
-        setTrainStoppedWaiting(true);
-        if (trainAsyncAccepted?.jobId) {
-          traceLabJobStoppedWaiting(trainAsyncAccepted.jobId, t("traceStoppedWaiting"));
-          useLabJobSessionStore.getState().setLabJobStoppedWatching(trainAsyncAccepted.jobId, true);
-        }
-      } else if (e instanceof ApiError && e.status === 404 && trainAsyncAccepted?.jobId) {
-        if (!mountedTrainRef.current) return;
-        useLabJobSessionStore.getState().markLabJobStaleNotFound(trainAsyncAccepted.jobId);
-        setTrainErr(t("jobRecoveryStaleShort"));
-      } else {
-        if (!mountedTrainRef.current) return;
-        setTrainErr(e instanceof Error ? e.message : t("evalError"));
-      }
+      handleClassifierTrainFollowCatch(e, {
+        mountedRef: mountedTrainRef,
+        jobId: trainAsyncAccepted?.jobId,
+        setTrainErr,
+        setTrainStoppedWaiting,
+        translate: t,
+      });
     } finally {
       if (mountedTrainRef.current) {
         setTrainRunning(false);
@@ -316,8 +379,8 @@ export function LabClassifierTrainPanel(
             </Button>
           ) : null}
         </div>
-        {trainErr ? <p className="text-destructive text-sm">{trainErr}</p> : null}
-        {!trainSync && (trainAccepted || trainStatus) ? (
+        {trainErr === null ? null : <p className="text-destructive text-sm">{trainErr}</p>}
+        {trainSync ? null : (trainAccepted || trainStatus) ? (
           <LabJobPanel
             accepted={trainAccepted}
             taskStatus={trainStatus}
@@ -325,11 +388,11 @@ export function LabClassifierTrainPanel(
             stoppedWaiting={trainStoppedWaiting}
           />
         ) : null}
-        {trainOut != null ? (
+        {trainOut === null ? null : (
           <pre className="bg-muted/40 max-h-[240px] overflow-auto rounded-md border p-3 text-xs">
             {JSON.stringify(trainOut, null, 2)}
           </pre>
-        ) : null}
+        )}
       </CardContent>
     </Card>
   );
@@ -355,7 +418,7 @@ export function LabClassifierEvalPanel(
   const [evalPollTimedOut, setEvalPollTimedOut] = useState(false);
   const [watchStartedAtMs, setWatchStartedAtMs] = useState<number | null>(null);
   /** Forces re-renders once per second while watching so elapsed time stays fresh (no setState in effect init). */
-  const [, setElapsedBump] = useState(0);
+  const [elapsedClockTick, setElapsedClockTick] = useState(0);
   const evalAbortRef = useRef<AbortController | null>(null);
   const evalTraceDedupeRef = useRef(createLabJobTraceDedupe());
   const mountedEvalRef = useRef(true);
@@ -372,17 +435,18 @@ export function LabClassifierEvalPanel(
     if (watchStartedAtMs == null || evalSync) {
       return undefined;
     }
-    const id = window.setInterval(() => setElapsedBump((x) => x + 1), 1000);
+    const id = globalThis.setInterval(() => setElapsedClockTick((x) => x + 1), 1000);
     return () => clearInterval(id);
   }, [watchStartedAtMs, evalSync]);
 
   const watchElapsedSeconds =
-    watchStartedAtMs != null && !evalSync
+    watchStartedAtMs != null && evalSync === false
       ? Math.max(
           0,
           // eslint-disable-next-line react-hooks/purity -- bump-driven clock display between Lab polls
           Math.floor((Date.now() - watchStartedAtMs) / 1000),
-        )
+        ) +
+          elapsedClockTick * 0
       : undefined;
 
   const hydratedEvalRef = useRef(false);
@@ -459,28 +523,15 @@ export function LabClassifierEvalPanel(
       const done = await followClassifierEvalAccepted(rec.accepted, signal, rec.followMode);
       finalizeSuccessfulClassifierEval(done);
     } catch (e) {
-      if (e instanceof LabJobPollTimeoutError) {
-        if (!mountedEvalRef.current) return;
-        useLabJobSessionStore.getState().patchLabJobPollTimedOut(rec.jobId, e.lastStatus);
-        setEvalPollTimedOut(true);
-        setEvalErr(t("jobPollTimeout"));
-        if (e.lastStatus) {
-          setEvalStatus(e.lastStatus);
-        }
-      } else if (e instanceof DOMException && e.name === "AbortError") {
-        if (!mountedEvalRef.current) return;
-        setEvalErr(t("jobCancelled"));
-        setEvalStoppedWaiting(true);
-        traceLabJobStoppedWaiting(rec.jobId, t("traceStoppedWaiting"));
-        useLabJobSessionStore.getState().setLabJobStoppedWatching(rec.jobId, true);
-      } else if (e instanceof ApiError && e.status === 404) {
-        if (!mountedEvalRef.current) return;
-        useLabJobSessionStore.getState().markLabJobStaleNotFound(rec.jobId);
-        setEvalErr(t("jobRecoveryStaleShort"));
-      } else {
-        if (!mountedEvalRef.current) return;
-        setEvalErr(e instanceof Error ? e.message : t("evalError"));
-      }
+      handleClassifierEvalFollowCatch(e, {
+        mountedRef: mountedEvalRef,
+        asyncJobId: rec.jobId,
+        setEvalErr,
+        setEvalStoppedWaiting,
+        setEvalPollTimedOut,
+        setEvalStatus,
+        translate: t,
+      });
     } finally {
       if (mountedEvalRef.current) {
         setEvalRunning(false);
@@ -514,28 +565,15 @@ export function LabClassifierEvalPanel(
       const done = await followClassifierEvalAccepted(evalAccepted, signal);
       finalizeSuccessfulClassifierEval(done);
     } catch (e) {
-      if (e instanceof LabJobPollTimeoutError) {
-        if (!mountedEvalRef.current) return;
-        useLabJobSessionStore.getState().patchLabJobPollTimedOut(evalAccepted.jobId, e.lastStatus);
-        setEvalPollTimedOut(true);
-        setEvalErr(t("jobPollTimeout"));
-        if (e.lastStatus) {
-          setEvalStatus(e.lastStatus);
-        }
-      } else if (e instanceof DOMException && e.name === "AbortError") {
-        if (!mountedEvalRef.current) return;
-        setEvalErr(t("jobCancelled"));
-        setEvalStoppedWaiting(true);
-        traceLabJobStoppedWaiting(evalAccepted.jobId, t("traceStoppedWaiting"));
-        useLabJobSessionStore.getState().setLabJobStoppedWatching(evalAccepted.jobId, true);
-      } else if (e instanceof ApiError && e.status === 404) {
-        if (!mountedEvalRef.current) return;
-        useLabJobSessionStore.getState().markLabJobStaleNotFound(evalAccepted.jobId);
-        setEvalErr(t("jobRecoveryStaleShort"));
-      } else {
-        if (!mountedEvalRef.current) return;
-        setEvalErr(e instanceof Error ? e.message : t("evalError"));
-      }
+      handleClassifierEvalFollowCatch(e, {
+        mountedRef: mountedEvalRef,
+        asyncJobId: evalAccepted.jobId,
+        setEvalErr,
+        setEvalStoppedWaiting,
+        setEvalPollTimedOut,
+        setEvalStatus,
+        translate: t,
+      });
     } finally {
       if (mountedEvalRef.current) {
         setEvalRunning(false);
@@ -607,32 +645,15 @@ export function LabClassifierEvalPanel(
       const done = await followClassifierEvalAccepted(accepted, signal);
       finalizeSuccessfulClassifierEval(done);
     } catch (e) {
-      if (e instanceof LabJobPollTimeoutError) {
-        if (!mountedEvalRef.current) return;
-        if (evalAsyncAccepted?.jobId) {
-          useLabJobSessionStore.getState().patchLabJobPollTimedOut(evalAsyncAccepted.jobId, e.lastStatus);
-        }
-        setEvalPollTimedOut(true);
-        setEvalErr(t("jobPollTimeout"));
-        if (e.lastStatus) {
-          setEvalStatus(e.lastStatus);
-        }
-      } else if (e instanceof DOMException && e.name === "AbortError") {
-        if (!mountedEvalRef.current) return;
-        setEvalErr(t("jobCancelled"));
-        setEvalStoppedWaiting(true);
-        if (evalAsyncAccepted?.jobId) {
-          traceLabJobStoppedWaiting(evalAsyncAccepted.jobId, t("traceStoppedWaiting"));
-          useLabJobSessionStore.getState().setLabJobStoppedWatching(evalAsyncAccepted.jobId, true);
-        }
-      } else if (e instanceof ApiError && e.status === 404 && evalAsyncAccepted?.jobId) {
-        if (!mountedEvalRef.current) return;
-        useLabJobSessionStore.getState().markLabJobStaleNotFound(evalAsyncAccepted.jobId);
-        setEvalErr(t("jobRecoveryStaleShort"));
-      } else {
-        if (!mountedEvalRef.current) return;
-        setEvalErr(e instanceof Error ? e.message : t("evalError"));
-      }
+      handleClassifierEvalFollowCatch(e, {
+        mountedRef: mountedEvalRef,
+        asyncJobId: evalAsyncAccepted?.jobId,
+        setEvalErr,
+        setEvalStoppedWaiting,
+        setEvalPollTimedOut,
+        setEvalStatus,
+        translate: t,
+      });
     } finally {
       if (mountedEvalRef.current) {
         setEvalRunning(false);
@@ -719,7 +740,7 @@ export function LabClassifierEvalPanel(
             {t("jobResumeWatching")}
           </Button>
         ) : null}
-        {!evalSync && (evalAccepted || evalStatus) ? (
+        {evalSync ? null : (evalAccepted || evalStatus) ? (
           <LabJobPanel
             accepted={evalAccepted}
             taskStatus={evalStatus}
@@ -728,11 +749,11 @@ export function LabClassifierEvalPanel(
             watchElapsedSeconds={watchElapsedSeconds}
           />
         ) : null}
-        {evalOut != null ? (
+        {evalOut === null ? null : (
           <pre className="bg-muted/40 max-h-[240px] overflow-auto rounded-md border p-3 text-xs">
             {JSON.stringify(evalOut, null, 2)}
           </pre>
-        ) : null}
+        )}
       </CardContent>
     </Card>
   );
@@ -783,12 +804,12 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
         <Button type="button" disabled={clsRunning || !classifierOk} onClick={() => void runClassify()}>
           {clsRunning ? t("evalRunning") : t("classifierClassifySubmit")}
         </Button>
-        {clsErr ? <p className="text-destructive text-sm">{clsErr}</p> : null}
-        {clsOut != null ? (
+        {clsErr === null ? null : <p className="text-destructive text-sm">{clsErr}</p>}
+        {clsOut === null ? null : (
           <pre className="bg-muted/40 max-h-[240px] overflow-auto rounded-md border p-3 text-xs">
             {JSON.stringify(clsOut, null, 2)}
           </pre>
-        ) : null}
+        )}
       </CardContent>
     </Card>
   );

@@ -16,7 +16,6 @@ public record StructuredSearchRetrievalUnsupportedRule(String ruleId) implements
         if (ragConfig.useRetrieval()
                 && ragConfig.materializationStrategy() == MaterializationStrategy.STRUCTURED_SEARCH) {
             return CompatibilityRuleOutcome.error(
-                    ruleId,
                     CompatibilityViolation.of(
                             "STRUCTURED_SEARCH_RETRIEVAL_UNSUPPORTED",
                             "materializationStrategy STRUCTURED_SEARCH with useRetrieval is not supported in the orchestrated engine",

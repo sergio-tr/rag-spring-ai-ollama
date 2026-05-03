@@ -1,6 +1,5 @@
 package com.uniovi.rag.application.service.runtime.traceregressionsuiterunimportpreview;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -68,8 +67,6 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
         JsonNode manifestRoot;
         try {
             manifestRoot = objectMapper.readTree(manifestBytes);
-        } catch (JsonProcessingException ex) {
-            throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid manifest", ex);
         } catch (IOException ex) {
             throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid manifest", ex);
         }
@@ -78,8 +75,6 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
         RuntimeTraceRegressionSuiteRunDetailDto runDto;
         try {
             runDto = objectMapper.readValue(runJsonBytes, RuntimeTraceRegressionSuiteRunDetailDto.class);
-        } catch (JsonProcessingException ex) {
-            throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid run.json", ex);
         } catch (IOException ex) {
             throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid run.json", ex);
         }
@@ -105,8 +100,6 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
         JsonNode manifestRoot;
         try {
             manifestRoot = objectMapper.readTree(manifestBytes);
-        } catch (JsonProcessingException ex) {
-            throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid manifest", ex);
         } catch (IOException ex) {
             throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid manifest", ex);
         }
@@ -115,8 +108,6 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
         RuntimeTraceRegressionSuiteRunDetailDto runDto;
         try {
             runDto = objectMapper.readValue(runJsonBytes, RuntimeTraceRegressionSuiteRunDetailDto.class);
-        } catch (JsonProcessingException ex) {
-            throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid run.json", ex);
         } catch (IOException ex) {
             throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid run.json", ex);
         }
@@ -147,29 +138,39 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
                 root, "SAVED_DEFINITION_SCOPED_RUN", invalidManifest);
 
         JsonNode scope = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireObject(root, "scope", invalidManifest);
-        UUID scopeRunId = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidTextInObject(scope, "runId", invalidManifest);
+        UUID scopeRunId =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidTextInObject(
+                        scope, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_RUN_ID, invalidManifest);
         UUID scopeDefinitionId =
-                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidTextInObject(scope, "definitionId", invalidManifest);
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidTextInObject(
+                        scope, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_DEFINITION_ID, invalidManifest);
         if (!scopeDefinitionId.toString().equals(pathDefinitionId.toString())) {
             throw invalidManifest;
         }
 
-        UUID rootRunId = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidText(root, "runId", invalidManifest);
+        UUID rootRunId =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidText(
+                        root, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_RUN_ID, invalidManifest);
         if (!scopeRunId.equals(rootRunId)) {
             throw invalidManifest;
         }
         UUID rootDefinitionId =
-                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidText(root, "definitionId", invalidManifest);
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidText(
+                        root, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_DEFINITION_ID, invalidManifest);
         if (!scopeDefinitionId.equals(rootDefinitionId)) {
             throw invalidManifest;
         }
 
-        String sourceTypeText = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(root, "sourceType", invalidManifest);
+        String sourceTypeText =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(
+                        root, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_SOURCE_TYPE, invalidManifest);
         if (!MANIFEST_SOURCE_TYPES.contains(sourceTypeText)) {
             throw invalidManifest;
         }
 
-        String suiteOutcomeText = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(root, "suiteOutcome", invalidManifest);
+        String suiteOutcomeText =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(
+                        root, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_SUITE_OUTCOME, invalidManifest);
         if (!MANIFEST_SUITE_OUTCOMES.contains(suiteOutcomeText)) {
             throw invalidManifest;
         }
@@ -187,20 +188,29 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
         RuntimeTraceRegressionSuiteRunImportManifestValidators.requireSelectorType(root, "SAVED_RUN_BY_ID", invalidManifest);
 
         JsonNode scope = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireObject(root, "scope", invalidManifest);
-        UUID scopeRunId = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidTextInObject(scope, "runId", invalidManifest);
-        UUID rootRunId = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidText(root, "runId", invalidManifest);
+        UUID scopeRunId =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidTextInObject(
+                        scope, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_RUN_ID, invalidManifest);
+        UUID rootRunId =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireUuidText(
+                        root, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_RUN_ID, invalidManifest);
         if (!scopeRunId.equals(rootRunId)) {
             throw invalidManifest;
         }
 
-        String sourceTypeText = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(root, "sourceType", invalidManifest);
+        String sourceTypeText =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(
+                        root, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_SOURCE_TYPE, invalidManifest);
         if (!MANIFEST_SOURCE_TYPES.contains(sourceTypeText)) {
             throw invalidManifest;
         }
 
-        RuntimeTraceRegressionSuiteRunImportManifestValidators.optionalUuidTextOrNull(root, "definitionId", invalidManifest);
+        RuntimeTraceRegressionSuiteRunImportManifestValidators.optionalUuidTextOrNull(
+                root, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_DEFINITION_ID, invalidManifest);
 
-        String suiteOutcomeText = RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(root, "suiteOutcome", invalidManifest);
+        String suiteOutcomeText =
+                RuntimeTraceRegressionSuiteRunImportManifestValidators.requireText(
+                        root, RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_SUITE_OUTCOME, invalidManifest);
         if (!MANIFEST_SUITE_OUTCOMES.contains(suiteOutcomeText)) {
             throw invalidManifest;
         }
@@ -218,13 +228,17 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
     }
 
     private static void assertManifestMatchesRunDto(JsonNode m, RuntimeTraceRegressionSuiteRunDetailDto detail) {
-        if (!m.get("runId").asText().equals(detail.id().toString())) {
+        if (!m.get(RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_RUN_ID)
+                .asText()
+                .equals(detail.id().toString())) {
             throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("artifact manifest and run.json mismatch");
         }
-        if (!m.get("sourceType").asText().equals(detail.sourceType())) {
+        if (!m.get(RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_SOURCE_TYPE)
+                .asText()
+                .equals(detail.sourceType())) {
             throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("artifact manifest and run.json mismatch");
         }
-        JsonNode defNode = m.get("definitionId");
+        JsonNode defNode = m.get(RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_DEFINITION_ID);
         if (defNode.isNull()) {
             if (detail.definitionId() != null) {
                 throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("artifact manifest and run.json mismatch");
@@ -235,7 +249,9 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
                 throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("artifact manifest and run.json mismatch");
             }
         }
-        if (!m.get("suiteOutcome").asText().equals(detail.suiteOutcome())) {
+        if (!m.get(RuntimeTraceRegressionSuiteRunImportManifestValidators.FIELD_SUITE_OUTCOME)
+                .asText()
+                .equals(detail.suiteOutcome())) {
             throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("artifact manifest and run.json mismatch");
         }
         if (m.get("requestedEntryCount").intValue() != detail.requestedEntryCount()
@@ -265,11 +281,7 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
             if (e1 == null || e1.isDirectory() || entryNameIsDirectory(e1.getName())) {
                 throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid zip");
             }
-            try {
-                ZipIoGuards.requireSafeEntryName(e1.getName());
-            } catch (IOException ex) {
-                throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid zip", ex);
-            }
+            requireSafeZipEntryName(e1.getName());
             if (!"manifest.json".equals(e1.getName()) || e1.getMethod() != ZipEntry.STORED) {
                 throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid zip");
             }
@@ -280,11 +292,7 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
             if (e2 == null || e2.isDirectory() || entryNameIsDirectory(e2.getName())) {
                 throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid zip");
             }
-            try {
-                ZipIoGuards.requireSafeEntryName(e2.getName());
-            } catch (IOException ex) {
-                throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid zip", ex);
-            }
+            requireSafeZipEntryName(e2.getName());
             if (!"run.json".equals(e2.getName()) || e2.getMethod() != ZipEntry.STORED) {
                 throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid zip");
             }
@@ -303,5 +311,13 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewService {
 
     private static boolean entryNameIsDirectory(String name) {
         return name != null && name.endsWith("/");
+    }
+
+    private static void requireSafeZipEntryName(String entryName) {
+        try {
+            ZipIoGuards.requireSafeEntryName(entryName);
+        } catch (IOException ex) {
+            throw new RuntimeTraceRegressionSuiteRunImportPreviewRejectedException("invalid zip", ex);
+        }
     }
 }

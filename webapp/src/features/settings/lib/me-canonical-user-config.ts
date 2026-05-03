@@ -26,7 +26,7 @@ export type PersonalizationFormValues = z.infer<typeof personalizationFormSchema
 export function preferencesFormDefaults(stored: Record<string, unknown>): PreferencesFormValues {
   const raw = stored.locale;
   if (raw === "en" || raw === "es") return { locale: raw };
-  return { locale: routing.defaultLocale as AppLocale };
+  return { locale: routing.defaultLocale };
 }
 
 export function personalizationFormDefaults(stored: Record<string, unknown>): PersonalizationFormValues {

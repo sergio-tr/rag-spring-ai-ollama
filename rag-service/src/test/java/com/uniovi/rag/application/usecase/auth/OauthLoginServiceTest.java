@@ -43,6 +43,15 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class OauthLoginServiceTest {
 
+    /** Defaults aligned with {@link OauthLoginService} {@code @Value} placeholders. */
+    private static final String GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT =
+            "https://accounts.google.com/o/oauth2/v2/auth";
+
+    private static final String GOOGLE_OAUTH_TOKEN_URI_DEFAULT = "https://oauth2.googleapis.com/token";
+
+    private static final String GOOGLE_OAUTH_JWK_SET_URI_DEFAULT =
+            "https://www.googleapis.com/oauth2/v3/certs";
+
     @Mock
     private UserAccountPort userAccountPort;
 
@@ -102,7 +111,11 @@ class OauthLoginServiceTest {
                 "cid",
                 "csecret",
                 "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
 
         var res = svc.exchange("raw");
         assertThat(res.accessToken()).isEqualTo("acc");
@@ -115,7 +128,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 false, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
         assertThat(svc.googleStartUrl("en")).isEqualTo("http://localhost:3000/en/login");
     }
 
@@ -124,7 +141,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
         assertThatThrownBy(() -> svc.googleStartUrl("en")).isInstanceOf(IllegalStateException.class);
     }
 
@@ -133,7 +154,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 false, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
         assertThatThrownBy(() -> svc.exchange("raw")).isInstanceOf(InvalidCredentialsException.class);
     }
 
@@ -149,7 +174,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
         assertThatThrownBy(() -> svc.exchange("raw")).isInstanceOf(InvalidCredentialsException.class);
     }
 
@@ -164,7 +193,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
         assertThatThrownBy(() -> svc.exchange("raw")).isInstanceOf(InvalidCredentialsException.class);
     }
 
@@ -175,7 +208,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
         assertThatThrownBy(() -> svc.exchange("unknown-raw-code")).isInstanceOf(InvalidCredentialsException.class);
     }
 
@@ -199,7 +236,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
 
         svc.exchange("raw-code-value");
 
@@ -213,7 +254,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000/", "http://localhost:9000/", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
 
         String url = svc.googleStartUrl("es");
         assertThat(url).startsWith("https://accounts.google.com/o/oauth2/v2/auth");
@@ -242,7 +287,10 @@ class OauthLoginServiceTest {
                 "secret",
                 "https://accounts.google.com",
                 "/api/v5/auth/oauth/google/callback",
-                false);
+                false,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
 
         String url = svc.googleStartUrl("en");
         assertThat(url).startsWith("https://accounts.google.com/o/oauth2/v2/auth");
@@ -262,7 +310,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
         UserEntity resolved = ReflectionTestUtils.invokeMethod(svc, "resolveOrCreateUser", "subject", "a@b.com", true);
         assertThat(resolved).isEqualTo(user);
     }
@@ -278,7 +330,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
 
         UserEntity resolved =
                 ReflectionTestUtils.invokeMethod(svc, "resolveOrCreateUser", "subject", "User@Example.com", true);
@@ -310,7 +366,11 @@ class OauthLoginServiceTest {
                 "cid",
                 "secret",
                 "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
 
         UserEntity resolved = ReflectionTestUtils.invokeMethod(
                 svc,
@@ -328,7 +388,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 false, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
 
         assertThat(svc.handleGoogleCallback("code", "state", null)).isEqualTo("http://localhost:3000/en/login");
     }
@@ -338,7 +402,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
 
         assertThat(svc.handleGoogleCallback("code", "state", "access_denied"))
                 .isEqualTo("http://localhost:3000/en/login?oauth=error");
@@ -354,7 +422,11 @@ class OauthLoginServiceTest {
         OauthLoginService svc = new OauthLoginService(
                 userAccountPort, oauthIdentityRepository, oauthLoginExchangeCodeRepository, oauthLoginStateTokenRepository, jwtService, passwordEncoder,
                 true, "http://localhost:3000", "http://localhost:9000", "cid", "secret", "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
 
         String redirect = svc.handleGoogleCallback("code", "bad-state", null);
         assertThat(redirect).isEqualTo("http://localhost:3000/en/login?oauth=invalid_state");
@@ -484,6 +556,9 @@ class OauthLoginServiceTest {
                         "https://accounts.google.com",
                         "/api/v5/auth/oauth/google/callback",
                         true,
+                        GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                        GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                        GOOGLE_OAUTH_JWK_SET_URI_DEFAULT,
                         code -> Map.of(),
                         decoder);
 
@@ -520,6 +595,9 @@ class OauthLoginServiceTest {
                         "https://accounts.google.com",
                         "/api/v5/auth/oauth/google/callback",
                         true,
+                        GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                        GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                        GOOGLE_OAUTH_JWK_SET_URI_DEFAULT,
                         code -> Map.of("id_token", "id"),
                         decoder);
 
@@ -562,6 +640,9 @@ class OauthLoginServiceTest {
                         "https://accounts.google.com",
                         "/api/v5/auth/oauth/google/callback",
                         true,
+                        GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                        GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                        GOOGLE_OAUTH_JWK_SET_URI_DEFAULT,
                         code -> Map.of("id_token", "id-jwt"),
                         decoder);
 
@@ -607,6 +688,9 @@ class OauthLoginServiceTest {
                         "https://accounts.google.com",
                         "/api/v5/auth/oauth/google/callback",
                         true,
+                        GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                        GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                        GOOGLE_OAUTH_JWK_SET_URI_DEFAULT,
                         code -> Map.of("id_token", "id-jwt"),
                         decoder);
 
@@ -637,9 +721,16 @@ class OauthLoginServiceTest {
                         "secret",
                         (String) null,
                         (String) null,
-                        true);
+                        true,
+                        (String) null,
+                        (String) null,
+                        (String) null);
         assertThat(ReflectionTestUtils.getField(svc, "googleIssuer")).isEqualTo("https://accounts.google.com");
         assertThat(ReflectionTestUtils.getField(svc, "googleRedirectPath")).isEqualTo("/auth/oauth/google/callback");
+        assertThat(ReflectionTestUtils.getField(svc, "googleAuthorizationUri"))
+                .isEqualTo(GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT);
+        assertThat(ReflectionTestUtils.getField(svc, "googleTokenUri")).isEqualTo(GOOGLE_OAUTH_TOKEN_URI_DEFAULT);
+        assertThat(ReflectionTestUtils.getField(svc, "googleJwkSetUri")).isEqualTo(GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
     }
 
     private static OauthLoginStateTokenEntity validUnconsumedStateRow(String rawState) {
@@ -668,7 +759,11 @@ class OauthLoginServiceTest {
                 "cid",
                 "secret",
                 "https://accounts.google.com",
-                "/api/v5/auth/oauth/google/callback", true);
+                "/api/v5/auth/oauth/google/callback",
+                true,
+                GOOGLE_OAUTH_AUTHORIZATION_URI_DEFAULT,
+                GOOGLE_OAUTH_TOKEN_URI_DEFAULT,
+                GOOGLE_OAUTH_JWK_SET_URI_DEFAULT);
     }
 
     /** Test double: avoids HTTP and Google's JWKS while covering {@link OauthLoginService#handleGoogleCallback}. */
@@ -691,6 +786,9 @@ class OauthLoginServiceTest {
                 String googleIssuer,
                 String googleRedirectPath,
                 boolean googlePromptSelectAccount,
+                String googleAuthorizationUri,
+                String googleTokenUri,
+                String googleJwkSetUri,
                 Function<String, Map<String, Object>> tokenResponse,
                 JwtDecoder jwtDecoder) {
             super(
@@ -707,7 +805,10 @@ class OauthLoginServiceTest {
                     googleClientSecret,
                     googleIssuer,
                     googleRedirectPath,
-                    googlePromptSelectAccount);
+                    googlePromptSelectAccount,
+                    googleAuthorizationUri,
+                    googleTokenUri,
+                    googleJwkSetUri);
             this.tokenResponse = tokenResponse;
             this.jwtDecoder = jwtDecoder;
         }

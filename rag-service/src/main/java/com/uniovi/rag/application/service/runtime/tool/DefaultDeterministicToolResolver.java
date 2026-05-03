@@ -13,7 +13,6 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 import com.uniovi.rag.domain.runtime.tool.ToolExecutionMode;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -111,6 +110,7 @@ public class DefaultDeterministicToolResolver implements DeterministicToolResolv
      * Backwards-compatible overload for pre-P13 call sites that passed a workflow name.
      * The deterministic resolver is workflow-independent; the value is ignored.
      */
+    @Override
     public DeterministicToolDecision resolve(ExecutionContext ctx, QueryPlan plan, String workflowName) {
         return resolve(ctx, plan);
     }

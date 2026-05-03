@@ -14,8 +14,8 @@ function isUnderSettings(path: string): boolean {
 }
 
 function subscribe(onStoreChange: () => void): () => void {
-  window.addEventListener(SETTINGS_LAST_PATH_UPDATE_EVENT, onStoreChange);
-  return () => window.removeEventListener(SETTINGS_LAST_PATH_UPDATE_EVENT, onStoreChange);
+  globalThis.window.addEventListener(SETTINGS_LAST_PATH_UPDATE_EVENT, onStoreChange);
+  return () => globalThis.window.removeEventListener(SETTINGS_LAST_PATH_UPDATE_EVENT, onStoreChange);
 }
 
 function getSidebarStoredHrefSnapshot(): string {

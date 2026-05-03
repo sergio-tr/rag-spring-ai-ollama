@@ -1,25 +1,16 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TracedEvaluationService;
 import com.uniovi.rag.interfaces.rest.support.OllamaConnectivityChecker;
-import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.evaluation.DatasetMinuteEvaluationService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.evaluation.EvaluationServiceFactory;
-import com.uniovi.rag.service.extraction.DocumentContentExtractor;
-import com.uniovi.rag.service.guard.QueryDateExtractor;
-import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.service.query.QueryService;
-import com.uniovi.rag.service.query.ResponseValidator;
-import com.uniovi.rag.service.ranker.ResponseRanker;
-import com.uniovi.rag.service.reasoning.ReasoningStrategy;
-import com.uniovi.rag.tool.metadata.MetadataLlmResponseCacheService;
 import org.springframework.ai.chat.client.ChatClient.Builder;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.evaluation.RelevancyEvaluator;
@@ -50,8 +41,6 @@ public class RagEvaluationConfiguration {
         @Value("${rag.classifier.model-id:default}") String classifierModelId,
         @Value("${rag.classifier.service.timeout-ms:5000}") int classifierTimeoutMs,
         @Value("${rag.chunk.max-chars:400}") int chunkMaxChars,
-        ResponseValidator responseValidator,
-        DocumentContentExtractor documentContentExtractor,
         @Value("${rag.expansion.strategy:COT}") String expansionStrategy,
         @Value("${rag.expansion.original-repeat:1}") int expansionOriginalRepeat,
         @Value("${rag.expansion.max-expansion-chars:350}") int expansionMaxExpansionChars,
@@ -59,18 +48,10 @@ public class RagEvaluationConfiguration {
         @Value("${rag.expansion.max-query-length-for-llm:500}") int expansionMaxQueryLengthForLlm,
         @Value("${rag.expansion.retry-query-length:200}") int expansionRetryQueryLength,
         OllamaConnectivityChecker ollamaConnectivityChecker,
-        MetadataLlmResponseCacheService metadataLlmResponseCacheService,
-        ModelCatalogPort modelCatalogPort,
-        ChatScopedRagConfigResolver chatScopedRagConfigResolver,
         ExecutionContextFactory executionContextFactory,
         RagExecutionOrchestrator ragExecutionOrchestrator,
         RuntimeTracePersistenceService runtimeTracePersistenceService,
-        ReasoningStrategy reasoningStrategy,
-        ResponseRanker responseRanker,
-        PostRetrievalProcessor postRetrievalProcessor,
-        QueryDateExtractor queryDateExtractor,
-        @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled,
-        @Autowired(required = false) RagRuntimeProperties ragRuntimeProperties
+        @Value("${knowledge.v2.chat-overlay.enabled:false}") boolean knowledgeChatOverlayEnabled
     ) {
         EvaluationServiceFactory.Settings settings =
                 new EvaluationServiceFactory.Settings(
@@ -87,12 +68,15 @@ public class RagEvaluationConfiguration {
                         expansionMaxQueryLengthForLlm,
                         expansionRetryQueryLength,
                         knowledgeChatOverlayEnabled);
-        return new EvaluationServiceFactory(chatClient, vectorStore, jdbcTemplate, settings,
-                responseValidator, documentContentExtractor, ollamaConnectivityChecker,
-                metadataLlmResponseCacheService, modelCatalogPort, chatScopedRagConfigResolver,
-                executionContextFactory, ragExecutionOrchestrator, runtimeTracePersistenceService,
-                reasoningStrategy, responseRanker, postRetrievalProcessor, queryDateExtractor, knowledgeChatOverlayEnabled,
-                ragRuntimeProperties);
+        return new EvaluationServiceFactory(
+                chatClient,
+                vectorStore,
+                jdbcTemplate,
+                settings,
+                ollamaConnectivityChecker,
+                executionContextFactory,
+                ragExecutionOrchestrator,
+                runtimeTracePersistenceService);
     }
 
     @Bean

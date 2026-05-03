@@ -30,7 +30,6 @@ public record RagExecutionResult(
         workflowStageTraces = List.copyOf(workflowStageTraces);
         usedResolvedConfigSnapshotId = Objects.requireNonNullElseGet(usedResolvedConfigSnapshotId, Optional::empty);
         usedConfigHash = Objects.requireNonNullElseGet(usedConfigHash, Optional::empty);
-        toolUsedLabel = toolUsedLabel;
         retrievalDiagnostics = Objects.requireNonNullElseGet(retrievalDiagnostics, Optional::empty);
     }
 

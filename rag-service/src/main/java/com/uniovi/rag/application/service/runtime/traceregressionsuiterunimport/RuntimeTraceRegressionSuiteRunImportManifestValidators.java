@@ -11,6 +11,11 @@ import java.util.UUID;
  */
 public final class RuntimeTraceRegressionSuiteRunImportManifestValidators {
 
+    public static final String FIELD_RUN_ID = "runId";
+    public static final String FIELD_DEFINITION_ID = "definitionId";
+    public static final String FIELD_SOURCE_TYPE = "sourceType";
+    public static final String FIELD_SUITE_OUTCOME = "suiteOutcome";
+
     private RuntimeTraceRegressionSuiteRunImportManifestValidators() {}
 
     public static void requireExportKindRegressionSuiteRun(JsonNode root, RuntimeException invalidManifest) {
@@ -26,7 +31,7 @@ public final class RuntimeTraceRegressionSuiteRunImportManifestValidators {
     }
 
     public static void requireZipSizeBytes(JsonNode root, int bodyLength, RuntimeException invalidManifest) {
-        requireLongEquals(root, "zipSizeBytes", (long) bodyLength, invalidManifest);
+        requireLongEquals(root, "zipSizeBytes", bodyLength, invalidManifest);
     }
 
     public static void requireSelectorType(JsonNode root, String selectorType, RuntimeException invalidManifest) {

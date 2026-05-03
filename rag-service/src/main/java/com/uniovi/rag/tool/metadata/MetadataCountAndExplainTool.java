@@ -21,6 +21,16 @@ import java.util.stream.Collectors;
  */
 public class MetadataCountAndExplainTool extends AbstractMetadataTool {
 
+    private static final String QUERY_STAGE_COUNT_AND_EXPLAIN = "count and explain";
+
+    private static final String PLACEHOLDER_UNKNOWN = "unknown";
+
+    private static final String PLACEHOLDER_UNKNOWN_DATE = "unknown date";
+
+    private static final String[] COUNT_EXPLAIN_RETRIEVAL_FIELDS = {
+            "date", "place", "topics", "decisions", "summary", "agenda"
+    };
+
     public MetadataCountAndExplainTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
         super(chatClient, retriever, extractor, llmResponseCache);
@@ -34,27 +44,23 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         log().info("Executing count and explain query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
-        List<Document> docs = retrieveDocumentsWithFallback(
-            query,
-            new String[] {"date", "place", "topics", "decisions", "summary", "agenda"},
-            ner
-        );
-        
-        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "count and explain");
+        List<Document> docs = retrieveDocumentsWithFallback(query, COUNT_EXPLAIN_RETRIEVAL_FIELDS, ner);
+
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, QUERY_STAGE_COUNT_AND_EXPLAIN);
         if (missing != null) {
             return missing;
         }
 
         // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
-        missing = notFoundIfEmptyMinutes(query, minutes, "count and explain");
+        missing = notFoundIfEmptyMinutes(query, minutes, QUERY_STAGE_COUNT_AND_EXPLAIN);
         if (missing != null) {
             return missing;
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "count and explain");
+        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, QUERY_STAGE_COUNT_AND_EXPLAIN);
         if (missing != null) {
             return missing;
         }
@@ -189,13 +195,13 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
             """,
             query,
             queryType,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.president() != null ? minute.president() : "unknown",
-            minute.secretary() != null ? minute.secretary() : "unknown",
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
-            minute.summary() != null ? minute.summary() : "unknown"
+            minute.date() != null ? minute.date() : PLACEHOLDER_UNKNOWN,
+            minute.place() != null ? minute.place() : PLACEHOLDER_UNKNOWN,
+            minute.president() != null ? minute.president() : PLACEHOLDER_UNKNOWN,
+            minute.secretary() != null ? minute.secretary() : PLACEHOLDER_UNKNOWN,
+            minute.topics() != null ? String.join(", ", minute.topics()) : PLACEHOLDER_UNKNOWN,
+            minute.decisions() != null ? String.join(", ", minute.decisions()) : PLACEHOLDER_UNKNOWN,
+            minute.summary() != null ? minute.summary() : PLACEHOLDER_UNKNOWN
         );
     }
 
@@ -355,15 +361,25 @@ public class MetadataCountAndExplainTool extends AbstractMetadataTool {
         }
     }
     
+    private static String truncateExplanationSnippet(String content) {
+        if (content == null) {
+            return "";
+        }
+        if (content.length() > 200) {
+            return content.substring(0, 200) + "...";
+        }
+        return content;
+    }
+
     /**
      * Generates a fallback final answer when LLM fails.
      */
     private String generateFallbackFinalAnswer(String query, List<Explanation> explanations) {
         String explanationsText = explanations.stream()
                 .limit(3)
-                .map(e -> String.format("- %s: %s", 
-                    e.getDate() != null ? e.getDate() : "unknown date",
-                    e.getContent() != null && e.getContent().length() > 200 ? e.getContent().substring(0, 200) + "..." : (e.getContent() != null ? e.getContent() : "")))
+                .map(e -> String.format("- %s: %s",
+                        e.getDate() != null ? e.getDate() : PLACEHOLDER_UNKNOWN_DATE,
+                        truncateExplanationSnippet(e.getContent())))
                 .collect(Collectors.joining(System.lineSeparator() + System.lineSeparator()));
         
         String prompt = String.format("""

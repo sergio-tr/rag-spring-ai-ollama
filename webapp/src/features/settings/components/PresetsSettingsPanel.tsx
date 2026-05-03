@@ -4,12 +4,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
-import { Controller, useForm, useWatch, type Resolver } from "react-hook-form";
+import { useForm, useWatch, type Resolver } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfigSchemaFieldRows } from "@/features/settings/components/config-schema-field-rows";
 import { useConfigSchemaQuery } from "@/features/settings/hooks/use-rag-config";
 import { buildConfigValuesSchema, type ConfigFormValues } from "@/features/settings/lib/build-config-zod";
 import { labelProjectConfigField } from "@/features/settings/lib/project-config-field-copy";
@@ -95,7 +96,7 @@ export function PresetsSettingsPanel() {
       setImportError(null);
       setFormError(null);
       form.reset({});
-      void qc.invalidateQueries({ queryKey: presetsKey });
+      qc.invalidateQueries({ queryKey: presetsKey });
     },
     onError: (e: unknown) => {
       setFormError(e instanceof Error ? e.message : t("presetsSaveError"));
@@ -104,7 +105,9 @@ export function PresetsSettingsPanel() {
 
   const deleteM = useMutation({
     mutationFn: (id: string) => apiFetch(apiProductPath(`/presets/${id}`), { method: "DELETE" }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: presetsKey }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: presetsKey });
+    },
   });
 
   const items = useMemo(() => listQ.data ?? [], [listQ.data]);
@@ -141,7 +144,7 @@ export function PresetsSettingsPanel() {
       }
       form.reset(parsed.data as ConfigFormValues);
     } else {
-      form.reset(structured as ConfigFormValues);
+      form.reset(structured);
     }
     setExtras(extrasAllowed);
   }
@@ -154,7 +157,7 @@ export function PresetsSettingsPanel() {
     );
     await navigator.clipboard.writeText(text);
     setExportCopied(true);
-    window.setTimeout(() => setExportCopied(false), 2000);
+    globalThis.setTimeout(() => setExportCopied(false), 2000);
   }
 
   const schemaLoadError = schemaQ.isError;
@@ -251,46 +254,12 @@ export function PresetsSettingsPanel() {
 
           {!schemaLoading && !schemaLoadError && editableKeys.length > 0 ? (
             <div className="flex flex-col gap-4">
-              {fields
-                .filter((f) => f.userEditable)
-                .map((f) => (
-                  <div key={f.key} className="flex flex-col gap-2">
-                    <Label htmlFor={`preset-cfg-${f.key}`}>{schemaFieldLabel(f.key)}</Label>
-                    {f.type === "boolean" ? (
-                      <Controller
-                        name={f.key}
-                        control={form.control}
-                        render={({ field }) => (
-                          <input
-                            id={`preset-cfg-${f.key}`}
-                            type="checkbox"
-                            className="size-4"
-                            checked={Boolean(field.value)}
-                            onChange={(e) => field.onChange(e.target.checked)}
-                          />
-                        )}
-                      />
-                    ) : (
-                      <Input
-                        id={`preset-cfg-${f.key}`}
-                        type={f.type === "integer" || f.type === "number" ? "number" : "text"}
-                        step={f.type === "integer" ? "1" : undefined}
-                        min={f.min != null ? String(f.min) : undefined}
-                        max={f.max != null ? String(f.max) : undefined}
-                        {...form.register(f.key, {
-                          setValueAs: (v) => {
-                            if (v === "" || v === null || v === undefined) return undefined;
-                            if (f.type === "integer" || f.type === "number") {
-                              const n = Number(v);
-                              return Number.isNaN(n) ? undefined : n;
-                            }
-                            return v;
-                          },
-                        })}
-                      />
-                    )}
-                  </div>
-                ))}
+              <ConfigSchemaFieldRows
+                fields={fields}
+                form={form}
+                labelFor={schemaFieldLabel}
+                inputIdPrefix="preset-cfg"
+              />
               {Object.keys(form.formState.errors).length > 0 ? (
                 <p className="text-destructive text-sm" role="alert">
                   {t("configValidationError")}
@@ -324,7 +293,14 @@ export function PresetsSettingsPanel() {
                   placeholder={t("presetsImportPlaceholder")}
                   data-testid="preset-import-textarea"
                 />
-                <Button type="button" size="sm" variant="secondary" onClick={() => void applyStructuredImport()}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    applyStructuredImport();
+                  }}
+                >
                   {t("presetsImportApply")}
                 </Button>
               </div>
@@ -335,7 +311,14 @@ export function PresetsSettingsPanel() {
               ) : null}
               <div className="flex flex-col gap-2 border-border border-t pt-3">
                 <p className="text-muted-foreground text-xs">{t("presetsExportHint")}</p>
-                <Button type="button" size="sm" variant="outline" onClick={() => void copyExportPayload()}>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    copyExportPayload().catch(() => {});
+                  }}
+                >
                   {exportCopied ? t("presetsExportCopied") : t("presetsExportCopy")}
                 </Button>
               </div>
@@ -351,7 +334,7 @@ export function PresetsSettingsPanel() {
           <Button
             type="button"
             disabled={createM.isPending || !name.trim() || schemaLoading || schemaLoadError}
-            onClick={() => void createM.mutate()}
+            onClick={() => createM.mutate()}
           >
             {t("presetsCreateSubmit")}
           </Button>

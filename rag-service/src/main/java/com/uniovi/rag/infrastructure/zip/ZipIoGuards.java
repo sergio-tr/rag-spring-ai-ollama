@@ -28,11 +28,38 @@ public final class ZipIoGuards {
     }
 
     /**
+     * Snapshots validated central-directory sizes for a STORED entry. Declared lengths are checked against caller
+     * limits only; payload expansion is still bounded by counting bytes read from the stream (Sonar S5042).
+     */
+    private record StoredEntryHeader(long uncompressedSize, long compressedSize) {}
+
+    /**
      * Reads a STORED entry by measuring actual bytes from the stream (S5042); use {@link ZipExpansionBudget} to cap
      * cumulative expansion across the whole archive.
      */
     public static byte[] readStoredEntryBytes(
             ZipInputStream zin, ZipEntry entry, long maxBytesPerEntry, ZipExpansionBudget budget) throws IOException {
+        StoredEntryHeader header = validateStoredEntryHeader(entry, maxBytesPerEntry);
+        budget.beginEntry();
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream(READ_BUFFER_SIZE);
+        byte[] buf = new byte[READ_BUFFER_SIZE];
+        byte[] result = readStoredPayload(zin, budget, maxBytesPerEntry, buf, out);
+
+        assertStoredSizesMatchDeclared(header.uncompressedSize(), header.compressedSize(), result.length);
+        return result;
+    }
+
+    /**
+     * Validates headers before any expansion: STORED entries must publish consistent uncompressed/compressed sizes
+     * (ratio {@code 1:1}), staying within {@code maxBytesPerEntry}.
+     *
+     * <p><strong>Zip bomb / S5042:</strong> Values from {@link ZipEntry#getSize()} are not used to allocate buffers or
+     * to trust expansion size. Memory growth is driven only by bytes read in {@link #readStoredPayload}, each bounded
+     * by {@code maxBytesPerEntry} and {@link ZipExpansionBudget}. STORED entries cannot inflate payload via compression.
+     */
+    @SuppressWarnings("java:S5042")
+    private static StoredEntryHeader validateStoredEntryHeader(ZipEntry entry, long maxBytesPerEntry) throws IOException {
         if (entry == null) {
             throw new IOException("missing zip entry");
         }
@@ -46,28 +73,26 @@ public final class ZipIoGuards {
         if (entry.getCrc() < 0) {
             throw new IOException("zip entry CRC missing");
         }
-
-        budget.beginEntry();
-
-        long declaredSize = entry.getSize();
+        long declaredUncompressed = entry.getSize();
         long declaredCompressed = entry.getCompressedSize();
-        // Reject absurd headers before spending work; actual size is still verified after reading.
-        if (declaredSize >= 0 && declaredSize > maxBytesPerEntry) {
+        if (declaredUncompressed < 0 || declaredCompressed < 0) {
+            throw new IOException("zip entry missing size metadata");
+        }
+        if (declaredUncompressed > maxBytesPerEntry || declaredCompressed > maxBytesPerEntry) {
             throw new IOException("zip entry too large");
         }
-        if (declaredSize > Integer.MAX_VALUE) {
+        if (declaredUncompressed > Integer.MAX_VALUE) {
             throw new IOException("zip entry too large for memory");
         }
-        if (declaredCompressed >= 0 && declaredCompressed > maxBytesPerEntry) {
-            throw new IOException("zip entry too large");
+        if (declaredUncompressed != declaredCompressed) {
+            throw new IOException("STORED zip entry requires matching compressed and uncompressed sizes");
         }
+        return new StoredEntryHeader(declaredUncompressed, declaredCompressed);
+    }
 
-        int initialCapacity =
-                declaredSize >= 0 && declaredSize <= maxBytesPerEntry
-                        ? (int) Math.min(declaredSize, READ_BUFFER_SIZE)
-                        : READ_BUFFER_SIZE;
-        ByteArrayOutputStream out = new ByteArrayOutputStream(initialCapacity);
-        byte[] buf = new byte[READ_BUFFER_SIZE];
+    private static byte[] readStoredPayload(
+            ZipInputStream zin, ZipExpansionBudget budget, long maxBytesPerEntry, byte[] buf, ByteArrayOutputStream out)
+            throws IOException {
         long totalForEntry = 0L;
         int n;
         while ((n = zin.read(buf)) > 0) {
@@ -79,16 +104,16 @@ public final class ZipIoGuards {
             out.write(buf, 0, n);
             totalForEntry = nextTotal;
         }
+        return out.toByteArray();
+    }
 
-        byte[] result = out.toByteArray();
-
-        if (declaredSize >= 0 && result.length != declaredSize) {
+    private static void assertStoredSizesMatchDeclared(long declaredSize, long declaredCompressed, int actualLength)
+            throws IOException {
+        if (declaredSize >= 0 && actualLength != declaredSize) {
             throw new IOException("zip entry size mismatch");
         }
-        if (declaredCompressed >= 0 && result.length != declaredCompressed) {
+        if (declaredCompressed >= 0 && actualLength != declaredCompressed) {
             throw new IOException("zip entry size mismatch");
         }
-
-        return result;
     }
 }

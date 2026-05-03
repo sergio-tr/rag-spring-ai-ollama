@@ -5,6 +5,7 @@ FastAPI is instrumented so HTTP requests and custom spans are traced; metrics ar
 """
 import logging
 import os
+from urllib.parse import urlparse
 
 _logger = logging.getLogger(__name__)
 
@@ -37,13 +38,15 @@ def setup_telemetry(app):
 
     service_name = os.environ.get("OTEL_SERVICE_NAME", "classifier-service")
     resource = Resource.create({"service.name": service_name})
-    # Prefer explicit scheme to avoid accidentally sending telemetry over cleartext.
-    # For local collectors, allow http when the endpoint is loopback or a local service name.
-    if endpoint.startswith("http://") or endpoint.startswith("https://"):
+    # Resolve OTLP base URL: honor fully-qualified URLs; otherwise default to https unless clearly local/sidecar.
+    parsed_endpoint = urlparse(endpoint)
+    if parsed_endpoint.scheme in ("https", "http") and parsed_endpoint.netloc:
         base_url = endpoint
     else:
-        local_prefixes = ("localhost", "127.0.0.1", "otel-collector", "collector")
-        scheme = "http" if endpoint.startswith(local_prefixes) else "https"
+        local_hosts = ("localhost", "127.0.0.1", "otel-collector", "collector")
+        allow_plaintext_otlp = endpoint.startswith(local_hosts)
+        # Cleartext only for typical loopback/Docker OTLP; prefer TLS elsewhere (Sonar S5332 reviewed).
+        scheme = "http" if allow_plaintext_otlp else "https"  # NOSONAR
         base_url = f"{scheme}://{endpoint}"
     base_url = base_url.rstrip("/")
 

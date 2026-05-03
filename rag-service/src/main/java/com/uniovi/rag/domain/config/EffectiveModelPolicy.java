@@ -22,10 +22,9 @@ public final class EffectiveModelPolicy {
             throw new IllegalArgumentException("Chat model override is empty");
         }
         String t = requested.trim();
-        if (governanceAllowlist == null || governanceAllowlist.isEmpty()) {
-            return t;
-        }
-        if (!governanceAllowlist.contains(t)) {
+        if (governanceAllowlist != null
+                && !governanceAllowlist.isEmpty()
+                && !governanceAllowlist.contains(t)) {
             throw new IllegalArgumentException("LLM model is not allowed by governance: " + t);
         }
         return t;

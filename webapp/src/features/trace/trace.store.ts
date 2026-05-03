@@ -13,11 +13,33 @@ import { sanitizeTraceMetadata } from "./trace-metadata";
  */
 export const MAX_TRACE_EVENTS = 100;
 
-function newTraceId(): string {
-  if (typeof globalThis.crypto !== "undefined" && typeof globalThis.crypto.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
+/** Monotonic suffix only when Web Crypto is unavailable (e.g. some test mocks). Not used for secrets. */
+let traceIdSeqFallback = 0;
+
+function randomHexTraceSuffix(cryptoObj: Crypto, lengthBytes: number): string {
+  const bytes = new Uint8Array(lengthBytes);
+  cryptoObj.getRandomValues(bytes);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
   }
-  return `trace-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  return hex;
+}
+
+/**
+ * Produces an unpredictable trace row id (in-memory UI only, not an auth or persistence credential).
+ * Preferring `randomUUID()`, then `getRandomValues()` (CSPRNG); avoids `Math.random()` (Sonar S2245).
+ */
+function newTraceId(): string {
+  const cryptoObj = globalThis.crypto;
+  if (cryptoObj?.randomUUID !== undefined) {
+    return cryptoObj.randomUUID();
+  }
+  if (cryptoObj?.getRandomValues !== undefined) {
+    return `trace-${randomHexTraceSuffix(cryptoObj, 16)}`;
+  }
+  traceIdSeqFallback += 1;
+  return `trace-${Date.now()}-${traceIdSeqFallback}`;
 }
 
 type TraceStore = {
@@ -31,11 +53,13 @@ type TraceStore = {
 };
 
 function applyTracePatch(event: TraceEvent, patch: UpdateTraceEventPatch): TraceEvent {
-  const next: TraceEvent = {
-    ...event,
-    ...(patch.message !== undefined ? { message: patch.message } : {}),
-    ...(patch.status !== undefined ? { status: patch.status } : {}),
-  };
+  let next: TraceEvent = { ...event };
+  if (patch.message !== undefined) {
+    next = { ...next, message: patch.message };
+  }
+  if (patch.status !== undefined) {
+    next = { ...next, status: patch.status };
+  }
   if (patch.metadata === undefined) {
     return next;
   }
@@ -43,9 +67,9 @@ function applyTracePatch(event: TraceEvent, patch: UpdateTraceEventPatch): Trace
   if (sanitized !== undefined) {
     return { ...next, metadata: sanitized };
   }
-  const { metadata: _removed, ...rest } = next;
-  void _removed;
-  return rest as TraceEvent;
+  const rest = { ...next };
+  delete rest.metadata;
+  return rest;
 }
 
 export const useTraceStore = create<TraceStore>((set, get) => ({
@@ -55,15 +79,16 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
     const id = newTraceId();
     const timestamp = new Date().toISOString();
     const metadata = sanitizeTraceMetadata(input.metadata);
-    const event: TraceEvent = {
+    const baseEvent = {
       id,
       timestamp,
       section: input.section,
       action: input.action,
       message: input.message,
       status: input.status,
-      ...(metadata !== undefined ? { metadata } : {}),
     };
+    const event: TraceEvent =
+      metadata === undefined ? baseEvent : { ...baseEvent, metadata };
     set((s) => ({
       events: [...s.events, event].slice(-MAX_TRACE_EVENTS),
     }));

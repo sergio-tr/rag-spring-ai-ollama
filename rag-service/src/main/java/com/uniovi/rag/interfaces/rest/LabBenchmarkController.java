@@ -57,8 +57,7 @@ public class LabBenchmarkController {
     public ResponseEntity<BenchmarkJobAcceptedDto> startBenchmarkJson(
             @AuthenticationPrincipal RagPrincipal principal,
             @PathVariable String kind,
-            @RequestBody StartBenchmarkRunRequest body)
-            throws IOException {
+            @RequestBody StartBenchmarkRunRequest body) {
         BenchmarkKind bk = parseBenchmarkKind(kind);
         if (bk == BenchmarkKind.CLASSIFIER_METRICS) {
             throw new ResponseStatusException(

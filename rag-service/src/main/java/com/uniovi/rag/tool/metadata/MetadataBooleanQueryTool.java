@@ -11,6 +11,7 @@ import org.springframework.ai.document.Document;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutures.supplyAsync;
@@ -24,6 +25,30 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
     private static final String KEYWORD_VIGILANCIA = "vigilancia";
 
     private static final String KEYWORD_VIDEOVIGILANCIA = "videovigilancia";
+
+    private static final String META_FIELD_DATE = "date";
+
+    private static final String META_FIELD_PLACE = "place";
+
+    private static final String META_FIELD_DECISIONS = "decisions";
+
+    private static final String META_FIELD_TOPICS = "topics";
+
+    private static final String META_FIELD_SUMMARY = "summary";
+
+    private static final String META_FIELD_ATTENDEES = "attendees";
+
+    private static final String QUERY_STAGE_BOOLEAN = "boolean";
+
+    private static final String PROMPT_LABEL_DECISIONS = "Decisions: ";
+
+    private static final String PROMPT_LABEL_TOPICS = "Topics: ";
+
+    private static final String PROMPT_LABEL_SUMMARY = "Summary: ";
+
+    private static final String TOPIC_SEGURIDAD = "seguridad";
+
+    private static final String TOPIC_CAMARA = "camara";
 
     public MetadataBooleanQueryTool(ChatClient chatClient, ContextRetriever retriever, DocumentContentExtractor extractor,
             MetadataLlmResponseCacheService llmResponseCache) {
@@ -39,7 +64,12 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         log().info("Executing boolean query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
 
         List<Document> docs = retrieveDocumentsWithFallback(
-                query, new String[] {"date", "place", "decisions", "topics", "summary", "attendees"}, ner);
+                query,
+                new String[] {
+                        META_FIELD_DATE, META_FIELD_PLACE, META_FIELD_DECISIONS, META_FIELD_TOPICS, META_FIELD_SUMMARY,
+                        META_FIELD_ATTENDEES
+                },
+                ner);
 
         ToolResult early = tryPersonInActaOnDateQuery(query, docs, ner);
         if (early != null) {
@@ -56,19 +86,19 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             return keywordError;
         }
 
-        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "boolean");
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, QUERY_STAGE_BOOLEAN);
         if (missing != null) {
             return missing;
         }
 
         List<Minute> minutes = extractMinutesInParallel(docs);
-        missing = notFoundIfEmptyMinutes(query, minutes, "boolean");
+        missing = notFoundIfEmptyMinutes(query, minutes, QUERY_STAGE_BOOLEAN);
         if (missing != null) {
             return missing;
         }
 
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "boolean");
+        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, QUERY_STAGE_BOOLEAN);
         if (missing != null) {
             return missing;
         }
@@ -175,15 +205,16 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         List<Minute> minutes = extractMinutesInParallel(docsForDate);
         if (minutes.isEmpty()) return null;
         final String normalizedPerson = normalizePersonName(personName);
-        for (Minute m : minutes) {
-            if (m.attendees() == null) continue;
-            for (String attendee : m.attendees()) {
-                if (attendee == null) continue;
-                String normAttendee = normalizePersonName(attendee);
-                if (normAttendee.equals(normalizedPerson) || normAttendee.contains(normalizedPerson) || normalizedPerson.contains(normAttendee)) {
-                    return ToolResult.from(formatResponse("Sí, " + personName + " figura como asistente en esa reunión.", query), getClass());
-                }
-            }
+        boolean attendeeMatched = minutes.stream()
+                .filter(m -> m.attendees() != null)
+                .flatMap(m -> m.attendees().stream())
+                .filter(Objects::nonNull)
+                .map(this::normalizePersonName)
+                .anyMatch(normAttendee -> normAttendee.equals(normalizedPerson)
+                        || normAttendee.contains(normalizedPerson)
+                        || normalizedPerson.contains(normAttendee));
+        if (attendeeMatched) {
+            return ToolResult.from(formatResponse("Sí, " + personName + " figura como asistente en esa reunión.", query), getClass());
         }
         return ToolResult.from(formatResponse("No, " + personName + " no figura en el acta de esa fecha.", query), getClass());
     }
@@ -248,9 +279,9 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             Meeting information:
             Date: %s
             Place: %s
-            Decisions: %s
-            Topics: %s
-            Summary: %s
+            %s%s
+            %s%s
+            %s%s
             
             Extract the most relevant evidence that helps answer the query.
             Format each piece of evidence with its type (Decision/Topic/Summary/Date/Place).
@@ -260,8 +291,11 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             queryType,
             minute.date() != null ? minute.date() : "unknown",
             minute.place() != null ? minute.place() : "unknown",
+            PROMPT_LABEL_DECISIONS,
             minute.decisions() != null ? String.join(", ", minute.decisions()) : "none",
+            PROMPT_LABEL_TOPICS,
             minute.topics() != null ? String.join(", ", minute.topics()) : "none",
+            PROMPT_LABEL_SUMMARY,
             minute.summary() != null ? minute.summary() : "none"
         );
     }
@@ -337,13 +371,13 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
             context.append("Place: ").append(minute.place()).append("\n");
         }
         if (minute.decisions() != null && !minute.decisions().isEmpty()) {
-            context.append("Decisions: ").append(String.join(", ", minute.decisions())).append("\n");
+            context.append(PROMPT_LABEL_DECISIONS).append(String.join(", ", minute.decisions())).append("\n");
         }
         if (minute.topics() != null && !minute.topics().isEmpty()) {
-            context.append("Topics: ").append(String.join(", ", minute.topics())).append("\n");
+            context.append(PROMPT_LABEL_TOPICS).append(String.join(", ", minute.topics())).append("\n");
         }
         if (minute.summary() != null && !minute.summary().trim().isEmpty()) {
-            context.append("Summary: ").append(minute.summary()).append("\n");
+            context.append(PROMPT_LABEL_SUMMARY).append(minute.summary()).append("\n");
         }
     }
 
@@ -352,15 +386,15 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
      */
     private String trySecurityEvidenceForSeguridadQuery(Minute minute, String query) {
         String queryLower = query.toLowerCase();
-        if (!queryLower.contains("seguridad")) {
+        if (!queryLower.contains(TOPIC_SEGURIDAD)) {
             return null;
         }
         String topicsStr = minute.topics() != null ? String.join(" ", minute.topics()).toLowerCase() : "";
         String decisionsStr = minute.decisions() != null ? String.join(" ", minute.decisions()).toLowerCase() : "";
         String summaryStr = minute.summary() != null ? minute.summary().toLowerCase() : "";
         String combined = topicsStr + " " + decisionsStr + " " + summaryStr;
-        if (combined.contains("seguridad") || combined.contains(KEYWORD_VIGILANCIA) || combined.contains(KEYWORD_VIDEOVIGILANCIA)
-                || combined.contains("camara")) {
+        if (combined.contains(TOPIC_SEGURIDAD) || combined.contains(KEYWORD_VIGILANCIA) || combined.contains(KEYWORD_VIDEOVIGILANCIA)
+                || combined.contains(TOPIC_CAMARA)) {
             return "Topic/Summary: Seguridad o vigilancia tratada en esta reunión. Date: " + (minute.date() != null ? minute.date() : "");
         }
         return null;
@@ -457,23 +491,23 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         StringBuilder sb = new StringBuilder();
         Map<String, Object> metadata = doc.getMetadata();
         if (metadata != null) {
-            if (metadata.containsKey("topics")) {
-                Object topicsObj = metadata.get("topics");
+            if (metadata.containsKey(META_FIELD_TOPICS)) {
+                Object topicsObj = metadata.get(META_FIELD_TOPICS);
                 if (topicsObj instanceof List) {
-                    sb.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
+                    sb.append(PROMPT_LABEL_TOPICS).append(String.join(", ", (List<String>) topicsObj)).append("\n");
                 } else if (topicsObj instanceof String) {
-                    sb.append("Topics: ").append(topicsObj).append("\n");
+                    sb.append(PROMPT_LABEL_TOPICS).append(topicsObj).append("\n");
                 }
             }
-            if (metadata.containsKey("summary") && metadata.get("summary") != null) {
-                sb.append("Summary: ").append(metadata.get("summary").toString()).append("\n");
+            if (metadata.containsKey(META_FIELD_SUMMARY) && metadata.get(META_FIELD_SUMMARY) != null) {
+                sb.append(PROMPT_LABEL_SUMMARY).append(metadata.get(META_FIELD_SUMMARY).toString()).append("\n");
             }
-            if (metadata.containsKey("decisions")) {
-                Object decisionsObj = metadata.get("decisions");
+            if (metadata.containsKey(META_FIELD_DECISIONS)) {
+                Object decisionsObj = metadata.get(META_FIELD_DECISIONS);
                 if (decisionsObj instanceof List) {
-                    sb.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
+                    sb.append(PROMPT_LABEL_DECISIONS).append(String.join(", ", (List<String>) decisionsObj)).append("\n");
                 } else if (decisionsObj instanceof String) {
-                    sb.append("Decisions: ").append(decisionsObj).append("\n");
+                    sb.append(PROMPT_LABEL_DECISIONS).append(decisionsObj).append("\n");
                 }
             }
         }

@@ -31,8 +31,8 @@ public record RetrievalRequest(
         slots = Map.copyOf(Objects.requireNonNull(slots, "slots"));
         targetEntities = List.copyOf(Objects.requireNonNull(targetEntities, "targetEntities"));
         targetAttributes = List.copyOf(Objects.requireNonNull(targetAttributes, "targetAttributes"));
-        entities = Objects.requireNonNull(entities, "entities");
-        mode = Objects.requireNonNull(mode, "mode");
+        Objects.requireNonNull(entities, "entities");
+        Objects.requireNonNull(mode, "mode");
         snapshotIds = List.copyOf(Objects.requireNonNull(snapshotIds, "snapshotIds"));
         conversationId = Objects.requireNonNullElseGet(conversationId, Optional::empty);
         documentAllowlist = List.copyOf(Objects.requireNonNull(documentAllowlist, "documentAllowlist"));

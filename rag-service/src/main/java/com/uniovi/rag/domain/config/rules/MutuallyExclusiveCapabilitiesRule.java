@@ -21,7 +21,6 @@ public record MutuallyExclusiveCapabilitiesRule(String ruleId, Set<Capability> m
                         .count();
         if (count >= 2) {
             return CompatibilityRuleOutcome.error(
-                    ruleId,
                     CompatibilityViolation.of(
                             "MUTUALLY_EXCLUSIVE",
                             "Capabilities cannot be enabled together: " + mutuallyExclusive,

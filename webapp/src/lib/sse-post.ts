@@ -3,6 +3,19 @@ import { getAccessToken } from "@/lib/access-token";
 import { createTraceparent } from "@/lib/traceparent";
 import type { StreamDonePayload } from "@/types/api";
 
+function ssePostAuthHeaders(): Record<string, string> {
+  const h: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+    traceparent: createTraceparent(),
+  };
+  const bearer = getAccessToken();
+  if (bearer) {
+    h.Authorization = `Bearer ${bearer}`;
+  }
+  return h;
+}
+
 export type SsePostHandlers = {
   onDelta?: (text: string) => void;
   onDone?: (payload: StreamDonePayload) => void;
@@ -13,6 +26,34 @@ export type SsePostHandlersExtended = SsePostHandlers & {
   /** Called when the request is aborted (user stop or new send); not a server error. */
   onAbort?: () => void;
 };
+
+async function fetchSsePost(url: string, body: unknown, signal: AbortSignal | undefined): Promise<Response> {
+  return fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: ssePostAuthHeaders(),
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+async function tryFetchSseResponse(
+  url: string,
+  body: unknown,
+  signal: AbortSignal | undefined,
+  handlers: SsePostHandlersExtended,
+): Promise<Response | undefined> {
+  try {
+    return await fetchSsePost(url, body, signal);
+  } catch (e) {
+    if (signal?.aborted || isAbortError(e)) {
+      handlers.onAbort?.();
+      return undefined;
+    }
+    handlers.onError?.(e instanceof Error ? e.message : String(e), "NETWORK");
+    return undefined;
+  }
+}
 
 /**
  * POST + SSE (text/event-stream): parses Spring SseEmitter frames (event + data lines).
@@ -30,19 +71,6 @@ export async function postSseJson(
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const url = path.startsWith("http") ? path : `${base}${normalizedPath}`;
 
-  function authHeaders(): Record<string, string> {
-    const h: Record<string, string> = {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      traceparent: createTraceparent(),
-    };
-    const bearer = getAccessToken();
-    if (bearer) {
-      h.Authorization = `Bearer ${bearer}`;
-    }
-    return h;
-  }
-
   if (signal?.aborted) {
     handlers.onAbort?.();
     return;
@@ -57,43 +85,19 @@ export async function postSseJson(
   }
 
   try {
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: "POST",
-        credentials: "include",
-        headers: authHeaders(),
-        body: JSON.stringify(body),
-        signal,
-      });
-    } catch (e) {
-      if (signal?.aborted || isAbortError(e)) {
-        handlers.onAbort?.();
-        return;
-      }
-      handlers.onError?.(e instanceof Error ? e.message : String(e), "NETWORK");
+    let res = await tryFetchSseResponse(url, body, signal, handlers);
+    if (res === undefined) {
       return;
     }
 
     if (res.status === 401) {
       const refreshed = await tryRefreshAccessToken();
       if (refreshed) {
-        try {
-          res = await fetch(url, {
-            method: "POST",
-            credentials: "include",
-            headers: authHeaders(),
-            body: JSON.stringify(body),
-            signal,
-          });
-        } catch (e) {
-          if (signal?.aborted || isAbortError(e)) {
-            handlers.onAbort?.();
-            return;
-          }
-          handlers.onError?.(e instanceof Error ? e.message : String(e), "NETWORK");
+        const retry = await tryFetchSseResponse(url, body, signal, handlers);
+        if (retry === undefined) {
           return;
         }
+        res = retry;
       }
     }
 

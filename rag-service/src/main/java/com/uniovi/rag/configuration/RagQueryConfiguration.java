@@ -1,6 +1,5 @@
 package com.uniovi.rag.configuration;
 
-import com.uniovi.rag.application.port.ModelCatalogPort;
 import com.uniovi.rag.application.service.runtime.ExecutionContextFactory;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrator;
 import com.uniovi.rag.application.service.runtime.tracepersistence.RuntimeTracePersistenceService;
@@ -27,7 +26,6 @@ import com.uniovi.rag.service.expand.QueryExpander;
 import com.uniovi.rag.service.guard.DateExistenceGuard;
 import com.uniovi.rag.service.guard.DefaultDateExistenceGuard;
 import com.uniovi.rag.service.guard.QueryDateExtractor;
-import com.uniovi.rag.service.postretrieval.PostRetrievalProcessor;
 import com.uniovi.rag.service.query.LLMResponseValidatorService;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.service.query.ProcessQueryService;
@@ -41,10 +39,7 @@ import com.uniovi.rag.service.ranker.ResponseRanker;
 import com.uniovi.rag.service.reasoning.ReasoningStrategy;
 import com.uniovi.rag.service.reasoning.SelectingReasoningStrategy;
 import com.uniovi.rag.service.retriever.ContextRetriever;
-import com.uniovi.rag.service.retriever.NaiveCorpusContextService;
-import com.uniovi.rag.tool.MeetingMinutesToolsAdapter;
 import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.tracing.Tracer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;

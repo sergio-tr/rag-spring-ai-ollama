@@ -40,7 +40,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -97,16 +96,7 @@ class ResolvedConfigSnapshotApplicationServiceTest {
         when(configResolverService.resolve(any())).thenReturn(resolved);
         when(configResolverService.snapshot(resolved)).thenReturn(snap);
         when(resolvedConfigSnapshotEntityMapper.toNewEntity(
-                        eq(resolved),
-                        eq(snap),
-                        eq(userId),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        eq(Optional.of(projectId)),
-                        isNull()))
+                        eq(resolved), eq(snap), any(ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.class)))
                 .thenReturn(entity);
         when(resolvedConfigSnapshotRepository.save(entity)).thenReturn(entity);
 
@@ -120,20 +110,13 @@ class ResolvedConfigSnapshotApplicationServiceTest {
         assertThat(out.id()).isEqualTo(entity.getId());
         assertThat(out.configHash()).isEqualTo("hash");
 
-        ArgumentCaptor<String> hashCap = ArgumentCaptor.forClass(String.class);
-        verify(resolvedConfigSnapshotEntityMapper)
-                .toNewEntity(
-                        eq(resolved),
-                        eq(snap),
-                        eq(userId),
-                        hashCap.capture(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        eq(Optional.of(projectId)),
-                        isNull());
-        assertThat(hashCap.getValue()).isNotBlank();
+        ArgumentCaptor<ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext> ctxCap =
+                ArgumentCaptor.forClass(ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.class);
+        verify(resolvedConfigSnapshotEntityMapper).toNewEntity(eq(resolved), eq(snap), ctxCap.capture());
+        assertThat(ctxCap.getValue().creatingUserId()).isEqualTo(userId);
+        assertThat(ctxCap.getValue().configHash()).isNotBlank();
+        assertThat(ctxCap.getValue().projectId()).contains(projectId);
+        assertThat(ctxCap.getValue().knowledgeBuildProjectionNested()).isNull();
     }
 
     @Test
@@ -169,16 +152,7 @@ class ResolvedConfigSnapshotApplicationServiceTest {
         when(configResolverService.resolve(any())).thenReturn(resolved);
         when(configResolverService.snapshot(resolved)).thenReturn(snap);
         when(resolvedConfigSnapshotEntityMapper.toNewEntity(
-                        eq(resolved),
-                        eq(snap),
-                        eq(userId),
-                        any(),
-                        eq(Optional.of(conversationId)),
-                        eq(Optional.empty()),
-                        eq(Optional.empty()),
-                        eq(Optional.empty()),
-                        eq(Optional.of(projectId)),
-                        isNull()))
+                        eq(resolved), eq(snap), any(ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.class)))
                 .thenReturn(entity);
         when(resolvedConfigSnapshotRepository.save(entity)).thenReturn(entity);
 
@@ -203,16 +177,7 @@ class ResolvedConfigSnapshotApplicationServiceTest {
         Map<String, Object> nested = Map.of("k", "v");
         when(configResolverService.snapshot(resolved)).thenReturn(snap);
         when(resolvedConfigSnapshotEntityMapper.toNewEntity(
-                        eq(resolved),
-                        eq(snap),
-                        eq(userId),
-                        any(),
-                        eq(Optional.of(conversationId)),
-                        eq(Optional.empty()),
-                        eq(Optional.empty()),
-                        eq(Optional.of("c1")),
-                        eq(Optional.of(projectId)),
-                        eq(nested)))
+                        eq(resolved), eq(snap), any(ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.class)))
                 .thenReturn(entity);
         when(resolvedConfigSnapshotRepository.save(entity)).thenReturn(entity);
 
@@ -226,6 +191,14 @@ class ResolvedConfigSnapshotApplicationServiceTest {
                         nested);
 
         assertThat(out).isSameAs(entity);
+
+        ArgumentCaptor<ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext> ctxCap =
+                ArgumentCaptor.forClass(ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.class);
+        verify(resolvedConfigSnapshotEntityMapper).toNewEntity(eq(resolved), eq(snap), ctxCap.capture());
+        assertThat(ctxCap.getValue().conversationId()).contains(conversationId);
+        assertThat(ctxCap.getValue().correlationId()).contains("c1");
+        assertThat(ctxCap.getValue().projectId()).contains(projectId);
+        assertThat(ctxCap.getValue().knowledgeBuildProjectionNested()).isEqualTo(nested);
     }
 
     @Test
@@ -245,16 +218,7 @@ class ResolvedConfigSnapshotApplicationServiceTest {
         when(configResolverService.resolve(any())).thenReturn(resolved);
         when(configResolverService.snapshot(resolved)).thenReturn(snap);
         when(resolvedConfigSnapshotEntityMapper.toNewEntity(
-                        eq(resolved),
-                        eq(snap),
-                        eq(userId),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        any(),
-                        eq(Optional.of(projectId)),
-                        isNull()))
+                        eq(resolved), eq(snap), any(ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.class)))
                 .thenReturn(entity);
         when(resolvedConfigSnapshotRepository.save(entity)).thenReturn(entity);
 

@@ -266,7 +266,7 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         results.put("configuration", customConfig.getConfiguration());
 
         // Create services with custom configuration
-        QueryService queryServiceToUse = evaluationServiceFactory.createQueryService(customConfig, impl);
+        QueryService queryServiceToUse = evaluationServiceFactory.createQueryService(impl);
 
         List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
 

@@ -60,7 +60,7 @@ export function TraceHistoryList() {
               {ev.section}
             </Badge>
             <Badge variant={statusBadgeVariant(ev.status)} className="font-normal">
-              {ev.status.replace(/_/g, " ")}
+              {ev.status.replaceAll("_", " ")}
             </Badge>
           </div>
           <p className="mt-1 font-medium text-xs text-muted-foreground">{ev.action}</p>

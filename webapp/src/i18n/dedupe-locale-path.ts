@@ -16,12 +16,13 @@ export function dedupeRepeatedLocaleSegments(pathname: string): string {
   }
 
   let out = [...segments];
-  while (
-    out.length >= 2 &&
-    isLocaleSegment(out[0]!) &&
-    out[0] === out[1]
-  ) {
-    out = [out[0]!, ...out.slice(2)];
+  while (out.length >= 2) {
+    const first = out[0];
+    const second = out[1];
+    if (!isLocaleSegment(first) || first !== second) {
+      break;
+    }
+    out = [first, ...out.slice(2)];
   }
 
   if (out.length === 0) {

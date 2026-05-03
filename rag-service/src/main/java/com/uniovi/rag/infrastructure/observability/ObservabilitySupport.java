@@ -23,6 +23,15 @@ public class ObservabilitySupport {
 
     private static final int MAX_ATTRIBUTE_LENGTH = 2048;
 
+    /** Micrometer / OpenTelemetry span tag marking an error span. */
+    private static final String TAG_ERROR = "error";
+
+    /** Timer and tracing span name for a single LLM invocation inside an execution workflow. */
+    private static final String SPAN_RAG_AI_LLM_INVOKE = "rag.ai.llm.invoke";
+
+    /** Tag key identifying which workflow issued an LLM call. */
+    private static final String TAG_WORKFLOW = "workflow";
+
     private final Tracer tracer;
     private final MeterRegistry meterRegistry;
 
@@ -49,7 +58,7 @@ public class ObservabilitySupport {
             span.end();
             return result;
         } catch (Exception t) {
-            span.tag("error", "true");
+            span.tag(TAG_ERROR, "true");
             span.tag("error.type", t.getClass().getSimpleName());
             span.tag("error.message", truncate(t.getMessage() != null ? t.getMessage() : t.toString()));
             span.end();
@@ -88,7 +97,7 @@ public class ObservabilitySupport {
             sample.stop(Timer.builder(timerName).register(meterRegistry));
             return result;
         } catch (RuntimeException e) {
-            sample.stop(Timer.builder(timerName).tag("error", "true").register(meterRegistry));
+            sample.stop(Timer.builder(timerName).tag(TAG_ERROR, "true").register(meterRegistry));
             throw e;
         }
     }
@@ -102,15 +111,18 @@ public class ObservabilitySupport {
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             T result = runWithSpan(
-                    "rag.ai.llm.invoke",
-                    Map.of("workflow", wf),
+                    SPAN_RAG_AI_LLM_INVOKE,
+                    Map.of(TAG_WORKFLOW, wf),
                     null,
                     supplier);
-            sample.stop(Timer.builder("rag.ai.llm.invoke").tag("workflow", wf).register(meterRegistry));
+            sample.stop(Timer.builder(SPAN_RAG_AI_LLM_INVOKE).tag(TAG_WORKFLOW, wf).register(meterRegistry));
             return result;
         } catch (RuntimeException e) {
             sample.stop(
-                    Timer.builder("rag.ai.llm.invoke").tag("workflow", wf).tag("error", "true").register(meterRegistry));
+                    Timer.builder(SPAN_RAG_AI_LLM_INVOKE)
+                            .tag(TAG_WORKFLOW, wf)
+                            .tag(TAG_ERROR, "true")
+                            .register(meterRegistry));
             throw e;
         }
     }

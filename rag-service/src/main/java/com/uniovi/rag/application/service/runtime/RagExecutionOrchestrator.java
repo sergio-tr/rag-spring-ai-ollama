@@ -1,6 +1,5 @@
 package com.uniovi.rag.application.service.runtime;
 
-import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.AdvisorPhaseResult;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.AdvisorSnapshot;
 import com.uniovi.rag.application.service.runtime.RagExecutionOrchestrationSupport.ExecutionOutcome;
@@ -140,7 +139,6 @@ public class RagExecutionOrchestrator {
         }
 
         RoutingSnapshot routing = resolveRoutingSnapshot(withPlan, plan);
-        List<ExecutionStageTrace> routingStages = routing.routingStages();
 
         ExecutionOutcome outcome =
                 executeSelectedRoute(

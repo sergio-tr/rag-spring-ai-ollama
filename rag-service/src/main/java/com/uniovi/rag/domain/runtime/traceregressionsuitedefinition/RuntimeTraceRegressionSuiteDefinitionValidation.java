@@ -40,7 +40,8 @@ public final class RuntimeTraceRegressionSuiteDefinitionValidation {
 
     /** Returns normalized description to persist, or empty if absent/blank after trim. */
     public static Optional<String> normalizeDescription(Optional<String> description) {
-        if (description == null || description.isEmpty()) {
+        Objects.requireNonNull(description, "description");
+        if (description.isEmpty()) {
             return Optional.empty();
         }
         String trimmed = description.get().trim();
@@ -66,36 +67,42 @@ public final class RuntimeTraceRegressionSuiteDefinitionValidation {
 
     private static void validateEntrySpec(RuntimeTraceRegressionSuiteDefinitionEntrySpec spec, int indexInList) {
         switch (spec) {
-            case RuntimeTraceRegressionSuiteDefinitionEntrySpec.ByTraceIds by -> {
-                List<UUID> ids = by.traceIds();
-                if (ids.size() > MAX_TRACE_IDS_PER_ENTRY) {
-                    throw new IllegalArgumentException(
-                            "BY_TRACE_IDS entry at index " + indexInList + " has more than " + MAX_TRACE_IDS_PER_ENTRY + " trace ids");
-                }
-                Set<UUID> seen = new HashSet<>();
-                for (UUID id : ids) {
-                    if (id == null) {
-                        throw new IllegalArgumentException("null trace id in BY_TRACE_IDS entry at index " + indexInList);
-                    }
-                    if (!seen.add(id)) {
-                        throw new IllegalArgumentException("duplicate trace id in BY_TRACE_IDS entry at index " + indexInList);
-                    }
-                }
+            case RuntimeTraceRegressionSuiteDefinitionEntrySpec.ByTraceIds by ->
+                    validateByTraceIdsEntry(by.traceIds(), indexInList);
+            case RuntimeTraceRegressionSuiteDefinitionEntrySpec.ByConversation by ->
+                    validateByConversationEntry(by, indexInList);
+        }
+    }
+
+    private static void validateByTraceIdsEntry(List<UUID> ids, int indexInList) {
+        if (ids.size() > MAX_TRACE_IDS_PER_ENTRY) {
+            throw new IllegalArgumentException(
+                    "BY_TRACE_IDS entry at index " + indexInList + " has more than " + MAX_TRACE_IDS_PER_ENTRY + " trace ids");
+        }
+        Set<UUID> seen = new HashSet<>();
+        for (UUID id : ids) {
+            if (id == null) {
+                throw new IllegalArgumentException("null trace id in BY_TRACE_IDS entry at index " + indexInList);
             }
-            case RuntimeTraceRegressionSuiteDefinitionEntrySpec.ByConversation by -> {
-                if (by.conversationId() == null) {
-                    throw new IllegalArgumentException("BY_CONVERSATION entry at index " + indexInList + " requires conversationId");
-                }
-                by.workflowName()
-                        .ifPresent(
-                                w -> {
-                                    String t = w.trim();
-                                    if (!t.isEmpty() && t.length() > 256) {
-                                        throw new IllegalArgumentException(
-                                                "workflow name exceeds 256 characters after trim at entry index " + indexInList);
-                                    }
-                                });
+            if (!seen.add(id)) {
+                throw new IllegalArgumentException("duplicate trace id in BY_TRACE_IDS entry at index " + indexInList);
             }
         }
+    }
+
+    private static void validateByConversationEntry(
+            RuntimeTraceRegressionSuiteDefinitionEntrySpec.ByConversation by, int indexInList) {
+        if (by.conversationId() == null) {
+            throw new IllegalArgumentException("BY_CONVERSATION entry at index " + indexInList + " requires conversationId");
+        }
+        by.workflowName()
+                .ifPresent(
+                        w -> {
+                            String t = w.trim();
+                            if (!t.isEmpty() && t.length() > 256) {
+                                throw new IllegalArgumentException(
+                                        "workflow name exceeds 256 characters after trim at entry index " + indexInList);
+                            }
+                        });
     }
 }

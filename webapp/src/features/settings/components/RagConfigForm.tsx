@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
-import { Controller, useForm, type Resolver } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,8 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   useConfigSchemaQuery,
   useDeleteProjectRagConfig,
@@ -33,13 +31,14 @@ import {
 import { buildConfigValuesSchema, type ConfigFormValues } from "@/features/settings/lib/build-config-zod";
 import { labelProjectConfigField } from "@/features/settings/lib/project-config-field-copy";
 import { mergePayload, pickFormValues } from "@/features/settings/lib/rag-config-values";
+import { ConfigSchemaFieldRows } from "@/features/settings/components/config-schema-field-rows";
 
 type Mode = "user" | "project";
 
-type RagConfigFormProps = {
+type RagConfigFormProps = Readonly<{
   mode: Mode;
   projectId?: string;
-};
+}>;
 
 export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
   const t = useTranslations("Settings");
@@ -107,9 +106,7 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
 
   if (mode === "project" && !projectId) {
     return (
-      <p className="text-muted-foreground text-sm" role="status">
-        {t("projectConfigNoProject")}
-      </p>
+      <output className="text-muted-foreground block text-sm">{t("projectConfigNoProject")}</output>
     );
   }
 
@@ -147,46 +144,12 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
         {!loadError && fields.length > 0 && (
           <>
             <form className="flex flex-col gap-4" onSubmit={form.handleSubmit(onSubmit)}>
-              {fields
-                .filter((f) => f.userEditable)
-                .map((f) => (
-                  <div key={f.key} className="flex flex-col gap-2">
-                    <Label htmlFor={`cfg-${f.key}`}>{fieldLabel(f.key)}</Label>
-                    {f.type === "boolean" ? (
-                      <Controller
-                        name={f.key}
-                        control={form.control}
-                        render={({ field }) => (
-                          <input
-                            id={`cfg-${f.key}`}
-                            type="checkbox"
-                            className="size-4"
-                            checked={Boolean(field.value)}
-                            onChange={(e) => field.onChange(e.target.checked)}
-                          />
-                        )}
-                      />
-                    ) : (
-                      <Input
-                        id={`cfg-${f.key}`}
-                        type={f.type === "integer" || f.type === "number" ? "number" : "text"}
-                        step={f.type === "integer" ? "1" : undefined}
-                        min={f.min != null ? String(f.min) : undefined}
-                        max={f.max != null ? String(f.max) : undefined}
-                        {...form.register(f.key, {
-                          setValueAs: (v) => {
-                            if (v === "" || v === null || v === undefined) return undefined;
-                            if (f.type === "integer" || f.type === "number") {
-                              const n = Number(v);
-                              return Number.isNaN(n) ? undefined : n;
-                            }
-                            return v;
-                          },
-                        })}
-                      />
-                    )}
-                  </div>
-                ))}
+              <ConfigSchemaFieldRows
+                fields={fields}
+                form={form}
+                labelFor={fieldLabel}
+                inputIdPrefix="cfg"
+              />
               {Object.keys(form.formState.errors).length > 0 && (
                 <p className="text-destructive text-sm" role="alert">
                   {t("configValidationError")}
@@ -244,7 +207,9 @@ export function RagConfigForm({ mode, projectId }: RagConfigFormProps) {
                       type="button"
                       variant="destructive"
                       disabled={clearing}
-                      onClick={() => void confirmClearProjectOverrides()}
+                      onClick={() => {
+                        confirmClearProjectOverrides().catch(() => {});
+                      }}
                     >
                       {t("projectConfigClearDialogConfirm")}
                     </Button>

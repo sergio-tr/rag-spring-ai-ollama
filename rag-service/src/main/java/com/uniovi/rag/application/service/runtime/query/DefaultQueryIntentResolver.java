@@ -26,19 +26,21 @@ public class DefaultQueryIntentResolver implements QueryIntentResolver {
         // 1) Classifier wins when non-neutral and OK
         Optional<QueryType> cqt = Objects.requireNonNullElseGet(classifierQueryType, Optional::empty);
         if (classifierStatus == ClassifierStatus.OK && cqt.isPresent()) {
-            return mapClassifierType(cqt.get());
+            return mapClassifierType(cqt.orElseThrow());
         }
 
         // 2) Rewrite targetAction only when classifier is neutral/non-authoritative
-        if (rewrite != null && rewrite.targetAction().isPresent()) {
-            QueryIntent fromAction = mapTargetAction(rewrite.targetAction().get());
-            if (fromAction != QueryIntent.UNKNOWN) {
-                return fromAction;
-            }
+        Optional<String> targetAction = rewrite != null ? rewrite.targetAction() : Optional.empty();
+        Optional<QueryIntent> fromRewrite =
+                targetAction.map(DefaultQueryIntentResolver::mapTargetAction).filter(i -> i != QueryIntent.UNKNOWN);
+        if (fromRewrite.isPresent()) {
+            return fromRewrite.orElseThrow();
         }
 
-        // 3) Heuristics
-        String q = normalized.normalizedText().toLowerCase(Locale.ROOT);
+        return heuristicIntent(normalized.normalizedText().toLowerCase(Locale.ROOT), entities);
+    }
+
+    private static QueryIntent heuristicIntent(String q, EntityExtractionResult entities) {
         if (q.contains("how many") || q.contains("cuánt") || q.startsWith("count ")) {
             return QueryIntent.COUNT;
         }
@@ -57,15 +59,21 @@ public class DefaultQueryIntentResolver implements QueryIntentResolver {
         if (q.contains("field") || q.contains("campo")) {
             return QueryIntent.EXTRACT_FIELD;
         }
-        if (q.startsWith("is ") || q.startsWith("are ") || q.contains(" yes") || q.contains(" no")
-                || q.contains("es ") || q.contains("son ") || q.contains("¿") && q.contains("?")) {
-            var hint = entities.answerTypeHint();
-            if (hint.isPresent() && hint.get().toLowerCase(Locale.ROOT).contains("boolean")) {
-                return QueryIntent.BOOLEAN_CHECK;
-            }
+        if (looksLikeYesNoQuestion(q)
+                && entities.answerTypeHint().filter(h -> h.toLowerCase(Locale.ROOT).contains("boolean")).isPresent()) {
+            return QueryIntent.BOOLEAN_CHECK;
         }
-
         return QueryIntent.UNKNOWN;
+    }
+
+    private static boolean looksLikeYesNoQuestion(String q) {
+        return q.startsWith("is ")
+                || q.startsWith("are ")
+                || q.contains(" yes")
+                || q.contains(" no")
+                || q.contains("es ")
+                || q.contains("son ")
+                || (q.contains("¿") && q.contains("?"));
     }
 
     private static QueryIntent mapClassifierType(QueryType t) {

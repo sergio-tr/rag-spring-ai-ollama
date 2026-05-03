@@ -392,9 +392,7 @@ class RuntimeTraceRegressionSuiteDefinitionControllerArchitectureTest {
                             RuntimeTraceRegressionSuiteRunPersistenceService.class.getName(),
                             ObjectMapper.class.getName(),
                             String.class.getName(),
-                            RuntimeTraceRegressionSuiteRunExportService.class.getName(),
-                            RuntimeTraceRegressionSuiteRunImportService.class.getName(),
-                            RuntimeTraceRegressionSuiteRunImportPreviewService.class.getName());
+                            DefinitionRunZipServiceBundle.class.getName());
 
     @ArchTest
     static final ArchRule importRunZipForDefinitionDoesNotTouchRunPersistence =

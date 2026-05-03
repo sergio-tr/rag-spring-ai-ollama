@@ -90,14 +90,15 @@ class ResolvedConfigSnapshotEntityMapperTest {
                 mapper.toNewEntity(
                         resolved,
                         domainSnap,
-                        user,
-                        "h1",
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of("corr-1"),
-                        Optional.of(project),
-                        nested);
+                        ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.of(
+                                        user,
+                                        "h1",
+                                        Optional.empty(),
+                                        Optional.empty(),
+                                        Optional.empty(),
+                                        Optional.of("corr-1"),
+                                        Optional.of(project))
+                                .withKnowledge(nested));
         assertThat(e.getPayloadJsonb()).containsKey(KnowledgeBuildProjectionMapper.PAYLOAD_KEY);
         @SuppressWarnings("unchecked")
         Map<String, Object> wrapped = (Map<String, Object>) e.getPayloadJsonb().get(KnowledgeBuildProjectionMapper.PAYLOAD_KEY);
@@ -139,14 +140,14 @@ class ResolvedConfigSnapshotEntityMapperTest {
                 mapper.toNewEntity(
                         resolved,
                         domainSnap,
-                        user,
-                        "h2",
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.of("   "),
-                        Optional.empty(),
-                        null);
+                        ResolvedConfigSnapshotEntityMapper.ResolvedConfigSnapshotInsertContext.of(
+                                user,
+                                "h2",
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty(),
+                                Optional.of("   "),
+                                Optional.empty()));
         assertThat(e.getProvenanceJsonb().keySet())
                 .doesNotContain(ResolvedConfigSnapshotEntityMapper.PROVENANCE_CORRELATION_ID);
     }

@@ -122,6 +122,7 @@ public class FindParagraphTool extends AbstractTool {
      * Determines if a paragraph is relevant to the query using LLM.
      * Uses English for internal processing, but preserves original language in query and paragraph.
      */
+    @Override
     protected boolean isParagraphRelevantByLLM(String query, String paragraph) {
         if (query == null || query.trim().isEmpty() || paragraph == null || paragraph.trim().isEmpty()) {
             return false;

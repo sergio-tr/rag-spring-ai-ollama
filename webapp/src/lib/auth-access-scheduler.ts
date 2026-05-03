@@ -6,7 +6,7 @@ function decodeJwtExpSeconds(jwt: string): number | null {
   try {
     const parts = jwt.split(".");
     if (parts.length < 2) return null;
-    let payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    let payload = parts[1].replaceAll("-", "+").replaceAll("_", "/");
     const pad = payload.length % 4;
     if (pad) payload += "=".repeat(4 - pad);
     const json = JSON.parse(

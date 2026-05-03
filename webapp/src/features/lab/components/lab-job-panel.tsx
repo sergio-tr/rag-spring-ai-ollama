@@ -67,9 +67,7 @@ export function LabJobPanel({
         <div className="flex flex-col gap-2">
           <InlineHelpStatus status={traceStatus} label={statusLabel} className="max-w-full" />
           {friendlyFailure ? (
-            <p className="text-muted-foreground text-xs" role="status">
-              {friendlyFailure}
-            </p>
+            <output className="text-muted-foreground block text-xs">{friendlyFailure}</output>
           ) : null}
           {watchElapsedSeconds != null &&
           watchElapsedSeconds >= 0 &&

@@ -24,6 +24,12 @@ import static com.uniovi.rag.infrastructure.observability.ContextPropagatingFutu
  */
 public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
 
+    private static final String FIELD_DECISIONS = "decisions";
+
+    private static final String[] DECISION_RETRIEVAL_FIELDS = {
+            "date", "place", "topics", FIELD_DECISIONS, "summary"
+    };
+
     /** Substring cue for topic / mention style queries (Spanish). */
     private static final String TOPIC_TOKEN_MENCION = "mencion";
 
@@ -56,52 +62,39 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
 
     private ToolResult executeDecisionExtraction(String query, JSONObject ner) {
         log().info("Executing decision extraction query: {} with NER: {}", query, ner != null ? ner.toString() : "null");
-        
-        // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
-        List<Document> docs = retrieveDocumentsWithFallback(
-            query,
-            new String[] {"date", "place", "topics", "decisions", "summary"},
-            ner
-        );
-        
-        // Extract date early for error messages and validation (null-safe)
+
+        List<Document> docs = retrieveDocumentsWithFallback(query, DECISION_RETRIEVAL_FIELDS, ner);
         List<String> dateCandidates = extractDateCandidates(query, ner != null ? ner : null);
         String date = (dateCandidates != null && !dateCandidates.isEmpty()) ? dateCandidates.get(0) : null;
-        
+
         if (docs.isEmpty()) {
             log().info("No documents found for decision extraction query: {}", query);
-            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, 0, "no_documents"), query), getClass());
+            return decisionsErrorResult(query, date, 0, "no_documents");
         }
 
-        // Step 2: Extract minutes in parallel
         List<Minute> minutes = extractMinutesInParallel(docs);
         if (minutes.isEmpty()) {
             log().info("No valid minutes found for decision extraction query: {}", query);
-            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, docs.size(), "no_valid_minutes"), query), getClass());
+            return decisionsErrorResult(query, date, docs.size(), "no_valid_minutes");
         }
 
-        // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
         if (relevantMinutes.isEmpty()) {
             log().info("No relevant minutes found for decision extraction query: {}", query);
-            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, minutes.size(), "no_relevant_minutes"), query), getClass());
+            return decisionsErrorResult(query, date, minutes.size(), "no_relevant_minutes");
         }
 
-        // Step 4: Filter by date first (if query includes date) - early filtering reduces LLM calls
         List<Minute> dateFilteredMinutes = filterMinutesByDate(query, ner, relevantMinutes);
         if (dateFilteredMinutes.isEmpty() && dateCandidates != null && !dateCandidates.isEmpty()) {
-            // User asked about a specific date but no minutes matched
             log().info("No minutes found for the specified date in query: {}", query);
-            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, relevantMinutes.size(), "date_not_found"), query), getClass());
+            return decisionsErrorResult(query, date, relevantMinutes.size(), "date_not_found");
         }
-        // If no date in query, use all relevant minutes
         List<Minute> minutesToEvaluate = dateFilteredMinutes.isEmpty() ? relevantMinutes : dateFilteredMinutes;
 
-        // Step 5: Evaluate each minute with LLM to validate it contains the requested decisions
         List<Minute> validatedMinutes = evaluateMinutesWithLLM(query, minutesToEvaluate);
         if (validatedMinutes.isEmpty()) {
             log().info("No minutes validated by LLM for decision extraction query: {}", query);
-            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, minutesToEvaluate.size(), "no_validated_minutes"), query), getClass());
+            return decisionsErrorResult(query, date, minutesToEvaluate.size(), "no_validated_minutes");
         }
 
         if (date != null && !date.trim().isEmpty()) {
@@ -112,14 +105,12 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             validatedMinutes = dateOutcome.minutes();
         }
 
-        // Step 6: Extract decisions in parallel (only from validated minutes)
-        List<Decision> decisions = extractDecisionsInParallel(query, validatedMinutes);
+        List<Decision> decisions = extractDecisionsInParallel(validatedMinutes);
         if (decisions.isEmpty()) {
             log().info("No relevant decisions found for query: {} (checked {} minutes)", query, validatedMinutes.size());
-            return ToolResult.from(formatResponse(generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "no_decisions_in_metadata"), query), getClass());
+            return decisionsErrorResult(query, date, validatedMinutes.size(), "no_decisions_in_metadata");
         }
 
-        // Step 6.5: When query asks about a specific topic (e.g. "fuga de gas", "iluminación", "limpieza"), return "no mention" if no decision mentions it (§4). Use synonyms (items 14, 40).
         String topic = extractTopicFromQuery(query, ner);
         if (topic != null && !topic.isBlank() && isTopicSpecificQuery(query)) {
             boolean anyMentions = decisions.stream().anyMatch(d -> decisionMentionsTopic(d, topic));
@@ -127,22 +118,23 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                 String noMentionMsg = generateTopicNotMentionedMessage(query, topic);
                 return ToolResult.from(formatResponse(noMentionMsg, query), getClass());
             }
-            // Filter to only decisions that mention the topic (or synonyms) so the answer focuses on it (item 14)
             decisions = decisions.stream().filter(d -> decisionMentionsTopic(d, topic)).toList();
         }
 
-        // Step 7: Analyze and rank decisions
         List<Decision> rankedDecisions = analyzeAndRankDecisions(decisions);
-
-        // Step 8: Cluster similar decisions
         List<DecisionCluster> clusters = clusterDecisions(rankedDecisions);
 
-        // Step 9: Generate enhanced final answer (pass topic so LLM can link decisions to it — item 15)
         String answer = generateEnhancedDecisionAnswer(query, topic, rankedDecisions, clusters);
-        log().info("Generated decision extraction answer for query: {} with {} decisions in {} clusters", 
-                   query, decisions.size(), clusters.size());
-        
+        log().info("Generated decision extraction answer for query: {} with {} decisions in {} clusters",
+                query, decisions.size(), clusters.size());
+
         return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private ToolResult decisionsErrorResult(String query, String date, int relatedCount, String reasonCode) {
+        return ToolResult.from(
+                formatResponse(generateSpecificErrorMessage(query, FIELD_DECISIONS, date, relatedCount, reasonCode), query),
+                getClass());
     }
 
     private DateValidationOutcome filterValidatedMinutesByQueryDate(String query, String date, List<Minute> validatedMinutes) {
@@ -155,7 +147,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                     date, parseDateFlexible(date), validatedMinutes.size());
             return new DateValidationOutcome(List.of(),
                     ToolResult.from(formatResponse(
-                            generateSpecificErrorMessage(query, "decisions", date, validatedMinutes.size(), "date_mismatch"), query),
+                            generateSpecificErrorMessage(query, FIELD_DECISIONS, date, validatedMinutes.size(), "date_mismatch"), query),
                             getClass()));
         }
         log().info("Date validation passed: {} minutes match date '{}' out of {} validated minutes",
@@ -237,9 +229,9 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     /**
      * Extracts decisions in parallel
      */
-    private List<Decision> extractDecisionsInParallel(String query, List<Minute> minutes) {
+    private List<Decision> extractDecisionsInParallel(List<Minute> minutes) {
         List<CompletableFuture<List<Decision>>> futures = minutes.stream()
-                .map(minute -> supplyAsync(() -> extractDecisionsFromMinute(query, minute)))
+                .map(minute -> supplyAsync(() -> extractDecisionsFromMinute(minute)))
                 .toList();
 
         return futures.stream()
@@ -252,20 +244,16 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     /**
      * Extracts decisions from a single minute
      */
-    private List<Decision> extractDecisionsFromMinute(String query, Minute minute) {
+    private List<Decision> extractDecisionsFromMinute(Minute minute) {
         if (minute.decisions() == null || minute.decisions().isEmpty()) {
             return Collections.emptyList();
         }
 
         List<Decision> decisions = new ArrayList<>();
         for (String decisionText : minute.decisions()) {
-            // Metadata-first: keep all decisions, rely on later ranking instead of LLM filtering
-            Decision decision = buildDecisionWithContext(minute, decisionText);
-            if (decision != null) {
-                decisions.add(decision);
-            }
+            decisions.add(buildDecisionWithContext(minute, decisionText));
         }
-        
+
         return decisions;
     }
 
@@ -383,13 +371,12 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         }
         
         // Extract dates (common Spanish date patterns)
-        Pattern datePattern = Pattern.compile(
-            "\\d{1,2}\\s+de\\s+[a-z]+\\s+de\\s+\\d{4}|\\d{1,2}/\\d{1,2}/\\d{4}|\\d{4}-\\d{2}-\\d{2}"
-        );
-        Matcher dateMatcher = datePattern.matcher(bounded);
-        while (dateMatcher.find()) {
-            entities.add(dateMatcher.group().trim());
-        }
+        addRegexMatchesToList(
+                entities,
+                Pattern.compile("\\d{1,2}\\s+de\\s+[a-z]+\\s+de\\s+\\d{4}"),
+                bounded);
+        addRegexMatchesToList(entities, Pattern.compile("\\d{1,2}/\\d{1,2}/\\d{4}"), bounded);
+        addRegexMatchesToList(entities, Pattern.compile("\\d{4}-\\d{2}-\\d{2}"), bounded);
         
         // Extract capitalized words/phrases (likely names or organizations)
         Pattern namePattern = Pattern.compile(
@@ -408,6 +395,13 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
                 .distinct()
                 .limit(10) // Limit to avoid too many entities
                 .toList();
+    }
+
+    private static void addRegexMatchesToList(List<String> entities, Pattern pattern, CharSequence input) {
+        Matcher matcher = pattern.matcher(input);
+        while (matcher.find()) {
+            entities.add(matcher.group().trim());
+        }
     }
 
     private static boolean isCapitalizedStopword(String name) {
@@ -492,7 +486,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
             return generateNoDataMessage(query);
         }
         
-        String decisionSummary = formatDecisionSummary(decisions, clusters);
+        String decisionSummary = formatDecisionSummary(clusters);
         
         String ql = query.toLowerCase();
         boolean asksOccasionsForTopic =
@@ -549,7 +543,7 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
         String decisionsText = decisions.stream()
                 .limit(5)
                 .map(d -> String.format("- %s", d.getDecisionText()))
-                .collect(Collectors.joining("\n"));
+                .collect(Collectors.joining(System.lineSeparator()));
         
         String prompt = String.format("""
             The user asked (in any language): "%s"
@@ -585,21 +579,19 @@ public class MetadataDecisionExtractionTool extends AbstractMetadataTool {
     /**
      * Formats decision summary for LLM prompt (without technical details)
      */
-    private String formatDecisionSummary(List<Decision> decisions, List<DecisionCluster> clusters) {
+    private String formatDecisionSummary(List<DecisionCluster> clusters) {
         StringBuilder summary = new StringBuilder();
-        
-        // Format decisions naturally without mentioning clusters
-        for (int i = 0; i < clusters.size(); i++) {
-            DecisionCluster cluster = clusters.get(i);
+
+        for (DecisionCluster cluster : clusters) {
             Decision representative = cluster.getRepresentativeDecision();
-            
+
             if (representative.getDate() != null) {
-                summary.append(String.format("Reunión del %s:\n", representative.getDate()));
+                summary.append(String.format("Reunión del %s:%n", representative.getDate()));
             }
             summary.append(representative.getDecisionText() != null ? representative.getDecisionText() : "");
-            summary.append("\n\n");
+            summary.append(String.format("%n%n"));
         }
-        
+
         return summary.toString();
     }
 

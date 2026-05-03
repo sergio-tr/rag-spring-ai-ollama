@@ -91,7 +91,7 @@ export function SettingsDataPanel() {
               {t("dataInventoryError")}
             </p>
           )}
-          {docsQ.data && docsQ.data.items.length === 0 && (
+          {docsQ.data?.items.length === 0 && (
             <p className="text-muted-foreground text-sm" data-testid="data-inventory-empty">
               {t("dataInventoryEmpty")}
             </p>

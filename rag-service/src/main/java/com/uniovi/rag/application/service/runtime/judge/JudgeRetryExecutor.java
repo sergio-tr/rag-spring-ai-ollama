@@ -10,6 +10,8 @@ import java.util.List;
 @Service
 public class JudgeRetryExecutor {
 
+    private static final String STAGE_JUDGE_RETRY_EXECUTE = "judge_retry_execute";
+
     private final ChatClient chatClient;
 
     public JudgeRetryExecutor(ChatClient chatClient) {
@@ -26,7 +28,7 @@ public class JudgeRetryExecutor {
                 return RetryResult.failed(
                         "",
                         List.of(new ExecutionStageTrace(
-                                "judge_retry_execute",
+                                STAGE_JUDGE_RETRY_EXECUTE,
                                 millisSince(startNanos),
                                 ExecutionStageOutcome.FAILED,
                                 "empty_response=true")));
@@ -34,7 +36,7 @@ public class JudgeRetryExecutor {
             return RetryResult.succeeded(
                     repaired,
                     List.of(new ExecutionStageTrace(
-                            "judge_retry_execute",
+                            STAGE_JUDGE_RETRY_EXECUTE,
                             millisSince(startNanos),
                             ExecutionStageOutcome.SUCCESS,
                             "ok=true")));
@@ -42,7 +44,7 @@ public class JudgeRetryExecutor {
             return RetryResult.failed(
                     "",
                     List.of(new ExecutionStageTrace(
-                            "judge_retry_execute",
+                            STAGE_JUDGE_RETRY_EXECUTE,
                             millisSince(startNanos),
                             ExecutionStageOutcome.FAILED,
                             "error=" + e.getClass().getSimpleName())));

@@ -31,53 +31,16 @@ public class ExtractEntitiesTool extends AbstractTool {
     public ToolResult execute(ToolExecutionContext ctx) {
         String query = ctx.query();
         JSONObject ner = ctx.nerEntities();
-        
-        log().info("Executing extract entities query: '{}' with NER: {}", 
-                  query, ner != null ? ner.toString() : "null");
+
+        log().info("Executing extract entities query: '{}' with NER: {}",
+                query, ner != null ? ner.toString() : "null");
         long startTime = System.currentTimeMillis();
-        
+
         List<Document> docs = retrieveDocuments(query, ner);
         log().debug("Retrieved {} documents for extract entities query", docs.size());
-        List<String> results = new ArrayList<>();
-
-        if (ner != null) {
-            // Use enhanced NER filtering with semantic analysis
-            List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
-            log().debug("Filtered {} documents by temporal context, {} remaining", docs.size(), filteredDocs.size());
-            
-            int matchedCount = 0;
-            int entitiesFoundCount = 0;
-            for (Document doc : filteredDocs) {
-                if (nerHandler.matchesDocumentWithNER(doc, ner)) {
-                    matchedCount++;
-                    String content = doc.getText();
-                    String date = extractor.extractDate(content);
-                    String entities = extractRequestedEntities(content, query, ner);
-                    if (!entities.isBlank()) {
-                        entitiesFoundCount++;
-                        results.add(generateEntityResult(date, entities));
-                    } else {
-                        log().debug("Document {} matched NER but no entities extracted", doc.getId());
-                    }
-                }
-            }
-            log().debug("NER filtering: {} documents matched NER, {} had entities extracted out of {} filtered", 
-                       matchedCount, entitiesFoundCount, filteredDocs.size());
-        } else {
-            // Baseline: extract entities from all documents
-            log().debug("No NER available, extracting entities from all {} documents", docs.size());
-            int entitiesFoundCount = 0;
-            for (Document doc : docs) {
-                String content = doc.getText();
-                String date = extractor.extractDate(content);
-                String entities = extractRequestedEntities(content, query, null);
-                if (!entities.isBlank()) {
-                    entitiesFoundCount++;
-                    results.add(generateEntityResult(date, entities));
-                }
-            }
-            log().debug("Extracted entities from {} documents out of {} total", entitiesFoundCount, docs.size());
-        }
+        List<String> results = ner != null
+                ? collectEntityResultsWithNer(docs, query, ner)
+                : collectEntityResultsWithoutNer(docs, query);
 
         String response;
         if (!results.isEmpty()) {
@@ -93,6 +56,49 @@ public class ExtractEntitiesTool extends AbstractTool {
         // Apply formatResponse to clean the response
         String formattedResponse = formatResponse(response, query);
         return ToolResult.from(formattedResponse, getClass());
+    }
+
+    private List<String> collectEntityResultsWithNer(List<Document> docs, String query, JSONObject ner) {
+        List<Document> filteredDocs = nerHandler.filterDocumentsByTemporalContext(docs, ner);
+        log().debug("Filtered {} documents by temporal context, {} remaining", docs.size(), filteredDocs.size());
+
+        List<String> results = new ArrayList<>();
+        int matchedCount = 0;
+        int entitiesFoundCount = 0;
+        for (Document doc : filteredDocs) {
+            if (nerHandler.matchesDocumentWithNER(doc, ner)) {
+                matchedCount++;
+                String content = doc.getText();
+                String date = extractor.extractDate(content);
+                String entities = extractRequestedEntities(content, query, ner);
+                if (!entities.isBlank()) {
+                    entitiesFoundCount++;
+                    results.add(generateEntityResult(date, entities));
+                } else {
+                    log().debug("Document {} matched NER but no entities extracted", doc.getId());
+                }
+            }
+        }
+        log().debug("NER filtering: {} documents matched NER, {} had entities extracted out of {} filtered",
+                matchedCount, entitiesFoundCount, filteredDocs.size());
+        return results;
+    }
+
+    private List<String> collectEntityResultsWithoutNer(List<Document> docs, String query) {
+        log().debug("No NER available, extracting entities from all {} documents", docs.size());
+        List<String> results = new ArrayList<>();
+        int entitiesFoundCount = 0;
+        for (Document doc : docs) {
+            String content = doc.getText();
+            String date = extractor.extractDate(content);
+            String entities = extractRequestedEntities(content, query, null);
+            if (!entities.isBlank()) {
+                entitiesFoundCount++;
+                results.add(generateEntityResult(date, entities));
+            }
+        }
+        log().debug("Extracted entities from {} documents out of {} total", entitiesFoundCount, docs.size());
+        return results;
     }
 
     /**

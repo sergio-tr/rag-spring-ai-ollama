@@ -45,9 +45,7 @@ public class RuntimeTraceRegressionSuiteRunImportPreviewController {
         try {
             RuntimeTraceRegressionSuiteRunImportPreviewResponseDto previewDto = previewService.previewImportZip(body);
             return ResponseEntity.ok(previewDto);
-        } catch (RuntimeTraceRegressionSuiteRunImportPreviewRejectedException ex) {
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalArgumentException ex) {
+        } catch (RuntimeTraceRegressionSuiteRunImportPreviewRejectedException | IllegalArgumentException ex) {
             return ResponseEntity.badRequest().build();
         }
     }

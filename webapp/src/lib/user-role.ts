@@ -7,7 +7,7 @@ function isUserRole(v: unknown): v is UserRole {
 }
 
 export function getStoredUserRole(): UserRole | null {
-  if (typeof globalThis.window === "undefined") return null;
+  if (globalThis.window === undefined) return null;
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     return isUserRole(raw) ? raw : null;
@@ -17,7 +17,7 @@ export function getStoredUserRole(): UserRole | null {
 }
 
 export function setStoredUserRole(role: UserRole | null): void {
-  if (typeof globalThis.window === "undefined") return;
+  if (globalThis.window === undefined) return;
   try {
     if (role) {
       sessionStorage.setItem(STORAGE_KEY, role);

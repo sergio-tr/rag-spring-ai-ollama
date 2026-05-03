@@ -76,11 +76,16 @@ class RuntimeTraceRegressionSuiteDefinitionControllerTest {
     @MockitoBean
     private RuntimeTraceRegressionSuiteRunImportPreviewService runImportPreviewService;
 
+    @MockitoBean
+    private DefinitionRunZipServiceBundle runZipServices;
+
     private UUID userId;
     private UUID definitionId;
 
     @BeforeEach
     void setUp() {
+        DefinitionRunZipBundleStubbing.linkMockBundleToZipServices(
+                runZipServices, runExportService, runImportService, runImportPreviewService);
         userId = UUID.randomUUID();
         definitionId = UUID.randomUUID();
         RagPrincipal principal = new RagPrincipal(userId, "u@test", "USER");

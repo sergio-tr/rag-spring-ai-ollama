@@ -70,8 +70,8 @@ export function MeCanonicalJsonPanels() {
           apiFetch<MePersonalizationResponse>(apiProductPath("/me/personalization")),
         ]);
         if (cancelled) return;
-        setPreferencesMap({ ...(p.preferences ?? {}) });
-        setPersonalizationMap({ ...(pe.personalization ?? {}) });
+        setPreferencesMap({ ...p.preferences });
+        setPersonalizationMap({ ...pe.personalization });
         setSchemaPrefs(p.schemaVersion);
         setSchemaPers(pe.schemaVersion);
       } catch {
@@ -106,7 +106,7 @@ export function MeCanonicalJsonPanels() {
         body: JSON.stringify({ schemaVersion: schemaPrefs ?? undefined, preferences: payload }),
       });
       setSchemaPrefs(res.schemaVersion);
-      const next = { ...(res.preferences ?? {}) };
+      const next = { ...res.preferences };
       setPreferencesMap(next);
       prefsForm.reset(preferencesFormDefaults(next));
     } catch (e) {
@@ -127,7 +127,7 @@ export function MeCanonicalJsonPanels() {
         body: JSON.stringify({ schemaVersion: schemaPers ?? undefined, personalization: payload }),
       });
       setSchemaPers(res.schemaVersion);
-      const next = { ...(res.personalization ?? {}) };
+      const next = { ...res.personalization };
       setPersonalizationMap(next);
       persForm.reset(personalizationFormDefaults(next));
     } catch (e) {
@@ -155,9 +155,9 @@ export function MeCanonicalJsonPanels() {
         <h2 className="font-medium text-sm">{t("mePreferencesTitle")}</h2>
         <p className="text-muted-foreground text-xs">{t("mePreferencesDescription")}</p>
         {prefsLocaleUnsupported ? (
-          <p className="text-amber-600 text-xs dark:text-amber-500" role="status">
+          <output className="text-amber-600 block text-xs dark:text-amber-500">
             {t("meUnsupportedLocaleWarning", { value: formatStoredScalar(preferencesMap.locale) })}
-          </p>
+          </output>
         ) : null}
         <form className="flex flex-col gap-3" onSubmit={prefsForm.handleSubmit(savePrefs)}>
           <div className="flex flex-col gap-2">
@@ -198,9 +198,9 @@ export function MeCanonicalJsonPanels() {
         <h2 className="font-medium text-sm">{t("mePersonalizationTitle")}</h2>
         <p className="text-muted-foreground text-xs">{t("mePersonalizationDescription")}</p>
         {persThemeUnsupported ? (
-          <p className="text-amber-600 text-xs dark:text-amber-500" role="status">
+          <output className="text-amber-600 block text-xs dark:text-amber-500">
             {t("meUnsupportedThemeWarning", { value: formatStoredScalar(personalizationMap.theme) })}
-          </p>
+          </output>
         ) : null}
         <form className="flex flex-col gap-3" onSubmit={persForm.handleSubmit(savePers)}>
           <div className="flex flex-col gap-2">
