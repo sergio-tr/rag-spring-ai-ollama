@@ -22,6 +22,14 @@ public class GetFieldTool extends AbstractTool {
 
     private static final String VALUE_UNKNOWN = "unknown";
 
+    private static final String QUERY_TOKEN_PRESIDENT = "president";
+
+    private static final String QUERY_TOKEN_SECRETARY = "secretary";
+
+    private static final String FIELD_INTENT_PRESIDENT = "president";
+
+    private static final String FIELD_INTENT_SECRETARY = "secretary";
+
     private static final String LOG_FOUND_FIELD =
             "Found field value for query: '{}' in document {} (execution time: {} ms)";
 
@@ -71,19 +79,16 @@ public class GetFieldTool extends AbstractTool {
         for (Document doc : filteredDocs) {
             if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
                 log().debug("Skipping document {}: null or empty content", doc != null ? doc.getId() : "null");
-                continue;
+            } else if (nerHandler.matchesDocumentWithNER(doc, ner)) {
+                matchedCount++;
+                String value = extractLiteralFieldByIntent(query, doc.getText());
+                if (value != null && !value.isBlank()) {
+                    long totalTime = System.currentTimeMillis() - startTime;
+                    log().info(LOG_FOUND_FIELD, query, doc.getId(), totalTime);
+                    return ToolResult.from(formatResponse(value, query), getClass());
+                }
+                log().debug("Document {} matched NER but no field value extracted", doc.getId());
             }
-            if (!nerHandler.matchesDocumentWithNER(doc, ner)) {
-                continue;
-            }
-            matchedCount++;
-            String value = extractLiteralFieldByIntent(query, doc.getText());
-            if (value != null && !value.isBlank()) {
-                long totalTime = System.currentTimeMillis() - startTime;
-                log().info(LOG_FOUND_FIELD, query, doc.getId(), totalTime);
-                return ToolResult.from(formatResponse(value, query), getClass());
-            }
-            log().debug("Document {} matched NER but no field value extracted", doc.getId());
         }
         log().debug("NER filtering: {} documents matched NER conditions out of {} filtered", matchedCount, filteredDocs.size());
         return null;
@@ -94,17 +99,14 @@ public class GetFieldTool extends AbstractTool {
             return null;
         }
         for (Document doc : docs) {
-            if (doc == null || doc.getText() == null || doc.getText().trim().isEmpty()) {
-                continue;
-            }
-            if (!isRelevantByLLM(doc.getText(), query)) {
-                continue;
-            }
-            String value = extractLiteralFieldByIntent(query, doc.getText());
-            if (value != null && !value.isBlank()) {
-                long totalTime = System.currentTimeMillis() - startTime;
-                log().info(LOG_FOUND_FIELD, query, doc.getId(), totalTime);
-                return ToolResult.from(formatResponse(value, query), getClass());
+            if (doc != null && doc.getText() != null && !doc.getText().trim().isEmpty()
+                    && isRelevantByLLM(doc.getText(), query)) {
+                String value = extractLiteralFieldByIntent(query, doc.getText());
+                if (value != null && !value.isBlank()) {
+                    long totalTime = System.currentTimeMillis() - startTime;
+                    log().info(LOG_FOUND_FIELD, query, doc.getId(), totalTime);
+                    return ToolResult.from(formatResponse(value, query), getClass());
+                }
             }
         }
         return null;
@@ -122,7 +124,7 @@ public class GetFieldTool extends AbstractTool {
         if (query == null) return false;
         String q = query.toLowerCase();
         return (q.contains("fecha del acta") || q.contains("date of the acta") || (q.contains("fecha") && q.contains("donde")))
-                && (q.contains("presidente") || q.contains("president") || q.contains("secretaria") || q.contains("secretary"));
+                && (q.contains("presidente") || q.contains(QUERY_TOKEN_PRESIDENT) || q.contains("secretaria") || q.contains(QUERY_TOKEN_SECRETARY));
     }
 
     private String extractLiteralFieldByIntent(String query, String content) {
@@ -137,10 +139,10 @@ public class GetFieldTool extends AbstractTool {
                 return extractor.extractTime(content, "end");
             case "place", "lugar":
                 return extractor.extractLiteralField("place", content);
-            case "president", "presidente":
-                return extractor.extractLiteralField("president", content);
-            case "secretary", "secretario":
-                return extractor.extractLiteralField("secretary", content);
+            case FIELD_INTENT_PRESIDENT, "presidente":
+                return extractor.extractLiteralField(FIELD_INTENT_PRESIDENT, content);
+            case FIELD_INTENT_SECRETARY, "secretario":
+                return extractor.extractLiteralField(FIELD_INTENT_SECRETARY, content);
             case "attendees_list", "asistentes_lista":
                 return String.join(", ", extractor.extractAttendees(content));
             case "attendees_number", "asistentes_numero":
@@ -166,8 +168,8 @@ public class GetFieldTool extends AbstractTool {
             - place
             - startTime
             - endTime
-            - president
-            - secretary
+            - %s
+            - %s
             - attendees_list
             - attendees_number
             - agenda
@@ -176,7 +178,7 @@ public class GetFieldTool extends AbstractTool {
             
             Respond with ONLY the field name in English (one word).
             Do not include any explanation or additional text.
-            """, query);
+            """, query, FIELD_INTENT_PRESIDENT, FIELD_INTENT_SECRETARY);
         
         try {
             String result = chatClient
@@ -195,9 +197,7 @@ public class GetFieldTool extends AbstractTool {
                 return VALUE_UNKNOWN;
             }
             
-            // Extract the first word
-            String cleaned = normalized.split("\\s+")[0].trim();
-            return cleaned;
+            return normalized.split("\\s+")[0].trim();
         } catch (Exception e) {
             log().error("Error in classifyLiteralIntentWithLLM, defaulting to unknown", e);
             return VALUE_UNKNOWN;

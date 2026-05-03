@@ -30,10 +30,23 @@ import org.springframework.context.annotation.Lazy;
 
 public abstract class AbstractMetadataTool extends AbstractTool {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
+    private static final String TIME_PATTERN_HH_MM_SS = "HH:mm:ss";
+    private static final DateTimeFormatter TIME_FORMATTER_WITH_SECONDS = DateTimeFormatter.ofPattern(TIME_PATTERN_HH_MM_SS);
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final String METADATA_KEY_END_TIME = "endTime";
     /** Normalized ISO date in document metadata (see ingestion / vector store). */
     private static final String METADATA_KEY_DATE_ISO = "date_iso";
+    private static final String METADATA_KEY_DATE = "date";
+    private static final String METADATA_KEY_PLACE = "place";
+    private static final String METADATA_KEY_SECRETARY = "secretary";
+    private static final String METADATA_KEY_START_TIME = "startTime";
+    private static final String METADATA_KEY_ATTENDEES = "attendees";
+    private static final String METADATA_KEY_DECISIONS = "decisions";
+    private static final String METADATA_KEY_SUMMARY = "summary";
+    private static final String METADATA_KEY_NUMBER_OF_ATTENDEES = "numberOfAttendees";
+    private static final String NER_KEY_PERSON = "person";
+    /** Placeholder when a metadata field is absent (prompts / serialization). */
+    private static final String PLACEHOLDER_UNKNOWN = "unknown";
 
     /** Case-insensitive matching for Latin extended names (Sonar: UNICODE_CASE for non-ASCII letters). */
     private static final int UNICODE_CASE_INSENSITIVE =
@@ -93,6 +106,14 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     /** Used by subclasses when calling {@code @Cacheable} methods to avoid self-invocation. */
     protected AbstractMetadataTool cacheable() {
         return cacheableSelf != null ? cacheableSelf : this;
+    }
+
+    private static String nz(String value) {
+        return value != null ? value : PLACEHOLDER_UNKNOWN;
+    }
+
+    private static String nzJoin(List<String> parts, String delimiter) {
+        return parts != null ? String.join(delimiter, parts) : PLACEHOLDER_UNKNOWN;
     }
 
     protected boolean matchesBooleanCondition(Document doc, String query, JSONObject nerEntities) {
@@ -160,12 +181,13 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     protected String[] extractTermsFromNER(JSONObject entidades) {
         Set<String> terms = new HashSet<>();
 
-        if (entidades.has("person"))
-            entidades.getJSONArray("person").forEach(item -> terms.add(item.toString().toLowerCase()));
+        if (entidades.has(NER_KEY_PERSON)) {
+            entidades.getJSONArray(NER_KEY_PERSON).forEach(item -> terms.add(item.toString().toLowerCase()));
+        }
 
         if (entidades.has(NER_KEY_FILTERS)) {
             JSONObject filtros = entidades.getJSONObject(NER_KEY_FILTERS);
-            for (String key : new String[]{"date", "place", "section", "time"}) {
+            for (String key : new String[]{METADATA_KEY_DATE, METADATA_KEY_PLACE, "section", "time"}) {
                 if (filtros.has(key))
                     filtros.getJSONArray(key).forEach(item -> terms.add(item.toString().toLowerCase()));
             }
@@ -297,12 +319,12 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             Do not include any explanation or additional text.
             """,
             query,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
-            minute.summary() != null ? minute.summary() : "unknown",
-            minute.agenda() != null ? minute.agenda().toString() : "unknown"
+            nz(minute.date()),
+            nz(minute.place()),
+            nzJoin(minute.topics(), ", "),
+            nzJoin(minute.decisions(), ", "),
+            nz(minute.summary()),
+            minute.agenda() != null ? minute.agenda().toString() : PLACEHOLDER_UNKNOWN
         );
 
         try {
@@ -366,26 +388,26 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             id = safeGetString(metadata, "id");
         }
         String filename = safeGetString(metadata, METADATA_KEY_FILENAME);
-        String date = safeGetString(metadata, "date");
-        String place = safeGetString(metadata, "place");
-        String startTime = safeGetString(metadata, "startTime");
+        String date = safeGetString(metadata, METADATA_KEY_DATE);
+        String place = safeGetString(metadata, METADATA_KEY_PLACE);
+        String startTime = safeGetString(metadata, METADATA_KEY_START_TIME);
         String endTime = safeGetString(metadata, METADATA_KEY_END_TIME);
         String president = safeGetString(metadata, METADATA_KEY_PRESIDENT);
-        String secretary = safeGetString(metadata, "secretary");
-        
+        String secretary = safeGetString(metadata, METADATA_KEY_SECRETARY);
+
         // Use safe methods for complex types
-        List<String> attendees = safeGetStringList(metadata, "attendees");
-        
-        int numberOfAttendees = metadata.containsKey("numberOfAttendees") 
-            ? safeGetInt(metadata, "numberOfAttendees", attendees.size())
+        List<String> attendees = safeGetStringList(metadata, METADATA_KEY_ATTENDEES);
+
+        int numberOfAttendees = metadata.containsKey(METADATA_KEY_NUMBER_OF_ATTENDEES)
+            ? safeGetInt(metadata, METADATA_KEY_NUMBER_OF_ATTENDEES, attendees.size())
             : attendees.size();
-        
+
         Map<String, String> agenda = safeGetStringMap(metadata, METADATA_KEY_AGENDA);
-        List<String> decisions = safeGetStringList(metadata, "decisions");
-        List<String> mentionedEntities = safeGetStringList(metadata, "mentionedEntities");
+        List<String> decisions = safeGetStringList(metadata, METADATA_KEY_DECISIONS);
+        List<String> mentionedEntities = safeGetStringList(metadata, NER_KEY_MENTIONED_ENTITIES);
         List<String> topics = safeGetStringList(metadata, METADATA_KEY_TOPICS);
-        
-        String summary = safeGetString(metadata, "summary");
+
+        String summary = safeGetString(metadata, METADATA_KEY_SUMMARY);
         
         // Generate ID if missing
         if (id == null || id.isBlank()) {
@@ -718,7 +740,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         try {
-            JSONArray nerEntities = ner.getJSONArray("mentionedEntities");
+            JSONArray nerEntities = ner.getJSONArray(NER_KEY_MENTIONED_ENTITIES);
             if (nerEntities.length() == 0) {
                 return true; // No entities to match
             }
@@ -894,8 +916,8 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
     private int tryDurationWithHhMmSsFallback(String normalizedStart, String normalizedEnd, Minute minute) {
         try {
-            LocalTime start = LocalTime.parse(normalizedStart, DateTimeFormatter.ofPattern("HH:mm:ss"));
-            LocalTime end = LocalTime.parse(normalizedEnd, DateTimeFormatter.ofPattern("HH:mm:ss"));
+            LocalTime start = LocalTime.parse(normalizedStart, TIME_FORMATTER_WITH_SECONDS);
+            LocalTime end = LocalTime.parse(normalizedEnd, TIME_FORMATTER_WITH_SECONDS);
             int startMinutes = start.getHour() * 60 + start.getMinute();
             int endMinutes = end.getHour() * 60 + end.getMinute();
             int duration = endMinutes - startMinutes;
@@ -938,8 +960,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         } catch (DateTimeParseException ignored) {
             // Try HH:mm:ss format
             try {
-                LocalTime time = LocalTime.parse(normalized, 
-                    DateTimeFormatter.ofPattern("HH:mm:ss"));
+                LocalTime time = LocalTime.parse(normalized, TIME_FORMATTER_WITH_SECONDS);
                 return time.format(TIME_FORMATTER);
             } catch (DateTimeParseException ignored2) {
                 // Try H:mm format (single digit hour)
@@ -959,27 +980,27 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      * Field name synonyms mapping for flexible field search.
      */
     private static final Map<String, String> FIELD_SYNONYMS = Map.ofEntries(
-        Map.entry("secretaria", "secretary"),
-        Map.entry("secretario", "secretary"),
-        Map.entry("orden del día", "agenda"),
-        Map.entry("orden_del_dia", "agenda"),
-        Map.entry("order_of_day", "agenda"),
-        Map.entry("puntos del día", "agenda"),
-        Map.entry("puntos_del_dia", "agenda"),
-        Map.entry("fecha", "date"),
-        Map.entry("lugar", "place"),
-        Map.entry("ubicación", "place"),
-        Map.entry("presidente", "president"),
-        Map.entry("hora_inicio", "startTime"),
-        Map.entry("hora de inicio", "startTime"),
+        Map.entry("secretaria", METADATA_KEY_SECRETARY),
+        Map.entry("secretario", METADATA_KEY_SECRETARY),
+        Map.entry("orden del día", METADATA_KEY_AGENDA),
+        Map.entry("orden_del_dia", METADATA_KEY_AGENDA),
+        Map.entry("order_of_day", METADATA_KEY_AGENDA),
+        Map.entry("puntos del día", METADATA_KEY_AGENDA),
+        Map.entry("puntos_del_dia", METADATA_KEY_AGENDA),
+        Map.entry("fecha", METADATA_KEY_DATE),
+        Map.entry("lugar", METADATA_KEY_PLACE),
+        Map.entry("ubicación", METADATA_KEY_PLACE),
+        Map.entry("presidente", METADATA_KEY_PRESIDENT),
+        Map.entry("hora_inicio", METADATA_KEY_START_TIME),
+        Map.entry("hora de inicio", METADATA_KEY_START_TIME),
         Map.entry("hora_fin", METADATA_KEY_END_TIME),
         Map.entry("hora de fin", METADATA_KEY_END_TIME),
-        Map.entry("temas", "topics"),
-        Map.entry("decisiones", "decisions"),
-        Map.entry("acuerdos", "decisions"),
-        Map.entry("resumen", "summary"),
-        Map.entry("asistentes", "attendees"),
-        Map.entry("participantes", "attendees")
+        Map.entry("temas", METADATA_KEY_TOPICS),
+        Map.entry("decisiones", METADATA_KEY_DECISIONS),
+        Map.entry("acuerdos", METADATA_KEY_DECISIONS),
+        Map.entry("resumen", METADATA_KEY_SUMMARY),
+        Map.entry("asistentes", METADATA_KEY_ATTENDEES),
+        Map.entry("participantes", METADATA_KEY_ATTENDEES)
     );
 
     /**
@@ -1057,23 +1078,23 @@ public abstract class AbstractMetadataTool extends AbstractTool {
      */
     private Object getFieldValueByCanonicalName(Minute minute, String canonicalField) {
         switch (canonicalField) {
-            case "date":
+            case METADATA_KEY_DATE:
                 return minute.date();
-            case "place":
+            case METADATA_KEY_PLACE:
                 return minute.place();
-            case "president":
+            case METADATA_KEY_PRESIDENT:
                 return minute.president();
-            case "secretary":
+            case METADATA_KEY_SECRETARY:
                 return minute.secretary();
             case "starttime":
                 return minute.startTime();
             case "endtime":
                 return minute.endTime();
-            case "topics":
+            case METADATA_KEY_TOPICS:
                 return minute.topics();
-            case "decisions":
+            case METADATA_KEY_DECISIONS:
                 return minute.decisions();
-            case "summary":
+            case METADATA_KEY_SUMMARY:
                 return minute.summary();
             case METADATA_KEY_AGENDA:
             case "orden_del_dia":
@@ -1086,7 +1107,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         .filter(v -> v != null && !v.isBlank())
                         .collect(Collectors.joining(", "));
             }
-            case "attendees":
+            case METADATA_KEY_ATTENDEES:
                 return minute.attendees();
             case "numberofattendees":
             case "attendeescount":
@@ -2436,7 +2457,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
             ),
             // Pattern 5: "attended [Full Name]" (e.g. "In which meetings did X attend?")
             Pattern.compile(
-                "(?:asistió|attended|attend(?:ed|ee))\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
+                "(?:asistió|attend(?:ed|ee))\\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+){1,3})\\s*(?:\\?|$)",
                 UNICODE_CASE_INSENSITIVE
             ),
             // Pattern 6: "meetings attended [Name]" - name at end before ?
@@ -2613,7 +2634,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         Object obj = metadata.get(key);
         if (obj != null) {
-            out.append(label).append(": ").append(obj.toString()).append("\n");
+            out.append(label).append(": ").append(obj.toString()).append(System.lineSeparator());
         }
     }
 
@@ -2625,9 +2646,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         Object obj = metadata.get(key);
         if (obj instanceof List) {
-            out.append(label).append(": ").append(String.join(", ", (List<String>) obj)).append("\n");
+            out.append(label).append(": ").append(String.join(", ", (List<String>) obj)).append(System.lineSeparator());
         } else if (obj instanceof String) {
-            out.append(label).append(": ").append(obj).append("\n");
+            out.append(label).append(": ").append(obj).append(System.lineSeparator());
         }
     }
 
@@ -2890,7 +2911,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
         
         // Check if NER has at least one non-empty field
-        String[] usefulFields = {"date", "mentionedEntities", "agenda", "place", "person"};
+        String[] usefulFields = {
+                METADATA_KEY_DATE, NER_KEY_MENTIONED_ENTITIES, METADATA_KEY_AGENDA, METADATA_KEY_PLACE, NER_KEY_PERSON
+        };
         for (String field : usefulFields) {
             if (ner.has(field)) {
                 Object value = ner.get(field);
@@ -3682,38 +3705,32 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
 
         StringBuilder ctx = new StringBuilder();
-        if (minute.date() != null) ctx.append("- Date: ").append(minute.date()).append("\n");
-        if (minute.place() != null) ctx.append("- Place: ").append(minute.place()).append("\n");
-        if (minute.startTime() != null) ctx.append("- Start time: ").append(minute.startTime()).append("\n");
-        if (minute.endTime() != null) ctx.append("- End time: ").append(minute.endTime()).append("\n");
-        if (minute.president() != null) ctx.append("- President: ").append(minute.president()).append("\n");
-        if (minute.secretary() != null) ctx.append("- Secretary: ").append(minute.secretary()).append("\n");
+        if (minute.date() != null) ctx.append("- Date: ").append(minute.date()).append(System.lineSeparator());
+        if (minute.place() != null) ctx.append("- Place: ").append(minute.place()).append(System.lineSeparator());
+        if (minute.startTime() != null) ctx.append("- Start time: ").append(minute.startTime()).append(System.lineSeparator());
+        if (minute.endTime() != null) ctx.append("- End time: ").append(minute.endTime()).append(System.lineSeparator());
+        if (minute.president() != null) ctx.append("- President: ").append(minute.president()).append(System.lineSeparator());
+        if (minute.secretary() != null) ctx.append("- Secretary: ").append(minute.secretary()).append(System.lineSeparator());
         if (minute.attendees() != null && !minute.attendees().isEmpty()) {
-            ctx.append("- Attendees: ").append(String.join(", ", minute.attendees())).append("\n");
+            ctx.append("- Attendees: ").append(String.join(", ", minute.attendees())).append(System.lineSeparator());
         }
         if (minute.topics() != null && !minute.topics().isEmpty()) {
-            ctx.append("- Topics: ").append(String.join(", ", minute.topics())).append("\n");
+            ctx.append("- Topics: ").append(String.join(", ", minute.topics())).append(System.lineSeparator());
         }
         if (minute.decisions() != null && !minute.decisions().isEmpty()) {
-            ctx.append("- Decisions: ").append(String.join("; ", minute.decisions())).append("\n");
+            ctx.append("- Decisions: ").append(String.join("; ", minute.decisions())).append(System.lineSeparator());
         }
         if (minute.summary() != null && !minute.summary().isBlank()) {
-            ctx.append("- Summary: ").append(truncateForPrompt(minute.summary(), 500)).append("\n");
+            ctx.append("- Summary: ").append(truncateForPrompt(minute.summary(), 500)).append(System.lineSeparator());
         }
         if (minute.agenda() != null && !minute.agenda().isEmpty()) {
-            ctx.append("- Agenda: ").append(minute.agenda().toString()).append("\n");
+            ctx.append("- Agenda: ").append(minute.agenda().toString()).append(System.lineSeparator());
         }
         return ctx.toString();
     }
 
     /**
-     * Evaluates if a minute contains the information requested in the query.
-     * Uses LLM to validate complex conditions before extracting/computing.
-     * Useful for validating that a minute matches the query requirements.
-     */
-    /**
-     * Evaluates if a minute contains the requested information.
-     * 
+     * Evaluates if a minute contains the requested information (LLM validation).
      */
     protected boolean evaluateMinuteContainsRequestedInfo(String query, Minute minute) {
         if (query == null || query.trim().isEmpty() || minute == null) {
@@ -3745,16 +3762,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return true; // Less strict: default to true on error
             }
             
-            // Use enhanced validation
             Boolean validated = validateLLMFilterResponse(response, "evaluateMinuteContainsRequestedInfo");
-            
-            // If validation returns null (unknown), default to true (keep document) to avoid false negatives
-            if (validated != null) {
-                return validated;
-            }
-            
-            // Fallback: default to true (less strict) if validation returned null
-            return true;
+            // Unknown (null) defaults to true to avoid false negatives
+            return validated == null || validated;
         } catch (Exception e) {
             log().warn("Error evaluating minute with LLM, defaulting to true (less strict) to avoid false negatives", e);
             return true; // Less strict: default to true on error

@@ -33,6 +33,25 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
     private static final int UNICODE_TEXT_REGEX_FLAGS =
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ;
 
+    private static final String TIME_PATTERN_HH_MM = "HH:mm";
+
+    private static final String TIME_PATTERN_HH_MM_SS = "HH:mm:ss";
+
+    private static final DateTimeFormatter TIME_FMT_HH_MM = DateTimeFormatter.ofPattern(TIME_PATTERN_HH_MM);
+
+    private static final DateTimeFormatter TIME_FMT_HH_MM_SS = DateTimeFormatter.ofPattern(TIME_PATTERN_HH_MM_SS);
+
+    /** Role/descriptive text in parentheses after attendee names (same flags as Unicode normalization elsewhere). */
+    private static final Pattern PARENTHETICAL_SUFFIX_AFTER_WHITESPACE =
+            Pattern.compile("\\s*\\([^)]*\\)\\s*", UNICODE_TEXT_REGEX_FLAGS);
+
+    private static final Pattern TRAILING_H_OR_COLON_SPACING =
+            Pattern.compile("(?i)\\s*h\\s*$");
+
+    private static final Pattern SPACE_AFTER_COLON = Pattern.compile(":\\s+");
+
+    private static final Pattern NON_DIGIT_CHARS = Pattern.compile("\\D");
+
     private static final String PROMPT_HINT_DECISIONS = "decisions";
 
     private static final String PROMPT_HINT_TOPICS = "topics";
@@ -83,6 +102,10 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             "enero", "febrero", "marzo", "abril", "mayo", "junio",
             "julio", SPANISH_MONTH_AGOSTO, SPANISH_MONTH_SEPTIEMBRE, "octubre", "noviembre", "diciembre"
     };
+
+    private static String stripParentheticalSuffix(String value) {
+        return PARENTHETICAL_SUFFIX_AFTER_WHITESPACE.matcher(value).replaceAll("").trim();
+    }
 
     /** Spring proxy so {@code @Cacheable} extraction methods are not self-invoked. */
     private MetadataMinuteDocumentService extractionSelf;
@@ -890,8 +913,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         try {
             // Try HH:mm format first
-            LocalTime s = LocalTime.parse(startNormalized, DateTimeFormatter.ofPattern("HH:mm"));
-            LocalTime e = LocalTime.parse(endNormalized, DateTimeFormatter.ofPattern("HH:mm"));
+            LocalTime s = LocalTime.parse(startNormalized, TIME_FMT_HH_MM);
+            LocalTime e = LocalTime.parse(endNormalized, TIME_FMT_HH_MM);
             
             // Validate: end time should be after start time
             if (e.isBefore(s) || e.equals(s)) {
@@ -923,8 +946,8 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             // Try alternative formats
             try {
                 // Try HH:mm:ss format
-                LocalTime s = LocalTime.parse(startNormalized, DateTimeFormatter.ofPattern("HH:mm:ss"));
-                LocalTime e = LocalTime.parse(endNormalized, DateTimeFormatter.ofPattern("HH:mm:ss"));
+                LocalTime s = LocalTime.parse(startNormalized, TIME_FMT_HH_MM_SS);
+                LocalTime e = LocalTime.parse(endNormalized, TIME_FMT_HH_MM_SS);
                 int diff = (e.getHour() * 60 + e.getMinute()) - (s.getHour() * 60 + s.getMinute());
                 return diff > 0 && diff <= 24 * 60 ? diff : null;
             } catch (DateTimeParseException ex2) {
@@ -953,18 +976,18 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Try to parse and reformat to HH:mm
         try {
             // Try HH:mm format first
-            LocalTime time = LocalTime.parse(normalized, DateTimeFormatter.ofPattern("HH:mm"));
-            return time.format(DateTimeFormatter.ofPattern("HH:mm"));
+            LocalTime time = LocalTime.parse(normalized, TIME_FMT_HH_MM);
+            return time.format(TIME_FMT_HH_MM);
         } catch (DateTimeParseException ignored) {
             // Try HH:mm:ss format
             try {
-                LocalTime time = LocalTime.parse(normalized, DateTimeFormatter.ofPattern("HH:mm:ss"));
-                return time.format(DateTimeFormatter.ofPattern("HH:mm"));
+                LocalTime time = LocalTime.parse(normalized, TIME_FMT_HH_MM_SS);
+                return time.format(TIME_FMT_HH_MM);
             } catch (DateTimeParseException ignored2) {
                 // Try H:mm format (single digit hour)
                 try {
                     LocalTime time = LocalTime.parse(normalized, DateTimeFormatter.ofPattern("H:mm"));
-                    return time.format(DateTimeFormatter.ofPattern("HH:mm"));
+                    return time.format(TIME_FMT_HH_MM);
                 } catch (DateTimeParseException ignored3) {
                     log().debug("Could not normalize time format: {}", timeStr);
                     return null;
@@ -989,6 +1012,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         try {
             return LocalDate.parse(v, DateTimeFormatter.ISO_LOCAL_DATE);
         } catch (DateTimeParseException ignored) {
+            // Not ISO-8601; try locale-specific formatters below.
         }
 
         // Try Spanish formats with quotes
@@ -1047,6 +1071,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 try {
                     return LocalDate.of(year, month, Math.min(day, LocalDate.of(year, month, 1).lengthOfMonth()));
                 } catch (Exception ignored) {
+                    // Invalid day/month composition for parsed regex groups; try plain year fallback below.
                 }
             }
         }
@@ -1269,55 +1294,30 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         };
         for (String regex : patterns) {
             String t = extractSingle(content, regex);
-            if (t != null && normalizeTime(t) != null) {
-                return normalizeTime(t);
+            if (t == null) {
+                continue;
+            }
+            String normalized = normalizeTime(t);
+            if (normalized != null) {
+                return normalized;
             }
         }
         return null;
     }
     
-    /**
-     * Extracts the time with multiple supported formats.
-     * @param content Content of the document
-     * @param isStartTime true for start time, false for end time
-     */
-    private String extractTime(String content, boolean isStartTime) {
-        if (content == null || content.trim().isEmpty()) {
-            return null;
-        }
-        
-        // Define possible labels according to the type of time
-        String[] startLabels = {"inicio", "comienzo", "comienza"};
-        String[] endLabels = {"fin", "finalización", "finaliza", "termina", "clausura"};
-        String[] labels = isStartTime ? startLabels : endLabels;
-        
-        // Possible time patterns (including space after colon: "19: 00" and optional space before h: "19:00 h" or "19:00h")
-        String[] timePatterns = {
-            "(\\d{1,2}:\\s*\\d{2})",                    // 19:00 or 19: 00 (with space)
-            "(\\d{1,2}:\\s*\\d{2})\\s*[hH]",            // 19:00 h, 19:00h, 19: 00 h, 19: 00h (space optional before h)
-            "(\\d{1,2}\\.\\d{2})",                      // 19.00
-            "(\\d{1,2})\\s*[hH]",                       // 19 h or 19h
-            "(\\d{1,2})\\s*[hH]\\s*(\\d{2})?"           // 19 h 30 or 19h30 (partial)
-        };
-        
-        // Try each combination of label and pattern
+    private String extractTimeFromLabelGrid(String content, String[] labels, String[] timePatterns) {
         for (String label : labels) {
             for (String timePattern : timePatterns) {
-                // Pattern 1: "Hora de inicio: 19:00"
                 String regex = String.format("(?i)Hora de %s:\\s*%s", label, timePattern);
                 String time = extractSingle(content, regex);
                 if (time != null) {
                     return normalizeTime(time.replace(".", ":"));
                 }
-                
-                // Pattern 2: "Hora inicio: 19:00" (without "de")
                 regex = String.format("(?i)Hora %s:\\s*%s", label, timePattern);
                 time = extractSingle(content, regex);
                 if (time != null) {
                     return normalizeTime(time.replace(".", ":"));
                 }
-                
-                // Pattern 3: "Inicio: 19:00" (only label)
                 String labelCapitalized = label.substring(0, 1).toUpperCase() + label.substring(1);
                 regex = String.format("(?i)%s:\\s*%s", labelCapitalized, timePattern);
                 time = extractSingle(content, regex);
@@ -1326,61 +1326,65 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 }
             }
         }
-        
-        // Additional pattern: Search in header context (similar to place)
+        return null;
+    }
+
+    private String extractTimeFromHeaderLabels(String content, String[] labels, String[] timePatterns) {
         String header = extractBlock(content, "(?i)^(?:ACTA|REUNIÓN)", "(?i)Asistentes:");
-        if (header != null) {
-            for (String label : labels) {
-                for (String timePattern : timePatterns) {
-                    String regex = String.format("(?i)(?:Hora de |Hora )?%s[^:]*:\\s*%s", label, timePattern);
-                    String time = extractSingle(header, regex);
-                    if (time != null) {
-                        return normalizeTime(time.replace(".", ":"));
-                    }
+        if (header == null) {
+            return null;
+        }
+        for (String label : labels) {
+            for (String timePattern : timePatterns) {
+                String regex = String.format("(?i)(?:Hora de |Hora )?%s[^:]*:\\s*%s", label, timePattern);
+                String time = extractSingle(header, regex);
+                if (time != null) {
+                    return normalizeTime(time.replace(".", ":"));
                 }
             }
         }
-        
-        // Final pattern: Search any time in HH:MM format (with optional space) near keywords
+        return null;
+    }
+
+    private String extractTimeNearKeywordLine(String content, boolean isStartTime) {
         String keyword = isStartTime ? "inicio|comienzo|comienza" : "fin|final|termina|clausura";
-        String time = extractSingle(content, 
-            String.format("(?i)(?:%s)[^:]*:\\s*(\\d{1,2}:\\s*\\d{2})", keyword));
+        String time =
+                extractSingle(content, String.format("(?i)(?:%s)[^:]*:\\s*(\\d{1,2}:\\s*\\d{2})", keyword));
+        return time != null ? normalizeTime(time) : null;
+    }
+
+    private String extractTimeFromDashRanges(String content, boolean isStartTime) {
+        if (isStartTime) {
+            String time =
+                    extractSingle(content, "(?i)(\\d{1,2}:\\s*\\d{2})\\s*[-a]\\s*\\d{1,2}:\\s*\\d{2}");
+            return time != null ? normalizeTime(time) : null;
+        }
+        String time = extractSingle(content, "(?i)\\d{1,2}:\\s*\\d{2}\\s*[-a]\\s*(\\d{1,2}:\\s*\\d{2})");
         if (time != null) {
             return normalizeTime(time);
         }
-        
-        // Additional pattern: Search format "19:00 - 20:30" or "19:00 a 20:30" (with optional space)
-        if (isStartTime) {
-            time = extractSingle(content, "(?i)(\\d{1,2}:\\s*\\d{2})\\s*[-a]\\s*\\d{1,2}:\\s*\\d{2}");
-            if (time != null) {
-                return normalizeTime(time);
-            }
-        } else {
-            time = extractSingle(content, "(?i)\\d{1,2}:\\s*\\d{2}\\s*[-a]\\s*(\\d{1,2}:\\s*\\d{2})");
-            if (time != null) {
-                return normalizeTime(time);
-            }
-            // Prefer end time from conclusion phrasing (e.g. "ended at 20:45", "concluding at 20:45") when present
-            String fromConclusion = extractEndTimeFromConclusionPhrases(content);
-            if (fromConclusion != null) {
-                return fromConclusion;
-            }
-            // If multiple "HH:MM - HH:MM" ranges exist, use the last one's end time (header may differ from actual end)
-            Pattern rangePattern = Pattern.compile("(\\d{1,2}:\\s*\\d{2})\\s*[-a]\\s*(\\d{1,2}:\\s*\\d{2})", Pattern.CASE_INSENSITIVE);
-            Matcher rangeMatcher = rangePattern.matcher(content);
-            String lastEnd = null;
-            while (rangeMatcher.find()) {
-                lastEnd = rangeMatcher.group(2);
-            }
-            if (lastEnd != null && normalizeTime(lastEnd) != null) {
-                return normalizeTime(lastEnd);
-            }
+        String fromConclusion = extractEndTimeFromConclusionPhrases(content);
+        if (fromConclusion != null) {
+            return fromConclusion;
         }
-        
-        // Additional very flexible pattern: Search any time in HH:MM format (with optional space) in the first lines
+        Pattern rangePattern =
+                Pattern.compile("(\\d{1,2}:\\s*\\d{2})\\s*[-a]\\s*(\\d{1,2}:\\s*\\d{2})", Pattern.CASE_INSENSITIVE);
+        Matcher rangeMatcher = rangePattern.matcher(content);
+        String lastEnd = null;
+        while (rangeMatcher.find()) {
+            lastEnd = rangeMatcher.group(2);
+        }
+        if (lastEnd == null) {
+            return null;
+        }
+        String normalizedEnd = normalizeTime(lastEnd);
+        return normalizedEnd;
+    }
+
+    private String extractTimeFromFirstLinesHeuristic(String content, boolean isStartTime) {
         String firstLines = content.length() > 500 ? content.substring(0, 500) : content;
-        Pattern timePattern = Pattern.compile("(\\d{1,2}:\\s*\\d{2})");
-        Matcher matcher = timePattern.matcher(firstLines);
+        Pattern localTimePattern = Pattern.compile("(\\d{1,2}:\\s*\\d{2})");
+        Matcher matcher = localTimePattern.matcher(firstLines);
         List<String> foundTimes = new ArrayList<>();
         while (matcher.find() && foundTimes.size() < 3) {
             String foundTime = matcher.group(1);
@@ -1388,23 +1392,65 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 foundTimes.add(foundTime);
             }
         }
-        
-        // If we find times, use the first for start and the last for end
-        if (!foundTimes.isEmpty()) {
-            if (isStartTime && foundTimes.size() >= 1) {
-                return normalizeTime(foundTimes.get(0));
-            } else if (!isStartTime && foundTimes.size() >= 2) {
-                return normalizeTime(foundTimes.get(foundTimes.size() - 1));
-            } else if (!isStartTime && foundTimes.size() == 1) {
-                // If there is only one time and it is end, it may be the end time
-                return normalizeTime(foundTimes.get(0));
-            }
+        if (foundTimes.isEmpty()) {
+            return null;
         }
-        
-        // If not found, it is not critical - times are optional
-        // Changed to debug to avoid noise in logs
-        log().info("Could not extract the time of {} from the document (this is optional and does not affect functionality)", 
-                   isStartTime ? "inicio" : "fin");
+        if (isStartTime) {
+            return normalizeTime(foundTimes.get(0));
+        }
+        if (foundTimes.size() >= 2) {
+            return normalizeTime(foundTimes.get(foundTimes.size() - 1));
+        }
+        return normalizeTime(foundTimes.get(0));
+    }
+
+    /**
+     * Extracts the time with multiple supported formats.
+     *
+     * @param content Content of the document
+     * @param isStartTime true for start time, false for end time
+     */
+    private String extractTime(String content, boolean isStartTime) {
+        if (content == null || content.trim().isEmpty()) {
+            return null;
+        }
+
+        String[] startLabels = {"inicio", "comienzo", "comienza"};
+        String[] endLabels = {"fin", "finalización", "finaliza", "termina", "clausura"};
+        String[] labels = isStartTime ? startLabels : endLabels;
+
+        String[] timePatterns = {
+            "(\\d{1,2}:\\s*\\d{2})",
+            "(\\d{1,2}:\\s*\\d{2})\\s*[hH]",
+            "(\\d{1,2}\\.\\d{2})",
+            "(\\d{1,2})\\s*[hH]",
+            "(\\d{1,2})\\s*[hH]\\s*(\\d{2})?"
+        };
+
+        String t = extractTimeFromLabelGrid(content, labels, timePatterns);
+        if (t != null) {
+            return t;
+        }
+        t = extractTimeFromHeaderLabels(content, labels, timePatterns);
+        if (t != null) {
+            return t;
+        }
+        t = extractTimeNearKeywordLine(content, isStartTime);
+        if (t != null) {
+            return t;
+        }
+        t = extractTimeFromDashRanges(content, isStartTime);
+        if (t != null) {
+            return t;
+        }
+        t = extractTimeFromFirstLinesHeuristic(content, isStartTime);
+        if (t != null) {
+            return t;
+        }
+
+        log().info(
+                "Could not extract the time of {} from the document (this is optional and does not affect functionality)",
+                isStartTime ? "inicio" : "fin");
         return null;
     }
     
@@ -1418,11 +1464,9 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         // Clean and normalize
-        time = time.trim()
-                .replaceAll("\\s*h\\s*$", "")  // Remove "h" at the end
-                .replaceAll("\\s*H\\s*$", "")  // Remover "H" al final
-                .replaceAll("\\.", ":")        // Convert 19.00 to 19:00
-                .replaceAll(":\\s+", ":")      // Remove space after colon: "19: 00" -> "19:00"
+        time = SPACE_AFTER_COLON.matcher(TRAILING_H_OR_COLON_SPACING.matcher(time.trim()).replaceAll(""))
+                .replaceAll(":")
+                .replace(".", ":")
                 .trim();
 
         // Format "19 h 30" -> "19:30"
@@ -1467,11 +1511,12 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         }
         
         // If it does not match the expected pattern, try to extract numbers
-        String numbersOnly = time.replaceAll("\\D", "");
+        String numbersOnly = NON_DIGIT_CHARS.matcher(time).replaceAll("");
         if (numbersOnly.length() >= 3 && numbersOnly.length() <= 4) {
             // Format HHMM or HMM
             try {
-                int hour, minute;
+                int hour;
+                int minute;
                 if (numbersOnly.length() == 4) {
                     hour = Integer.parseInt(numbersOnly.substring(0, 2));
                     minute = Integer.parseInt(numbersOnly.substring(2, 4));
@@ -1554,11 +1599,11 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         
         // Clean and normalize names
         attendees = attendees.stream()
-            .map(name -> name.trim())
+            .map(String::trim)
             .filter(name -> !name.isEmpty())
             .filter(name -> name.length() > 2)
             // Remove roles between parentheses (extracted separately)
-            .map(name -> name.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim())
+            .map(MetadataMinuteDocumentService::stripParentheticalSuffix)
             .filter(name -> !name.isEmpty())
             // Filter out descriptive text that might have been captured
             .filter(name -> !ATTENDEE_DESCRIPTOR_NOISE_PATTERN.matcher(name).matches())
@@ -1731,7 +1776,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                     part = part.replaceAll("^[•\\-*\\d\\.\\s]+", "").replaceAll("[•\\-*\\d\\.\\s]+$", "").trim();
                     if (!part.isEmpty() && part.length() > 2) {
                         // Remove roles in parentheses (extracted separately)
-                        part = part.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                        part = stripParentheticalSuffix(part);
                         // Filter out descriptive text
                         if (!part.isEmpty() && !isAttendeeDescriptorNoise(part)) {
                             items.add(part);
@@ -1748,7 +1793,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             Matcher matcher1 = pattern1.matcher(text);
             while (matcher1.find()) {
                 String item = matcher1.group(1).trim();
-                item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                item = stripParentheticalSuffix(item);
                 if (!item.isEmpty() && item.length() > 2) {
                     items.add(item);
                 }
@@ -1760,7 +1805,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 Matcher matcher2 = pattern2.matcher(text);
                 while (matcher2.find()) {
                     String item = matcher2.group(1).trim();
-                    item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                    item = stripParentheticalSuffix(item);
                     if (!item.isEmpty() && item.length() > 2) {
                         items.add(item);
                     }
@@ -1773,7 +1818,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 Matcher matcher3 = pattern3.matcher(text);
                 while (matcher3.find()) {
                     String item = matcher3.group(1).trim();
-                    item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                    item = stripParentheticalSuffix(item);
                     if (!item.isEmpty() && item.length() > 2) {
                         items.add(item);
                     }
@@ -1786,7 +1831,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
                 Matcher matcher4 = pattern4.matcher(text);
                 while (matcher4.find()) {
                     String item = matcher4.group(1).trim();
-                    item = item.replaceAll("\\s*\\([^)]*\\)\\s*", "").trim();
+                    item = stripParentheticalSuffix(item);
                     if (!item.isEmpty() && item.length() > 2) {
                         items.add(item);
                     }
@@ -2042,7 +2087,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Pattern 2: "Agenda:" until any next section (more flexible; optional bullet before keyword)
         pattern = Pattern.compile(
             "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|Asistentes|$))",
-            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS
+            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ
         );
         matcher = pattern.matcher(normalized);
         if (matcher.find()) {
@@ -2055,7 +2100,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
         // Pattern 3: "ORDEN DEL DÍA" (capital letters) until next section
         pattern = Pattern.compile(
             "(?i)ORDEN DEL DÍA:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|Preguntas|Clausura|No habiendo|$))",
-            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS
+            Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ
         );
         matcher = pattern.matcher(normalized);
         if (matcher.find()) {
@@ -2071,7 +2116,7 @@ public class MetadataMinuteDocumentService extends AbstractMetadataDocumentServi
             // Search for "Agenda:" block within that section
             Pattern ordenPattern = Pattern.compile(
                 "(?i)Orden del día:?\\s*(.*?)(?=\\n\\s*(?:[•·▪▫◦‣⁃*\\-]\\s*)?(?:Ruegos|No habiendo)|$)",
-                Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS
+                Pattern.DOTALL | Pattern.UNICODE_CHARACTER_CLASS | Pattern.CANON_EQ
             );
             Matcher ordenMatcher = ordenPattern.matcher(afterAttendees);
             if (ordenMatcher.find()) {

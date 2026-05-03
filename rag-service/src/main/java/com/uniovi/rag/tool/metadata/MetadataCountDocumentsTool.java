@@ -20,6 +20,20 @@ import org.springframework.ai.document.Document;
  */
 public class MetadataCountDocumentsTool extends AbstractMetadataTool {
 
+    private static final String QUERY_STAGE_COUNT = "count";
+
+    private static final String PLACEHOLDER_UNKNOWN_MONTH = "unknown";
+
+    private static final String[] COUNT_RETRIEVAL_FIELDS = {
+            "date", "place", "topics", "decisions", "summary"
+    };
+
+    private record TopicFilterOutcome(List<Document> docs, String topic, ToolResult earlyExit) {
+    }
+
+    private record AttendeesFilterResult(List<Document> docs, ToolResult earlyExit) {
+    }
+
     private static final String[] SPANISH_MONTH_NAMES_LOWER = {
             "enero", "febrero", "marzo", "abril", "mayo", "junio",
             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
@@ -44,53 +58,27 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         
         // Step 1: Retrieve and filter documents efficiently with fallback (using NER if available)
         long startTime = System.currentTimeMillis();
-        List<Document> docs = retrieveDocumentsWithFallback(
-            query,
-            new String[] {"date", "place", "topics", "decisions", "summary"},
-            ner
-        );
-        
-        // Step 1.5: Validate date if present in query
-        String requestedDate = extractDateFromQuery(query, ner);
-        if (requestedDate != null && docs.isEmpty()) {
-            // Date was specified but no documents match
-            String errorMessage = generateDateNotFoundMessage(query, requestedDate);
-            log().info("No documents found for specified date: {} in query: {}", requestedDate, query);
-            return ToolResult.from(formatResponse(errorMessage, query), getClass());
+        List<Document> docs = retrieveDocumentsWithFallback(query, COUNT_RETRIEVAL_FIELDS, ner);
+
+        ToolResult early = exitWhenDateSpecifiedButNoDocuments(query, ner, docs);
+        if (early != null) {
+            return early;
         }
-        
-        // Step 1.6: Filter by topic/keyword if present in query
-        String topic = extractTopicFromQuery(query, ner);
-        if (topic != null && !docs.isEmpty()) {
-            log().info("Filtering documents by topic: {}", topic);
-            List<Document> filteredDocs = filterDocumentsByTopic(docs, topic);
-            if (filteredDocs.isEmpty()) {
-                log().info("No documents found for topic '{}' in query: {}", topic, query);
-                String errorMessage = generateSpecificErrorMessage(query, "topic", topic, docs.size(), "No documents mention this topic");
-                return ToolResult.from(formatResponse(errorMessage, query), getClass());
-            }
-            docs = filteredDocs;
-            log().info("Filtered to {} documents that mention topic '{}'", docs.size(), topic);
+
+        TopicFilterOutcome topicOutcome = filterDocumentsByExtractedTopic(query, ner, docs);
+        if (topicOutcome.earlyExit() != null) {
+            return topicOutcome.earlyExit();
         }
-        
-        // Step 1.7: Filter by attendeesCount if query asks about number of attendees
-        // Example: count minutes with fewer than N attendees (§4: if none have <10 → 0)
-        AttendeesCountQueryInfo attendeesQueryInfo = detectAttendeesCountQuery(query);
-        if (attendeesQueryInfo != null) {
-            log().info("Query asks about number of attendees (operator={}, threshold={}), filtering documents", 
-                      attendeesQueryInfo.operator, attendeesQueryInfo.threshold);
-            List<Document> filteredByAttendees = filterDocumentsByAttendeesCount(attendeesQueryInfo, docs);
-            log().info("Filtered {} documents by attendees count criteria, {} remaining (applied filter even if empty)", 
-                      docs.size(), filteredByAttendees.size());
-            docs = filteredByAttendees; // Apply filter even if empty - this indicates no matches
-            // When filter yields 0 docs, return explicit zero count (not generic "no documents found")
-            if (docs.isEmpty()) {
-                String zeroAnswer = generateCountZeroMessage(query, attendeesQueryInfo);
-                return ToolResult.from(formatResponse(zeroAnswer, query), getClass());
-            }
+        docs = topicOutcome.docs();
+        String topic = topicOutcome.topic();
+
+        AttendeesFilterResult attendeesResult = applyAttendeesCountFilterIfNeeded(query, docs);
+        if (attendeesResult.earlyExit() != null) {
+            return attendeesResult.earlyExit();
         }
-        
-        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "count");
+        docs = attendeesResult.docs();
+
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, QUERY_STAGE_COUNT);
         if (missing != null) {
             return missing;
         }
@@ -105,21 +93,17 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         // Step 2: Extract minutes in parallel (chunks may repeat same document_id; count by unique minute)
         List<Minute> minutes = extractMinutesInParallel(docs);
         minutes = dedupeMinutesByDocumentId(minutes);
-        missing = notFoundIfEmptyMinutes(query, minutes, "count");
+        missing = notFoundIfEmptyMinutes(query, minutes, QUERY_STAGE_COUNT);
         if (missing != null) {
             return missing;
         }
 
         // Step 3: Filter relevant minutes based on NER or query relevance
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        ToolResult missingRelevant = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "count");
+        ToolResult missingRelevant = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, QUERY_STAGE_COUNT);
         if (missingRelevant != null) {
             log().info("No relevant minutes found for count query: {}", query);
-            String zeroMsg = (topic != null)
-                ? (querySeemsSpanish(query)
-                    ? "No se encontraron actas que cumplan con ese criterio."
-                    : "No meeting minutes match the specified criteria.")
-                : generateNotFoundMessage(query);
+            String zeroMsg = messageWhenNoRelevantMinutes(topic, query);
             return ToolResult.from(formatResponse(zeroMsg, query), getClass());
         }
 
@@ -141,6 +125,62 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                   query, analysis.getTotalCount(), totalTime);
         
         return ToolResult.from(formatResponse(answer, query), getClass());
+    }
+
+    private ToolResult exitWhenDateSpecifiedButNoDocuments(String query, JSONObject ner, List<Document> docs) {
+        String requestedDate = extractDateFromQuery(query, ner);
+        if (requestedDate != null && docs.isEmpty()) {
+            String errorMessage = generateDateNotFoundMessage(query, requestedDate);
+            log().info("No documents found for specified date: {} in query: {}", requestedDate, query);
+            return ToolResult.from(formatResponse(errorMessage, query), getClass());
+        }
+        return null;
+    }
+
+    private TopicFilterOutcome filterDocumentsByExtractedTopic(String query, JSONObject ner, List<Document> docs) {
+        String topic = extractTopicFromQuery(query, ner);
+        if (topic == null || docs.isEmpty()) {
+            return new TopicFilterOutcome(docs, topic, null);
+        }
+        log().info("Filtering documents by topic: {}", topic);
+        List<Document> filteredDocs = filterDocumentsByTopic(docs, topic);
+        if (filteredDocs.isEmpty()) {
+            log().info("No documents found for topic '{}' in query: {}", topic, query);
+            String errorMessage = generateSpecificErrorMessage(query, "topic", topic, docs.size(),
+                    "No documents mention this topic");
+            return new TopicFilterOutcome(docs, topic,
+                    ToolResult.from(formatResponse(errorMessage, query), getClass()));
+        }
+        log().info("Filtered to {} documents that mention topic '{}'", filteredDocs.size(), topic);
+        return new TopicFilterOutcome(filteredDocs, topic, null);
+    }
+
+    private AttendeesFilterResult applyAttendeesCountFilterIfNeeded(String query, List<Document> docs) {
+        AttendeesCountQueryInfo attendeesQueryInfo = detectAttendeesCountQuery(query);
+        if (attendeesQueryInfo == null) {
+            return new AttendeesFilterResult(docs, null);
+        }
+        log().info("Query asks about number of attendees (operator={}, threshold={}), filtering documents",
+                attendeesQueryInfo.operator, attendeesQueryInfo.threshold);
+        List<Document> filteredByAttendees = filterDocumentsByAttendeesCount(attendeesQueryInfo, docs);
+        log().info("Filtered {} documents by attendees count criteria, {} remaining (applied filter even if empty)",
+                docs.size(), filteredByAttendees.size());
+        if (filteredByAttendees.isEmpty()) {
+            String zeroAnswer = generateCountZeroMessage(query, attendeesQueryInfo);
+            return new AttendeesFilterResult(filteredByAttendees,
+                    ToolResult.from(formatResponse(zeroAnswer, query), getClass()));
+        }
+        return new AttendeesFilterResult(filteredByAttendees, null);
+    }
+
+    private String messageWhenNoRelevantMinutes(String topic, String query) {
+        if (topic == null) {
+            return generateNotFoundMessage(query);
+        }
+        if (querySeemsSpanish(query)) {
+            return "No se encontraron actas que cumplan con ese criterio.";
+        }
+        return "No meeting minutes match the specified criteria.";
     }
 
     /**
@@ -220,10 +260,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         
         // Extract and analyze attendeesCount if query asks about attendees
         List<Integer> attendeesCounts = null;
-        if (query != null && (query.toLowerCase().contains("asistente") || 
-                              query.toLowerCase().contains("attendee") ||
-                              query.toLowerCase().contains("participaron") ||
-                              query.toLowerCase().contains("personas"))) {
+        if (queryIndicatesAttendeeCountInterest(query)) {
             attendeesCounts = extractAndAnalyzeAttendeesCounts(minutes);
         }
         
@@ -235,7 +272,18 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
             attendeesCounts
         );
     }
-    
+
+    private static boolean queryIndicatesAttendeeCountInterest(String query) {
+        if (query == null) {
+            return false;
+        }
+        String q = query.toLowerCase();
+        return q.contains("asistente")
+                || q.contains("attendee")
+                || q.contains("participaron")
+                || q.contains("personas");
+    }
+
     /**
      * Extracts and analyzes attendeesCount from minutes
      */
@@ -355,8 +403,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
                 return generateFallbackCountAnswer(query, analysis);
             }
             
-            String cleaned = removeQuestionEcho(trimmed, query);
-            return cleaned;
+            return removeQuestionEcho(trimmed, query);
         } catch (Exception e) {
             log().error("Error generating enhanced count answer, using fallback", e);
             return generateFallbackCountAnswer(query, analysis);
@@ -442,22 +489,24 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         StringBuilder data = new StringBuilder();
         
         if (analysis.getDates() != null && !analysis.getDates().isEmpty()) {
-            data.append("Fechas: ").append(String.join(", ", analysis.getDates())).append("\n");
+            data.append("Fechas: ").append(String.join(", ", analysis.getDates())).append(System.lineSeparator());
         }
-        
+
         if (analysis.getPlaces() != null && !analysis.getPlaces().isEmpty()) {
-            data.append("Lugares: ").append(String.join(", ", analysis.getPlaces())).append("\n");
+            data.append("Lugares: ").append(String.join(", ", analysis.getPlaces())).append(System.lineSeparator());
         }
-        
+
         if (analysis.getTopics() != null && !analysis.getTopics().isEmpty()) {
-            data.append("Temas principales: ").append(String.join(", ", analysis.getTopics().stream().limit(10).collect(Collectors.toList()))).append("\n");
+            data.append("Temas principales: ")
+                    .append(String.join(", ", analysis.getTopics().stream().limit(10).collect(Collectors.toList())))
+                    .append(System.lineSeparator());
         }
-        
+
         if (analysis.getAttendeesCounts() != null && !analysis.getAttendeesCounts().isEmpty()) {
             String countsStr = analysis.getAttendeesCounts().stream()
                     .map(String::valueOf)
                     .collect(Collectors.joining(", "));
-            data.append("Número de asistentes por acta: ").append(countsStr).append("\n");
+            data.append("Número de asistentes por acta: ").append(countsStr).append(System.lineSeparator());
         }
         
         return data.toString();
@@ -666,29 +715,26 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         
         // Count meetings by month
         for (Minute minute : minutes) {
-            if (minute.date() == null) {
+            String rawDate = minute.date();
+            if (rawDate == null) {
                 continue;
             }
-            
             try {
-                LocalDate parsedDate = parseDateFlexible(minute.date());
+                LocalDate parsedDate = parseDateFlexible(rawDate);
                 if (parsedDate == null) {
-                    log().debug("Could not parse date '{}' for minute {}", minute.date(), minute.id());
-                    continue;
-                }
-                
-                int monthValue = parsedDate.getMonthValue();
-                String monthName = getMonthName(monthValue);
-                
-                // Only count if month was requested, or if no months were requested (count all)
-                if (requestedMonths.isEmpty() || requestedMonths.contains(monthName)) {
-                    counts.put(monthName, counts.getOrDefault(monthName, 0) + 1);
-                    log().debug("Counted meeting for month '{}' (minute {}, date: {})", 
-                              monthName, minute.id(), minute.date());
+                    log().debug("Could not parse date '{}' for minute {}", rawDate, minute.id());
+                } else {
+                    int monthValue = parsedDate.getMonthValue();
+                    String monthName = getMonthName(monthValue);
+                    if (requestedMonths.isEmpty() || requestedMonths.contains(monthName)) {
+                        counts.put(monthName, counts.getOrDefault(monthName, 0) + 1);
+                        log().debug("Counted meeting for month '{}' (minute {}, date: {})",
+                                monthName, minute.id(), rawDate);
+                    }
                 }
             } catch (Exception e) {
-                log().warn("Error extracting month from date '{}' for minute {}: {}", 
-                          minute.date(), minute.id(), e.getMessage());
+                log().warn("Error extracting month from date '{}' for minute {}: {}",
+                        rawDate, minute.id(), e.getMessage());
             }
         }
         
@@ -702,7 +748,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         if (month >= 1 && month <= 12) {
             return SPANISH_MONTH_NAMES_LOWER[month - 1];
         }
-        return "unknown";
+        return PLACEHOLDER_UNKNOWN_MONTH;
     }
     
     /**
@@ -715,7 +761,7 @@ public class MetadataCountDocumentsTool extends AbstractMetadataTool {
         
         StringBuilder answer = new StringBuilder();
         for (Map.Entry<String, Integer> entry : meetingsByMonth.entrySet()) {
-            answer.append(String.format("%s: %d reuniones\n", entry.getKey(), entry.getValue()));
+            answer.append(String.format("%s: %d reuniones%n", entry.getKey(), entry.getValue()));
         }
         
         return answer.toString().trim();

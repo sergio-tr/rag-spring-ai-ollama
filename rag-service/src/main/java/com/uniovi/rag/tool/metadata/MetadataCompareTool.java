@@ -35,6 +35,20 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     private static final String NER_KEY_FILTERS = "filters";
     private static final String FIELD_KEY_DURATION = "duration";
     private static final String FIELD_KEY_PLACE = "place";
+    private static final String FIELD_KEY_DATE = "date";
+    private static final String FIELD_KEY_NUMBER_OF_ATTENDEES = "numberOfAttendees";
+    private static final String FIELD_KEY_TOPICS = "topics";
+    private static final String FIELD_KEY_DECISIONS = "decisions";
+    private static final String FIELD_KEY_SUMMARY = "summary";
+
+    private static final String QUERY_CONTEXT_COMPARISON = "comparison";
+
+    private static final String PLACEHOLDER_UNKNOWN = "unknown";
+
+    private static final String[] COMPARISON_RETRIEVAL_FIELDS = {
+            FIELD_KEY_DATE, FIELD_KEY_PLACE, FIELD_KEY_NUMBER_OF_ATTENDEES,
+            FIELD_KEY_TOPICS, FIELD_KEY_DECISIONS, FIELD_KEY_SUMMARY
+    };
 
     /** Comparison field: topic mention counts aggregated by calendar month. */
     private static final String FIELD_MENTIONS_BY_MONTH = "mentions_by_month";
@@ -65,19 +79,19 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         }
         docs = yearNarrow.documents();
 
-        ToolResult missing = notFoundIfEmptyDocuments(query, docs, "comparison");
+        ToolResult missing = notFoundIfEmptyDocuments(query, docs, QUERY_CONTEXT_COMPARISON);
         if (missing != null) {
             return missing;
         }
 
         List<Minute> minutes = extractMinutesInParallel(docs);
-        missing = notFoundIfEmptyMinutes(query, minutes, "comparison");
+        missing = notFoundIfEmptyMinutes(query, minutes, QUERY_CONTEXT_COMPARISON);
         if (missing != null) {
             return missing;
         }
 
         List<Minute> relevantMinutes = filterRelevantMinutes(query, minutes, ner);
-        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, "comparison");
+        missing = notFoundIfEmptyRelevantMinutes(query, relevantMinutes, QUERY_CONTEXT_COMPARISON);
         if (missing != null) {
             return missing;
         }
@@ -105,10 +119,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     }
 
     private List<Document> retrieveInitialDocumentsForComparison(String query, JSONObject ner) {
-        List<Document> docs = retrieveDocumentsWithFallback(
-                query,
-                new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"},
-                ner);
+        List<Document> docs = retrieveDocumentsWithFallback(query, COMPARISON_RETRIEVAL_FIELDS, ner);
         List<String> dateCandidates = extractDateCandidates(query, ner);
         return mergeDocumentsWhenComparingTwoDates(query, ner, docs, dateCandidates);
     }
@@ -176,8 +187,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             return docs;
         }
         log().info("Query compares two specific dates; re-retrieving and filtering by any of {} dates", dateCandidates.size());
-        List<Document> allDocs = retrieveDocumentsWithFallback(
-                query, new String[] {"date", "place", "numberOfAttendees", "topics", "decisions", "summary"}, ner);
+        List<Document> allDocs = retrieveDocumentsWithFallback(query, COMPARISON_RETRIEVAL_FIELDS, ner);
         if (allDocs.isEmpty()) {
             allDocs = retrieveDocuments(query, ner);
         }
@@ -590,7 +600,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
     private Map.Entry<String, ComparisonValue> extractComparisonValue(Minute minute, ComparisonField field, JSONObject ner, String query) {
         // Special handling for mentions_by_month comparison
         if (FIELD_MENTIONS_BY_MONTH.equals(field.fieldName)) {
-            return extractMentionsByMonthValue(minute, field, ner, query);
+            return extractMentionsByMonthValue(minute, ner, query);
         }
         // Count of meetings (actas) per month: one minute = one meeting
         if (FIELD_MEETINGS_COUNT_BY_MONTH.equals(field.fieldName)) {
@@ -636,7 +646,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
      * Extracts mentions count by month for comparison queries
      * (e.g. more security-issue mentions in February vs August).
      */
-    private Map.Entry<String, ComparisonValue> extractMentionsByMonthValue(Minute minute, ComparisonField field, JSONObject ner, String query) {
+    private Map.Entry<String, ComparisonValue> extractMentionsByMonthValue(Minute minute, JSONObject ner, String query) {
         // Extract the topic/keyword to count mentions for
         String topic = extractTopicFromQuery(query, ner);
         
@@ -709,7 +719,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 if (t != null) {
                     String topicField = t.toLowerCase();
                     // Check if any key term appears in the topic field
-                    boolean matches = keyTerms.stream().anyMatch(term -> topicField.contains(term));
+                    boolean matches = keyTerms.stream().anyMatch(topicField::contains);
                     if (matches) {
                         count++;
                         log().debug("Found topic match in topics field: '{}' matches topic '{}'", t, topic);
@@ -724,7 +734,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
                 if (d != null) {
                     String decisionField = d.toLowerCase();
                     // Check if any key term appears in the decision field
-                    boolean matches = keyTerms.stream().anyMatch(term -> decisionField.contains(term));
+                    boolean matches = keyTerms.stream().anyMatch(decisionField::contains);
                     if (matches) {
                         count++;
                         log().debug("Found topic match in decisions field: '{}' matches topic '{}'", d, topic);
@@ -774,7 +784,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         String normalized = text.toString()
                 .replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u");
         long matchCount = securityTerms.stream()
-                .filter(term -> normalized.contains(term))
+                .filter(normalized::contains)
                 .count();
         return matchCount >= 2;
     }
@@ -915,7 +925,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
         if (month >= 1 && month <= 12) {
             return SPANISH_MONTH_NAMES_ORDERED[month - 1];
         }
-        return "unknown";
+        return PLACEHOLDER_UNKNOWN;
     }
     
     /**

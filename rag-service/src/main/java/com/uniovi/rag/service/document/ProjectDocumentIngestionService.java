@@ -1,7 +1,6 @@
 package com.uniovi.rag.service.document;
 
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
-import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import java.io.IOException;

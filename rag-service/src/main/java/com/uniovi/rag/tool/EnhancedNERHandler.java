@@ -28,8 +28,19 @@ public class EnhancedNERHandler implements Loggable {
 
     private static final String NER_KEY_COMPARISON_TYPE = "comparisonType";
     private static final String NER_KEY_SECTION = "section";
+    private static final String NER_KEY_TEMPORAL_CONTEXT = "temporalContext";
+    private static final String NER_KEY_ANSWER_TYPE = "answerType";
+    private static final String ANSWER_TYPE_UNKNOWN = "unknown";
 
     private static final String TEMPORAL_CONTEXT_GENERAL = "general";
+
+    private static String orUnknown(String value) {
+        return value != null ? value : ANSWER_TYPE_UNKNOWN;
+    }
+
+    private static String joinOrUnknown(List<String> items, String delimiter) {
+        return items != null ? String.join(delimiter, items) : ANSWER_TYPE_UNKNOWN;
+    }
 
     private final ChatClient chatClient;
     
@@ -144,9 +155,9 @@ public class EnhancedNERHandler implements Loggable {
      * Filters documents based on temporal context from NER
      */
     public List<Document> filterDocumentsByTemporalContext(List<Document> docs, JSONObject ner) {
-        if (ner == null || !ner.has("temporalContext")) return docs;
-        
-        String temporalContext = ner.getString("temporalContext");
+        if (ner == null || !ner.has(NER_KEY_TEMPORAL_CONTEXT)) return docs;
+
+        String temporalContext = ner.getString(NER_KEY_TEMPORAL_CONTEXT);
         if (temporalContext.equals("none") || temporalContext.equals(TEMPORAL_CONTEXT_GENERAL)) return docs;
         
         return docs.stream()
@@ -158,9 +169,9 @@ public class EnhancedNERHandler implements Loggable {
      * Filters minutes based on temporal context from NER
      */
     public List<Minute> filterMinutesByTemporalContext(List<Minute> minutes, JSONObject ner) {
-        if (ner == null || !ner.has("temporalContext")) return minutes;
-        
-        String temporalContext = ner.getString("temporalContext");
+        if (ner == null || !ner.has(NER_KEY_TEMPORAL_CONTEXT)) return minutes;
+
+        String temporalContext = ner.getString(NER_KEY_TEMPORAL_CONTEXT);
         if (temporalContext.equals("none") || temporalContext.equals(TEMPORAL_CONTEXT_GENERAL)) return minutes;
         
         return minutes.stream()
@@ -187,9 +198,9 @@ public class EnhancedNERHandler implements Loggable {
      * Determines answer type from NER or infers it intelligently
      */
     public String determineAnswerType(String query, JSONObject ner) {
-        if (ner != null && ner.has("answerType")) {
-            String answerType = ner.getString("answerType");
-            if (!answerType.equals("unknown")) {
+        if (ner != null && ner.has(NER_KEY_ANSWER_TYPE)) {
+            String answerType = ner.getString(NER_KEY_ANSWER_TYPE);
+            if (!answerType.equals(ANSWER_TYPE_UNKNOWN)) {
                 return answerType;
             }
         }
@@ -299,9 +310,9 @@ public class EnhancedNERHandler implements Loggable {
      * Checks if NER indicates a temporal query
      */
     public boolean isTemporalQuery(JSONObject ner) {
-        return ner != null && ner.has("temporalContext") && 
-               !ner.getString("temporalContext").equals("none") &&
-               !ner.getString("temporalContext").equals(TEMPORAL_CONTEXT_GENERAL);
+        return ner != null && ner.has(NER_KEY_TEMPORAL_CONTEXT)
+                && !ner.getString(NER_KEY_TEMPORAL_CONTEXT).equals("none")
+                && !ner.getString(NER_KEY_TEMPORAL_CONTEXT).equals(TEMPORAL_CONTEXT_GENERAL);
     }
 
     // ============================================================================
@@ -366,21 +377,17 @@ public class EnhancedNERHandler implements Loggable {
             Respond with ONLY one word: YES or NO.
             Do not include any explanation or additional text.
             """,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.president() != null ? minute.president() : "unknown",
-            minute.secretary() != null ? minute.secretary() : "unknown",
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            minute.decisions() != null ? String.join(", ", minute.decisions()) : "unknown",
-            minute.summary() != null ? minute.summary() : "unknown",
+            orUnknown(minute.date()),
+            orUnknown(minute.place()),
+            orUnknown(minute.president()),
+            orUnknown(minute.secretary()),
+            joinOrUnknown(minute.topics(), ", "),
+            joinOrUnknown(minute.decisions(), ", "),
+            orUnknown(minute.summary()),
             ner.toString(2)
         );
     }
 
-    /**
-     * Checks if document matches temporal context.
-     * Uses English for internal processing.
-     */
     /**
      * Checks if document matches temporal context.
      * Uses English for internal processing, but preserves original language in content.
@@ -478,10 +485,10 @@ public class EnhancedNERHandler implements Loggable {
             Respond with ONLY one word: YES or NO.
             Do not include any explanation or additional text.
             """,
-            minute.date() != null ? minute.date() : "unknown",
-            minute.place() != null ? minute.place() : "unknown",
-            minute.topics() != null ? String.join(", ", minute.topics()) : "unknown",
-            minute.summary() != null ? minute.summary() : "unknown",
+            orUnknown(minute.date()),
+            orUnknown(minute.place()),
+            joinOrUnknown(minute.topics(), ", "),
+            orUnknown(minute.summary()),
             temporalContext
         );
         
