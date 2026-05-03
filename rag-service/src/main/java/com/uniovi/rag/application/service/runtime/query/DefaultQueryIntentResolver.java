@@ -59,19 +59,21 @@ public class DefaultQueryIntentResolver implements QueryIntentResolver {
         if (q.contains("field") || q.contains("campo")) {
             return QueryIntent.EXTRACT_FIELD;
         }
-        boolean maybeYesNo =
-                q.startsWith("is ")
-                        || q.startsWith("are ")
-                        || q.contains(" yes")
-                        || q.contains(" no")
-                        || q.contains("es ")
-                        || q.contains("son ")
-                        || (q.contains("¿") && q.contains("?"));
-        if (maybeYesNo
+        if (looksLikeYesNoQuestion(q)
                 && entities.answerTypeHint().filter(h -> h.toLowerCase(Locale.ROOT).contains("boolean")).isPresent()) {
             return QueryIntent.BOOLEAN_CHECK;
         }
         return QueryIntent.UNKNOWN;
+    }
+
+    private static boolean looksLikeYesNoQuestion(String q) {
+        return q.startsWith("is ")
+                || q.startsWith("are ")
+                || q.contains(" yes")
+                || q.contains(" no")
+                || q.contains("es ")
+                || q.contains("son ")
+                || (q.contains("¿") && q.contains("?"));
     }
 
     private static QueryIntent mapClassifierType(QueryType t) {
