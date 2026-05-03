@@ -28,8 +28,6 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.http.HttpStatusCode;
 
-import java.util.stream.Collectors;
-
 /**
  * Standardizes JSON error responses for REST controllers.
  *
@@ -46,7 +44,7 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
             HttpStatusCode status,
             WebRequest request) {
         List<ApiValidationError> errors = ex.getBindingResult().getFieldErrors().stream()
-                .map(e -> new ApiValidationError(e.getField(), safeMessage(e.getDefaultMessage(), "invalid")))
+                .map(e -> new ApiValidationError(e.getField(), trimOrFallback(e.getDefaultMessage(), "invalid")))
                 .toList();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(build(
                 servletRequestOrNull(request),
@@ -61,7 +59,7 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
         List<ApiValidationError> errors = ex.getConstraintViolations().stream()
                 .map(v -> new ApiValidationError(
                         v.getPropertyPath() != null ? v.getPropertyPath().toString() : null,
-                        safeMessage(v.getMessage(), "invalid")))
+                        trimOrFallback(v.getMessage(), "invalid")))
                 .toList();
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(build(
                 request,
@@ -95,6 +93,7 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 null));
     }
 
+    @Override
     protected ResponseEntity<Object> handleHttpRequestMethodNotSupported(
             HttpRequestMethodNotSupportedException ex,
             HttpHeaders headers,
@@ -167,8 +166,8 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(build(
                 request,
                 HttpStatus.BAD_REQUEST,
-                safeCode(ex.getCode(), "INVALID_TOKEN"),
-                safeMessage(ex.getPublicMessage(), "Invalid token"),
+                trimOrFallback(ex.getCode(), "INVALID_TOKEN"),
+                trimOrFallback(ex.getPublicMessage(), "Invalid token"),
                 null));
     }
 
@@ -177,8 +176,8 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(build(
                 request,
                 HttpStatus.NOT_FOUND,
-                safeCode(ex.getCode(), "NOT_FOUND"),
-                safeMessage(ex.getPublicMessage(), "Not found"),
+                trimOrFallback(ex.getCode(), "NOT_FOUND"),
+                trimOrFallback(ex.getPublicMessage(), "Not found"),
                 null));
     }
 
@@ -188,7 +187,7 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 request,
                 HttpStatus.NOT_FOUND,
                 "NOT_FOUND",
-                safeMessage(ex.getMessage(), "Not found"),
+                trimOrFallback(ex.getMessage(), "Not found"),
                 null));
     }
 
@@ -213,8 +212,8 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return new ApiErrorResponse(
                 Instant.now(),
                 status.value(),
-                safeCode(code, status.name()),
-                safeMessage(message, "Request failed"),
+                trimOrFallback(code, status.name()),
+                trimOrFallback(message, "Request failed"),
                 path,
                 requestId,
                 (validationErrors == null || validationErrors.isEmpty()) ? null : validationErrors);
@@ -237,12 +236,7 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return null;
     }
 
-    private static String safeCode(String raw, String fallback) {
-        String s = raw != null ? raw.trim() : "";
-        return s.isEmpty() ? fallback : s;
-    }
-
-    private static String safeMessage(String raw, String fallback) {
+    private static String trimOrFallback(String raw, String fallback) {
         String s = raw != null ? raw.trim() : "";
         return s.isEmpty() ? fallback : s;
     }
