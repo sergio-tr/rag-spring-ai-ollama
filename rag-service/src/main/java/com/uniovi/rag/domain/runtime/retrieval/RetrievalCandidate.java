@@ -16,9 +16,9 @@ public record RetrievalCandidate(
         double fusedRrfScore) {
 
     public RetrievalCandidate {
-        candidateId = Objects.requireNonNull(candidateId, "candidateId");
+        Objects.requireNonNull(candidateId, "candidateId");
         content = content != null ? content : "";
         metadata = Map.copyOf(Objects.requireNonNull(metadata, "metadata"));
-        snapshotId = Objects.requireNonNull(snapshotId, "snapshotId");
+        Objects.requireNonNull(snapshotId, "snapshotId");
     }
 }

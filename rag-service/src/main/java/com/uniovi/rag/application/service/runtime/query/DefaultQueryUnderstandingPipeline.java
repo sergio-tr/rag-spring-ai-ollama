@@ -21,6 +21,10 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipeline {
 
+    private static final String QU_NOTE_DISABLED = "DISABLED";
+    private static final String QU_NOTE_FALLBACK = "FALLBACK";
+    private static final String QU_NOTE_ERROR = "ERROR";
+
     private final QueryClassifierAdapter classifierAdapter;
     private final NamedEntityExtractionAdapter entityExtractionAdapter;
     private final StructuredQueryRewriter rewriter;
@@ -64,9 +68,9 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         QueryClassifierAdapter.ClassifierOutcome c = classifierAdapter.classify(ctx, normalized.normalizedText());
         String classifyStatus = switch (c.classifierStatus()) {
             case OK -> "OK";
-            case DISABLED -> "DISABLED";
-            case INVALID_OUTPUT -> "FALLBACK";
-            case UNAVAILABLE -> "ERROR";
+            case DISABLED -> QU_NOTE_DISABLED;
+            case INVALID_OUTPUT -> QU_NOTE_FALLBACK;
+            case UNAVAILABLE -> QU_NOTE_ERROR;
         };
         notes.add(stageNote("qu_classify", classifyStatus, msSince(t1),
                 "classifierStatus=" + c.classifierStatus().name()
@@ -82,9 +86,10 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
         EntityExtractionResult entities = entityExtractionAdapter.extract(ctx, normalized.normalizedText());
         String nerStatus;
         if (!ctx.resolved().toRagConfig().nerEnabled()) {
-            nerStatus = "DISABLED";
-        } else if (!entities.notes().isEmpty() && entities.notes().get(0).startsWith("FALLBACK")) {
-            nerStatus = "ERROR";
+            nerStatus = QU_NOTE_DISABLED;
+        } else if (!entities.notes().isEmpty()
+                && entities.notes().get(0).startsWith(QU_NOTE_FALLBACK)) {
+            nerStatus = QU_NOTE_ERROR;
         } else {
             nerStatus = "OK";
         }
@@ -97,13 +102,13 @@ public class DefaultQueryUnderstandingPipeline implements QueryUnderstandingPipe
                 ctx, normalized, classifierLabel, classifierQueryType, classifierStatus, entities);
         String rewriteStatus = "OK";
         if (!ctx.resolved().toRagConfig().toolsEnabled()) {
-            rewriteStatus = "DISABLED";
+            rewriteStatus = QU_NOTE_DISABLED;
         } else if (!rewrite.rewriteNotes().isEmpty()) {
             String first = rewrite.rewriteNotes().get(0).toUpperCase();
-            if (first.startsWith("FALLBACK")) {
-                rewriteStatus = "ERROR";
-            } else if (first.startsWith("DISABLED")) {
-                rewriteStatus = "DISABLED";
+            if (first.startsWith(QU_NOTE_FALLBACK)) {
+                rewriteStatus = QU_NOTE_ERROR;
+            } else if (first.startsWith(QU_NOTE_DISABLED)) {
+                rewriteStatus = QU_NOTE_DISABLED;
             }
         }
         notes.add(stageNote("qu_rewrite", rewriteStatus, msSince(t3),

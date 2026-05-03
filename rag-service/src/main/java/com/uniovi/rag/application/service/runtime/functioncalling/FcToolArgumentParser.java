@@ -15,6 +15,8 @@ public final class FcToolArgumentParser {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    private static final String FIELD_QUERY = "query";
+
     private FcToolArgumentParser() {
     }
 
@@ -42,8 +44,8 @@ public final class FcToolArgumentParser {
     }
 
     private static ParsedArgs parseSingleQuery(ObjectNode obj, String rewritten) {
-        assertNoExtraKeys(obj, "query");
-        String q = requiredText(obj, "query");
+        assertNoExtraKeys(obj, FIELD_QUERY);
+        String q = requiredText(obj, FIELD_QUERY);
         if (!q.equals(rewritten)) {
             throw new IllegalArgumentException("query_mismatch");
         }
@@ -51,8 +53,8 @@ public final class FcToolArgumentParser {
     }
 
     private static ParsedArgs parseGetField(ObjectNode obj, String rewritten, QueryPlan plan) {
-        assertNoExtraKeys(obj, "query", "field");
-        String q = requiredText(obj, "query");
+        assertNoExtraKeys(obj, FIELD_QUERY, "field");
+        String q = requiredText(obj, FIELD_QUERY);
         if (!q.equals(rewritten)) {
             throw new IllegalArgumentException("query_mismatch");
         }

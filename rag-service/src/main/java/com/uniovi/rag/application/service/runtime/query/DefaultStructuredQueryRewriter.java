@@ -51,8 +51,7 @@ public class DefaultStructuredQueryRewriter implements StructuredQueryRewriter {
             String prompt = buildPrompt(normalized, classifierLabel, classifierQueryType, classifierStatus, entities);
             String response = invokeRewriteModel(ctx, prompt);
             StructuredRewriteResult parsed = parse(response, normalized.normalizedText());
-            StructuredRewriteResult validated = validateOrFallback(parsed, normalized, entities);
-            return validated;
+            return validateOrFallback(parsed, normalized, entities);
         } catch (Exception e) {
             return StructuredRewriteResult.identityFallback(normalized.normalizedText(), safeMsg(e));
         }

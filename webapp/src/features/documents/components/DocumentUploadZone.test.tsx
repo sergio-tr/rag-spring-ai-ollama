@@ -65,6 +65,17 @@ describe("DocumentUploadZone", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/Upload failed/i);
   });
 
+  it("maps 403 to unauthorized upload hint like 401", () => {
+    uploadHook.isError = true;
+    uploadHook.error = new ApiError(403, "forbidden");
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert").textContent?.toLowerCase()).toContain("not authorized");
+  });
+
   it("renders friendly error messages for common ApiError status codes", () => {
     uploadHook.isError = true;
     uploadHook.error = new ApiError(503, "x");
@@ -98,6 +109,20 @@ describe("DocumentUploadZone", () => {
       </IntlTestProvider>,
     );
     expect(screen.getByRole("alert").textContent?.toLowerCase()).toMatch(/gateway|unavailable/);
+  });
+
+  it("extracts title field from structured ApiError metadata", () => {
+    uploadHook.isError = true;
+    uploadHook.error = new ApiError(500, "fallback", {
+      kind: "http",
+      details: { title: "bad upload" } as unknown as Record<string, unknown>,
+    });
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("bad upload");
   });
 
   it("extracts error detail from JSON in ApiError message", () => {
@@ -172,6 +197,49 @@ describe("DocumentUploadZone", () => {
       </IntlTestProvider>,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("nope");
+  });
+
+  it("uploads multiple selected files sequentially", async () => {
+    const user = userEvent.setup();
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    const a = new File(["a"], "a.txt", { type: "text/plain" });
+    const b = new File(["b"], "b.txt", { type: "text/plain" });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(input, [a, b]);
+    expect(uploadHook.mutateAsync).toHaveBeenCalledTimes(2);
+    expect(uploadHook.mutateAsync).toHaveBeenCalledWith(a);
+    expect(uploadHook.mutateAsync).toHaveBeenCalledWith(b);
+  });
+
+  it("opens file picker from keyboard on the drop zone", () => {
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    const zone = screen.getByRole("group", { name: /drag files here or browse/i });
+    fireEvent.keyDown(zone, { key: "Enter" });
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(zone, { key: " " });
+    expect(clickSpy).toHaveBeenCalledTimes(2);
+    clickSpy.mockRestore();
+  });
+
+  it("opens file picker when clicking the hint text outside the browse button", () => {
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
+    render(
+      <IntlTestProvider>
+        <DocumentUploadZone projectId="p1" />
+      </IntlTestProvider>,
+    );
+    fireEvent.click(screen.getByText(/Drag files here or browse/i));
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    clickSpy.mockRestore();
   });
 
   it("uploads files dropped on the zone", () => {

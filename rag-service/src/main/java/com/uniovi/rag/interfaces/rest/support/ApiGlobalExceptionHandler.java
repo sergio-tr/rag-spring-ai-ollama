@@ -27,6 +27,7 @@ import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.lang.Nullable;
 
 /**
  * Standardizes JSON error responses for REST controllers.
@@ -40,8 +41,8 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException ex,
-            HttpHeaders headers,
-            HttpStatusCode status,
+            @Nullable HttpHeaders headers,
+            @Nullable HttpStatusCode status,
             WebRequest request) {
         List<ApiValidationError> errors = ex.getBindingResult().getFieldErrors().stream()
                 .map(e -> new ApiValidationError(e.getField(), trimOrFallback(e.getDefaultMessage(), "invalid")))
@@ -72,8 +73,8 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleHttpMessageNotReadable(
             HttpMessageNotReadableException ex,
-            HttpHeaders headers,
-            HttpStatusCode status,
+            @Nullable HttpHeaders headers,
+            @Nullable HttpStatusCode status,
             WebRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(build(
                 servletRequestOrNull(request),
@@ -96,8 +97,8 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleHttpRequestMethodNotSupported(
             HttpRequestMethodNotSupportedException ex,
-            HttpHeaders headers,
-            HttpStatusCode status,
+            @Nullable HttpHeaders headers,
+            @Nullable HttpStatusCode status,
             WebRequest request) {
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(build(
                 servletRequestOrNull(request),
@@ -110,8 +111,8 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(
             HttpMediaTypeNotSupportedException ex,
-            HttpHeaders headers,
-            HttpStatusCode status,
+            @Nullable HttpHeaders headers,
+            @Nullable HttpStatusCode status,
             WebRequest request) {
         return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(build(
                 servletRequestOrNull(request),
