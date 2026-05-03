@@ -491,23 +491,23 @@ public class MetadataBooleanQueryTool extends AbstractMetadataTool {
         StringBuilder sb = new StringBuilder();
         Map<String, Object> metadata = doc.getMetadata();
         if (metadata != null) {
-            if (metadata.containsKey("topics")) {
-                Object topicsObj = metadata.get("topics");
+            if (metadata.containsKey(META_FIELD_TOPICS)) {
+                Object topicsObj = metadata.get(META_FIELD_TOPICS);
                 if (topicsObj instanceof List) {
-                    sb.append("Topics: ").append(String.join(", ", (List<String>) topicsObj)).append("\n");
+                    sb.append(PROMPT_LABEL_TOPICS).append(String.join(", ", (List<String>) topicsObj)).append("\n");
                 } else if (topicsObj instanceof String) {
-                    sb.append("Topics: ").append(topicsObj).append("\n");
+                    sb.append(PROMPT_LABEL_TOPICS).append(topicsObj).append("\n");
                 }
             }
-            if (metadata.containsKey("summary") && metadata.get("summary") != null) {
-                sb.append("Summary: ").append(metadata.get("summary").toString()).append("\n");
+            if (metadata.containsKey(META_FIELD_SUMMARY) && metadata.get(META_FIELD_SUMMARY) != null) {
+                sb.append(PROMPT_LABEL_SUMMARY).append(metadata.get(META_FIELD_SUMMARY).toString()).append("\n");
             }
-            if (metadata.containsKey("decisions")) {
-                Object decisionsObj = metadata.get("decisions");
+            if (metadata.containsKey(META_FIELD_DECISIONS)) {
+                Object decisionsObj = metadata.get(META_FIELD_DECISIONS);
                 if (decisionsObj instanceof List) {
-                    sb.append("Decisions: ").append(String.join(", ", (List<String>) decisionsObj)).append("\n");
+                    sb.append(PROMPT_LABEL_DECISIONS).append(String.join(", ", (List<String>) decisionsObj)).append("\n");
                 } else if (decisionsObj instanceof String) {
-                    sb.append("Decisions: ").append(decisionsObj).append("\n");
+                    sb.append(PROMPT_LABEL_DECISIONS).append(decisionsObj).append("\n");
                 }
             }
         }

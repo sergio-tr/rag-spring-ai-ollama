@@ -1692,11 +1692,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                 return "decision-focused";
             } else if (result.contains("topic")) {
                 return "topic-focused";
-            } else if (result.contains("person")) {
+            } else if (result.contains(NER_KEY_PERSON)) {
                 return "person-focused";
             } else if (result.contains("date")) {
                 return "date-focused";
-            } else if (result.contains("location") || result.contains("place")) {
+            } else if (result.contains("location") || result.contains(METADATA_KEY_PLACE)) {
                 return "location-focused";
             } else if (result.contains("entity")) {
                 return "entity-focused";
@@ -1832,8 +1832,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
                         || (metadata.containsKey(METADATA_KEY_DATE_ISO) && metadata.get(METADATA_KEY_DATE_ISO) != null)
                         || (metadata.containsKey("year") && metadata.get("year") != null)
                         || (metadata.containsKey("month") && metadata.get("month") != null);
-            case "numberOfAttendees":
-                return (metadata.containsKey("numberOfAttendees") && metadata.get("numberOfAttendees") != null)
+            case METADATA_KEY_NUMBER_OF_ATTENDEES:
+                return (metadata.containsKey(METADATA_KEY_NUMBER_OF_ATTENDEES)
+                                && metadata.get(METADATA_KEY_NUMBER_OF_ATTENDEES) != null)
                         || (metadata.containsKey(METADATA_KEY_ATTENDEES_COUNT)
                             && metadata.get(METADATA_KEY_ATTENDEES_COUNT) != null);
             default:
@@ -1865,7 +1866,11 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         // If we have no relevant fields, check basic fields
         if (metadataSummary.isEmpty()) {
             metadataSummary.append("date: ").append(metadata.getOrDefault("date", "")).append("; ");
-            metadataSummary.append("topics: ").append(metadata.getOrDefault("topics", "")).append("; ");
+            metadataSummary
+                    .append(METADATA_KEY_TOPICS)
+                    .append(": ")
+                    .append(metadata.getOrDefault(METADATA_KEY_TOPICS, ""))
+                    .append("; ");
         }
         
         // Use semantic matching to determine if metadata is relevant to query
@@ -2528,7 +2533,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
     protected boolean queryRequiresPerson(String query) {
         if (query == null || query.isBlank()) return false;
         String q = query.toLowerCase();
-        return q.contains("presididas por") || q.contains("presidida por") || q.contains("presidió") || q.contains("president")
+        return q.contains("presididas por") || q.contains("presidida por") || q.contains("presidió") || q.contains(METADATA_KEY_PRESIDENT)
                 || q.contains("asistió") || q.contains("asistieron") || q.contains("participó") || q.contains("participaron")
                 || q.contains("secretari") || q.contains("quién presidió") || q.contains("quién fue el presidente")
                 || q.contains("quién fue la secretaria") || q.contains("quién fue el secretario");
@@ -2613,9 +2618,9 @@ public abstract class AbstractMetadataTool extends AbstractTool {
 
         Map<String, Object> metadata = doc.getMetadata();
         if (metadata != null) {
-            appendOptionalListOrString(context, metadata, "topics", "Topics");
-            appendOptionalValue(context, metadata, "summary", "Summary");
-            appendOptionalListOrString(context, metadata, "decisions", "Decisions");
+            appendOptionalListOrString(context, metadata, METADATA_KEY_TOPICS, "Topics");
+            appendOptionalValue(context, metadata, METADATA_KEY_SUMMARY, "Summary");
+            appendOptionalListOrString(context, metadata, METADATA_KEY_DECISIONS, "Decisions");
         }
 
         String content = doc.getText();
@@ -4058,7 +4063,7 @@ public abstract class AbstractMetadataTool extends AbstractTool {
         }
 
         List<String> attendees = new ArrayList<>();
-        appendAttendeesFromMetadataValue(doc.getMetadata().get("attendees"), attendees);
+        appendAttendeesFromMetadataValue(doc.getMetadata().get(METADATA_KEY_ATTENDEES), attendees);
         mergeAttendeesFromMinuteIfPresent(doc, attendees);
 
         log().info("Extracted {} attendees from document metadata", attendees.size());

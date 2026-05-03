@@ -462,7 +462,7 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             return new ComparisonField(FIELD_MENTIONS_BY_MONTH, ComparisonType.COUNT);
         }
         if (response.contains("numberofattendees") || response.contains("attendees") || response.contains("people")) {
-            return new ComparisonField("numberOfAttendees", ComparisonType.NUMERIC);
+            return new ComparisonField(FIELD_KEY_NUMBER_OF_ATTENDEES, ComparisonType.NUMERIC);
         }
         if (response.contains(FIELD_KEY_DURATION) || response.contains("time") || response.contains("length")) {
             return new ComparisonField(FIELD_KEY_DURATION, ComparisonType.NUMERIC);
@@ -474,10 +474,10 @@ public class MetadataCompareTool extends AbstractMetadataTool {
             return new ComparisonField(FIELD_KEY_PLACE, ComparisonType.TEXT);
         }
         if (response.contains("topics") || response.contains("subjects")) {
-            return new ComparisonField("topics", ComparisonType.COUNT);
+            return new ComparisonField(FIELD_KEY_TOPICS, ComparisonType.COUNT);
         }
         if (response.contains("decisions") || response.contains("agreements")) {
-            return new ComparisonField("decisions", ComparisonType.COUNT);
+            return new ComparisonField(FIELD_KEY_DECISIONS, ComparisonType.COUNT);
         }
         return null;
     }
