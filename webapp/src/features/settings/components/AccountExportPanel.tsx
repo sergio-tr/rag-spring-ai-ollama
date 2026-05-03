@@ -163,12 +163,14 @@ export function AccountExportPanel() {
       if (e instanceof DOMException && e.name === "AbortError") {
         return;
       }
-      const msg =
-        e instanceof ApiError
-          ? e.message
-          : e instanceof Error
-            ? sanitizePlainErrorTextForUi(e.message) || e.message
-            : t("accountExportError");
+      let msg: string;
+      if (e instanceof ApiError) {
+        msg = e.message;
+      } else if (e instanceof Error) {
+        msg = sanitizePlainErrorTextForUi(e.message) || e.message;
+      } else {
+        msg = t("accountExportError");
+      }
       if (mountedRef.current) {
         setInlineError(msg || t("accountExportError"));
       }
@@ -242,11 +244,12 @@ export function AccountExportPanel() {
     return null;
   })();
 
-  const stoppedMessage = stoppedWatching
-    ? pollTimedOut
+  let stoppedMessage: string | null = null;
+  if (stoppedWatching) {
+    stoppedMessage = pollTimedOut
       ? t("accountExportStoppedWatchingTimeout")
-      : t("accountExportStoppedWatchingNavigated")
-    : null;
+      : t("accountExportStoppedWatchingNavigated");
+  }
 
   const requestDisabled = followingBusy || (!!lastStatus && !lastStatus.terminal);
 
@@ -269,9 +272,7 @@ export function AccountExportPanel() {
         {(phaseMessage || stoppedMessage || inlineError || downloadError) && (
           <div className="flex flex-col gap-2 text-sm" data-testid="account-export-status">
             {phaseMessage && !inlineError && (
-              <p className="text-muted-foreground" role="status">
-                {phaseMessage}
-              </p>
+              <output className="text-muted-foreground block">{phaseMessage}</output>
             )}
             {inlineError && (
               <p className="text-destructive" role="alert">
@@ -279,10 +280,10 @@ export function AccountExportPanel() {
               </p>
             )}
             {stoppedMessage && (
-              <p className="text-muted-foreground border-l-2 border-amber-500/60 pl-2" role="status">
+              <output className="text-muted-foreground block border-l-2 border-amber-500/60 pl-2">
                 {stoppedMessage}{" "}
                 <span className="block text-xs">{t("accountExportPollHint")}</span>
-              </p>
+              </output>
             )}
             {downloadError && (
               <p className="text-destructive" role="alert">
