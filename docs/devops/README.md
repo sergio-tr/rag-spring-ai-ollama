@@ -77,7 +77,7 @@ Compose defaults for the same prefix live under **Compose parameterization** bel
 | `ollama` | [`ollama/Dockerfile`](../../ollama/Dockerfile) | No | Yes | optional overlays |
 | Observability | [`observability/*/Dockerfile`](../../observability/) | No | Yes | `docker-compose.yml` profiles + `compose.obs.yml` |
 
-**Source of truth for GHCR tags:** [`build-images.yml`](../../.github/workflows/build-images.yml) — SHA tag + `:latest` (non-contractual).
+**Source of truth for GHCR tags:** [`build-images.yml`](../../.github/workflows/build-images.yml) — SHA tag + `:latest` (non-contractual) + release tag when built from a published GitHub Release (optional extra tag on manual `workflow_dispatch`).
 
 ## Compose parameterization (source of truth)
 

@@ -29,7 +29,7 @@
 | `gatling.yml` | Cron + `workflow_dispatch` | No | External Gatling (skips if `GATLING_BASE_URL` empty on schedule). |
 | `micro-benchmark.yml` | Cron + `workflow_dispatch` | No | External micro-benchmarks. |
 | `system-checks.yml` | `workflow_dispatch` | No | Playwright API against a **running** Spring URL. |
-| `build-images.yml` | As configured | Per team | Container images. |
+| `build-images.yml` | `release` **published** + `workflow_dispatch` | Per team | Container images (GHCR); gates on **`ci.yml`** for resolved SHA. |
 | **`deploy.yml`** | `workflow_dispatch` | N/A | **Gate:** successful **`ci.yml`** run on the **same commit SHA** (full DAG includes fullstack E2E). |
 
 **Branch protection:** The blocking check is the **`CI / CI pipeline`** job from [`ci.yml`](../../.github/workflows/ci.yml) (see [`.github/ci/dev-pr-gate.md`](../../.github/ci/dev-pr-gate.md)). Internal job names in `reusable-ci-core` are shown inside that run; verify exact UI strings after a green run.

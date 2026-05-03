@@ -80,7 +80,7 @@
 | [`micro-benchmark.yml`](../.github/workflows/micro-benchmark.yml) | Weekly cron + `workflow_dispatch` | Optional Python RAG micro-benchmarks (skips if `BENCHMARK_BASE_URL` empty) — no PR gate |
 | [`system-checks.yml`](../.github/workflows/system-checks.yml) | `workflow_dispatch` | Playwright API (`npm run test:api` in `webapp/`) against a **running** Spring URL |
 | [`sonar.yml`](../.github/workflows/sonar.yml) | `workflow_dispatch` | Ad-hoc SonarCloud analysis; PR analysis runs inside `ci.yml` → `reusable-ci-core` |
-| [`build-images.yml`](../.github/workflows/build-images.yml) | `push` on `main`/`master` + `workflow_dispatch` | Container image builds (GHCR) |
+| [`build-images.yml`](../.github/workflows/build-images.yml) | `release` **published** + `workflow_dispatch` | Container image builds (GHCR); gates on successful [`ci.yml`](../.github/workflows/ci.yml) for the resolved commit |
 | [`deploy.yml`](../.github/workflows/deploy.yml) | `workflow_dispatch` | **Manual deploy** to VM; **gates** on successful [`ci.yml`](../.github/workflows/ci.yml) for the same commit SHA — see [operations/deploy-workflow-audit.md](operations/deploy-workflow-audit.md) |
 
 Details and the testing pyramid: [testing/README.md](testing/README.md) (including **Quality gates before deploy**). Workflows vs gates (aligned): [development/e2e-testing-strategy.md](development/e2e-testing-strategy.md). Load tool roles: [performance/README.md](performance/README.md). Release checklist: [operations/release-readiness-checklist.md](operations/release-readiness-checklist.md).

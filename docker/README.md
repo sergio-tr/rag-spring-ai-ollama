@@ -8,7 +8,7 @@ Orchestration files (`docker-compose.yml`, `compose.*.yml`) and operational docu
 
 **Images:** Every `FROM` in this monorepo targets a **Linux** userland (OpenJDK/Eclipse Temurin, Node, Python slim, Ollama CUDA variants, etc.). **Postgres** is built from **`db/Dockerfile`**; **`docker-compose.yml`** passes a **fixed** pgvector pin **`pgvector/pgvector:0.8.2-pg16-bookworm`** as `POSTGRES_BASE_IMAGE` (see [db/README.md](../db/README.md)). Loki, Promtail, node-exporter, and cAdvisor use thin Dockerfiles under **`observability/*/`** with tags from **`observability/.env`**. Compose is validated on **Linux** hosts and in **CI** (`ubuntu-*`); use Linux or WSL2 locally for parity.
 
-**GHCR tags ([`build-images.yml`](../.github/workflows/build-images.yml)):** Each built service is pushed as `ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<github_sha>` and also `:latest`. For **reproducible deploy and rollback**, pin by **commit SHA** tag. Treat **`latest` as non-contractual** in runbooks and thesis evidence.
+**GHCR tags ([`build-images.yml`](../.github/workflows/build-images.yml)):** The workflow runs on **release published** or **manual dispatch**. Each built service is pushed as `ghcr.io/<owner>/rag-spring-ai-ollama-<service>:<commit_sha>`, `:latest`, and (on a GitHub Release) `:<release_tag>` (e.g. `v1.0.0`). For **reproducible deploy and rollback**, pin by **commit SHA** tag. Treat **`latest` as non-contractual** in runbooks and thesis evidence.
 
 Typical start from the `docker/` directory (canonical entry point: `./docker/scripts/up.sh` from the repo root):
 
