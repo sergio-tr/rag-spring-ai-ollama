@@ -3,6 +3,7 @@ HTTP endpoints: health, models, classify, train, evaluate.
 Delegates to services from the container; maps exceptions to structured error responses.
 """
 import logging
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
@@ -64,8 +65,11 @@ def get_container(request: Request) -> ServiceContainer:
     return request.app.state.container
 
 
+ServiceContainerDep = Annotated[ServiceContainer, Depends(get_container)]
+
+
 @router.get("/health")
-def health(container: ServiceContainer = Depends(get_container)):
+def health(container: ServiceContainerDep):
     """Service status. Includes whether the default model is loaded."""
     config = container.config
     default_id = config.get_default_model_id()
@@ -75,7 +79,7 @@ def health(container: ServiceContainer = Depends(get_container)):
 
 
 @router.get("/models", response_model=list)
-def models(container: ServiceContainer = Depends(get_container)):
+def models(container: ServiceContainerDep):
     """Lists available models: default first, then trained models."""
     items = container.model_registry_service.list_models()
     return [m.to_response_dict() for m in items]
@@ -84,7 +88,7 @@ def models(container: ServiceContainer = Depends(get_container)):
 @router.post("/classify", response_model=dict, responses=CLASSIFY_OPENAPI_RESPONSES)
 def classify(
     req: ClassifyRequest,
-    container: ServiceContainer = Depends(get_container),
+    container: ServiceContainerDep,
     model_id: str | None = Query(
         None, alias="modelId", description="Model id (alternative to body)"
     ),
@@ -129,13 +133,13 @@ def classify(
 
 @router.post("/train", response_model=dict, responses=TRAIN_OPENAPI_RESPONSES)
 async def train_endpoint(
+    container: ServiceContainerDep,
     file: UploadFile = File(..., description="Excel dataset with columns Question and QueryType"),
     model_name: str = Form(..., description="Label/name for the trained model (tag)"),
     labels: str | None = Form(None, description="Optional JSON array of class names, e.g. [\"COUNT_DOCUMENTS\", \"SUMMARIZE_MEETING\"]"),
     labels_file: UploadFile | None = File(None, description="Optional labels file (one label per line, like query_type_labels.txt)"),
     epochs: int = Form(50),
     batch_size: int = Form(8),
-    container: ServiceContainer = Depends(get_container),
 ):
     """Trains a new model from the uploaded dataset and registers it under the given name (tag). Optional labels define class order/whitelist."""
     require_excel_upload(file)
@@ -197,6 +201,7 @@ async def train_endpoint(
 
 @router.post("/evaluate", response_model=dict, responses=EVAL_OPENAPI_RESPONSES)
 async def evaluate_endpoint(
+    container: ServiceContainerDep,
     model_id: str | None = Query(
         None, alias="modelId", description="Model tag to evaluate; default model if omitted"
     ),
@@ -204,7 +209,6 @@ async def evaluate_endpoint(
         True, alias="includeImages", description="Include base64 PNG images in response"
     ),
     file: UploadFile | None = File(None, description="Optional evaluation dataset Excel; uses default if omitted"),
-    container: ServiceContainer = Depends(get_container),
 ):
     """
     Evaluates a model by tag on an evaluation dataset. Returns classification report, confusion matrix,
@@ -272,12 +276,12 @@ def _evaluate_png_response(container: ServiceContainer, model_id: str, *, report
 
 
 @router.get("/evaluate/{model_id}/report.png", response_class=Response, responses=EVAL_PNG_OPENAPI_RESPONSES)
-def evaluate_report_image(model_id: str, container: ServiceContainer = Depends(get_container)):
+def evaluate_report_image(model_id: str, container: ServiceContainerDep):
     """Returns the classification report heatmap PNG for the given model (uses default eval dataset)."""
     return _evaluate_png_response(container, model_id, report=True)
 
 
 @router.get("/evaluate/{model_id}/confusion.png", response_class=Response, responses=EVAL_PNG_OPENAPI_RESPONSES)
-def evaluate_confusion_image(model_id: str, container: ServiceContainer = Depends(get_container)):
+def evaluate_confusion_image(model_id: str, container: ServiceContainerDep):
     """Returns the confusion matrix heatmap PNG for the given model (uses default eval dataset)."""
     return _evaluate_png_response(container, model_id, report=False)
