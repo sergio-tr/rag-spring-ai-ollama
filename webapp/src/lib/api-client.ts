@@ -217,12 +217,12 @@ function looksLikeStackTrace(s: string): boolean {
       break;
     }
     let j = nl + 1;
-    while (j < s.length && isAsciiLikeWhitespace(s.charCodeAt(j))) {
+    while (j < s.length && isAsciiLikeWhitespace(s.codePointAt(j) ?? -1)) {
       j++;
     }
-    const at0 = s.charCodeAt(j);
-    const at1 = s.charCodeAt(j + 1);
-    const afterAt = s.charCodeAt(j + 2);
+    const at0 = s.codePointAt(j) ?? -1;
+    const at1 = s.codePointAt(j + 1) ?? -1;
+    const afterAt = s.codePointAt(j + 2) ?? -1;
     if (at0 === 97 && at1 === 116 && isAsciiLikeWhitespace(afterAt)) {
       count++;
       if (count >= 2) {

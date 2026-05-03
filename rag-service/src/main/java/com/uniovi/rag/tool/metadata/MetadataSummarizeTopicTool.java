@@ -37,6 +37,9 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
 
     private static final String TOPIC_CAMARA = "camara";
 
+    /** Substring used in budget / accounts topics ("estado de cuentas", etc.). */
+    private static final String TOPIC_CUENTAS = "cuentas";
+
     private static boolean containsCalefaccion(String s) {
         return s != null && (s.contains(TOPIC_CALEFACCION_ASCII) || s.contains(TOPIC_CALEFACCION));
     }
@@ -336,8 +339,10 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         }
         
         String topicLower = normalizePersonName(topic); // Reuse normalizePersonName for topic normalization
-        log().info("Filtering {} minutes by topic '{}' (normalized: '{}') with relevance threshold {}", 
-                  minutes.size(), topic, topicLower, String.format("%.2f", relevanceThreshold));
+        if (log().isInfoEnabled()) {
+            log().info("Filtering {} minutes by topic '{}' (normalized: '{}') with relevance threshold {}",
+                    minutes.size(), topic, topicLower, String.format("%.2f", relevanceThreshold));
+        }
         
         // Extract key terms from compound topics (e.g. pool HVAC -> ["pool", "hvac"] or Spanish compound phrases split into tokens)
         List<String> keyTerms = extractKeyTermsFromTopic(topicLower);
@@ -348,19 +353,21 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
                 && !topicLower.contains(TOPIC_VIDEOVIGILANCIA)
                 && !topicLower.contains(TOPIC_VIGILANCIA);
         
+        boolean debug = log().isDebugEnabled();
         List<Minute> filtered = minutes.stream()
                 .filter(minute -> {
                     double relevanceScore = calculateTopicRelevance(minute, topicLower, keyTerms, isCompoundTopic);
                     boolean passes = relevanceScore >= relevanceThreshold;
-                    
-                    if (passes) {
-                        log().debug("Minute {} passed topic filter: topic '{}', relevance score: {}",
-                                  minute.id(), topic, String.format("%.2f", relevanceScore));
-                    } else {
-                        log().debug("Minute {} filtered out: topic '{}', relevance score: {} < threshold {}",
-                                  minute.id(), topic, String.format("%.2f", relevanceScore), String.format("%.2f", relevanceThreshold));
+                    if (debug) {
+                        if (passes) {
+                            log().debug("Minute {} passed topic filter: topic '{}', relevance score: {}",
+                                    minute.id(), topic, String.format("%.2f", relevanceScore));
+                        } else {
+                            log().debug("Minute {} filtered out: topic '{}', relevance score: {} < threshold {}",
+                                    minute.id(), topic, String.format("%.2f", relevanceScore),
+                                    String.format("%.2f", relevanceThreshold));
+                        }
                     }
-                    
                     return passes;
                 })
                 .toList();
@@ -400,8 +407,11 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         }
         // Fallback for estado de cuentas / presupuesto (item 8): if 0 minutes passed, include any minute with estado de cuentas/presupuesto/cuentas in topics/summary/agenda
         String topicNormForFallback = topicLower == null ? "" : topicLower;
-        if (filtered.isEmpty() && (topicNormForFallback.contains("estado de cuentas") || topicNormForFallback.contains(TOPIC_PRESUPUESTO) || topicNormForFallback.contains(TOPIC_PRESUPUESTO_ANUAL))) {
-            List<String> cuentaTerms = List.of("estado de cuentas", TOPIC_PRESUPUESTO, TOPIC_PRESUPUESTO_ANUAL, "cuentas");
+        if (filtered.isEmpty()
+                && (topicNormForFallback.contains("estado de cuentas")
+                        || topicNormForFallback.contains(TOPIC_PRESUPUESTO)
+                        || topicNormForFallback.contains(TOPIC_PRESUPUESTO_ANUAL))) {
+            List<String> cuentaTerms = List.of("estado de cuentas", TOPIC_PRESUPUESTO, TOPIC_PRESUPUESTO_ANUAL, TOPIC_CUENTAS);
             filtered = minutes.stream()
                     .filter(minute -> {
                         String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
@@ -421,9 +431,11 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
             }
         }
         
-        log().info("Filtered {} minutes by topic '{}' with STRICT threshold, {} remaining (threshold: {})", 
-                  minutes.size(), topic, filtered.size(), String.format("%.2f", relevanceThreshold));
-        
+        if (log().isInfoEnabled()) {
+            log().info("Filtered {} minutes by topic '{}' with STRICT threshold, {} remaining (threshold: {})",
+                    minutes.size(), topic, filtered.size(), String.format("%.2f", relevanceThreshold));
+        }
+
         return filtered;
     }
     
@@ -437,131 +449,108 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
      * @param isCompoundTopic Whether this is a compound topic (multiple terms)
      * @return Relevance score (0.0 to 1.0)
      */
+    private static final class RelevanceCounters {
+        int foundTerms;
+        int totalChecks;
+    }
+
+    private static void accumulateLineScoreForTopic(
+            String lineNorm, List<String> keyTerms, boolean isCompoundTopic, RelevanceCounters c) {
+        c.totalChecks++;
+        if (isCompoundTopic) {
+            if (keyTerms.stream().allMatch(lineNorm::contains)) {
+                c.foundTerms += keyTerms.size();
+            }
+        } else if (keyTerms.stream().anyMatch(lineNorm::contains)) {
+            c.foundTerms++;
+        }
+    }
+
     private double calculateTopicRelevance(Minute minute, String topicNormalized, List<String> keyTerms, boolean isCompoundTopic) {
         if (keyTerms.isEmpty()) {
             return 0.0;
         }
-        
-        int foundTerms = 0;
-        int totalChecks = 0;
-        
-        // Check in topics
+
+        RelevanceCounters c = new RelevanceCounters();
+
         if (minute.topics() != null) {
             for (String t : minute.topics()) {
                 if (t != null) {
-                    String topicField = normalizePersonName(t);
-                    totalChecks++;
-                    if (isCompoundTopic) {
-                        // For compound topics, check if ALL key terms appear
-                        boolean allTermsFound = keyTerms.stream()
-                                .allMatch(term -> topicField.contains(term));
-                        if (allTermsFound) {
-                            foundTerms += keyTerms.size();
-                        }
-                    } else {
-                        // For simple topics, check if the topic or any synonym (keyTerm) appears
-                        if (keyTerms.stream().anyMatch(term -> topicField.contains(term))) {
-                            foundTerms++;
-                        }
-                    }
+                    accumulateLineScoreForTopic(normalizePersonName(t), keyTerms, isCompoundTopic, c);
                 }
             }
         }
-        
-        // Check in decisions
+
         if (minute.decisions() != null) {
             for (String d : minute.decisions()) {
                 if (d != null) {
-                    String decisionField = normalizePersonName(d);
-                    totalChecks++;
-                    if (isCompoundTopic) {
-                        boolean allTermsFound = keyTerms.stream()
-                                .allMatch(term -> decisionField.contains(term));
-                        if (allTermsFound) {
-                            foundTerms += keyTerms.size();
-                        }
-                    } else {
-                        if (keyTerms.stream().anyMatch(term -> decisionField.contains(term))) {
-                            foundTerms++;
-                        }
-                    }
+                    accumulateLineScoreForTopic(normalizePersonName(d), keyTerms, isCompoundTopic, c);
                 }
             }
         }
-        
-        // Check in summary
+
         if (minute.summary() != null) {
-            String summaryField = normalizePersonName(minute.summary());
-            totalChecks++;
-            if (isCompoundTopic) {
-                boolean allTermsFound = keyTerms.stream()
-                        .allMatch(term -> summaryField.contains(term));
-                if (allTermsFound) {
-                    foundTerms += keyTerms.size();
-                }
-            } else {
-                if (keyTerms.stream().anyMatch(term -> summaryField.contains(term))) {
-                    foundTerms++;
-                }
-            }
+            accumulateLineScoreForTopic(normalizePersonName(minute.summary()), keyTerms, isCompoundTopic, c);
         }
-        
-        // Check in agenda (order of day) - topic may appear only there (e.g. heating, video surveillance)
+
         if (minute.agenda() != null && !minute.agenda().isEmpty()) {
             String agendaText = minute.agenda().values().stream()
                     .filter(s -> s != null && !s.isBlank())
                     .map(this::normalizePersonName)
                     .collect(Collectors.joining(" "));
             if (!agendaText.isEmpty()) {
-                totalChecks++;
-                if (isCompoundTopic) {
-                    boolean allTermsFound = keyTerms.stream().allMatch(term -> agendaText.contains(term));
-                    if (allTermsFound) {
-                        foundTerms += keyTerms.size();
-                    }
-                } else {
-                    if (keyTerms.stream().anyMatch(term -> agendaText.contains(term))) {
-                        foundTerms++;
-                    }
-                }
+                accumulateLineScoreForTopic(agendaText, keyTerms, isCompoundTopic, c);
             }
         }
-        
-        // Calculate relevance score
-        if (totalChecks == 0) {
-            // Fallback for heating: if topic is heating and summary/topics contain it, return min score (item 39)
-            if (containsCalefaccion(topicNormalized)) {
-                String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
-                boolean inSummary = containsCalefaccion(sum);
-                boolean inTopics = minute.topics() != null && minute.topics().stream()
-                        .anyMatch(t -> t != null && containsCalefaccion(normalizePersonName(t)));
-                if (inSummary || inTopics) {
-                    return 0.5;
-                }
-            }
+
+        if (c.totalChecks == 0) {
+            return heatingLiteralFallbackScore(minute, topicNormalized);
+        }
+        if (isCompoundTopic) {
+            return c.foundTerms >= keyTerms.size() ? 1.0 : 0.0;
+        }
+        double score = (double) c.foundTerms / Math.max(c.totalChecks, 1);
+        return applyHeatingFloorToSimpleTopicScore(minute, topicNormalized, score);
+    }
+
+    private boolean minuteContainsHeatingLiteral(Minute minute) {
+        String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
+        boolean inSummary = containsCalefaccion(sum);
+        boolean inTopics = minute.topics() != null && minute.topics().stream()
+                .anyMatch(t -> t != null && containsCalefaccion(normalizePersonName(t)));
+        return inSummary || inTopics;
+    }
+
+    private double heatingLiteralFallbackScore(Minute minute, String topicNormalized) {
+        if (!containsCalefaccion(topicNormalized)) {
             return 0.0;
         }
-        
-        if (isCompoundTopic) {
-            // For compound topics, require that at least one field contains ALL terms
-            return foundTerms >= keyTerms.size() ? 1.0 : 0.0;
-        } else {
-            // For simple topics, calculate based on how many fields contain the topic
-            double score = (double) foundTerms / Math.max(totalChecks, 1);
-            // Fallback for heating: ensure literal match in summary/topics gives at least 0.5 (item 39)
-            if (containsCalefaccion(topicNormalized) && score < 0.5) {
-                String sum = minute.summary() != null ? normalizePersonName(minute.summary()) : "";
-                boolean inSummary = containsCalefaccion(sum);
-                boolean inTopics = minute.topics() != null && minute.topics().stream()
-                        .anyMatch(t -> t != null && containsCalefaccion(normalizePersonName(t)));
-                if (inSummary || inTopics) {
-                    return 0.5;
-                }
-            }
+        return minuteContainsHeatingLiteral(minute) ? 0.5 : 0.0;
+    }
+
+    private double applyHeatingFloorToSimpleTopicScore(Minute minute, String topicNormalized, double score) {
+        if (!containsCalefaccion(topicNormalized) || score >= 0.5) {
             return score;
         }
+        return minuteContainsHeatingLiteral(minute) ? 0.5 : score;
     }
     
+    /** Estado de cuentas / presupuesto anual synonyms (item 8). */
+    private static void addCuentasPresupuestoKeyTerms(String topicNorm, List<String> keyTerms) {
+        if (!topicNorm.contains("estado de cuentas")
+                && !topicNorm.contains(TOPIC_PRESUPUESTO)
+                && !topicNorm.contains(TOPIC_PRESUPUESTO_ANUAL)
+                && !topicNorm.contains(TOPIC_CUENTAS)) {
+            return;
+        }
+        keyTerms.add("estado de cuentas");
+        keyTerms.add(TOPIC_PRESUPUESTO);
+        keyTerms.add(TOPIC_PRESUPUESTO_ANUAL);
+        keyTerms.add(TOPIC_CUENTAS);
+        keyTerms.add("budget");
+        keyTerms.add("accounts");
+    }
+
     /**
      * Extracts key terms from a topic phrase for semantic matching.
      * Similar to the method in MetadataCompareTool but adapted for this use case.
@@ -586,16 +575,8 @@ public class MetadataSummarizeTopicTool extends AbstractMetadataTool {
         // Also add the full topic as a key term
         keyTerms.add(topic.toLowerCase());
 
-        // Estado de cuentas / presupuesto anual (item 8)
         String topicNorm = topic.toLowerCase().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u");
-        if (topicNorm.contains("estado de cuentas") || topicNorm.contains(TOPIC_PRESUPUESTO) || topicNorm.contains(TOPIC_PRESUPUESTO_ANUAL) || topicNorm.contains("cuentas")) {
-            keyTerms.add("estado de cuentas");
-            keyTerms.add(TOPIC_PRESUPUESTO);
-            keyTerms.add(TOPIC_PRESUPUESTO_ANUAL);
-            keyTerms.add("cuentas");
-            keyTerms.add("budget");
-            keyTerms.add("accounts");
-        }
+        addCuentasPresupuestoKeyTerms(topicNorm, keyTerms);
 
         // Add synonyms so minute wording is matched (heating ACTA 5; video surveillance ACTA 2, 5, 6 - §4)
         if (keyTerms.stream().anyMatch(MetadataSummarizeTopicTool::containsCalefaccion)) {
