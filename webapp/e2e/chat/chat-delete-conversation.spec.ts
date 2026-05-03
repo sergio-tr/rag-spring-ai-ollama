@@ -28,7 +28,13 @@ test.describe("Chat delete conversation @fullstack", () => {
     const list = page.getByTestId("conversation-list");
     // Row title matches delete trigger aria-label ("Delete chat: …"); target the conversation row only.
     const convRow = list.locator('[data-testid^="conversation-item-"]').filter({ hasText: uniqueTitle });
-    await expect(convRow).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(async () => convRow.count(), {
+        timeout: 25_000,
+        intervals: [150, 300, 500],
+      })
+      .toBe(1);
+    await expect(convRow).toBeVisible();
 
     await page.getByTestId("chat-actions-menu-trigger").click();
     await page.getByTestId("chat-delete-menu-item").click();

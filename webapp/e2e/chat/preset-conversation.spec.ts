@@ -26,23 +26,12 @@ test.describe("Preset on conversation", () => {
     const textarea = page.getByPlaceholder(/message|mensaje/i);
     await expect(textarea).toBeEnabled({ timeout: 15_000 });
 
-    const headers = await authHeadersFromPage(page);
-    const projectsRes = await page.request.get(productApiUrl("/projects?page=0&size=24"), { headers });
-    expect(projectsRes.ok()).toBeTruthy();
-    const projectsBody = (await projectsRes.json()) as {
-      items: Array<{ id: string; name: string }>;
-    };
-    const project = projectsBody.items.find((p) => p.name === projectName);
-    expect(project).toBeDefined();
+    // Avoid racing GET /conversations against POST create — UI navigates with conversationId in query.
+    await expect(page).toHaveURL(/[?&]conversationId=[a-f0-9-]{36}/i, { timeout: 15_000 });
+    const conversationId = new URL(page.url()).searchParams.get("conversationId");
+    expect(conversationId).toBeTruthy();
 
-    const convRes = await page.request.get(
-      productApiUrl(`/projects/${project!.id}/conversations`),
-      { headers },
-    );
-    expect(convRes.ok()).toBeTruthy();
-    const convList = (await convRes.json()) as Array<{ id: string }>;
-    expect(convList.length).toBeGreaterThan(0);
-    const conversationId = convList[0].id;
+    const headers = await authHeadersFromPage(page);
 
     const patchRes = await page.request.patch(productApiUrl(`/conversations/${conversationId}`), {
       headers: { ...headers, "Content-Type": "application/json" },

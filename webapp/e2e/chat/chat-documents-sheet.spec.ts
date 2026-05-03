@@ -49,7 +49,9 @@ test.describe("Chat manage documents sheet @fullstack", () => {
     const docCheckbox = sheet.getByRole("checkbox", { name: checkboxLabel });
     await expect(docCheckbox).toBeVisible();
 
-    await docCheckbox.setChecked(true);
+    // ScrollArea animations/layout shifts trip Playwright "stable" checks on setChecked; click targets real UX surface.
+    const docRowLabel = sheet.locator("label").filter({ hasText: DOC_NAME });
+    await docRowLabel.locator('input[type="checkbox"]').click({ force: true });
     await expect
       .poll(async () => docCheckbox.isChecked(), { timeout: 20_000, intervals: [100, 250, 500] })
       .toBe(true);

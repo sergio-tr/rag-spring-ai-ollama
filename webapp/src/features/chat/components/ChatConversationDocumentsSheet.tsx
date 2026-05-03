@@ -113,7 +113,7 @@ export function ChatConversationDocumentsSheet({
                       data-testid={`chat-document-include-checkbox-${d.id}`}
                       className="mt-0.5 size-3.5 shrink-0 rounded border"
                       checked={selectedDocIds.includes(d.id)}
-                      disabled={d.status !== "READY" || patchPending}
+                      disabled={d.status !== "READY"}
                       aria-label={t("documentsSheetToggleDocAria", { name: d.fileName })}
                       onChange={(e) => onDocToggle(d.id, e.target.checked)}
                     />
