@@ -18,7 +18,7 @@ public interface QueryClassifierAdapter {
             String classifierModelIdUsed,
             String note) {
         public ClassifierOutcome {
-            classifierQueryType = Objects.requireNonNull(classifierQueryType, "classifierQueryType");
+            Objects.requireNonNull(classifierQueryType, "classifierQueryType");
         }
     }
 }

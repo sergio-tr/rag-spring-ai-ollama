@@ -18,6 +18,8 @@ import java.util.List;
 @Service
 public class JudgeStrategy {
 
+    private static final String STAGE_JUDGE_FINALIZE = "judge_finalize";
+
     private final JudgePolicyResolver policyResolver;
     private final JudgeEvaluator evaluator;
     private final JudgeRetryExecutor retryExecutor;
@@ -50,7 +52,7 @@ public class JudgeStrategy {
                 "eligible=" + decision.eligible() + " retryAllowed=" + decision.retryAllowed()));
 
         if (!decision.eligible()) {
-            stages.add(new ExecutionStageTrace("judge_finalize", 0L, ExecutionStageOutcome.SUCCESS, "outcome=NOT_ATTEMPTED"));
+            stages.add(new ExecutionStageTrace(STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=NOT_ATTEMPTED"));
             return new JudgeExecutionResult(
                     false,
                     JudgeOutcome.NOT_ATTEMPTED,
@@ -66,7 +68,7 @@ public class JudgeStrategy {
         stages.addAll(eval.stageTraces());
 
         if (eval.outcome() == JudgeOutcome.FAILED_SAFE) {
-            stages.add(new ExecutionStageTrace("judge_finalize", 0L, ExecutionStageOutcome.SUCCESS, "outcome=FAILED_SAFE"));
+            stages.add(new ExecutionStageTrace(STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=FAILED_SAFE"));
             return new JudgeExecutionResult(
                     true,
                     JudgeOutcome.FAILED_SAFE,
@@ -79,7 +81,7 @@ public class JudgeStrategy {
         }
 
         if (eval.outcome() == JudgeOutcome.ACCEPTED) {
-            stages.add(new ExecutionStageTrace("judge_finalize", 0L, ExecutionStageOutcome.SUCCESS, "outcome=ACCEPTED"));
+            stages.add(new ExecutionStageTrace(STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=ACCEPTED"));
             return new JudgeExecutionResult(
                     true,
                     JudgeOutcome.ACCEPTED,
@@ -92,7 +94,7 @@ public class JudgeStrategy {
         }
 
         if (eval.outcome() == JudgeOutcome.REJECTED_NO_RETRY) {
-            stages.add(new ExecutionStageTrace("judge_finalize", 0L, ExecutionStageOutcome.SUCCESS, "outcome=REJECTED_NO_RETRY"));
+            stages.add(new ExecutionStageTrace(STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=REJECTED_NO_RETRY"));
             return new JudgeExecutionResult(
                     true,
                     JudgeOutcome.REJECTED_NO_RETRY,
@@ -106,7 +108,7 @@ public class JudgeStrategy {
 
         // RETRY_REQUESTED only.
         if (!decision.retryAllowed()) {
-            stages.add(new ExecutionStageTrace("judge_finalize", 0L, ExecutionStageOutcome.SUCCESS, "outcome=REJECTED_NO_RETRY"));
+            stages.add(new ExecutionStageTrace(STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=REJECTED_NO_RETRY"));
             return new JudgeExecutionResult(
                     true,
                     JudgeOutcome.REJECTED_NO_RETRY,
@@ -121,7 +123,7 @@ public class JudgeStrategy {
         JudgeRetryExecutor.RetryResult retry = retryExecutor.retry(plan.rewrittenQueryText(), candidateAnswerText, eval.feedback());
         stages.addAll(retry.stageTraces());
         if (retry.success()) {
-            stages.add(new ExecutionStageTrace("judge_finalize", 0L, ExecutionStageOutcome.SUCCESS, "outcome=RETRY_SUCCEEDED"));
+            stages.add(new ExecutionStageTrace(STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=RETRY_SUCCEEDED"));
             return new JudgeExecutionResult(
                     true,
                     JudgeOutcome.RETRY_SUCCEEDED,
@@ -133,7 +135,7 @@ public class JudgeStrategy {
                     List.copyOf(stages));
         }
 
-        stages.add(new ExecutionStageTrace("judge_finalize", 0L, ExecutionStageOutcome.SUCCESS, "outcome=RETRY_FAILED"));
+        stages.add(new ExecutionStageTrace(STAGE_JUDGE_FINALIZE, 0L, ExecutionStageOutcome.SUCCESS, "outcome=RETRY_FAILED"));
         return new JudgeExecutionResult(
                 true,
                 JudgeOutcome.RETRY_FAILED,

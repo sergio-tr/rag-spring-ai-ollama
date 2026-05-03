@@ -55,12 +55,12 @@ public final class RagConfigurationMerge {
         c = applyOptionalMap(c, userJson, objectMapper);
         c = applyOptionalMap(c, projectJson, objectMapper);
         c = applyOptionalMap(c, presetProfileLayer, objectMapper);
-        c = applyJsonNodeIfPresent(c, conversationRuntimeOverride, objectMapper);
-        c = applyJsonNodeIfPresent(c, requestRuntimeOverride, objectMapper);
+        c = applyJsonNodeIfPresent(c, conversationRuntimeOverride);
+        c = applyJsonNodeIfPresent(c, requestRuntimeOverride);
         return c;
     }
 
-    private static RagConfig applyJsonNodeIfPresent(RagConfig base, JsonNode node, ObjectMapper objectMapper) {
+    private static RagConfig applyJsonNodeIfPresent(RagConfig base, JsonNode node) {
         if (node == null || node.isNull() || node.isMissingNode()) {
             return base;
         }

@@ -19,8 +19,8 @@ public record PackedContextBlock(
     public PackedContextBlock {
         sourceId = sourceId != null ? sourceId : "";
         documentId = documentId != null ? documentId : "";
-        blockId = Objects.requireNonNull(blockId, "blockId");
-        snapshotId = Objects.requireNonNull(snapshotId, "snapshotId");
+        Objects.requireNonNull(blockId, "blockId");
+        Objects.requireNonNull(snapshotId, "snapshotId");
         blockText = blockText != null ? blockText : "";
         packingNotes = List.copyOf(Objects.requireNonNull(packingNotes, "packingNotes"));
     }

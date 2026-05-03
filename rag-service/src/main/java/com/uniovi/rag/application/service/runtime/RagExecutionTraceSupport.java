@@ -24,6 +24,8 @@ import java.util.stream.Collectors;
  */
 public final class RagExecutionTraceSupport {
 
+	private static final String QU_TRACE_MESSAGE_PREFIX = "message=";
+
 	private RagExecutionTraceSupport() {}
 
 	public static List<ExecutionStageTrace> buildClarificationPreQuStages(ExecutionContext ctx) {
@@ -255,10 +257,10 @@ public final class RagExecutionTraceSupport {
 	}
 
 	private static String extractMessage(String line) {
-		int idx = line.indexOf("message=");
+		int idx = line.indexOf(QU_TRACE_MESSAGE_PREFIX);
 		if (idx < 0) {
 			return "";
 		}
-		return "message=" + line.substring(idx + "message=".length()).trim();
+		return QU_TRACE_MESSAGE_PREFIX + line.substring(idx + QU_TRACE_MESSAGE_PREFIX.length()).trim();
 	}
 }

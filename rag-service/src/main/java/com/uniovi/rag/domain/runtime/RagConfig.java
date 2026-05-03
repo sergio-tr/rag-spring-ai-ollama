@@ -50,6 +50,8 @@ public record RagConfig(
     public static final int DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS = 24_000;
     public static final int DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS = 24_000;
 
+    private static final String JSON_MATERIALIZATION_STRATEGY = "materializationStrategy";
+
     /**
      * Backwards-compatible constructor for call sites that predate P13.
      * Defaults {@code adaptiveRoutingEnabled=false}.
@@ -238,11 +240,13 @@ public record RagConfig(
     }
 
     private static MaterializationStrategy readMaterializationStrategy(JsonNode json, MaterializationStrategy base) {
-        if (json == null || !json.hasNonNull("materializationStrategy") || !json.get("materializationStrategy").isTextual()) {
+        if (json == null
+                || !json.hasNonNull(JSON_MATERIALIZATION_STRATEGY)
+                || !json.get(JSON_MATERIALIZATION_STRATEGY).isTextual()) {
             return base;
         }
         try {
-            return MaterializationStrategy.valueOf(json.get("materializationStrategy").asText().trim());
+            return MaterializationStrategy.valueOf(json.get(JSON_MATERIALIZATION_STRATEGY).asText().trim());
         } catch (IllegalArgumentException e) {
             return base;
         }

@@ -13,7 +13,6 @@ import com.uniovi.rag.interfaces.rest.auth.dto.ResendConfirmationRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterRequest;
 import com.uniovi.rag.interfaces.rest.auth.dto.RegisterResponse;
 import com.uniovi.rag.interfaces.rest.auth.dto.ResetPasswordRequest;
-import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.security.RagPrincipal;
 import jakarta.servlet.http.HttpServletRequest;

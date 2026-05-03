@@ -51,7 +51,6 @@ public class AuthService {
 	private final boolean emailConfirmationEnabled;
 	private final boolean passwordResetEnabled;
 	private final boolean mailEnabled;
-	private final String mailFrom;
 	private final String webappBaseUrl;
 	private final long emailConfirmationTtlSeconds;
 	private final long passwordResetTtlSeconds;
@@ -72,7 +71,6 @@ public class AuthService {
 			@Value("${rag.auth.email-confirmation.enabled:false}") boolean emailConfirmationEnabled,
 			@Value("${rag.auth.password-reset.enabled:false}") boolean passwordResetEnabled,
 			@Value("${rag.auth.mail.enabled:false}") boolean mailEnabled,
-			@Value("${rag.auth.mail.from:no-reply@local.test}") String mailFrom,
 			@Value("${rag.auth.webapp-base-url:http://localhost:3000}") String webappBaseUrl,
 			@Value("${rag.auth.email-confirmation.token-ttl-seconds:3600}") long emailConfirmationTtlSeconds,
 			@Value("${rag.auth.password-reset.token-ttl-seconds:3600}") long passwordResetTtlSeconds,
@@ -89,7 +87,6 @@ public class AuthService {
 		this.emailConfirmationEnabled = emailConfirmationEnabled;
 		this.passwordResetEnabled = passwordResetEnabled;
 		this.mailEnabled = mailEnabled;
-		this.mailFrom = mailFrom != null ? mailFrom : "no-reply@local.test";
 		this.webappBaseUrl = normalizeBaseUrl(webappBaseUrl);
 		this.emailConfirmationTtlSeconds = emailConfirmationTtlSeconds;
 		this.passwordResetTtlSeconds = passwordResetTtlSeconds;

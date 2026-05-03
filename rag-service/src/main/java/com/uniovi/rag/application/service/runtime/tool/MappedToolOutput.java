@@ -14,7 +14,7 @@ public record MappedToolOutput(
         Map<String, Object> normalizedPayload) {
 
     public MappedToolOutput {
-        answerText = Objects.requireNonNull(answerText, "answerText");
+        Objects.requireNonNull(answerText, "answerText");
         normalizedPayload = Map.copyOf(Objects.requireNonNull(normalizedPayload, "normalizedPayload"));
     }
 }

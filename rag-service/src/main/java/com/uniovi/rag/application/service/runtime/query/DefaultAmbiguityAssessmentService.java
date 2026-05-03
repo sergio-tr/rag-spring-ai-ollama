@@ -31,10 +31,11 @@ public class DefaultAmbiguityAssessmentService implements AmbiguityAssessmentSer
         List<String> missing = new ArrayList<>();
 
         // Conflict signal: classifier (when OK) vs rewrite targetAction (when present)
+        Optional<String> targetAction = rewrite != null ? rewrite.targetAction() : Optional.empty();
         if (classifierStatus == ClassifierStatus.OK && cqt.isPresent()
-                && rewrite != null && rewrite.targetAction().isPresent()) {
-            String action = rewrite.targetAction().get().trim().toUpperCase(Locale.ROOT);
-            String classifier = cqt.get().name().toUpperCase(Locale.ROOT);
+                && targetAction.isPresent()) {
+            String action = targetAction.get().trim().toUpperCase(Locale.ROOT);
+            String classifier = cqt.orElseThrow().name().toUpperCase(Locale.ROOT);
             if (!action.isBlank() && !classifier.isBlank() && !classifier.contains(action)) {
                 reasons.add("CONFLICT: classifier=" + classifier + " rewriteAction=" + action);
                 return new AmbiguityAssessment(AmbiguityStatus.CONFLICTING_CUES, reasons, List.of());

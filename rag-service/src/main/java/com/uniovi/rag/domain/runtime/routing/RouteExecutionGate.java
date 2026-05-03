@@ -29,21 +29,26 @@ public record RouteExecutionGate(
         if (allowedCount != 1) {
             throw new IllegalArgumentException("exactly one allowed family must be true");
         }
+        validateFallbackRouteContract(fallbackRequired, fallbackRouteKind);
+        if (workflowSelectorRequired && !workflowAllowed && !fallbackRequired) {
+            throw new IllegalArgumentException("workflowSelectorRequired implies workflowAllowed or fallbackRequired");
+        }
+    }
+
+    private static void validateFallbackRouteContract(
+            boolean fallbackRequired, Optional<AdaptiveRouteKind> fallbackRouteKind) {
         if (fallbackRequired && fallbackRouteKind.isEmpty()) {
             throw new IllegalArgumentException("fallbackRouteKind required when fallbackRequired=true");
         }
         if (!fallbackRequired && fallbackRouteKind.isPresent()) {
             throw new IllegalArgumentException("fallbackRouteKind must be empty when fallbackRequired=false");
         }
-        if (fallbackRouteKind.isPresent()) {
-            AdaptiveRouteKind fk = fallbackRouteKind.get();
-            if (fk != AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE && fk != AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE) {
-                throw new IllegalArgumentException("fallbackRouteKind must be a workflow route kind");
-            }
-        }
-        if (workflowSelectorRequired && !workflowAllowed && !fallbackRequired) {
-            throw new IllegalArgumentException("workflowSelectorRequired implies workflowAllowed or fallbackRequired");
-        }
+        fallbackRouteKind.ifPresent(
+                fk -> {
+                    if (fk != AdaptiveRouteKind.DIRECT_WORKFLOW_ROUTE && fk != AdaptiveRouteKind.RETRIEVAL_WORKFLOW_ROUTE) {
+                        throw new IllegalArgumentException("fallbackRouteKind must be a workflow route kind");
+                    }
+                });
     }
 }
 

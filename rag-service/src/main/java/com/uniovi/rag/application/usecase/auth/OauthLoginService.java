@@ -22,7 +22,6 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -42,6 +41,7 @@ public class OauthLoginService {
     private static final Logger log = LoggerFactory.getLogger(OauthLoginService.class);
 
     private static final String PROVIDER_GOOGLE = "google";
+    private static final String REL_PATH_LOGIN_OAUTH_ERROR = "/login?oauth=error";
     private static final long EXCHANGE_TTL_SECONDS = 120;
     private static final long STATE_TTL_SECONDS = 300;
 
@@ -133,10 +133,10 @@ public class OauthLoginService {
             return webappBaseUrl + "/" + resolvedLocale + "/login";
         }
         if (error != null && !error.isBlank()) {
-            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + REL_PATH_LOGIN_OAUTH_ERROR;
         }
         if (code == null || code.isBlank()) {
-            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + REL_PATH_LOGIN_OAUTH_ERROR;
         }
         if (!consumeStateToken(state)) {
             return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=invalid_state";
@@ -145,7 +145,7 @@ public class OauthLoginService {
         Map<String, Object> tokenResponse = exchangeAuthCodeForTokens(code);
         String idToken = Optional.ofNullable(tokenResponse.get("id_token")).map(Object::toString).orElse("");
         if (idToken.isBlank()) {
-            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + REL_PATH_LOGIN_OAUTH_ERROR;
         }
 
         Jwt jwt = googleIdTokenDecoder().decode(idToken);
@@ -153,7 +153,7 @@ public class OauthLoginService {
         String email = jwt.getClaimAsString("email");
         Boolean emailVerified = jwt.getClaimAsBoolean("email_verified");
         if (subject == null || subject.isBlank() || email == null || email.isBlank()) {
-            return webappBaseUrl + "/" + resolvedLocale + "/login?oauth=error";
+            return webappBaseUrl + "/" + resolvedLocale + REL_PATH_LOGIN_OAUTH_ERROR;
         }
 
         UserEntity user = resolveOrCreateUser(subject, email, Boolean.TRUE.equals(emailVerified));

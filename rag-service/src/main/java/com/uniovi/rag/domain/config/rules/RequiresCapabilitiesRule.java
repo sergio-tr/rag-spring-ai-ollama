@@ -23,7 +23,6 @@ public record RequiresCapabilitiesRule(String ruleId, Set<Capability> triggers, 
         for (Capability req : required) {
             if (!active.contains(req)) {
                 return CompatibilityRuleOutcome.error(
-                        ruleId,
                         CompatibilityViolation.of(
                                 "REQUIRES_CAPABILITY",
                                 "When " + triggers + " is active, " + req + " must be enabled",

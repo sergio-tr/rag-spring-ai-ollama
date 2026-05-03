@@ -22,11 +22,11 @@ public record CompatibilityRuleOutcome(
         return new CompatibilityRuleOutcome(List.of(), List.of(), List.of());
     }
 
-    public static CompatibilityRuleOutcome error(String ruleId, CompatibilityViolation v) {
+    public static CompatibilityRuleOutcome error(CompatibilityViolation v) {
         return new CompatibilityRuleOutcome(List.of(v), List.of(), List.of());
     }
 
-    public static CompatibilityRuleOutcome warning(String ruleId, CompatibilityViolation v) {
+    public static CompatibilityRuleOutcome warning(CompatibilityViolation v) {
         return new CompatibilityRuleOutcome(List.of(), List.of(v), List.of());
     }
 }
