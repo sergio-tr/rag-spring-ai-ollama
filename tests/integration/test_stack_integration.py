@@ -24,8 +24,9 @@ Usage:
   pytest tests/integration -v
 
 Lab async jobs (api-map §7.4):
-  - After HTTP **202** from `POST {product}/lab/...` (no `sync=true`), the body includes `jobId` and paths for
-    **polling** `GET {product}/lab/jobs/{jobId}` or **SSE** `GET {product}/lab/jobs/{jobId}/events`.
+  - Legacy `POST {product}/lab/evaluations/llm|rag` returns **410**; canonical runs use
+    `POST {product}/lab/benchmarks/{kind}/runs` (JSON body with `datasetId`), **202** with `asyncTaskId` +
+    `evaluationRunId`, then **polling** `GET {product}/lab/jobs/{asyncTaskId}` or SSE `.../events`.
   - Prefer polling in integration tests (simple assert on JSON); SSE is optional and stream-based.
 """
 
@@ -703,7 +704,7 @@ class TestBackendLabJobs:
         product_api_base: str,
         integration_seed_credentials: tuple[str, str],
     ) -> None:
-        """datasets.enabled must reflect benchmark catalog question count (see LabController#status)."""
+        """datasets.enabled reflects reference workbook readiness (see LabController#status)."""
         email, password = integration_seed_credentials
         try:
             token = _login_access_token(http_client, backend_base, email, password)
@@ -722,18 +723,22 @@ class TestBackendLabJobs:
         body = _assert_json_response_not_html(r)
         datasets = body.get("datasets") or {}
         assert isinstance(datasets.get("enabled"), bool)
-        assert isinstance(datasets.get("questionCount"), int)
+        assert isinstance(datasets.get("datasetKindsReady"), bool)
+        # Legacy single questionCount removed; optional tombstone for API readers.
+        assert "legacyQuestionCountDeprecated" in datasets
+        assert isinstance(body.get("countsByDatasetKind"), dict)
         assert body.get("evaluations") is not None
         assert body.get("classifier") is not None
         assert isinstance(body.get("message"), str)
 
-    def test_lab_eval_rag_async_returns_202_and_pollable_job(
+    def test_lab_evaluations_rag_legacy_returns_410(
         self,
         http_client: httpx.Client,
         backend_base: str,
         product_api_base: str,
         integration_seed_credentials: tuple[str, str],
     ) -> None:
+        """POST /lab/evaluations/rag is gone; response points at canonical benchmark path."""
         email, password = integration_seed_credentials
         try:
             token = _login_access_token(http_client, backend_base, email, password)
@@ -742,11 +747,58 @@ class TestBackendLabJobs:
             raise
         if not token:
             pytest.skip("Login did not return a token (seed user missing or wrong INTEGRATION_LOGIN_*).")
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
         try:
             post = http_client.post(
                 f"{backend_base}{product_api_base}/lab/evaluations/rag",
                 headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert post.status_code == 410, post.text
+        err = _assert_json_response_not_html(post)
+        assert err.get("error") == "LAB_EVALUATIONS_LEGACY_REMOVED"
+        assert "benchmarks" in (err.get("message") or "").lower()
+
+    def test_lab_benchmark_rag_preset_async_returns_202_and_pollable_job(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_admin_credentials: tuple[str, str] | None,
+    ) -> None:
+        """
+        Canonical RAG lab run: typed evaluation_dataset (Flyway V42 reference UUID), ADMIN-only SYSTEM_DATASET.
+
+        CI sets INTEGRATION_ADMIN_* with profile e2e; local runs skip without admin env.
+        """
+        if integration_admin_credentials is None:
+            pytest.skip(
+                "Needs ROLE_ADMIN + seeded reference dataset (set INTEGRATION_ADMIN_EMAIL / "
+                "INTEGRATION_ADMIN_PASSWORD; e2e profile: admin@e2e.local / e2e)."
+            )
+        a_email, a_password = integration_admin_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, a_email, a_password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Admin login did not return a token (check INTEGRATION_ADMIN_* / e2e seeder).")
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        # V42__seed_reference_evaluation_dataset.sql — REFERENCE_BUNDLE, SYSTEM_DATASET (ADMIN scope).
+        reference_dataset_id = "00000000-0000-7000-8000-000000000001"
+        try:
+            post = http_client.post(
+                f"{backend_base}{product_api_base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs",
+                headers=headers,
+                json={"datasetId": reference_dataset_id},
                 timeout=120.0,
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
@@ -754,13 +806,14 @@ class TestBackendLabJobs:
             raise
         assert post.status_code == 202, post.text
         body = post.json()
-        job_id = body.get("jobId")
-        assert job_id is not None and len(str(job_id)) > 0
+        task_id = body.get("asyncTaskId")
+        assert task_id is not None and len(str(task_id)) > 0
+        assert body.get("evaluationRunId") is not None
         assert body.get("status") == "ACCEPTED"
         try:
             st = http_client.get(
-                f"{backend_base}{product_api_base}/lab/jobs/{job_id}",
-                headers=headers,
+                f"{backend_base}{product_api_base}/lab/jobs/{task_id}",
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
                 timeout=30.0,
             )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
@@ -768,7 +821,7 @@ class TestBackendLabJobs:
             raise
         assert st.status_code == 200, st.text
         job = st.json()
-        assert str(job.get("id")) == str(job_id)
+        assert str(job.get("id")) == str(task_id)
         assert job.get("status") in (
             "QUEUED",
             "RUNNING",
