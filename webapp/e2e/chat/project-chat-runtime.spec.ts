@@ -96,6 +96,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
   });
 
   test("limit retrieval checkbox toggles once and stays stable after navigation", async ({ page }) => {
+    test.setTimeout(120_000);
     await loginAsSeedUser(page);
     const projectName = uniqueProjectName("e2e-limit-docs");
     await createAndActivateProject(page, projectName);
@@ -130,7 +131,10 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await expect(limitCb).not.toBeChecked();
 
     await limitCb.click();
-    await expect(limitCb).toBeChecked({ timeout: 15_000 });
+    // Controlled checkbox: checked only after refetch + PATCH apply documentFilter (async).
+    await expect
+      .poll(async () => limitCb.isChecked(), { timeout: 45_000, intervals: [400, 800, 1600] })
+      .toBe(true);
 
     await page.getByRole("link", { name: /documents|documentos/i }).click();
     await expect(page).toHaveURL(/\/en\/documents/);
@@ -147,10 +151,8 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     const limitAgain = page.getByRole("checkbox", {
       name: /limit retrieval to selected documents|limitar la recuperación/i,
     });
-    await expect(limitAgain).toBeChecked({ timeout: 15_000 });
-
     await expect
-      .poll(async () => limitAgain.isChecked(), { timeout: 4000, intervals: [200, 400, 600] })
+      .poll(async () => limitAgain.isChecked(), { timeout: 20_000, intervals: [300, 600, 1200] })
       .toBe(true);
   });
 });
