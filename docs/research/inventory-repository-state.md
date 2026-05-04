@@ -14,7 +14,7 @@
 | --- | --- |
 | **Lab benchmarks (JWT, `{product}/lab`)** | `rag-service/README.md` — `LLM_JUDGE_QA`, `EMBEDDING_RETRIEVAL`, `RAG_PRESET_END_TO_END`, `CLASSIFIER_METRICS`; export `GET /lab/runs/{id}/export` (`csv` / `json`); persistence `evaluation_run` / `evaluation_result`; async `async_task` with job polling. |
 | **Legacy combinatorial evaluation** | Documented as legacy in same README; `GET …/evaluate/all` — not primary structured science evidence. |
-| **Classpath evaluation dataset (minutes)** | `DatasetMinuteEvaluationService` + `evaluation/evaluation_dataset.xlsx` under `rag-service/src/main/resources`; tests under `rag-service/src/test/java/.../DatasetMinuteEvaluationServiceTest.java`. |
+| **Typed Lab evaluation datasets** | Internal reference workbook `evaluation/rag_experiment_datasets_and_protocols.xlsx` + `EvaluationReferenceBundleLoader`; uploads/templates via `/lab/experimental-datasets` and `/lab/dataset-templates/{kind}`; async handlers resolve via `ExperimentalDatasetResolver` (**Phase L** retired classpath `evaluation_dataset.xlsx` + `DatasetMinuteEvaluationService`). |
 | **Project scope for runs** | ADR `docs/adr/0003-evaluation-async-project-scope-and-dataset-dedup.md` — optional `project_id` on `evaluation_run` and `async_task`. |
 | **Unified engine principle** | ADR `docs/adr/0009-unified-product-and-lab-execution-engine.md`. |
 | **Micro-benchmarks (latency sample, not load)** | `tests/performance/` — `retrieval_benchmark.py`, `llm_benchmark.py`, `infra_probe.py`; schema `tests/performance/schema/benchmark-report-v1.schema.json`; overview `docs/performance/README.md`. |

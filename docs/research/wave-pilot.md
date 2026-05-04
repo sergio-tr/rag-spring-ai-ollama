@@ -6,7 +6,7 @@
 
 **Primary hypothesis under test:** H1 (see [`experimental-design-matrix.md`](experimental-design-matrix.md)) on a **pilot subset** of items only after Lab execution is available.
 
-**Dataset (pilot):** `EVAL-XLSX-CLASSPATH-V1` — `rag-service/src/main/resources/evaluation/evaluation_dataset.xlsx` at SHA256 `4b525f4341cf57fb6275e709555dd6030318e516ade60abef420cee4f97b5b3d` (workspace file at pilot recording time).
+**Dataset (pilot, historical):** `EVAL-XLSX-CLASSPATH-V1` pointed at a **legacy** single-sheet workbook (`evaluation_dataset.xlsx`) removed from prod classpath in **Phase L** (2026-05-04). Current waves should anchor on `rag_experiment_datasets_and_protocols.xlsx` + typed uploads; keep this pilot row as **frozen historical** evidence only.
 
 **Gates before Lab metrics:**
 
