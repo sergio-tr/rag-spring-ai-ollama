@@ -5,18 +5,28 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      CI_GATE_POLL_MS: "30000"
+      CI_GATE_TIMEOUT_MS: "5400000"
     steps:
       - name: Gate on CI pipeline (full DAG)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
+        env:
+          CI_GATE_POLL_MS: ${{ env.CI_GATE_POLL_MS }}
+          CI_GATE_TIMEOUT_MS: ${{ env.CI_GATE_TIMEOUT_MS }}
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const sha = context.sha;
+
+            const pollMs = Number.parseInt(process.env.CI_GATE_POLL_MS || '30000', 10);
+            const timeoutMs = Number.parseInt(process.env.CI_GATE_TIMEOUT_MS || String(90 * 60 * 1000), 10);
 
             // ci.yml runs the full DAG (core → integration → e2e_fullstack → sonar → performance on main/master PRs).
             const required = [{ name: 'CI', path: '.github/workflows/ci.yml' }];
@@ -24,29 +34,49 @@ jobs:
             const listWorkflows = await github.rest.actions.listRepoWorkflows({ owner, repo, per_page: 100 });
             const byPath = new Map(listWorkflows.data.workflows.map(w => [w.path, w]));
 
-            for (const r of required) {
-              const wf = byPath.get(r.path);
+            async function sleep(ms) {
+              await new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            for (const req of required) {
+              const wf = byPath.get(req.path);
               if (!wf) {
-                core.setFailed(`Required workflow not found: ${r.path}`);
+                core.setFailed(`Required workflow not found: ${req.path}`);
                 return;
               }
-              const runs = await github.rest.actions.listWorkflowRuns({
-                owner,
-                repo,
-                workflow_id: wf.id,
-                head_sha: sha,
-                per_page: 10,
-              });
-              const run = runs.data.workflow_runs.find(x => x.head_sha === sha);
-              if (!run) {
-                core.setFailed(`Missing required workflow run for ${r.name} at ${sha}`);
+              const deadline = Date.now() + timeoutMs;
+              let passed = false;
+              while (Date.now() < deadline) {
+                const runs = await github.rest.actions.listWorkflowRuns({
+                  owner,
+                  repo,
+                  workflow_id: wf.id,
+                  head_sha: sha,
+                  per_page: 10,
+                });
+                const run = runs.data.workflow_runs.find(x => x.head_sha === sha);
+                if (!run) {
+                  core.info(`Gate: no run yet for ${req.name} at ${sha}; waiting ${pollMs / 1000}s…`);
+                  await sleep(pollMs);
+                  continue;
+                }
+                if (run.status !== 'completed') {
+                  core.info(`Gate: ${req.name} status=${run.status}; waiting ${pollMs / 1000}s…`);
+                  await sleep(pollMs);
+                  continue;
+                }
+                if (run.conclusion !== 'success') {
+                  core.setFailed(`Required workflow failed: ${req.name} (conclusion=${run.conclusion})`);
+                  return;
+                }
+                core.info(`Gate OK: ${req.name}`);
+                passed = true;
+                break;
+              }
+              if (!passed) {
+                core.setFailed(`Timeout waiting for ${req.name} (${timeoutMs}ms) at ${sha}`);
                 return;
               }
-              if (run.status !== 'completed' || run.conclusion !== 'success') {
-                core.setFailed(`Required workflow failed/not complete: ${r.name} (status=${run.status}, conclusion=${run.conclusion})`);
-                return;
-              }
-              core.info(`Gate OK: ${r.name}`);
             }
 
       - name: Deploy via SSH

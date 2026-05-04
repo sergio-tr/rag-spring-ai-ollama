@@ -12,6 +12,10 @@ test.describe("Chat RAG", () => {
   test("E2E-05 send message completes with stub answer pipeline and sources @fullstack", async ({
     page,
   }) => {
+    // Default Playwright test timeout is 30s; this flow waits up to 120s for READY indexing and 120s for the stub reply.
+    // Without a higher cap, CI hits the global timeout mid-sendChatMessage and the page closes (flaky "composer recovery").
+    test.setTimeout(240_000);
+
     await loginAsSeedUser(page);
     await createAndActivateProject(page, uniqueProjectName("e2e-chat"));
 

@@ -11,7 +11,7 @@ The workflow runs on `ubuntu-latest`, **gates** on a successful **`ci.yml`** run
 
 **Selenium:** There is **no** `selenium.yml` in this repository and **no** Selenium step in `deploy.yml`. If a future policy reintroduces a browser gate, add it explicitly to `deploy.yml` and this audit.
 
-**Strengths:** Single required workflow keeps the gate aligned with the full PR DAG; uses GitHub API to require **success** at the same `head_sha`; minimal permissions (`contents: read`).
+**Strengths:** Single required workflow keeps the gate aligned with the full PR DAG; uses GitHub API to require **success** at the same `head_sha`; polls until `ci.yml` completes (avoids racing an in-progress CI run); permissions `contents: read` and `actions: read` for workflow run queries.
 
 **Post-deploy (implemented):** If repository secret `DEPLOY_HEALTH_URL` is set to an HTTP(S) URL reachable from GitHub Actions (e.g. public health endpoint behind the reverse proxy), the workflow runs `curl -fsS` after SSH deploy and **fails the job** on non-success. If the secret is **unset**, the step is skipped (documented skip).
 
@@ -21,13 +21,13 @@ The workflow runs on `ubuntu-latest`, **gates** on a successful **`ci.yml`** run
 
 ## Gate (pre-deploy)
 
-Implemented in the first step (`actions/github-script@v7`):
+Implemented in the first step (`actions/github-script@v8`, Node 24–compatible):
 
 | Required workflow file | Role in quality model |
 | ------------------------ | ------------------------ |
 | `.github/workflows/ci.yml` | Full PR pipeline via `reusable-ci-core.yml`: backend, classifier, webapp, Playwright smoke, stack integration, fullstack E2E, Sonar, and performance on PRs to **main/master**. |
 
-**Mechanics:** For each path, the script resolves the workflow id, lists runs for `head_sha: context.sha`, picks a run whose `head_sha` matches, and requires `status === 'completed'` and `conclusion === 'success'`.
+**Mechanics:** For each path, the script resolves the workflow id, lists runs for `head_sha: context.sha`, and **polls** until a matching run exists, `status === 'completed'`, and `conclusion === 'success'` (defaults: 30s interval, 90 minute cap via `CI_GATE_POLL_MS` / `CI_GATE_TIMEOUT_MS` on the job).
 
 **Not gated by deploy (by design today):** `integration.yml`, `e2e-fullstack.yml`, `sonar.yml` (manual), `build-images.yml`, `gatling.yml`, `micro-benchmark.yml`, `system-checks.yml`, `e2e.yml`. Promote any of these to **required** only if product policy demands it (adds friction to manual deploys).
 
