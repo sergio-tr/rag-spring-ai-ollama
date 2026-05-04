@@ -21,6 +21,7 @@ import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.service.evaluation.preset.BenchmarkPresetEvaluationContext;
 import io.micrometer.tracing.Tracer;
 import java.util.List;
 import java.util.Optional;
@@ -113,9 +114,11 @@ public class ExecutionContextFactory {
                 Optional.ofNullable(TraceMdcBridge.currentCorrelationTraceId(tracer))
                         .orElseGet(() -> UUID.randomUUID().toString());
         Optional<String> model = validateAndNormalizeChatModel(chatModelOverride);
+        JsonNode benchmarkTerminal =
+                BenchmarkPresetEvaluationContext.currentTerminalOverride().orElse(null);
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
-                        null, null, null, correlationId);
+                        null, null, benchmarkTerminal, correlationId);
         KnowledgeSnapshotSelection snapshots = knowledgeRuntimeSnapshotSelector.select(null, null);
         return buildWithClarification(
                 null,

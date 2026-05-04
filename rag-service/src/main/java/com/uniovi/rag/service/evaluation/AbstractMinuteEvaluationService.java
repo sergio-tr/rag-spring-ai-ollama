@@ -8,14 +8,12 @@ import com.uniovi.rag.service.query.QueryService;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 
-@Service
 public abstract class AbstractMinuteEvaluationService extends AbstractEvaluationService {
 
     protected AbstractMinuteEvaluationService(

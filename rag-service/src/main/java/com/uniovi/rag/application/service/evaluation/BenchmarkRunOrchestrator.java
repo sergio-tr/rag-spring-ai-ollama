@@ -6,6 +6,7 @@ import com.uniovi.rag.domain.EvaluationRunStatus;
 import com.uniovi.rag.domain.EvaluationRunType;
 import com.uniovi.rag.domain.UserRole;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.domain.evaluation.workbook.ExperimentalDatasetType;
 import com.uniovi.rag.domain.evaluation.EvaluationDatasetScope;
 import com.uniovi.rag.domain.evaluation.EvaluationRunKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationDatasetRepository;
@@ -122,6 +123,12 @@ public class BenchmarkRunOrchestrator {
         if (dataset.getType() != EvaluationDatasetType.CLASSIFIER) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dataset type must be CLASSIFIER");
         }
+        ExperimentalDatasetType exp = BenchmarkDatasetCompatibility.resolveExperimentalType(dataset);
+        if (!BenchmarkDatasetCompatibility.compatible(exp, BenchmarkKind.CLASSIFIER_METRICS)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Dataset experimental kind must be CLASSIFIER_DATASET for CLASSIFIER_METRICS");
+        }
         validateScienceFields(BenchmarkKind.CLASSIFIER_METRICS, meta);
 
         EvaluationRunEntity run = baseRun(userId, meta.projectId(), dataset, BenchmarkKind.CLASSIFIER_METRICS, meta);
@@ -160,18 +167,18 @@ public class BenchmarkRunOrchestrator {
     }
 
     private static void validateDatasetForKind(EvaluationDatasetEntity dataset, BenchmarkKind kind) {
-        switch (kind) {
-            case LLM_JUDGE_QA, RAG_PRESET_END_TO_END, EMBEDDING_RETRIEVAL -> {
-                if (dataset.getType() != EvaluationDatasetType.RAG && dataset.getType() != EvaluationDatasetType.LLM_ONLY) {
-                    throw new ResponseStatusException(
-                            HttpStatus.BAD_REQUEST, "Dataset type must be RAG or LLM_ONLY for this benchmark");
-                }
-            }
-            case CLASSIFIER_METRICS -> {
-                if (dataset.getType() != EvaluationDatasetType.CLASSIFIER) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dataset type must be CLASSIFIER");
-                }
-            }
+        if (kind == BenchmarkKind.CLASSIFIER_METRICS) {
+            return;
+        }
+        ExperimentalDatasetType experimental = BenchmarkDatasetCompatibility.resolveExperimentalType(dataset);
+        if (!BenchmarkDatasetCompatibility.compatible(experimental, kind)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Dataset experimental kind "
+                            + experimental
+                            + " is incompatible with benchmark "
+                            + kind
+                            + ". Example: LLM_JUDGE_QA requires LLM_MODEL_BASELINE or REFERENCE_BUNDLE.");
         }
     }
 
@@ -239,6 +246,13 @@ public class BenchmarkRunOrchestrator {
                     ragPresetRepository.findById(request.presetId()).orElseThrow(
                             () -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "presetId not found"));
             run.setPreset(preset);
+        }
+        run.setEmbeddingDownstreamRag(request.embeddingDownstreamRagEffective());
+        if (request.llmModelId() != null && !request.llmModelId().isBlank()) {
+            run.setLlmModelId(request.llmModelId().trim());
+        }
+        if (request.embeddingModelId() != null && !request.embeddingModelId().isBlank()) {
+            run.setEmbeddingModelId(request.embeddingModelId().trim());
         }
     }
 

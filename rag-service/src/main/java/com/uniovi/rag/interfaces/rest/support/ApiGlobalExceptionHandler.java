@@ -5,7 +5,10 @@ import com.uniovi.rag.interfaces.rest.auth.DuplicateEmailException;
 import com.uniovi.rag.interfaces.rest.auth.EmailNotVerifiedException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
+import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetValidationException;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
+import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationFailedDto;
+import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationReportDto;
 import com.uniovi.rag.interfaces.rest.support.dto.ApiErrorResponse;
 import com.uniovi.rag.interfaces.rest.support.dto.ApiValidationError;
 import jakarta.validation.ConstraintViolationException;
@@ -190,6 +193,15 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 "NOT_FOUND",
                 trimOrFallback(ex.getMessage(), "Not found"),
                 null));
+    }
+
+    @ExceptionHandler(ExperimentalDatasetValidationException.class)
+    public ResponseEntity<ExperimentalDatasetValidationFailedDto> handleExperimentalDatasetInvalid(
+            ExperimentalDatasetValidationException ex, HttpServletRequest request) {
+        ExperimentalDatasetValidationReportDto report =
+                ExperimentalDatasetValidationReportDto.from(ex.validationReport());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(ExperimentalDatasetValidationFailedDto.of(report));
     }
 
     @ExceptionHandler(Exception.class)

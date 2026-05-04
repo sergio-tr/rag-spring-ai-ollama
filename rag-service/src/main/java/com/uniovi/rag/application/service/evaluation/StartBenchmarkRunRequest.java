@@ -14,9 +14,19 @@ public record StartBenchmarkRunRequest(
         String name,
         UUID resolvedConfigSnapshotId,
         UUID indexSnapshotId,
-        UUID presetId) {
+        UUID presetId,
+        /** When true, {@link com.uniovi.rag.domain.evaluation.BenchmarkKind#EMBEDDING_RETRIEVAL} runs retrieval then a fixed-LLM answer step. */
+        Boolean embeddingDownstreamRag,
+        /** Optional Ollama chat tag override persisted on {@code evaluation_run.llm_model_id}. */
+        String llmModelId,
+        /** Optional Ollama embedding tag override persisted on {@code evaluation_run.embedding_model_id}. */
+        String embeddingModelId) {
 
     public StartBenchmarkRunRequest {
         runKind = runKind == null ? EvaluationRunKind.PRODUCT_EXPLORATION : runKind;
+    }
+
+    public boolean embeddingDownstreamRagEffective() {
+        return Boolean.TRUE.equals(embeddingDownstreamRag);
     }
 }

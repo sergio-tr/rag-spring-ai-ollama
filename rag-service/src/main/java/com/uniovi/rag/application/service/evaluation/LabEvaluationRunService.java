@@ -10,6 +10,9 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationResultItemDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
+import com.uniovi.rag.service.evaluation.mvp.BenchmarkMvpMetricsCalculator;
+import com.uniovi.rag.service.evaluation.mvp.BenchmarkMvpRollupCalculator;
+import com.uniovi.rag.service.evaluation.mvp.BenchmarkMvpSchema;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +30,32 @@ import java.util.UUID;
  */
 @Service
 public class LabEvaluationRunService {
+
+    private static final List<String> MVP_ITEMS_CSV_COLUMNS =
+            List.of(
+                    "mvpSchemaVersion",
+                    "itemId",
+                    "benchmarkKind",
+                    "queryType",
+                    "difficulty",
+                    "datasetQuestionId",
+                    "recallAt1",
+                    "recallAt3",
+                    "recallAt5",
+                    "mrr",
+                    "retrievedCount",
+                    "goldFound",
+                    "normalizedExactMatch",
+                    "containsExpectedAnswer",
+                    "answerLength",
+                    "semanticScore",
+                    "latencyMs",
+                    "modelId",
+                    "embeddingModelId",
+                    "presetCode",
+                    "outcome",
+                    "failureCode",
+                    "unsupportedReason");
 
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationResultRepository evaluationResultRepository;
@@ -145,6 +174,64 @@ public class LabEvaluationRunService {
                         .map(LabEvaluationRunService::toItemMap)
                         .toList());
         return out;
+    }
+
+    /**
+     * Thesis MVP export: one JSON object per item including nested {@code mvp} metrics ({@code items.json} bundle).
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> exportMvpItemsJsonBundle(UUID userId, UUID runId) {
+        EvaluationRunEntity run = requireRun(userId, runId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("mvpSchemaVersion", BenchmarkMvpSchema.VERSION);
+        out.put("run", toDetailMap(run));
+        out.put("items", buildMvpItemPayload(runId, run));
+        return out;
+    }
+
+    /** MVP flat CSV ({@code items.csv}) — UTF-8, header row only (no legacy {@code #META} line). */
+    @Transactional(readOnly = true)
+    public String exportMvpItemsCsv(UUID userId, UUID runId) {
+        EvaluationRunEntity run = requireRun(userId, runId);
+        List<EvaluationResultEntity> items =
+                evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId);
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.join(",", MVP_ITEMS_CSV_COLUMNS)).append('\n');
+        for (EvaluationResultEntity it : items) {
+            Map<String, String> row = BenchmarkMvpMetricsCalculator.computeMvpFlatCsvRow(it, run);
+            List<String> cells =
+                    MVP_ITEMS_CSV_COLUMNS.stream().map(h -> csvEscape(row.getOrDefault(h, ""))).toList();
+            sb.append(String.join(",", cells)).append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** MVP rollups ({@code rollups.json}) with explicit outcome partitioning. */
+    @Transactional(readOnly = true)
+    public Map<String, Object> exportMvpRollupsJson(UUID userId, UUID runId) {
+        EvaluationRunEntity run = requireRun(userId, runId);
+        List<EvaluationResultEntity> items =
+                evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId);
+        return BenchmarkMvpRollupCalculator.build(items, run);
+    }
+
+    private List<Map<String, Object>> buildMvpItemPayload(UUID runId, EvaluationRunEntity run) {
+        return evaluationResultRepository.findByRun_IdOrderByEvaluatedAtAsc(runId).stream()
+                .map(
+                        e -> {
+                            Map<String, Object> row = new LinkedHashMap<>();
+                            row.put("id", e.getId());
+                            row.put("benchmarkKind", e.getBenchmarkKind());
+                            row.put("questionText", e.getQuestionText());
+                            row.put("expectedAnswer", e.getExpectedAnswer());
+                            row.put("actualAnswer", e.getActualAnswer());
+                            row.put("correctness", e.getCorrectness());
+                            row.put("evaluatedAt", e.getEvaluatedAt());
+                            row.put("metricsPayload", e.getMetricsPayload());
+                            row.put("mvp", BenchmarkMvpMetricsCalculator.computeMvpMetrics(e, run));
+                            return row;
+                        })
+                .toList();
     }
 
     private EvaluationRunEntity requireRun(UUID userId, UUID runId) {

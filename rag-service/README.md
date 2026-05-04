@@ -187,6 +187,18 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 
 Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `evaluation_run` + `evaluation_result`; `async_task` is operational (poll `/lab/jobs/{asyncTaskId}`).
 
+**Internal reference workbook (prod):** ships at `src/main/resources/evaluation/rag_experiment_datasets_and_protocols.xlsx`. It is loaded by `EvaluationReferenceBundleLoader` (typed parse + `ValidationReport`). There is **no** runtime fallback to a second classpath workbook; invalid or missing bundle yields explicit readiness/API errors.
+
+**`GET {product}/lab/status` (typed readiness):** exposes `referenceBundleAvailable`, `referenceBundleValid`, `datasetKindsReady`, `countsByDatasetKind`, optional `validationIssues`, and additive `datasets` metadata. Legacy-sized Q/A maps are **not** the source of truth for readiness.
+
+**User experimental datasets (Phase 3 — Lab):** `GET /lab/dataset-templates/{kind}` returns an `.xlsx` template (`llm-model-baseline`, `embedding-baseline`, `rag-preset-benchmark`, `classifier-question-querytype`). `POST /lab/experimental-datasets` accepts multipart `file`, `datasetType`, optional `name` / `description`; validation failures respond with **422** and structured `EXPERIMENTAL_DATASET_INVALID` JSON (**no** persisted row). `GET /lab/experimental-datasets` lists the caller’s uploads plus a synthetic **read-only** reference row when applicable. `GET /lab/experimental-datasets/{id}/validation` returns the persisted validation report (403 if not owned).
+
+**Typed benchmark runs:** `POST /lab/benchmarks/{kind}/runs` creates an `evaluation_run`; async jobs carry **`evaluation_run_id`**. Handlers resolve **`evaluation_dataset`** (`experimental_kind` + `storage_uri`; seeded **`REFERENCE_BUNDLE`** → `classpath:evaluation/rag_experiment_datasets_and_protocols.xlsx`) via **`ExperimentalDatasetResolver`** → **`EvaluationWorkbookParser`** → typed rows — **without** calling **`EvaluationService#getQuestionsAndAnswers()`**.
+
+**Legacy Lab `POST /lab/evaluations/llm` / `rag`:** respond with **410 Gone** (`LAB_EVALUATIONS_LEGACY_REMOVED`); use canonical benchmark routes instead.
+
+**Phase 5 baselines (snapshots + protocols):** Typed **`LLM_JUDGE_QA`** runs use **`ModelBaselineEvaluationOrchestrator`**: **`answer_mode`** selects oracle context vs full-document (`LLM_READER_ORACLE_CONTEXT`, `LLM_FULL_DOCUMENT_CONTEXT`); full-document text resolves from **`corpus_documents`** when **`source_document_id`** matches, otherwise falls back to row **`context_text`** (truncation metadata is recorded). Typed **`EMBEDDING_RETRIEVAL`** computes **Recall@k**, **MRR**, and optional **`embeddingDownstreamRag`** (fixed LLM over top‑k chunks + judge text persisted when generation succeeds). **`evaluation_run`** JSON columns **`llm_experimental_snapshot`**, **`embedding_experimental_snapshot`**, **`prompt_profile_snapshot`** are filled at typed job start; missing Ollama tags yield per-row **`MODEL_NOT_AVAILABLE`** without failing the whole async job. **Limitation:** retrieval still uses the application’s configured **`EmbeddingModel`** bean — the embedding snapshot records the intended tag for reproducibility, not a guaranteed runtime swap.
+
 | Goal (product) | Use | Legacy (not primary SCIENCE evidence) |
 | --- | --- | --- |
 | LLM judge QA (no retrieval) | `POST /lab/benchmarks/LLM_JUDGE_QA/runs` | — |
@@ -196,6 +208,8 @@ Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `eval
 | Combinatorial feature-flag matrix | — | — |
 
 Export: `GET /lab/runs/{id}/export?format=csv` (first line `#META:` + JSON run header, then CSV rows) or `format=json`.
+
+**MVP thesis bundle (Phase 7):** `GET /lab/runs/{id}/export/mvp/items.csv` (flat per-item metrics), `GET /lab/runs/{id}/export/mvp/items.json` (nested `mvp` block + raw `metricsPayload`), `GET /lab/runs/{id}/export/mvp/rollups.json` (`outcomeCounts` + `onExecuted` / `retrievalOnExecutedWhereApplicable` — means exclude `NOT_SUPPORTED` / non-`EXECUTED`).
 
 ### Thesis empirical evidence
 

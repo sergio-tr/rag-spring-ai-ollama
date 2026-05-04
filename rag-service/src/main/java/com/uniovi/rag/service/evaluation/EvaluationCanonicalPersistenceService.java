@@ -1,5 +1,6 @@
 package com.uniovi.rag.service.evaluation;
 
+import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.EvaluationRunStatus;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
@@ -86,9 +87,14 @@ public class EvaluationCanonicalPersistenceService {
             Map<String, Integer> scores = JudgeScoreParser.parseScores(evalText);
             Integer correctness = scores.get("correctness");
             e.setCorrectness(correctness);
+            Object latMs = r.get(BenchmarkResultRowKeys.LATENCY_MS);
+            if (latMs instanceof Number n) {
+                e.setLatencyMs(n.longValue());
+            }
             Map<String, Object> metrics = new LinkedHashMap<>();
             metrics.put("judge_scores", scores);
             metrics.put("llm_evaluation_excerpt", trunc(evalText, 4000));
+            mergeOptionalRowKeys(r, metrics);
             e.setMetricsPayload(metrics);
             saved.add(e);
         }
@@ -121,15 +127,25 @@ public class EvaluationCanonicalPersistenceService {
             e.setRun(run);
             e.setQuestionText(str(r.get("question")));
             e.setExpectedAnswer(str(r.get("expected_answer")));
-            e.setActualAnswer(str(r.get("top_document_id")));
+            String generated = str(r.get("generated_answer"));
+            e.setActualAnswer(
+                    generated != null && !generated.isBlank()
+                            ? generated
+                            : str(r.get("top_document_id")));
             Object lat = r.get("latency_ms");
             e.setLatencyMs(lat instanceof Number n ? n.longValue() : null);
             e.setEvaluatedAt(now);
             e.setBenchmarkKind(BenchmarkKind.EMBEDDING_RETRIEVAL.name());
-            @SuppressWarnings("unchecked")
-            Map<String, Object> metrics =
-                    r.get("metrics") instanceof Map ? (Map<String, Object>) r.get("metrics") : Map.of();
-            e.setMetricsPayload(new LinkedHashMap<>(metrics));
+            Map<String, Object> metrics = shallowCopyStringKeyed(r.get("metrics"));
+            mergeOptionalRowKeys(r, metrics);
+            String evalText = str(r.get("llm_evaluation"));
+            if (evalText != null && !evalText.isBlank()) {
+                Map<String, Integer> scores = JudgeScoreParser.parseScores(evalText);
+                e.setCorrectness(scores.get("correctness"));
+                metrics.put("judge_scores", scores);
+                metrics.put("llm_evaluation_excerpt", trunc(evalText, 4000));
+            }
+            e.setMetricsPayload(metrics);
             saved.add(e);
         }
         evaluationResultRepository.saveAll(saved);
@@ -162,6 +178,72 @@ public class EvaluationCanonicalPersistenceService {
         run.setProgress(100);
         run.setCompletedAt(Instant.now());
         evaluationRunRepository.save(run);
+    }
+
+    private static void mergeOptionalRowKeys(Map<String, Object> row, Map<String, Object> metrics) {
+        Object qid = row.get(BenchmarkResultRowKeys.DATASET_QUESTION_ID);
+        if (qid != null) {
+            metrics.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, qid);
+        }
+        Object outcome = row.get(BenchmarkResultRowKeys.ITEM_OUTCOME);
+        if (outcome != null) {
+            metrics.put(BenchmarkResultRowKeys.ITEM_OUTCOME, outcome);
+        }
+        Object err = row.get("error");
+        if (err != null) {
+            metrics.put("error", err);
+        }
+        Object bp = row.get("benchmark_protocol");
+        if (bp != null) {
+            metrics.put("benchmark_protocol", bp);
+        }
+        Object bm = row.get("baseline_metrics");
+        if (bm instanceof Map<?, ?> mm) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : mm.entrySet()) {
+                if (e.getKey() != null) {
+                    copy.put(String.valueOf(e.getKey()), e.getValue());
+                }
+            }
+            metrics.put("baseline_metrics", copy);
+        }
+        Object preset = row.get(BenchmarkResultRowKeys.PRESET_CODE);
+        if (preset != null) {
+            metrics.put(BenchmarkResultRowKeys.PRESET_CODE, preset);
+        }
+        Object difficulty = row.get(BenchmarkResultRowKeys.DIFFICULTY);
+        if (difficulty != null) {
+            metrics.put(BenchmarkResultRowKeys.DIFFICULTY, difficulty);
+        }
+        Object latency = row.get(BenchmarkResultRowKeys.LATENCY_MS);
+        if (latency != null) {
+            metrics.put(BenchmarkResultRowKeys.LATENCY_MS, latency);
+        }
+        Object errCode = row.get(BenchmarkResultRowKeys.ERROR_CODE);
+        if (errCode != null) {
+            metrics.put(BenchmarkResultRowKeys.ERROR_CODE, errCode);
+        }
+        Object llmMid = row.get(BenchmarkResultRowKeys.LLM_MODEL_ID);
+        if (llmMid != null) {
+            metrics.put(BenchmarkResultRowKeys.LLM_MODEL_ID, llmMid);
+        }
+        Object embMid = row.get(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID);
+        if (embMid != null) {
+            metrics.put(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID, embMid);
+        }
+    }
+
+    private static Map<String, Object> shallowCopyStringKeyed(Object rawMetrics) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (!(rawMetrics instanceof Map<?, ?> m)) {
+            return out;
+        }
+        for (Map.Entry<?, ?> e : m.entrySet()) {
+            if (e.getKey() != null) {
+                out.put(String.valueOf(e.getKey()), e.getValue());
+            }
+        }
+        return out;
     }
 
     private static String str(Object o) {

@@ -2,12 +2,13 @@ package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.interfaces.rest.dto.LabJobAcceptedDto;
 import com.uniovi.rag.configuration.RagApiPathProperties;
-import com.uniovi.rag.configuration.RagFeatureConfiguration;
-import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
+import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleCounts;
+import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleSnapshot;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationIssue;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import com.uniovi.rag.application.port.ClassifierLabPort;
-import com.uniovi.rag.service.evaluation.EvaluationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -23,51 +24,66 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Research Lab: async-first long operations (202 + job polling/SSE); {@code sync=true} keeps legacy inline JSON.
+ * Research Lab: async-first long operations (202 + job polling/SSE); canonical benchmarks use
+ * {@code POST …/lab/benchmarks/{kind}/runs}.
  */
 @RestController
 @RequestMapping("${rag.api.product-base-path}/lab")
 public class LabController {
 
-    private final EvaluationService evaluationService;
-    private final RagFeatureConfiguration featureConfiguration;
-    private final RagImplementationProperties implementationProperties;
     private final ClassifierLabPort classifierLabClient;
     private final AsyncTaskService asyncTaskService;
     private final RagApiPathProperties apiPathProperties;
+    private final EvaluationReferenceBundleLoader referenceBundleLoader;
 
     public LabController(
-            EvaluationService evaluationService,
-            RagFeatureConfiguration featureConfiguration,
-            RagImplementationProperties implementationProperties,
             ClassifierLabPort classifierLabClient,
             AsyncTaskService asyncTaskService,
-            RagApiPathProperties apiPathProperties) {
-        this.evaluationService = evaluationService;
-        this.featureConfiguration = featureConfiguration;
-        this.implementationProperties = implementationProperties;
+            RagApiPathProperties apiPathProperties,
+            EvaluationReferenceBundleLoader referenceBundleLoader) {
         this.classifierLabClient = classifierLabClient;
         this.asyncTaskService = asyncTaskService;
         this.apiPathProperties = apiPathProperties;
+        this.referenceBundleLoader = referenceBundleLoader;
     }
 
     @GetMapping("/status")
     public Map<String, Object> status() {
         Map<String, Object> m = new LinkedHashMap<>();
-        int qaSize = 0;
-        try {
-            qaSize = evaluationService.getQuestionsAndAnswers().size();
-        } catch (Exception ignored) {
-            qaSize = 0;
+        ReferenceBundleSnapshot bundleSnap = referenceBundleLoader.getSnapshot();
+        boolean bundleAvailable = bundleSnap.classpathResourcePresent();
+        boolean bundleValid = bundleSnap.validForReferenceUse();
+        boolean kindsReady = datasetKindsReady(bundleSnap);
+
+        m.put("referenceBundleAvailable", bundleAvailable);
+        m.put("referenceBundleValid", bundleValid);
+        m.put("datasetKindsReady", kindsReady);
+
+        Optional<String> pv = bundleSnap.protocolVersion();
+        if (pv.isPresent()) {
+            m.put("protocolVersion", pv.get());
         }
-        // Lab gates on bundled benchmark catalog availability — NOT AbstractEvaluationService#dataLoaded, which only flips true after loadData* runs (typically when an evaluation starts).
-        boolean datasetsReady = qaSize > 0;
-        m.put("datasets", Map.of("enabled", datasetsReady, "questionCount", qaSize));
+        m.put("countsByDatasetKind", bundleSnap.countsByDatasetKind());
+
+        List<Map<String, Object>> issueMaps = validationIssuesPayload(bundleSnap);
+        if (!issueMaps.isEmpty()) {
+            m.put("validationIssues", issueMaps);
+        }
+
+        Map<String, Object> datasets = new LinkedHashMap<>();
+        datasets.put("enabled", kindsReady);
+        datasets.put("datasetKindsReady", kindsReady);
+        datasets.put("legacyQuestionCountDeprecated", null);
+        m.put("datasets", datasets);
+
         m.put(
                 "evaluations",
                 Map.of(
@@ -83,37 +99,30 @@ public class LabController {
                         "evaluate", classifierLabClient.isConfigured()));
         m.put(
                 "message",
-                "Lab API — default: async (HTTP 202 + GET "
+                "Lab API — canonical benchmarks: POST "
                         + apiPathProperties.getProductBasePath()
-                        + "/lab/jobs/{id} or SSE .../events). Use ?sync=true for inline JSON.");
+                        + "/lab/benchmarks/{kind}/runs with a typed evaluation_dataset. Async jobs: GET "
+                        + apiPathProperties.getProductBasePath()
+                        + "/lab/jobs/{id} or SSE …/events.");
         return m;
     }
 
     @PostMapping("/evaluations/llm")
-    public ResponseEntity<Object> evaluateLlm(
+    public ResponseEntity<Map<String, Object>> evaluateLlm(
             @AuthenticationPrincipal RagPrincipal principal,
             @RequestParam(name = "sync", defaultValue = "false") boolean sync,
             @RequestParam(name = "projectId", required = false) UUID projectId) {
-        if (sync) {
-            RagFeatureConfiguration cfg = copyFeatureFlags(featureConfiguration);
-            cfg.setUseRetrieval(false);
-            return ResponseEntity.ok(
-                    evaluationService.evaluateWithConfiguration(cfg, implementationProperties));
-        }
-        UUID jobId = asyncTaskService.submitEvalLlm(requireUserId(principal), projectId);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(accepted(jobId));
+        requireUserId(principal);
+        return legacyEvaluationsRemoved();
     }
 
     @PostMapping("/evaluations/rag")
-    public ResponseEntity<Object> evaluateRag(
+    public ResponseEntity<Map<String, Object>> evaluateRag(
             @AuthenticationPrincipal RagPrincipal principal,
             @RequestParam(name = "sync", defaultValue = "false") boolean sync,
             @RequestParam(name = "projectId", required = false) UUID projectId) {
-        if (sync) {
-            return ResponseEntity.ok(evaluationService.evaluate());
-        }
-        UUID jobId = asyncTaskService.submitEvalRag(requireUserId(principal), projectId);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(accepted(jobId));
+        requireUserId(principal);
+        return legacyEvaluationsRemoved();
     }
 
     @PostMapping(value = "/classifier/train", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -163,6 +172,18 @@ public class LabController {
 
     public record ClassifierClassifyRequest(String query, String modelId) {}
 
+    private ResponseEntity<Map<String, Object>> legacyEvaluationsRemoved() {
+        String base = apiPathProperties.getProductBasePath();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "LAB_EVALUATIONS_LEGACY_REMOVED");
+        body.put(
+                "message",
+                "POST /lab/evaluations/llm and /lab/evaluations/rag are removed. "
+                        + "Use POST /lab/benchmarks/{kind}/runs with a typed evaluation_dataset id.");
+        body.put("canonicalStartBenchmarkPathTemplate", base + "/lab/benchmarks/{kind}/runs");
+        return ResponseEntity.status(HttpStatus.GONE).body(body);
+    }
+
     private LabJobAcceptedDto accepted(UUID jobId) {
         String base = apiPathProperties.getProductBasePath() + "/lab/jobs/" + jobId;
         return new LabJobAcceptedDto(jobId, "ACCEPTED", base, base + "/events");
@@ -175,18 +196,26 @@ public class LabController {
         return principal.userId();
     }
 
-    private static RagFeatureConfiguration copyFeatureFlags(RagFeatureConfiguration src) {
-        RagFeatureConfiguration c = new RagFeatureConfiguration();
-        c.setExpansionEnabled(src.isExpansionEnabled());
-        c.setNerEnabled(src.isNerEnabled());
-        c.setToolsEnabled(src.isToolsEnabled());
-        c.setMetadataEnabled(src.isMetadataEnabled());
-        c.setReasoningEnabled(src.isReasoningEnabled());
-        c.setRankerEnabled(src.isRankerEnabled());
-        c.setPostRetrievalEnabled(src.isPostRetrievalEnabled());
-        c.setFunctionCallingEnabled(src.isFunctionCallingEnabled());
-        c.setUseRetrieval(src.isUseRetrieval());
-        c.setUseAdvisor(src.isUseAdvisor());
-        return c;
+    private static boolean datasetKindsReady(ReferenceBundleSnapshot snap) {
+        if (!snap.validForReferenceUse()) {
+            return false;
+        }
+        ReferenceBundleCounts c = snap.counts();
+        return c.llmReaderQuestions() > 0 && c.embeddingRetrievalQueries() > 0 && c.ragPresetQuestions() > 0;
+    }
+
+    private static List<Map<String, Object>> validationIssuesPayload(ReferenceBundleSnapshot snap) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (ValidationIssue i : snap.validationReport().issues()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("severity", i.severity().name());
+            row.put("code", i.code().name());
+            row.put("sheet", i.sheet());
+            row.put("rowNumber", i.rowNumber());
+            row.put("column", i.column());
+            row.put("message", i.message());
+            out.add(row);
+        }
+        return out;
     }
 }

@@ -203,7 +203,12 @@ public class EvaluationServiceFactory {
             RagFeatureConfiguration featureConfig, RagImplementationProperties implProps, boolean cleanBeforeLoad) {
         DocumentService documentService = createDocumentService(featureConfig);
         QueryService queryService = createQueryService(implProps);
-        return new DatasetMinuteEvaluationService(
-                featureConfig, implProps, chatClient, documentService, queryService, cleanBeforeLoad);
+        return new ReferenceBundleMinuteEvaluationService(
+                featureConfig,
+                implProps,
+                chatClient,
+                documentService,
+                queryService,
+                cleanBeforeLoad);
     }
 }

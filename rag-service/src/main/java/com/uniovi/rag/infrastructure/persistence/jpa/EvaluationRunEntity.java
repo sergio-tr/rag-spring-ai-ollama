@@ -104,6 +104,21 @@ public class EvaluationRunEntity {
     @JoinColumn(name = "async_task_id")
     private AsyncTaskEntity asyncTask;
 
+    @Column(name = "embedding_downstream_rag", nullable = false)
+    private boolean embeddingDownstreamRag;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "llm_experimental_snapshot", columnDefinition = "jsonb")
+    private Map<String, Object> llmExperimentalSnapshot;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "embedding_experimental_snapshot", columnDefinition = "jsonb")
+    private Map<String, Object> embeddingExperimentalSnapshot;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "prompt_profile_snapshot", columnDefinition = "jsonb")
+    private Map<String, Object> promptProfileSnapshot;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "aggregates_json", columnDefinition = "jsonb")
     private Map<String, Object> aggregatesJson;
@@ -294,6 +309,38 @@ public class EvaluationRunEntity {
 
     public void setAsyncTask(AsyncTaskEntity asyncTask) {
         this.asyncTask = asyncTask;
+    }
+
+    public boolean isEmbeddingDownstreamRag() {
+        return embeddingDownstreamRag;
+    }
+
+    public void setEmbeddingDownstreamRag(boolean embeddingDownstreamRag) {
+        this.embeddingDownstreamRag = embeddingDownstreamRag;
+    }
+
+    public Map<String, Object> getLlmExperimentalSnapshot() {
+        return llmExperimentalSnapshot;
+    }
+
+    public void setLlmExperimentalSnapshot(Map<String, Object> llmExperimentalSnapshot) {
+        this.llmExperimentalSnapshot = llmExperimentalSnapshot;
+    }
+
+    public Map<String, Object> getEmbeddingExperimentalSnapshot() {
+        return embeddingExperimentalSnapshot;
+    }
+
+    public void setEmbeddingExperimentalSnapshot(Map<String, Object> embeddingExperimentalSnapshot) {
+        this.embeddingExperimentalSnapshot = embeddingExperimentalSnapshot;
+    }
+
+    public Map<String, Object> getPromptProfileSnapshot() {
+        return promptProfileSnapshot;
+    }
+
+    public void setPromptProfileSnapshot(Map<String, Object> promptProfileSnapshot) {
+        this.promptProfileSnapshot = promptProfileSnapshot;
     }
 
     public Map<String, Object> getAggregatesJson() {

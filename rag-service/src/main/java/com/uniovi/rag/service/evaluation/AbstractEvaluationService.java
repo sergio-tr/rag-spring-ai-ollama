@@ -1,8 +1,14 @@
 package com.uniovi.rag.service.evaluation;
 
 import com.uniovi.rag.application.model.QueryResponse;
+import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
+import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
+import com.uniovi.rag.domain.evaluation.workbook.DifficultyLevel;
+import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
+import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
+import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.document.DocumentService;
 import com.uniovi.rag.service.query.QueryService;
 import java.util.ArrayList;
@@ -12,32 +18,20 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
-import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.PromptTemplate;
-import org.springframework.stereotype.Service;
 
-@Service
-public abstract class AbstractEvaluationService implements EvaluationService {    
-    
-    /**
-     * Descriptors for each feature flag varied in evaluateAllConfigurations.
-     * Order defines bit position: first = bit 0, second = bit 1, etc.
-     * To add/remove/reorder flags, edit only this array; the number of combinations is 2^length.
-     */
-    private static final FlagDescriptor[] FEATURE_FLAG_DESCRIPTORS = {
-        new FlagDescriptor("exp", RagFeatureConfiguration::setExpansionEnabled, RagFeatureConfiguration::isExpansionEnabled),
-        new FlagDescriptor("ner", RagFeatureConfiguration::setNerEnabled, RagFeatureConfiguration::isNerEnabled),
-        new FlagDescriptor("tools", RagFeatureConfiguration::setToolsEnabled, RagFeatureConfiguration::isToolsEnabled),
-        new FlagDescriptor("meta", RagFeatureConfiguration::setMetadataEnabled, RagFeatureConfiguration::isMetadataEnabled),
-        new FlagDescriptor("reas", RagFeatureConfiguration::setReasoningEnabled, RagFeatureConfiguration::isReasoningEnabled),
-        new FlagDescriptor("rank", RagFeatureConfiguration::setRankerEnabled, RagFeatureConfiguration::isRankerEnabled),
-        new FlagDescriptor("post", RagFeatureConfiguration::setPostRetrievalEnabled, RagFeatureConfiguration::isPostRetrievalEnabled),
-        new FlagDescriptor("fc", RagFeatureConfiguration::setFunctionCallingEnabled, RagFeatureConfiguration::isFunctionCallingEnabled),
-    };
+public abstract class AbstractEvaluationService implements EvaluationService {
+
+    /** Removed Map/Q&A classpath loop ({@code evaluate}, {@code evaluateWithConfiguration}, {@code evaluateAllConfigurations}). */
+    static final String LEGACY_MAP_EVALUATION_REMOVED =
+            "Legacy Map-based classpath evaluation was removed. "
+                    + "Start typed benchmark runs via POST {product}/lab/benchmarks/{kind}/runs with evaluation_dataset id "
+                    + "(async tasks include evaluation_run_id).";
 
     private static final String JSON_KEY_CORRECT_ANSWER = "correct_answer";
 
@@ -48,21 +42,6 @@ public abstract class AbstractEvaluationService implements EvaluationService {
     private static final String JSON_KEY_RELEVANT_DOCUMENT_IDS = "relevant_document_ids";
 
     private static final String KEY_MEAN_CONTEXT_SUFFICIENCY = "mean_context_sufficiency";
-
-    /** Descriptor for a single feature flag: label, setter and getter on RagFeatureConfiguration. */
-    private static final class FlagDescriptor {
-        final String label;
-        final BiConsumer<RagFeatureConfiguration, Boolean> setter;
-        final Function<RagFeatureConfiguration, Boolean> getter;
-
-        FlagDescriptor(String label,
-                    BiConsumer<RagFeatureConfiguration, Boolean> setter,
-                    Function<RagFeatureConfiguration, Boolean> getter) {
-            this.label = label;
-            this.setter = setter;
-            this.getter = getter;
-        }
-    }
 
     protected final ChatClient chatClient;
     protected final DocumentService documentService;
@@ -237,55 +216,128 @@ public abstract class AbstractEvaluationService implements EvaluationService {
 
     @Override
     public Map<String, Object> evaluate() {
-        // Use default configuration from application.properties
-        return evaluateWithConfiguration(featureConfig, implementationProperties);
+        throw new UnsupportedOperationException(LEGACY_MAP_EVALUATION_REMOVED);
     }
 
     /**
-     * Evaluates with a custom configuration.
-     * Automatically manages document loading: clears database and reloads documents with the custom configuration.
-     *
-     * @param customConfig feature flags
-     * @param implementationProperties query/retriever/analyser selection (e.g. copy of the bean with overrides)
+     * Legacy Map/Q&A classpath loop removed — use typed benchmark APIs ({@code evaluateWithConfigurationFor*}).
      */
     @Override
     public Map<String, Object> evaluateWithConfiguration(
             RagFeatureConfiguration customConfig,
             RagImplementationProperties implementationProperties) {
+        throw new UnsupportedOperationException(LEGACY_MAP_EVALUATION_REMOVED);
+    }
+
+    @Override
+    public Map<String, Object> evaluateWithConfigurationForLlmReaderQuestions(
+            RagFeatureConfiguration customConfig,
+            RagImplementationProperties implementationProperties,
+            List<LlmReaderQuestion> questions,
+            BiConsumer<Integer, Integer> itemProgress) {
         if (evaluationServiceFactory == null) {
             throw new IllegalStateException("EvaluationServiceFactory must be set to evaluate with custom configuration");
         }
-        RagImplementationProperties impl = implementationProperties != null
-                ? implementationProperties
-                : new RagImplementationProperties();
-
-        // Load data with custom configuration (will clear and reload if needed)
+        RagImplementationProperties impl =
+                implementationProperties != null ? implementationProperties : new RagImplementationProperties();
         loadDataWithConfiguration(customConfig);
-
+        QueryService queryServiceToUse = evaluationServiceFactory.createQueryService(impl);
+        List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
+        int total = questions.size();
+        int idx = 0;
+        for (LlmReaderQuestion q : questions) {
+            idx++;
+            if (itemProgress != null) {
+                itemProgress.accept(idx, total);
+            }
+            String questionText = q.question();
+            String correctAnswer = q.expectedAnswer() != null ? q.expectedAnswer() : "";
+            QueryResponse queryResponse = queryServiceToUse.generateResponse(questionText);
+            String llmResponse =
+                    queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
+            String evaluation = evaluateResponse(questionText, correctAnswer, llmResponse);
+            Map<String, Object> result = buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse);
+            result.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, q.id());
+            result.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+            resultsForPrompt.add(result);
+            logEvalQuestion(questionText, queryResponse, result);
+        }
         Map<String, Object> results = new HashMap<>();
         results.put("configuration", customConfig.getConfiguration());
-
-        // Create services with custom configuration
-        QueryService queryServiceToUse = evaluationServiceFactory.createQueryService(impl);
-
-        List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
-
-        for (Map.Entry<String, String> entry : getQuestionsAndAnswers().entrySet()) {
-            String question = entry.getKey() != null ? entry.getKey() : "";
-            String correctAnswer = entry.getValue() != null ? entry.getValue() : "";
-            QueryResponse queryResponse = queryServiceToUse.generateResponse(question);
-            String llmResponse = queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
-            String evaluation = evaluateResponse(question, correctAnswer, llmResponse);
-            Map<String, Object> result = buildEvalQuestionResult(question, correctAnswer, llmResponse, evaluation, queryResponse);
-            resultsForPrompt.add(result);
-            logEvalQuestion(question, queryResponse, result);
-        }
-
         results.put("results", resultsForPrompt);
-        // F.3, F.4: Build evaluation_summary from parsed llm_evaluation scores
-        Map<String, Object> evaluationSummary = buildEvaluationSummary(resultsForPrompt);
-        results.put("evaluation_summary", evaluationSummary);
+        results.put("evaluation_summary", buildEvaluationSummary(resultsForPrompt));
         return results;
+    }
+
+    @Override
+    public Map<String, Object> evaluateWithConfigurationForRagPresetQuestions(
+            RagFeatureConfiguration customConfig,
+            RagImplementationProperties implementationProperties,
+            List<RagPresetQuestion> questions,
+            BiConsumer<Integer, Integer> itemProgress) {
+        if (evaluationServiceFactory == null) {
+            throw new IllegalStateException("EvaluationServiceFactory must be set to evaluate with custom configuration");
+        }
+        RagImplementationProperties impl =
+                implementationProperties != null ? implementationProperties : new RagImplementationProperties();
+        loadDataWithConfiguration(customConfig);
+        QueryService queryServiceToUse = evaluationServiceFactory.createQueryService(impl);
+        List<Map<String, Object>> resultsForPrompt = new ArrayList<>();
+        int total = questions.size();
+        int idx = 0;
+        for (RagPresetQuestion q : questions) {
+            idx++;
+            if (itemProgress != null) {
+                itemProgress.accept(idx, total);
+            }
+            String questionText = q.question();
+            String correctAnswer = q.expectedAnswer() != null ? q.expectedAnswer() : "";
+            long t0 = System.nanoTime();
+            try {
+                QueryResponse queryResponse = queryServiceToUse.generateResponse(questionText);
+                String llmResponse =
+                        queryResponse != null && queryResponse.getAnswer() != null ? queryResponse.getAnswer() : "";
+                String evaluation = evaluateResponse(questionText, correctAnswer, llmResponse);
+                Map<String, Object> result =
+                        buildEvalQuestionResult(questionText, correctAnswer, llmResponse, evaluation, queryResponse);
+                applyDatasetDimensions(q, result);
+                result.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, q.id());
+                result.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.EXECUTED.name());
+                result.put(BenchmarkResultRowKeys.LATENCY_MS, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
+                resultsForPrompt.add(result);
+                logEvalQuestion(questionText, queryResponse, result);
+            } catch (RuntimeException ex) {
+                Map<String, Object> result =
+                        buildEvalQuestionResult(questionText, correctAnswer, "", "", null);
+                applyDatasetDimensions(q, result);
+                result.put(BenchmarkResultRowKeys.DATASET_QUESTION_ID, q.id());
+                result.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.FAILED.name());
+                result.put(BenchmarkResultRowKeys.LATENCY_MS, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0));
+                result.put(
+                        BenchmarkResultRowKeys.ERROR_CODE,
+                        ex.getClass().getSimpleName());
+                result.put(
+                        "error",
+                        ex.getMessage() != null && !ex.getMessage().isBlank()
+                                ? ex.getMessage()
+                                : ex.getClass().getSimpleName());
+                resultsForPrompt.add(result);
+                log().warn("RAG preset evaluation item failed for questionId={}", q.id(), ex);
+            }
+        }
+        Map<String, Object> results = new HashMap<>();
+        results.put("configuration", customConfig.getConfiguration());
+        results.put("results", resultsForPrompt);
+        results.put("evaluation_summary", buildEvaluationSummary(resultsForPrompt));
+        return results;
+    }
+
+    private static void applyDatasetDimensions(RagPresetQuestion q, Map<String, Object> result) {
+        result.put(BenchmarkResultRowKeys.DIFFICULTY, q.difficulty().map(DifficultyLevel::name).orElse(null));
+        String datasetQt = q.queryType().map(QueryType::name).orElse(null);
+        if (datasetQt != null) {
+            result.put("query_type", datasetQt);
+        }
     }
 
     private Map<String, Object> buildEvalQuestionResult(
@@ -315,63 +367,27 @@ public abstract class AbstractEvaluationService implements EvaluationService {
         log().info(result.toString());
     }
 
-    /**
-     * Evaluates all possible configuration combinations of the main feature flags ({@code 2^N} configs, N = number of {@link #FEATURE_FLAG_DESCRIPTORS}).
-     * For each combination the database is cleared and reloaded so results are coherent with that config.
-     *
-     * @return Map with configuration name as key and evaluation results as value
-     */
+    /** Legacy combinatorial runner removed with Map-based evaluation. */
+    @Override
     public Map<String, Map<String, Object>> evaluateAllConfigurations() {
-        if (evaluationServiceFactory == null) {
-            throw new IllegalStateException("EvaluationServiceFactory must be set to evaluate all configurations");
-        }
-        log().warn(
-                "LEGACY_COMBINATORIAL: full feature-flag matrix (evaluateAllConfigurations) — not primary scientific benchmark evidence");
-        Map<String, Map<String, Object>> allResults = new HashMap<>();
-        int totalConfigs = 1 << FEATURE_FLAG_DESCRIPTORS.length;
-
-        for (int configIndex = 0; configIndex < totalConfigs; configIndex++) {
-            RagFeatureConfiguration config = buildFeatureConfigFromIndex(configIndex);
-            String configName = buildFeatureConfigName(configIndex, config);
-            log().info("Evaluating configuration: {}", configName);
-            Map<String, Object> result = evaluateWithConfiguration(config, implementationProperties);
-            allResults.put(configName, result);
-        }
-        return allResults;
+        throw new UnsupportedOperationException(LEGACY_MAP_EVALUATION_REMOVED);
     }
 
-    /**
-     * Builds a RagFeatureConfiguration from a bit mask index (0 .. 2^N - 1, N = number of flag descriptors).
-     * Bit 0 = first flag in FEATURE_FLAG_DESCRIPTORS, bit 1 = second, etc.
-     */
-    private static RagFeatureConfiguration buildFeatureConfigFromIndex(int configIndex) {
-        RagFeatureConfiguration config = new RagFeatureConfiguration();
-        config.setUseRetrieval(true);
-        config.setUseAdvisor(true);
-        for (int i = 0; i < FEATURE_FLAG_DESCRIPTORS.length; i++) {
-            boolean value = (configIndex & (1 << i)) != 0;
-            FEATURE_FLAG_DESCRIPTORS[i].setter.accept(config, value);
-        }
-        return config;
-    }
-
-    /**
-     * Builds a short name for the configuration (e.g. config_000_exp_false_ner_true_...).
-     */
-    private static String buildFeatureConfigName(int configIndex, RagFeatureConfiguration config) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(String.format("config_%03d", configIndex));
-        for (FlagDescriptor d : FEATURE_FLAG_DESCRIPTORS) {
-            sb.append("_").append(d.label).append("_").append(Boolean.TRUE.equals(d.getter.apply(config)));
-        }
-        return sb.toString();
-    }
-    
     /**
      * Sets the evaluation service factory for dynamic configuration testing.
      */
     public void setEvaluationServiceFactory(EvaluationServiceFactory factory) {
         this.evaluationServiceFactory = factory;
+    }
+
+    @Override
+    public String judgeQaAnswer(String question, String goldAnswer, String generatedAnswer) {
+        return evaluateResponse(question, goldAnswer, generatedAnswer);
+    }
+
+    @Override
+    public Map<String, Object> summarizeJudgeResults(List<Map<String, Object>> resultsForPrompt) {
+        return buildEvaluationSummary(resultsForPrompt);
     }
 
     protected String evaluateResponse(String question, String correctAnswer, String llmResponse) {
