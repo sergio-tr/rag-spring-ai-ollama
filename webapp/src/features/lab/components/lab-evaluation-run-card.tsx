@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HelpPopover } from "@/features/help/HelpPopover";
 import { Label } from "@/components/ui/label";
+import { LabBenchmarkResultsPanel } from "@/features/lab/components/lab-benchmark-results-panel";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
+import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import {
   asyncTaskDtoFromSnapshot,
@@ -23,14 +25,22 @@ import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
 import type { LabJobFollowMode } from "@/lib/lab-job-follow";
 import { useAppStore } from "@/store/app.store";
-import type { AsyncTaskStatusDto, LabJobAcceptedDto } from "@/types/api";
+import type {
+  AsyncTaskStatusDto,
+  BenchmarkJobAcceptedDto,
+  BenchmarkKind,
+  ExperimentalDatasetListItemDto,
+  LabJobAcceptedDto,
+  StartBenchmarkRunRequest,
+} from "@/types/api";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type LabEvaluationRunCardProps = {
-  /** POST target under the product API, e.g. `/lab/evaluations/llm`. */
-  evalBasePath: "/lab/evaluations/llm" | "/lab/evaluations/rag";
+  benchmarkKind: BenchmarkKind;
+  sectionKey: LabJobSectionKey;
+  taskTypeHint: string;
   cardTitle: string;
   cardDescription: string;
   runButtonTestId: string;
@@ -39,12 +49,56 @@ export type LabEvaluationRunCardProps = {
   introBeforeCard?: ReactNode;
 };
 
+function compatibleExperimentalTypes(kind: BenchmarkKind): Set<string> {
+  switch (kind) {
+    case "LLM_JUDGE_QA":
+      return new Set(["LLM_MODEL_BASELINE", "REFERENCE_BUNDLE"]);
+    case "EMBEDDING_RETRIEVAL":
+      return new Set(["EMBEDDING_BASELINE", "REFERENCE_BUNDLE"]);
+    case "RAG_PRESET_END_TO_END":
+      return new Set(["RAG_PRESET_BENCHMARK", "REFERENCE_BUNDLE"]);
+    default:
+      return new Set();
+  }
+}
+
+function rankDataset(a: ExperimentalDatasetListItemDto): number {
+  if (a.validationStatus === "VALID") return 0;
+  if (a.validationStatus === "INVALID") return 2;
+  return 1;
+}
+
+function pickDefaultDataset(
+  items: ExperimentalDatasetListItemDto[],
+  kind: BenchmarkKind,
+): ExperimentalDatasetListItemDto | null {
+  const allowed = compatibleExperimentalTypes(kind);
+  const candidates = items.filter((d) => allowed.has(d.experimentalDatasetType));
+  if (candidates.length === 0) return null;
+  candidates.sort((x, y) => rankDataset(x) - rankDataset(y));
+  return candidates[0];
+}
+
+function benchmarkAcceptedToLabAccepted(acc: BenchmarkJobAcceptedDto): LabJobAcceptedDto {
+  return {
+    jobId: acc.asyncTaskId,
+    status: acc.status,
+    pollPath: acc.pollPath,
+    streamPath: acc.streamPath,
+  };
+}
+
+function taskSucceeded(taskStatus: AsyncTaskStatusDto | null): boolean {
+  return taskStatus?.terminal === true && taskStatus.status?.toUpperCase() === "SUCCEEDED";
+}
+
 /**
- * Shared LLM vs RAG lab evaluation runner (sync POST or async job + poll/SSE).
- * Keeps a single implementation so Sonar CPD and maintenance stay reasonable.
+ * Shared lab benchmark runner (canonical async POST + poll/SSE) for LLM, embedding retrieval, and RAG preset benchmarks.
  */
 export function LabEvaluationRunCard({
-  evalBasePath,
+  benchmarkKind,
+  sectionKey,
+  taskTypeHint,
   cardTitle,
   cardDescription,
   runButtonTestId,
@@ -54,24 +108,47 @@ export function LabEvaluationRunCard({
   const t = useTranslations("Lab");
   const tHelp = useTranslations("Help");
   const { data: labStatus } = useLabStatus();
+  const experimentalDatasets = useExperimentalDatasetsQuery();
   const activeProject = useAppStore((s) => s.activeProject);
 
-  const [syncMode, setSyncMode] = useState(false);
   const [followMode, setFollowMode] = useState<LabJobFollowMode>("poll");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<unknown>(null);
   const [accepted, setAccepted] = useState<LabJobAcceptedDto | null>(null);
+  const [evaluationRunId, setEvaluationRunId] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<AsyncTaskStatusDto | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [stoppedWaiting, setStoppedWaiting] = useState(false);
+  /** When null, the default compatible dataset is used without pinning user intent. */
+  const [userDatasetId, setUserDatasetId] = useState<string | null>(null);
+  const [llmModelId, setLlmModelId] = useState("");
+  const [embeddingModelId, setEmbeddingModelId] = useState("");
+  const [embeddingDownstreamRag, setEmbeddingDownstreamRag] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const traceDedupeRef = useRef(createLabJobTraceDedupe());
   const mountedEvalCardRef = useRef(true);
 
-  const sectionKey: LabJobSectionKey =
-    evalBasePath === "/lab/evaluations/llm" ? "evaluation-llm" : "evaluation-rag";
-  const taskTypeHint =
-    evalBasePath === "/lab/evaluations/llm" ? "LLM_EVALUATION" : "RAG_EVALUATION";
+  const compatibleRows = useMemo(() => {
+    const allowed = compatibleExperimentalTypes(benchmarkKind);
+    return (experimentalDatasets.data ?? []).filter((d) => allowed.has(d.experimentalDatasetType));
+  }, [benchmarkKind, experimentalDatasets.data]);
+
+  const defaultDataset = useMemo(
+    () => pickDefaultDataset(experimentalDatasets.data ?? [], benchmarkKind),
+    [benchmarkKind, experimentalDatasets.data],
+  );
+
+  const selectedDataset = useMemo(() => {
+    const id = userDatasetId ?? defaultDataset?.id ?? null;
+    if (!id) return null;
+    return compatibleRows.find((r) => r.id === id) ?? null;
+  }, [compatibleRows, defaultDataset, userDatasetId]);
+
+  const referenceKindsReady =
+    labStatus?.datasetKindsReady ??
+    labStatus?.datasets?.datasetKindsReady ??
+    labStatus?.datasets?.enabled ??
+    false;
 
   useEffect(() => {
     mountedEvalCardRef.current = true;
@@ -89,6 +166,7 @@ export function LabEvaluationRunCard({
     if (!rec || rec.staleNotFound) return;
     queueMicrotask(() => {
       setAccepted(rec.accepted);
+      setEvaluationRunId(rec.evaluationRunId ?? null);
       setFollowMode(rec.followMode);
       if (rec.lastStatus) {
         setTaskStatus(asyncTaskDtoFromSnapshot(rec.jobId, rec.lastStatus));
@@ -106,6 +184,7 @@ export function LabEvaluationRunCard({
     traceDedupeRef.current = createLabJobTraceDedupe();
     traceLabJobResumedWatching(rec.jobId, t("traceJobResumedWatching"));
     setAccepted(rec.accepted);
+    setEvaluationRunId(rec.evaluationRunId ?? null);
     setFollowMode(rec.followMode);
     setRunning(true);
     setErr(null);
@@ -159,7 +238,7 @@ export function LabEvaluationRunCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resumeNonce-driven only
   }, [resumeNonceEvalCard]);
 
-  const datasetsReady = labStatus?.datasets.enabled ?? false;
+  const canStart = !experimentalDatasets.isLoading && selectedDataset != null;
 
   async function run() {
     abortRef.current?.abort();
@@ -169,36 +248,47 @@ export function LabEvaluationRunCard({
     setErr(null);
     setResult(null);
     setAccepted(null);
+    setEvaluationRunId(null);
     setTaskStatus(null);
     setStoppedWaiting(false);
     traceDedupeRef.current = createLabJobTraceDedupe();
     let asyncAccepted: LabJobAcceptedDto | null = null;
     try {
-      const params = new URLSearchParams();
-      if (syncMode) {
-        params.set("sync", "true");
-      }
-      if (activeProject?.id) {
-        params.set("projectId", activeProject.id);
-      }
-      const qs = params.toString();
-      const path = qs ? `${evalBasePath}?${qs}` : evalBasePath;
-      const url = apiProductPath(path);
-
-      if (syncMode) {
-        const data = await apiFetch<unknown>(url, { method: "POST", signal });
-        setResult(data);
+      if (!selectedDataset) {
+        setErr(t("benchmarkNeedsCompatibleDataset"));
         return;
       }
-
-      const acc = await apiFetch<LabJobAcceptedDto>(url, { method: "POST", signal });
+      const body: StartBenchmarkRunRequest = {
+        datasetId: selectedDataset.id,
+        projectId: activeProject?.id ?? undefined,
+      };
+      const lm = llmModelId.trim();
+      const em = embeddingModelId.trim();
+      if (lm) body.llmModelId = lm;
+      if (em) body.embeddingModelId = em;
+      if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
+        body.embeddingDownstreamRag = embeddingDownstreamRag;
+      }
+      const url = apiProductPath(`/lab/benchmarks/${benchmarkKind}/runs`);
+      const accRaw = await apiFetch<BenchmarkJobAcceptedDto>(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
+      const acc = benchmarkAcceptedToLabAccepted(accRaw);
       asyncAccepted = acc;
       setAccepted(acc);
+      setEvaluationRunId(accRaw.evaluationRunId);
       useLabJobSessionStore.getState().upsertLabJobOnAccepted({
         accepted: acc,
         sectionKey,
         followMode,
         taskTypeHint,
+        evaluationRunId: accRaw.evaluationRunId,
       });
       if (!traceDedupeRef.current.acceptedEmitted) {
         traceDedupeRef.current.acceptedEmitted = true;
@@ -248,6 +338,8 @@ export function LabEvaluationRunCard({
     }
   }
 
+  const showResultsPanel = taskSucceeded(taskStatus) && !!evaluationRunId?.trim();
+
   return (
     <div className="space-y-4">
       <p className="text-muted-foreground border-l-4 border-primary/40 pl-3 text-sm">{t("adrDisclaimer")}</p>
@@ -267,48 +359,44 @@ export function LabEvaluationRunCard({
           />
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className="size-4 rounded border"
-              checked={syncMode}
-              onChange={(e) => setSyncMode(e.target.checked)}
-              disabled={running}
-            />
-            {t("syncModeLabel")}
-          </label>
           <details className="text-xs">
             <summary className="cursor-pointer text-muted-foreground">{t("labAdvancedOptionsSummary")}</summary>
             <div className="mt-2 space-y-3">
-              {syncMode ? null : (
-                <div className="flex flex-col gap-1">
-                  <span className="text-muted-foreground text-xs">{t("followModeLabel")}</span>
-                  <div className="flex gap-3 text-sm">
-                    <label className="flex items-center gap-1.5">
-                      <input
-                        type="radio"
-                        name={radioGroupName}
-                        checked={followMode === "poll"}
-                        onChange={() => setFollowMode("poll")}
-                        disabled={running}
-                      />
-                      {t("followModePoll")}
-                    </label>
-                    <label className="flex items-center gap-1.5">
-                      <input
-                        type="radio"
-                        name={radioGroupName}
-                        checked={followMode === "sse"}
-                        onChange={() => setFollowMode("sse")}
-                        disabled={running}
-                      />
-                      {t("followModeSse")}
-                    </label>
-                  </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-muted-foreground text-xs">{t("followModeLabel")}</span>
+                <div className="flex gap-3 text-sm">
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name={radioGroupName}
+                      checked={followMode === "poll"}
+                      onChange={() => setFollowMode("poll")}
+                      disabled={running}
+                    />
+                    {t("followModePoll")}
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name={radioGroupName}
+                      checked={followMode === "sse"}
+                      onChange={() => setFollowMode("sse")}
+                      disabled={running}
+                    />
+                    {t("followModeSse")}
+                  </label>
                 </div>
-              )}
+              </div>
               <p className="text-muted-foreground leading-relaxed">{t("labAdvancedEvalHelp")}</p>
             </div>
+          </details>
+
+          <details className="rounded-md border bg-muted/20 p-3 text-xs">
+            <summary className="cursor-pointer font-medium text-foreground">{t("benchmarkModelHintsSummary")}</summary>
+            <p className="text-muted-foreground mt-2 leading-relaxed">{t("benchmarkPromptProfileInfo")}</p>
+            {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
+              <p className="text-muted-foreground mt-2 leading-relaxed">{t("benchmarkRagPresetCatalogInfo")}</p>
+            ) : null}
           </details>
 
           {activeProject ? (
@@ -319,7 +407,7 @@ export function LabEvaluationRunCard({
             <p className="text-muted-foreground text-xs">{t("projectScopeNone")}</p>
           )}
 
-          {datasetsReady ? null : (
+          {referenceKindsReady ? null : (
             <output
               data-testid="lab-datasets-disabled-warn"
               className="block text-amber-600 text-sm dark:text-amber-500"
@@ -328,11 +416,88 @@ export function LabEvaluationRunCard({
             </output>
           )}
 
+          <div className="space-y-2">
+            <Label htmlFor={`lab-benchmark-dataset-${sectionKey}`}>{t("benchmarkDatasetLabel")}</Label>
+            <select
+              id={`lab-benchmark-dataset-${sectionKey}`}
+              data-testid="lab-benchmark-dataset-select"
+              className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+              value={selectedDataset?.id ?? ""}
+              disabled={running || compatibleRows.length === 0}
+              onChange={(e) => setUserDatasetId(e.target.value || null)}
+            >
+              {compatibleRows.length === 0 ? (
+                <option value="">{t("benchmarkDatasetPlaceholderNone")}</option>
+              ) : null}
+              {compatibleRows.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {(row.name ?? t("experimentalDatasetUnnamed")) +
+                    ` · ${row.experimentalDatasetType}` +
+                    (row.validationStatus ? ` (${row.validationStatus})` : "")}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {experimentalDatasets.isFetched && compatibleRows.length === 0 ? (
+            <output
+              data-testid="lab-benchmark-needs-dataset-warn"
+              className="block text-amber-600 text-sm dark:text-amber-500"
+            >
+              {t("benchmarkNeedsCompatibleDataset")}
+            </output>
+          ) : null}
+
+          {(benchmarkKind === "LLM_JUDGE_QA" ||
+            benchmarkKind === "RAG_PRESET_END_TO_END" ||
+            (benchmarkKind === "EMBEDDING_RETRIEVAL" && embeddingDownstreamRag)) && (
+            <div className="space-y-2">
+              <Label htmlFor={`lab-llm-model-${sectionKey}`}>{t("benchmarkLlmModelOptional")}</Label>
+              <input
+                id={`lab-llm-model-${sectionKey}`}
+                data-testid="lab-benchmark-llm-model"
+                className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                value={llmModelId}
+                disabled={running}
+                onChange={(e) => setLlmModelId(e.target.value)}
+                placeholder={t("benchmarkLlmModelPlaceholder")}
+              />
+            </div>
+          )}
+
+          {(benchmarkKind === "EMBEDDING_RETRIEVAL" || benchmarkKind === "RAG_PRESET_END_TO_END") && (
+            <div className="space-y-2">
+              <Label htmlFor={`lab-emb-model-${sectionKey}`}>{t("benchmarkEmbeddingModelOptional")}</Label>
+              <input
+                id={`lab-emb-model-${sectionKey}`}
+                data-testid="lab-benchmark-embedding-model"
+                className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                value={embeddingModelId}
+                disabled={running}
+                onChange={(e) => setEmbeddingModelId(e.target.value)}
+                placeholder={t("benchmarkEmbeddingModelPlaceholder")}
+              />
+            </div>
+          )}
+
+          {benchmarkKind === "EMBEDDING_RETRIEVAL" ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                data-testid="lab-benchmark-embedding-downstream"
+                checked={embeddingDownstreamRag}
+                disabled={running}
+                onChange={(e) => setEmbeddingDownstreamRag(e.target.checked)}
+              />
+              {t("benchmarkEmbeddingDownstreamLabel")}
+            </label>
+          ) : null}
+
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               data-testid={runButtonTestId}
-              disabled={running || !datasetsReady}
+              disabled={running || !canStart}
               onClick={() => void run()}
             >
               {running ? t("evalRunning") : t("runEval")}
@@ -350,7 +515,7 @@ export function LabEvaluationRunCard({
             </p>
           ) : null}
 
-          {syncMode || (!accepted && !taskStatus) ? null : (
+          {!accepted && !taskStatus ? null : (
             <LabJobPanel
               accepted={accepted}
               taskStatus={taskStatus}
@@ -359,13 +524,15 @@ export function LabEvaluationRunCard({
             />
           )}
 
+          <LabBenchmarkResultsPanel evaluationRunId={evaluationRunId} loadEnabled={showResultsPanel} />
+
           {result != null ? (
-            <>
-              <Label className="text-muted-foreground">{t("evalResultTitle")}</Label>
-              <pre className="bg-muted/40 max-h-[480px] overflow-auto rounded-md border border-border p-3 text-xs">
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground">{t("benchmarkRawTaskResultSummary")}</summary>
+              <pre className="bg-muted/40 mt-2 max-h-[320px] overflow-auto rounded-md border border-border p-3 text-xs">
                 {JSON.stringify(result, null, 2)}
               </pre>
-            </>
+            </details>
           ) : null}
         </CardContent>
       </Card>

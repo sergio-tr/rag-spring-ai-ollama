@@ -15,10 +15,22 @@ export async function installMinimalProductApiStub(page: Page): Promise<void> {
   });
 
   const labStatusJson = JSON.stringify({
-    datasets: { enabled: false, questionCount: 0 },
+    referenceBundleAvailable: false,
+    referenceBundleValid: false,
+    datasetKindsReady: false,
+    countsByDatasetKind: {
+      llmReaderQuestions: 0,
+      embeddingRetrievalQueries: 0,
+      ragPresetQuestions: 0,
+    },
+    datasets: {
+      enabled: false,
+      datasetKindsReady: false,
+      legacyQuestionCountDeprecated: null,
+    },
     evaluations: { llm: false, rag: false, classifierProxy: false, asyncJobs: false },
     classifier: { configured: false, train: false, evaluate: false },
-    message: "",
+    message: "Offline smoke stub — canonical benchmarks use POST …/lab/benchmarks/{kind}/runs.",
   });
 
   await page.route("**/api/v5/**", async (route) => {
@@ -100,6 +112,11 @@ export async function installMinimalProductApiStub(page: Page): Promise<void> {
 
     if (path === "/lab/status") {
       await fulfillJson(JSON.parse(labStatusJson));
+      return;
+    }
+
+    if (path === "/lab/experimental-datasets") {
+      await fulfillJson([]);
       return;
     }
 

@@ -3,13 +3,17 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HelpPopover } from "@/features/help/HelpPopover";
+import { LabExperimentalDatasetPanel } from "@/features/lab/components/lab-experimental-dataset-panel";
+import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
+import type { ExperimentalDatasetListItemDto, LabValidationIssueDto } from "@/types/api";
 import { useTranslations } from "next-intl";
 
 export default function LabOverviewPage() {
   const t = useTranslations("Lab");
   const tHelp = useTranslations("Help");
   const { data: status, isError, isLoading, refetch } = useLabStatus();
+  const experimentalList = useExperimentalDatasetsQuery();
 
   return (
     <div className="space-y-6">
@@ -47,15 +51,27 @@ export default function LabOverviewPage() {
                     <CardTitle className="text-base">{t("statusDatasets")}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Badge variant={status.datasets.enabled ? "default" : "secondary"}>
-                        {status.datasets.enabled ? t("statusOn") : t("statusOff")}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant={
+                          (status.datasetKindsReady ?? status.datasets.enabled) ? "default" : "secondary"
+                        }
+                      >
+                        {(status.datasetKindsReady ?? status.datasets.enabled) ? t("statusOn") : t("statusOff")}
                       </Badge>
-                      <span className="text-muted-foreground">
-                        {t("statusQuestionCount", { count: status.datasets.questionCount })}
-                      </span>
+                      {status.countsByDatasetKind ? (
+                        <span className="text-muted-foreground text-xs">
+                          {t("statusTypedDatasetKindsLine", {
+                            llm: status.countsByDatasetKind.llmReaderQuestions ?? 0,
+                            emb: status.countsByDatasetKind.embeddingRetrievalQueries ?? 0,
+                            rag: status.countsByDatasetKind.ragPresetQuestions ?? 0,
+                          })}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">{t("statusCountsUnavailable")}</span>
+                      )}
                     </div>
-                    {!status.datasets.enabled ? (
+                    {!(status.datasetKindsReady ?? status.datasets.enabled) ? (
                       <p className="text-muted-foreground text-xs">{t("statusDatasetsHint")}</p>
                     ) : null}
                   </CardContent>
@@ -91,6 +107,89 @@ export default function LabOverviewPage() {
                     ) : null}
                   </CardContent>
                 </Card>
+                <Card className="border-dashed sm:col-span-2">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{t("referenceBundleCardTitle")}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant={status.referenceBundleAvailable === true ? "default" : "secondary"}>
+                        {status.referenceBundleAvailable === true
+                          ? t("referenceBundlePresent")
+                          : t("referenceBundleMissing")}
+                      </Badge>
+                      <Badge variant={status.referenceBundleValid === true ? "default" : "destructive"}>
+                        {status.referenceBundleValid === true
+                          ? t("referenceBundleValidYes")
+                          : t("referenceBundleValidNo")}
+                      </Badge>
+                      {status.protocolVersion?.trim() ? (
+                        <Badge variant="outline">
+                          {t("referenceBundleProtocol", { version: status.protocolVersion.trim() })}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    {status.referenceBundleAvailable !== true ? (
+                      <p className="text-muted-foreground text-xs">{t("referenceBundleMissingHint")}</p>
+                    ) : null}
+                    {status.referenceBundleAvailable === true && status.referenceBundleValid !== true ? (
+                      <p className="text-muted-foreground text-xs">{t("referenceBundleInvalidHint")}</p>
+                    ) : null}
+                    {status.validationIssues && status.validationIssues.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-muted-foreground text-xs font-medium">{t("referenceBundleIssuesTitle")}</p>
+                        <ul className="max-h-40 list-disc space-y-1 overflow-auto pl-4 text-xs">
+                          {status.validationIssues.slice(0, 12).map((issue: LabValidationIssueDto, idx: number) => (
+                            <li key={`${issue.code}-${issue.rowNumber}-${issue.column}-${idx}`}>
+                              <span className="font-mono">{issue.code}</span>
+                              {issue.sheet ? (
+                                <span className="text-muted-foreground">
+                                  {" "}
+                                  ({issue.sheet}
+                                  {issue.rowNumber > 0 ? ` · ${t("experimentalDatasetIssueRow", { n: issue.rowNumber })}` : ""}
+                                  {issue.column ? ` · ${issue.column}` : ""})
+                                </span>
+                              ) : null}
+                              {": "}
+                              {issue.message}
+                            </li>
+                          ))}
+                        </ul>
+                        {status.validationIssues.length > 12 ? (
+                          <p className="text-muted-foreground text-xs">
+                            {t("referenceBundleIssuesTruncated", { n: status.validationIssues.length - 12 })}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : status.referenceBundleAvailable === true && status.referenceBundleValid === true ? (
+                      <p className="text-muted-foreground text-xs">{t("referenceBundleIssuesNone")}</p>
+                    ) : null}
+                  </CardContent>
+                </Card>
+                <Card className="border-dashed sm:col-span-2">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{t("overviewUploadedDatasetsTitle")}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    {experimentalList.isLoading ? (
+                      <p className="text-muted-foreground text-xs">{t("overviewUploadedDatasetsLoading")}</p>
+                    ) : experimentalList.isError ? (
+                      <p className="text-destructive text-xs" role="alert">
+                        {t("overviewUploadedDatasetsError")}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-muted-foreground text-xs">
+                          {t("overviewUploadedDatasetsCounts", {
+                            total: experimentalList.data?.length ?? 0,
+                            custom: (experimentalList.data ?? []).filter((d) => !d.readOnly).length,
+                          })}
+                        </p>
+                        <UploadedValidationBadges rows={experimentalList.data ?? []} t={t} />
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
               <details className="text-xs">
                 <summary className="cursor-pointer text-muted-foreground">{t("statusRawToggle")}</summary>
@@ -103,6 +202,8 @@ export default function LabOverviewPage() {
           <ButtonLikeRefetch onClick={() => void refetch()} label={t("statusRefresh")} />
         </CardContent>
       </Card>
+
+      <LabExperimentalDatasetPanel />
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
@@ -118,6 +219,32 @@ export default function LabOverviewPage() {
           />
         </CardHeader>
       </Card>
+    </div>
+  );
+}
+
+function UploadedValidationBadges({
+  rows,
+  t,
+}: Readonly<{
+  rows: ExperimentalDatasetListItemDto[];
+  t: (key: string, values?: Record<string, string | number>) => string;
+}>) {
+  const valid = rows.filter((r) => r.validationStatus === "VALID").length;
+  const invalid = rows.filter((r) => r.validationStatus === "INVALID").length;
+  const other = rows.length - valid - invalid;
+  if (rows.length === 0) {
+    return <p className="text-muted-foreground text-xs">{t("overviewUploadedDatasetsEmpty")}</p>;
+  }
+  return (
+    <div className="flex flex-wrap gap-2 text-xs">
+      {valid > 0 ? (
+        <Badge variant="default">{t("overviewUploadedValidBadge", { count: valid })}</Badge>
+      ) : null}
+      {invalid > 0 ? (
+        <Badge variant="destructive">{t("overviewUploadedInvalidBadge", { count: invalid })}</Badge>
+      ) : null}
+      {other > 0 ? <Badge variant="secondary">{t("overviewUploadedOtherBadge", { count: other })}</Badge> : null}
     </div>
   );
 }

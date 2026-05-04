@@ -10,15 +10,34 @@ vi.mock("@/features/lab/hooks/use-lab-status", () => ({
   useLabStatus: vi.fn(),
 }));
 
+vi.mock("@/features/lab/hooks/use-experimental-datasets", () => ({
+  experimentalDatasetsQueryKey: ["lab", "experimental-datasets"],
+  useExperimentalDatasetsQuery: vi.fn(),
+  useUploadExperimentalDatasetMutation: vi.fn(() => ({
+    mutateAsync: vi.fn(),
+    reset: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  })),
+}));
+
 vi.mock("@/features/help/HelpPopover", () => ({
   HelpPopover: () => <button type="button">Help</button>,
 }));
 
+import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 
 describe("LabOverviewPage", () => {
   beforeEach(() => {
     vi.mocked(useLabStatus).mockReset();
+    vi.mocked(useExperimentalDatasetsQuery).mockReset();
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [],
+      isLoading: false,
+      isError: false,
+    } as never);
   });
 
   it("shows error state without throwing when status fetch fails", () => {
@@ -38,10 +57,18 @@ describe("LabOverviewPage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/Could not load lab status/i);
   });
 
-  it("shows evaluation dataset as available when backend reports questions", () => {
+  it("shows typed reference workbook counts when backend reports dataset kinds ready", () => {
     vi.mocked(useLabStatus).mockReturnValue({
       data: {
-        datasets: { enabled: true, questionCount: 12 },
+        datasetKindsReady: true,
+        datasets: { enabled: true, datasetKindsReady: true },
+        referenceBundleAvailable: true,
+        referenceBundleValid: true,
+        countsByDatasetKind: {
+          llmReaderQuestions: 12,
+          embeddingRetrievalQueries: 3,
+          ragPresetQuestions: 5,
+        },
         evaluations: { llm: true, rag: true, classifierProxy: false, asyncJobs: true },
         classifier: { configured: true, train: true, evaluate: true },
         message: "",
@@ -57,14 +84,17 @@ describe("LabOverviewPage", () => {
         </IntlTestProvider>
       </QueryClientProvider>,
     );
-    expect(screen.getByText(/12 questions loaded/i)).toBeInTheDocument();
-    expect(screen.queryByText(/bundled benchmark workbook/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/LLM rows: 12/i)).toBeInTheDocument();
+    expect(screen.queryByText(/legacy fallback/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Internal reference workbook/i)).toBeInTheDocument();
+    expect(screen.getByText(/Packaged workbook present/i)).toBeInTheDocument();
   });
 
   it("shows simplified overview copy without endpoint-heavy primer text", () => {
     vi.mocked(useLabStatus).mockReturnValue({
       data: {
-        datasets: { enabled: false, questionCount: 0 },
+        datasetKindsReady: false,
+        datasets: { enabled: false, datasetKindsReady: false },
         evaluations: { llm: true, rag: false, classifierProxy: false, asyncJobs: true },
         classifier: { configured: false, train: false, evaluate: false },
         message: "",
@@ -83,14 +113,16 @@ describe("LabOverviewPage", () => {
     expect(screen.getByText(/See what is ready to run/i)).toBeInTheDocument();
     expect(screen.queryByText(/Feature flags from GET/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\{product\}/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/bundled benchmark workbook/i)).toBeInTheDocument();
+    expect(screen.getByText(/operators should ship/i)).toBeInTheDocument();
   });
 
   it("collapses technical server status lines behind a disclosure by default", async () => {
     const user = userEvent.setup();
     vi.mocked(useLabStatus).mockReturnValue({
       data: {
-        datasets: { enabled: true, questionCount: 1 },
+        datasetKindsReady: true,
+        datasets: { enabled: true, datasetKindsReady: true },
+        countsByDatasetKind: { llmReaderQuestions: 1, embeddingRetrievalQueries: 1, ragPresetQuestions: 1 },
         evaluations: { llm: true, rag: true, classifierProxy: false, asyncJobs: true },
         classifier: { configured: true, train: true, evaluate: true },
         message: "Lab API — default async worker GET /lab/status",
@@ -116,7 +148,9 @@ describe("LabOverviewPage", () => {
   it("does not surface compose observability filenames in the primary observability card", () => {
     vi.mocked(useLabStatus).mockReturnValue({
       data: {
-        datasets: { enabled: true, questionCount: 1 },
+        datasetKindsReady: true,
+        datasets: { enabled: true, datasetKindsReady: true },
+        countsByDatasetKind: { llmReaderQuestions: 1, embeddingRetrievalQueries: 1, ragPresetQuestions: 1 },
         evaluations: { llm: true, rag: true, classifierProxy: false, asyncJobs: true },
         classifier: { configured: true, train: true, evaluate: true },
         message: "",

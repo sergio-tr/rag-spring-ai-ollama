@@ -4,7 +4,12 @@ import type { AsyncTaskStatusDto, LabJobAcceptedDto } from "@/types/api";
 /** Cap persisted Lab jobs to avoid unbounded session growth. */
 export const MAX_LAB_JOB_RECORDS = 5;
 
-export type LabJobSectionKey = "classifier-train" | "classifier-eval" | "evaluation-llm" | "evaluation-rag";
+export type LabJobSectionKey =
+  | "classifier-train"
+  | "classifier-eval"
+  | "evaluation-llm"
+  | "evaluation-rag"
+  | "evaluation-embedding";
 
 /** Product route path without locale (next-intl adds locale). */
 export function labSectionHref(sectionKey: LabJobSectionKey): string {
@@ -16,6 +21,8 @@ export function labSectionHref(sectionKey: LabJobSectionKey): string {
       return "/lab/evaluation/llm";
     case "evaluation-rag":
       return "/lab/evaluation/rag";
+    case "evaluation-embedding":
+      return "/lab/evaluation/embedding";
   }
 }
 
@@ -26,6 +33,9 @@ export function pathnameMatchesLabSection(pathname: string | null, sectionKey: L
   }
   if (sectionKey === "evaluation-llm") {
     return pathname.includes("/lab/evaluation/llm");
+  }
+  if (sectionKey === "evaluation-embedding") {
+    return pathname.includes("/lab/evaluation/embedding");
   }
   return pathname.includes("/lab/evaluation/rag");
 }
@@ -44,6 +54,8 @@ export type PersistedLabJobRecord = Readonly<{
   jobId: string;
   sectionKey: LabJobSectionKey;
   accepted: LabJobAcceptedDto;
+  /** Present for canonical benchmark runs ({@code POST /lab/benchmarks/…/runs}). */
+  evaluationRunId?: string | null;
   followMode: LabJobFollowMode;
   startedAtMs: number;
   lastUpdatedMs: number;

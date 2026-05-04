@@ -173,6 +173,8 @@ export type ApiErrorKind = "http" | "network" | "timeout" | "abort" | "unknown";
 export type ApiErrorMeta = {
   kind: ApiErrorKind;
   safeMessage?: string;
+  /** Parsed JSON body when the response was JSON (including error responses). */
+  parsedJson?: unknown | null;
   details?: Record<string, unknown>;
   contentType?: string | null;
   /** Bounded slice of raw body for logs/debug only — never render unbounded HTML to users. */
@@ -367,6 +369,7 @@ export function createHttpApiError(args: {
   const meta: ApiErrorMeta = {
     kind: "http",
     safeMessage,
+    parsedJson,
     details,
     contentType: ct,
     rawBodyPreview: previewBody(args.bodyText),

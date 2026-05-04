@@ -55,13 +55,12 @@ export default defineConfig({
         "src/features/lab/components/classifier-registry-section.tsx",
         // Auth view wrappers are measured (has small unit tests).
       ],
-      // Gate: lines/statements/functions at 80% (JaCoCo-aligned intent). Branch % stays slightly lower:
-      // V8 + Radix/shallow UI branches count many defensive paths not worth duplicating in unit tests.
+      // Gate: all metrics ≥80% on instrumented `src/**` (see excludes above).
       thresholds: {
         lines: 80,
         statements: 80,
         functions: 80,
-        branches: 78,
+        branches: 80,
       },
     },
   },

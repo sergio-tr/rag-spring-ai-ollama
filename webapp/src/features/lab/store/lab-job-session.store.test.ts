@@ -91,4 +91,61 @@ describe("useLabJobSessionStore", () => {
     }
     expect(useLabJobSessionStore.getState().records.length).toBeLessThanOrEqual(5);
   });
+
+  it("stores evaluationRunId when canonical benchmark accepts", () => {
+    useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+      accepted: acc("bench-1"),
+      sectionKey: "evaluation-embedding",
+      followMode: "poll",
+      evaluationRunId: "550e8400-e29b-41d4-a716-446655440099",
+    });
+    expect(useLabJobSessionStore.getState().records.find((r) => r.jobId === "bench-1")?.evaluationRunId).toBe(
+      "550e8400-e29b-41d4-a716-446655440099",
+    );
+  });
+
+  it("consumePendingResume returns null on section mismatch without clearing pending resume", () => {
+    useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+      accepted: acc("job-wrong-sec"),
+      sectionKey: "evaluation-llm",
+      followMode: "poll",
+    });
+    useLabJobSessionStore.getState().requestResumeLabJob("evaluation-llm", "job-wrong-sec");
+    expect(useLabJobSessionStore.getState().consumePendingResume("evaluation-rag")).toBeNull();
+    expect(useLabJobSessionStore.getState().pendingResume?.jobId).toBe("job-wrong-sec");
+  });
+
+  it("dismissTerminalLabJob marks dismissedTerminal", () => {
+    useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+      accepted: acc("job-dismiss"),
+      sectionKey: "evaluation-llm",
+      followMode: "poll",
+    });
+    useLabJobSessionStore.getState().dismissTerminalLabJob("job-dismiss");
+    expect(useLabJobSessionStore.getState().records.find((r) => r.jobId === "job-dismiss")?.dismissedTerminal).toBe(
+      true,
+    );
+  });
+
+  it("clearLabJobRecord drops pending resume when it targets the same job id", () => {
+    useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+      accepted: acc("job-clear"),
+      sectionKey: "evaluation-llm",
+      followMode: "poll",
+    });
+    useLabJobSessionStore.getState().requestResumeLabJob("evaluation-llm", "job-clear");
+    useLabJobSessionStore.getState().clearLabJobRecord("job-clear");
+    expect(useLabJobSessionStore.getState().pendingResume).toBeNull();
+    expect(useLabJobSessionStore.getState().records.some((r) => r.jobId === "job-clear")).toBe(false);
+  });
+
+  it("patchLabJobPollTimedOut sets pollTimedOut flag", () => {
+    useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+      accepted: acc("job-to"),
+      sectionKey: "evaluation-llm",
+      followMode: "poll",
+    });
+    useLabJobSessionStore.getState().patchLabJobPollTimedOut("job-to", null);
+    expect(useLabJobSessionStore.getState().records.find((r) => r.jobId === "job-to")?.pollTimedOut).toBe(true);
+  });
 });

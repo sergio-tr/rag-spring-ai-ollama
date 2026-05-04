@@ -105,8 +105,34 @@ export type AdminAllowlistEntryDto = {
   installedAt: string | null;
 };
 
+export type LabValidationIssueDto = {
+  severity: string;
+  code: string;
+  sheet: string;
+  rowNumber: number;
+  column: string;
+  message: string;
+};
+
 export type LabStatusResponse = {
-  datasets: { enabled: boolean; questionCount: number };
+  datasets: {
+    enabled: boolean;
+    /** @deprecated Legacy field — always null; do not use as source of truth. */
+    legacyQuestionCountDeprecated?: number | null;
+    datasetKindsReady?: boolean;
+  };
+  /** True when core typed dataset kinds in the internal reference workbook have non-zero row counts and validation passed. */
+  datasetKindsReady?: boolean;
+  /** Non-empty when the parser or workbook validator reported issues. */
+  validationIssues?: LabValidationIssueDto[];
+  /** True when the packaged reference workbook resource exists on the backend classpath. */
+  referenceBundleAvailable?: boolean;
+  /** True when the reference workbook parsed without validation errors (typed evaluation gate). */
+  referenceBundleValid?: boolean;
+  /** Optional protocol label extracted from the README sheet when present. */
+  protocolVersion?: string;
+  /** Parsed row counts per logical dataset kind (reference bundle). */
+  countsByDatasetKind?: Record<string, number>;
   evaluations: {
     llm: boolean;
     rag: boolean;
@@ -190,6 +216,12 @@ export type StartBenchmarkRunRequest = {
   resolvedConfigSnapshotId?: string | null;
   indexSnapshotId?: string | null;
   presetId?: string | null;
+  /** Embedding benchmark: optionally run a fixed downstream answer step after retrieval. */
+  embeddingDownstreamRag?: boolean | null;
+  /** Optional Ollama chat model tag stored on the evaluation run. */
+  llmModelId?: string | null;
+  /** Optional Ollama embedding model tag stored on the evaluation run. */
+  embeddingModelId?: string | null;
 };
 
 export type EvaluationRunDetailDto = {
@@ -320,4 +352,69 @@ export type ClassifierModelRegistryEntryDto = {
 /** POST {product}/lab/classifier/models/{id}/activate */
 export type ActivateClassifierModelBody = {
   projectId: string;
+};
+
+/** GET `{product}/lab/dataset-templates/{kind}` — Excel template for Lab uploads. */
+export type ExperimentalDatasetTemplateKind =
+  | "llm-model-baseline"
+  | "embedding-baseline"
+  | "rag-preset-benchmark"
+  | "classifier-question-querytype";
+
+export type ExperimentalDatasetValidationIssueDto = {
+  severity: string;
+  code: string;
+  sheet: string;
+  rowNumber: number;
+  column: string;
+  message: string;
+};
+
+export type ExperimentalDatasetValidationReportDto = {
+  issues: ExperimentalDatasetValidationIssueDto[];
+  hasErrors: boolean;
+  hasWarnings: boolean;
+};
+
+/** HTTP 422 body from POST `{product}/lab/experimental-datasets` when the workbook is invalid. */
+export type ExperimentalDatasetValidationFailedDto = {
+  error: string;
+  validationReport: ExperimentalDatasetValidationReportDto;
+};
+
+export type ExperimentalDatasetUploadResponseDto = {
+  datasetId: string;
+  experimentalDatasetType: string;
+  persistedEvaluationDatasetType: string;
+  validationStatus: string;
+  questionCount: number;
+  rowCount: number;
+  validationReport: ExperimentalDatasetValidationReportDto;
+};
+
+export type ExperimentalDatasetListItemDto = {
+  id: string;
+  name: string | null;
+  experimentalDatasetType: string;
+  persistedEvaluationDatasetType: string;
+  readOnly: boolean;
+  questionCount: number | null;
+  rowCount: number | null;
+  validationStatus: string | null;
+  uploadedAt: string;
+  description: string | null;
+};
+
+/** GET `{product}/lab/runs/{runId}/items` — one evaluated row. */
+export type EvaluationResultItemDto = {
+  id: string;
+  questionText: string;
+  expectedAnswer: string;
+  actualAnswer: string;
+  correctness: number | null;
+  queryType: string | null;
+  latencyMs: number | null;
+  benchmarkKind: string | null;
+  metricsPayload: Record<string, unknown> | null;
+  evaluatedAt: string;
 };

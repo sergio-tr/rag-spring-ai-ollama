@@ -8,7 +8,9 @@ export default function LabRagEvalPage() {
 
   return (
     <LabEvaluationRunCard
-      evalBasePath="/lab/evaluations/rag"
+      benchmarkKind="RAG_PRESET_END_TO_END"
+      sectionKey="evaluation-rag"
+      taskTypeHint="RAG_EVALUATION"
       cardTitle={t("ragEvalTitle")}
       cardDescription={t("ragEvalDescription")}
       runButtonTestId="lab-rag-run"

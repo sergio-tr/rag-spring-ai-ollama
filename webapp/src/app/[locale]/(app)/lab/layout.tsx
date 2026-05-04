@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 const tabDefs = [
   { href: "/lab", labelKey: "labOverview" as const },
   { href: "/lab/evaluation/llm", labelKey: "labLlmEval" as const },
+  { href: "/lab/evaluation/embedding", labelKey: "labEmbeddingEval" as const },
   { href: "/lab/evaluation/rag", labelKey: "labRagEval" as const },
   { href: "/lab/classifier", labelKey: "labClassifier" as const },
 ];

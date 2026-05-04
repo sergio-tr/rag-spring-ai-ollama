@@ -8,7 +8,9 @@ export default function LabLlmEvalPage() {
 
   return (
     <LabEvaluationRunCard
-      evalBasePath="/lab/evaluations/llm"
+      benchmarkKind="LLM_JUDGE_QA"
+      sectionKey="evaluation-llm"
+      taskTypeHint="LLM_EVALUATION"
       cardTitle={t("llmEvalTitle")}
       cardDescription={t("llmEvalDescription")}
       runButtonTestId="lab-llm-run"

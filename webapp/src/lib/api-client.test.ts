@@ -502,6 +502,7 @@ describe("createHttpApiError", () => {
       method: "POST",
     });
     expect(err.meta?.details).toEqual({ errors: ["one", "two"] });
+    expect(err.meta?.parsedJson).toEqual({ errors: ["one", "two"] });
   });
 
   it("uses plain-text fallback when JSON content-type body is invalid JSON", () => {
