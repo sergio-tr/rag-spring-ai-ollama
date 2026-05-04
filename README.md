@@ -1,16 +1,19 @@
 # RAG Spring AI Ollama
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     BADGES
+     BADGES — selected GitHub Actions (native badge.svg, default branch)
      ═══════════════════════════════════════════════════════════════════════════ -->
 
-<!-- GitHub Actions: native badge.svg returns 404 until the workflow exists on the default branch and has run at least once. Shields “workflow status” has the same requirement. Static badges below always render and link to the workflow. -->
-[![CI](https://img.shields.io/badge/CI-%2B%20E2E%20smoke-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml)
-[![E2E manual](https://img.shields.io/badge/E2E-smoke%20only%20%28manual%29-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/e2e.yml)
-[![E2E fullstack](https://img.shields.io/badge/E2E-fullstack-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/e2e-fullstack.yml)
-[![Build](https://img.shields.io/badge/Build-build.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml)
-[![Sonar workflow](https://img.shields.io/badge/Sonar-sonar.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml)
-[![Docker images](https://img.shields.io/badge/Images-build--images.yml-2088FF?logo=githubactions&labelColor=gray)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build-images.yml)
+[![CI](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/ci.yml)
+[![Stack integration](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/integration.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/integration.yml)
+[![Observability smoke](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/observability-smoke.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/observability-smoke.yml)
+[![E2E fullstack](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/e2e-fullstack.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/e2e-fullstack.yml)
+
+[![Docker Compose CI](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/docker-compose-ci.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/docker-compose-ci.yml)
+[![Build (no tests)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build.yml)
+[![Build & push images (GHCR)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build-images.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/build-images.yml)
+
+[![SonarCloud Analysis](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml/badge.svg)](https://github.com/sergio-tr/rag-spring-ai-ollama/actions/workflows/sonar.yml)
 
 <!-- SonarCloud quality metrics (must match sonar.projectKey in sonar-project.properties) -->
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=sergio-tr_rag-spring-ai-ollama&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=sergio-tr_rag-spring-ai-ollama)
@@ -136,7 +139,7 @@ Create an organization-level gate (*Organization → Quality Gates → Create*) 
 
 | Metric | Operator | Threshold |
 | --- | --- | --- |
-| Coverage | `<` | `70%` |
+| Coverage | `<` | `80%` |
 | Duplicated Lines | `>` | `5%` |
 | Maintainability / Reliability Rating | worse than | `B` |
 | Security Rating | worse than | `A` |
@@ -153,8 +156,9 @@ Production credentials must always come from environment / `.env` files, not fro
 
 ### Badges
 
+- **GitHub Actions:** The README header lists a **subset** of workflows (native `…/workflows/<file>/badge.svg`). Badges track the latest run GitHub associates on the **default branch**; `workflow_dispatch`-only or uncommon triggers may show an empty or stale status until a recent successful run exists.
 - **SonarCloud:** URLs use `sergio-tr_rag-spring-ai-ollama` (same as `sonar.projectKey` in [`sonar-project.properties`](sonar-project.properties)). If you create a **new** SonarCloud project, update both files consistently.
-- **GitHub Actions / Release:** URLs use `sergio-tr/rag-spring-ai-ollama`. If the repo lives under another `owner/name`, replace that segment in the badge and link URLs at the top of this file.
+- **Release:** The GitHub Release badge uses `sergio-tr/rag-spring-ai-ollama`. If the repo lives under another `owner/name`, replace that segment everywhere in this file (Actions URLs use `owner/name` in the path; Sonar uses `owner_project`).
 
 ## Documentation
 
