@@ -2,13 +2,19 @@ package com.uniovi.rag.interfaces.rest;
 
 
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
-import com.uniovi.rag.configuration.RagFeatureConfiguration;
-import com.uniovi.rag.configuration.RagImplementationProperties;
+import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
+import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleCounts;
+import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleSnapshot;
+import com.uniovi.rag.configuration.RagApiPathProperties;
+import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationIssue;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationIssueCode;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationSeverity;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import com.uniovi.rag.infrastructure.classifier.ClassifierLabClient;
-import com.uniovi.rag.service.evaluation.EvaluationService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,13 +30,10 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -47,19 +50,16 @@ class LabControllerWebMvcTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private EvaluationService evaluationService;
-
-    @MockitoBean
-    private RagFeatureConfiguration ragFeatureConfiguration;
-
-    @MockitoBean
-    private RagImplementationProperties ragImplementationProperties;
-
-    @MockitoBean
     private ClassifierLabClient classifierLabClient;
 
     @MockitoBean
     private AsyncTaskService asyncTaskService;
+
+    @MockitoBean
+    private RagApiPathProperties apiPathProperties;
+
+    @MockitoBean
+    private EvaluationReferenceBundleLoader referenceBundleLoader;
 
     private UUID userId;
 
@@ -71,6 +71,9 @@ class LabControllerWebMvcTest {
                 .setAuthentication(
                         new UsernamePasswordAuthenticationToken(
                                 principal, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));
+        when(apiPathProperties.getProductBasePath()).thenReturn("/api/v5");
+        when(referenceBundleLoader.getSnapshot()).thenReturn(ReferenceBundleSnapshot.classpathMissing());
+        when(classifierLabClient.isConfigured()).thenReturn(true);
     }
 
     @AfterEach
@@ -79,67 +82,70 @@ class LabControllerWebMvcTest {
     }
 
     @Test
-    void status_returnsOk_withDisabledCatalog_whenNoQuestions() throws Exception {
-        when(evaluationService.getQuestionsAndAnswers()).thenReturn(Map.of());
-        when(classifierLabClient.isConfigured()).thenReturn(true);
+    void status_returnsOk_whenReferenceBundleAbsent_datasetKindsNotReady() throws Exception {
+        mockMvc.perform(get(path("/lab/status")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.referenceBundleAvailable").value(false))
+                .andExpect(jsonPath("$.referenceBundleValid").value(false))
+                .andExpect(jsonPath("$.datasetKindsReady").value(false))
+                .andExpect(jsonPath("$.datasets.enabled").value(false))
+                .andExpect(jsonPath("$.datasets.datasetKindsReady").value(false))
+                .andExpect(jsonPath("$.countsByDatasetKind.llmReaderQuestions").value(0));
+    }
+
+    @Test
+    void status_datasetKindsReady_whenBundleValidAndCountsPositive() throws Exception {
+        EvaluationWorkbook wb = EvaluationWorkbook.builder().build();
+        ReferenceBundleCounts counts = new ReferenceBundleCounts(3, 2, 4, 0, 0, 0, 0);
+        ReferenceBundleSnapshot snap =
+                new ReferenceBundleSnapshot(true, wb, new ValidationReport(), counts, Optional.of("test-pv"));
+        when(referenceBundleLoader.getSnapshot()).thenReturn(snap);
 
         mockMvc.perform(get(path("/lab/status")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").exists())
-                .andExpect(jsonPath("$.datasets.questionCount").value(0))
-                .andExpect(jsonPath("$.datasets.enabled").value(false));
+                .andExpect(jsonPath("$.datasetKindsReady").value(true))
+                .andExpect(jsonPath("$.datasets.enabled").value(true))
+                .andExpect(jsonPath("$.protocolVersion").value("test-pv"));
     }
 
     @Test
-    void status_enablesDatasets_whenBenchmarkCatalogHasQuestions_evenIfCorpusNotPrimed() throws Exception {
-        when(evaluationService.getQuestionsAndAnswers())
-                .thenReturn(Map.of("What year?", "2024"));
-        when(classifierLabClient.isConfigured()).thenReturn(false);
+    void status_includesValidationIssues_whenReportHasEntries() throws Exception {
+        EvaluationWorkbook wb = EvaluationWorkbook.builder().build();
+        ValidationReport report = new ValidationReport();
+        report.add(
+                new ValidationIssue(
+                        ValidationSeverity.ERROR,
+                        ValidationIssueCode.WORKBOOK_IO_ERROR,
+                        "sheet",
+                        1,
+                        "",
+                        "broken"));
+        ReferenceBundleSnapshot snap =
+                new ReferenceBundleSnapshot(true, wb, report, ReferenceBundleCounts.empty(), Optional.empty());
+        when(referenceBundleLoader.getSnapshot()).thenReturn(snap);
 
         mockMvc.perform(get(path("/lab/status")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.datasets.questionCount").value(1))
-                .andExpect(jsonPath("$.datasets.enabled").value(true));
+                .andExpect(jsonPath("$.referenceBundleValid").value(false))
+                .andExpect(jsonPath("$.datasetKindsReady").value(false))
+                .andExpect(jsonPath("$.validationIssues[0].code").value("WORKBOOK_IO_ERROR"));
     }
 
     @Test
-    void evaluateRag_sync_returnsBodyFromService() throws Exception {
-        when(evaluationService.evaluate()).thenReturn(Map.of("evaluation_summary", Map.of()));
-
-        mockMvc.perform(post(path("/lab/evaluations/rag")).param("sync", "true"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.evaluation_summary").exists());
-    }
-
-    @Test
-    void evaluateRag_async_returnsAccepted() throws Exception {
-        UUID job = UUID.randomUUID();
-        when(asyncTaskService.submitEvalRag(eq(userId), isNull())).thenReturn(job);
-
+    void evaluateRag_legacyEndpoint_returns410() throws Exception {
         mockMvc.perform(post(path("/lab/evaluations/rag")))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.jobId").value(job.toString()))
-                .andExpect(jsonPath("$.status").value("ACCEPTED"));
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.error").value("LAB_EVALUATIONS_LEGACY_REMOVED"));
 
-        verify(asyncTaskService).submitEvalRag(eq(userId), isNull());
+        verifyNoInteractions(asyncTaskService);
     }
 
     @Test
-    void evaluateLlm_sync_delegatesWithCustomConfig() throws Exception {
-        when(ragFeatureConfiguration.isExpansionEnabled()).thenReturn(false);
-        when(ragFeatureConfiguration.isNerEnabled()).thenReturn(false);
-        when(ragFeatureConfiguration.isToolsEnabled()).thenReturn(false);
-        when(ragFeatureConfiguration.isMetadataEnabled()).thenReturn(false);
-        when(ragFeatureConfiguration.isReasoningEnabled()).thenReturn(false);
-        when(ragFeatureConfiguration.isRankerEnabled()).thenReturn(false);
-        when(ragFeatureConfiguration.isPostRetrievalEnabled()).thenReturn(false);
-        when(ragFeatureConfiguration.isFunctionCallingEnabled()).thenReturn(false);
-        when(ragFeatureConfiguration.isUseRetrieval()).thenReturn(true);
-        when(ragFeatureConfiguration.isUseAdvisor()).thenReturn(true);
-        when(evaluationService.evaluateWithConfiguration(any(), any())).thenReturn(Map.of("mode", "llm"));
+    void evaluateLlm_legacyEndpoint_returns410() throws Exception {
+        mockMvc.perform(post(path("/lab/evaluations/llm")))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.canonicalStartBenchmarkPathTemplate").value("/api/v5/lab/benchmarks/{kind}/runs"));
 
-        mockMvc.perform(post(path("/lab/evaluations/llm")).param("sync", "true"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.mode").value("llm"));
+        verifyNoInteractions(asyncTaskService);
     }
 }

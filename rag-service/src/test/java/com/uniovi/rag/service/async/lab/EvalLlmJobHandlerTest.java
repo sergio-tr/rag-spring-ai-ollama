@@ -1,18 +1,20 @@
 package com.uniovi.rag.service.async.lab;
 
-import com.uniovi.rag.configuration.RagFeatureConfiguration;
-import com.uniovi.rag.configuration.RagImplementationProperties;
+import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetResolver;
+import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
-import com.uniovi.rag.service.evaluation.EvaluationService;
+import com.uniovi.rag.service.evaluation.baseline.ModelBaselineEvaluationOrchestrator;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.Mockito;
@@ -29,114 +31,86 @@ import static org.mockito.Mockito.when;
 class EvalLlmJobHandlerTest {
 
     @Mock
-    private EvaluationService evaluationService;
-
-    @Mock
-    private RagFeatureConfiguration featureConfiguration;
-
-    @Mock
-    private RagImplementationProperties implementationProperties;
-
-    @Mock
     private EvaluationCanonicalPersistenceService canonicalPersistence;
+
+    @Mock
+    private ExperimentalDatasetResolver experimentalDatasetResolver;
+
+    @Mock
+    private ModelBaselineEvaluationOrchestrator modelBaselineEvaluationOrchestrator;
 
     @Mock
     private AsyncTaskMutationService mutation;
 
-    @Test
-    void taskType_isEvalLlm() {
-        EvalLlmJobHandler h =
-                new EvalLlmJobHandler(
-                        evaluationService, featureConfiguration, implementationProperties, canonicalPersistence);
-        assertThat(h.taskType()).isEqualTo(AsyncTaskType.EVAL_LLM);
+    private EvalLlmJobHandler handler() {
+        return new EvalLlmJobHandler(
+                canonicalPersistence, experimentalDatasetResolver, modelBaselineEvaluationOrchestrator);
     }
 
     @Test
-    void run_disablesRetrievalInCopiedConfig_andPersistsWhenRunIdPresent() {
+    void taskType_isEvalLlm() {
+        assertThat(handler().taskType()).isEqualTo(AsyncTaskType.EVAL_LLM);
+    }
+
+    @Test
+    void run_withRunId_usesBaselineOrchestrator() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
-        stubFeatureFlags(true, false);
+        LlmReaderQuestion q =
+                new LlmReaderQuestion(
+                        "bench-1",
+                        "Q?",
+                        "",
+                        "A",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "",
+                        "",
+                        "",
+                        false,
+                        "");
+        TypedBenchmarkDataset.LlmQuestions bundle =
+                new TypedBenchmarkDataset.LlmQuestions(List.of(q), List.of());
+        when(experimentalDatasetResolver.resolve(runId)).thenReturn(bundle);
         Map<String, Object> eval = Map.of("score", 1);
-        when(evaluationService.evaluateWithConfiguration(
-                        ArgumentMatchers.any(RagFeatureConfiguration.class),
-                        eq(implementationProperties)))
+        when(modelBaselineEvaluationOrchestrator.runLlmJudgeBaseline(
+                        eq(runId), eq(bundle), ArgumentMatchers.any()))
                 .thenReturn(eval);
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
 
-        new EvalLlmJobHandler(
-                        evaluationService, featureConfiguration, implementationProperties, canonicalPersistence)
-                .run(task, mutation);
+        handler().run(task, mutation);
 
-        ArgumentCaptor<RagFeatureConfiguration> cfg = ArgumentCaptor.forClass(RagFeatureConfiguration.class);
-        verify(evaluationService).evaluateWithConfiguration(cfg.capture(), eq(implementationProperties));
-        assertThat(cfg.getValue().isUseRetrieval()).isFalse();
-        assertThat(cfg.getValue().isToolsEnabled()).isTrue();
-        assertThat(cfg.getValue().isFunctionCallingEnabled()).isFalse();
-
-        verify(canonicalPersistence)
-                .persistLlmJudgeFromEvaluationMap(runId, eval, BenchmarkKind.LLM_JUDGE_QA);
+        verify(canonicalPersistence).persistLlmJudgeFromEvaluationMap(runId, eval, BenchmarkKind.LLM_JUDGE_QA);
         verify(mutation).markSucceeded(taskId, eval);
+    }
+
+    @Test
+    void run_withoutRunId_throws_and_doesNotTouchPersistence() {
+        UUID taskId = UUID.randomUUID();
+        AsyncTaskEntity task = task(taskId, Map.of());
+
+        assertThatThrownBy(() -> handler().run(task, mutation)).isInstanceOf(IllegalStateException.class);
+
+        verifyNoInteractions(canonicalPersistence);
+        verifyNoInteractions(experimentalDatasetResolver);
+        verifyNoInteractions(modelBaselineEvaluationOrchestrator);
     }
 
     @Test
     void run_marksRunFailed_thenRethrows() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
-        stubFeatureFlags(false, false);
-        when(evaluationService.evaluateWithConfiguration(
-                        ArgumentMatchers.any(RagFeatureConfiguration.class),
-                        eq(implementationProperties)))
+        TypedBenchmarkDataset.LlmQuestions bundle = new TypedBenchmarkDataset.LlmQuestions(List.of(), List.of());
+        when(experimentalDatasetResolver.resolve(runId)).thenReturn(bundle);
+        when(modelBaselineEvaluationOrchestrator.runLlmJudgeBaseline(eq(runId), eq(bundle), ArgumentMatchers.any()))
                 .thenThrow(new RuntimeException("eval failed"));
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
 
-        assertThatThrownBy(
-                        () ->
-                                new EvalLlmJobHandler(
-                                                evaluationService,
-                                                featureConfiguration,
-                                                implementationProperties,
-                                                canonicalPersistence)
-                                        .run(task, mutation))
+        assertThatThrownBy(() -> handler().run(task, mutation))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("eval failed");
 
         verify(canonicalPersistence).markRunFailed(runId, "eval failed");
-    }
-
-    @Test
-    void run_withoutRunId_doesNotCallMarkRunFailedOnError() {
-        UUID taskId = UUID.randomUUID();
-        stubFeatureFlags(false, true);
-        when(evaluationService.evaluateWithConfiguration(
-                        ArgumentMatchers.any(RagFeatureConfiguration.class),
-                        eq(implementationProperties)))
-                .thenThrow(new IllegalStateException("x"));
-        AsyncTaskEntity task = task(taskId, Map.of());
-
-        assertThatThrownBy(
-                        () ->
-                                new EvalLlmJobHandler(
-                                                evaluationService,
-                                                featureConfiguration,
-                                                implementationProperties,
-                                                canonicalPersistence)
-                                        .run(task, mutation))
-                .isInstanceOf(IllegalStateException.class);
-
-        verifyNoInteractions(canonicalPersistence);
-    }
-
-    private void stubFeatureFlags(boolean tools, boolean functionCalling) {
-        when(featureConfiguration.isExpansionEnabled()).thenReturn(true);
-        when(featureConfiguration.isNerEnabled()).thenReturn(false);
-        when(featureConfiguration.isToolsEnabled()).thenReturn(tools);
-        when(featureConfiguration.isMetadataEnabled()).thenReturn(true);
-        when(featureConfiguration.isReasoningEnabled()).thenReturn(false);
-        when(featureConfiguration.isRankerEnabled()).thenReturn(false);
-        when(featureConfiguration.isPostRetrievalEnabled()).thenReturn(true);
-        when(featureConfiguration.isFunctionCallingEnabled()).thenReturn(functionCalling);
-        when(featureConfiguration.isUseRetrieval()).thenReturn(true);
-        when(featureConfiguration.isUseAdvisor()).thenReturn(false);
     }
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {

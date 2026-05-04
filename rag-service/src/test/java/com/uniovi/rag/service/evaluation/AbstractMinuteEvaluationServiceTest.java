@@ -3,6 +3,7 @@ package com.uniovi.rag.service.evaluation;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.service.document.DocumentService;
+import com.uniovi.rag.service.evaluation.fixtures.SimpleMinuteEvaluationService;
 import com.uniovi.rag.service.query.QueryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;

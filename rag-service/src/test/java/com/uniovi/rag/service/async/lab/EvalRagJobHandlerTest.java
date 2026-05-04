@@ -1,12 +1,19 @@
 package com.uniovi.rag.service.async.lab;
 
+import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetResolver;
+import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
+import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
-import com.uniovi.rag.service.evaluation.EvaluationService;
+import com.uniovi.rag.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,73 +33,131 @@ import static org.mockito.Mockito.when;
 class EvalRagJobHandlerTest {
 
     @Mock
-    private EvaluationService evaluationService;
+    private RagFeatureConfiguration featureConfiguration;
+
+    @Mock
+    private RagImplementationProperties implementationProperties;
 
     @Mock
     private EvaluationCanonicalPersistenceService canonicalPersistence;
 
     @Mock
+    private ExperimentalDatasetResolver experimentalDatasetResolver;
+
+    @Mock
+    private TypedRagPresetBenchmarkOrchestrator typedRagPresetBenchmarkOrchestrator;
+
+    @Mock
     private AsyncTaskMutationService mutation;
+
+    private EvalRagJobHandler handler() {
+        return new EvalRagJobHandler(
+                featureConfiguration,
+                implementationProperties,
+                canonicalPersistence,
+                experimentalDatasetResolver,
+                typedRagPresetBenchmarkOrchestrator);
+    }
 
     @Test
     void taskType_isEvalRag() {
-        EvalRagJobHandler h = new EvalRagJobHandler(evaluationService, canonicalPersistence);
-        assertThat(h.taskType()).isEqualTo(AsyncTaskType.EVAL_RAG);
+        assertThat(handler().taskType()).isEqualTo(AsyncTaskType.EVAL_RAG);
     }
 
     @Test
-    void run_marksSucceeded_andPersists_whenRunIdPresent() {
+    void run_withRunId_usesTypedRag_neverLegacyEvaluate() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
+        RagPresetQuestion q =
+                new RagPresetQuestion(
+                        "rp1",
+                        "Q?",
+                        "A",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "",
+                        List.of(),
+                        List.of(),
+                        "",
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        "");
+        when(experimentalDatasetResolver.resolve(runId))
+                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
         Map<String, Object> eval = Map.of("k", "v");
-        when(evaluationService.evaluate()).thenReturn(eval);
+        when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
+                        eq(runId),
+                        ArgumentMatchers.any(TypedBenchmarkDataset.RagPresetQuestions.class),
+                        eq(featureConfiguration),
+                        eq(implementationProperties),
+                        ArgumentMatchers.any()))
+                .thenReturn(eval);
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
 
-        new EvalRagJobHandler(evaluationService, canonicalPersistence).run(task, mutation);
+        handler().run(task, mutation);
 
-        verify(mutation).appendProgressLine(eq(taskId), ArgumentMatchers.contains("RAG"));
-        verify(canonicalPersistence)
-                .persistLlmJudgeFromEvaluationMap(runId, eval, BenchmarkKind.RAG_PRESET_END_TO_END);
+        Mockito.verify(typedRagPresetBenchmarkOrchestrator, Mockito.times(1))
+                .runPresetBenchmark(
+                        eq(runId),
+                        ArgumentMatchers.any(TypedBenchmarkDataset.RagPresetQuestions.class),
+                        eq(featureConfiguration),
+                        eq(implementationProperties),
+                        ArgumentMatchers.any());
+        verify(canonicalPersistence).persistLlmJudgeFromEvaluationMap(runId, eval, BenchmarkKind.RAG_PRESET_END_TO_END);
         verify(mutation).markSucceeded(taskId, eval);
     }
 
     @Test
-    void run_marksSucceeded_withoutPersistence_whenRunIdAbsent() {
+    void run_withoutRunId_throws() {
         UUID taskId = UUID.randomUUID();
-        Map<String, Object> eval = Map.of("a", 1);
-        when(evaluationService.evaluate()).thenReturn(eval);
         AsyncTaskEntity task = task(taskId, Map.of());
 
-        new EvalRagJobHandler(evaluationService, canonicalPersistence).run(task, mutation);
+        assertThatThrownBy(() -> handler().run(task, mutation)).isInstanceOf(IllegalStateException.class);
 
-        verify(mutation).markSucceeded(taskId, eval);
         verifyNoInteractions(canonicalPersistence);
+        verifyNoInteractions(experimentalDatasetResolver);
     }
 
     @Test
     void run_marksRunFailed_thenRethrows_whenEvaluationThrows() {
         UUID taskId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
-        when(evaluationService.evaluate()).thenThrow(new RuntimeException("boom"));
+        RagPresetQuestion q =
+                new RagPresetQuestion(
+                        "rp1",
+                        "Q?",
+                        "A",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "",
+                        List.of(),
+                        List.of(),
+                        "",
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        "");
+        when(experimentalDatasetResolver.resolve(runId))
+                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
+        when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
+                        eq(runId),
+                        ArgumentMatchers.any(),
+                        eq(featureConfiguration),
+                        eq(implementationProperties),
+                        ArgumentMatchers.any()))
+                .thenThrow(new RuntimeException("boom"));
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
 
-        assertThatThrownBy(() -> new EvalRagJobHandler(evaluationService, canonicalPersistence).run(task, mutation))
+        assertThatThrownBy(() -> handler().run(task, mutation))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("boom");
 
         verify(canonicalPersistence).markRunFailed(runId, "boom");
-    }
-
-    @Test
-    void run_doesNotMarkRunFailed_whenNoRunIdOnFailure() {
-        UUID taskId = UUID.randomUUID();
-        when(evaluationService.evaluate()).thenThrow(new RuntimeException("x"));
-        AsyncTaskEntity task = task(taskId, Map.of());
-
-        assertThatThrownBy(() -> new EvalRagJobHandler(evaluationService, canonicalPersistence).run(task, mutation))
-                .isInstanceOf(RuntimeException.class);
-
-        verifyNoInteractions(canonicalPersistence);
     }
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {

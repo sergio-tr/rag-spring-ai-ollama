@@ -29,6 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -136,5 +137,16 @@ class LabBenchmarkControllerWebMvcTest {
         mockMvc.perform(get(path("/lab/runs/compare")).param("runA", a.toString()).param("runB", b.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.comparable").value(true));
+    }
+
+    @Test
+    void exportMvpItemsJson_returnsBundle() throws Exception {
+        UUID runId = UUID.randomUUID();
+        when(labEvaluationRunService.exportMvpItemsJsonBundle(userId, runId))
+                .thenReturn(Map.of("mvpSchemaVersion", "1", "items", List.of()));
+
+        mockMvc.perform(get(path("/lab/runs/") + runId + "/export/mvp/items.json"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mvpSchemaVersion").value("1"));
     }
 }

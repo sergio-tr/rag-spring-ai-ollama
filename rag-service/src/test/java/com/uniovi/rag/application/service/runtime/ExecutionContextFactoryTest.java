@@ -20,10 +20,14 @@ import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
 import com.uniovi.rag.service.config.ChatScopedRagConfigResolver;
+import com.uniovi.rag.service.evaluation.preset.BenchmarkPresetEvaluationContext;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
@@ -54,6 +59,11 @@ class ExecutionContextFactoryTest {
     @Mock private PackedContextSet packedContextSet;
 
     private ExecutionContextFactory factory;
+
+    @AfterEach
+    void clearBenchmarkContext() {
+        BenchmarkPresetEvaluationContext.clear();
+    }
 
     @BeforeEach
     void setUp() {
@@ -207,6 +217,61 @@ class ExecutionContextFactoryTest {
 
         ExecutionContext ctx = factory.buildForLegacyHttp("q", null);
         assertThat(ctx.documentFilter()).containsExactly(RagExecutionContext.ALL_DOCUMENTS);
+    }
+
+    @Test
+    void buildForLegacyHttp_passes_benchmark_terminal_override_when_present() throws Exception {
+        RagConfig rag =
+                new RagConfig(
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        5,
+                        0.5,
+                        "m",
+                        "e",
+                        "c",
+                        "SIMPLE",
+                        false,
+                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                        MaterializationStrategy.CHUNK_LEVEL);
+        when(resolvedRuntimeConfig.toRagConfig()).thenReturn(rag);
+        when(resolvedRuntimeConfig.effectiveSystemPrompt()).thenReturn("sys");
+        ObjectNode terminal = JsonNodeFactory.instance.objectNode();
+        terminal.put("useRetrieval", false);
+        try (AutoCloseable ignored = BenchmarkPresetEvaluationContext.open(terminal)) {
+            when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
+                            isNull(), isNull(), eq(terminal), anyString()))
+                    .thenReturn(resolvedRuntimeConfig);
+            when(knowledgeRuntimeSnapshotSelector.select(null, null))
+                    .thenReturn(KnowledgeSnapshotSelection.empty());
+            when(clarificationStateResolver.bootstrap(null, "q"))
+                    .thenReturn(new ClarificationBootstrap("q", false, false, false));
+            when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+                    .thenReturn(
+                            new ConversationMemoryExecutionResult(
+                                    ConversationMemoryOutcome.NO_CONVERSATION_SCOPE,
+                                    Optional.empty(),
+                                    false,
+                                    false,
+                                    false,
+                                    "q",
+                                    List.of()));
+
+            factory.buildForLegacyHttp("q", null);
+        }
     }
 
     @Test
