@@ -32,7 +32,7 @@ import java.util.UUID;
 @Service
 public class LabEvaluationRunService {
 
-    private static final List<String> MVP_ITEMS_CSV_COLUMNS =
+    static final List<String> MVP_ITEMS_CSV_COLUMNS =
             List.of(
                     "mvpSchemaVersion",
                     "itemId",
@@ -57,6 +57,11 @@ public class LabEvaluationRunService {
                     "outcome",
                     "failureCode",
                     "unsupportedReason");
+
+    /** Stable MVP CSV columns (shared by comparison exports and unit tests). */
+    public static List<String> MVP_ITEMS_CSV_COLUMNS_FOR_TESTS() {
+        return MVP_ITEMS_CSV_COLUMNS;
+    }
 
     private final EvaluationRunRepository evaluationRunRepository;
     private final EvaluationResultRepository evaluationResultRepository;

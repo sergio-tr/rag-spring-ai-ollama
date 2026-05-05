@@ -49,7 +49,7 @@ class LabExperimentalPresetCatalogServiceTest {
                                 "")))
                 .build();
         when(loader.getSnapshot())
-                .thenReturn(new ReferenceBundleSnapshot(true, wb, new ValidationReport(), ReferenceBundleCounts.empty(), Optional.empty()));
+                .thenReturn(new ReferenceBundleSnapshot(true, wb, new ValidationReport(), ReferenceBundleCounts.empty(), Optional.empty(), Optional.of("abc"), 123));
         LabExperimentalPresetCatalogService cut = new LabExperimentalPresetCatalogService(loader, new RagFeatureConfiguration());
 
         var rows = cut.list();
