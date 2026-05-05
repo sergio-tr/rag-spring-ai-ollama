@@ -229,7 +229,8 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 trimOrFallback(message, "Request failed"),
                 path,
                 requestId,
-                (validationErrors == null || validationErrors.isEmpty()) ? null : validationErrors);
+                (validationErrors == null || validationErrors.isEmpty()) ? null : validationErrors,
+                null);
     }
 
     private static HttpServletRequest servletRequestOrNull(WebRequest request) {
