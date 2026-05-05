@@ -50,7 +50,7 @@ def test_get_default_eval_dataset_path_uses_data_dir():
     os.environ["DATA_DIR"] = "custom-data"
     Config._instance = None
     c = Config()
-    assert c.get_default_eval_dataset_path().endswith("custom-data/evaluation_dataset.xlsx")
+    assert c.get_default_eval_dataset_path().endswith("custom-data/classifier_evaluation_dataset.xlsx")
     del os.environ["DATA_DIR"]
 
 

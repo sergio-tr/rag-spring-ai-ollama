@@ -40,7 +40,7 @@ Error responses use a consistent shape: `{"code": "...", "message": "...", "deta
 Default datasets are under `data/`:
 
 - `basic_dataset_qa_clasificacion.xlsx` — training dataset (Question, QueryType).
-- `evaluation_dataset.xlsx` — evaluation dataset.
+- `classifier_evaluation_dataset.xlsx` — evaluation dataset (classifier-only; not used by the RAG Lab reference bundle).
 
 These were moved from `rag-service/src/main/resources/python/` and are the single source of truth here.
 
