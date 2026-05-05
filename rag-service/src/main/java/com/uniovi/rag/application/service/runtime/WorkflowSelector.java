@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime;
 
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import org.springframework.stereotype.Component;
@@ -32,7 +33,14 @@ public class WorkflowSelector {
     }
 
     public ExecutionWorkflow select(ExecutionContext ctx) {
-        RagConfig rag = ctx.resolved().toRagConfig();
+        return selectFromResolved(ctx.resolved());
+    }
+
+    public ExecutionWorkflow selectFromResolved(ResolvedRuntimeConfig resolved) {
+        RagConfig rag = resolved != null ? resolved.toRagConfig() : null;
+        if (rag == null) {
+            throw RagServiceException.unsupportedRuntimeConfiguration("missing resolved config");
+        }
         if (rag.useAdvisor() && !rag.useRetrieval()) {
             throw RagServiceException.unsupportedRuntimeConfiguration("useAdvisor requires useRetrieval and a dense retrieval workflow");
         }
