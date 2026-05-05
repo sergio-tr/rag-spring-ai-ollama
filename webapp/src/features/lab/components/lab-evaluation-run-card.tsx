@@ -573,16 +573,34 @@ export function LabEvaluationRunCard({
                   </select>
                   <p className="text-muted-foreground text-xs">{t("benchmarkLlmMultiHint")}</p>
                 </>
-              ) : null}
-              <input
-                id={`lab-llm-model-${sectionKey}`}
-                data-testid="lab-benchmark-llm-model"
-                className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                value={llmModelId}
-                disabled={running}
-                onChange={(e) => setLlmModelId(e.target.value)}
-                placeholder={t("benchmarkLlmModelPlaceholder")}
-              />
+              ) : (
+                <>
+                  <select
+                    id={`lab-llm-model-${sectionKey}`}
+                    data-testid="lab-benchmark-llm-model"
+                    className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                    value={llmModelId}
+                    disabled={running || availableLlmModels.length === 0}
+                    onChange={(e) => setLlmModelId(e.target.value)}
+                  >
+                    {availableLlmModels.length === 0 ? (
+                      <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
+                    ) : (
+                      <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
+                    )}
+                    {availableLlmModels.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  {availableLlmModels.length === 0 ? (
+                    <output className="text-muted-foreground block text-xs">
+                      Model catalog is unavailable. Configure the classifier service registry to expose LLM models.
+                    </output>
+                  ) : null}
+                </>
+              )}
             </div>
           )}
 
@@ -611,16 +629,30 @@ export function LabEvaluationRunCard({
                     {t("benchmarkEmbeddingMultiUnsupportedHint")}
                   </output>
                 </>
-              ) : null}
-              <input
-                id={`lab-emb-model-${sectionKey}`}
-                data-testid="lab-benchmark-embedding-model"
-                className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                value={embeddingModelId}
-                disabled={running}
-                onChange={(e) => setEmbeddingModelId(e.target.value)}
-                placeholder={t("benchmarkEmbeddingModelPlaceholder")}
-              />
+              ) : (
+                <>
+                  <select
+                    id={`lab-emb-model-${sectionKey}`}
+                    data-testid="lab-benchmark-embedding-model"
+                    className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                    value={embeddingModelId}
+                    disabled={running || availableEmbeddingModels.length === 0}
+                    onChange={(e) => setEmbeddingModelId(e.target.value)}
+                  >
+                    <option value="">{t("benchmarkEmbeddingModelPlaceholder")}</option>
+                    {availableEmbeddingModels.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  {availableEmbeddingModels.length === 0 ? (
+                    <output className="text-muted-foreground block text-xs">
+                      Model catalog is unavailable. Configure the classifier service registry to expose embedding models.
+                    </output>
+                  ) : null}
+                </>
+              )}
             </div>
           )}
 

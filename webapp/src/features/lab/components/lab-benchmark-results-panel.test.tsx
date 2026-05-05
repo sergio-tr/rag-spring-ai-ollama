@@ -8,15 +8,18 @@ import { LabBenchmarkResultsPanel } from "./lab-benchmark-results-panel";
 vi.mock("@/features/lab/lib/lab-benchmark-results-api", () => ({
   fetchLabEvaluationRun: vi.fn(),
   fetchLabCampaignRuns: vi.fn(),
+  fetchCampaignComparison: vi.fn(),
   fetchMvpRollupsJson: vi.fn(),
   fetchMvpItemsBundle: vi.fn(),
   downloadMvpExport: vi.fn(),
   downloadCampaignMvpItemsJson: vi.fn(),
+  downloadCampaignExport: vi.fn(),
 }));
 
 import {
   fetchLabEvaluationRun,
   fetchLabCampaignRuns,
+  fetchCampaignComparison,
   fetchMvpItemsBundle,
   fetchMvpRollupsJson,
 } from "@/features/lab/lib/lab-benchmark-results-api";
@@ -28,6 +31,7 @@ describe("LabBenchmarkResultsPanel", () => {
     vi.mocked(fetchLabCampaignRuns).mockReset();
     vi.mocked(fetchMvpRollupsJson).mockReset();
     vi.mocked(fetchMvpItemsBundle).mockReset();
+    vi.mocked(fetchCampaignComparison).mockReset();
   });
 
   it("loads rollups and shows outcome badges when enabled", async () => {
@@ -166,6 +170,9 @@ describe("LabBenchmarkResultsPanel", () => {
       { runId: "r1-0000-0000-0000", llmModelId: "m1", status: "SUCCEEDED" },
       { runId: "r2-0000-0000-0000", llmModelId: "m2", status: "SUCCEEDED" },
     ]);
+    vi.mocked(fetchCampaignComparison).mockResolvedValue({
+      rows: [{ groupKey: "modelId", groupValue: "m1", totalItems: 1, executed: 1, notSupported: 0, failed: 0 }],
+    } as never);
 
     render(
       <QueryClientProvider client={createTestQueryClient()}>
@@ -181,6 +188,6 @@ describe("LabBenchmarkResultsPanel", () => {
 
     await waitFor(() => expect(screen.getByTestId("lab-export-campaign-items-json")).toBeInTheDocument());
     expect(screen.getByTestId("lab-campaign-runs-panel")).toBeInTheDocument();
-    expect(screen.getByText(/m1/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/m1/i).length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -3,8 +3,10 @@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
+  downloadCampaignExport,
   downloadCampaignMvpItemsJson,
   downloadMvpExport,
+  fetchCampaignComparison,
   fetchLabCampaignRuns,
   fetchLabEvaluationRun,
   fetchMvpItemsBundle,
@@ -50,7 +52,8 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         fetchMvpItemsBundle(runId),
       ]);
       const campaignRuns = campId ? await fetchLabCampaignRuns(campId) : null;
-      return { run, rollups, itemsBundle, campaignRuns };
+      const campaignComparison = campId ? await fetchCampaignComparison(campId).catch(() => null) : null;
+      return { run, rollups, itemsBundle, campaignRuns, campaignComparison };
     },
   });
 
@@ -109,15 +112,44 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
         </div>
         <div className="flex flex-wrap gap-2">
           {campId ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              data-testid="lab-export-campaign-items-json"
-              onClick={() => void downloadCampaignMvpItemsJson(campId)}
-            >
-              {t("benchmarkExportCampaignItemsJson")}
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="lab-export-campaign-items-json"
+                onClick={() => void downloadCampaignMvpItemsJson(campId)}
+              >
+                {t("benchmarkExportCampaignItemsJson")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="lab-export-campaign-items-csv"
+                onClick={() => void downloadCampaignExport(campId, "items.csv")}
+              >
+                Campaign items.csv
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="lab-export-campaign-summary-csv"
+                onClick={() => void downloadCampaignExport(campId, "summary.csv")}
+              >
+                Campaign summary.csv
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid="lab-export-campaign-bundle-json"
+                onClick={() => void downloadCampaignExport(campId, "bundle.json")}
+              >
+                Campaign bundle.json
+              </Button>
+            </>
           ) : null}
           <Button
             type="button"
@@ -173,6 +205,53 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
             ) : null}
           </div>
           <p className="text-muted-foreground text-[11px]">{t("benchmarkCampaignRunsHint")}</p>
+        </div>
+      ) : null}
+
+      {campId && payload.campaignComparison && typeof payload.campaignComparison === "object" ? (
+        <div className="space-y-2" data-testid="lab-campaign-comparison-panel">
+          <span className="text-muted-foreground text-xs font-medium">Campaign comparison</span>
+          <div className="max-h-56 overflow-auto rounded-md border">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-muted/50 sticky top-0">
+                <tr>
+                  <th className="p-2 font-medium">Group</th>
+                  <th className="p-2 font-medium">Total</th>
+                  <th className="p-2 font-medium">Executed</th>
+                  <th className="p-2 font-medium">NOT_SUPPORTED</th>
+                  <th className="p-2 font-medium">Failed</th>
+                  <th className="p-2 font-medium">Exact</th>
+                  <th className="p-2 font-medium">Semantic</th>
+                  <th className="p-2 font-medium">Recall@1</th>
+                  <th className="p-2 font-medium">Latency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.isArray((payload.campaignComparison as Record<string, unknown>).rows)
+                  ? ((payload.campaignComparison as Record<string, unknown>).rows as Array<Record<string, unknown>>)
+                      .slice(0, 50)
+                      .map((r, idx) => (
+                        <tr key={idx} className="border-border border-t">
+                          <td className="p-2 font-mono">
+                            {String(r.groupKey ?? "")}:{String(r.groupValue ?? "")}
+                          </td>
+                          <td className="p-2">{String(r.totalItems ?? "")}</td>
+                          <td className="p-2">{String(r.executed ?? "")}</td>
+                          <td className="p-2">{String(r.notSupported ?? "")}</td>
+                          <td className="p-2">{String(r.failed ?? "")}</td>
+                          <td className="p-2">{r.meanExactMatch == null ? "—" : String(r.meanExactMatch)}</td>
+                          <td className="p-2">{r.meanSemanticScore == null ? "—" : String(r.meanSemanticScore)}</td>
+                          <td className="p-2">{r.meanRecallAt1 == null ? "—" : String(r.meanRecallAt1)}</td>
+                          <td className="p-2">{r.meanLatencyMs == null ? "—" : String(r.meanLatencyMs)}</td>
+                        </tr>
+                      ))
+                  : null}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-muted-foreground text-[11px]">
+            Exports are designed for TFG tables: use summary.csv for aggregated rows and items.csv for per-item analysis.
+          </p>
         </div>
       ) : null}
 

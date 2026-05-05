@@ -19,6 +19,22 @@ export async function downloadCampaignMvpItemsJson(campaignId: string): Promise<
   triggerBrowserBlobDownload(blob, filename);
 }
 
+export async function downloadCampaignExport(
+  campaignId: string,
+  kind: "items.csv" | "summary.csv" | "bundle.json",
+): Promise<void> {
+  const path = apiProductPath(`/lab/campaigns/${encodeURIComponent(campaignId)}/export/${kind}`);
+  const blob = await apiDownloadBlob(path);
+  const filename = `lab-campaign-${campaignId}-${kind}`;
+  triggerBrowserBlobDownload(blob, filename);
+}
+
+export async function fetchCampaignComparison(campaignId: string): Promise<Record<string, unknown>> {
+  return apiFetch<Record<string, unknown>>(
+    apiProductPath(`/lab/campaigns/${encodeURIComponent(campaignId)}/comparison`),
+  );
+}
+
 export async function fetchMvpRollupsJson(runId: string): Promise<Record<string, unknown>> {
   return apiFetch<Record<string, unknown>>(
     apiProductPath(`/lab/runs/${encodeURIComponent(runId)}/export/mvp/rollups.json`),
