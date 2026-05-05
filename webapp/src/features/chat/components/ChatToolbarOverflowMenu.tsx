@@ -24,6 +24,10 @@ function experimentalPresetOptionLabel(p: { code: string; label: string; support
   return `${base} (NOT_SUPPORTED${p.reasonIfUnsupported ? `: ${p.reasonIfUnsupported}` : ""})`;
 }
 
+function shouldShowExperimentalPresets(): boolean {
+  return process.env.NEXT_PUBLIC_SHOW_EXPERIMENTAL_PRESETS === "true" || process.env.NODE_ENV !== "production";
+}
+
 /**
  * Shell toolbar overflow for Chat: model, preset, retrieval limits, documents sheet, move, delete.
  * State comes from {@link useChatToolbarStore} populated by the chat page.
@@ -39,6 +43,7 @@ export function ChatToolbarOverflowMenu() {
 
   const needsProject = !api?.projectId;
   const needsConversation = !api?.conversationId;
+  const showExperimental = shouldShowExperimentalPresets();
 
   return (
     <Sheet open={open} onOpenChange={(next) => setOpen(next)} modal={false}>
@@ -133,17 +138,19 @@ export function ChatToolbarOverflowMenu() {
                           </option>
                         ))}
                       </optgroup>
-                      <optgroup label={tChat("presetGroupExperimental")}>
-                        {(Array.isArray(api?.experimentalPresets) ? api?.experimentalPresets : []).map((p) => (
-                          <option
-                            key={p.productPresetId}
-                            value={p.productPresetId}
-                            disabled={!p.chatSelectable}
-                          >
-                            {experimentalPresetOptionLabel(p)}
-                          </option>
-                        ))}
-                      </optgroup>
+                      {showExperimental ? (
+                        <optgroup label={tChat("presetGroupExperimental")}>
+                          {(Array.isArray(api?.experimentalPresets) ? api?.experimentalPresets : []).map((p) => (
+                            <option
+                              key={p.productPresetId}
+                              value={p.productPresetId}
+                              disabled={!p.chatSelectable}
+                            >
+                              {experimentalPresetOptionLabel(p)}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
                     </select>
                     {api?.presetsLoading && !api.presetsError ? (
                       <p className="text-muted-foreground text-xs">{tChat("presetCatalogLoading")}</p>
@@ -151,16 +158,16 @@ export function ChatToolbarOverflowMenu() {
                     {api?.presets?.length === 0 && !api.presetsError ? (
                       <output className="text-muted-foreground block text-xs">{tChat("presetCatalogEmpty")}</output>
                     ) : null}
-                    {!api?.experimentalPresetsLoading && (api?.experimentalPresets?.length ?? 0) === 0 ? (
+                    {showExperimental && !api?.experimentalPresetsLoading && (api?.experimentalPresets?.length ?? 0) === 0 ? (
                       <output className="text-muted-foreground block text-xs">{tChat("presetExperimentalEmpty")}</output>
                     ) : null}
                     {api?.presetsError ? (
                       <p className="text-destructive text-xs">{tChat("presetsLoadError")}</p>
                     ) : null}
-                    {api?.experimentalPresetsError ? (
+                    {showExperimental && api?.experimentalPresetsError ? (
                       <p className="text-destructive text-xs">{tChat("presetsExperimentalLoadError")}</p>
                     ) : null}
-                    <MenuHint>{tChat("presetExperimentalHint")}</MenuHint>
+                    {showExperimental ? <MenuHint>{tChat("presetExperimentalHint")}</MenuHint> : null}
                   </div>
 
                   <div className="flex flex-col gap-2 border-border border-t pt-3">

@@ -211,6 +211,9 @@ function ChatPageInner() {
     isLoading: presetsLoading,
   } = useRagPresets();
   const experimentalPresets = useExperimentalPresetCatalog();
+  const showExperimentalPresets =
+    process.env.NEXT_PUBLIC_SHOW_EXPERIMENTAL_PRESETS === "true" ||
+    process.env.NODE_ENV !== "production";
 
   const activeConv = useMemo(
     () => (conversationId && convs ? convs.find((c) => c.id === conversationId) : undefined),
@@ -865,9 +868,9 @@ function ChatPageInner() {
       presets,
       presetsError,
       presetsLoading,
-      experimentalPresets: experimentalPresets.data,
-      experimentalPresetsLoading: experimentalPresets.isLoading,
-      experimentalPresetsError: experimentalPresets.isError,
+      experimentalPresets: showExperimentalPresets ? experimentalPresets.data : [],
+      experimentalPresetsLoading: showExperimentalPresets ? experimentalPresets.isLoading : false,
+      experimentalPresetsError: showExperimentalPresets ? experimentalPresets.isError : false,
       presetSelectDisabled,
       syntheticPresetOptionNeeded,
       presetLabelOpts,
@@ -897,6 +900,7 @@ function ChatPageInner() {
     experimentalPresets.data,
     experimentalPresets.isLoading,
     experimentalPresets.isError,
+    showExperimentalPresets,
     presetSelectDisabled,
     syntheticPresetOptionNeeded,
     presetLabelOpts,
@@ -1294,7 +1298,16 @@ function ChatPageInner() {
             }}
             disabled={isSending || isStreaming}
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!conversationId || patchConv.isPending || uploadDoc.isPending}
+              onClick={() => setDocsSheetOpen(true)}
+            >
+              {t("chatAddDocuments")}
+            </Button>
             <Button type="button" variant="outline" size="sm" disabled={!isStreaming} onClick={() => stop()}>
               {t("stop")}
             </Button>
