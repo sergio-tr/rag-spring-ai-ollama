@@ -1,5 +1,27 @@
 import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
+import React from "react";
+
+// Prevent Next.js Link from attempting route prefetching in unit tests.
+// Prefetch can trigger network calls against the default happy-dom origin (127.0.0.1:3000).
+vi.mock("next/link", () => ({
+  default: ({ href, children }: { href: string; children: React.ReactNode }) =>
+    React.createElement("a", { href }, children),
+}));
+
+// Silence accidental Next-prefetch network calls against the default DOM origin (127.0.0.1:3000).
+// We keep the real fetch for non-prefetch URLs so feature tests can still stub apiFetch as needed.
+const realFetch = globalThis.fetch?.bind(globalThis);
+if (realFetch) {
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const raw = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const url = raw.startsWith("/") ? `http://127.0.0.1:3000${raw}` : raw;
+    if (url.startsWith("http://127.0.0.1:3000") || url.startsWith("http://localhost:3000")) {
+      return new Response("", { status: 204 });
+    }
+    return realFetch(input as never, init);
+  });
+}
 
 // next-themes reads matchMedia on mount; jsdom does not provide it.
 Object.defineProperty(window, "matchMedia", {

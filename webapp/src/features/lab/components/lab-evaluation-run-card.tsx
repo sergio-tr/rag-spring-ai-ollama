@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { LabBenchmarkResultsPanel } from "@/features/lab/components/lab-benchmark-results-panel";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
+import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import {
   asyncTaskDtoFromSnapshot,
@@ -79,6 +80,30 @@ function pickDefaultDataset(
   return candidates[0];
 }
 
+function datasetOriginLabel(row: ExperimentalDatasetListItemDto, t: (key: string) => string): string {
+  if (row.experimentalDatasetType === "REFERENCE_BUNDLE" || row.readOnly) return t("datasetOriginReference");
+  return t("datasetOriginUpload");
+}
+
+function datasetCompatibilityLabel(kind: BenchmarkKind, t: (key: string) => string): string {
+  switch (kind) {
+    case "LLM_JUDGE_QA":
+      return t("datasetCompatibilityLlm");
+    case "EMBEDDING_RETRIEVAL":
+      return t("datasetCompatibilityEmbedding");
+    case "RAG_PRESET_END_TO_END":
+      return t("datasetCompatibilityRag");
+    default:
+      return t("datasetCompatibilityUnknown");
+  }
+}
+
+function datasetCountsLabel(row: ExperimentalDatasetListItemDto, t: (key: string, values?: Record<string, string | number>) => string) {
+  const q = typeof row.questionCount === "number" ? row.questionCount : 0;
+  const r = typeof row.rowCount === "number" ? row.rowCount : 0;
+  return t("datasetCountsLine", { q, r });
+}
+
 function benchmarkAcceptedToLabAccepted(acc: BenchmarkJobAcceptedDto): LabJobAcceptedDto {
   return {
     jobId: acc.asyncTaskId,
@@ -109,6 +134,7 @@ export function LabEvaluationRunCard({
   const tHelp = useTranslations("Help");
   const { data: labStatus } = useLabStatus();
   const experimentalDatasets = useExperimentalDatasetsQuery();
+  const experimentalPresets = useExperimentalPresetCatalog();
   const activeProject = useAppStore((s) => s.activeProject);
 
   const [followMode, setFollowMode] = useState<LabJobFollowMode>("poll");
@@ -124,6 +150,7 @@ export function LabEvaluationRunCard({
   const [llmModelId, setLlmModelId] = useState("");
   const [embeddingModelId, setEmbeddingModelId] = useState("");
   const [embeddingDownstreamRag, setEmbeddingDownstreamRag] = useState(false);
+  const [selectedExperimentalPresetCodes, setSelectedExperimentalPresetCodes] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const traceDedupeRef = useRef(createLabJobTraceDedupe());
   const mountedEvalCardRef = useRef(true);
@@ -238,7 +265,9 @@ export function LabEvaluationRunCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resumeNonce-driven only
   }, [resumeNonceEvalCard]);
 
-  const canStart = !experimentalDatasets.isLoading && selectedDataset != null;
+  const hasCompatibleDataset = !experimentalDatasets.isLoading && selectedDataset != null;
+  const datasetIsValid = selectedDataset?.validationStatus === "VALID";
+  const canStart = hasCompatibleDataset && datasetIsValid;
 
   async function run() {
     abortRef.current?.abort();
@@ -258,10 +287,17 @@ export function LabEvaluationRunCard({
         setErr(t("benchmarkNeedsCompatibleDataset"));
         return;
       }
+      if (selectedDataset.validationStatus !== "VALID") {
+        setErr(t("benchmarkNeedsValidDataset"));
+        return;
+      }
       const body: StartBenchmarkRunRequest = {
         datasetId: selectedDataset.id,
         projectId: activeProject?.id ?? undefined,
       };
+      if (benchmarkKind === "RAG_PRESET_END_TO_END" && selectedExperimentalPresetCodes.length > 0) {
+        body.experimentalPresetCodes = selectedExperimentalPresetCodes;
+      }
       const lm = llmModelId.trim();
       const em = embeddingModelId.trim();
       if (lm) body.llmModelId = lm;
@@ -432,11 +468,16 @@ export function LabEvaluationRunCard({
               {compatibleRows.map((row) => (
                 <option key={row.id} value={row.id}>
                   {(row.name ?? t("experimentalDatasetUnnamed")) +
+                    ` · ${datasetOriginLabel(row, t)}` +
                     ` · ${row.experimentalDatasetType}` +
-                    (row.validationStatus ? ` (${row.validationStatus})` : "")}
+                    (row.validationStatus ? ` · ${row.validationStatus}` : "") +
+                    ` · ${datasetCountsLabel(row, t)}`}
                 </option>
               ))}
             </select>
+            <p className="text-muted-foreground text-xs">
+              {t("benchmarkDatasetCompatibilityHint", { kind: datasetCompatibilityLabel(benchmarkKind, t) })}
+            </p>
           </div>
 
           {experimentalDatasets.isFetched && compatibleRows.length === 0 ? (
@@ -446,6 +487,37 @@ export function LabEvaluationRunCard({
             >
               {t("benchmarkNeedsCompatibleDataset")}
             </output>
+          ) : null}
+
+          {selectedDataset ? (
+            <div className="rounded-md border bg-muted/20 p-3 text-xs" data-testid="lab-selected-dataset-details">
+              <p className="font-medium">{t("datasetDetailsTitle")}</p>
+              <div className="text-muted-foreground mt-1 space-y-1">
+                <p>
+                  <span className="font-medium">{t("datasetDetailsName")}:</span>{" "}
+                  {selectedDataset.name ?? t("experimentalDatasetUnnamed")}
+                </p>
+                <p>
+                  <span className="font-medium">{t("datasetDetailsType")}:</span> {selectedDataset.experimentalDatasetType}
+                </p>
+                <p>
+                  <span className="font-medium">{t("datasetDetailsOrigin")}:</span>{" "}
+                  {datasetOriginLabel(selectedDataset, t)}
+                </p>
+                <p>
+                  <span className="font-medium">{t("datasetDetailsCounts")}:</span> {datasetCountsLabel(selectedDataset, t)}
+                </p>
+                <p>
+                  <span className="font-medium">{t("datasetDetailsStatus")}:</span>{" "}
+                  {selectedDataset.validationStatus ?? t("experimentalDatasetValidationStatusUnknown")}
+                </p>
+              </div>
+              {!datasetIsValid ? (
+                <output className="mt-2 block text-amber-600 dark:text-amber-500" data-testid="lab-dataset-invalid-warn">
+                  {t("benchmarkNeedsValidDataset")}
+                </output>
+              ) : null}
+            </div>
           ) : null}
 
           {(benchmarkKind === "LLM_JUDGE_QA" ||
@@ -479,6 +551,87 @@ export function LabEvaluationRunCard({
               />
             </div>
           )}
+
+          {benchmarkKind === "RAG_PRESET_END_TO_END" ? (
+            <div className="space-y-2">
+              <Label>{t("benchmarkExperimentalPresetsLabel")}</Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={running}
+                  data-testid="lab-experimental-presets-select-all"
+                  onClick={() =>
+                    setSelectedExperimentalPresetCodes((experimentalPresets.data ?? []).map((p) => p.code))
+                  }
+                >
+                  {t("benchmarkExperimentalPresetsSelectAll")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={running}
+                  data-testid="lab-experimental-presets-select-core"
+                  onClick={() =>
+                    setSelectedExperimentalPresetCodes(
+                      (experimentalPresets.data ?? []).map((p) => p.code).filter((c) => /^P[0-8]$/.test(c)),
+                    )
+                  }
+                >
+                  {t("benchmarkExperimentalPresetsSelectCore")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={running}
+                  data-testid="lab-experimental-presets-clear"
+                  onClick={() => setSelectedExperimentalPresetCodes([])}
+                >
+                  {t("benchmarkExperimentalPresetsClear")}
+                </Button>
+              </div>
+              <div
+                data-testid="lab-experimental-presets-list"
+                className="max-h-60 space-y-2 overflow-auto rounded-md border p-2"
+              >
+                {(experimentalPresets.data ?? []).map((p) => {
+                  const checked = selectedExperimentalPresetCodes.includes(p.code);
+                  return (
+                    <label key={p.code} className="block space-y-0.5 rounded border px-2 py-1 text-sm">
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          data-testid={`lab-experimental-preset-${p.code}`}
+                          disabled={running}
+                          checked={checked}
+                          onChange={(e) =>
+                            setSelectedExperimentalPresetCodes((prev) =>
+                              e.target.checked ? [...prev, p.code] : prev.filter((x) => x !== p.code),
+                            )
+                          }
+                        />
+                        <span className="font-medium">
+                          {p.code} — {p.label}
+                        </span>
+                      </span>
+                      <span className="text-muted-foreground block text-xs">
+                        {p.supportStatus}
+                        {p.reasonIfUnsupported ? ` · ${p.reasonIfUnsupported}` : ""}
+                        {!p.supported ? ` · ${t("ragPresetExplainerNotSupported")}` : ""}
+                      </span>
+                    </label>
+                  );
+                })}
+                {experimentalPresets.isSuccess && (experimentalPresets.data?.length ?? 0) === 0 ? (
+                  <p className="text-muted-foreground text-xs">{t("benchmarkExperimentalPresetsEmpty")}</p>
+                ) : null}
+              </div>
+              <p className="text-muted-foreground text-xs">{t("benchmarkExperimentalPresetsHint")}</p>
+            </div>
+          ) : null}
 
           {benchmarkKind === "EMBEDDING_RETRIEVAL" ? (
             <label className="flex items-center gap-2 text-sm">

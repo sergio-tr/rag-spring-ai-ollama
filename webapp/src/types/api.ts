@@ -80,7 +80,7 @@ export type ConversationDto = {
   title: string;
   updatedAt: string;
   presetId?: string | null;
-  /** When `presetId` is null, backend-resolved default preset id for UX (e.g. Demo_Worst). */
+  /** When `presetId` is null, backend-resolved default preset id for UX (e.g. Demo_Best). */
   effectivePresetId?: string | null;
   /** Project document UUIDs limiting retrieval; empty = all documents in the project. */
   documentFilter?: string[];
@@ -216,12 +216,30 @@ export type StartBenchmarkRunRequest = {
   resolvedConfigSnapshotId?: string | null;
   indexSnapshotId?: string | null;
   presetId?: string | null;
+  experimentalPresetCodes?: string[] | null;
   /** Embedding benchmark: optionally run a fixed downstream answer step after retrieval. */
   embeddingDownstreamRag?: boolean | null;
   /** Optional Ollama chat model tag stored on the evaluation run. */
   llmModelId?: string | null;
   /** Optional Ollama embedding model tag stored on the evaluation run. */
   embeddingModelId?: string | null;
+};
+
+export type ExperimentalPresetCatalogItemDto = {
+  productPresetId: string;
+  code: string;
+  family: string;
+  label: string;
+  description: string;
+  requiredCapabilities: string[];
+  supported: boolean;
+  supportStatus: "EXECUTABLE" | "PARTIAL" | "NOT_SUPPORTED" | "REQUIRES_MULTI_TURN" | "DISABLED";
+  reasonIfUnsupported: string | null;
+  requiresMultiTurn: boolean;
+  mapsToRuntimeCapabilities: Record<string, unknown>;
+  allowedOutcomes: Array<"EXECUTED" | "NOT_SUPPORTED" | "FAILED" | "SKIPPED">;
+  chatSelectable: boolean;
+  labSelectable: boolean;
 };
 
 export type EvaluationRunDetailDto = {

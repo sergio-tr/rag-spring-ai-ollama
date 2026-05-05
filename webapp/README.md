@@ -37,6 +37,52 @@ Use **`PATCH {product}/conversations/{id}`** from the same UI for `presetId` / `
 
 ### Research Lab
 
+#### Running the TFG evaluation phases from the Lab (UI-first)
+
+Use the Lab navigation tabs:
+
+1. **LLM baseline** (`Lab → LLM evaluation`)
+   - **Dataset**: use the internal reference bundle if present, or upload a typed Excel workbook (template: *LLM baseline*).
+   - **Run**: start the evaluation and wait for the async job to finish.
+   - **Results**: review per-item outcomes and rollups.
+   - **Export**: use the MVP export buttons (CSV + JSON) to capture thesis tables/appendix artifacts.
+
+2. **Embedding baseline** (`Lab → Embedding evaluation`)
+   - **Dataset**: typed embedding baseline workbook (template: *Embedding baseline*).
+   - **What it measures**: retrieval quality against labelled evidence (e.g. Recall@K, MRR when available).
+   - **Export**: same MVP export buttons after the run succeeds.
+
+3. **RAG preset benchmark (P0–P14)** (`Lab → RAG evaluation`)
+   - **Dataset**: typed RAG preset benchmark workbook (template: *RAG preset benchmark*) or internal reference bundle.
+   - **Selection**: optionally select protocol presets P0–P14 (leave all unchecked to run the full workbook catalog).
+   - **Outcomes**: runs record honest outcomes like `EXECUTED`, `NOT_SUPPORTED`, and `FAILED`.
+   - **Export**: use the MVP exports to capture preset-level results for the thesis.
+
+## Manual validation checklist (TFG-ready)
+
+### Chat
+
+1. Upload meeting minutes (actas) from **Documents**.
+2. Wait until documents show **READY**.
+3. Open **Chat** and create a new conversation.
+4. In chat settings (⋮), select a **retrieval-enabled** preset (e.g. “RAG balanced”).
+5. Ask: **“¿Cuántas actas mencionan el ascensor?”**
+6. Verify: answer is grounded (or a controlled “insufficient context” refusal) and **Sources** are consistent.
+7. Turn on **Limit retrieval** and ensure it stays stable.
+8. Repeat the “ascensor” question with a limited scope.
+9. Upload one more document from chat settings and confirm it appears in the documents sheet when READY.
+10. Delete the chat using the delete dialog and confirm navigation back to the project chat list.
+
+### Lab
+
+1. Open **Lab → Overview** and confirm the **TFG control panel** shows Step 1 (datasets), Step 2 (workflows), and Step 3 (exports).
+2. Open **Datasets** (templates & uploads) and confirm you can download templates and upload a workbook until its status is **VALID**.
+3. Run **LLM baseline** using a compatible **VALID** dataset (reference bundle counts if listed).
+4. Run **Embedding baseline** using a compatible **VALID** embedding workbook.
+5. Run **RAG preset benchmark** and confirm the P0–P14 explainer is visible. Use preset selection helpers (**Select core (P0–P8)** / select all / clear) if you want a subset.
+6. Confirm outcomes include **EXECUTED**, **NOT_SUPPORTED** (with reason when present), and **FAILED**.
+7. Export results from the **Results** panel after a successful run (MVP exports: `items.csv`, `items.json`, `rollups.json`).
+
 Routes under `src/app/[locale]/(app)/lab/`: **`useLabStatus`** (`src/features/lab/hooks/use-lab-status.ts`) calls **`GET {product}/lab/status`** (reference bundle flags, classifier availability). Canonical benchmarks use **`POST {product}/lab/benchmarks/{kind}/runs`** (**HTTP 202** + async task). **`LabEvaluationRunCard`** drives LLM (`LLM_JUDGE_QA`), embedding (`EMBEDDING_RETRIEVAL`), and RAG preset (`RAG_PRESET_END_TO_END`) flows under **`/lab/evaluation/llm`**, **`/lab/evaluation/embedding`**, **`/lab/evaluation/rag`**. Classifier flows remain **`POST {product}/lab/classifier/*`**. Progress uses **`followLabJob`** (`src/lib/lab-job-follow.ts`): polling **`GET {product}/lab/jobs/{id}`** or SSE **`GET …/events`**. After **`SUCCEEDED`**, the UI loads MVP summaries via **`GET …/lab/runs/{id}/export/mvp/{items.json,rollups.json}`** and offers **`items.csv`**. **`useLabJobSessionStore`** persists bounded session rows (including **`evaluationRunId`** when returned). Lab outputs are **reports only** (ADR 0001).
 
 The Lab **overview** mounts **`LabExperimentalDatasetPanel`**, wired to **`GET …/lab/dataset-templates/{kind}`**, **`POST …/lab/experimental-datasets`**, **`GET …/lab/experimental-datasets`**, **`GET …/lab/experimental-datasets/{id}/validation`**.
