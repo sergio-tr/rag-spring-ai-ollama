@@ -6,6 +6,8 @@ import { useId, useRef, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useRuntimeConfigCapabilities } from "@/features/chat/hooks/use-runtime-config-capabilities";
+import { useRuntimeConfigValidate } from "@/features/chat/hooks/use-runtime-config-validate";
 import { resolvePresetSelectLabel } from "@/features/chat/lib/conversation-preset-ui";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { cn } from "@/lib/utils";
@@ -18,14 +20,20 @@ function MenuHint({ children }: Readonly<{ children: React.ReactNode }>) {
   );
 }
 
-function experimentalPresetOptionLabel(p: { code: string; label: string; supported: boolean; reasonIfUnsupported: string | null }) {
+function experimentalPresetOptionLabel(p: {
+  code: string;
+  label: string;
+  supported: boolean;
+  supportStatus: string;
+  reasonIfUnsupported: string | null;
+  requiresMultiTurn: boolean;
+  chatSelectable: boolean;
+}) {
   const base = `${p.code} — ${p.label}`;
+  if (p.requiresMultiTurn) return `${base} (REQUIRES_MULTI_TURN)`;
+  if (!p.chatSelectable) return `${base} (${p.supportStatus || "LAB_ONLY"}${p.reasonIfUnsupported ? `: ${p.reasonIfUnsupported}` : ""})`;
   if (p.supported) return base;
-  return `${base} (NOT_SUPPORTED${p.reasonIfUnsupported ? `: ${p.reasonIfUnsupported}` : ""})`;
-}
-
-function shouldShowExperimentalPresets(): boolean {
-  return process.env.NEXT_PUBLIC_SHOW_EXPERIMENTAL_PRESETS === "true" || process.env.NODE_ENV !== "production";
+  return `${base} (${p.supportStatus || "NOT_SUPPORTED"}${p.reasonIfUnsupported ? `: ${p.reasonIfUnsupported}` : ""})`;
 }
 
 /**
@@ -40,10 +48,24 @@ export function ChatToolbarOverflowMenu() {
   const presetSelectId = useId();
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  const [advancedDraft, setAdvancedDraft] = useState<Record<string, unknown>>({});
+  const [advancedError, setAdvancedError] = useState<string | null>(null);
+  const [advancedValidationText, setAdvancedValidationText] = useState<string | null>(null);
+  const capabilitiesQuery = useRuntimeConfigCapabilities();
+  const validateMutation = useRuntimeConfigValidate();
 
   const needsProject = !api?.projectId;
   const needsConversation = !api?.conversationId;
-  const showExperimental = shouldShowExperimentalPresets();
+
+  const caps = capabilitiesQuery.data?.capabilities ?? [];
+  const capByKey = new Map(caps.map((c) => [c.key, c]));
+  const disabledReason = (key: string): string | null => {
+    const c = capByKey.get(key);
+    if (!c) return null;
+    if (!c.configurable) return "not configurable";
+    if (!c.implemented) return c.reasonIfNotImplemented ?? "not implemented";
+    return null;
+  };
 
   return (
     <Sheet open={open} onOpenChange={(next) => setOpen(next)} modal={false}>
@@ -138,19 +160,13 @@ export function ChatToolbarOverflowMenu() {
                   </option>
                 ))}
               </optgroup>
-              {showExperimental ? (
-                <optgroup label={tChat("presetGroupExperimental")}>
-                  {(Array.isArray(api?.experimentalPresets) ? api?.experimentalPresets : []).map((p) => (
-                    <option
-                      key={p.productPresetId}
-                      value={p.productPresetId}
-                      disabled={!p.chatSelectable}
-                    >
-                      {experimentalPresetOptionLabel(p)}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
+              <optgroup label={tChat("presetGroupExperimental")}>
+                {(Array.isArray(api?.experimentalPresets) ? api?.experimentalPresets : []).map((p) => (
+                  <option key={p.productPresetId} value={p.productPresetId} disabled={!p.chatSelectable}>
+                    {experimentalPresetOptionLabel(p)}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             {api?.presetsLoading && !api.presetsError ? (
               <p className="text-muted-foreground text-xs">{tChat("presetCatalogLoading")}</p>
@@ -158,16 +174,16 @@ export function ChatToolbarOverflowMenu() {
             {api?.presets?.length === 0 && !api.presetsError ? (
               <output className="text-muted-foreground block text-xs">{tChat("presetCatalogEmpty")}</output>
             ) : null}
-            {showExperimental && !api?.experimentalPresetsLoading && (api?.experimentalPresets?.length ?? 0) === 0 ? (
+            {!api?.experimentalPresetsLoading && (api?.experimentalPresets?.length ?? 0) === 0 ? (
               <output className="text-muted-foreground block text-xs">{tChat("presetExperimentalEmpty")}</output>
             ) : null}
             {api?.presetsError ? (
               <p className="text-destructive text-xs">{tChat("presetsLoadError")}</p>
             ) : null}
-            {showExperimental && api?.experimentalPresetsError ? (
+            {api?.experimentalPresetsError ? (
               <p className="text-destructive text-xs">{tChat("presetsExperimentalLoadError")}</p>
             ) : null}
-            {showExperimental ? <MenuHint>{tChat("presetExperimentalHint")}</MenuHint> : null}
+            <MenuHint>{tChat("presetExperimentalHint")}</MenuHint>
           </div>
 
           <div className="flex flex-col gap-2 border-border border-t pt-3">
@@ -187,6 +203,238 @@ export function ChatToolbarOverflowMenu() {
               <span>{tChat("limitDocuments")}</span>
             </label>
             {api?.limitDocsToggleNotice ? <MenuHint>{api.limitDocsToggleNotice}</MenuHint> : null}
+          </div>
+
+          <div className="flex flex-col gap-3 border-border border-t pt-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Advanced configuration</p>
+                <MenuHint>Manually override runtime flags for this conversation. Invalid or unsupported combinations will be blocked.</MenuHint>
+              </div>
+              <button
+                type="button"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                disabled={needsProject || needsConversation || !!api?.patchConvPending}
+                onClick={() => {
+                  setAdvancedError(null);
+                  setAdvancedValidationText(null);
+                  setAdvancedDraft(api?.runtimeOverride ?? {});
+                }}
+              >
+                Load current
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                <span>Use retrieval</span>
+                <input
+                  type="checkbox"
+                  className="border-input size-4 rounded"
+                  checked={Boolean(advancedDraft.useRetrieval)}
+                  disabled={!!disabledReason("useRetrieval")}
+                  onChange={(e) =>
+                    setAdvancedDraft((p) => ({ ...p, useRetrieval: e.target.checked }))
+                  }
+                />
+              </label>
+              {disabledReason("useRetrieval") ? (
+                <MenuHint>{disabledReason("useRetrieval")}</MenuHint>
+              ) : null}
+
+              <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                <span>Naive full corpus (no retrieval)</span>
+                <input
+                  type="checkbox"
+                  className="border-input size-4 rounded"
+                  checked={Boolean(advancedDraft.naiveFullCorpusInPromptEnabled)}
+                  disabled={!!disabledReason("naiveFullCorpusInPromptEnabled")}
+                  onChange={(e) =>
+                    setAdvancedDraft((p) => ({
+                      ...p,
+                      naiveFullCorpusInPromptEnabled: e.target.checked,
+                    }))
+                  }
+                />
+              </label>
+              {disabledReason("naiveFullCorpusInPromptEnabled") ? (
+                <MenuHint>{disabledReason("naiveFullCorpusInPromptEnabled")}</MenuHint>
+              ) : null}
+
+              <div className="flex flex-col gap-1">
+                <Label className="text-xs">Materialization strategy</Label>
+                <select
+                  className={cn("border-input bg-background h-9 w-full rounded-md border px-2 text-sm")}
+                  value={String(advancedDraft.materializationStrategy ?? "")}
+                  disabled={!!disabledReason("materializationStrategy")}
+                  onChange={(e) =>
+                    setAdvancedDraft((p) => ({
+                      ...p,
+                      materializationStrategy: e.target.value || null,
+                    }))
+                  }
+                >
+                  <option value="">Default</option>
+                  {Array.isArray(capByKey.get("materializationStrategy")?.options?.allowedValues)
+                    ? (capByKey.get("materializationStrategy")?.options?.allowedValues as string[]).map((v) => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))
+                    : null}
+                </select>
+                {disabledReason("materializationStrategy") ? (
+                  <MenuHint>{disabledReason("materializationStrategy")}</MenuHint>
+                ) : null}
+              </div>
+
+              <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                <span>Metadata enabled</span>
+                <input
+                  type="checkbox"
+                  className="border-input size-4 rounded"
+                  checked={Boolean(advancedDraft.metadataEnabled)}
+                  disabled={!!disabledReason("metadataEnabled")}
+                  onChange={(e) =>
+                    setAdvancedDraft((p) => ({ ...p, metadataEnabled: e.target.checked }))
+                  }
+                />
+              </label>
+
+              <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                <span>Use advisor</span>
+                <input
+                  type="checkbox"
+                  className="border-input size-4 rounded"
+                  checked={Boolean(advancedDraft.useAdvisor)}
+                  disabled={!!disabledReason("useAdvisor")}
+                  onChange={(e) => setAdvancedDraft((p) => ({ ...p, useAdvisor: e.target.checked }))}
+                />
+              </label>
+
+              <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                <span>Reasoning (not implemented)</span>
+                <input
+                  type="checkbox"
+                  className="border-input size-4 rounded"
+                  checked={Boolean(advancedDraft.reasoningEnabled)}
+                  disabled={!!disabledReason("reasoningEnabled")}
+                  onChange={(e) =>
+                    setAdvancedDraft((p) => ({ ...p, reasoningEnabled: e.target.checked }))
+                  }
+                />
+              </label>
+              {disabledReason("reasoningEnabled") ? <MenuHint>{disabledReason("reasoningEnabled")}</MenuHint> : null}
+
+              <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                <span>Ranker (not implemented)</span>
+                <input
+                  type="checkbox"
+                  className="border-input size-4 rounded"
+                  checked={Boolean(advancedDraft.rankerEnabled)}
+                  disabled={!!disabledReason("rankerEnabled")}
+                  onChange={(e) => setAdvancedDraft((p) => ({ ...p, rankerEnabled: e.target.checked }))}
+                />
+              </label>
+              {disabledReason("rankerEnabled") ? <MenuHint>{disabledReason("rankerEnabled")}</MenuHint> : null}
+
+              <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                <span>Post-retrieval (not implemented)</span>
+                <input
+                  type="checkbox"
+                  className="border-input size-4 rounded"
+                  checked={Boolean(advancedDraft.postRetrievalEnabled)}
+                  disabled={!!disabledReason("postRetrievalEnabled")}
+                  onChange={(e) =>
+                    setAdvancedDraft((p) => ({ ...p, postRetrievalEnabled: e.target.checked }))
+                  }
+                />
+              </label>
+              {disabledReason("postRetrievalEnabled") ? <MenuHint>{disabledReason("postRetrievalEnabled")}</MenuHint> : null}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+                disabled={needsConversation || validateMutation.isPending}
+                onClick={async () => {
+                  if (!api?.conversationId) return;
+                  setAdvancedError(null);
+                  setAdvancedValidationText(null);
+                  try {
+                    const res = await validateMutation.mutateAsync({
+                      conversationId: api.conversationId,
+                      presetId: api.presetSelectValue,
+                      overrides: advancedDraft,
+                    });
+                    if (!res.valid || !res.supported) {
+                      const msg = res.errors?.[0]?.message ?? "Configuration is not supported.";
+                      setAdvancedError(msg);
+                      setAdvancedValidationText(`Selected workflow: ${res.selectedWorkflow ?? "-"}`);
+                      return;
+                    }
+                    setAdvancedValidationText(
+                      `Configuration is valid. Selected workflow: ${res.selectedWorkflow ?? "-"}`,
+                    );
+                  } catch (e) {
+                    setAdvancedError(String(e));
+                  }
+                }}
+              >
+                {validateMutation.isPending ? "Validating..." : "Validate"}
+              </button>
+
+              <button
+                type="button"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                disabled={needsConversation || !!api?.patchConvPending}
+                onClick={async () => {
+                  if (!api?.conversationId) return;
+                  setAdvancedError(null);
+                  try {
+                    const res = await validateMutation.mutateAsync({
+                      conversationId: api.conversationId,
+                      presetId: api.presetSelectValue,
+                      overrides: advancedDraft,
+                    });
+                    if (!res.valid || !res.supported) {
+                      setAdvancedError(res.errors?.[0]?.message ?? "Configuration is not supported.");
+                      return;
+                    }
+                    api?.saveRuntimeOverride(advancedDraft);
+                    setAdvancedValidationText("Saved.");
+                  } catch (e) {
+                    setAdvancedError(String(e));
+                  }
+                }}
+              >
+                Save
+              </button>
+
+              <button
+                type="button"
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                disabled={needsConversation || !!api?.patchConvPending}
+                onClick={() => {
+                  api?.clearRuntimeOverride();
+                  setAdvancedDraft({});
+                  setAdvancedError(null);
+                  setAdvancedValidationText("Cleared.");
+                }}
+              >
+                Clear
+              </button>
+            </div>
+
+            {advancedError ? (
+              <p className="text-destructive text-xs" role="alert">
+                {advancedError}
+              </p>
+            ) : null}
+            {advancedValidationText ? (
+              <p className="text-muted-foreground text-xs">{advancedValidationText}</p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-2 border-border border-t pt-3">

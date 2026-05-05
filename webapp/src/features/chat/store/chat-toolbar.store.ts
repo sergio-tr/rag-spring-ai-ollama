@@ -39,6 +39,9 @@ export type ChatToolbarApi = {
   uploadPending: boolean;
   uploadError: string | null;
   uploadNotice: string | null;
+  runtimeOverride: Record<string, unknown>;
+  saveRuntimeOverride: (next: Record<string, unknown>) => void;
+  clearRuntimeOverride: () => void;
 };
 
 type ChatToolbarState = {

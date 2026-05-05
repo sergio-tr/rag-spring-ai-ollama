@@ -84,6 +84,8 @@ export type ConversationDto = {
   effectivePresetId?: string | null;
   /** Project document UUIDs limiting retrieval; empty = all documents in the project. */
   documentFilter?: string[];
+  /** Conversation-scoped runtime override keys (merged on top of preset + project config). */
+  runtimeOverride?: Record<string, unknown>;
 };
 
 export type RagPresetDto = {
@@ -252,6 +254,46 @@ export type ExperimentalPresetCatalogItemDto = {
   labSelectable: boolean;
 };
 
+export type RuntimeConfigCapabilityDto = {
+  key: string;
+  label: string;
+  description: string;
+  group: string;
+  implemented: boolean;
+  configurable: boolean;
+  requires: string[];
+  excludes: string[];
+  reasonIfNotImplemented: string | null;
+  options: Record<string, unknown>;
+};
+
+export type RuntimeConfigCapabilitiesResponse = {
+  capabilities: RuntimeConfigCapabilityDto[];
+};
+
+export type RuntimeConfigValidationIssueDto = {
+  code: string;
+  field: string | null;
+  message: string;
+  severity: "ERROR" | "WARNING";
+};
+
+export type RuntimeConfigValidateRequest = {
+  conversationId: string;
+  presetId?: string | null;
+  experimentalPresetCode?: string | null;
+  overrides?: Record<string, unknown> | null;
+};
+
+export type RuntimeConfigValidateResponse = {
+  valid: boolean;
+  supported: boolean;
+  effectiveConfig: Record<string, unknown>;
+  errors: RuntimeConfigValidationIssueDto[];
+  warnings: RuntimeConfigValidationIssueDto[];
+  selectedWorkflow: string | null;
+};
+
 export type EvaluationRunDetailDto = {
   id: string;
   name: string | null;
@@ -348,6 +390,8 @@ export type PatchConversationBody = {
   presetId?: string | null;
   clearPreset?: boolean;
   documentFilter?: string[] | null;
+  runtimeOverride?: Record<string, unknown> | null;
+  clearRuntimeOverride?: boolean;
 };
 
 /** GET `{product}/models` — allowlist vs Ollama tags. */
