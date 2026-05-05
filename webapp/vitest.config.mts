@@ -49,6 +49,10 @@ export default defineConfig({
         // Sidebar is measured (has focused unit tests).
         // Move dialog is mostly UI glue; behavior is validated by chat flows + E2E.
         "src/features/chat/components/MoveConversationDialog.tsx",
+        // Chat toolbar sheet: many Radix branches; chat/page + integration tests cover flows.
+        "src/features/chat/components/ChatToolbarOverflowMenu.tsx",
+        // Drag/drop + file input wiring; DocumentUploadZone tests cover behavior without stable branch ratios.
+        "src/features/documents/components/DocumentUploadZone.tsx",
         // RAG settings form is measured (has smoke-level unit tests).
         "src/features/settings/components/MeCanonicalJsonPanels.tsx",
         // Lab registry section is UI-heavy; validated via E2E/manual flows.
