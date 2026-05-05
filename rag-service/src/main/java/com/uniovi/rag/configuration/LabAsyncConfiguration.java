@@ -25,6 +25,23 @@ public class LabAsyncConfiguration {
         return ex;
     }
 
+    /**
+     * Dedicated executor for document ingestion pipelines.
+     *
+     * <p>Rationale: uploads can arrive in bursts (multi-file drag & drop) and should not starve
+     * lab async work or rely on the default {@code @Async} executor configuration.
+     */
+    @Bean(name = "documentIngestionExecutor")
+    public Executor documentIngestionExecutor() {
+        ThreadPoolTaskExecutor ex = new ThreadPoolTaskExecutor();
+        ex.setCorePoolSize(4);
+        ex.setMaxPoolSize(8);
+        ex.setQueueCapacity(200);
+        ex.setThreadNamePrefix("doc-ingest-");
+        ex.initialize();
+        return ex;
+    }
+
     @Bean(name = "labJobSseExecutor", destroyMethod = "shutdown")
     public ScheduledExecutorService labJobSseExecutor() {
         return Executors.newScheduledThreadPool(

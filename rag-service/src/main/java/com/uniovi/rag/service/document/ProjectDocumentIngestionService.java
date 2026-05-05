@@ -42,7 +42,7 @@ public class ProjectDocumentIngestionService extends AbstractDocumentService {
     /**
      * Deletes existing vector rows for this project document, then ingests from a temp file (deleted after read).
      */
-    @Async
+    @Async("documentIngestionExecutor")
     public void ingestFromTempFile(
             UUID userId,
             UUID projectId,
