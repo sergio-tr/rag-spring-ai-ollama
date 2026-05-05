@@ -7,9 +7,11 @@ import java.time.Duration;
 import java.util.Map;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -87,15 +89,33 @@ public class ClassifierServiceClient implements QueryClassifier {
         Map<String, String> body = Map.of("query", query, "modelId", effectiveModelId);
         HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
         try {
-            ResponseEntity<ClassifyResponseDto> response = restTemplate.postForEntity(url, request, ClassifyResponseDto.class);
+            ResponseEntity<ClassifyResponseDto> response =
+                    restTemplate.exchange(url, HttpMethod.POST, request, ClassifyResponseDto.class);
             if (response.getStatusCode().is2xxSuccessful()) {
                 ClassifyResponseDto responseBody = response.getBody();
                 return (responseBody != null && responseBody.queryType() != null) ? responseBody.queryType() : null;
             }
+        } catch (HttpStatusCodeException e) {
+            log().warn(
+                    "[CLASSIFIER] HTTP error status={} url={} body={}",
+                    e.getStatusCode().value(),
+                    url,
+                    safeBodyPreview(e.getResponseBodyAsString()));
         } catch (RestClientException e) {
             log().warn("[CLASSIFIER] Error calling classifier-service (LLM fallback will be used): {}", e.getMessage());
         }
         return null;
+    }
+
+    private static String safeBodyPreview(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String t = raw.trim();
+        if (t.length() <= 500) {
+            return t;
+        }
+        return t.substring(0, 500) + "…";
     }
 
     private String resolveEffectiveModelId() {

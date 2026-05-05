@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.classifier;
 
 import com.uniovi.rag.domain.ClassifierModelStatus;
+import com.uniovi.rag.application.port.ClassifierLabPort;
 import com.uniovi.rag.infrastructure.persistence.ClassifierModelRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ClassifierModelEntity;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,16 +43,19 @@ public class ClassifierModelRegistryService {
     private final UserRepository userRepository;
     private final ProjectAccessService projectAccessService;
     private final UserProjectConfigurationService userProjectConfigurationService;
+    private final ClassifierLabPort classifierLabPort;
 
     public ClassifierModelRegistryService(
             ClassifierModelRepository classifierModelRepository,
             UserRepository userRepository,
             ProjectAccessService projectAccessService,
-            UserProjectConfigurationService userProjectConfigurationService) {
+            UserProjectConfigurationService userProjectConfigurationService,
+            ClassifierLabPort classifierLabPort) {
         this.classifierModelRepository = classifierModelRepository;
         this.userRepository = userRepository;
         this.projectAccessService = projectAccessService;
         this.userProjectConfigurationService = userProjectConfigurationService;
+        this.classifierLabPort = classifierLabPort;
     }
 
     /**
@@ -135,6 +140,62 @@ public class ClassifierModelRegistryService {
             out.add(toDto(e));
         }
         return out;
+    }
+
+    /**
+     * UI contract: the model combo must reflect the real classifier-service registry ({@code GET /models}).
+     * We upsert missing external models into {@code classifier_model} so activation continues to use UUID row ids.
+     */
+    @Transactional
+    public List<ClassifierModelResponseDto> listForUserWithSync(UUID userId) {
+        if (classifierLabPort != null && classifierLabPort.isConfigured()) {
+            try {
+                List<Map<String, Object>> external = classifierLabPort.listModels();
+                ensureExternalModelsRegistered(userId, external);
+            } catch (Exception e) {
+                log.warn("Could not sync classifier models from classifier-service: {}", e.getMessage());
+            }
+        }
+        return listForUser(userId);
+    }
+
+    @Transactional
+    void ensureExternalModelsRegistered(UUID userId, List<Map<String, Object>> externalModels) {
+        if (externalModels == null || externalModels.isEmpty()) {
+            return;
+        }
+        UserEntity owner = userRepository.findById(userId).orElse(null);
+        if (owner == null) {
+            return;
+        }
+        for (Map<String, Object> row : externalModels) {
+            if (row == null) {
+                continue;
+            }
+            String inferenceTag = row.get("id") != null ? row.get("id").toString() : null;
+            if (inferenceTag == null || inferenceTag.isBlank()) {
+                continue;
+            }
+            Optional<ClassifierModelEntity> existing =
+                    classifierModelRepository.findByOwner_IdAndArtifactPath(userId, inferenceTag);
+            if (existing.isPresent()) {
+                continue;
+            }
+            String name = row.get("name") != null ? row.get("name").toString() : inferenceTag;
+            Instant trainedAt = parseInstantOrNull(row.get("createdAt"));
+            if (trainedAt == null) {
+                trainedAt = Instant.now();
+            }
+            Map<String, Object> hp = new LinkedHashMap<>();
+            hp.put("external", true);
+            hp.put("source", "classifier-service");
+            if (row.get("metrics") instanceof Map<?, ?> mm) {
+                hp.put("externalMetrics", mm);
+            }
+            ClassifierModelEntity e =
+                    ClassifierModelEntityFactory.newReadyTrainingArtifact(owner, name, inferenceTag, hp, trainedAt);
+            classifierModelRepository.save(e);
+        }
     }
 
     /**
@@ -250,5 +311,20 @@ public class ClassifierModelRegistryService {
             }
         }
         return null;
+    }
+
+    private static Instant parseInstantOrNull(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        String s = raw.toString().trim();
+        if (s.isBlank() || "null".equalsIgnoreCase(s)) {
+            return null;
+        }
+        try {
+            return Instant.parse(s);
+        } catch (DateTimeParseException ignored) {
+            return null;
+        }
     }
 }

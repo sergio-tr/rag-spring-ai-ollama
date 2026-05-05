@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.classifier;
 
 import com.uniovi.rag.domain.ClassifierModelStatus;
+import com.uniovi.rag.application.port.ClassifierLabPort;
 import com.uniovi.rag.infrastructure.persistence.ClassifierModelRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ClassifierModelEntity;
@@ -43,6 +44,9 @@ class ClassifierModelRegistryServiceTest {
     @Mock
     private UserProjectConfigurationService userProjectConfigurationService;
 
+    @Mock
+    private ClassifierLabPort classifierLabPort;
+
     private ClassifierModelRegistryService service;
 
     private final UUID userId = UUID.randomUUID();
@@ -51,7 +55,7 @@ class ClassifierModelRegistryServiceTest {
     @BeforeEach
     void setUp() {
         service = new ClassifierModelRegistryService(
-                classifierModelRepository, userRepository, projectAccessService, userProjectConfigurationService);
+                classifierModelRepository, userRepository, projectAccessService, userProjectConfigurationService, classifierLabPort);
     }
 
     @Test
@@ -98,6 +102,22 @@ class ClassifierModelRegistryServiceTest {
 
         assertThat(list).hasSize(1);
         assertThat(list.get(0).inferenceTag()).isEqualTo("tag");
+    }
+
+    @Test
+    void listForUserWithSync_upsertsExternalModelsWhenMissing() {
+        UserEntity owner = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        when(classifierLabPort.isConfigured()).thenReturn(true);
+        when(classifierLabPort.listModels()).thenReturn(List.of(Map.of("id", "default", "name", "Default model")));
+        when(classifierModelRepository.findByOwner_IdAndArtifactPath(userId, "default")).thenReturn(Optional.empty());
+        when(classifierModelRepository.findByOwner_IdOrderByTrainedAtDesc(userId)).thenReturn(List.of());
+
+        service.listForUserWithSync(userId);
+
+        ArgumentCaptor<ClassifierModelEntity> cap = ArgumentCaptor.forClass(ClassifierModelEntity.class);
+        verify(classifierModelRepository, atLeastOnce()).save(cap.capture());
+        assertThat(cap.getAllValues().stream().anyMatch(e -> "default".equals(e.getArtifactPath()))).isTrue();
     }
 
     @Test

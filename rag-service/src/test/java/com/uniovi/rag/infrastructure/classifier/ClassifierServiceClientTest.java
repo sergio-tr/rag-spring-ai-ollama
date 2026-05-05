@@ -112,8 +112,9 @@ class ClassifierServiceClientTest {
     @Test
     void classifyWithText_returnsNull_whenRestTemplateThrowsRestClientException_timeout() {
         RestTemplate throwingRestTemplate = mock(RestTemplate.class);
-        when(throwingRestTemplate.postForEntity(
+        when(throwingRestTemplate.exchange(
                 Mockito.anyString(),
+                Mockito.eq(HttpMethod.POST),
                 Mockito.any(),
                 Mockito.eq(ClassifyResponseDto.class)))
                 .thenThrow(new RestClientException("timeout"));

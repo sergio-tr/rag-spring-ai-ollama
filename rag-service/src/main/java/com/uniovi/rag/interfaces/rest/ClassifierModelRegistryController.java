@@ -31,7 +31,7 @@ public class ClassifierModelRegistryController {
 
     @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
     public List<ClassifierModelResponseDto> list(@AuthenticationPrincipal RagPrincipal principal) {
-        return classifierModelRegistryService.listForUser(principal.userId());
+        return classifierModelRegistryService.listForUserWithSync(principal.userId());
     }
 
     @PostMapping(path = "/{modelId}/activate", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)

@@ -65,7 +65,7 @@ class ClassifierModelRegistryControllerWebMvcTest {
     @Test
     void list_returnsJson() throws Exception {
         UUID mid = UUID.randomUUID();
-        when(classifierModelRegistryService.listForUser(userId))
+        when(classifierModelRegistryService.listForUserWithSync(userId))
                 .thenReturn(
                         List.of(
                                 new ClassifierModelResponseDto(

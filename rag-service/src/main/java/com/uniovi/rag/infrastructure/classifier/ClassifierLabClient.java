@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
@@ -232,9 +234,44 @@ public class ClassifierLabClient implements ClassifierLabPort {
                     restTemplate.exchange(baseUrl + "/classify", HttpMethod.POST, entity, MAP_OF_STRING_OBJECT);
             return bodyAsMap(resp);
         } catch (HttpStatusCodeException e) {
+            log.warn(
+                    "Classifier /classify failed status={} url={} body={}",
+                    e.getStatusCode().value(),
+                    baseUrl + "/classify",
+                    safeBodyPreview(e.getResponseBodyAsString()));
             throw mapClassifierError(e);
         } catch (RestClientException e) {
             log.warn("Classifier classify failed: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Classifier service error");
+        }
+    }
+
+    @Override
+    public List<Map<String, Object>> listModels() {
+        requireConfigured();
+        try {
+            ResponseEntity<List> resp = restTemplate.exchange(baseUrl + "/models", HttpMethod.GET, HttpEntity.EMPTY, List.class);
+            Object body = resp.getBody();
+            if (body instanceof List<?> list) {
+                List<Map<String, Object>> out = new ArrayList<>();
+                for (Object row : list) {
+                    if (row instanceof Map<?, ?> m) {
+                        //noinspection unchecked
+                        out.add((Map<String, Object>) m);
+                    }
+                }
+                return out;
+            }
+            return List.of();
+        } catch (HttpStatusCodeException e) {
+            log.warn(
+                    "Classifier /models failed status={} url={} body={}",
+                    e.getStatusCode().value(),
+                    baseUrl + "/models",
+                    safeBodyPreview(e.getResponseBodyAsString()));
+            throw mapClassifierError(e);
+        } catch (RestClientException e) {
+            log.warn("Classifier list models failed: {}", e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Classifier service error");
         }
     }
@@ -276,6 +313,17 @@ public class ClassifierLabClient implements ClassifierLabPort {
             status = HttpStatus.BAD_GATEWAY;
         }
         return new ResponseStatusException(status, msg);
+    }
+
+    private static String safeBodyPreview(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String t = raw.trim();
+        if (t.length() <= 500) {
+            return t;
+        }
+        return t.substring(0, 500) + "…";
     }
 
     private static final class NamedByteArrayResource extends ByteArrayResource {
