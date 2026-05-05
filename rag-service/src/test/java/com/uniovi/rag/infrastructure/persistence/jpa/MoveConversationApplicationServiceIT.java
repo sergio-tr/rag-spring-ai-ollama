@@ -144,8 +144,10 @@ class MoveConversationApplicationServiceIT {
 
         KnowledgeIndexSnapshotEntity snap =
                 knowledgeIndexSnapshotRepository
-                        .findActiveConversationSnapshot(
+                        .findActiveConversationSnapshots(
                                 conv.getId(), KnowledgeSnapshotScopeType.CONVERSATION, IndexSnapshotStatus.ACTIVE)
+                        .stream()
+                        .findFirst()
                         .orElseThrow();
         assertThat(snap.getProject().getId()).isEqualTo(projectB.getId());
     }

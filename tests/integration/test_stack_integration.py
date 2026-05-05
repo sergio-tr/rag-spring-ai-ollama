@@ -762,6 +762,37 @@ class TestBackendLabJobs:
         assert err.get("error") == "LAB_EVALUATIONS_LEGACY_REMOVED"
         assert "benchmarks" in (err.get("message") or "").lower()
 
+    def test_lab_evaluations_llm_legacy_returns_410(
+        self,
+        http_client: httpx.Client,
+        backend_base: str,
+        product_api_base: str,
+        integration_seed_credentials: tuple[str, str],
+    ) -> None:
+        """POST /lab/evaluations/llm is gone; response points at canonical benchmark path."""
+        email, password = integration_seed_credentials
+        try:
+            token = _login_access_token(http_client, backend_base, email, password)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        if not token:
+            pytest.skip("Login did not return a token (seed user missing or wrong INTEGRATION_LOGIN_*).")
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+        try:
+            post = http_client.post(
+                f"{backend_base}{product_api_base}/lab/evaluations/llm",
+                headers=headers,
+                timeout=30.0,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            _skip_if_unreachable(e)
+            raise
+        assert post.status_code == 410, post.text
+        err = _assert_json_response_not_html(post)
+        assert err.get("error") == "LAB_EVALUATIONS_LEGACY_REMOVED"
+        assert "benchmarks" in (err.get("message") or "").lower()
+
     def test_lab_benchmark_rag_preset_async_returns_202_and_pollable_job(
         self,
         http_client: httpx.Client,

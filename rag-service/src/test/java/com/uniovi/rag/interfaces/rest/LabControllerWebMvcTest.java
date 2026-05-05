@@ -5,6 +5,7 @@ import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
 import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleCounts;
 import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleSnapshot;
+import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationIssue;
@@ -60,6 +61,8 @@ class LabControllerWebMvcTest {
 
     @MockitoBean
     private EvaluationReferenceBundleLoader referenceBundleLoader;
+    @MockitoBean
+    private LabExperimentalPresetCatalogService experimentalPresetCatalogService;
 
     private UUID userId;
 
@@ -73,6 +76,7 @@ class LabControllerWebMvcTest {
                                 principal, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));
         when(apiPathProperties.getProductBasePath()).thenReturn("/api/v5");
         when(referenceBundleLoader.getSnapshot()).thenReturn(ReferenceBundleSnapshot.classpathMissing());
+        when(experimentalPresetCatalogService.list()).thenReturn(List.of());
         when(classifierLabClient.isConfigured()).thenReturn(true);
     }
 

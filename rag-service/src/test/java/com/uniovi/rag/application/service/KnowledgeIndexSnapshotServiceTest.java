@@ -4,7 +4,7 @@ import com.uniovi.rag.domain.knowledge.IndexSnapshotStatus;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
-import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,9 +45,9 @@ class KnowledgeIndexSnapshotServiceTest {
         when(project.getId()).thenReturn(pid);
         String sig = KnowledgeIndexSnapshotService.legacySignatureForProject(pid);
         KnowledgeIndexSnapshotEntity existing = Mockito.mock(KnowledgeIndexSnapshotEntity.class);
-        when(knowledgeIndexSnapshotRepository.findByProject_IdAndSignatureHashAndStatus(
+        when(knowledgeIndexSnapshotRepository.findByProject_IdAndSignatureHashAndStatusOrderByUpdatedAtDesc(
                         eq(pid), eq(sig), eq(IndexSnapshotStatus.ACTIVE)))
-                .thenReturn(Optional.of(existing));
+                .thenReturn(List.of(existing));
 
         assertSame(existing, service.ensureLegacySnapshotForProject(project));
     }
@@ -58,9 +58,9 @@ class KnowledgeIndexSnapshotServiceTest {
         ProjectEntity project = Mockito.mock(ProjectEntity.class);
         when(project.getId()).thenReturn(pid);
         String sig = KnowledgeIndexSnapshotService.legacySignatureForProject(pid);
-        when(knowledgeIndexSnapshotRepository.findByProject_IdAndSignatureHashAndStatus(
+        when(knowledgeIndexSnapshotRepository.findByProject_IdAndSignatureHashAndStatusOrderByUpdatedAtDesc(
                         eq(pid), eq(sig), eq(IndexSnapshotStatus.ACTIVE)))
-                .thenReturn(Optional.empty());
+                .thenReturn(List.of());
         when(knowledgeIndexSnapshotRepository.save(any(KnowledgeIndexSnapshotEntity.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
 

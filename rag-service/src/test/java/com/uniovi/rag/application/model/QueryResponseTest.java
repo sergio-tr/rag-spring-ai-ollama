@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.model;
 
 import com.uniovi.rag.domain.model.QueryType;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -9,11 +10,12 @@ class QueryResponseTest {
 
     @Test
     void constructorAndGetters() {
-        QueryResponse r = new QueryResponse("answer", "tool1", QueryType.COUNT_DOCUMENTS, true);
+        QueryResponse r = new QueryResponse("answer", "tool1", QueryType.COUNT_DOCUMENTS, true, List.of());
         assertEquals("answer", r.getAnswer());
         assertEquals("tool1", r.getToolUsed());
         assertEquals(QueryType.COUNT_DOCUMENTS, r.getQueryType());
         assertTrue(r.isUsedTool());
+        assertTrue(r.getSources().isEmpty());
     }
 
     @Test

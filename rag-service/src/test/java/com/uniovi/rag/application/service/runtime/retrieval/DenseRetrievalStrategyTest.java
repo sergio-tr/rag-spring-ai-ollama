@@ -225,6 +225,38 @@ class DenseRetrievalStrategyTest {
     }
 
     @Test
+    void retrieve_excludesDocumentsWithoutProjectMetadataWhenProjectScoped() {
+        RagExecutionContextHolder.clear();
+        UUID projectKey = UUID.randomUUID();
+        RagExecutionContextHolder.set(
+                new RagExecutionContext(null, null, projectKey.toString(), baseRag(), List.of("all"), "trace"));
+        denseRetrievalStrategy = new DenseRetrievalStrategy(vectorStore, 10, 0.7);
+
+        UUID sid = UUID.randomUUID();
+        RetrievalRequest req = baseRequest(sid, 10);
+        Document noProjectMeta =
+                new Document(
+                        "legacy",
+                        Map.of(
+                                "indexSnapshotId", sid.toString(),
+                                "document_id", "d1",
+                                "chunk_index", 0));
+        Document ok =
+                new Document(
+                        "scoped",
+                        Map.of(
+                                "indexSnapshotId", sid.toString(),
+                                "projectId", projectKey.toString(),
+                                "document_id", "d2",
+                                "chunk_index", 1));
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(noProjectMeta, ok));
+
+        var out = denseRetrievalStrategy.retrieve(req);
+        assertThat(out).hasSize(1);
+        assertThat(out.getFirst().content()).isEqualTo("scoped");
+    }
+
+    @Test
     void retrieve_appliesChatLocalCorpusScopeAgainstConversationId() {
         RagExecutionContextHolder.clear();
         UUID projectKey = UUID.randomUUID();

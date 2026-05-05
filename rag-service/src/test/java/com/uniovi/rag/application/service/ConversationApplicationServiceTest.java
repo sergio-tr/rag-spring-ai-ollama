@@ -30,6 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -252,6 +253,29 @@ class ConversationApplicationServiceTest {
         verify(c).setPreset(preset);
         verify(c).touchUpdated();
         verify(conversationRepository).save(c);
+    }
+
+    @Test
+    void patchConversation_rejectsExperimentalPresetWithAdvancedRuntimeFlags() {
+        UUID userId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        UUID presetId = UUID.randomUUID();
+        ConversationEntity c = mock(ConversationEntity.class);
+        when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(c);
+
+        RagPresetEntity preset = mock(RagPresetEntity.class);
+        when(preset.getTags()).thenReturn(List.of("experimental", "tfg"));
+        when(preset.getValues()).thenReturn(Map.of("reasoningEnabled", true));
+        when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
+
+        ResponseStatusException ex =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                service.patchConversation(
+                                        userId, convId, new PatchConversationRequest(null, presetId.toString(), null, null)));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        verify(conversationRepository, never()).save(any());
     }
 
     @Test

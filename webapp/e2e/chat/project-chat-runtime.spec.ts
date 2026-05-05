@@ -27,7 +27,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
     await expect(page.getByTestId("chat-readable-column")).toBeVisible();
 
     await page.getByTestId("chat-actions-menu-trigger").click();
-    await expect(page.getByRole("menuitem", { name: /^delete chat$/i })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: /^delete chat$/i })).toBeVisible({ timeout: 15_000 });
 
     const preset = page.getByRole("combobox", { name: /preset/i });
     await expect(preset).toBeVisible({ timeout: 15_000 });

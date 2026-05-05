@@ -80,6 +80,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()),
                                 new RagFeatureConfiguration(),
                                 new RagImplementationProperties(),
+                                null,
                                 null);
 
         assertThat(out.get("results")).isSameAs(rows);
@@ -116,6 +117,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                                 new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of(p11)),
                                 new RagFeatureConfiguration(),
                                 new RagImplementationProperties(),
+                                null,
                                 null);
 
         @SuppressWarnings("unchecked")

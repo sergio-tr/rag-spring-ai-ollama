@@ -217,6 +217,70 @@ class WorkflowSelectorTest {
         assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
     }
 
+    @Test
+    void select_rejects_reasoningEnabled() {
+        RagConfig base = rag(true, false, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig bad =
+                new RagConfig(
+                        base.expansionEnabled(),
+                        base.nerEnabled(),
+                        base.toolsEnabled(),
+                        base.metadataEnabled(),
+                        true,
+                        base.rankerEnabled(),
+                        base.postRetrievalEnabled(),
+                        base.functionCallingEnabled(),
+                        base.useRetrieval(),
+                        base.useAdvisor(),
+                        base.clarificationEnabled(),
+                        base.memoryEnabled(),
+                        base.adaptiveRoutingEnabled(),
+                        base.judgeEnabled(),
+                        base.topK(),
+                        base.similarityThreshold(),
+                        base.llmModel(),
+                        base.embeddingModel(),
+                        base.classifierModelId(),
+                        base.reasoningStrategy(),
+                        base.naiveFullCorpusInPromptEnabled(),
+                        base.naiveFullCorpusMaxChars(),
+                        base.advancedRetrievalMaxContextChars(),
+                        base.materializationStrategy());
+        assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
+    }
+
+    @Test
+    void select_rejects_postRetrievalEnabled() {
+        RagConfig base = rag(true, false, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig bad =
+                new RagConfig(
+                        base.expansionEnabled(),
+                        base.nerEnabled(),
+                        base.toolsEnabled(),
+                        base.metadataEnabled(),
+                        base.reasoningEnabled(),
+                        base.rankerEnabled(),
+                        true,
+                        base.functionCallingEnabled(),
+                        base.useRetrieval(),
+                        base.useAdvisor(),
+                        base.clarificationEnabled(),
+                        base.memoryEnabled(),
+                        base.adaptiveRoutingEnabled(),
+                        base.judgeEnabled(),
+                        base.topK(),
+                        base.similarityThreshold(),
+                        base.llmModel(),
+                        base.embeddingModel(),
+                        base.classifierModelId(),
+                        base.reasoningStrategy(),
+                        base.naiveFullCorpusInPromptEnabled(),
+                        base.naiveFullCorpusMaxChars(),
+                        base.advancedRetrievalMaxContextChars(),
+                        base.materializationStrategy());
+        assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
+    }
+
     private static RagConfig denseChunkWithUseAdvisor(boolean useAdvisor) {
         return new RagConfig(
                 false,

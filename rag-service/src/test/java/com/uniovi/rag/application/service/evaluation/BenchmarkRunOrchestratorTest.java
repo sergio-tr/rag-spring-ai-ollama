@@ -69,6 +69,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
+                        null,
                         null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req))
@@ -102,6 +103,7 @@ class BenchmarkRunOrchestratorTest {
                         UUID.randomUUID(),
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "n",
+                        null,
                         null,
                         null,
                         null,
@@ -147,6 +149,7 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         EvaluationRunKind.PRODUCT_EXPLORATION,
                         "n",
+                        null,
                         null,
                         null,
                         null,

@@ -12,11 +12,13 @@ import static org.mockito.Mockito.when;
 class ChatPresetDefaultsTest {
 
     @Test
-    void effectivePresetIdForApi_nullPersisted_returnsDeterministicDemoWorstId() {
+    void effectivePresetIdForApi_nullPersisted_returnsDeterministicDemoBestId() {
         RagPresetRepository repo = mock(RagPresetRepository.class);
         ChatPresetDefaults cut = new ChatPresetDefaults(repo);
 
         assertThat(cut.effectivePresetIdForApi(null)).isEqualTo(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID);
+        assertThat(ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID.toString())
+                .isEqualTo("cafe0001-0001-4001-8001-000000000003");
     }
 
     @Test

@@ -10,7 +10,6 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
-import com.uniovi.rag.service.chat.ChatRetrievalSourceContributor;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,9 +35,6 @@ class ChatMessageJobHandlerTest {
 
     @Mock
     private ProcessQueryService processQueryService;
-
-    @Mock
-    private ChatRetrievalSourceContributor chatRetrievalSourceContributor;
 
     @Mock
     private ChatJobCancellationRegistry cancellationRegistry;
@@ -151,10 +147,10 @@ class ChatMessageJobHandlerTest {
                         eq(convId),
                         eq(List.of("d1")),
                         any()))
-                .thenReturn(QueryResponse.fromLLM("answer text here", QueryType.BOOLEAN_QUERY));
-        when(chatRetrievalSourceContributor.buildSources(
-                        eq(userId), eq(projectId), eq(convId), eq(List.of("d1")), eq("hello")))
-                .thenReturn(List.of(Map.of("id", "s1")));
+                .thenReturn(QueryResponse.fromLLMWithSources(
+                        "answer text here",
+                        QueryType.BOOLEAN_QUERY,
+                        List.of(Map.of("id", "s1"))));
         when(chatMessageWorkService.currentTraceId()).thenReturn("trace-1");
 
         handler.run(task, mutation);
@@ -164,7 +160,7 @@ class ChatMessageJobHandlerTest {
                         eq(asstId),
                         eq(convId),
                         eq("answer text here"),
-                        any(),
+                        eq(List.of(Map.of("id", "s1"))),
                         eq("BOOLEAN_QUERY"),
                         eq("trace-1"),
                         any(),
