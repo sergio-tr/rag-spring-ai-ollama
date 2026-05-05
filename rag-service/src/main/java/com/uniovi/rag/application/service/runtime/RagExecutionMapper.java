@@ -12,11 +12,12 @@ public final class RagExecutionMapper {
     public static QueryResponse toQueryResponse(RagExecutionResult result) {
         QueryType qt = result.queryTypeForLegacy();
         if (result.usedTool()) {
-            return QueryResponse.fromTool(
+            return QueryResponse.fromToolWithSources(
                     result.answerText(),
                     result.toolUsedLabel() != null ? result.toolUsedLabel() : "tool",
-                    qt);
+                    qt,
+                    result.responseSources());
         }
-        return QueryResponse.fromLLM(result.answerText(), qt);
+        return QueryResponse.fromLLMWithSources(result.answerText(), qt, result.responseSources());
     }
 }

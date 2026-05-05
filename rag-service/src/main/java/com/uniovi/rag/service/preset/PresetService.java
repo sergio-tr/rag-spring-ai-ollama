@@ -70,6 +70,9 @@ public class PresetService {
     @Transactional(readOnly = true)
     public List<RagPresetDto> list(UUID userId) {
         List<RagPresetEntity> rows = new ArrayList<>(ragPresetRepository.findVisibleForUserWithProfileRefs(userId));
+        // Keep product presets separate from the thesis experimental catalog (P0–P14).
+        // Experimental presets are surfaced through /lab/experimental-presets and shown in Chat as a separate section.
+        rows.removeIf(PresetService::isExperimentalCatalogPreset);
         rows.sort(
                 Comparator.comparing(RagPresetEntity::isSystem)
                         .thenComparing(RagPresetEntity::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
@@ -236,5 +239,12 @@ public class PresetService {
                 e.getCreatedAt(),
                 e.getUpdatedAt(),
                 profileRefs);
+    }
+
+    private static boolean isExperimentalCatalogPreset(RagPresetEntity e) {
+        if (e == null || e.getTags() == null) {
+            return false;
+        }
+        return e.getTags().stream().anyMatch(t -> t != null && t.trim().equalsIgnoreCase("experimental"));
     }
 }

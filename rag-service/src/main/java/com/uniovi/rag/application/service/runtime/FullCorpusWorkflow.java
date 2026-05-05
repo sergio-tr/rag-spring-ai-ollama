@@ -33,9 +33,16 @@ public class FullCorpusWorkflow extends AbstractExecutionWorkflow {
         stages.add(stage("full_corpus_assembly", t0, ExecutionStageOutcome.SUCCESS, ""));
         long t1 = System.nanoTime();
         String q = canonicalGenerationQuery(ctx);
-        String user = RuntimeAnswerPrompts.ragUserTurn(q, corpus);
-        String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
-        stages.add(stage("llm", t1, ExecutionStageOutcome.SUCCESS, ""));
+        String answer;
+        boolean docBound = RuntimeAnswerPrompts.requiresStrictDocumentGrounding(q);
+        if (docBound && (corpus == null || corpus.isBlank())) {
+            answer = RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(q);
+            stages.add(stage("llm", t1, ExecutionStageOutcome.SKIPPED, "strict_document_grounding_no_context"));
+        } else {
+            String user = RuntimeAnswerPrompts.ragUserTurn(q, corpus, docBound);
+            answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
+            stages.add(stage("llm", t1, ExecutionStageOutcome.SUCCESS, ""));
+        }
         return RagExecutionResult.withPlaceholderTrace(
                 answer,
                 workflowName(),

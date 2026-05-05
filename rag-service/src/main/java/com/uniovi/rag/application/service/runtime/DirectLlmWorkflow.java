@@ -24,8 +24,16 @@ public class DirectLlmWorkflow extends AbstractExecutionWorkflow {
     public RagExecutionResult execute(ExecutionContext ctx) {
         long t0 = System.nanoTime();
         List<ExecutionStageTrace> stages = new ArrayList<>();
-        String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), canonicalGenerationQuery(ctx));
-        stages.add(stage("llm", t0, ExecutionStageOutcome.SUCCESS, ""));
+        String q = canonicalGenerationQuery(ctx);
+        String answer;
+        if (RuntimeAnswerPrompts.requiresStrictDocumentGrounding(q)) {
+            // Deterministic safety gate: document-bound questions must never be answered from general knowledge.
+            answer = RuntimeAnswerPrompts.documentBoundRequiresRetrievalMessageFor(q);
+            stages.add(stage("llm", t0, ExecutionStageOutcome.SKIPPED, "document_bound_requires_retrieval"));
+        } else {
+            answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), q);
+            stages.add(stage("llm", t0, ExecutionStageOutcome.SUCCESS, ""));
+        }
         return RagExecutionResult.withPlaceholderTrace(
                 answer,
                 workflowName(),

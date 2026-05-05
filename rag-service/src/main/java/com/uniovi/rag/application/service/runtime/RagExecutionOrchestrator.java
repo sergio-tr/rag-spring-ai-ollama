@@ -334,7 +334,8 @@ public class RagExecutionOrchestrator {
                 DeterministicToolKindMappings.toQueryType(kind),
                 true,
                 List.of(),
-                Optional.empty());
+                Optional.empty(),
+                List.of());
     }
 
     private ExecutionOutcome executeFunctionCallingRoute(
@@ -459,7 +460,8 @@ public class RagExecutionOrchestrator {
                 DeterministicToolKindMappings.toQueryType(k),
                 true,
                 List.of(),
-                Optional.empty());
+                Optional.empty(),
+                List.of());
     }
 
     private ExecutionOutcome executeAdvisorRoute(
@@ -706,7 +708,8 @@ public class RagExecutionOrchestrator {
                     base.queryTypeForLegacy(),
                     base.usedTool(),
                     base.workflowStageTraces(),
-                    base.retrievalDiagnostics());
+                    base.retrievalDiagnostics(),
+                    base.responseSources());
         }
         return base;
     }

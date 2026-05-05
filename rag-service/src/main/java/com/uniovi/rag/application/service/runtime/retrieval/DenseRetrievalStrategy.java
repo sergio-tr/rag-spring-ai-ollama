@@ -134,7 +134,8 @@ public class DenseRetrievalStrategy {
         }
         Object p = meta.get("projectId");
         if (p == null) {
-            return true;
+            // Project-scoped chat must not include chunks with missing project metadata.
+            return false;
         }
         return projectId.equals(String.valueOf(p));
     }

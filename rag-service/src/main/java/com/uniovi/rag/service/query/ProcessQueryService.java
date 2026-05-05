@@ -207,6 +207,17 @@ public class ProcessQueryService implements QueryService, Loggable {
         }
         RagExecutionResult result = ragExecutionOrchestrator.execute(ctx);
         runtimeTracePersistenceService.persistBestEffort(ctx, result.executionTrace());
+        boolean useRetrieval = ctx.resolved() != null && ctx.resolved().toRagConfig().useRetrieval();
+        log()
+                .info(
+                        "chat_runtime_context conversationId={} projectId={} correlationId={} useRetrieval={} documentFilterCount={} retrievedChunks={} sourceCount={}",
+                        ctx.conversationId(),
+                        ctx.projectId(),
+                        ctx.correlationId(),
+                        useRetrieval,
+                        ctx.documentFilter() != null ? ctx.documentFilter().size() : 0,
+                        result.retrievalDiagnostics().map(d -> d.afterCompressionCount()).orElse(0),
+                        result.responseSources() != null ? result.responseSources().size() : 0);
         log()
                 .info(
                         "Runtime workflow={} snapshots={} correlationId={}",

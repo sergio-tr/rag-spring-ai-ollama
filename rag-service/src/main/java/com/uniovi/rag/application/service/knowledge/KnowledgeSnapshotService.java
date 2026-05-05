@@ -15,6 +15,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.List;
@@ -26,6 +28,7 @@ import java.util.UUID;
  */
 @Service
 public class KnowledgeSnapshotService {
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeSnapshotService.class);
 
     private final KnowledgeIndexSnapshotRepository snapshotRepository;
     private final KnowledgeSnapshotDocumentRepository snapshotDocumentRepository;
@@ -124,13 +127,24 @@ public class KnowledgeSnapshotService {
     }
 
     public Optional<KnowledgeIndexSnapshotEntity> findActiveProjectSnapshot(UUID projectId) {
-        return snapshotRepository.findActiveProjectSnapshot(
+        List<KnowledgeIndexSnapshotEntity> rows = snapshotRepository.findActiveProjectSnapshots(
                 projectId, KnowledgeSnapshotScopeType.PROJECT, IndexSnapshotStatus.ACTIVE);
+        if (rows.size() > 1) {
+            log.warn("Multiple ACTIVE project snapshots found for project {} (count={}); using most recent", projectId, rows.size());
+        }
+        return rows.stream().findFirst();
     }
 
     public Optional<KnowledgeIndexSnapshotEntity> findActiveConversationSnapshot(UUID conversationId) {
-        return snapshotRepository.findActiveConversationSnapshot(
+        List<KnowledgeIndexSnapshotEntity> rows = snapshotRepository.findActiveConversationSnapshots(
                 conversationId, KnowledgeSnapshotScopeType.CONVERSATION, IndexSnapshotStatus.ACTIVE);
+        if (rows.size() > 1) {
+            log.warn(
+                    "Multiple ACTIVE conversation snapshots found for conversation {} (count={}); using most recent",
+                    conversationId,
+                    rows.size());
+        }
+        return rows.stream().findFirst();
     }
 
     /**

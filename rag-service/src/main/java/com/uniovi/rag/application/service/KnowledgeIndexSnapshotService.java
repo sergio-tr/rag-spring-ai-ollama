@@ -7,8 +7,11 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntit
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -16,6 +19,7 @@ import java.util.UUID;
  */
 @Service
 public class KnowledgeIndexSnapshotService {
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeIndexSnapshotService.class);
 
     public static final String LEGACY_SIGNATURE_PREFIX = "LEGACY:";
 
@@ -33,9 +37,16 @@ public class KnowledgeIndexSnapshotService {
     public KnowledgeIndexSnapshotEntity ensureLegacySnapshotForProject(ProjectEntity project) {
         UUID pid = project.getId();
         String sig = legacySignatureForProject(pid);
-        return knowledgeIndexSnapshotRepository
-                .findByProject_IdAndSignatureHashAndStatus(pid, sig, IndexSnapshotStatus.ACTIVE)
-                .orElseGet(() -> createActiveProjectSnapshot(project, sig));
+        List<KnowledgeIndexSnapshotEntity> rows = knowledgeIndexSnapshotRepository
+                .findByProject_IdAndSignatureHashAndStatusOrderByUpdatedAtDesc(pid, sig, IndexSnapshotStatus.ACTIVE);
+        if (rows.size() > 1) {
+            log.warn(
+                    "Multiple ACTIVE LEGACY snapshots found for project {} and signature {} (count={}); using most recent",
+                    pid,
+                    sig,
+                    rows.size());
+        }
+        return rows.stream().findFirst().orElseGet(() -> createActiveProjectSnapshot(project, sig));
     }
 
     private KnowledgeIndexSnapshotEntity createActiveProjectSnapshot(ProjectEntity project, String signatureHash) {

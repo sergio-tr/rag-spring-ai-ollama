@@ -14,12 +14,14 @@ import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.service.preset.PresetService;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.domain.runtime.RagConfig;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -91,6 +93,7 @@ public class ConversationApplicationService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid presetId");
             }
             RagPresetEntity preset = presetService.requireVisiblePreset(userId, presetId);
+            validateExperimentalPresetSupport(preset);
             c.setPreset(preset);
             changed = true;
         }
@@ -103,6 +106,52 @@ public class ConversationApplicationService {
             conversationRepository.save(c);
         }
         return toConversationDto(c);
+    }
+
+    private static void validateExperimentalPresetSupport(RagPresetEntity preset) {
+        if (preset == null || preset.getTags() == null) {
+            return;
+        }
+        boolean experimental =
+                preset.getTags().stream().anyMatch(t -> t != null && t.trim().equalsIgnoreCase("experimental"));
+        if (!experimental) {
+            return;
+        }
+        Map<String, Object> values = preset.getValues() != null ? preset.getValues() : Map.of();
+        boolean reasoningEnabled = bool(values, "reasoningEnabled");
+        boolean rankerEnabled = bool(values, "rankerEnabled");
+        boolean postRetrievalEnabled = bool(values, "postRetrievalEnabled");
+        boolean useRetrieval = bool(values, "useRetrieval");
+        boolean useAdvisor = bool(values, "useAdvisor");
+        boolean clarificationEnabled = bool(values, "clarificationEnabled");
+        boolean memoryEnabled = bool(values, "memoryEnabled");
+
+        if (clarificationEnabled || memoryEnabled) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "This experimental preset requires multi-turn capabilities and is not supported in this environment.");
+        }
+        if (useAdvisor && !useRetrieval) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "This experimental preset is not supported: advisor requires retrieval.");
+        }
+        if (reasoningEnabled || rankerEnabled || postRetrievalEnabled) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "This experimental preset is part of the thesis catalog, but advanced runtime capabilities are not implemented in this environment.");
+        }
+    }
+
+    private static boolean bool(Map<String, Object> values, String key) {
+        Object v = values.get(key);
+        if (v instanceof Boolean b) {
+            return b;
+        }
+        if (v instanceof String s) {
+            return "true".equalsIgnoreCase(s.trim());
+        }
+        return false;
     }
 
     public void deleteConversation(UUID userId, UUID conversationId) {

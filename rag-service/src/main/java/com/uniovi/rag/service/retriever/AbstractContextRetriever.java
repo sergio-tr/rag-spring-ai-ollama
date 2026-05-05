@@ -132,7 +132,8 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         }
         Object p = meta.get("projectId");
         if (p == null) {
-            return true;
+            // Project-scoped chat must not be contaminated by legacy chunks with no project metadata.
+            return false;
         }
         return projectId.equals(String.valueOf(p));
     }

@@ -56,9 +56,17 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
 
         CuratedContextSet curated = advancedRetrievalPipeline.retrieve(ctx, plan, workflowName());
         List<ExecutionStageTrace> stages = new ArrayList<>(curated.retrievalStageTraces());
-        String user = RuntimeAnswerPrompts.ragUserTurn(q, curated.promptContextText());
-        String answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
-        stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, ""));
+        String promptContext = curated.promptContextText();
+        String answer;
+        boolean docBound = RuntimeAnswerPrompts.requiresStrictDocumentGrounding(q);
+        if (docBound && promptContext.isBlank()) {
+            answer = RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(q);
+            stages.add(stage("llm", tLlm, ExecutionStageOutcome.SKIPPED, "strict_document_grounding_no_context"));
+        } else {
+            String user = RuntimeAnswerPrompts.ragUserTurn(q, promptContext, docBound);
+            answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
+            stages.add(stage("llm", tLlm, ExecutionStageOutcome.SUCCESS, ""));
+        }
         return RagExecutionResult.withPlaceholderTrace(
                 answer,
                 workflowName(),
@@ -67,7 +75,7 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                 ctx.knowledgeSnapshotSelection().orderedSnapshotIds(),
                 null,
                 Optional.ofNullable(curated.diagnostics()),
-                stages);
+                stages).withResponseSources(RuntimeRetrievedSourceMapper.toChatSources(curated.finalCandidates()));
     }
 }
 

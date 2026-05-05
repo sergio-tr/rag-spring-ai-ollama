@@ -8,7 +8,6 @@ import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.async.lab.LabJobHandler;
-import com.uniovi.rag.service.chat.ChatRetrievalSourceContributor;
 import com.uniovi.rag.service.chat.ChatStreamChunks;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import java.time.Duration;
@@ -33,17 +32,14 @@ public class ChatMessageJobHandler implements LabJobHandler {
     private static final int GENERIC_FAILURE_MESSAGE_MAX_LEN = 600;
 
     private final ProcessQueryService processQueryService;
-    private final ChatRetrievalSourceContributor chatRetrievalSourceContributor;
     private final ChatJobCancellationRegistry cancellationRegistry;
     private final ChatMessageWorkService chatMessageWorkService;
 
     public ChatMessageJobHandler(
             ProcessQueryService processQueryService,
-            ChatRetrievalSourceContributor chatRetrievalSourceContributor,
             ChatJobCancellationRegistry cancellationRegistry,
             ChatMessageWorkService chatMessageWorkService) {
         this.processQueryService = processQueryService;
-        this.chatRetrievalSourceContributor = chatRetrievalSourceContributor;
         this.cancellationRegistry = cancellationRegistry;
         this.chatMessageWorkService = chatMessageWorkService;
     }
@@ -87,6 +83,13 @@ public class ChatMessageJobHandler implements LabJobHandler {
 
         Instant start = Instant.now();
         try {
+            log.info(
+                    "chat_runtime_start taskId={} conversationId={} projectId={} userId={} documentFilterCount={}",
+                    taskId,
+                    conversationId,
+                    projectId,
+                    userId,
+                    docFilter.size());
             if (cancellationRegistry.isCancelled(taskId)) {
                 finishCancelled(taskId, conversationId, assistantId, mutation);
                 return;
@@ -108,9 +111,13 @@ public class ChatMessageJobHandler implements LabJobHandler {
                 finishCancelled(taskId, conversationId, assistantId, mutation);
                 return;
             }
-            List<Map<String, Object>> sources =
-                    chatRetrievalSourceContributor.buildSources(
-                            userId, projectId, conversationId, docFilter, userContent);
+            List<Map<String, Object>> sources = qr.getSources();
+            log.info(
+                    "chat_runtime_result taskId={} conversationId={} projectId={} sourceCount={}",
+                    taskId,
+                    conversationId,
+                    projectId,
+                    sources != null ? sources.size() : 0);
             List<Map<String, Object>> steps = buildPipelineSteps(qr);
             String qt = qr.getQueryType() != null ? qr.getQueryType().name() : null;
             String traceId = chatMessageWorkService.currentTraceId();

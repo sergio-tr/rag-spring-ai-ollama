@@ -24,6 +24,8 @@ import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.async.chat.ChatJobCancellationRegistry;
 import com.uniovi.rag.service.async.chat.ChatJobPayloadKeys;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +42,8 @@ import java.util.UUID;
  */
 @Service
 public class ChatMessageApplicationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatMessageApplicationService.class);
 
     private final ProjectAccessService projectAccessService;
     private final MessageRepository messageRepository;
@@ -119,6 +123,14 @@ public class ChatMessageApplicationService {
 
         conv.touchUpdated();
         conversationRepository.save(conv);
+        log.info(
+                "chat_enqueue conversationId={} projectId={} userId={} presetId={} documentFilterCount={} llmModelOverrideSet={}",
+                conversationId,
+                project != null ? project.getId() : null,
+                userId,
+                conv.getPreset() != null ? conv.getPreset().getId() : null,
+                conv.getDocumentFilter() != null ? conv.getDocumentFilter().size() : 0,
+                body.llmModel() != null && !body.llmModel().isBlank());
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(ChatJobPayloadKeys.CONVERSATION_ID, conversationId.toString());
