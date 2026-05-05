@@ -69,12 +69,14 @@ public final class RagPresetExperimentalOverlay {
 
     private static void applyChunkRetrievalBaseline(RagFeatureConfiguration f, ObjectNode json) {
         minimalRetrieval(f, json);
+        json.put("materializationStrategy", "DOCUMENT_LEVEL");
         json.put("topK", 8);
         json.put("similarityThreshold", 0.72);
     }
 
     private static void applySemanticRetrievalBaseline(RagFeatureConfiguration f, ObjectNode json) {
         minimalRetrieval(f, json);
+        json.put("materializationStrategy", "CHUNK_LEVEL");
         json.put("topK", 10);
         json.put("similarityThreshold", 0.7);
     }
@@ -86,6 +88,7 @@ public final class RagPresetExperimentalOverlay {
         json.put("metadataEnabled", true);
         json.put("toolsEnabled", true);
         json.put("functionCallingEnabled", false);
+        json.put("materializationStrategy", "CHUNK_LEVEL");
         json.put("topK", 10);
     }
 
@@ -121,6 +124,7 @@ public final class RagPresetExperimentalOverlay {
         f.setPostRetrievalEnabled(true);
         json.put("rankerEnabled", true);
         json.put("postRetrievalEnabled", true);
+        json.put("materializationStrategy", "HYBRID");
         json.put("topK", 12);
         json.put("similarityThreshold", 0.6);
     }

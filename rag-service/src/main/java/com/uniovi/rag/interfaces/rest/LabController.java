@@ -1,11 +1,13 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.interfaces.rest.dto.LabJobAcceptedDto;
+import com.uniovi.rag.interfaces.rest.dto.ExperimentalPresetCatalogItemDto;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationReferenceBundleLoader;
 import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleCounts;
 import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleSnapshot;
+import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationIssue;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import com.uniovi.rag.application.port.ClassifierLabPort;
@@ -43,16 +45,19 @@ public class LabController {
     private final AsyncTaskService asyncTaskService;
     private final RagApiPathProperties apiPathProperties;
     private final EvaluationReferenceBundleLoader referenceBundleLoader;
+    private final LabExperimentalPresetCatalogService experimentalPresetCatalogService;
 
     public LabController(
             ClassifierLabPort classifierLabClient,
             AsyncTaskService asyncTaskService,
             RagApiPathProperties apiPathProperties,
-            EvaluationReferenceBundleLoader referenceBundleLoader) {
+            EvaluationReferenceBundleLoader referenceBundleLoader,
+            LabExperimentalPresetCatalogService experimentalPresetCatalogService) {
         this.classifierLabClient = classifierLabClient;
         this.asyncTaskService = asyncTaskService;
         this.apiPathProperties = apiPathProperties;
         this.referenceBundleLoader = referenceBundleLoader;
+        this.experimentalPresetCatalogService = experimentalPresetCatalogService;
     }
 
     @GetMapping("/status")
@@ -123,6 +128,11 @@ public class LabController {
             @RequestParam(name = "projectId", required = false) UUID projectId) {
         requireUserId(principal);
         return legacyEvaluationsRemoved();
+    }
+
+    @GetMapping("/experimental-presets")
+    public List<ExperimentalPresetCatalogItemDto> experimentalPresets() {
+        return experimentalPresetCatalogService.list();
     }
 
     @PostMapping(value = "/classifier/train", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

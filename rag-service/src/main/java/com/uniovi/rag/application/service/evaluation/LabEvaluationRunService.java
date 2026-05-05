@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.evaluation;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationResultRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
@@ -134,7 +135,8 @@ public class LabEvaluationRunService {
         }
         StringBuilder sb = new StringBuilder();
         sb.append("#META:").append(meta).append('\n');
-        sb.append("id,question_text,expected_answer,actual_answer,correctness,query_type,latency_ms,benchmark_kind,metrics_json\n");
+        sb.append(
+                "id,question_text,expected_answer,actual_answer,correctness,query_type,latency_ms,benchmark_kind,preset_code,preset_label,outcome,reason,metrics_json\n");
         for (EvaluationResultEntity it : items) {
             sb.append(csvEscape(uuidStr(it.getId())));
             sb.append(',');
@@ -151,6 +153,14 @@ public class LabEvaluationRunService {
             sb.append(it.getLatencyMs() != null ? it.getLatencyMs().toString() : "");
             sb.append(',');
             sb.append(csvEscape(it.getBenchmarkKind()));
+            sb.append(',');
+            sb.append(csvEscape(metricStr(it, BenchmarkResultRowKeys.PRESET_CODE)));
+            sb.append(',');
+            sb.append(csvEscape(metricStr(it, BenchmarkResultRowKeys.PRESET_LABEL)));
+            sb.append(',');
+            sb.append(csvEscape(metricStr(it, BenchmarkResultRowKeys.ITEM_OUTCOME)));
+            sb.append(',');
+            sb.append(csvEscape(metricStr(it, BenchmarkResultRowKeys.REASON)));
             sb.append(',');
             try {
                 sb.append(csvEscape(
@@ -336,5 +346,13 @@ public class LabEvaluationRunService {
             return "\"" + raw.replace("\"", "\"\"") + "\"";
         }
         return raw;
+    }
+
+    private static String metricStr(EvaluationResultEntity item, String key) {
+        if (item.getMetricsPayload() == null || !item.getMetricsPayload().containsKey(key)) {
+            return "";
+        }
+        Object v = item.getMetricsPayload().get(key);
+        return v == null ? "" : String.valueOf(v);
     }
 }

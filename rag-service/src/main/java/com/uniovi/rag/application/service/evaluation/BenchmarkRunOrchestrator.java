@@ -35,6 +35,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -248,6 +249,9 @@ public class BenchmarkRunOrchestrator {
             run.setPreset(preset);
         }
         run.setEmbeddingDownstreamRag(request.embeddingDownstreamRagEffective());
+        if (!request.experimentalPresetCodes().isEmpty()) {
+            run.setAggregatesJson(Map.of("requested_preset_codes", request.experimentalPresetCodes()));
+        }
         if (request.llmModelId() != null && !request.llmModelId().isBlank()) {
             run.setLlmModelId(request.llmModelId().trim());
         }

@@ -10,6 +10,7 @@ public final class BenchmarkResultRowKeys {
 
     /** Thesis workbook preset id (e.g. {@code P7}). */
     public static final String PRESET_CODE = "preset_code";
+    public static final String PRESET_LABEL = "preset_label";
 
     public static final String DIFFICULTY = "difficulty";
 
@@ -17,6 +18,7 @@ public final class BenchmarkResultRowKeys {
 
     /** Stable machine code when {@link com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome#FAILED} / guard rails. */
     public static final String ERROR_CODE = "error_code";
+    public static final String REASON = "reason";
 
     public static final String LLM_MODEL_ID = "llm_model_id";
 

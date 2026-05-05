@@ -211,6 +211,10 @@ public class EvaluationCanonicalPersistenceService {
         if (preset != null) {
             metrics.put(BenchmarkResultRowKeys.PRESET_CODE, preset);
         }
+        Object presetLabel = row.get(BenchmarkResultRowKeys.PRESET_LABEL);
+        if (presetLabel != null) {
+            metrics.put(BenchmarkResultRowKeys.PRESET_LABEL, presetLabel);
+        }
         Object difficulty = row.get(BenchmarkResultRowKeys.DIFFICULTY);
         if (difficulty != null) {
             metrics.put(BenchmarkResultRowKeys.DIFFICULTY, difficulty);
@@ -222,6 +226,10 @@ public class EvaluationCanonicalPersistenceService {
         Object errCode = row.get(BenchmarkResultRowKeys.ERROR_CODE);
         if (errCode != null) {
             metrics.put(BenchmarkResultRowKeys.ERROR_CODE, errCode);
+        }
+        Object reason = row.get(BenchmarkResultRowKeys.REASON);
+        if (reason != null) {
+            metrics.put(BenchmarkResultRowKeys.REASON, reason);
         }
         Object llmMid = row.get(BenchmarkResultRowKeys.LLM_MODEL_ID);
         if (llmMid != null) {
