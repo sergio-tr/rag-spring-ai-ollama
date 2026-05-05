@@ -60,6 +60,22 @@ public class ProjectDocumentIngestionService extends AbstractDocumentService {
                 userId, projectId, projectDocumentId, tempFile, originalFilename, contentType);
     }
 
+    @Async("documentIngestionExecutor")
+    public void ingestFromStoredBinary(
+            UUID userId,
+            UUID projectId,
+            UUID projectDocumentId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+        if (row == null) {
+            log().warn("Project document {} not found, skipping ingest", projectDocumentId);
+            return;
+        }
+        knowledgeIngestionService.ingestFromStoredBinary(
+                userId, projectId, projectDocumentId, resolvedConfigSnapshotId, resolvedConfigHash);
+    }
+
     private void deleteTempQuietlyInstance(Path tempFile) {
         if (tempFile == null) {
             return;

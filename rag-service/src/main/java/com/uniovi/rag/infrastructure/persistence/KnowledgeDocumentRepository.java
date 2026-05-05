@@ -76,6 +76,8 @@ public interface KnowledgeDocumentRepository extends JpaRepository<KnowledgeDocu
 
     List<KnowledgeDocumentEntity> findByProject_IdAndCorpusScopeOrderByIdAsc(UUID projectId, CorpusScope corpusScope);
 
+    List<KnowledgeDocumentEntity> findByStatus(ProjectDocumentStatus status);
+
     @Modifying
     @Query(
             value = "UPDATE project_documents SET project_id = :destProjectId WHERE conversation_id = :conversationId AND corpus_scope = 'CHAT_LOCAL'",

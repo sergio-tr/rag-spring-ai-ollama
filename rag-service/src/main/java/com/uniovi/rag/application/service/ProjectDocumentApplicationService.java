@@ -2,10 +2,12 @@ package com.uniovi.rag.application.service;
 
 import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDto;
+import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDebugDto;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -14,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -33,14 +36,17 @@ public class ProjectDocumentApplicationService {
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final KnowledgeIngestionService knowledgeIngestionService;
     private final ProjectAccessService projectAccessService;
+    private final JdbcTemplate jdbcTemplate;
 
     public ProjectDocumentApplicationService(
             KnowledgeDocumentRepository knowledgeDocumentRepository,
             KnowledgeIngestionService knowledgeIngestionService,
-            ProjectAccessService projectAccessService) {
+            ProjectAccessService projectAccessService,
+            JdbcTemplate jdbcTemplate) {
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.knowledgeIngestionService = knowledgeIngestionService;
         this.projectAccessService = projectAccessService;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public List<ProjectDocumentDto> listDocuments(UUID userId, UUID projectId) {
@@ -74,6 +80,41 @@ public class ProjectDocumentApplicationService {
         return toDto(e);
     }
 
+    public ProjectDocumentDebugDto documentDebug(UUID userId, UUID documentId) {
+        KnowledgeDocumentEntity e = projectAccessService.requireDocumentForUser(userId, documentId);
+        UUID projectId = e.getProject() != null ? e.getProject().getId() : null;
+        long vectorRows = 0L;
+        if (jdbcTemplate != null) {
+            // Count vector_store rows by metadata's projectDocumentId (canonical key for our ingests).
+            Long n =
+                    jdbcTemplate.queryForObject(
+                            """
+                            SELECT COUNT(*)
+                            FROM vector_store
+                            WHERE metadata->>'projectDocumentId' = ?
+                               OR metadata->>'documentId' = ?
+                               OR metadata->>'document_id' = ?
+                            """,
+                            Long.class,
+                            documentId.toString(),
+                            documentId.toString(),
+                            documentId.toString());
+            vectorRows = n != null ? n : 0L;
+        }
+        return new ProjectDocumentDebugDto(
+                e.getId(),
+                projectId,
+                e.getFileName(),
+                e.getStatus() != null ? e.getStatus().name() : "UNKNOWN",
+                e.getErrorMessage(),
+                e.getChunkCount(),
+                vectorRows,
+                e.getUploadedAt(),
+                e.getReindexedAt(),
+                e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getId() : null,
+                e.getCurrentIndexSnapshot() != null ? e.getCurrentIndexSnapshot().getSignatureHash() : null);
+    }
+
     public ProjectDocumentDto reindexDocument(UUID userId, UUID documentId, MultipartFile file) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
@@ -82,6 +123,7 @@ public class ProjectDocumentApplicationService {
         UUID projectId = row.getProject().getId();
         row.setStatus(ProjectDocumentStatus.INGESTING);
         row.setErrorMessage(null);
+        row.setReindexedAt(Instant.now());
         knowledgeDocumentRepository.save(row);
 
         String original =
@@ -90,6 +132,19 @@ public class ProjectDocumentApplicationService {
         Path temp = Files.createTempFile("rag-reindex-", "-" + FILENAME_SANITIZE_PATTERN.matcher(original).replaceAll("_"));
         file.transferTo(temp.toFile());
         knowledgeIngestionService.ingestFromTempFile(userId, projectId, documentId, temp, original, ct);
+        return toDto(row);
+    }
+
+    public ProjectDocumentDto retryIngestFromStoredBinary(UUID userId, UUID documentId) {
+        KnowledgeDocumentEntity row = projectAccessService.requireDocumentForUser(userId, documentId);
+        if (row.getStorageUri() == null || row.getStorageUri().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Document has no stored binary; reindex requires a file upload.");
+        }
+        row.setStatus(ProjectDocumentStatus.INGESTING);
+        row.setErrorMessage(null);
+        row.setReindexedAt(Instant.now());
+        knowledgeDocumentRepository.save(row);
+        knowledgeIngestionService.retryIngestFromStoredBinary(userId, row.getProject().getId(), row.getId());
         return toDto(row);
     }
 

@@ -91,8 +91,44 @@ public class KnowledgeIngestionService {
         }
     }
 
+    public void ingestFromStoredBinary(
+            UUID userId,
+            UUID projectId,
+            UUID projectDocumentId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        try {
+            knowledgePipelineOrchestrator.ingestFromStoredBinary(
+                    projectId, projectDocumentId, resolvedConfigSnapshotId, resolvedConfigHash);
+        } catch (Exception e) {
+            KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+            if (rowErr != null) {
+                rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                rowErr.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                knowledgeDocumentRepository.save(rowErr);
+            }
+            throw e;
+        }
+    }
+
     public void deleteVectorChunksForDocument(UUID projectDocumentId) {
         knowledgePipelineOrchestrator.deleteVectorChunksForDocument(projectDocumentId);
+    }
+
+    public void retryIngestFromStoredBinary(UUID userId, UUID projectId, UUID projectDocumentId) {
+        KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+        if (row == null) {
+            return;
+        }
+        Optional<UUID> conversationId =
+                row.getCorpusScope() == CorpusScope.CHAT_LOCAL && row.getConversation() != null
+                        ? Optional.of(row.getConversation().getId())
+                        : Optional.empty();
+        var snap =
+                resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
+                        userId, projectId, conversationId);
+        projectDocumentIngestionService.ingestFromStoredBinary(
+                userId, projectId, projectDocumentId, snap.getId(), snap.getConfigHash());
     }
 
     public ProjectDocumentDto uploadProjectDocument(UUID userId, UUID projectId, MultipartFile file) throws IOException {

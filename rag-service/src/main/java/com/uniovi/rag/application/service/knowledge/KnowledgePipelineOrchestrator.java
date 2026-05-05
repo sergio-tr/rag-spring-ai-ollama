@@ -144,6 +144,37 @@ public class KnowledgePipelineOrchestrator {
         }
     }
 
+    /**
+     * Retry ingest without a new upload by reusing the stored binary (storageUri).
+     * This guarantees the document will transition to READY or ERROR (never remain INGESTING forever).
+     */
+    public void ingestFromStoredBinary(
+            UUID projectId,
+            UUID projectDocumentId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        try {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
+            transactionTemplate.executeWithoutResult(
+                    s -> ingestStoredTx(projectId, projectDocumentId, resolvedConfigSnapshotId, resolvedConfigHash));
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
+        } catch (Exception e) {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
+            log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
+            transactionTemplate.executeWithoutResult(
+                    s -> {
+                        KnowledgeDocumentEntity rowErr =
+                                knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+                        if (rowErr != null) {
+                            rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                            rowErr.setErrorMessage(
+                                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                            knowledgeDocumentRepository.save(rowErr);
+                        }
+                    });
+        }
+    }
+
     private void ingestTx(
             UUID projectId,
             UUID projectDocumentId,
@@ -224,6 +255,82 @@ public class KnowledgePipelineOrchestrator {
                 "Knowledge pipeline completed for project document {} (snapshot {})",
                 projectDocumentId,
                 building.getId());
+    }
+
+    private void ingestStoredTx(
+            UUID projectId,
+            UUID projectDocumentId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+        if (row == null) {
+            log.warn("Project document {} not found, skipping ingest", projectDocumentId);
+            return;
+        }
+        if (row.getStorageUri() == null || row.getStorageUri().isBlank()) {
+            throw new IllegalStateException("missing storage URI for stored-binary retry");
+        }
+
+        List<KnowledgeDocumentEntity> scopeDocs = resolveScopeDocuments(row);
+        if (scopeDocs.stream().noneMatch(d -> d.getId().equals(row.getId()))) {
+            scopeDocs = new ArrayList<>(scopeDocs);
+            scopeDocs.add(row);
+            scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
+        }
+        IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null);
+        String indexSigHex = sig.indexSigHex();
+        String snapshotSigHex = sig.snapshotSigHex();
+
+        KnowledgeSnapshotScopeType snapScope =
+                row.getCorpusScope() == CorpusScope.PROJECT_SHARED
+                        ? KnowledgeSnapshotScopeType.PROJECT
+                        : KnowledgeSnapshotScopeType.CONVERSATION;
+
+        Optional<KnowledgeIndexSnapshotEntity> previousActive =
+                row.getCorpusScope() == CorpusScope.PROJECT_SHARED
+                        ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
+                        : knowledgeSnapshotService.findActiveConversationSnapshot(
+                                row.getConversation().getId());
+
+        KnowledgeIndexSnapshotEntity building =
+                knowledgeSnapshotService.createBuildingSnapshot(
+                        row.getProject(),
+                        row.getConversation(),
+                        snapScope,
+                        snapshotSigHex,
+                        resolvedConfigSnapshotId,
+                        resolvedConfigHash);
+
+        previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
+        deleteVectorsForScopeDocs(scopeDocs);
+
+        MaterializationStrategy strategy = materializationStrategy;
+        String ct = row.getMimeType() != null ? row.getMimeType() : "application/octet-stream";
+        for (KnowledgeDocumentEntity doc : scopeDocs) {
+            try {
+                knowledgeIndexingService.processDocument(
+                        new KnowledgeDocumentIndexingRequest(
+                                doc,
+                                null,
+                                doc.getFileName(),
+                                ct,
+                                building,
+                                indexSigHex,
+                                strategy,
+                                chunkMaxChars));
+            } catch (IOException e) {
+                throw new IllegalStateException("Document indexing failed: " + e.getMessage(), e);
+            }
+        }
+
+        knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
+
+        KnowledgeDocumentEntity rowDone = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
+        rowDone.setStatus(ProjectDocumentStatus.READY);
+        rowDone.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(rowDone.getId()));
+        rowDone.setErrorMessage(null);
+        rowDone.setReindexedAt(Instant.now());
+        knowledgeDocumentRepository.save(rowDone);
     }
 
     private void persistBinaryAndUpdateRow(
