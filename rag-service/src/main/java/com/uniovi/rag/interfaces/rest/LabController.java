@@ -76,6 +76,10 @@ public class LabController {
         if (pv.isPresent()) {
             m.put("protocolVersion", pv.get());
         }
+        bundleSnap.sha256Hex().ifPresent(s -> m.put("referenceBundleSha256", s));
+        if (bundleSnap.byteSize() > 0) {
+            m.put("referenceBundleByteSize", bundleSnap.byteSize());
+        }
         m.put("countsByDatasetKind", bundleSnap.countsByDatasetKind());
 
         List<Map<String, Object>> issueMaps = validationIssuesPayload(bundleSnap);

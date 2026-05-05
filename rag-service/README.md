@@ -187,7 +187,7 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 
 Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `evaluation_run` + `evaluation_result`; `async_task` is operational (poll `/lab/jobs/{asyncTaskId}`).
 
-**Internal reference workbook (prod):** ships at `src/main/resources/evaluation/rag_experiment_datasets_and_protocols.xlsx`. It is loaded by `EvaluationReferenceBundleLoader` (typed parse + `ValidationReport`). There is **no** runtime fallback to a second classpath workbook; invalid or missing bundle yields explicit readiness/API errors.
+**Internal reference workbook (prod):** the binary XLSX is **not committed to git**. It is generated during the Maven build into the JAR classpath at `evaluation/rag_experiment_datasets_and_protocols.xlsx` by `ReferenceBundleWorkbookGenerator`, then loaded by `EvaluationReferenceBundleLoader` (typed parse + `ValidationReport`). There is **no** runtime fallback to a legacy classpath workbook; invalid or missing bundle yields explicit readiness/API errors.
 
 **`GET {product}/lab/status` (typed readiness):** exposes `referenceBundleAvailable`, `referenceBundleValid`, `datasetKindsReady`, `countsByDatasetKind`, optional `validationIssues`, and additive `datasets` metadata. Legacy-sized Q/A maps are **not** the source of truth for readiness.
 

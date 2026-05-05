@@ -18,6 +18,8 @@ class EvaluationReferenceBundleLoaderTest {
         assertThat(snap.workbook().llmReaderQuestions()).isNotEmpty();
         assertThat(snap.counts().llmReaderQuestions()).isGreaterThan(0);
         assertThat(snap.countsByDatasetKind()).containsKeys("embeddingRetrievalQueries", "ragPresetQuestions", "presets");
+        assertThat(snap.sha256Hex()).isPresent();
+        assertThat(snap.byteSize()).isGreaterThan(0);
     }
 
     @Test
