@@ -284,8 +284,8 @@ function buildSafeMessage(args: {
 }): string {
   const { status, contentType, bodyText, parsedJson, kind } = args;
 
-  if (status === 401) return "Unauthorized.";
-  if (status === 403) return "Forbidden.";
+  if (status === 401) return "Session expired or not signed in. Please sign in and retry.";
+  if (status === 403) return "Insufficient permissions for this action. Check your account role and retry.";
   if (status === 404) return "Not found.";
 
   const fromJson = parsedJson === null ? null : extractJsonDetail(parsedJson);

@@ -11,6 +11,14 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+vi.mock("@/navigation", () => ({
+  Link: ({ href, children }: { href: string; children: React.ReactNode }) => (
+    <a href={`/en${href}`}>{children}</a>
+  ),
+  usePathname: () => "/lab",
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+}));
+
 vi.mock("@/features/lab/hooks/use-lab-status", () => ({
   useLabStatus: vi.fn(),
 }));
@@ -126,6 +134,34 @@ describe("LabOverviewPage", () => {
     expect(screen.queryByText(/Feature flags from GET/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\{product\}/i)).not.toBeInTheDocument();
     expect(screen.getByText(/operators should ship/i)).toBeInTheDocument();
+  });
+
+  it("renders locale-aware links for the datasets anchor", () => {
+    vi.mocked(useLabStatus).mockReturnValue({
+      data: {
+        datasetKindsReady: true,
+        datasets: { enabled: true, datasetKindsReady: true },
+        referenceBundleAvailable: true,
+        referenceBundleValid: true,
+        evaluations: { llm: true, rag: true, classifierProxy: false, asyncJobs: true },
+        classifier: { configured: true, train: true, evaluate: true },
+        message: "",
+      },
+      isError: false,
+      isLoading: false,
+      refetch: vi.fn(),
+    } as never);
+
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <IntlTestProvider>
+          <LabOverviewPage />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+
+    const link = screen.getByRole("link", { name: /Go to templates & uploads/i });
+    expect(link).toHaveAttribute("href", "/en/lab#datasets");
   });
 
   it("renders the three TFG workflows with links to each evaluation page", () => {

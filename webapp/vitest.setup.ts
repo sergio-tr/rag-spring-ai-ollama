@@ -9,6 +9,36 @@ vi.mock("next/link", () => ({
     React.createElement("a", { href }, children),
 }));
 
+// Prevent next-intl from importing Next.js navigation internals in Vitest DOM.
+vi.mock("next-intl/navigation", () => ({
+  createNavigation: () => ({
+    Link: ({ href, children }: { href: string; children: React.ReactNode }) =>
+      React.createElement("a", { href }, children),
+    redirect: vi.fn(),
+    usePathname: () => "/",
+    useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+    getPathname: (args: { href: string }) => args.href,
+  }),
+}));
+
+// next-intl navigation helpers import `next/navigation` (which is not available in Vitest DOM).
+// Provide a minimal stub so `@/navigation` can be imported by client components in unit tests.
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn(),
+  notFound: vi.fn(),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock("next/navigation.js", () => ({
+  redirect: vi.fn(),
+  notFound: vi.fn(),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 // Silence accidental Next-prefetch network calls against the default DOM origin (127.0.0.1:3000).
 // We keep the real fetch for non-prefetch URLs so feature tests can still stub apiFetch as needed.
 const realFetch = globalThis.fetch?.bind(globalThis);

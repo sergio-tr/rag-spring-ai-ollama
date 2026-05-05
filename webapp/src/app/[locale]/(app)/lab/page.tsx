@@ -7,7 +7,7 @@ import { LabExperimentalDatasetPanel } from "@/features/lab/components/lab-exper
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import type { ExperimentalDatasetListItemDto, LabValidationIssueDto } from "@/types/api";
-import Link from "next/link";
+import { Link } from "@/navigation";
 import { useTranslations } from "next-intl";
 
 export default function LabOverviewPage() {

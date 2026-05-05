@@ -67,6 +67,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(here, "./src"),
+      // Vitest (Vite) ESM resolver sometimes requires the explicit `.js` entry for Next internals.
+      "next/navigation": "next/navigation.js",
     },
   },
 });
