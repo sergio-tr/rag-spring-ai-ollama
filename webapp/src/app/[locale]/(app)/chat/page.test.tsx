@@ -275,8 +275,84 @@ function patchConversationApiCalls() {
 function defaultApiFetch(url: string | { toString(): string }, init?: RequestInit): Promise<unknown> {
   const u = typeof url === "string" ? url : url.toString();
   const method = (init?.method ?? "GET").toUpperCase();
-  if (method === "GET" && u.includes("/lab/experimental-presets")) {
-    return Promise.resolve([]);
+  if (method === "GET" && u.includes("/chat/presets/catalog")) {
+    return Promise.resolve({
+      productPresets: [...ragPresetsData],
+      experimentalPresets: [
+        {
+          productPresetId: "cafe0001-0001-4001-8001-000000000016",
+          code: "P6",
+          family: "S2",
+          label: "P6 preset",
+          description: "Minimal dev preset row",
+          requiredCapabilities: ["USE_RETRIEVAL", "REASONING"],
+          supported: false,
+          supportStatus: "NOT_SUPPORTED",
+          reasonIfUnsupported: "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+          requiresMultiTurn: false,
+          mapsToRuntimeCapabilities: { code: "P6" },
+          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+          chatSelectable: false,
+          labSelectable: true,
+        },
+      ],
+    });
+  }
+  if (method === "GET" && u.includes("/runtime-config/capabilities")) {
+    return Promise.resolve({
+      capabilities: [
+        {
+          key: "useRetrieval",
+          label: "Use retrieval",
+          description: "desc",
+          group: "Retrieval",
+          implemented: true,
+          configurable: true,
+          requires: [],
+          excludes: [],
+          reasonIfNotImplemented: null,
+          options: {},
+        },
+        {
+          key: "reasoningEnabled",
+          label: "Reasoning",
+          description: "desc",
+          group: "Advanced",
+          implemented: false,
+          configurable: true,
+          requires: [],
+          excludes: [],
+          reasonIfNotImplemented: "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+          options: {},
+        },
+      ],
+    });
+  }
+  if (method === "POST" && u.includes("/runtime-config/validate")) {
+    return Promise.resolve({
+      valid: true,
+      supported: true,
+      effectiveConfig: {},
+      errors: [],
+      warnings: [],
+      selectedWorkflow: "DirectLlmWorkflow",
+    });
+  }
+  if (method === "POST" && /\/documents\/[^/]+\/retry-ingest$/.test(u)) {
+    return Promise.resolve({
+      id: "d-up",
+      fileName: "up.pdf",
+      status: "INGESTING",
+      chunkCount: 0,
+      errorMessage: null,
+      uploadedAt: "",
+      reindexedAt: null,
+      corpusScope: "PROJECT_SHARED",
+      conversationId: null,
+      currentIndexSnapshotId: null,
+      indexSignatureHash: null,
+      storagePresent: true,
+    });
   }
   if (method === "PATCH" && /\/conversations\/([^/]+)\/?$/.test(u) && !u.includes("/messages")) {
     const idMatch = u.match(/\/conversations\/([^/]+)\/?$/);
@@ -422,6 +498,7 @@ describe("ChatPage", () => {
       presetId: null,
       effectivePresetId: DEFAULT_EFFECTIVE_PRESET_ID,
       documentFilter: [],
+      runtimeOverride: {},
     });
     ragPresetsData = [
       { id: "pr1", name: "P", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" },

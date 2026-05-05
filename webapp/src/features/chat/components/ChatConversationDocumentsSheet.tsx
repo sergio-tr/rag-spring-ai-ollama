@@ -27,11 +27,14 @@ export type ChatConversationDocumentsSheetProps = {
   uploadError: string | null;
   uploadNotice: string | null;
   uploadItems?: Array<{
+    id?: string;
     fileName: string;
     phase: "uploading" | "ingesting" | "ready" | "error" | "stalled";
+    docId?: string | null;
     chunkCount?: number | null;
     errorMessage?: string | null;
   }>;
+  onRetryUploadItem?: (id: string) => void;
   onDocToggle: (documentId: string, checked: boolean) => void;
   onUploadFiles: (files: FileList | null) => void;
 };
@@ -50,6 +53,7 @@ export function ChatConversationDocumentsSheet({
   uploadItems,
   onDocToggle,
   onUploadFiles,
+  onRetryUploadItem,
 }: Readonly<ChatConversationDocumentsSheetProps>) {
   const t = useTranslations("Chat");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -107,10 +111,21 @@ export function ChatConversationDocumentsSheet({
                 <p className="font-medium">Uploads</p>
                 <ul className="mt-1 space-y-1">
                   {uploadItems.slice(0, 6).map((it) => (
-                    <li key={`${it.fileName}-${it.phase}`} className="flex flex-col">
+                    <li key={it.id ?? `${it.fileName}-${it.phase}`} className="flex flex-col">
                       <span className="flex items-center justify-between gap-2">
                         <span className="truncate">{it.fileName}</span>
-                        <span className="font-mono text-muted-foreground">{it.phase.toUpperCase()}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-mono text-muted-foreground">{it.phase.toUpperCase()}</span>
+                          {(it.phase === "error" || it.phase === "stalled") && it.id && onRetryUploadItem ? (
+                            <button
+                              type="button"
+                              className="text-primary underline underline-offset-2"
+                              onClick={() => onRetryUploadItem(it.id!)}
+                            >
+                              Retry
+                            </button>
+                          ) : null}
+                        </span>
                       </span>
                       {typeof it.chunkCount === "number" ? (
                         <span className="text-muted-foreground">chunks: {it.chunkCount}</span>

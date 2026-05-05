@@ -22,8 +22,7 @@ import {
 } from "@/features/chat/hooks/use-conversations";
 import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
 import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
-import { useRagPresets } from "@/features/chat/hooks/use-rag-presets";
-import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
+import { useChatPresetsCatalog } from "@/features/chat/hooks/use-chat-presets-catalog";
 import {
   useProjectDocuments,
   useUploadProjectDocument,
@@ -41,6 +40,7 @@ import {
 } from "@/lib/api-client";
 import { resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
 import { followLabJob } from "@/lib/lab-job-follow";
+import { useRuntimeConfigValidate } from "@/features/chat/hooks/use-runtime-config-validate";
 import { Link, useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
 import { useChatExplainStore } from "@/store/chat-explain.store";
@@ -133,11 +133,13 @@ function ChatPageInner() {
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const [uploadItems, setUploadItems] = useState<
     Array<{
+      id: string;
       fileName: string;
       phase: "uploading" | "ingesting" | "ready" | "error" | "stalled";
       chunkCount?: number | null;
       errorMessage?: string | null;
       docId?: string | null;
+      file?: File;
     }>
   >([]);
   const [deleteDialogTarget, setDeleteDialogTarget] = useState<{ id: string; title: string } | null>(
@@ -188,6 +190,7 @@ function ChatPageInner() {
   const { data: convs } = useConversations(projectId);
   const createConv = useCreateConversation(projectId);
   const patchConv = usePatchConversation(projectId);
+  const validateRuntimeConfig = useRuntimeConfigValidate();
   const { data: messages, refetch: refetchMessages } = useConversationMessages(conversationId ?? undefined);
   /** Only the latest user turn can be edited (matches backend truncate-from semantics). */
   const lastUserMessageId = useMemo(() => {
@@ -205,15 +208,13 @@ function ChatPageInner() {
     [projectListData?.items, projectId],
   );
   const { data: modelsCatalog, isError: modelsError, error: modelsQueryError } = useModelsCatalog();
-  const {
-    data: presets,
-    isError: presetsError,
-    isLoading: presetsLoading,
-  } = useRagPresets();
-  const experimentalPresets = useExperimentalPresetCatalog();
-  const showExperimentalPresets =
-    process.env.NEXT_PUBLIC_SHOW_EXPERIMENTAL_PRESETS === "true" ||
-    process.env.NODE_ENV !== "production";
+  const chatPresetsCatalog = useChatPresetsCatalog();
+  const presets = chatPresetsCatalog.data?.productPresets;
+  const presetsError = chatPresetsCatalog.isError;
+  const presetsLoading = chatPresetsCatalog.isLoading;
+  const experimentalPresets = chatPresetsCatalog.data?.experimentalPresets;
+  const experimentalPresetsLoading = chatPresetsCatalog.isLoading;
+  const experimentalPresetsError = chatPresetsCatalog.isError;
 
   const activeConv = useMemo(
     () => (conversationId && convs ? convs.find((c) => c.id === conversationId) : undefined),
@@ -529,6 +530,28 @@ function ChatPageInner() {
         selectConversation(created.id);
       }
       if (!targetConversationId) return;
+
+      const hasManualOverrides =
+        activeConv?.runtimeOverride && Object.keys(activeConv.runtimeOverride).length > 0;
+      if (hasManualOverrides) {
+        const presetForValidation =
+          activeConv?.presetId ?? activeConv?.effectivePresetId ?? null;
+        const validation = await validateRuntimeConfig.mutateAsync({
+          conversationId: targetConversationId,
+          presetId: presetForValidation,
+          overrides: null,
+        });
+        if (!validation.valid || !validation.supported) {
+          const msg =
+            validation.errors?.[0]?.message ?? "Unsupported runtime configuration.";
+          setSendError(msg);
+          setInput(text);
+          setOptimisticUserContent(null);
+          setAssistantPhase(null);
+          return;
+        }
+      }
+
       const accepted = await apiFetch<LabJobAcceptedDto>(
         apiProductPath(`/conversations/${targetConversationId}/messages`),
         {
@@ -572,12 +595,15 @@ function ChatPageInner() {
       setIsSending(false);
     }
   }, [
+    activeConv?.effectivePresetId,
+    activeConv?.presetId,
     conversationId,
     createConv,
     input,
     isSending,
     isStreaming,
     llmModelChoice,
+    validateRuntimeConfig,
     refetchMessages,
     runChatJob,
     selectConversation,
@@ -654,6 +680,23 @@ function ChatPageInner() {
         llmModel: llmModelChoice.trim() ? llmModelChoice.trim() : null,
         continueAfterUserMessageId: userMsgId,
       };
+
+      const presetForValidation =
+        activeConv?.presetId ?? activeConv?.effectivePresetId ?? null;
+      const hasManualOverrides =
+        activeConv?.runtimeOverride && Object.keys(activeConv.runtimeOverride).length > 0;
+      if (hasManualOverrides) {
+        const validation = await validateRuntimeConfig.mutateAsync({
+          conversationId,
+          presetId: presetForValidation,
+          overrides: null,
+        });
+        if (!validation.valid || !validation.supported) {
+          setSendError(validation.errors?.[0]?.message ?? "Unsupported runtime configuration.");
+          return;
+        }
+      }
+
       const accepted = await apiFetch<LabJobAcceptedDto>(
         apiProductPath(`/conversations/${conversationId}/messages`),
         {
@@ -680,7 +723,19 @@ function ChatPageInner() {
     } finally {
       setIsSending(false);
     }
-  }, [conversationId, editBody, editingUserMessageId, isSending, llmModelChoice, refetchMessages, runChatJob, t]);
+  }, [
+    activeConv?.effectivePresetId,
+    activeConv?.presetId,
+    conversationId,
+    editBody,
+    editingUserMessageId,
+    isSending,
+    llmModelChoice,
+    refetchMessages,
+    runChatJob,
+    t,
+    validateRuntimeConfig,
+  ]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -738,16 +793,20 @@ function ChatPageInner() {
       if (!files?.length || !conversationId || !projectId || !activeConv) return;
       setUploadError(null);
       setUploadNotice(null);
-      setUploadItems([]);
+      // Keep previous items; allow multi-batch uploads.
       let merged = [...(activeConv.documentFilter ?? [])];
       for (const file of Array.from(files)) {
-        setUploadItems((prev) => [{ fileName: file.name, phase: "uploading" as const }, ...prev].slice(0, 10));
+        const id =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random()}-${file.name}`;
+        setUploadItems((prev) => [{ id, fileName: file.name, phase: "uploading" as const, file }, ...prev].slice(0, 20));
         try {
           const doc = await uploadDoc.mutateAsync(file);
           await refetchProjectDocuments();
           setUploadItems((prev) =>
             prev.map((x) =>
-              x.fileName === file.name && x.phase === "uploading"
+              x.id === id
                 ? { ...x, phase: doc.status === "READY" ? "ready" : doc.status === "ERROR" ? "error" : "ingesting", docId: doc.id, chunkCount: doc.chunkCount ?? null, errorMessage: doc.errorMessage ?? null }
                 : x,
             ),
@@ -797,7 +856,7 @@ function ChatPageInner() {
           setUploadError(msg);
           setUploadItems((prev) =>
             prev.map((x) =>
-              x.fileName === file.name && x.phase === "uploading" ? { ...x, phase: "error", errorMessage: msg } : x,
+              x.id === id ? { ...x, phase: "error", errorMessage: msg } : x,
             ),
           );
           continue;
@@ -805,6 +864,50 @@ function ChatPageInner() {
       }
     },
     [conversationId, projectId, activeConv, uploadDoc, refetchProjectDocuments, patchConv, t],
+  );
+
+  const retryUploadItem = useCallback(
+    async (id: string) => {
+      if (!conversationId) return;
+      const item = uploadItems.find((x) => x.id === id);
+      if (!item?.docId) return;
+      setUploadError(null);
+      setUploadNotice(null);
+      setUploadItems((prev) =>
+        prev.map((x) => (x.id === id ? { ...x, phase: "ingesting", errorMessage: null } : x)),
+      );
+      try {
+        await apiFetch<ProjectDocumentDto>(apiProductPath(`/documents/${item.docId}/retry-ingest`), { method: "POST" });
+        const started = Date.now();
+        while (true) {
+          const tick = await apiFetch<ProjectDocumentDto>(apiProductPath(`/documents/${item.docId}/status`));
+          setUploadItems((prev) =>
+            prev.map((x) =>
+              x.id === id
+                ? {
+                    ...x,
+                    phase: tick.status === "READY" ? "ready" : tick.status === "ERROR" ? "error" : "ingesting",
+                    chunkCount: tick.chunkCount ?? null,
+                    errorMessage: tick.errorMessage ?? null,
+                  }
+                : x,
+            ),
+          );
+          if (tick.status === "READY" || tick.status === "ERROR") break;
+          if (Date.now() - started > 5 * 60_000) {
+            setUploadItems((prev) => prev.map((x) => (x.id === id ? { ...x, phase: "stalled" } : x)));
+            break;
+          }
+          await new Promise<void>((r) => setTimeout(r, 1500));
+        }
+        await refetchProjectDocuments();
+      } catch (e) {
+        const msg = getSafeApiErrorMessage(e);
+        setUploadError(msg);
+        setUploadItems((prev) => prev.map((x) => (x.id === id ? { ...x, phase: "error", errorMessage: msg } : x)));
+      }
+    },
+    [conversationId, uploadItems, refetchProjectDocuments],
   );
 
   const onLimitDocsChange = useCallback(
@@ -868,9 +971,9 @@ function ChatPageInner() {
       presets,
       presetsError,
       presetsLoading,
-      experimentalPresets: showExperimentalPresets ? experimentalPresets.data : [],
-      experimentalPresetsLoading: showExperimentalPresets ? experimentalPresets.isLoading : false,
-      experimentalPresetsError: showExperimentalPresets ? experimentalPresets.isError : false,
+      experimentalPresets: experimentalPresets ?? [],
+      experimentalPresetsLoading,
+      experimentalPresetsError,
       presetSelectDisabled,
       syntheticPresetOptionNeeded,
       presetLabelOpts,
@@ -882,6 +985,15 @@ function ChatPageInner() {
       uploadPending: uploadDoc.isPending,
       uploadError,
       uploadNotice,
+      runtimeOverride: activeConv?.runtimeOverride ?? {},
+      saveRuntimeOverride: (next) => {
+        if (!conversationId) return;
+        patchConv.mutate({ conversationId, body: { runtimeOverride: next } });
+      },
+      clearRuntimeOverride: () => {
+        if (!conversationId) return;
+        patchConv.mutate({ conversationId, body: { clearRuntimeOverride: true } });
+      },
     });
     return () => useChatToolbarStore.getState().setApi(null);
   }, [
@@ -897,10 +1009,9 @@ function ChatPageInner() {
     presets,
     presetsError,
     presetsLoading,
-    experimentalPresets.data,
-    experimentalPresets.isLoading,
-    experimentalPresets.isError,
-    showExperimentalPresets,
+    experimentalPresets,
+    experimentalPresetsLoading,
+    experimentalPresetsError,
     presetSelectDisabled,
     syntheticPresetOptionNeeded,
     presetLabelOpts,
@@ -913,6 +1024,7 @@ function ChatPageInner() {
     uploadDoc.isPending,
     uploadError,
     uploadNotice,
+    activeConv?.runtimeOverride,
   ]);
 
   if (!projectId) {
@@ -1083,6 +1195,7 @@ function ChatPageInner() {
             uploadItems={uploadItems}
             onDocToggle={onDocToggle}
             onUploadFiles={handleChatDocumentUpload}
+            onRetryUploadItem={retryUploadItem}
           />
         ) : null}
         <div
@@ -1207,6 +1320,37 @@ function ChatPageInner() {
               ) : (
                 <>
                   <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                  {m.role === "ASSISTANT" && Array.isArray(m.sources) && m.sources.length > 0 ? (
+                    <div className="mt-2 border-border border-t pt-2">
+                      <p className="text-muted-foreground text-[11px] font-medium">
+                        Sources ({m.sources.length})
+                      </p>
+                      <ul className="mt-1 space-y-1 text-[11px]">
+                        {m.sources.slice(0, 5).map((raw, idx) => {
+                          const s = raw as Record<string, unknown>;
+                          const file =
+                            s.fileName ?? s.filename ?? s.documentName ?? s.documentId ?? `source-${idx + 1}`;
+                          const excerpt = s.excerpt ?? s.text ?? s.content ?? null;
+                          const score = s.score ?? s.distance ?? null;
+                          return (
+                            <li key={idx} className="rounded-sm bg-muted/20 px-2 py-1">
+                              <div className="flex items-baseline justify-between gap-2">
+                                <span className="truncate font-medium">{String(file)}</span>
+                                {score != null ? (
+                                  <span className="font-mono text-muted-foreground">{String(score)}</span>
+                                ) : null}
+                              </div>
+                              {excerpt ? (
+                                <p className="text-muted-foreground mt-0.5 line-clamp-3 whitespace-pre-wrap">
+                                  {String(excerpt)}
+                                </p>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
                   {m.role === "USER" && m.id === lastUserMessageId && (
                     <Button
                       type="button"

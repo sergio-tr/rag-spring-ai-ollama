@@ -86,6 +86,7 @@ describe("use-conversations", () => {
         updatedAt: "",
         presetId: null,
         documentFilter: [],
+        runtimeOverride: {},
       },
     ];
     qc.setQueryData(["conversations", "p1"], rows);
@@ -110,6 +111,7 @@ describe("use-conversations", () => {
       updatedAt: "2026-02-02",
       presetId: null,
       documentFilter: ["d1"],
+      runtimeOverride: {},
     });
     await pending;
     expect(qc.getQueryData<ConversationDto[]>(["conversations", "p1"])?.[0].updatedAt).toBe("2026-02-02");
@@ -123,6 +125,7 @@ describe("use-conversations", () => {
         updatedAt: "",
         presetId: null,
         documentFilter: [],
+        runtimeOverride: {},
       },
     ];
     qc.setQueryData(["conversations", "p1"], structuredClone(rows));
