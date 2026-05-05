@@ -11,6 +11,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
+import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.service.preset.PresetService;
 import com.uniovi.rag.service.project.ProjectAccessService;
@@ -36,6 +37,7 @@ public class ConversationApplicationService {
     private final KnowledgeDocumentRepository knowledgeDocumentRepository;
     private final PresetService presetService;
     private final ChatPresetDefaults chatPresetDefaults;
+    private final LabExperimentalPresetCatalogService experimentalPresetCatalogService;
 
     public ConversationApplicationService(
             ProjectAccessService projectAccessService,
@@ -43,13 +45,15 @@ public class ConversationApplicationService {
             MessageRepository messageRepository,
             KnowledgeDocumentRepository knowledgeDocumentRepository,
             PresetService presetService,
-            ChatPresetDefaults chatPresetDefaults) {
+            ChatPresetDefaults chatPresetDefaults,
+            LabExperimentalPresetCatalogService experimentalPresetCatalogService) {
         this.projectAccessService = projectAccessService;
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.presetService = presetService;
         this.chatPresetDefaults = chatPresetDefaults;
+        this.experimentalPresetCatalogService = experimentalPresetCatalogService;
     }
 
     public List<ConversationDto> listConversations(UUID userId, UUID projectId) {
@@ -101,6 +105,13 @@ public class ConversationApplicationService {
             c.setDocumentFilter(resolveAndValidateDocumentFilter(c.getProject().getId(), body.documentFilter()));
             changed = true;
         }
+        if (body != null && Boolean.TRUE.equals(body.clearRuntimeOverride())) {
+            c.setRuntimeOverride(Map.of());
+            changed = true;
+        } else if (body != null && body.runtimeOverride() != null) {
+            c.setRuntimeOverride(body.runtimeOverride());
+            changed = true;
+        }
         if (changed) {
             c.touchUpdated();
             conversationRepository.save(c);
@@ -108,7 +119,7 @@ public class ConversationApplicationService {
         return toConversationDto(c);
     }
 
-    private static void validateExperimentalPresetSupport(RagPresetEntity preset) {
+    private void validateExperimentalPresetSupport(RagPresetEntity preset) {
         if (preset == null || preset.getTags() == null) {
             return;
         }
@@ -117,41 +128,24 @@ public class ConversationApplicationService {
         if (!experimental) {
             return;
         }
-        Map<String, Object> values = preset.getValues() != null ? preset.getValues() : Map.of();
-        boolean reasoningEnabled = bool(values, "reasoningEnabled");
-        boolean rankerEnabled = bool(values, "rankerEnabled");
-        boolean postRetrievalEnabled = bool(values, "postRetrievalEnabled");
-        boolean useRetrieval = bool(values, "useRetrieval");
-        boolean useAdvisor = bool(values, "useAdvisor");
-        boolean clarificationEnabled = bool(values, "clarificationEnabled");
-        boolean memoryEnabled = bool(values, "memoryEnabled");
+        // Single source of truth: LabExperimentalPresetCatalogService determines supported/chatSelectable/reasons.
+        var item =
+                experimentalPresetCatalogService.list().stream()
+                        .filter(p -> p != null && preset.getId() != null && preset.getId().toString().equals(p.productPresetId()))
+                        .findFirst()
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Experimental preset not found in catalog"));
 
-        if (clarificationEnabled || memoryEnabled) {
+        if (!item.chatSelectable()) {
+            String reason =
+                    item.supportStatus() != null ? item.supportStatus() : "NOT_CHAT_SELECTABLE";
+            String msg =
+                    item.reasonIfUnsupported() != null && !item.reasonIfUnsupported().isBlank()
+                            ? item.reasonIfUnsupported()
+                            : reason;
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "This experimental preset requires multi-turn capabilities and is not supported in this environment.");
+                    "This experimental preset is not selectable in Chat: " + msg);
         }
-        if (useAdvisor && !useRetrieval) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "This experimental preset is not supported: advisor requires retrieval.");
-        }
-        if (reasoningEnabled || rankerEnabled || postRetrievalEnabled) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "This experimental preset is part of the thesis catalog, but advanced runtime capabilities are not implemented in this environment.");
-        }
-    }
-
-    private static boolean bool(Map<String, Object> values, String key) {
-        Object v = values.get(key);
-        if (v instanceof Boolean b) {
-            return b;
-        }
-        if (v instanceof String s) {
-            return "true".equalsIgnoreCase(s.trim());
-        }
-        return false;
     }
 
     public void deleteConversation(UUID userId, UUID conversationId) {
@@ -171,8 +165,9 @@ public class ConversationApplicationService {
     private ConversationDto toConversationDto(ConversationEntity c) {
         UUID presetId = c.getPreset() != null ? c.getPreset().getId() : null;
         List<String> docs = c.getDocumentFilter() != null ? List.copyOf(c.getDocumentFilter()) : List.of();
+        Map<String, Object> runtimeOverride = c.getRuntimeOverride() != null ? Map.copyOf(c.getRuntimeOverride()) : Map.of();
         UUID effectivePresetId = chatPresetDefaults.effectivePresetIdForApi(presetId);
-        return new ConversationDto(c.getId(), c.getTitle(), c.getUpdatedAt(), presetId, docs, effectivePresetId);
+        return new ConversationDto(c.getId(), c.getTitle(), c.getUpdatedAt(), presetId, docs, runtimeOverride, effectivePresetId);
     }
 
     /**

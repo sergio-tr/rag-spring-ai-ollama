@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest.dto;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Partial update for a conversation. {@code clearPreset true} removes the preset association.
@@ -8,4 +9,9 @@ import java.util.List;
  * When {@code documentFilter} is non-null, it replaces the persisted subset (empty list = no restriction).
  */
 public record PatchConversationRequest(
-        String title, String presetId, Boolean clearPreset, List<String> documentFilter) {}
+        String title,
+        String presetId,
+        Boolean clearPreset,
+        List<String> documentFilter,
+        Map<String, Object> runtimeOverride,
+        Boolean clearRuntimeOverride) {}

@@ -25,6 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -104,6 +105,7 @@ class ProjectConversationsControllerWebMvcTest {
                         Instant.parse("2024-06-01T12:00:00Z"),
                         null,
                         List.of(),
+                        Map.of(),
                         ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID));
 
         mockMvc.perform(

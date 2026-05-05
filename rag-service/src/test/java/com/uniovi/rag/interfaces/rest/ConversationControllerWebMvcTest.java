@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
@@ -111,6 +112,7 @@ class ConversationControllerWebMvcTest {
                         Instant.parse("2024-07-01T00:00:00Z"),
                         null,
                         List.of("d1"),
+                        Map.of(),
                         ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID));
 
         mockMvc.perform(

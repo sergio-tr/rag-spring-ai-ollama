@@ -14,6 +14,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
+import com.uniovi.rag.interfaces.rest.dto.ExperimentalPresetCatalogItemDto;
 import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.service.preset.PresetService;
 import com.uniovi.rag.service.project.ProjectAccessService;
@@ -66,6 +68,9 @@ class ConversationApplicationServiceTest {
 
     @Mock
     private ChatPresetDefaults chatPresetDefaults;
+
+    @Mock
+    private LabExperimentalPresetCatalogService experimentalPresetCatalogService;
 
     @InjectMocks
     private ConversationApplicationService service;
@@ -215,7 +220,7 @@ class ConversationApplicationServiceTest {
         ConversationEntity c = mock(ConversationEntity.class);
         when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(c);
 
-        service.patchConversation(userId, convId, new PatchConversationRequest("New title", null, null, null));
+        service.patchConversation(userId, convId, new PatchConversationRequest("New title", null, null, null, null, null));
         verify(c).setTitle("New title");
         verify(c).touchUpdated();
         verify(conversationRepository).save(c);
@@ -233,7 +238,7 @@ class ConversationApplicationServiceTest {
                         ResponseStatusException.class,
                         () ->
                                 service.patchConversation(
-                                        userId, convId, new PatchConversationRequest(null, "bad-uuid", null, null)));
+                                        userId, convId, new PatchConversationRequest(null, "bad-uuid", null, null, null, null)));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         verify(conversationRepository, never()).save(any());
     }
@@ -249,7 +254,7 @@ class ConversationApplicationServiceTest {
         when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
 
         service.patchConversation(
-                userId, convId, new PatchConversationRequest(null, presetId.toString(), null, null));
+                userId, convId, new PatchConversationRequest(null, presetId.toString(), null, null, null, null));
         verify(c).setPreset(preset);
         verify(c).touchUpdated();
         verify(conversationRepository).save(c);
@@ -264,16 +269,34 @@ class ConversationApplicationServiceTest {
         when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(c);
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
+        when(preset.getId()).thenReturn(presetId);
         when(preset.getTags()).thenReturn(List.of("experimental", "tfg"));
-        when(preset.getValues()).thenReturn(Map.of("reasoningEnabled", true));
         when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
+        when(experimentalPresetCatalogService.list())
+                .thenReturn(
+                        List.of(
+                                new ExperimentalPresetCatalogItemDto(
+                                        presetId.toString(),
+                                        "P6",
+                                        "S2",
+                                        "P6 preset",
+                                        "desc",
+                                        List.of("REASONING"),
+                                        false,
+                                        "NOT_SUPPORTED",
+                                        "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+                                        false,
+                                        Map.of(),
+                                        List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
+                                        false,
+                                        true)));
 
         ResponseStatusException ex =
                 assertThrows(
                         ResponseStatusException.class,
                         () ->
                                 service.patchConversation(
-                                        userId, convId, new PatchConversationRequest(null, presetId.toString(), null, null)));
+                                        userId, convId, new PatchConversationRequest(null, presetId.toString(), null, null, null, null)));
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         verify(conversationRepository, never()).save(any());
     }
