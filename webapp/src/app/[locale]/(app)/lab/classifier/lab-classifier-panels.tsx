@@ -17,13 +17,14 @@ import {
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { useQueryClient } from "@tanstack/react-query";
 import { LabJobPollTimeoutError } from "@/lib/async-task";
-import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
+import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
 import type { LabJobFollowMode } from "@/lib/lab-job-follow";
 import type { AsyncTaskStatusDto, LabJobAcceptedDto } from "@/types/api";
 import { useTranslations } from "next-intl";
 import type { MutableRefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useClassifierModelsQuery } from "@/features/lab/hooks/use-classifier-registry";
 
 /** Local watchdog for classifier-eval polling — server-side runs may continue beyond this window. */
 const CLASSIFIER_EVAL_POLL_MAX_MS = 15 * 60 * 1000;
@@ -404,6 +405,7 @@ export function LabClassifierEvalPanel(
   const { classifierOk, projectId } = props;
   const t = useTranslations("Lab");
   const qc = useQueryClient();
+  const modelsQuery = useClassifierModelsQuery(classifierOk);
 
   const [evalModelId, setEvalModelId] = useState("");
   const [evalFile, setEvalFile] = useState<File | null>(null);
@@ -709,7 +711,27 @@ export function LabClassifierEvalPanel(
         </details>
         <div className="grid gap-2">
           <Label htmlFor="emodel">{t("classifierEvalModelId")}</Label>
-          <Input id="emodel" value={evalModelId} onChange={(e) => setEvalModelId(e.target.value)} />
+          <select
+            id="emodel"
+            className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            value={evalModelId}
+            disabled={evalRunning || !classifierOk || (modelsQuery.data?.length ?? 0) === 0}
+            onChange={(e) => setEvalModelId(e.target.value)}
+          >
+            {(modelsQuery.data ?? []).length === 0 ? (
+              <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
+            ) : (
+              <>
+                <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
+                {(modelsQuery.data ?? []).map((m) => (
+                  <option key={m.id} value={m.inferenceTag}>
+                    {m.name} · {m.inferenceTag}
+                    {m.active ? " · ACTIVE" : ""}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
         </div>
         <div className="grid gap-2">
           <Label htmlFor="efile">{t("classifierEvalFile")}</Label>
@@ -762,6 +784,7 @@ export function LabClassifierEvalPanel(
 export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boolean }>) {
   const { classifierOk } = props;
   const t = useTranslations("Lab");
+  const modelsQuery = useClassifierModelsQuery(classifierOk);
 
   const [clsQuery, setClsQuery] = useState("How many meetings?");
   const [clsModelId, setClsModelId] = useState("default");
@@ -780,8 +803,8 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
         body: JSON.stringify({ query: clsQuery, modelId: clsModelId }),
       });
       setClsOut(data);
-    } catch {
-      setClsErr(t("evalError"));
+    } catch (e) {
+      setClsErr(getSafeApiErrorMessage(e));
     } finally {
       setClsRunning(false);
     }
@@ -799,7 +822,31 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
         </div>
         <div className="grid gap-2">
           <Label htmlFor="mid">{t("classifierModelIdField")}</Label>
-          <Input id="mid" value={clsModelId} onChange={(e) => setClsModelId(e.target.value)} />
+          <select
+            id="mid"
+            className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            value={clsModelId}
+            disabled={clsRunning || !classifierOk || (modelsQuery.data?.length ?? 0) === 0}
+            onChange={(e) => setClsModelId(e.target.value)}
+          >
+            {(modelsQuery.data ?? []).length === 0 ? (
+              <option value="default">{t("benchmarkLlmModelPlaceholder")}</option>
+            ) : (
+              (modelsQuery.data ?? []).map((m) => (
+                <option key={m.id} value={m.inferenceTag}>
+                  {m.name} · {m.inferenceTag}
+                  {m.active ? " · ACTIVE" : ""}
+                </option>
+              ))
+            )}
+          </select>
+          {(modelsQuery.data ?? []).length === 0 ? (
+            <p className="text-muted-foreground text-xs">
+              {classifierOk
+                ? "No classifier models found yet. Train a model or check classifier-service connectivity."
+                : t("classifierNotConfiguredWarn")}
+            </p>
+          ) : null}
         </div>
         <Button type="button" disabled={clsRunning || !classifierOk} onClick={() => void runClassify()}>
           {clsRunning ? t("evalRunning") : t("classifierClassifySubmit")}
