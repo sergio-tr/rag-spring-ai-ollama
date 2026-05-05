@@ -114,6 +114,10 @@ public class BenchmarkRunOrchestrator {
                     HttpStatus.NOT_IMPLEMENTED,
                     "EMBEDDING_RUNTIME_SWAP_NOT_IMPLEMENTED: multi-embedding campaigns require true embedding-model swap + reindex/snapshot isolation");
         }
+        // RAG preset sweep campaign: group one run under a campaign so exports/comparison can be campaign-scoped.
+        if (kind == BenchmarkKind.RAG_PRESET_END_TO_END && wantsRagPresetCampaign(request)) {
+            return startRagPresetCampaign(userId, roleName, kind, request);
+        }
 
         validateRunKind(roleName, request.runKind());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
@@ -139,6 +143,46 @@ public class BenchmarkRunOrchestrator {
 
         attachTaskAndRunning(run, taskId);
         return BenchmarkJobAccepted.of(run.getId(), taskId);
+    }
+
+    private BenchmarkJobAccepted startRagPresetCampaign(
+            UUID userId, String roleName, BenchmarkKind kind, StartBenchmarkRunRequest request) {
+        validateRunKind(roleName, request.runKind());
+        EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
+        validateDatasetForKind(dataset, kind);
+        validateScienceFields(kind, request);
+        if (request.experimentalPresetCodes() == null || request.experimentalPresetCodes().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "experimentalPresetCodes is empty");
+        }
+
+        UserEntity user = userRepository.findById(userId).orElseThrow();
+        EvaluationCampaignEntity camp = new EvaluationCampaignEntity();
+        camp.setUser(user);
+        camp.setCreatedAt(Instant.now());
+        camp.setStudyType(EvaluationStudyType.RAG_PRESET_BENCHMARK.name());
+        camp.setName(request.campaignName() != null && !request.campaignName().isBlank()
+                ? request.campaignName().trim()
+                : "RAG preset sweep");
+        if (request.projectId() != null) {
+            ProjectEntity p = projectAccessService.requireOwnedProject(userId, request.projectId());
+            camp.setProject(p);
+        }
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("datasetId", dataset.getId().toString());
+        meta.put("benchmarkKind", kind.name());
+        meta.put("experimentalPresetCodes", request.experimentalPresetCodes());
+        camp.setMetaJson(meta);
+        camp = evaluationCampaignRepository.save(camp);
+
+        EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, request);
+        run.setCampaign(camp);
+        run.setName(request.name() != null && !request.name().isBlank() ? request.name().trim() : "RAG preset sweep");
+        applyOptionalLinks(run, request);
+        run = evaluationRunRepository.save(run);
+
+        UUID taskId = asyncTaskService.submitEvalRag(userId, request.projectId(), run.getId());
+        attachTaskAndRunning(run, taskId);
+        return BenchmarkJobAccepted.ofCampaign(run.getId(), taskId, camp.getId());
     }
 
     private BenchmarkJobAccepted startLlmCampaign(
@@ -221,6 +265,13 @@ public class BenchmarkRunOrchestrator {
 
     private static boolean wantsEmbeddingCampaign(StartBenchmarkRunRequest request) {
         return (request.embeddingModelIds() != null && !request.embeddingModelIds().isEmpty()) || request.useWorkbookCandidatesEffective();
+    }
+
+    private static boolean wantsRagPresetCampaign(StartBenchmarkRunRequest request) {
+        return request.campaignName() != null
+                && !request.campaignName().isBlank()
+                && request.experimentalPresetCodes() != null
+                && !request.experimentalPresetCodes().isEmpty();
     }
 
     private List<String> resolveLlmCandidateModelIds(EvaluationDatasetEntity dataset, StartBenchmarkRunRequest request) {

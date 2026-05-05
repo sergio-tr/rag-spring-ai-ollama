@@ -1,6 +1,7 @@
 package com.uniovi.rag.interfaces.rest;
 
 import com.uniovi.rag.application.service.evaluation.LabCampaignService;
+import com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator;
 import com.uniovi.rag.security.RagPrincipal;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import org.junit.jupiter.api.AfterEach;
@@ -38,6 +39,7 @@ class LabCampaignControllerWebMvcTest {
     @Autowired private MockMvc mockMvc;
 
     @MockitoBean private LabCampaignService labCampaignService;
+    @MockitoBean private BenchmarkRunOrchestrator benchmarkRunOrchestrator;
 
     private UUID userId;
 
