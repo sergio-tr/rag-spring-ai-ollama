@@ -88,7 +88,10 @@ public class KnowledgeSnapshotService {
             KnowledgeIndexSnapshotEntity snapshot,
             List<KnowledgeDocumentEntity> documents,
             Optional<KnowledgeIndexSnapshotEntity> previousActive) {
-        assertAtMostOneActiveSnapshotInScope(snapshot);
+        // Self-heal against stale state or concurrent ingests:
+        // the DB may temporarily contain >1 ACTIVE snapshot for the same scope.
+        // Before activating the new snapshot, we mark all other ACTIVE rows as SUPERSEDED.
+        supersedeAllOtherActiveSnapshotsInScope(snapshot);
         Instant now = Instant.now();
         previousActive.ifPresent(
                 prev -> {
@@ -108,6 +111,38 @@ public class KnowledgeSnapshotService {
             snapshotDocumentRepository.save(link);
             d.setCurrentIndexSnapshot(snapshot);
             knowledgeDocumentRepository.save(d);
+        }
+    }
+
+    private void supersedeAllOtherActiveSnapshotsInScope(KnowledgeIndexSnapshotEntity snapshot) {
+        if (snapshot == null) return;
+        Instant now = Instant.now();
+        if (snapshot.getScopeType() == KnowledgeSnapshotScopeType.PROJECT) {
+            var pid = snapshot.getProject() != null ? snapshot.getProject().getId() : null;
+            if (pid == null) return;
+            var actives =
+                    snapshotRepository.findActiveProjectSnapshots(
+                            pid, KnowledgeSnapshotScopeType.PROJECT, IndexSnapshotStatus.ACTIVE);
+            for (KnowledgeIndexSnapshotEntity a : actives) {
+                if (a.getId() != null && !a.getId().equals(snapshot.getId())) {
+                    a.setStatus(IndexSnapshotStatus.SUPERSEDED);
+                    a.setUpdatedAt(now);
+                    snapshotRepository.save(a);
+                }
+            }
+        } else if (snapshot.getScopeType() == KnowledgeSnapshotScopeType.CONVERSATION
+                && snapshot.getConversation() != null) {
+            var cid = snapshot.getConversation().getId();
+            var actives =
+                    snapshotRepository.findActiveConversationSnapshots(
+                            cid, KnowledgeSnapshotScopeType.CONVERSATION, IndexSnapshotStatus.ACTIVE);
+            for (KnowledgeIndexSnapshotEntity a : actives) {
+                if (a.getId() != null && !a.getId().equals(snapshot.getId())) {
+                    a.setStatus(IndexSnapshotStatus.SUPERSEDED);
+                    a.setUpdatedAt(now);
+                    snapshotRepository.save(a);
+                }
+            }
         }
     }
 

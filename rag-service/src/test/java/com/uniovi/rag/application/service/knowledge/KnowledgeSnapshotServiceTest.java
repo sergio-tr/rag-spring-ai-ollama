@@ -47,18 +47,21 @@ class KnowledgeSnapshotServiceTest {
         when(building.getId()).thenReturn(bid);
         when(building.getScopeType()).thenReturn(KnowledgeSnapshotScopeType.PROJECT);
         when(building.getProject()).thenReturn(project);
-        when(snapshotRepository.countByProject_IdAndScopeTypeAndConversationIsNullAndStatus(
-                        eq(pid), eq(KnowledgeSnapshotScopeType.PROJECT), eq(IndexSnapshotStatus.ACTIVE)))
-                .thenReturn(1L);
 
         KnowledgeIndexSnapshotEntity prior = mock(KnowledgeIndexSnapshotEntity.class);
+        when(prior.getId()).thenReturn(UUID.randomUUID());
+        when(snapshotRepository.findActiveProjectSnapshots(
+                        eq(pid),
+                        eq(KnowledgeSnapshotScopeType.PROJECT),
+                        eq(IndexSnapshotStatus.ACTIVE)))
+                .thenReturn(List.of(prior));
 
         KnowledgeDocumentEntity doc = mock(KnowledgeDocumentEntity.class);
         when(doc.getId()).thenReturn(UUID.randomUUID());
 
         knowledgeSnapshotService.activateSnapshot(building, List.of(doc), Optional.of(prior));
 
-        verify(prior).setStatus(IndexSnapshotStatus.SUPERSEDED);
+        verify(prior, Mockito.atLeastOnce()).setStatus(IndexSnapshotStatus.SUPERSEDED);
         verify(building).setStatus(IndexSnapshotStatus.ACTIVE);
         verify(snapshotRepository, Mockito.atLeast(2)).save(any());
         verify(snapshotDocumentRepository).save(any());

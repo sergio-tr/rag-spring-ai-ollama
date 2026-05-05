@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -36,6 +37,7 @@ class KnowledgePipelineOrchestratorTest {
     @Mock private BinaryStoragePort binaryStoragePort;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
     @Mock private KnowledgeIndexingService knowledgeIndexingService;
+    @Mock private PlatformTransactionManager transactionManager;
 
     @Test
     void previewSnapshotSignatureHex_isDeterministicForEmptyReadyCorpus() {
@@ -50,6 +52,7 @@ class KnowledgePipelineOrchestratorTest {
                         binaryStoragePort,
                         knowledgeSnapshotService,
                         knowledgeIndexingService,
+                        transactionManager,
                         400,
                         "mxbai-embed-large",
                         "CHUNK_LEVEL",
@@ -74,6 +77,7 @@ class KnowledgePipelineOrchestratorTest {
                         binaryStoragePort,
                         knowledgeSnapshotService,
                         knowledgeIndexingService,
+                        transactionManager,
                         400,
                         "mxbai-embed-large",
                         "CHUNK_LEVEL",
@@ -102,6 +106,7 @@ class KnowledgePipelineOrchestratorTest {
                         binaryStoragePort,
                         knowledgeSnapshotService,
                         knowledgeIndexingService,
+                        transactionManager,
                         400,
                         "mxbai-embed-large",
                         "CHUNK_LEVEL",

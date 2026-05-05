@@ -16,6 +16,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.lang.Nullable;
 
 /**
  * Enhanced NER Query Analyser for extracting entities from meeting minutes queries.
@@ -163,6 +164,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
      */
     private static final ObjectMapper JACKSON_MAPPER = new ObjectMapper();
 
+    @Nullable
     private final ChatClient chatClient;
     
     // Date patterns for normalization - enhanced to match parseDateFlexible and parseDateToLocalDate
@@ -203,7 +205,7 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
     private static final Pattern TIME_PATTERN = Pattern.compile("\\b(\\d{1,2}):(\\d{2})\\b");
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\b\\d+\\b");
 
-    public MinuteNERQueryAnalyser(ChatClient chatClient) {
+    public MinuteNERQueryAnalyser(@Nullable ChatClient chatClient) {
         this.chatClient = chatClient;
     }
 
@@ -238,6 +240,10 @@ public class MinuteNERQueryAnalyser implements QueryAnalyser {
      */
     @Cacheable(value = "nerAnalysis", keyGenerator = "nerCacheKeyGenerator")
     private JSONObject analyseWithCache(String query) {
+        if (chatClient == null) {
+            log().warn("NER: ChatClient is not configured, returning fallback analysis");
+            return createFallbackResponse(query);
+        }
         // Use simple string replacement instead of PromptTemplate to avoid issues with [ and ] in JSON examples
         String prompt = NER_PROMPT.replace("{query}", query);
 

@@ -19,7 +19,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -51,6 +53,7 @@ public class KnowledgePipelineOrchestrator {
     private final BinaryStoragePort binaryStoragePort;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
     private final KnowledgeIndexingService knowledgeIndexingService;
+    private final TransactionTemplate transactionTemplate;
     private final int chunkMaxChars;
     private final String embeddingModelId;
     private final MaterializationStrategy materializationStrategy;
@@ -62,6 +65,7 @@ public class KnowledgePipelineOrchestrator {
             BinaryStoragePort binaryStoragePort,
             KnowledgeSnapshotService knowledgeSnapshotService,
             KnowledgeIndexingService knowledgeIndexingService,
+            PlatformTransactionManager transactionManager,
             @Value("${rag.chunk.max-chars:400}") int chunkMaxChars,
             @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large}") String embeddingModelId,
             @Value("${rag.knowledge.materialization-strategy:CHUNK_LEVEL}") String materializationStrategyRaw,
@@ -71,6 +75,7 @@ public class KnowledgePipelineOrchestrator {
         this.binaryStoragePort = binaryStoragePort;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.knowledgeIndexingService = knowledgeIndexingService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
         this.embeddingModelId = embeddingModelId;
         this.materializationStrategy = parseMaterializationStrategy(materializationStrategyRaw);
@@ -99,8 +104,47 @@ public class KnowledgePipelineOrchestrator {
         }
     }
 
-    @Transactional
     public void ingestFromTempFile(
+            UUID projectId,
+            UUID projectDocumentId,
+            Path tempFile,
+            String originalFilename,
+            String contentType,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash) {
+        try {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
+            transactionTemplate.executeWithoutResult(
+                    s ->
+                            ingestTx(
+                                    projectId,
+                                    projectDocumentId,
+                                    tempFile,
+                                    originalFilename,
+                                    contentType,
+                                    resolvedConfigSnapshotId,
+                                    resolvedConfigHash));
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
+        } catch (Exception e) {
+            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
+            log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
+            transactionTemplate.executeWithoutResult(
+                    s -> {
+                        KnowledgeDocumentEntity rowErr =
+                                knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+                        if (rowErr != null) {
+                            rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                            rowErr.setErrorMessage(
+                                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                            knowledgeDocumentRepository.save(rowErr);
+                        }
+                    });
+        } finally {
+            deleteTempQuietly(tempFile);
+        }
+    }
+
+    private void ingestTx(
             UUID projectId,
             UUID projectDocumentId,
             Path tempFile,
@@ -111,51 +155,48 @@ public class KnowledgePipelineOrchestrator {
         KnowledgeDocumentEntity row = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
         if (row == null) {
             log.warn("Project document {} not found, skipping ingest", projectDocumentId);
-            deleteTempQuietly(tempFile);
             return;
         }
-        KnowledgeIndexSnapshotEntity building = null;
-        try {
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "started");
-            persistBinaryAndUpdateRow(projectId, projectDocumentId, tempFile, contentType, row);
-            final KnowledgeDocumentEntity rowReloaded =
-                    knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
 
-            List<KnowledgeDocumentEntity> scopeDocs = resolveScopeDocuments(rowReloaded);
-            if (scopeDocs.stream().noneMatch(d -> d.getId().equals(rowReloaded.getId()))) {
-                scopeDocs = new ArrayList<>(scopeDocs);
-                scopeDocs.add(rowReloaded);
-                scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
-            }
-            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null);
-            String indexSigHex = sig.indexSigHex();
-            String snapshotSigHex = sig.snapshotSigHex();
+        persistBinaryAndUpdateRow(projectId, projectDocumentId, tempFile, contentType, row);
+        final KnowledgeDocumentEntity rowReloaded = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
 
-            KnowledgeSnapshotScopeType snapScope =
-                    rowReloaded.getCorpusScope() == CorpusScope.PROJECT_SHARED
-                            ? KnowledgeSnapshotScopeType.PROJECT
-                            : KnowledgeSnapshotScopeType.CONVERSATION;
+        List<KnowledgeDocumentEntity> scopeDocs = resolveScopeDocuments(rowReloaded);
+        if (scopeDocs.stream().noneMatch(d -> d.getId().equals(rowReloaded.getId()))) {
+            scopeDocs = new ArrayList<>(scopeDocs);
+            scopeDocs.add(rowReloaded);
+            scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
+        }
+        IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null);
+        String indexSigHex = sig.indexSigHex();
+        String snapshotSigHex = sig.snapshotSigHex();
 
-            Optional<KnowledgeIndexSnapshotEntity> previousActive =
-                    rowReloaded.getCorpusScope() == CorpusScope.PROJECT_SHARED
-                            ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
-                            : knowledgeSnapshotService.findActiveConversationSnapshot(
-                                    rowReloaded.getConversation().getId());
+        KnowledgeSnapshotScopeType snapScope =
+                rowReloaded.getCorpusScope() == CorpusScope.PROJECT_SHARED
+                        ? KnowledgeSnapshotScopeType.PROJECT
+                        : KnowledgeSnapshotScopeType.CONVERSATION;
 
-            building =
-                    knowledgeSnapshotService.createBuildingSnapshot(
-                            rowReloaded.getProject(),
-                            rowReloaded.getConversation(),
-                            snapScope,
-                            snapshotSigHex,
-                            resolvedConfigSnapshotId,
-                            resolvedConfigHash);
+        Optional<KnowledgeIndexSnapshotEntity> previousActive =
+                rowReloaded.getCorpusScope() == CorpusScope.PROJECT_SHARED
+                        ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
+                        : knowledgeSnapshotService.findActiveConversationSnapshot(
+                                rowReloaded.getConversation().getId());
 
-            previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
-            deleteVectorsForScopeDocs(scopeDocs);
+        KnowledgeIndexSnapshotEntity building =
+                knowledgeSnapshotService.createBuildingSnapshot(
+                        rowReloaded.getProject(),
+                        rowReloaded.getConversation(),
+                        snapScope,
+                        snapshotSigHex,
+                        resolvedConfigSnapshotId,
+                        resolvedConfigHash);
 
-            MaterializationStrategy strategy = materializationStrategy;
-            for (KnowledgeDocumentEntity doc : scopeDocs) {
+        previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
+        deleteVectorsForScopeDocs(scopeDocs);
+
+        MaterializationStrategy strategy = materializationStrategy;
+        for (KnowledgeDocumentEntity doc : scopeDocs) {
+            try {
                 knowledgeIndexingService.processDocument(
                         new KnowledgeDocumentIndexingRequest(
                                 doc,
@@ -166,36 +207,23 @@ public class KnowledgePipelineOrchestrator {
                                 indexSigHex,
                                 strategy,
                                 chunkMaxChars));
+            } catch (IOException e) {
+                throw new IllegalStateException("Document indexing failed: " + e.getMessage(), e);
             }
-
-            knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
-
-            KnowledgeDocumentEntity rowDone =
-                    knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
-            rowDone.setStatus(ProjectDocumentStatus.READY);
-            rowDone.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(rowDone.getId()));
-            rowDone.setErrorMessage(null);
-            rowDone.setReindexedAt(Instant.now());
-            knowledgeDocumentRepository.save(rowDone);
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "success");
-            log.info("Knowledge pipeline completed for project document {} (snapshot {})", projectDocumentId, building.getId());
-        } catch (Exception e) {
-            recordEtlEvent(ETL_STAGE_INGEST_TEMP_FILE, "failure");
-            log.error("Knowledge ingest failed for project document {}: {}", projectDocumentId, e.getMessage(), e);
-            if (building != null) {
-                knowledgeSnapshotService.deleteVectorsForSnapshotId(building.getId());
-                knowledgeSnapshotService.failSnapshotById(building.getId());
-            }
-            KnowledgeDocumentEntity rowErr =
-                    knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
-            if (rowErr != null) {
-                rowErr.setStatus(ProjectDocumentStatus.ERROR);
-                rowErr.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-                knowledgeDocumentRepository.save(rowErr);
-            }
-        } finally {
-            deleteTempQuietly(tempFile);
         }
+
+        knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
+
+        KnowledgeDocumentEntity rowDone = knowledgeDocumentRepository.findById(projectDocumentId).orElseThrow();
+        rowDone.setStatus(ProjectDocumentStatus.READY);
+        rowDone.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(rowDone.getId()));
+        rowDone.setErrorMessage(null);
+        rowDone.setReindexedAt(Instant.now());
+        knowledgeDocumentRepository.save(rowDone);
+        log.info(
+                "Knowledge pipeline completed for project document {} (snapshot {})",
+                projectDocumentId,
+                building.getId());
     }
 
     private void persistBinaryAndUpdateRow(
@@ -203,7 +231,7 @@ public class KnowledgePipelineOrchestrator {
             UUID projectDocumentId,
             Path tempFile,
             String contentType,
-            KnowledgeDocumentEntity row) throws IOException {
+            KnowledgeDocumentEntity row) {
         try (InputStream in = Files.newInputStream(tempFile)) {
             long size = Files.size(tempFile);
             BinaryStoragePort.StoredObject stored =
@@ -212,6 +240,8 @@ public class KnowledgePipelineOrchestrator {
             row.setContentChecksum(stored.sha256Hex());
             row.setByteSize(size);
             row.setMimeType(contentType);
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not persist binary for ingest: " + e.getMessage(), e);
         }
         knowledgeDocumentRepository.save(row);
     }

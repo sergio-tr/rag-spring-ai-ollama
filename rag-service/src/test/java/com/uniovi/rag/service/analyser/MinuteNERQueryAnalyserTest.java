@@ -37,6 +37,14 @@ class MinuteNERQueryAnalyserTest {
     }
 
     @Test
+    void analyse_whenChatClientNull_returnsFallback() {
+        MinuteNERQueryAnalyser a = new MinuteNERQueryAnalyser(null);
+        JSONObject result = a.analyse("q");
+        assertNotNull(result);
+        assertTrue(result.has("attendees"));
+    }
+
+    @Test
     void analyse_withValidJsonFromLlm_returnsParsedObject() {
         ChatClientTestSupport.stubSystemUserPromptReturns(
                 chatClient,

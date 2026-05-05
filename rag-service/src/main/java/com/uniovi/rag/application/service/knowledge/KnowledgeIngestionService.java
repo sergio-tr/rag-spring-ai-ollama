@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.knowledge;
 
 import com.uniovi.rag.application.service.ResolvedConfigSnapshotApplicationService;
+import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
@@ -16,7 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -53,7 +53,6 @@ public class KnowledgeIngestionService {
         this.resolvedConfigSnapshotApplicationService = resolvedConfigSnapshotApplicationService;
     }
 
-    @Transactional
     public void ingestFromTempFile(
             UUID userId,
             UUID projectId,
@@ -69,17 +68,27 @@ public class KnowledgeIngestionService {
                 row.getCorpusScope() == CorpusScope.CHAT_LOCAL && row.getConversation() != null
                         ? Optional.of(row.getConversation().getId())
                         : Optional.empty();
-        var snap =
-                resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
-                        userId, projectId, conversationId);
-        knowledgePipelineOrchestrator.ingestFromTempFile(
-                projectId,
-                projectDocumentId,
-                tempFile,
-                originalFilename,
-                contentType,
-                snap.getId(),
-                snap.getConfigHash());
+        try {
+            var snap =
+                    resolvedConfigSnapshotApplicationService.persistIngestionDefaultSnapshot(
+                            userId, projectId, conversationId);
+            knowledgePipelineOrchestrator.ingestFromTempFile(
+                    projectId,
+                    projectDocumentId,
+                    tempFile,
+                    originalFilename,
+                    contentType,
+                    snap.getId(),
+                    snap.getConfigHash());
+        } catch (Exception e) {
+            KnowledgeDocumentEntity rowErr = knowledgeDocumentRepository.findById(projectDocumentId).orElse(null);
+            if (rowErr != null) {
+                rowErr.setStatus(ProjectDocumentStatus.ERROR);
+                rowErr.setErrorMessage(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+                knowledgeDocumentRepository.save(rowErr);
+            }
+            throw e;
+        }
     }
 
     public void deleteVectorChunksForDocument(UUID projectDocumentId) {

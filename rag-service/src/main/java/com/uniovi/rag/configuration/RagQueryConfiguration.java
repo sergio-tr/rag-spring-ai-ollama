@@ -56,6 +56,7 @@ import org.springframework.cache.interceptor.KeyGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.lang.Nullable;
 
 @Configuration
 public class RagQueryConfiguration {
@@ -186,12 +187,20 @@ public class RagQueryConfiguration {
 
     @Bean
     public QueryAnalyser queryAnalyser(
-            ChatClient chatClient,
+            @Nullable ChatClient chatClient,
             RagImplementationProperties implProps,
             @Autowired(required = false) ObservabilitySupport observability
     ) {
         String impl = implProps.getAnalyserImpl() != null ? implProps.getAnalyserImpl().trim().toLowerCase() : "minute-ner";
-        QueryAnalyser raw = "no-op".equals(impl) ? new NoOpQueryAnalyser() : new MinuteNERQueryAnalyser(chatClient);
+        QueryAnalyser raw;
+        if ("no-op".equals(impl)) {
+            raw = new NoOpQueryAnalyser();
+        } else if (chatClient == null) {
+            // Degrade gracefully when Spring AI chat client is not configured.
+            raw = new NoOpQueryAnalyser();
+        } else {
+            raw = new MinuteNERQueryAnalyser(chatClient);
+        }
         if (observability != null) {
             return new TracedQueryAnalyser(raw, observability);
         }
