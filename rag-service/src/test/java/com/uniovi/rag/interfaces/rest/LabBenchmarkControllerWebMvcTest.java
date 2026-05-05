@@ -5,6 +5,7 @@ import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.evaluation.BenchmarkJobAccepted;
 import com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator;
 import com.uniovi.rag.application.service.evaluation.LabEvaluationRunService;
+import com.uniovi.rag.application.service.evaluation.LabMetricsComparisonService;
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
@@ -54,6 +55,9 @@ class LabBenchmarkControllerWebMvcTest {
 
     @MockitoBean
     private LabEvaluationRunService labEvaluationRunService;
+
+    @MockitoBean
+    private LabMetricsComparisonService labMetricsComparisonService;
 
     @MockitoBean
     private RagApiPathProperties apiPathProperties;

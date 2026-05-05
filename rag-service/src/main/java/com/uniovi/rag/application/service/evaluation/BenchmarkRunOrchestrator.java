@@ -9,12 +9,19 @@ import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.ExperimentalDatasetType;
 import com.uniovi.rag.domain.evaluation.EvaluationDatasetScope;
 import com.uniovi.rag.domain.evaluation.EvaluationRunKind;
+import com.uniovi.rag.domain.evaluation.EvaluationStudyType;
+import com.uniovi.rag.domain.evaluation.workbook.WorkbookParseResult;
+import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
+import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
+import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.infrastructure.persistence.EvaluationDatasetRepository;
+import com.uniovi.rag.infrastructure.persistence.EvaluationCampaignRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationCampaignEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
@@ -31,12 +38,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 
 /**
  * Creates {@link EvaluationRunEntity} rows and enqueues {@link AsyncTaskEntity} work for lab benchmarks.
@@ -46,6 +57,7 @@ public class BenchmarkRunOrchestrator {
 
     private final UserRepository userRepository;
     private final EvaluationDatasetRepository evaluationDatasetRepository;
+    private final EvaluationCampaignRepository evaluationCampaignRepository;
     private final EvaluationRunRepository evaluationRunRepository;
     private final ResolvedConfigSnapshotRepository resolvedConfigSnapshotRepository;
     private final KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
@@ -54,10 +66,13 @@ public class BenchmarkRunOrchestrator {
     private final AsyncTaskService asyncTaskService;
     private final ProjectAccessService projectAccessService;
     private final RagRuntimeProperties ragRuntimeProperties;
+    private final EvaluationDatasetStorePort evaluationDatasetStorePort;
+    private final EvaluationWorkbookParser evaluationWorkbookParser;
 
     public BenchmarkRunOrchestrator(
             UserRepository userRepository,
             EvaluationDatasetRepository evaluationDatasetRepository,
+            EvaluationCampaignRepository evaluationCampaignRepository,
             EvaluationRunRepository evaluationRunRepository,
             ResolvedConfigSnapshotRepository resolvedConfigSnapshotRepository,
             KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository,
@@ -65,9 +80,12 @@ public class BenchmarkRunOrchestrator {
             AsyncTaskRepository asyncTaskRepository,
             AsyncTaskService asyncTaskService,
             ProjectAccessService projectAccessService,
-            RagRuntimeProperties ragRuntimeProperties) {
+            RagRuntimeProperties ragRuntimeProperties,
+            EvaluationDatasetStorePort evaluationDatasetStorePort,
+            EvaluationWorkbookParser evaluationWorkbookParser) {
         this.userRepository = userRepository;
         this.evaluationDatasetRepository = evaluationDatasetRepository;
+        this.evaluationCampaignRepository = evaluationCampaignRepository;
         this.evaluationRunRepository = evaluationRunRepository;
         this.resolvedConfigSnapshotRepository = resolvedConfigSnapshotRepository;
         this.knowledgeIndexSnapshotRepository = knowledgeIndexSnapshotRepository;
@@ -76,6 +94,8 @@ public class BenchmarkRunOrchestrator {
         this.asyncTaskService = asyncTaskService;
         this.projectAccessService = projectAccessService;
         this.ragRuntimeProperties = ragRuntimeProperties;
+        this.evaluationDatasetStorePort = evaluationDatasetStorePort;
+        this.evaluationWorkbookParser = evaluationWorkbookParser;
     }
 
     @Transactional
@@ -84,6 +104,17 @@ public class BenchmarkRunOrchestrator {
             String roleName,
             BenchmarkKind kind,
             StartBenchmarkRunRequest request) {
+        // Multi-model campaign (LLM baseline): create a campaign + multiple child runs, then enqueue each child.
+        if (kind == BenchmarkKind.LLM_JUDGE_QA && wantsLlmCampaign(request)) {
+            return startLlmCampaign(userId, roleName, kind, request);
+        }
+        // Multi-model embedding campaign: explicitly blocked unless we can truly swap embedding runtime.
+        if (kind == BenchmarkKind.EMBEDDING_RETRIEVAL && wantsEmbeddingCampaign(request)) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_IMPLEMENTED,
+                    "EMBEDDING_RUNTIME_SWAP_NOT_IMPLEMENTED: multi-embedding campaigns require true embedding-model swap + reindex/snapshot isolation");
+        }
+
         validateRunKind(roleName, request.runKind());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -108,6 +139,141 @@ public class BenchmarkRunOrchestrator {
 
         attachTaskAndRunning(run, taskId);
         return BenchmarkJobAccepted.of(run.getId(), taskId);
+    }
+
+    private BenchmarkJobAccepted startLlmCampaign(
+            UUID userId, String roleName, BenchmarkKind kind, StartBenchmarkRunRequest request) {
+        validateRunKind(roleName, request.runKind());
+        EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
+        validateDatasetForKind(dataset, kind);
+        validateScienceFields(kind, request);
+
+        List<String> modelIds = resolveLlmCandidateModelIds(dataset, request);
+        if (modelIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "llmModelIds is empty");
+        }
+
+        UserEntity user = userRepository.findById(userId).orElseThrow();
+        EvaluationCampaignEntity camp = new EvaluationCampaignEntity();
+        camp.setUser(user);
+        camp.setCreatedAt(Instant.now());
+        camp.setStudyType(EvaluationStudyType.LLM_MODEL_BASELINE.name());
+        if (request.campaignName() != null && !request.campaignName().isBlank()) {
+            camp.setName(request.campaignName().trim());
+        } else {
+            camp.setName("LLM baseline campaign");
+        }
+        if (request.projectId() != null) {
+            ProjectEntity p = projectAccessService.requireOwnedProject(userId, request.projectId());
+            camp.setProject(p);
+        }
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("datasetId", dataset.getId().toString());
+        meta.put("benchmarkKind", kind.name());
+        meta.put("llmModelIds", modelIds);
+        meta.put("useWorkbookCandidates", request.useWorkbookCandidatesEffective());
+        camp.setMetaJson(meta);
+        camp = evaluationCampaignRepository.save(camp);
+
+        UUID firstRunId = null;
+        UUID lastTaskId = null;
+        for (String modelId : modelIds) {
+            StartBenchmarkRunRequest childReq =
+                    new StartBenchmarkRunRequest(
+                            request.datasetId(),
+                            request.projectId(),
+                            request.runKind(),
+                            request.name(),
+                            request.resolvedConfigSnapshotId(),
+                            request.indexSnapshotId(),
+                            request.presetId(),
+                            request.embeddingDownstreamRag(),
+                            request.experimentalPresetCodes(),
+                            modelId,
+                            request.embeddingModelId(),
+                            List.of(),
+                            List.of(),
+                            false,
+                            null);
+            EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
+            run.setCampaign(camp);
+            run.setName(childRunName(request.name(), kind, modelId));
+            applyOptionalLinks(run, childReq);
+            run = evaluationRunRepository.save(run);
+
+            UUID taskId = asyncTaskService.submitEvalLlm(userId, request.projectId(), run.getId());
+            attachTaskAndRunning(run, taskId);
+
+            if (firstRunId == null) {
+                firstRunId = run.getId();
+            }
+            lastTaskId = taskId;
+        }
+
+        // For backward compatibility, return the first runId + last taskId; expose campaignId explicitly.
+        // Clients should use campaignId to list/compare/export across the grouped runs.
+        return BenchmarkJobAccepted.ofCampaign(firstRunId, lastTaskId, camp.getId());
+    }
+
+    private static boolean wantsLlmCampaign(StartBenchmarkRunRequest request) {
+        return (request.llmModelIds() != null && !request.llmModelIds().isEmpty()) || request.useWorkbookCandidatesEffective();
+    }
+
+    private static boolean wantsEmbeddingCampaign(StartBenchmarkRunRequest request) {
+        return (request.embeddingModelIds() != null && !request.embeddingModelIds().isEmpty()) || request.useWorkbookCandidatesEffective();
+    }
+
+    private List<String> resolveLlmCandidateModelIds(EvaluationDatasetEntity dataset, StartBenchmarkRunRequest request) {
+        if (request.llmModelIds() != null && !request.llmModelIds().isEmpty()) {
+            return request.llmModelIds();
+        }
+        if (!request.useWorkbookCandidatesEffective()) {
+            return List.of();
+        }
+        EvaluationWorkbook wb = parseWorkbookForCandidates(dataset);
+        List<String> out = new ArrayList<>();
+        wb.llmCandidates().forEach(c -> {
+            String model = c.model() != null && !c.model().isBlank() ? c.model().trim() : null;
+            if (model != null && !model.isBlank()) {
+                out.add(model);
+            }
+        });
+        return out;
+    }
+
+    private EvaluationWorkbook parseWorkbookForCandidates(EvaluationDatasetEntity ds) {
+        ExperimentalDatasetType experimental = BenchmarkDatasetCompatibility.resolveExperimentalType(ds);
+        try (InputStream in = openDatasetStream(ds)) {
+            WorkbookParseResult parsed = evaluationWorkbookParser.parse(in, experimental);
+            if (parsed.validationReport().hasErrors()) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Dataset workbook is INVALID for campaign candidate resolution");
+            }
+            return parsed.workbook();
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Failed to open dataset workbook bytes for candidate resolution");
+        }
+    }
+
+    private InputStream openDatasetStream(EvaluationDatasetEntity ds) throws IOException {
+        String uri = ds.getStorageUri();
+        if (uri == null || uri.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "evaluation_dataset.storage_uri is missing");
+        }
+        String trimmed = uri.trim();
+        if (trimmed.startsWith(ExperimentalDatasetResolver.CLASSPATH_STORAGE_PREFIX)) {
+            String path = trimmed.substring(ExperimentalDatasetResolver.CLASSPATH_STORAGE_PREFIX.length());
+            ClassPathResource resource = new ClassPathResource(path);
+            if (!resource.exists()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Classpath dataset missing: " + path);
+            }
+            return resource.getInputStream();
+        }
+        return evaluationDatasetStorePort.openStream(trimmed);
+    }
+
+    private static String childRunName(String baseName, BenchmarkKind kind, String modelId) {
+        String prefix = baseName != null && !baseName.isBlank() ? baseName.trim() : kind.name();
+        return prefix + " — model " + modelId;
     }
 
     @Transactional

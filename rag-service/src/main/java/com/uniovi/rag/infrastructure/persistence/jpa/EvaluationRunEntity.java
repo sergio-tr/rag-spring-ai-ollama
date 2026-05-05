@@ -37,6 +37,10 @@ public class EvaluationRunEntity {
     @JoinColumn(name = "project_id")
     private ProjectEntity project;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "campaign_id")
+    private EvaluationCampaignEntity campaign;
+
     private String name;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -149,6 +153,14 @@ public class EvaluationRunEntity {
 
     public void setProject(ProjectEntity project) {
         this.project = project;
+    }
+
+    public EvaluationCampaignEntity getCampaign() {
+        return campaign;
+    }
+
+    public void setCampaign(EvaluationCampaignEntity campaign) {
+        this.campaign = campaign;
     }
 
     public String getName() {

@@ -6,12 +6,15 @@ import com.uniovi.rag.domain.evaluation.EvaluationRunKind;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
+import com.uniovi.rag.infrastructure.persistence.EvaluationCampaignRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationDatasetRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.RagPresetRepository;
 import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
+import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import org.junit.jupiter.api.Test;
@@ -22,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -34,6 +38,7 @@ class BenchmarkRunOrchestratorTest {
 
     @Mock private UserRepository userRepository;
     @Mock private EvaluationDatasetRepository evaluationDatasetRepository;
+    @Mock private EvaluationCampaignRepository evaluationCampaignRepository;
     @Mock private EvaluationRunRepository evaluationRunRepository;
     @Mock private ResolvedConfigSnapshotRepository resolvedConfigSnapshotRepository;
     @Mock private KnowledgeIndexSnapshotRepository knowledgeIndexSnapshotRepository;
@@ -42,6 +47,8 @@ class BenchmarkRunOrchestratorTest {
     @Mock private AsyncTaskService asyncTaskService;
     @Mock private ProjectAccessService projectAccessService;
     @Mock private RagRuntimeProperties ragRuntimeProperties;
+    @Mock private EvaluationDatasetStorePort evaluationDatasetStorePort;
+    private final EvaluationWorkbookParser evaluationWorkbookParser = new EvaluationWorkbookParser();
 
     @Test
     void startJsonBenchmark_forbidsAdminBaselineForNonAdmin() {
@@ -49,6 +56,7 @@ class BenchmarkRunOrchestratorTest {
                 new BenchmarkRunOrchestrator(
                         userRepository,
                         evaluationDatasetRepository,
+                        evaluationCampaignRepository,
                         evaluationRunRepository,
                         resolvedConfigSnapshotRepository,
                         knowledgeIndexSnapshotRepository,
@@ -56,7 +64,9 @@ class BenchmarkRunOrchestratorTest {
                         asyncTaskRepository,
                         asyncTaskService,
                         projectAccessService,
-                        ragRuntimeProperties);
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser);
 
         StartBenchmarkRunRequest req =
                 new StartBenchmarkRunRequest(
@@ -68,8 +78,12 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
+                        List.of(),
                         null,
                         null,
+                        List.of(),
+                        List.of(),
+                        false,
                         null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "USER", BenchmarkKind.LLM_JUDGE_QA, req))
@@ -86,6 +100,7 @@ class BenchmarkRunOrchestratorTest {
                 new BenchmarkRunOrchestrator(
                         userRepository,
                         evaluationDatasetRepository,
+                        evaluationCampaignRepository,
                         evaluationRunRepository,
                         resolvedConfigSnapshotRepository,
                         knowledgeIndexSnapshotRepository,
@@ -93,7 +108,9 @@ class BenchmarkRunOrchestratorTest {
                         asyncTaskRepository,
                         asyncTaskService,
                         projectAccessService,
-                        ragRuntimeProperties);
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser);
 
         UUID dsId = UUID.randomUUID();
         when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.empty());
@@ -107,8 +124,12 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
+                        List.of(),
                         null,
                         null,
+                        List.of(),
+                        List.of(),
+                        false,
                         null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(UUID.randomUUID(), "ADMIN", BenchmarkKind.LLM_JUDGE_QA, req))
@@ -125,6 +146,7 @@ class BenchmarkRunOrchestratorTest {
                 new BenchmarkRunOrchestrator(
                         userRepository,
                         evaluationDatasetRepository,
+                        evaluationCampaignRepository,
                         evaluationRunRepository,
                         resolvedConfigSnapshotRepository,
                         knowledgeIndexSnapshotRepository,
@@ -132,7 +154,9 @@ class BenchmarkRunOrchestratorTest {
                         asyncTaskRepository,
                         asyncTaskService,
                         projectAccessService,
-                        ragRuntimeProperties);
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser);
 
         UUID dsId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
@@ -153,8 +177,12 @@ class BenchmarkRunOrchestratorTest {
                         null,
                         null,
                         null,
+                        List.of(),
                         null,
                         null,
+                        List.of(),
+                        List.of(),
+                        false,
                         null);
 
         assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.EMBEDDING_RETRIEVAL, req))

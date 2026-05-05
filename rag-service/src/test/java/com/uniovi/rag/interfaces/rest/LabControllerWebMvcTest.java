@@ -102,7 +102,7 @@ class LabControllerWebMvcTest {
         EvaluationWorkbook wb = EvaluationWorkbook.builder().build();
         ReferenceBundleCounts counts = new ReferenceBundleCounts(3, 2, 4, 0, 0, 0, 0);
         ReferenceBundleSnapshot snap =
-                new ReferenceBundleSnapshot(true, wb, new ValidationReport(), counts, Optional.of("test-pv"));
+                new ReferenceBundleSnapshot(true, wb, new ValidationReport(), counts, Optional.of("test-pv"), Optional.of("abc"), 123);
         when(referenceBundleLoader.getSnapshot()).thenReturn(snap);
 
         mockMvc.perform(get(path("/lab/status")))
@@ -125,7 +125,7 @@ class LabControllerWebMvcTest {
                         "",
                         "broken"));
         ReferenceBundleSnapshot snap =
-                new ReferenceBundleSnapshot(true, wb, report, ReferenceBundleCounts.empty(), Optional.empty());
+                new ReferenceBundleSnapshot(true, wb, report, ReferenceBundleCounts.empty(), Optional.empty(), Optional.empty(), 0);
         when(referenceBundleLoader.getSnapshot()).thenReturn(snap);
 
         mockMvc.perform(get(path("/lab/status")))
