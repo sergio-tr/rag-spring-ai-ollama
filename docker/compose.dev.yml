@@ -18,7 +18,6 @@
 services:
   # Override classifier-service: bind-mount source + Dockerfile.dev (uvicorn --reload)
   classifier-service:
-    image: rag-classifier-service:dev
     build:
       context: ../classifier-service
       dockerfile: Dockerfile.dev

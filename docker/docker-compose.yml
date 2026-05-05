@@ -61,7 +61,6 @@ services:
     restart: "no"
 
   classifier-service:
-    image: rag-classifier-service:prod
     build:
       context: ../classifier-service
       dockerfile: Dockerfile
