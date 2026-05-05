@@ -26,11 +26,21 @@ describe("useRagPresets", () => {
     apiFetch.mockReset();
   });
 
-  it("loads presets from /presets", async () => {
+  it("loads product-facing presets from /presets without demo_worst", async () => {
     const presets = [
       {
         id: "pr1",
-        name: "Default",
+        name: "Demo_Best",
+        description: null,
+        tags: [] as string[],
+        values: {},
+        system: false,
+        createdAt: "",
+        updatedAt: "",
+      },
+      {
+        id: "pr2",
+        name: "Demo_Worst",
         description: null,
         tags: [] as string[],
         values: {},
@@ -43,7 +53,12 @@ describe("useRagPresets", () => {
     const { wrapper } = createWrapper();
     const { result } = renderHook(() => useRagPresets(), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual(presets);
+    expect(result.current.data).toEqual([
+      {
+        ...presets[0],
+        name: "RAG balanced",
+      },
+    ]);
     expect(apiFetch).toHaveBeenCalledWith(expect.stringMatching(/\/presets$/));
   });
 });

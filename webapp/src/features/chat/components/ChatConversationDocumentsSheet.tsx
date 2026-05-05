@@ -26,6 +26,12 @@ export type ChatConversationDocumentsSheetProps = {
   uploadPending: boolean;
   uploadError: string | null;
   uploadNotice: string | null;
+  uploadItems?: Array<{
+    fileName: string;
+    phase: "uploading" | "ingesting" | "ready" | "error" | "stalled";
+    chunkCount?: number | null;
+    errorMessage?: string | null;
+  }>;
   onDocToggle: (documentId: string, checked: boolean) => void;
   onUploadFiles: (files: FileList | null) => void;
 };
@@ -41,6 +47,7 @@ export function ChatConversationDocumentsSheet({
   uploadPending,
   uploadError,
   uploadNotice,
+  uploadItems,
   onDocToggle,
   onUploadFiles,
 }: Readonly<ChatConversationDocumentsSheetProps>) {
@@ -94,6 +101,25 @@ export function ChatConversationDocumentsSheet({
             ) : null}
             {uploadNotice ? (
               <p className="text-muted-foreground text-xs">{uploadNotice}</p>
+            ) : null}
+            {uploadItems && uploadItems.length > 0 ? (
+              <div className="rounded-md border bg-muted/20 p-2 text-[11px]" data-testid="chat-upload-items">
+                <p className="font-medium">Uploads</p>
+                <ul className="mt-1 space-y-1">
+                  {uploadItems.slice(0, 6).map((it) => (
+                    <li key={`${it.fileName}-${it.phase}`} className="flex flex-col">
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate">{it.fileName}</span>
+                        <span className="font-mono text-muted-foreground">{it.phase.toUpperCase()}</span>
+                      </span>
+                      {typeof it.chunkCount === "number" ? (
+                        <span className="text-muted-foreground">chunks: {it.chunkCount}</span>
+                      ) : null}
+                      {it.errorMessage ? <span className="text-destructive break-all">{it.errorMessage}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </div>
 

@@ -7,6 +7,7 @@ import { LabExperimentalDatasetPanel } from "@/features/lab/components/lab-exper
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import type { ExperimentalDatasetListItemDto, LabValidationIssueDto } from "@/types/api";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 export default function LabOverviewPage() {
@@ -17,6 +18,77 @@ export default function LabOverviewPage() {
 
   return (
     <div className="space-y-6">
+      <Card data-testid="lab-tfg-control-panel">
+        <CardHeader>
+          <CardTitle>{t("tfgControlPanelTitle")}</CardTitle>
+          <CardDescription>{t("tfgControlPanelDescription")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="space-y-2">
+            <p className="text-sm font-medium">{t("tfgStep1Title")}</p>
+            <p className="text-muted-foreground text-xs">{t("tfgStep1Body")}</p>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <Badge variant={status?.referenceBundleValid === true ? "default" : "secondary"}>
+                {status?.referenceBundleValid === true
+                  ? t("tfgStep1ReferenceBundleValid")
+                  : t("tfgStep1ReferenceBundleUnknown")}
+              </Badge>
+              <Badge variant={(experimentalList.data?.length ?? 0) > 0 ? "outline" : "secondary"}>
+                {t("tfgStep1UploadsBadge", { n: experimentalList.data?.length ?? 0 })}
+              </Badge>
+              <Link
+                className="text-primary inline-flex items-center underline underline-offset-4"
+                href="/lab#datasets"
+              >
+                {t("tfgStep1JumpToDatasets")}
+              </Link>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">{t("tfgStep2Title")}</p>
+            <p className="text-muted-foreground text-xs">{t("tfgStep2Body")}</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <WorkflowCard
+                title={t("tfgFlowLlmTitle")}
+                body={t("tfgFlowLlmBody")}
+                datasetLine={t("tfgFlowLlmDataset")}
+                outputLine={t("tfgFlowLlmOutput")}
+                href="/lab/evaluation/llm"
+                cta={t("tfgFlowCtaOpen")}
+                t={t}
+              />
+              <WorkflowCard
+                title={t("tfgFlowEmbeddingTitle")}
+                body={t("tfgFlowEmbeddingBody")}
+                datasetLine={t("tfgFlowEmbeddingDataset")}
+                outputLine={t("tfgFlowEmbeddingOutput")}
+                href="/lab/evaluation/embedding"
+                cta={t("tfgFlowCtaOpen")}
+                t={t}
+              />
+              <WorkflowCard
+                title={t("tfgFlowRagTitle")}
+                body={t("tfgFlowRagBody")}
+                datasetLine={t("tfgFlowRagDataset")}
+                outputLine={t("tfgFlowRagOutput")}
+                href="/lab/evaluation/rag"
+                cta={t("tfgFlowCtaOpen")}
+                t={t}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">{t("tfgStep3Title")}</p>
+            <p className="text-muted-foreground text-xs">{t("tfgStep3Body")}</p>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <p className="text-muted-foreground">{t("tfgStep3Hint")}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
           <div className="min-w-0 flex-1 space-y-1.5">
@@ -203,6 +275,7 @@ export default function LabOverviewPage() {
         </CardContent>
       </Card>
 
+      <div id="datasets" />
       <LabExperimentalDatasetPanel />
 
       <Card>
@@ -219,6 +292,40 @@ export default function LabOverviewPage() {
           />
         </CardHeader>
       </Card>
+    </div>
+  );
+}
+
+function WorkflowCard({
+  title,
+  body,
+  datasetLine,
+  outputLine,
+  href,
+  cta,
+  t,
+}: Readonly<{
+  title: string;
+  body: string;
+  datasetLine: string;
+  outputLine: string;
+  href: string;
+  cta: string;
+  t: (key: string) => string;
+}>) {
+  return (
+    <div className="rounded-md border bg-muted/20 p-3 text-sm">
+      <p className="font-medium">{title}</p>
+      <p className="text-muted-foreground mt-1 text-xs leading-relaxed">{body}</p>
+      <p className="text-muted-foreground mt-2 text-xs">
+        <span className="font-medium">{t("tfgFlowMetaDataset")}:</span> {datasetLine}
+      </p>
+      <p className="text-muted-foreground mt-1 text-xs">
+        <span className="font-medium">{t("tfgFlowMetaOutput")}:</span> {outputLine}
+      </p>
+      <Link className="text-primary mt-2 inline-block text-xs underline-offset-4 hover:underline" href={href}>
+        {cta}
+      </Link>
     </div>
   );
 }

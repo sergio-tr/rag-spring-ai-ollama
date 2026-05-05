@@ -1,10 +1,10 @@
 import type { ConversationDto, RagPresetDto } from "@/types/api";
 
 /**
- * Matches seeded `Demo_Worst` in backend migration `V18__demo_rag_presets.sql`
+ * Matches seeded `Demo_Best` in backend migration `V18__demo_rag_presets.sql`
  * when `effectivePresetId` is absent (older API responses).
  */
-export const CHAT_DETERMINISTIC_DEFAULT_PRESET_ID = "cafe0001-0001-4001-8001-000000000001";
+export const CHAT_DETERMINISTIC_DEFAULT_PRESET_ID = "cafe0001-0001-4001-8001-000000000003";
 
 /** UUID string always suitable for `<select value>` — never empty / "None". */
 export function resolveConversationPresetSelectValue(conversation: ConversationDto | undefined): string {

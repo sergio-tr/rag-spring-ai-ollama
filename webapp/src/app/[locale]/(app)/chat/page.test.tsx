@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
@@ -57,7 +58,7 @@ vi.mock("@/store/app.store", () => ({
     sel({ activeProject: { id: "p1", name: "P" } }),
 }));
 
-const DEFAULT_EFFECTIVE_PRESET_ID = "cafe0001-0001-4001-8001-000000000001";
+const DEFAULT_EFFECTIVE_PRESET_ID = "cafe0001-0001-4001-8001-000000000003";
 
 const mockConvRows: ConversationDto[] = [
   {
@@ -274,6 +275,9 @@ function patchConversationApiCalls() {
 function defaultApiFetch(url: string | { toString(): string }, init?: RequestInit): Promise<unknown> {
   const u = typeof url === "string" ? url : url.toString();
   const method = (init?.method ?? "GET").toUpperCase();
+  if (method === "GET" && u.includes("/lab/experimental-presets")) {
+    return Promise.resolve([]);
+  }
   if (method === "PATCH" && /\/conversations\/([^/]+)\/?$/.test(u) && !u.includes("/messages")) {
     const idMatch = u.match(/\/conversations\/([^/]+)\/?$/);
     const cid = idMatch?.[1];
@@ -661,7 +665,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
-    expect(presetSelect).toHaveValue("cafe0001-0001-4001-8001-000000000001");
+    expect(presetSelect).toHaveValue("cafe0001-0001-4001-8001-000000000003");
     expect(screen.getByRole("option", { name: /^Recommended default$/ })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
     expect(patchConversationApiCalls()).toHaveLength(0);
@@ -692,7 +696,7 @@ describe("ChatPage", () => {
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     expect(presetSelect).toBeDisabled();
     expect(screen.getByRole("option", { name: /^Default configuration$/ })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/No presets are available/i);
+    expect(screen.getAllByRole("status").some((n) => /No presets are available/i.test(n.textContent ?? ""))).toBe(true);
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
   });
 
@@ -728,6 +732,39 @@ describe("ChatPage", () => {
       const body = JSON.parse(String(init?.body ?? "{}")) as { documentFilter: string[] };
       expect([...(body.documentFilter ?? [])].sort()).toEqual(["d1", "d2"]);
     });
+  });
+
+  it("keeps chat settings panel open while changing preset and model controls", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+    const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
+    await user.selectOptions(presetSelect, "pr1");
+    expect(screen.getByRole("combobox", { name: /Model/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Close$/i })).toBeInTheDocument();
+  });
+
+  it("uploads documents directly from chat settings add documents control", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+    const uploadInput = await screen.findByLabelText(/Upload files to project/i);
+    const file = new File(["x"], "from-settings.doc", { type: "application/msword" });
+    await user.upload(uploadInput, file);
+    await waitFor(() => expect(uploadMutateAsyncMock).toHaveBeenCalledWith(file));
+  });
+
+  it("supports drag & drop upload into the chat thread area", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    const dropTarget = await screen.findByTestId("chat-thread-dropzone");
+    const file = new File(["x"], "dropped.pdf", { type: "application/pdf" });
+    fireEvent.dragOver(dropTarget, { dataTransfer: { files: [file] } });
+    fireEvent.drop(dropTarget, { dataTransfer: { files: [file] } });
+    await waitFor(() => expect(uploadMutateAsyncMock).toHaveBeenCalledWith(file));
   });
 
   it("opens manage documents sheet from chat controls", async () => {
@@ -766,7 +803,8 @@ describe("ChatPage", () => {
     vi.mocked(apiFetch).mockClear();
     await openChatToolbarOverflow(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
-    const input = await screen.findByLabelText(/Upload files to project/i);
+    const dlg = await screen.findByRole("dialog");
+    const input = await within(dlg).findByLabelText(/Upload files to project/i);
     const file = new File(["x"], "new.doc", { type: "application/msword" });
     await user.upload(input, file);
     await waitFor(() => expect(uploadMutateAsyncMock).toHaveBeenCalledWith(file));
@@ -786,7 +824,8 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
     await user.click(screen.getByRole("button", { name: /Manage project documents/i }));
-    const input = await screen.findByLabelText(/Upload files to project/i);
+    const dlg = await screen.findByRole("dialog");
+    const input = await within(dlg).findByLabelText(/Upload files to project/i);
     await user.upload(input, new File(["x"], "big.bin"));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
@@ -831,7 +870,8 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
-    await user.click(screen.getByRole("checkbox", { name: /Limit retrieval to selected documents/i }));
+    const cb = await screen.findByRole("checkbox", { name: /Limit retrieval to selected documents/i });
+    expect(cb).toBeDisabled();
     await waitFor(() =>
       expect(useChatToolbarStore.getState().api?.limitDocsToggleNotice ?? "").toMatch(/READY/i),
     );
@@ -963,7 +1003,7 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
-    await user.click(screen.getByRole("menuitem", { name: /^Delete chat$/i }));
+    await user.click(screen.getByTestId("chat-delete-menu-item"));
     expect(await screen.findByRole("heading", { name: /Delete this chat/i })).toBeInTheDocument();
   });
 
@@ -972,7 +1012,7 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
-    await user.click(screen.getByRole("menuitem", { name: /^Delete chat$/i }));
+    await user.click(screen.getByTestId("chat-delete-menu-item"));
     const dlg = await screen.findByRole("dialog");
     await user.click(within(dlg).getByRole("button", { name: /^Cancel$/i }));
     expect(deleteMutateAsync).not.toHaveBeenCalled();
@@ -983,7 +1023,7 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
-    await user.click(screen.getByRole("menuitem", { name: /^Delete chat$/i }));
+    await user.click(screen.getByTestId("chat-delete-menu-item"));
     const dlg = await screen.findByRole("dialog");
     await user.click(within(dlg).getByRole("button", { name: /^Delete chat$/i }));
     expect(deleteMutateAsync).toHaveBeenCalledWith("c1");

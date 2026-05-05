@@ -23,6 +23,7 @@ import {
 import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
 import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
 import { useRagPresets } from "@/features/chat/hooks/use-rag-presets";
+import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import {
   useProjectDocuments,
   useUploadProjectDocument,
@@ -49,6 +50,7 @@ import type {
   LabJobAcceptedDto,
   PatchUserMessageBody,
   PostMessageBody,
+  ProjectDocumentDto,
 } from "@/types/api";
 import { ChevronDown, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -129,6 +131,15 @@ function ChatPageInner() {
   const [docsSheetOpen, setDocsSheetOpen] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const [uploadItems, setUploadItems] = useState<
+    Array<{
+      fileName: string;
+      phase: "uploading" | "ingesting" | "ready" | "error" | "stalled";
+      chunkCount?: number | null;
+      errorMessage?: string | null;
+      docId?: string | null;
+    }>
+  >([]);
   const [deleteDialogTarget, setDeleteDialogTarget] = useState<{ id: string; title: string } | null>(
     null,
   );
@@ -147,6 +158,7 @@ function ChatPageInner() {
   const [optimisticUserContent, setOptimisticUserContent] = useState<string | null>(null);
   /** Visible pipeline stages between send and a terminal assistant outcome. */
   const [assistantPhase, setAssistantPhase] = useState<AssistantPipelinePhase>(null);
+  const [chatDropActive, setChatDropActive] = useState(false);
 
   useEffect(() => {
     if (urlConversationId && urlConversationId !== conversationId) {
@@ -198,6 +210,7 @@ function ChatPageInner() {
     isError: presetsError,
     isLoading: presetsLoading,
   } = useRagPresets();
+  const experimentalPresets = useExperimentalPresetCatalog();
 
   const activeConv = useMemo(
     () => (conversationId && convs ? convs.find((c) => c.id === conversationId) : undefined),
@@ -208,6 +221,10 @@ function ChatPageInner() {
   /** Single source of truth: server-backed conversation row (optimistic updates inside {@link usePatchConversation}). */
   const selectedDocIds = activeConv?.documentFilter ?? [];
   const limitDocs = selectedDocIds.length > 0;
+  const readyDocIds = useMemo(() => docs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [], [docs]);
+  const limitDocsDisabled = !limitDocs && readyDocIds.length === 0;
+  const limitDocsToggleNoticeEffective =
+    limitDocsDisabled && !limitDocs ? t("limitDocumentsNoReadyHint") : limitDocsToggleNotice;
 
   const presetSyncKey = useMemo(() => {
     if (!activeConv) return "";
@@ -718,24 +735,69 @@ function ChatPageInner() {
       if (!files?.length || !conversationId || !projectId || !activeConv) return;
       setUploadError(null);
       setUploadNotice(null);
+      setUploadItems([]);
       let merged = [...(activeConv.documentFilter ?? [])];
       for (const file of Array.from(files)) {
+        setUploadItems((prev) => [{ fileName: file.name, phase: "uploading" as const }, ...prev].slice(0, 10));
         try {
           const doc = await uploadDoc.mutateAsync(file);
           await refetchProjectDocuments();
-          if (doc.status === "READY") {
+          setUploadItems((prev) =>
+            prev.map((x) =>
+              x.fileName === file.name && x.phase === "uploading"
+                ? { ...x, phase: doc.status === "READY" ? "ready" : doc.status === "ERROR" ? "error" : "ingesting", docId: doc.id, chunkCount: doc.chunkCount ?? null, errorMessage: doc.errorMessage ?? null }
+                : x,
+            ),
+          );
+          let terminalStatus: ProjectDocumentDto["status"] = doc.status;
+          if (doc.status !== "READY" && doc.status !== "ERROR") {
+            const started = Date.now();
+            while (true) {
+              const tick = await apiFetch<ProjectDocumentDto>(apiProductPath(`/documents/${doc.id}/status`));
+              setUploadItems((prev) =>
+                prev.map((x) =>
+                  x.docId === doc.id
+                    ? {
+                        ...x,
+                        phase: tick.status === "READY" ? "ready" : tick.status === "ERROR" ? "error" : "ingesting",
+                        chunkCount: tick.chunkCount ?? null,
+                        errorMessage: tick.errorMessage ?? null,
+                      }
+                    : x,
+                ),
+              );
+              terminalStatus = tick.status;
+              if (tick.status === "READY" || tick.status === "ERROR") break;
+              if (Date.now() - started > 5 * 60_000) {
+                setUploadItems((prev) =>
+                  prev.map((x) => (x.docId === doc.id ? { ...x, phase: "stalled" } : x)),
+                );
+                terminalStatus = "INGESTING";
+                break;
+              }
+              await new Promise<void>((r) => setTimeout(r, 1500));
+            }
+          }
+          await refetchProjectDocuments();
+          if (terminalStatus === "READY") {
             if (merged.length > 0) {
               merged = Array.from(new Set([...merged, doc.id]));
               patchConv.mutate({ conversationId, body: { documentFilter: merged } });
             } else {
               setUploadNotice(t("documentsUploadAddedToProjectHint"));
             }
-          } else {
+          } else if (terminalStatus === "INGESTING") {
             setUploadNotice(t("documentsUploadProcessingHint"));
           }
         } catch (e) {
-          setUploadError(getSafeApiErrorMessage(e));
-          break;
+          const msg = getSafeApiErrorMessage(e);
+          setUploadError(msg);
+          setUploadItems((prev) =>
+            prev.map((x) =>
+              x.fileName === file.name && x.phase === "uploading" ? { ...x, phase: "error", errorMessage: msg } : x,
+            ),
+          );
+          continue;
         }
       }
     },
@@ -750,18 +812,14 @@ function ChatPageInner() {
         patchConv.mutate({ conversationId, body: { documentFilter: [] } });
         return;
       }
-      void (async () => {
-        const { data: freshDocs } = await refetchProjectDocuments();
-        const ready =
-          freshDocs?.filter((d) => d.status === "READY").map((d) => d.id) ?? [];
-        if (ready.length === 0) {
-          setLimitDocsNoticeRecord({ conversationId, message: t("limitDocumentsNoReadyHint") });
-          return;
-        }
-        patchConv.mutate({ conversationId, body: { documentFilter: ready } });
-      })();
+      // Prefer already-fetched docs so the checkbox becomes controlled immediately (no "revert" while awaiting refetch).
+      if (readyDocIds.length === 0) {
+        setLimitDocsNoticeRecord({ conversationId, message: t("limitDocumentsNoReadyHint") });
+        return;
+      }
+      patchConv.mutate({ conversationId, body: { documentFilter: readyDocIds } });
     },
-    [conversationId, patchConv, refetchProjectDocuments, t],
+    [conversationId, patchConv, readyDocIds, t],
   );
 
   const onDocToggle = (documentId: string, checked: boolean) => {
@@ -796,6 +854,7 @@ function ChatPageInner() {
       },
       openMoveDialog: () => setMoveDialogOpen(true),
       openDocumentsSheet: () => setDocsSheetOpen(true),
+      onAddDocuments: handleChatDocumentUpload,
       llmModelChoice,
       setLlmModelChoice,
       modelsCatalog,
@@ -806,13 +865,20 @@ function ChatPageInner() {
       presets,
       presetsError,
       presetsLoading,
+      experimentalPresets: experimentalPresets.data,
+      experimentalPresetsLoading: experimentalPresets.isLoading,
+      experimentalPresetsError: experimentalPresets.isError,
       presetSelectDisabled,
       syntheticPresetOptionNeeded,
       presetLabelOpts,
       limitDocs,
       onLimitDocsChange,
-      limitDocsToggleNotice,
+      limitDocsDisabled,
+      limitDocsToggleNotice: limitDocsToggleNoticeEffective,
       patchConvPending: patchConv.isPending,
+      uploadPending: uploadDoc.isPending,
+      uploadError,
+      uploadNotice,
     });
     return () => useChatToolbarStore.getState().setApi(null);
   }, [
@@ -828,13 +894,21 @@ function ChatPageInner() {
     presets,
     presetsError,
     presetsLoading,
+    experimentalPresets.data,
+    experimentalPresets.isLoading,
+    experimentalPresets.isError,
     presetSelectDisabled,
     syntheticPresetOptionNeeded,
     presetLabelOpts,
     limitDocs,
     onLimitDocsChange,
-    limitDocsToggleNotice,
+    limitDocsDisabled,
+    limitDocsToggleNoticeEffective,
     patchConv.isPending,
+    handleChatDocumentUpload,
+    uploadDoc.isPending,
+    uploadError,
+    uploadNotice,
   ]);
 
   if (!projectId) {
@@ -1002,14 +1076,38 @@ function ChatPageInner() {
             uploadPending={uploadDoc.isPending}
             uploadError={uploadError}
             uploadNotice={uploadNotice}
+            uploadItems={uploadItems}
             onDocToggle={onDocToggle}
             onUploadFiles={handleChatDocumentUpload}
           />
         ) : null}
         <div
           ref={scrollAreaRef}
+          data-testid="chat-thread-dropzone"
           className="relative min-h-0 flex-1 space-y-3 overflow-y-auto rounded-lg border bg-card/30 p-3"
+          onDragOver={(e) => {
+            // Allow dropping files anywhere in the chat thread area.
+            e.preventDefault();
+            if (!conversationId || !projectId) return;
+            setChatDropActive(true);
+          }}
+          onDragLeave={() => setChatDropActive(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setChatDropActive(false);
+            if (!conversationId || !projectId) return;
+            const files = e.dataTransfer.files;
+            if (!files || files.length === 0) return;
+            setDocsSheetOpen(true);
+            void handleChatDocumentUpload(files);
+          }}
         >
+          {chatDropActive ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-2 z-10 rounded-lg border-2 border-dashed border-primary bg-primary/5"
+            />
+          ) : null}
           {showJumpToBottom ? (
             <Button
               type="button"

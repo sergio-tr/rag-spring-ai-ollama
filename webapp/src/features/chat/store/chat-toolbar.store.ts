@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { ModelsCatalogResponse, RagPresetDto } from "@/types/api";
+import type { ExperimentalPresetCatalogItemDto, ModelsCatalogResponse, RagPresetDto } from "@/types/api";
 
 /** Callback bundle registered by the chat page so the shell toolbar menu stays functional without duplicating UI. */
 export type ChatToolbarApi = {
@@ -10,6 +10,7 @@ export type ChatToolbarApi = {
   openDeleteForActiveConversation: () => void;
   openMoveDialog: () => void;
   openDocumentsSheet: () => void;
+  onAddDocuments: (files: FileList | null) => void;
   llmModelChoice: string;
   setLlmModelChoice: (v: string) => void;
   modelsCatalog: ModelsCatalogResponse | undefined;
@@ -20,6 +21,9 @@ export type ChatToolbarApi = {
   presets: RagPresetDto[] | undefined;
   presetsError: boolean;
   presetsLoading: boolean;
+  experimentalPresets: ExperimentalPresetCatalogItemDto[] | undefined;
+  experimentalPresetsLoading: boolean;
+  experimentalPresetsError: boolean;
   presetSelectDisabled: boolean;
   syntheticPresetOptionNeeded: boolean;
   presetLabelOpts: {
@@ -29,8 +33,12 @@ export type ChatToolbarApi = {
   };
   limitDocs: boolean;
   onLimitDocsChange: (checked: boolean) => void;
+  limitDocsDisabled: boolean;
   limitDocsToggleNotice: string | null;
   patchConvPending: boolean;
+  uploadPending: boolean;
+  uploadError: string | null;
+  uploadNotice: string | null;
 };
 
 type ChatToolbarState = {

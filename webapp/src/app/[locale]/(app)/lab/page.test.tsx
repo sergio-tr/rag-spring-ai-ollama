@@ -4,7 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { createTestQueryClient } from "@/test-utils/query-client";
-import LabOverviewPage from "./page";
+
+vi.mock("next/link", () => ({
+  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
+    <a href={href}>{children}</a>
+  ),
+}));
 
 vi.mock("@/features/lab/hooks/use-lab-status", () => ({
   useLabStatus: vi.fn(),
@@ -30,7 +35,14 @@ import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimen
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 
 describe("LabOverviewPage", () => {
-  beforeEach(() => {
+  let LabOverviewPage: typeof import("./page").default;
+
+  beforeEach(async () => {
+    // Prevent accidental Next.js prefetch / fetch calls from hitting a real server in unit tests.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 204 })));
+
+    // Import after mocks are registered (prevents Next Link prefetch network calls in DOM test env).
+    LabOverviewPage = (await import("./page")).default;
     vi.mocked(useLabStatus).mockReset();
     vi.mocked(useExperimentalDatasetsQuery).mockReset();
     vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
@@ -86,7 +98,7 @@ describe("LabOverviewPage", () => {
     );
     expect(screen.getByText(/LLM rows: 12/i)).toBeInTheDocument();
     expect(screen.queryByText(/legacy fallback/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Internal reference workbook/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Internal reference workbook/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Packaged workbook present/i)).toBeInTheDocument();
   });
 
@@ -114,6 +126,37 @@ describe("LabOverviewPage", () => {
     expect(screen.queryByText(/Feature flags from GET/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/\{product\}/i)).not.toBeInTheDocument();
     expect(screen.getByText(/operators should ship/i)).toBeInTheDocument();
+  });
+
+  it("renders the three TFG workflows with links to each evaluation page", () => {
+    vi.mocked(useLabStatus).mockReturnValue({
+      data: {
+        datasetKindsReady: true,
+        datasets: { enabled: true, datasetKindsReady: true },
+        evaluations: { llm: true, rag: true, classifierProxy: false, asyncJobs: true },
+        classifier: { configured: true, train: true, evaluate: true },
+        message: "",
+      },
+      isError: false,
+      isLoading: false,
+      refetch: vi.fn(),
+    } as never);
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <IntlTestProvider>
+          <LabOverviewPage />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByTestId("lab-tfg-control-panel")).toBeInTheDocument();
+    expect(screen.getByText(/TFG control panel/i)).toBeInTheDocument();
+    expect(screen.getByText(/Step 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Step 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/Step 3/i)).toBeInTheDocument();
+    expect(screen.getByText(/A\.\s*LLM model baseline/i)).toBeInTheDocument();
+    expect(screen.getByText(/B\.\s*Embedding model baseline/i)).toBeInTheDocument();
+    expect(screen.getByText(/C\.\s*RAG preset benchmark/i)).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /Open workflow/i }).length).toBeGreaterThanOrEqual(3);
   });
 
   it("collapses technical server status lines behind a disclosure by default", async () => {
