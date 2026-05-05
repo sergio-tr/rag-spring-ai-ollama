@@ -3,7 +3,9 @@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
+  downloadCampaignMvpItemsJson,
   downloadMvpExport,
+  fetchLabCampaignRuns,
   fetchLabEvaluationRun,
   fetchMvpItemsBundle,
   fetchMvpRollupsJson,
@@ -24,6 +26,7 @@ const PRIMARY_OUTCOME_KEYS = new Set<string>(OUTCOME_ORDER);
 
 export type LabBenchmarkResultsPanelProps = {
   evaluationRunId: string | null;
+  campaignId?: string | null;
   /** When false, the panel does not fetch (job still running or failed). */
   loadEnabled: boolean;
 };
@@ -31,10 +34,11 @@ export type LabBenchmarkResultsPanelProps = {
 /**
  * After a successful benchmark async task, loads run metadata, MVP rollups, and per-item MVP rows for UX (not the legacy CSV).
  */
-export function LabBenchmarkResultsPanel({ evaluationRunId, loadEnabled }: LabBenchmarkResultsPanelProps) {
+export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnabled }: LabBenchmarkResultsPanelProps) {
   const t = useTranslations("Lab");
   const runId = evaluationRunId?.trim() ?? "";
   const enabled = loadEnabled && runId.length > 0;
+  const campId = campaignId?.trim() ?? "";
 
   const query = useQuery({
     queryKey: ["lab", "benchmark-mvp-results", runId],
@@ -45,7 +49,8 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, loadEnabled }: LabBe
         fetchMvpRollupsJson(runId),
         fetchMvpItemsBundle(runId),
       ]);
-      return { run, rollups, itemsBundle };
+      const campaignRuns = campId ? await fetchLabCampaignRuns(campId) : null;
+      return { run, rollups, itemsBundle, campaignRuns };
     },
   });
 
@@ -103,6 +108,17 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, loadEnabled }: LabBe
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
+          {campId ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="lab-export-campaign-items-json"
+              onClick={() => void downloadCampaignMvpItemsJson(campId)}
+            >
+              {t("benchmarkExportCampaignItemsJson")}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -132,6 +148,33 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, loadEnabled }: LabBe
           </Button>
         </div>
       </div>
+
+      {campId && payload.campaignRuns && payload.campaignRuns.length > 0 ? (
+        <div className="space-y-2" data-testid="lab-campaign-runs-panel">
+          <span className="text-muted-foreground text-xs font-medium">{t("benchmarkCampaignRunsTitle")}</span>
+          <div className="max-h-40 overflow-auto rounded-md border bg-background/40 p-2 text-xs">
+            <ul className="space-y-1">
+              {payload.campaignRuns.slice(0, 40).map((r, idx) => {
+                const row = r as Record<string, unknown>;
+                const rid = typeof row.runId === "string" ? row.runId : `row-${idx}`;
+                const model = typeof row.llmModelId === "string" ? row.llmModelId : "—";
+                const status = typeof row.status === "string" ? row.status : "—";
+                return (
+                  <li key={rid} className="flex flex-wrap items-center justify-between gap-2 border-border border-b py-1 last:border-b-0">
+                    <span className="font-mono">{rid.slice(0, 8)}</span>
+                    <span className="truncate">{model}</span>
+                    <span className="text-muted-foreground font-mono">{status}</span>
+                  </li>
+                );
+              })}
+            </ul>
+            {payload.campaignRuns.length > 40 ? (
+              <p className="text-muted-foreground mt-2">{t("benchmarkCampaignRunsTruncated", { n: payload.campaignRuns.length })}</p>
+            ) : null}
+          </div>
+          <p className="text-muted-foreground text-[11px]">{t("benchmarkCampaignRunsHint")}</p>
+        </div>
+      ) : null}
 
       <div className="space-y-2">
         <span className="text-muted-foreground text-xs font-medium">{t("benchmarkOutcomesTitle")}</span>

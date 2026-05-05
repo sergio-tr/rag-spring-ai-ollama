@@ -6,6 +6,19 @@ export async function fetchLabEvaluationRun(runId: string): Promise<EvaluationRu
   return apiFetch<EvaluationRunDetailDto>(apiProductPath(`/lab/runs/${encodeURIComponent(runId)}`));
 }
 
+export async function fetchLabCampaignRuns(campaignId: string): Promise<Array<Record<string, unknown>>> {
+  return apiFetch<Array<Record<string, unknown>>>(
+    apiProductPath(`/lab/campaigns/${encodeURIComponent(campaignId)}/runs`),
+  );
+}
+
+export async function downloadCampaignMvpItemsJson(campaignId: string): Promise<void> {
+  const path = apiProductPath(`/lab/campaigns/${encodeURIComponent(campaignId)}/export/mvp/items.json`);
+  const blob = await apiDownloadBlob(path);
+  const filename = `lab-campaign-${campaignId}-mvp-items.json`;
+  triggerBrowserBlobDownload(blob, filename);
+}
+
 export async function fetchMvpRollupsJson(runId: string): Promise<Record<string, unknown>> {
   return apiFetch<Record<string, unknown>>(
     apiProductPath(`/lab/runs/${encodeURIComponent(runId)}/export/mvp/rollups.json`),

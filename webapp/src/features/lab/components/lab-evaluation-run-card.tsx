@@ -9,6 +9,7 @@ import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
+import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
 import {
   asyncTaskDtoFromSnapshot,
   type LabJobSectionKey,
@@ -135,6 +136,7 @@ export function LabEvaluationRunCard({
   const { data: labStatus } = useLabStatus();
   const experimentalDatasets = useExperimentalDatasetsQuery();
   const experimentalPresets = useExperimentalPresetCatalog();
+  const modelsCatalog = useModelsCatalog();
   const activeProject = useAppStore((s) => s.activeProject);
 
   const [followMode, setFollowMode] = useState<LabJobFollowMode>("poll");
@@ -142,6 +144,7 @@ export function LabEvaluationRunCard({
   const [result, setResult] = useState<unknown>(null);
   const [accepted, setAccepted] = useState<LabJobAcceptedDto | null>(null);
   const [evaluationRunId, setEvaluationRunId] = useState<string | null>(null);
+  const [campaignId, setCampaignId] = useState<string | null>(null);
   const [taskStatus, setTaskStatus] = useState<AsyncTaskStatusDto | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [stoppedWaiting, setStoppedWaiting] = useState(false);
@@ -149,6 +152,8 @@ export function LabEvaluationRunCard({
   const [userDatasetId, setUserDatasetId] = useState<string | null>(null);
   const [llmModelId, setLlmModelId] = useState("");
   const [embeddingModelId, setEmbeddingModelId] = useState("");
+  const [llmModelIds, setLlmModelIds] = useState<string[]>([]);
+  const [embeddingModelIds, setEmbeddingModelIds] = useState<string[]>([]);
   const [embeddingDownstreamRag, setEmbeddingDownstreamRag] = useState(false);
   const [selectedExperimentalPresetCodes, setSelectedExperimentalPresetCodes] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
@@ -278,6 +283,7 @@ export function LabEvaluationRunCard({
     setResult(null);
     setAccepted(null);
     setEvaluationRunId(null);
+    setCampaignId(null);
     setTaskStatus(null);
     setStoppedWaiting(false);
     traceDedupeRef.current = createLabJobTraceDedupe();
@@ -300,8 +306,19 @@ export function LabEvaluationRunCard({
       }
       const lm = llmModelId.trim();
       const em = embeddingModelId.trim();
-      if (lm) body.llmModelId = lm;
-      if (em) body.embeddingModelId = em;
+      const lmList = llmModelIds.map((x) => x.trim()).filter(Boolean);
+      const emList = embeddingModelIds.map((x) => x.trim()).filter(Boolean);
+      if (lmList.length > 0) {
+        body.llmModelIds = lmList;
+        body.campaignName = body.campaignName ?? `LLM campaign (${lmList.length})`;
+      } else if (lm) {
+        body.llmModelId = lm;
+      }
+      if (emList.length > 0) {
+        body.embeddingModelIds = emList;
+      } else if (em) {
+        body.embeddingModelId = em;
+      }
       if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
         body.embeddingDownstreamRag = embeddingDownstreamRag;
       }
@@ -319,6 +336,7 @@ export function LabEvaluationRunCard({
       asyncAccepted = acc;
       setAccepted(acc);
       setEvaluationRunId(accRaw.evaluationRunId);
+      setCampaignId(accRaw.campaignId ?? null);
       useLabJobSessionStore.getState().upsertLabJobOnAccepted({
         accepted: acc,
         sectionKey,
@@ -375,6 +393,16 @@ export function LabEvaluationRunCard({
   }
 
   const showResultsPanel = taskSucceeded(taskStatus) && !!evaluationRunId?.trim();
+  const availableLlmModels =
+    modelsCatalog.data?.allowlist
+      ?.filter((m) => m.type === "LLM" && m.inAllowlist && m.installedInOllama)
+      .map((m) => m.name)
+      .sort((a, b) => a.localeCompare(b)) ?? [];
+  const availableEmbeddingModels =
+    modelsCatalog.data?.allowlist
+      ?.filter((m) => m.type === "EMBEDDING" && m.inAllowlist && m.installedInOllama)
+      .map((m) => m.name)
+      .sort((a, b) => a.localeCompare(b)) ?? [];
 
   return (
     <div className="space-y-4">
@@ -525,6 +553,27 @@ export function LabEvaluationRunCard({
             (benchmarkKind === "EMBEDDING_RETRIEVAL" && embeddingDownstreamRag)) && (
             <div className="space-y-2">
               <Label htmlFor={`lab-llm-model-${sectionKey}`}>{t("benchmarkLlmModelOptional")}</Label>
+              {benchmarkKind === "LLM_JUDGE_QA" && availableLlmModels.length > 0 ? (
+                <>
+                  <select
+                    multiple
+                    data-testid="lab-benchmark-llm-models-multi"
+                    className="border-input bg-background ring-offset-background focus-visible:ring-ring min-h-28 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                    value={llmModelIds}
+                    disabled={running}
+                    onChange={(e) =>
+                      setLlmModelIds(Array.from(e.target.selectedOptions).map((o) => o.value))
+                    }
+                  >
+                    {availableLlmModels.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-muted-foreground text-xs">{t("benchmarkLlmMultiHint")}</p>
+                </>
+              ) : null}
               <input
                 id={`lab-llm-model-${sectionKey}`}
                 data-testid="lab-benchmark-llm-model"
@@ -540,6 +589,29 @@ export function LabEvaluationRunCard({
           {(benchmarkKind === "EMBEDDING_RETRIEVAL" || benchmarkKind === "RAG_PRESET_END_TO_END") && (
             <div className="space-y-2">
               <Label htmlFor={`lab-emb-model-${sectionKey}`}>{t("benchmarkEmbeddingModelOptional")}</Label>
+              {benchmarkKind === "EMBEDDING_RETRIEVAL" && availableEmbeddingModels.length > 0 ? (
+                <>
+                  <select
+                    multiple
+                    data-testid="lab-benchmark-embedding-models-multi"
+                    className="border-input bg-background ring-offset-background focus-visible:ring-ring min-h-28 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                    value={embeddingModelIds}
+                    disabled={running}
+                    onChange={(e) =>
+                      setEmbeddingModelIds(Array.from(e.target.selectedOptions).map((o) => o.value))
+                    }
+                  >
+                    {availableEmbeddingModels.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <output className="text-muted-foreground block text-xs">
+                    {t("benchmarkEmbeddingMultiUnsupportedHint")}
+                  </output>
+                </>
+              ) : null}
               <input
                 id={`lab-emb-model-${sectionKey}`}
                 data-testid="lab-benchmark-embedding-model"
@@ -677,7 +749,11 @@ export function LabEvaluationRunCard({
             />
           )}
 
-          <LabBenchmarkResultsPanel evaluationRunId={evaluationRunId} loadEnabled={showResultsPanel} />
+          <LabBenchmarkResultsPanel
+            evaluationRunId={evaluationRunId}
+            campaignId={campaignId}
+            loadEnabled={showResultsPanel}
+          />
 
           {result != null ? (
             <details className="text-xs">

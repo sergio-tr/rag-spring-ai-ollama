@@ -206,6 +206,8 @@ export type BenchmarkJobAcceptedDto = {
   status: string;
   pollPath: string;
   streamPath: string;
+  /** Present when the request starts a multi-run campaign (e.g. multi-LLM). */
+  campaignId?: string | null;
 };
 
 export type StartBenchmarkRunRequest = {
@@ -223,6 +225,14 @@ export type StartBenchmarkRunRequest = {
   llmModelId?: string | null;
   /** Optional Ollama embedding model tag stored on the evaluation run. */
   embeddingModelId?: string | null;
+  /** Optional multi-LLM campaign: one run per model id. */
+  llmModelIds?: string[] | null;
+  /** Optional multi-embedding campaign (backend may reject if unsupported). */
+  embeddingModelIds?: string[] | null;
+  /** When true, let the backend use workbook-derived candidates when supported. */
+  useWorkbookCandidates?: boolean | null;
+  /** Optional user-facing name for campaign grouping. */
+  campaignName?: string | null;
 };
 
 export type ExperimentalPresetCatalogItemDto = {
