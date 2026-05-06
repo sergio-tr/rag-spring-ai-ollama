@@ -51,6 +51,66 @@ export async function authHeadersFromPage(page: Page): Promise<Record<string, st
   return h;
 }
 
+function activeProjectIdFromUrl(page: Page): string {
+  const u = new URL(page.url());
+  const pid = u.searchParams.get("projectId");
+  if (!pid) {
+    throw new Error(`Expected ?projectId= on URL but got: ${page.url()}`);
+  }
+  return pid;
+}
+
+type ProjectDocumentDto = {
+  id: string;
+  fileName: string;
+  status: "INGESTING" | "READY" | "ERROR";
+  errorMessage?: string | null;
+};
+
+/**
+ * Polls the product API for a document to become READY (by filename) under the active projectId in the URL.
+ * This avoids flakiness where the documents table UI refresh lags behind the backend ingest completion.
+ */
+export async function waitForDocumentReadyByName(
+  page: Page,
+  fileName: string,
+  timeoutMs: number,
+): Promise<ProjectDocumentDto> {
+  const projectId = activeProjectIdFromUrl(page);
+  const headers = await authHeadersFromPage(page);
+  const started = Date.now();
+
+  // Small backoff sequence; Playwright already runs with 1 worker in CI for fullstack.
+  const intervals = [200, 400, 800, 1200, 2000];
+  let intervalIdx = 0;
+
+  while (Date.now() - started < timeoutMs) {
+    const res = await page.request.get(productApiUrl(`/projects/${projectId}/documents`), { headers });
+    if (!res.ok()) {
+      const body = await res.text();
+      throw new Error(
+        `waitForDocumentReadyByName: GET /projects/${projectId}/documents failed ${res.status()} ${body}`,
+      );
+    }
+    const docs = (await res.json()) as ProjectDocumentDto[];
+    const doc = docs.find((d) => d.fileName === fileName);
+    if (doc) {
+      if (doc.status === "READY") return doc;
+      if (doc.status === "ERROR") {
+        throw new Error(
+          `waitForDocumentReadyByName: document reached ERROR (file=${fileName} id=${doc.id}) ${doc.errorMessage ?? ""}`,
+        );
+      }
+    }
+
+    const sleepMs = intervals[Math.min(intervalIdx, intervals.length - 1)];
+    intervalIdx += 1;
+    await page.waitForTimeout(sleepMs);
+  }
+
+  throw new Error(`waitForDocumentReadyByName: timed out after ${timeoutMs}ms waiting for READY (${fileName})`);
+}
+
 /** Logs in with Flyway seed credentials and waits for the projects page. */
 export async function loginAsSeedUser(page: Page): Promise<void> {
   await registerE2eLayoutPersistenceReset(page);

@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { uniqueProjectName } from "../fixtures/projects";
-import { createAndActivateProject, loginAsSeedUser, sendChatMessage } from "../support/helpers";
+import {
+  createAndActivateProject,
+  loginAsSeedUser,
+  sendChatMessage,
+  waitForDocumentReadyByName,
+} from "../support/helpers";
 
 /**
  * E2E-05: ingest a doc, then one chat turn.
@@ -27,14 +32,7 @@ test.describe("Chat RAG", () => {
       mimeType: "text/plain",
       buffer: Buffer.from("SOURCE_MARKER_E2E_05 retrieval smoke content.\n"),
     });
-    await expect.poll(
-      async () => {
-        const row = page.locator("tbody tr").filter({ hasText: "e2e-sources.txt" });
-        if ((await row.count()) === 0) return false;
-        return (await row.getByText("READY", { exact: true }).count()) > 0;
-      },
-      { timeout: 120_000 },
-    ).toBe(true);
+    await waitForDocumentReadyByName(page, "e2e-sources.txt", 120_000);
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await expect(page).toHaveURL(/\/en\/chat/);

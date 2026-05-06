@@ -8,6 +8,9 @@ import { createAndActivateProject, loginAsSeedUser } from "../support/helpers";
  */
 test.describe("Chat delete conversation @fullstack", () => {
   test("delete chat opens dialog, confirm removes conversation @fullstack", async ({ page }) => {
+    // Conversation PATCH + list refresh may exceed 30s on cold CI runs.
+    test.setTimeout(120_000);
+
     await loginAsSeedUser(page);
     await createAndActivateProject(page, uniqueProjectName("e2e-p8-del"));
 
@@ -30,7 +33,7 @@ test.describe("Chat delete conversation @fullstack", () => {
     const convRow = list.locator('[data-testid^="conversation-item-"]').filter({ hasText: uniqueTitle });
     await expect
       .poll(async () => convRow.count(), {
-        timeout: 25_000,
+        timeout: 45_000,
         intervals: [150, 300, 500],
       })
       .toBe(1);

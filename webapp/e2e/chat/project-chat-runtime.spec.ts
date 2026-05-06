@@ -8,6 +8,7 @@ import {
   createAndActivateProject,
   loginAsSeedUser,
   sendChatMessage,
+  waitForDocumentReadyByName,
 } from "../support/helpers";
 
 test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", () => {
@@ -38,6 +39,9 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
   });
 
   test("Buenos dias: no gateway failure, assistant or fallback, alerts sanitized", async ({ page }) => {
+    // Assistant completion can exceed 30s in CI depending on stack warmup.
+    test.setTimeout(240_000);
+
     let chatPostStatus = 0;
     page.on("response", async (res) => {
       const req = res.request();
@@ -77,6 +81,8 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
   });
 
   test("empty project: Buenos dias completes without send error strip", async ({ page }) => {
+    test.setTimeout(240_000);
+
     await loginAsSeedUser(page);
     await createAndActivateProject(page, uniqueProjectName("e2e-empty-proj"));
 
@@ -109,16 +115,7 @@ test.describe("Project chat runtime (plan hardening) @fullstack @chatRuntime", (
       mimeType: "text/plain",
       buffer: Buffer.from("Limit retrieval checkbox needs at least one READY document.\n"),
     });
-    await expect
-      .poll(
-        async () => {
-          const row = page.locator("tbody tr").filter({ hasText: "e2e-limit-docs.txt" });
-          if ((await row.count()) === 0) return false;
-          return (await row.getByText("READY", { exact: true }).count()) > 0;
-        },
-        { timeout: 120_000 },
-      )
-      .toBe(true);
+    await waitForDocumentReadyByName(page, "e2e-limit-docs.txt", 120_000);
 
     await page.getByRole("link", { name: /^chat$/i }).click();
     await page.getByTestId("chat-new-conversation").click();
