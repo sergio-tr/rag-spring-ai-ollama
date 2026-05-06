@@ -309,28 +309,7 @@
                 <version>3.5.7</version>
             </plugin>
 
-            <!-- Generate the canonical reference bundle XLSX into target/classes (packaged into the JAR). -->
-            <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>exec-maven-plugin</artifactId>
-                <version>3.6.1</version>
-                <executions>
-                    <execution>
-                        <id>generate-reference-bundle-xlsx</id>
-                        <phase>process-classes</phase>
-                        <goals>
-                            <goal>java</goal>
-                        </goals>
-                        <configuration>
-                            <mainClass>com.uniovi.rag.application.evaluation.workbook.ReferenceBundleWorkbookGenerator</mainClass>
-                            <arguments>
-                                <argument>${project.build.outputDirectory}</argument>
-                            </arguments>
-                            <classpathScope>compile</classpathScope>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
+            <!-- Reference bundle XLSX is shipped as a classpath resource under src/main/resources/evaluation/. -->
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -431,7 +410,7 @@
                         <exclude>com/uniovi/rag/service/document/**</exclude>
                         <exclude>com/uniovi/rag/application/service/knowledge/**</exclude>
                         <exclude>com/uniovi/rag/service/retriever/**</exclude>
-                        <!-- LLM/judge + persistence-heavy evaluation stack; bundle gate fails if fully included before broader tests (see .cursor/plans/rag_service_evaluation_coverage_exit_2026-04-21.plan.md). -->
+                        <!-- LLM/judge + persistence-heavy evaluation stack; bundle gate fails if fully included before broader tests. -->
                         <exclude>com/uniovi/rag/service/evaluation/**</exclude>
                         <exclude>com/uniovi/rag/tool/**</exclude>
                         <exclude>com/uniovi/rag/service/extraction/**</exclude>
