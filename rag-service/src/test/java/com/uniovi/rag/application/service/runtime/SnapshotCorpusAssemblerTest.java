@@ -142,6 +142,7 @@ class SnapshotCorpusAssemblerTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 "",
                 "",
                 Optional.empty(),

@@ -10,6 +10,7 @@ import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.RuntimeOperationKind;
 import com.uniovi.rag.domain.runtime.memory.ConversationMemoryOutcome;
@@ -23,6 +24,7 @@ import com.uniovi.rag.domain.runtime.query.AmbiguityAssessment;
 import com.uniovi.rag.domain.runtime.retrieval.CompressionOutcome;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalMode;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalRequest;
+import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -39,6 +41,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -83,18 +87,92 @@ class AdvancedRetrievalPipelineTest {
 
         when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
         when(denseRetrievalStrategy.retrieve(req)).thenReturn(List.of());
-        when(retrievalReranker.rerank(eq(req), eq(plan), eq(List.of())))
-                .thenReturn(new RetrievalReranker.RerankResult(List.of(), List.of()));
-        when(retrievalFilter.filter(eq(req), eq(plan), eq(List.of()))).thenReturn(List.of());
-        when(contextCompressionStrategy.compress(eq(List.of()), anyInt()))
-                .thenReturn(
-                        new ContextCompressionStrategy.CompressionResult(
-                                List.of(), new CompressionOutcome(0, 0, 0, List.of())));
+        when(retrievalFilter.filterBasic(eq(req), eq(List.of()))).thenReturn(List.of());
         when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("");
 
         var out = pipeline.retrieve(ctx, plan, "DocumentDenseRagWorkflow");
 
         assertThat(out.traceNotes()).contains("retrieval_empty_result");
+    }
+
+    @Test
+    void retrieve_whenRankerDisabled_skipsReranker_andTracesSkippedStage() {
+        UUID sid = UUID.randomUUID();
+        ExecutionContext ctx = executionContext(sid, false);
+        QueryPlan plan = minimalPlan();
+        RetrievalRequest req = retrievalRequest(sid, RetrievalMode.DENSE_ONLY);
+        List<RetrievalCandidate> dense =
+                List.of(new RetrievalCandidate("c1", "x", Map.of(), 0.1, 0.0, 1, 0, sid, 1.0));
+
+        when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
+        when(denseRetrievalStrategy.retrieve(req)).thenReturn(dense);
+        when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
+        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+
+        var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
+
+        verify(retrievalReranker, never()).rerank(any(), any(), any());
+        assertThat(out.retrievalStageTraces())
+                .anyMatch(s -> "retrieval_rerank".equals(s.stageName()) && s.outcome() == ExecutionStageOutcome.SKIPPED);
+        assertThat(out.diagnostics().rerankApplied()).isFalse();
+    }
+
+    @Test
+    void retrieve_whenRankerEnabled_callsReranker_andTracesSuccessStage() {
+        UUID sid = UUID.randomUUID();
+        ExecutionContext ctx = executionContext(sid, true);
+        QueryPlan plan = minimalPlan();
+        RetrievalRequest req = retrievalRequest(sid, RetrievalMode.DENSE_ONLY);
+        List<RetrievalCandidate> dense =
+                List.of(new RetrievalCandidate("c1", "x", Map.of(), 0.1, 0.0, 1, 0, sid, 1.0));
+
+        when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
+        when(denseRetrievalStrategy.retrieve(req)).thenReturn(dense);
+        when(retrievalReranker.rerank(eq(req), eq(plan), eq(dense)))
+                .thenReturn(new RetrievalReranker.RerankResult(dense, List.of()));
+        when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
+        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+
+        var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
+
+        verify(retrievalReranker).rerank(eq(req), eq(plan), eq(dense));
+        assertThat(out.retrievalStageTraces())
+                .anyMatch(s -> "retrieval_rerank".equals(s.stageName()) && s.outcome() == ExecutionStageOutcome.SUCCESS);
+        assertThat(out.diagnostics().rerankApplied()).isTrue();
+    }
+
+    @Test
+    void retrieve_whenPostRetrievalEnabled_appliesAdvancedFilter_andEvidenceAwareCompression() {
+        UUID sid = UUID.randomUUID();
+        ExecutionContext ctx = executionContext(sid, true, true);
+        QueryPlan plan = planWithDate("25/02/2025");
+        RetrievalRequest req = retrievalRequestWithMaxChars(sid, RetrievalMode.DENSE_ONLY, 10);
+
+        RetrievalCandidate protectedDate =
+                new RetrievalCandidate("p1", "Fecha 25/02/2025 contenido", Map.of("filename", "ACTA 7.pdf"), 0.1, 0.0, 1, 0, sid, 1.0);
+        RetrievalCandidate tail =
+                new RetrievalCandidate("t1", "xxxxx xxxxx xxxxx", Map.of("filename", "ACTA 8.pdf"), 0.2, 0.0, 2, 0, sid, 0.9);
+        List<RetrievalCandidate> dense = List.of(protectedDate, tail);
+
+        when(retrievalRequestBuilder.build(ctx, plan)).thenReturn(req);
+        when(denseRetrievalStrategy.retrieve(req)).thenReturn(dense);
+        when(retrievalReranker.rerank(eq(req), eq(plan), eq(dense)))
+                .thenReturn(new RetrievalReranker.RerankResult(dense, List.of()));
+        when(retrievalFilter.filterBasic(eq(req), any())).thenReturn(dense);
+        when(retrievalFilter.filterAdvanced(eq(req), eq(plan), any())).thenReturn(dense);
+        when(contextCompressionStrategy.compressPreservingEvidence(eq(dense), anyInt(), any()))
+                .thenReturn(new ContextCompressionStrategy.CompressionResult(List.of(protectedDate), new CompressionOutcome(50, 10, 1, List.of("drop_lowest_rerank_tail_unprotected_first"))));
+        when(retrievalPromptTextBuilder.build(any(), any(), any())).thenReturn("CTX");
+
+        var out = pipeline.retrieve(ctx, plan, "ChunkDenseRagWorkflow");
+
+        verify(retrievalFilter).filterAdvanced(eq(req), eq(plan), any());
+        verify(contextCompressionStrategy).compressPreservingEvidence(eq(dense), eq(10), any());
+        assertThat(out.finalCandidates()).extracting(RetrievalCandidate::candidateId).contains("p1");
+        assertThat(out.retrievalStageTraces())
+                .anyMatch(s -> "retrieval_filter_advanced".equals(s.stageName()) && s.outcome() == ExecutionStageOutcome.SUCCESS);
+        assertThat(out.retrievalStageTraces())
+                .anyMatch(s -> "retrieval_compress".equals(s.stageName()) && s.outcome() == ExecutionStageOutcome.SUCCESS);
     }
 
     @Test
@@ -114,7 +192,15 @@ class AdvancedRetrievalPipelineTest {
     }
 
     private static ExecutionContext executionContext(UUID snapshotId) {
-        RagConfig rag = baseRag();
+        return executionContext(snapshotId, false);
+    }
+
+    private static ExecutionContext executionContext(UUID snapshotId, boolean rankerEnabled) {
+        return executionContext(snapshotId, rankerEnabled, false);
+    }
+
+    private static ExecutionContext executionContext(UUID snapshotId, boolean rankerEnabled, boolean postRetrievalEnabled) {
+        RagConfig rag = baseRag(rankerEnabled, postRetrievalEnabled);
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         rag,
@@ -159,15 +245,15 @@ class AdvancedRetrievalPipelineTest {
                 Optional.empty());
     }
 
-    private static RagConfig baseRag() {
+    private static RagConfig baseRag(boolean rankerEnabled, boolean postRetrievalEnabled) {
         return new RagConfig(
                 false,
                 false,
                 false,
                 false,
                 false,
-                false,
-                false,
+                rankerEnabled,
+                postRetrievalEnabled,
                 false,
                 true,
                 false,
@@ -220,6 +306,10 @@ class AdvancedRetrievalPipelineTest {
     }
 
     private static RetrievalRequest retrievalRequest(UUID snapshotId, RetrievalMode mode) {
+        return retrievalRequestWithMaxChars(snapshotId, mode, 24_000);
+    }
+
+    private static RetrievalRequest retrievalRequestWithMaxChars(UUID snapshotId, RetrievalMode mode, int maxChars) {
         return new RetrievalRequest(
                 "q",
                 Map.of(),
@@ -231,12 +321,46 @@ class AdvancedRetrievalPipelineTest {
                 5,
                 10,
                 5,
-                24_000,
+                maxChars,
                 RetrievalPolicy.denseFetchLimit(5),
                 List.of(snapshotId),
                 UUID.randomUUID(),
                 Optional.empty(),
                 List.of("all"),
                 true);
+    }
+
+    private static QueryPlan planWithDate(String date) {
+        EntityExtractionResult entities =
+                new EntityExtractionResult(
+                        List.of(),
+                        date == null ? List.of() : List.of(date),
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        Optional.empty(),
+                        List.of());
+        return new QueryPlan(
+                QueryPlan.VERSION_P6_QU_CORE_V1,
+                "raw",
+                "raw",
+                "raw",
+                "rewritten",
+                "L",
+                Optional.empty(),
+                ClassifierStatus.DISABLED,
+                QueryIntent.UNKNOWN,
+                Map.of(),
+                List.of(),
+                List.of(),
+                entities,
+                StructuredRewriteResult.identityDisabled("r", "r"),
+                ExpectedAnswerShape.UNKNOWN,
+                AmbiguityAssessment.sufficient(),
+                "c",
+                "m",
+                List.of());
     }
 }

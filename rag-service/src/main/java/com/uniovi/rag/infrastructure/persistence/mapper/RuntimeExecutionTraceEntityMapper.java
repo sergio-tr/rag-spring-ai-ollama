@@ -20,7 +20,7 @@ import java.util.UUID;
 @Component
 public class RuntimeExecutionTraceEntityMapper {
 
-    public static final int TRACE_SCHEMA_VERSION = 1;
+    public static final int TRACE_SCHEMA_VERSION = 2;
 
     static final int MAX_STAGE_DETAIL_CHARS = 512;
     static final int MAX_STAGE_COUNT = 200;

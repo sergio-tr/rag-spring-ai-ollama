@@ -39,7 +39,7 @@ public class FullCorpusWorkflow extends AbstractExecutionWorkflow {
             answer = RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(q);
             stages.add(stage("llm", t1, ExecutionStageOutcome.SKIPPED, "strict_document_grounding_no_context"));
         } else {
-            String user = RuntimeAnswerPrompts.ragUserTurn(q, corpus, docBound);
+            String user = RuntimeAnswerPrompts.ragUserTurn(q, corpus, docBound, answerPlanBlock(ctx));
             answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
             stages.add(stage("llm", t1, ExecutionStageOutcome.SUCCESS, ""));
         }

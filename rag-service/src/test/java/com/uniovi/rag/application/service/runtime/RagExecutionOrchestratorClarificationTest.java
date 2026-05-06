@@ -10,6 +10,8 @@ import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallin
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
+import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
@@ -101,7 +103,9 @@ class RagExecutionOrchestratorClarificationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class));
 
         var out = orchestrator.execute(in);
 
@@ -150,6 +154,7 @@ class RagExecutionOrchestratorClarificationTest {
                         Optional.empty(),
                         "corr",
                         List.of("all"),
+                        Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
                         Optional.empty(),
@@ -254,7 +259,9 @@ class RagExecutionOrchestratorClarificationTest {
                         clarificationPolicyResolver,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class));
 
         orchestrator.execute(merged);
 
@@ -317,6 +324,7 @@ class RagExecutionOrchestratorClarificationTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 "when is it",
                 "when is it",
                 Optional.empty(),
@@ -358,6 +366,7 @@ class RagExecutionOrchestratorClarificationTest {
                 ctx.chatModelOverride(),
                 Optional.of(plan),
                 Optional.empty(),
+                ctx.structuredAnswerPlan(),
                 ctx.preMemoryPlanningInputText(),
                 ctx.effectivePlanningInputText(),
                 ctx.memorySlice(),

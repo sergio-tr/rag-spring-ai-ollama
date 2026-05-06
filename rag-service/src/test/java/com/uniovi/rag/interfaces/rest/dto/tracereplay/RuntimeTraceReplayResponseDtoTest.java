@@ -108,6 +108,11 @@ class RuntimeTraceReplayResponseDtoTest {
                 base.clarificationAttempted(),
                 base.clarificationOutcome(),
                 base.clarificationPendingStateConsumed(),
-                base.clarificationQuestionAsked());
+                base.clarificationQuestionAsked(),
+                base.originalQuery(),
+                base.retrievalQuery(),
+                base.packedContextPreview(),
+                base.sourceCount(),
+                base.retrievedDocumentNames());
     }
 }

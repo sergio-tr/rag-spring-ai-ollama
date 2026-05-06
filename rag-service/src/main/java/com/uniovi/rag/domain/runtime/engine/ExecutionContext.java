@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.runtime.memory.ConversationMemorySlice;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRouteKind;
 import com.uniovi.rag.domain.runtime.routing.AdaptiveRoutingOutcome;
+import com.uniovi.rag.domain.runtime.reasoning.StructuredAnswerPlan;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -31,6 +32,8 @@ public record ExecutionContext(
         Optional<String> chatModelOverride,
         Optional<QueryPlan> queryPlan,
         Optional<PackedContextSet> advisorPackedContextSet,
+        /** R8A: safe structured plan to guide controlled generation. */
+        Optional<StructuredAnswerPlan> structuredAnswerPlan,
         /** P12: planning input after clarification pre-processing but before memory stage. */
         String preMemoryPlanningInputText,
         /** Normalize input for {@link com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline} only. */
@@ -82,6 +85,7 @@ public record ExecutionContext(
         chatModelOverride = Objects.requireNonNullElseGet(chatModelOverride, Optional::empty);
         queryPlan = Objects.requireNonNullElseGet(queryPlan, Optional::empty);
         advisorPackedContextSet = Objects.requireNonNullElseGet(advisorPackedContextSet, Optional::empty);
+        structuredAnswerPlan = Objects.requireNonNullElseGet(structuredAnswerPlan, Optional::empty);
         preMemoryPlanningInputText = preMemoryPlanningInputText != null ? preMemoryPlanningInputText : "";
         effectivePlanningInputText =
                 effectivePlanningInputText != null ? effectivePlanningInputText : "";
@@ -150,6 +154,7 @@ public record ExecutionContext(
                 chatModelOverride,
                 queryPlan,
                 advisorPackedContextSet,
+                Optional.empty(),
                 preMemoryPlanningInputText,
                 effectivePlanningInputText,
                 memorySlice,

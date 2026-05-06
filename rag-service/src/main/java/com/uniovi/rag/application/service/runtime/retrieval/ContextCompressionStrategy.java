@@ -5,7 +5,9 @@ import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Extractive compression: drop lowest-scoring candidates (by rerank order tail) until under budget.
@@ -16,6 +18,16 @@ public class ContextCompressionStrategy {
     private static final String TRUNC_MARKER = "\n...[context truncated]\n";
 
     public CompressionResult compress(List<RetrievalCandidate> candidates, int maxContextChars) {
+        return compressPreservingEvidence(candidates, maxContextChars, Set.of());
+    }
+
+    /**
+     * Evidence-aware compression: avoids dropping protected candidates when possible.
+     *
+     * <p>Protected candidates are preserved preferentially; if the context is still above budget, truncation may apply.</p>
+     */
+    public CompressionResult compressPreservingEvidence(
+            List<RetrievalCandidate> candidates, int maxContextChars, Set<String> protectedCandidateIds) {
         List<String> rules = new ArrayList<>();
         int charsBefore = totalChars(candidates);
         if (charsBefore <= maxContextChars) {
@@ -23,13 +35,27 @@ public class ContextCompressionStrategy {
                     candidates,
                     new CompressionOutcome(charsBefore, charsBefore, 0, rules));
         }
+        Set<String> protectedIds =
+                protectedCandidateIds == null || protectedCandidateIds.isEmpty()
+                        ? Set.of()
+                        : Set.copyOf(new HashSet<>(protectedCandidateIds));
         List<RetrievalCandidate> kept = new ArrayList<>(candidates);
         int dropped = 0;
         while (totalChars(kept) > maxContextChars && kept.size() > 1) {
-            kept.remove(kept.size() - 1);
+            int dropIdx = kept.size() - 1;
+            // Prefer dropping unprotected tail candidates first.
+            while (dropIdx > 0 && protectedIds.contains(kept.get(dropIdx).candidateId())) {
+                dropIdx--;
+            }
+            if (dropIdx <= 0) {
+                // All remaining are protected (or only first is unprotected). Stop dropping and rely on truncation.
+                rules.add("protected_evidence_retained");
+                break;
+            }
+            kept.remove(dropIdx);
             dropped++;
+            rules.add("drop_lowest_rerank_tail_unprotected_first");
         }
-        rules.add("drop_lowest_rerank_tail");
         int after = totalChars(kept);
         if (after > maxContextChars && !kept.isEmpty()) {
             RetrievalCandidate last = kept.get(kept.size() - 1);

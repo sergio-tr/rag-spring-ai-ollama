@@ -44,8 +44,11 @@ public class WorkflowSelector {
         if (rag.useAdvisor() && !rag.useRetrieval()) {
             throw RagServiceException.unsupportedRuntimeConfiguration("useAdvisor requires useRetrieval and a dense retrieval workflow");
         }
-        if (rag.reasoningEnabled() || rag.rankerEnabled() || rag.postRetrievalEnabled()) {
-            throw RagServiceException.unsupportedRuntimeConfiguration("advanced runtime capabilities are not implemented");
+        if (rag.rankerEnabled() && !rag.useRetrieval()) {
+            throw RagServiceException.unsupportedRuntimeConfiguration("rankerEnabled requires useRetrieval");
+        }
+        if (rag.postRetrievalEnabled() && !rag.useRetrieval()) {
+            throw RagServiceException.unsupportedRuntimeConfiguration("postRetrievalEnabled requires useRetrieval");
         }
         MaterializationStrategy strategy = rag.materializationStrategy();
         if (rag.useRetrieval() && strategy == MaterializationStrategy.STRUCTURED_SEARCH) {

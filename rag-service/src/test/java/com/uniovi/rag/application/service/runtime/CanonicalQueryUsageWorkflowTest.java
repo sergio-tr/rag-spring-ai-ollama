@@ -129,6 +129,7 @@ class CanonicalQueryUsageWorkflowTest {
                 Optional.empty(),
                 Optional.of(plan),
                 Optional.empty(),
+                Optional.empty(),
                 plan.rawUserQuery(),
                 plan.rawUserQuery(),
                 Optional.empty(),
@@ -171,7 +172,14 @@ class CanonicalQueryUsageWorkflowTest {
                                 0,
                                 0,
                                 0,
-                                0),
+                                0,
+                                0,
+                                0,
+                                0,
+                                false,
+                                List.of(),
+                                List.of(),
+                                Optional.empty()),
                         List.of(),
                         List.of());
         when(pipeline.retrieve(any(), any(), anyString())).thenReturn(curated);

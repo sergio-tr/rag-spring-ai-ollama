@@ -175,6 +175,7 @@ class DenseWorkflowAdvisorPackedContextTest {
                 Optional.empty(),
                 Optional.of(plan),
                 Optional.of(packed),
+                Optional.empty(),
                 plan.rawUserQuery(),
                 plan.rawUserQuery(),
                 Optional.empty(),

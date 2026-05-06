@@ -4,6 +4,7 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
+import com.uniovi.rag.domain.runtime.reasoning.StructuredAnswerPlan;
 import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.ollama.api.OllamaOptions;
@@ -58,6 +59,18 @@ public abstract class AbstractExecutionWorkflow implements ExecutionWorkflow {
             throw new IllegalStateException("rewrittenQueryText must be non-blank");
         }
         return q;
+    }
+
+    protected static String answerPlanBlock(ExecutionContext ctx) {
+        if (ctx == null) {
+            return null;
+        }
+        StructuredAnswerPlan plan = ctx.structuredAnswerPlan().orElse(null);
+        if (plan == null) {
+            return null;
+        }
+        String block = plan.toPromptBlock(800);
+        return block != null && !block.isBlank() ? block : null;
     }
 
     protected static ExecutionStageTrace stage(

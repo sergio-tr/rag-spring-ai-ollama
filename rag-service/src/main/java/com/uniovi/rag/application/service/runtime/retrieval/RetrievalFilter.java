@@ -19,6 +19,17 @@ import java.util.UUID;
 public class RetrievalFilter {
 
     public List<RetrievalCandidate> filter(RetrievalRequest req, QueryPlan plan, List<RetrievalCandidate> candidates) {
+        return filterAdvanced(req, plan, candidates);
+    }
+
+    /**
+     * Basic mandatory filtering only (security / scope):
+     * - knowledge snapshot scope
+     * - document allowlist (conversation/project selection)
+     *
+     * <p>Does NOT apply query-derived constraints (slots/entities).</p>
+     */
+    public List<RetrievalCandidate> filterBasic(RetrievalRequest req, List<RetrievalCandidate> candidates) {
         Set<UUID> allowedSnapshots = new HashSet<>(req.snapshotIds());
         final Set<String> allowedDocs;
         if (req.documentAllowlistIsAll()) {
@@ -35,8 +46,15 @@ public class RetrievalFilter {
         return candidates.stream()
                 .filter(c -> allowedSnapshots.contains(c.snapshotId()))
                 .filter(c -> passesDocumentAllowlist(c, allowedDocs))
-                .filter(c -> passesSlotConstraints(plan, c))
                 .toList();
+    }
+
+    /**
+     * Advanced post-retrieval filtering (basic scope + slot constraints).
+     */
+    public List<RetrievalCandidate> filterAdvanced(RetrievalRequest req, QueryPlan plan, List<RetrievalCandidate> candidates) {
+        List<RetrievalCandidate> basic = filterBasic(req, candidates);
+        return basic.stream().filter(c -> passesSlotConstraints(plan, c)).toList();
     }
 
     private static boolean passesDocumentAllowlist(RetrievalCandidate c, Set<String> allowedDocs) {

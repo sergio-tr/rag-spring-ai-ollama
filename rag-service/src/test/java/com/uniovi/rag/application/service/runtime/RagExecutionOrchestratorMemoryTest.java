@@ -8,6 +8,8 @@ import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallin
 import com.uniovi.rag.application.service.runtime.functioncalling.FunctionCallingStrategy;
 import com.uniovi.rag.application.service.runtime.judge.JudgeStrategy;
 import com.uniovi.rag.application.service.runtime.query.QueryUnderstandingPipeline;
+import com.uniovi.rag.application.service.runtime.reasoning.AnswerVerificationService;
+import com.uniovi.rag.application.service.runtime.reasoning.StructuredAnswerPlanService;
 import com.uniovi.rag.application.service.runtime.routing.AdaptiveRoutingStrategy;
 import com.uniovi.rag.application.service.runtime.tool.DeterministicToolStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
@@ -90,7 +92,9 @@ class RagExecutionOrchestratorMemoryTest {
                         clarificationPolicy,
                         clarificationStrategy,
                         routingStrategy,
-                        judgeStrategy);
+                        judgeStrategy,
+                        mock(StructuredAnswerPlanService.class),
+                        mock(AnswerVerificationService.class));
 
         ExecutionStageTrace mem1 =
                 new ExecutionStageTrace(
@@ -216,6 +220,7 @@ class RagExecutionOrchestratorMemoryTest {
                 Optional.empty(),
                 "corr",
                 List.of("all"),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

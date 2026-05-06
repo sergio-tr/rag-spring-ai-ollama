@@ -40,7 +40,7 @@ class RuntimeTraceQueryServiceTest {
         when(e.getProjectId()).thenReturn(UUID.randomUUID());
         when(e.getCorrelationId()).thenReturn("cid");
         when(e.getWorkflowName()).thenReturn("wf");
-        when(e.getSchemaVersion()).thenReturn(1);
+        when(e.getSchemaVersion()).thenReturn(2);
 
         Map<String, Object> jsonWithNull = new HashMap<>();
         jsonWithNull.put("retrievalDiagnostics", null);
@@ -94,7 +94,7 @@ class RuntimeTraceQueryServiceTest {
         when(trace.getMessageId()).thenReturn(userMessageId);
         when(trace.getCorrelationId()).thenReturn("cid");
         when(trace.getWorkflowName()).thenReturn("wf");
-        when(trace.getSchemaVersion()).thenReturn(1);
+        when(trace.getSchemaVersion()).thenReturn(2);
         when(trace.getExecutionTraceJsonb()).thenReturn(Map.of());
         when(trace.getStagesJsonb()).thenReturn(List.of());
 

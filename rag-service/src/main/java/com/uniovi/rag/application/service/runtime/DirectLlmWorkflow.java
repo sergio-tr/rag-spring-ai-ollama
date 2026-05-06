@@ -31,7 +31,8 @@ public class DirectLlmWorkflow extends AbstractExecutionWorkflow {
             answer = RuntimeAnswerPrompts.documentBoundRequiresRetrievalMessageFor(q);
             stages.add(stage("llm", t0, ExecutionStageOutcome.SKIPPED, "document_bound_requires_retrieval"));
         } else {
-            answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), q);
+            String user = RuntimeAnswerPrompts.ragUserTurn(q, "", false, answerPlanBlock(ctx));
+            answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
             stages.add(stage("llm", t0, ExecutionStageOutcome.SUCCESS, ""));
         }
         return RagExecutionResult.withPlaceholderTrace(

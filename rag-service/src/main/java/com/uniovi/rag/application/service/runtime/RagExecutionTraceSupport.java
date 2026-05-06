@@ -16,6 +16,8 @@ import com.uniovi.rag.domain.runtime.tool.DeterministicToolOutcome;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -75,6 +77,7 @@ public final class RagExecutionTraceSupport {
 			List<ExecutionStageTrace> clarificationStagesBeforeQu,
 			List<ExecutionStageTrace> memoryStagesBeforeQu,
 			List<ExecutionStageTrace> quStages,
+			List<ExecutionStageTrace> reasoningStages,
 			List<ExecutionStageTrace> clarificationStagesAfterQu,
 			List<ExecutionStageTrace> routingStages,
 			List<ExecutionStageTrace> toolStages,
@@ -92,6 +95,7 @@ public final class RagExecutionTraceSupport {
 		all.addAll(clarificationStagesBeforeQu);
 		all.addAll(memoryStagesBeforeQu);
 		all.addAll(quStages);
+		all.addAll(reasoningStages);
 		all.addAll(clarificationStagesAfterQu);
 		all.addAll(routingStages);
 		all.addAll(toolStages);
@@ -105,6 +109,12 @@ public final class RagExecutionTraceSupport {
 		String toolDetail = buildToolDetail(toolResult);
 		boolean pendingConsumed = ctx.pendingClarificationLoadedForTrace();
 		boolean questionAsked = clarificationDecision.ask();
+
+		String originalQuery = ctx.userQuery() != null ? ctx.userQuery() : "";
+		String retrievalQuery = qp != null ? safe(qp.rewrittenQueryText()) : "";
+		String packedPreview = extractPackedContextPreview(all);
+		List<String> retrievedDocumentNames = extractRetrievedDocumentNames(partial.responseSources());
+		int sourceCount = partial.responseSources() != null ? partial.responseSources().size() : 0;
 		return new ExecutionTrace(
 				List.copyOf(all),
 				workflowName,
@@ -157,7 +167,53 @@ public final class RagExecutionTraceSupport {
 				true,
 				clarificationDecision.terminalOutcome().name(),
 				pendingConsumed,
-				questionAsked);
+				questionAsked,
+				originalQuery,
+				retrievalQuery,
+				packedPreview,
+				sourceCount,
+				retrievedDocumentNames);
+	}
+
+	private static String extractPackedContextPreview(List<ExecutionStageTrace> stages) {
+		if (stages == null || stages.isEmpty()) {
+			return "";
+		}
+		for (ExecutionStageTrace st : stages) {
+			if (st == null) {
+				continue;
+			}
+			if (!"packed_context_preview".equals(st.stageName())) {
+				continue;
+			}
+			String msg = st.message();
+			if (msg == null) {
+				return "";
+			}
+			int idx = msg.indexOf("preview=");
+			if (idx < 0) {
+				return msg.trim();
+			}
+			return msg.substring(idx + "preview=".length()).trim();
+		}
+		return "";
+	}
+
+	private static List<String> extractRetrievedDocumentNames(List<Map<String, Object>> sources) {
+		if (sources == null || sources.isEmpty()) {
+			return List.of();
+		}
+		return sources.stream()
+				.filter(m -> m != null && m.get("filename") != null)
+				.map(m -> String.valueOf(m.get("filename")).trim())
+				.filter(s -> !s.isBlank())
+				.distinct()
+				.limit(16)
+				.toList();
+	}
+
+	private static String safe(String s) {
+		return s == null ? "" : s;
 	}
 
 	public static String buildToolDetail(DeterministicToolExecutionResult toolResult) {

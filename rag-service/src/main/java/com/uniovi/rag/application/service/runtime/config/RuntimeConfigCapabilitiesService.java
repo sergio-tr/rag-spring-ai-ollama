@@ -86,42 +86,42 @@ public class RuntimeConfigCapabilitiesService {
                         null,
                         Map.of()));
 
-        // Advanced runtime flags (declared but not implemented in the runtime selector).
+        // Advanced runtime flags (ranker/post-retrieval remain blocked; reasoning is implemented as a safe structured plan).
         out.add(
                 cap(
                         "reasoningEnabled",
                         "Reasoning",
-                        "Thesis preset flag. Not implemented in the runtime workflow selector.",
+                        "Generates an internal safe structured answer plan (no chain-of-thought) to guide controlled generation.",
                         "Advanced",
-                        false,
+                        true,
                         true,
                         List.of(),
                         List.of(),
-                        "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+                        null,
                         Map.of()));
         out.add(
                 cap(
                         "rankerEnabled",
                         "Ranker",
-                        "Thesis preset flag. Not implemented in the runtime workflow selector.",
+                        "Applies deterministic reranking after retrieval fusion and before filtering/compression.",
                         "Advanced",
-                        false,
+                        true,
                         true,
                         List.of("useRetrieval"),
                         List.of(),
-                        "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+                        null,
                         Map.of()));
         out.add(
                 cap(
                         "postRetrievalEnabled",
                         "Post-retrieval",
-                        "Thesis preset flag. Not implemented in the runtime workflow selector.",
+                        "Applies advanced post-retrieval filtering and evidence-aware compression after reranking.",
                         "Advanced",
-                        false,
+                        true,
                         true,
                         List.of("useRetrieval"),
                         List.of(),
-                        "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+                        null,
                         Map.of()));
 
         // Multi-turn features exist in the config but Chat does not support the harness yet.

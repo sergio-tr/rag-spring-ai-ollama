@@ -38,6 +38,7 @@ class EngineRuntimeRecordsTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 "",
                 "",
                 Optional.empty(),
@@ -80,6 +81,7 @@ class EngineRuntimeRecordsTest {
                         null,
                         "c1",
                         List.of("d1"),
+                        null,
                         null,
                         null,
                         null,
@@ -233,7 +235,12 @@ class EngineRuntimeRecordsTest {
                         false,
                         "",
                         false,
-                        false);
+                        false,
+                        "",
+                        "",
+                        "",
+                        0,
+                        List.of());
 
         assertThat(t.usedResolvedConfigSnapshotId()).isEmpty();
         assertThat(t.usedConfigHash()).isEmpty();
@@ -300,7 +307,14 @@ class EngineRuntimeRecordsTest {
                                         1,
                                         0,
                                         0,
-                                        0)),
+                                        0,
+                                        0,
+                                        0,
+                                        0,
+                                        false,
+                                        List.of(),
+                                        List.of(),
+                                        Optional.empty())),
                         List.of());
         assertThat(r.retrievalDiagnostics()).isPresent();
     }
@@ -333,6 +347,7 @@ class EngineRuntimeRecordsTest {
                         base.chatModelOverride(),
                         base.queryPlan(),
                         base.advisorPackedContextSet(),
+                        base.structuredAnswerPlan(),
                         base.preMemoryPlanningInputText(),
                         base.effectivePlanningInputText(),
                         base.memorySlice(),
