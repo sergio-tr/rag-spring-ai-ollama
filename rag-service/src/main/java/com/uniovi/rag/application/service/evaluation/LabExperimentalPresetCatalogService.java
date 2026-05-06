@@ -117,9 +117,6 @@ public class LabExperimentalPresetCatalogService {
         if (rag.useAdvisor() && !rag.useRetrieval()) {
             return Optional.of("USE_ADVISOR_REQUIRES_RETRIEVAL");
         }
-        if (rag.reasoningEnabled() || rag.rankerEnabled() || rag.postRetrievalEnabled()) {
-            return Optional.of("ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED");
-        }
         if (rag.useRetrieval() && rag.materializationStrategy().name().equals("STRUCTURED_SEARCH")) {
             return Optional.of("STRUCTURED_SEARCH_WITH_RETRIEVAL_NOT_SUPPORTED");
         }

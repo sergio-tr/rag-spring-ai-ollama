@@ -103,9 +103,10 @@ public final class RagPresetExperimentalOverlay {
 
     private static void applyStructuredRewrite(RagFeatureConfiguration f, ObjectNode json) {
         minimalRetrieval(f, json);
-        f.setReasoningEnabled(true);
-        json.put("reasoningEnabled", true);
-        json.put("reasoningStrategy", "COT");
+        // P6 is about query understanding / structured rewrite, not chain-of-thought reasoning.
+        f.setToolsEnabled(true);
+        json.put("toolsEnabled", true);
+        json.put("reasoningEnabled", false);
         json.put("topK", 10);
     }
 

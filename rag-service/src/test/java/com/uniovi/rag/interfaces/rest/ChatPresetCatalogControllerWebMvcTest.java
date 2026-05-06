@@ -16,6 +16,7 @@ import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.service.preset.PresetService;
 import java.time.Instant;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -68,7 +69,7 @@ class ChatPresetCatalogControllerWebMvcTest {
     @Test
     void catalog_returnsProductAndExperimentalPresets_inSeparateSections() throws Exception {
         Instant now = Instant.now();
-        RagPresetDto product =
+        RagPresetDto p1 =
                 new RagPresetDto(
                         UUID.randomUUID(),
                         "Demo_Best",
@@ -79,34 +80,152 @@ class ChatPresetCatalogControllerWebMvcTest {
                         now,
                         now,
                         List.of());
-        when(presetService.list(any())).thenReturn(List.of(product));
+        RagPresetDto p2 =
+                new RagPresetDto(
+                        UUID.randomUUID(),
+                        "Demo_Worst",
+                        null,
+                        List.of("demo", "system"),
+                        Map.of("useRetrieval", false),
+                        true,
+                        now,
+                        now,
+                        List.of());
+        RagPresetDto p3 =
+                new RagPresetDto(
+                        UUID.randomUUID(),
+                        "Demo_NaiveFullCorpus",
+                        null,
+                        List.of("demo", "system"),
+                        Map.of("naiveFullCorpusInPromptEnabled", true),
+                        true,
+                        now,
+                        now,
+                        List.of());
+        when(presetService.list(any())).thenReturn(List.of(p1, p2, p3));
 
-        ExperimentalPresetCatalogItemDto p6 =
-                new ExperimentalPresetCatalogItemDto(
-                        "cafe0001-0001-4001-8001-000000000016",
-                        "P6",
-                        "S2",
-                        "P6 preset",
-                        "desc",
-                        List.of("USE_RETRIEVAL", "REASONING"),
-                        false,
-                        "NOT_SUPPORTED",
-                        "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
-                        false,
-                        Map.of(),
-                        List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
-                        false,
-                        true);
-        when(labExperimentalPresetCatalogService.list()).thenReturn(List.of(p6));
+        ArrayList<ExperimentalPresetCatalogItemDto> experimental =
+                new ArrayList<>(List.of(
+                        new ExperimentalPresetCatalogItemDto(
+                                "cafe0001-0001-4001-8001-000000000010",
+                                "P0",
+                                "S2",
+                                "P0 preset",
+                                "desc",
+                                List.of(),
+                                true,
+                                "EXECUTABLE",
+                                null,
+                                false,
+                                Map.of(),
+                                List.of("EXECUTED", "FAILED", "SKIPPED"),
+                                true,
+                                true),
+                        new ExperimentalPresetCatalogItemDto(
+                                "cafe0001-0001-4001-8001-000000000014",
+                                "P4",
+                                "S2",
+                                "P4 preset",
+                                "desc",
+                                List.of(),
+                                true,
+                                "EXECUTABLE",
+                                null,
+                                false,
+                                Map.of(),
+                                List.of("EXECUTED", "FAILED", "SKIPPED"),
+                                true,
+                                true),
+                        new ExperimentalPresetCatalogItemDto(
+                                "cafe0001-0001-4001-8001-000000000016",
+                                "P6",
+                                "S2",
+                                "P6 preset",
+                                "desc",
+                                List.of("USE_RETRIEVAL", "REASONING"),
+                                false,
+                                "NOT_SUPPORTED",
+                                "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+                                false,
+                                Map.of(),
+                                List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
+                                false,
+                                true),
+                        new ExperimentalPresetCatalogItemDto(
+                                "cafe0001-0001-4001-8001-000000000018",
+                                "P8",
+                                "S2",
+                                "P8 preset",
+                                "desc",
+                                List.of("USE_RETRIEVAL"),
+                                false,
+                                "NOT_SUPPORTED",
+                                "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+                                false,
+                                Map.of(),
+                                List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
+                                false,
+                                true),
+                        new ExperimentalPresetCatalogItemDto(
+                                "cafe0001-0001-4001-8001-000000000021",
+                                "P11",
+                                "S3",
+                                "P11 preset",
+                                "desc",
+                                List.of(),
+                                false,
+                                "REQUIRES_MULTI_TURN",
+                                "PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED",
+                                true,
+                                Map.of(),
+                                List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
+                                false,
+                                true),
+                        new ExperimentalPresetCatalogItemDto(
+                                "cafe0001-0001-4001-8001-000000000022",
+                                "P12",
+                                "S3",
+                                "P12 preset",
+                                "desc",
+                                List.of(),
+                                false,
+                                "REQUIRES_MULTI_TURN",
+                                "PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED",
+                                true,
+                                Map.of(),
+                                List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
+                                false,
+                                true)));
+        // Fill up to 15 with placeholders.
+        while (experimental.size() < 15) {
+            int idx = experimental.size();
+            experimental.add(
+                    new ExperimentalPresetCatalogItemDto(
+                            "cafe0001-0001-4001-8001-0000000001" + idx,
+                            "PX" + idx,
+                            "S2",
+                            "PX" + idx + " preset",
+                            "desc",
+                            List.of(),
+                            true,
+                            "EXECUTABLE",
+                            null,
+                            false,
+                            Map.of(),
+                            List.of("EXECUTED", "FAILED", "SKIPPED"),
+                            true,
+                            true));
+        }
+        when(labExperimentalPresetCatalogService.list()).thenReturn(experimental);
 
         mockMvc.perform(get(path("/chat/presets/catalog")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.productPresets[0].name").value("Demo_Best"))
-                .andExpect(jsonPath("$.experimentalPresets[0].code").value("P6"))
-                .andExpect(jsonPath("$.experimentalPresets[0].supported").value(false))
-                .andExpect(jsonPath("$.experimentalPresets[0].chatSelectable").value(false))
-                .andExpect(jsonPath("$.experimentalPresets[0].reasonIfUnsupported")
-                        .value("ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED"));
+                .andExpect(jsonPath("$.productPresets.length()").value(3))
+                .andExpect(jsonPath("$.experimentalPresets.length()").value(15))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P11')].chatSelectable").value(false))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P12')].chatSelectable").value(false))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P6')].chatSelectable").value(false))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P8')].chatSelectable").value(false));
     }
 }
 

@@ -10,6 +10,8 @@ import com.uniovi.rag.domain.evaluation.snapshot.LlmExperimentalSnapshot;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetDefinition;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
+import com.uniovi.rag.domain.model.QueryType;
+import com.uniovi.rag.domain.evaluation.workbook.DifficultyLevel;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.evaluation.baseline.ExperimentalSnapshotFactory;
@@ -18,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -136,6 +139,81 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         Mockito.verify(evaluationService).summarizeJudgeResults(ArgumentMatchers.anyList());
     }
 
+    @Test
+    void catalog_three_presets_two_questions_yieldsSixItems_andPresetCodesAreAssigned() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(null)).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(null)).thenReturn(embSnap());
+
+        List<RagPresetQuestion> questions = List.of(
+                question("RAG-001"),
+                question("RAG-002"));
+        List<RagPresetDefinition> catalog = List.of(preset(RagExperimentalPresetCode.P0), preset(RagExperimentalPresetCode.P1), preset(RagExperimentalPresetCode.P2));
+
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                ArgumentMatchers.any(),
+                ArgumentMatchers.any(),
+                ArgumentMatchers.eq(questions),
+                ArgumentMatchers.any()))
+                .thenAnswer(inv -> Map.of("results", baseRowsFor(questions.size()), "evaluation_summary", Map.of()));
+        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                null,
+                                new TypedBenchmarkDataset.RagPresetQuestions(questions, catalog),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                Set.of(),
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        assertThat(rows).hasSize(6);
+        assertThat(rows.stream().map(r -> String.valueOf(r.get(BenchmarkResultRowKeys.PRESET_CODE))).toList())
+                .containsExactlyInAnyOrder("P0", "P0", "P1", "P1", "P2", "P2");
+    }
+
+    @Test
+    void requestedPresets_filter_appliesBeforeExecution() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(null)).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(null)).thenReturn(embSnap());
+
+        List<RagPresetQuestion> questions = new ArrayList<>();
+        for (int i = 1; i <= 60; i++) {
+            questions.add(question(String.format("RAG-%03d", i)));
+        }
+        List<RagPresetDefinition> catalog = new ArrayList<>();
+        for (RagExperimentalPresetCode p : RagExperimentalPresetCode.values()) {
+            catalog.add(preset(p));
+        }
+
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                ArgumentMatchers.any(),
+                ArgumentMatchers.any(),
+                ArgumentMatchers.eq(questions),
+                ArgumentMatchers.any()))
+                .thenAnswer(inv -> Map.of("results", baseRowsFor(questions.size()), "evaluation_summary", Map.of()));
+        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                null,
+                                new TypedBenchmarkDataset.RagPresetQuestions(questions, catalog),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                Set.of(RagExperimentalPresetCode.P0, RagExperimentalPresetCode.P3),
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        // Two presets x 60 questions.
+        assertThat(rows).hasSize(120);
+        assertThat(rows.stream().map(r -> String.valueOf(r.get(BenchmarkResultRowKeys.PRESET_CODE))).distinct().toList())
+                .containsExactlyInAnyOrder("P0", "P3");
+    }
+
     private static RagPresetQuestion sampleQuestion() {
         return new RagPresetQuestion(
                 "rq1",
@@ -153,5 +231,36 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 false,
                 false,
                 "");
+    }
+
+    private static RagPresetQuestion question(String id) {
+        return new RagPresetQuestion(
+                id,
+                "Q?",
+                "A",
+                Optional.of(QueryType.COUNT_DOCUMENTS),
+                Optional.of(DifficultyLevel.LOW),
+                "",
+                List.of(),
+                List.of(),
+                "",
+                false,
+                false,
+                false,
+                false,
+                false,
+                "");
+    }
+
+    private static RagPresetDefinition preset(RagExperimentalPresetCode code) {
+        return new RagPresetDefinition(code, "", code.name(), "", "", "", "", "", "", "", "");
+    }
+
+    private static List<Map<String, Object>> baseRowsFor(int n) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            out.add(new HashMap<>());
+        }
+        return out;
     }
 }

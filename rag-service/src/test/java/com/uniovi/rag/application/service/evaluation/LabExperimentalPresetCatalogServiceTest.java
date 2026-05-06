@@ -61,5 +61,15 @@ class LabExperimentalPresetCatalogServiceTest {
         assertThat(p11.supported()).isFalse();
         assertThat(p11.supportStatus()).isEqualTo("REQUIRES_MULTI_TURN");
         assertThat(p11.reasonIfUnsupported()).isEqualTo("PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED");
+        assertThat(p11.chatSelectable()).isFalse();
+
+        var p12 = rows.stream().filter(r -> "P12".equals(r.code())).findFirst().orElseThrow();
+        assertThat(p12.chatSelectable()).isFalse();
+
+        // Post-retrieval is implemented, so P8 can be chat-selectable (unless blocked for other reasons).
+        var p6 = rows.stream().filter(r -> "P6".equals(r.code())).findFirst().orElseThrow();
+        var p8 = rows.stream().filter(r -> "P8".equals(r.code())).findFirst().orElseThrow();
+        assertThat(p6.chatSelectable()).isTrue();
+        assertThat(p8.chatSelectable()).isTrue();
     }
 }
