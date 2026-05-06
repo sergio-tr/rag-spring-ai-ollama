@@ -52,8 +52,22 @@ class VectorStoreProjectIdBackfillIntegrationIT {
 
     @Test
     void backfill_setsVectorStoreProjectIdColumn_fromMetadataProjectId() {
+        UUID userId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID projectDocumentId = UUID.randomUUID();
+
+        // Satisfy FK constraints: projects.owner_id -> users.id and vector_store.project_id -> projects.id
+        jdbcTemplate.update(
+                "INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                userId,
+                "tfg_r0_backfill_it@test.local",
+                "{noop}test",
+                "USER");
+        jdbcTemplate.update(
+                "INSERT INTO projects (id, owner_id, name, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())",
+                projectId,
+                userId,
+                "TFG_R0_BACKFILL_IT_PROJECT");
 
         jdbcTemplate.update(
                 """
@@ -84,9 +98,15 @@ class VectorStoreProjectIdBackfillIntegrationIT {
                         UPDATE vector_store
                         SET project_id = (metadata->>'projectId')::uuid
                         WHERE project_id IS NULL
-                          AND metadata ? 'projectId'
+                          -- Avoid the JSONB existence operator `?` here: JDBC treats it as a parameter marker.
+                          AND metadata->>'projectId' IS NOT NULL
                           AND (metadata->>'projectId') ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
                           AND metadata->>'projectId' = ?
+                          AND EXISTS (
+                              SELECT 1
+                              FROM projects p
+                              WHERE p.id = (metadata->>'projectId')::uuid
+                          )
                         """,
                         projectId.toString());
         assertThat(updated).isGreaterThanOrEqualTo(1);
