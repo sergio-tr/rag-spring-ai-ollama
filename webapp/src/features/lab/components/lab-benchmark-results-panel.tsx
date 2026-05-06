@@ -85,6 +85,21 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
   const occ = readGlobalOutcomeCounts(payload.rollups);
   const macroExecuted = readOnExecutedSummary(payload.rollups.globalMacro);
   const mvpRows = readMvpItems(payload.itemsBundle);
+  const uniqueQuestionIds = new Set<string>();
+  const uniquePresetCodes = new Set<string>();
+  for (const row of mvpRows) {
+    if (!row || typeof row !== "object") continue;
+    const mvp = (row as Record<string, unknown>).mvp;
+    if (!mvp || typeof mvp !== "object") continue;
+    const m = mvp as Record<string, unknown>;
+    const dq = m.datasetQuestionId;
+    if (typeof dq === "string" && dq.trim()) uniqueQuestionIds.add(dq.trim());
+    const op = m.operational;
+    if (op && typeof op === "object") {
+      const pc = (op as Record<string, unknown>).presetCode;
+      if (typeof pc === "string" && pc.trim()) uniquePresetCodes.add(pc.trim());
+    }
+  }
 
   return (
     <div className="space-y-4 rounded-md border bg-muted/20 p-4" data-testid="lab-benchmark-results-panel">
@@ -109,6 +124,13 @@ export function LabBenchmarkResultsPanel({ evaluationRunId, campaignId, loadEnab
               })}
             </p>
           ) : null}
+          <p className="text-muted-foreground text-xs" data-testid="lab-benchmark-results-counts">
+            {t("benchmarkResultsCountsLine", {
+              items: mvpRows.length,
+              questions: uniqueQuestionIds.size,
+              presets: uniquePresetCodes.size,
+            })}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {campId ? (

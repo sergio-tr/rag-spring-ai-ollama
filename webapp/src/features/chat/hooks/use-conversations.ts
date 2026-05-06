@@ -28,6 +28,11 @@ export function mergeConversationPatchOptimistic(
   if (body.documentFilter !== undefined) {
     next.documentFilter = [...(body.documentFilter ?? [])];
   }
+  if (body.clearRuntimeOverride) {
+    next.runtimeOverride = {};
+  } else if (body.runtimeOverride !== undefined) {
+    next.runtimeOverride = body.runtimeOverride ? { ...body.runtimeOverride } : {};
+  }
   return next;
 }
 

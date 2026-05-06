@@ -43,11 +43,16 @@ const llmDataset = {
   id: "550e8400-e29b-41d4-a716-446655440000",
   name: "ds",
   experimentalDatasetType: "LLM_MODEL_BASELINE",
-  persistedEvaluationDatasetType: "LLM_ONLY",
   readOnly: false,
-  questionCount: 2,
-  rowCount: 2,
+  datasetType: "LLM_ONLY",
   validationStatus: "VALID",
+  questionCounts: { llmReaderQuestions: 2, embeddingQueries: 0, ragPresetQuestions: 0, presetCatalog: 0, chunkRegistry: 0 },
+  isReferenceBundle: false,
+  isDemoDataset: false,
+  canRunLlmBaseline: true,
+  canRunEmbeddingBaseline: false,
+  canRunRagPresetBenchmark: false,
+  validationIssues: [],
   uploadedAt: "2026-01-01T00:00:00Z",
   description: null,
 };
@@ -218,5 +223,38 @@ describe("LabEvaluationRunCard", () => {
     expect(screen.getByText(/P11 — Clarification loop/i)).toBeInTheDocument();
     expect(screen.getByText(/PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED/i)).toBeInTheDocument();
     expect(screen.getByTestId("lab-experimental-presets-select-core")).toBeInTheDocument();
+  });
+
+  it("blocks running when dataset is marked as demo for TFG", () => {
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [
+        {
+          ...llmDataset,
+          id: "demo",
+          validationStatus: "VALID",
+          isDemoDataset: true,
+          canRunLlmBaseline: true,
+          questionCounts: { llmReaderQuestions: 36, embeddingQueries: 0, ragPresetQuestions: 0, presetCatalog: 0, chunkRegistry: 0 },
+        },
+      ],
+      isLoading: false,
+      isFetched: true,
+      isSuccess: true,
+    } as never);
+    render(
+      <LabEvalHarness>
+        <LabEvaluationRunCard
+          benchmarkKind="LLM_JUDGE_QA"
+          sectionKey="evaluation-llm"
+          taskTypeHint="LLM_EVALUATION"
+          cardTitle="LLM evaluation"
+          cardDescription="Benchmark the configured LLM against loaded evaluation questions."
+          runButtonTestId="lab-llm-run"
+          radioGroupName="follow-test"
+        />
+      </LabEvalHarness>,
+    );
+    expect(screen.getByTestId("lab-dataset-blocked-demo")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Run evaluation/i })).toBeDisabled();
   });
 });

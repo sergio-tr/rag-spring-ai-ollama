@@ -77,6 +77,58 @@ describe("LabOverviewPage", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/Could not load lab status/i);
   });
 
+  it("renders dataset overview table with counts and demo badge when datasets are present", async () => {
+    vi.mocked(useLabStatus).mockReturnValue({
+      data: {
+        datasetKindsReady: true,
+        datasets: { enabled: true, datasetKindsReady: true },
+        referenceBundleAvailable: true,
+        referenceBundleValid: true,
+        evaluations: { llm: true, rag: true, classifierProxy: false, asyncJobs: true },
+        classifier: { configured: true, train: true, evaluate: true },
+        message: "",
+      },
+      isError: false,
+      isLoading: false,
+      refetch: vi.fn(),
+    } as never);
+    vi.mocked(useExperimentalDatasetsQuery).mockReturnValue({
+      data: [
+        {
+          id: "550e8400-e29b-41d4-a716-446655440000",
+          name: "Demo dataset",
+          experimentalDatasetType: "RAG_PRESET_BENCHMARK",
+          readOnly: false,
+          datasetType: "RAG",
+          validationStatus: "INVALID",
+          questionCounts: { llmReaderQuestions: 0, embeddingQueries: 0, ragPresetQuestions: 1, presetCatalog: 1, chunkRegistry: 0 },
+          isReferenceBundle: false,
+          isDemoDataset: true,
+          canRunLlmBaseline: false,
+          canRunEmbeddingBaseline: false,
+          canRunRagPresetBenchmark: false,
+          validationIssues: [],
+          uploadedAt: "",
+          description: null,
+        },
+      ],
+      isLoading: false,
+      isError: false,
+    } as never);
+
+    LabOverviewPage = (await import("./page")).default;
+    render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <IntlTestProvider>
+          <LabOverviewPage />
+        </IntlTestProvider>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByTestId("lab-dataset-overview-table")).toBeInTheDocument();
+    expect(screen.getAllByText(/Demo dataset/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/DEMO/i).length).toBeGreaterThanOrEqual(1);
+  });
+
   it("shows typed reference workbook counts when backend reports dataset kinds ready", () => {
     vi.mocked(useLabStatus).mockReturnValue({
       data: {

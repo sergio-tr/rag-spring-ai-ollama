@@ -67,7 +67,10 @@ describe("LabBenchmarkResultsPanel", () => {
         {
           id: "item-1",
           questionText: "hello?",
-          mvp: { operational: { outcome: "NOT_SUPPORTED", unsupportedReason: "NOPE" } },
+          mvp: {
+            datasetQuestionId: "RAG-001",
+            operational: { outcome: "NOT_SUPPORTED", unsupportedReason: "NOPE", presetCode: "P0" },
+          },
         },
       ],
     });
@@ -82,6 +85,7 @@ describe("LabBenchmarkResultsPanel", () => {
 
     await waitFor(() => expect(screen.getByTestId("lab-outcome-NOT_SUPPORTED")).toBeInTheDocument());
     expect(screen.getByTestId("lab-outcome-EXECUTED")).toHaveTextContent(/1/i);
+    expect(screen.getByTestId("lab-benchmark-results-counts")).toBeInTheDocument();
   });
 
   it("shows friendly error when MVP bundle fetch fails", async () => {

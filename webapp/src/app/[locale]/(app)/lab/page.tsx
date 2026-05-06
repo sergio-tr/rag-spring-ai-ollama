@@ -258,6 +258,7 @@ export default function LabOverviewPage() {
                           })}
                         </p>
                         <UploadedValidationBadges rows={experimentalList.data ?? []} t={t} />
+                        <DatasetOverviewTable rows={experimentalList.data ?? []} t={t} />
                       </>
                     )}
                   </CardContent>
@@ -352,6 +353,63 @@ function UploadedValidationBadges({
         <Badge variant="destructive">{t("overviewUploadedInvalidBadge", { count: invalid })}</Badge>
       ) : null}
       {other > 0 ? <Badge variant="secondary">{t("overviewUploadedOtherBadge", { count: other })}</Badge> : null}
+    </div>
+  );
+}
+
+function DatasetOverviewTable({
+  rows,
+  t,
+}: Readonly<{
+  rows: ExperimentalDatasetListItemDto[];
+  t: (key: string, values?: Record<string, string | number>) => string;
+}>) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="max-h-72 overflow-auto rounded-md border" data-testid="lab-dataset-overview-table">
+      <table className="w-full text-left text-xs">
+        <thead className="bg-muted/50 sticky top-0">
+          <tr>
+            <th className="p-2 font-medium">{t("datasetTableColName")}</th>
+            <th className="p-2 font-medium">{t("datasetTableColType")}</th>
+            <th className="p-2 font-medium">{t("datasetTableColLlm")}</th>
+            <th className="p-2 font-medium">{t("datasetTableColEmb")}</th>
+            <th className="p-2 font-medium">{t("datasetTableColRag")}</th>
+            <th className="p-2 font-medium">{t("datasetTableColPresets")}</th>
+            <th className="p-2 font-medium">{t("datasetTableColStatus")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className="border-border border-t">
+              <td className="p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="truncate">{r.name ?? t("experimentalDatasetUnnamed")}</span>
+                  {r.isReferenceBundle ? <Badge variant="outline">{t("datasetOriginReference")}</Badge> : null}
+                  {r.isDemoDataset ? <Badge variant="destructive">{t("datasetTableBadgeDemo")}</Badge> : null}
+                </div>
+              </td>
+              <td className="p-2 font-mono">{r.experimentalDatasetType}</td>
+              <td className="p-2 font-mono">{r.questionCounts.llmReaderQuestions ?? 0}</td>
+              <td className="p-2 font-mono">{r.questionCounts.embeddingQueries ?? 0}</td>
+              <td className="p-2 font-mono">{r.questionCounts.ragPresetQuestions ?? 0}</td>
+              <td className="p-2 font-mono">{r.questionCounts.presetCatalog ?? 0}</td>
+              <td className="p-2">
+                <Badge
+                  variant={
+                    r.validationStatus === "VALID" ? "default" : r.validationStatus === "INVALID" ? "destructive" : "secondary"
+                  }
+                >
+                  {r.validationStatus}
+                </Badge>
+                {r.isDemoDataset ? (
+                  <p className="text-destructive mt-1 text-[11px]">{t("datasetBlockedDemoTfg")}</p>
+                ) : null}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

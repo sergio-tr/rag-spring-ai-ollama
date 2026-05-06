@@ -56,7 +56,7 @@ function compatibleExperimentalTypes(kind: BenchmarkKind): Set<string> {
     case "LLM_JUDGE_QA":
       return new Set(["LLM_MODEL_BASELINE", "REFERENCE_BUNDLE"]);
     case "EMBEDDING_RETRIEVAL":
-      return new Set(["EMBEDDING_BASELINE", "REFERENCE_BUNDLE"]);
+      return new Set(["EMBEDDING_MODEL_BASELINE", "REFERENCE_BUNDLE"]);
     case "RAG_PRESET_END_TO_END":
       return new Set(["RAG_PRESET_BENCHMARK", "REFERENCE_BUNDLE"]);
     default:
@@ -100,8 +100,21 @@ function datasetCompatibilityLabel(kind: BenchmarkKind, t: (key: string) => stri
 }
 
 function datasetCountsLabel(row: ExperimentalDatasetListItemDto, t: (key: string, values?: Record<string, string | number>) => string) {
-  const q = typeof row.questionCount === "number" ? row.questionCount : 0;
-  const r = typeof row.rowCount === "number" ? row.rowCount : 0;
+  const q =
+    row.experimentalDatasetType === "LLM_MODEL_BASELINE"
+      ? row.questionCounts.llmReaderQuestions
+      : row.experimentalDatasetType === "EMBEDDING_MODEL_BASELINE"
+        ? row.questionCounts.embeddingQueries
+        : row.experimentalDatasetType === "RAG_PRESET_BENCHMARK"
+          ? row.questionCounts.ragPresetQuestions
+          : // Reference bundle is multi-kind; default to the max "primary" count for the active benchmark.
+            Math.max(row.questionCounts.llmReaderQuestions, row.questionCounts.embeddingQueries, row.questionCounts.ragPresetQuestions);
+  const r =
+    row.questionCounts.llmReaderQuestions +
+    row.questionCounts.embeddingQueries +
+    row.questionCounts.ragPresetQuestions +
+    row.questionCounts.presetCatalog +
+    row.questionCounts.chunkRegistry;
   return t("datasetCountsLine", { q, r });
 }
 
@@ -162,7 +175,13 @@ export function LabEvaluationRunCard({
 
   const compatibleRows = useMemo(() => {
     const allowed = compatibleExperimentalTypes(benchmarkKind);
-    return (experimentalDatasets.data ?? []).filter((d) => allowed.has(d.experimentalDatasetType));
+    return (experimentalDatasets.data ?? []).filter((d) => {
+      if (!allowed.has(d.experimentalDatasetType)) return false;
+      if (benchmarkKind === "LLM_JUDGE_QA") return d.canRunLlmBaseline;
+      if (benchmarkKind === "EMBEDDING_RETRIEVAL") return d.canRunEmbeddingBaseline;
+      if (benchmarkKind === "RAG_PRESET_END_TO_END") return d.canRunRagPresetBenchmark;
+      return false;
+    });
   }, [benchmarkKind, experimentalDatasets.data]);
 
   const defaultDataset = useMemo(
@@ -272,7 +291,39 @@ export function LabEvaluationRunCard({
 
   const hasCompatibleDataset = !experimentalDatasets.isLoading && selectedDataset != null;
   const datasetIsValid = selectedDataset?.validationStatus === "VALID";
-  const canStart = hasCompatibleDataset && datasetIsValid;
+  const demoBlocked = selectedDataset?.isDemoDataset === true;
+  const tooSmallBlocked =
+    benchmarkKind === "LLM_JUDGE_QA"
+      ? (selectedDataset?.questionCounts.llmReaderQuestions ?? 0) <= 1
+      : benchmarkKind === "EMBEDDING_RETRIEVAL"
+        ? (selectedDataset?.questionCounts.embeddingQueries ?? 0) <= 1
+        : benchmarkKind === "RAG_PRESET_END_TO_END"
+          ? (selectedDataset?.questionCounts.ragPresetQuestions ?? 0) <= 1
+          : false;
+  const hardBlocked = demoBlocked || tooSmallBlocked;
+  const canStart = hasCompatibleDataset && datasetIsValid && !hardBlocked;
+
+  const expectedSummary = useMemo(() => {
+    if (!selectedDataset) return "";
+    if (benchmarkKind === "LLM_JUDGE_QA") {
+      const q = selectedDataset.questionCounts.llmReaderQuestions ?? 0;
+      const models = llmModelIds.length > 0 ? llmModelIds.length : 1;
+      return t("benchmarkExpectedItemsLlm", { q, models, items: q * models });
+    }
+    if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
+      const q = selectedDataset.questionCounts.embeddingQueries ?? 0;
+      return t("benchmarkExpectedItemsEmbedding", { q, items: q });
+    }
+    if (benchmarkKind === "RAG_PRESET_END_TO_END") {
+      const q = selectedDataset.questionCounts.ragPresetQuestions ?? 0;
+      const catalog = selectedDataset.questionCounts.presetCatalog ?? 0;
+      const presets =
+        selectedExperimentalPresetCodes.length > 0 ? selectedExperimentalPresetCodes.length : catalog;
+      const items = catalog > 0 ? q * presets : q;
+      return t("benchmarkExpectedItemsRag", { q, presets: catalog > 0 ? presets : 1, items });
+    }
+    return "";
+  }, [benchmarkKind, llmModelIds.length, selectedDataset, selectedExperimentalPresetCodes.length, t]);
 
   async function run() {
     abortRef.current?.abort();
@@ -769,6 +820,18 @@ export function LabEvaluationRunCard({
           {err ? (
             <p className="text-destructive text-sm" role="alert">
               {err}
+            </p>
+          ) : null}
+
+          {hardBlocked ? (
+            <p className="text-destructive text-sm" role="alert" data-testid="lab-dataset-blocked-demo">
+              {t("datasetBlockedDemoTfg")}
+            </p>
+          ) : null}
+
+          {!hardBlocked && canStart && expectedSummary ? (
+            <p className="text-muted-foreground text-xs" data-testid="lab-expected-items-summary">
+              {expectedSummary}
             </p>
           ) : null}
 

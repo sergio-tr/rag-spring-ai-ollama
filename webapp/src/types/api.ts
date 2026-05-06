@@ -464,15 +464,28 @@ export type ExperimentalDatasetUploadResponseDto = {
   validationReport: ExperimentalDatasetValidationReportDto;
 };
 
+export type ExperimentalDatasetQuestionCountsDto = {
+  llmReaderQuestions: number;
+  embeddingQueries: number;
+  ragPresetQuestions: number;
+  presetCatalog: number;
+  chunkRegistry: number;
+};
+
 export type ExperimentalDatasetListItemDto = {
   id: string;
   name: string | null;
   experimentalDatasetType: string;
-  persistedEvaluationDatasetType: string;
   readOnly: boolean;
-  questionCount: number | null;
-  rowCount: number | null;
-  validationStatus: string | null;
+  datasetType: string;
+  validationStatus: string;
+  questionCounts: ExperimentalDatasetQuestionCountsDto;
+  isReferenceBundle: boolean;
+  isDemoDataset: boolean;
+  canRunLlmBaseline: boolean;
+  canRunEmbeddingBaseline: boolean;
+  canRunRagPresetBenchmark: boolean;
+  validationIssues: ExperimentalDatasetValidationIssueDto[];
   uploadedAt: string;
   description: string | null;
 };

@@ -280,6 +280,22 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
       productPresets: [...ragPresetsData],
       experimentalPresets: [
         {
+          productPresetId: "cafe0001-0001-4001-8001-000000000014",
+          code: "P4",
+          family: "S2",
+          label: "Chunk + metadata retrieval",
+          description: "Minimal dev preset row",
+          requiredCapabilities: ["USE_RETRIEVAL", "METADATA"],
+          supported: true,
+          supportStatus: "EXECUTABLE",
+          reasonIfUnsupported: null,
+          requiresMultiTurn: false,
+          mapsToRuntimeCapabilities: { code: "P4" },
+          allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED"],
+          chatSelectable: true,
+          labSelectable: true,
+        },
+        {
           productPresetId: "cafe0001-0001-4001-8001-000000000016",
           code: "P6",
           family: "S2",
@@ -531,6 +547,66 @@ describe("ChatPage", () => {
     await waitFor(() => expect(followLabJob).toHaveBeenCalled());
   });
 
+  it("shows experimental preset label (P4/P6) when selectedPresetId is experimental (never Recommended Default)", async () => {
+    const user = userEvent.setup();
+    // Pretend the conversation already persisted an experimental preset id.
+    mockConvRows[0].presetId = "cafe0001-0001-4001-8001-000000000014";
+    mockConvRows[0].effectivePresetId = "cafe0001-0001-4001-8001-000000000014";
+
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+
+    const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
+    expect(presetSelect.value).toBe("cafe0001-0001-4001-8001-000000000014");
+    const selected = Array.from(presetSelect.options).find((o) => o.selected);
+    expect(selected?.text ?? "").toContain("P4 — Chunk + metadata retrieval");
+    expect(selected?.text ?? "").not.toMatch(/Recommended/i);
+  });
+
+  it("selecting compatible experimental preset persists presetId via PATCH", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+
+    const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
+    await user.selectOptions(presetSelect, "cafe0001-0001-4001-8001-000000000014");
+
+    const calls = patchConversationApiCalls();
+    expect(calls.length).toBeGreaterThan(0);
+    const last = calls[calls.length - 1];
+    const init = last[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual(
+      expect.objectContaining({ presetId: "cafe0001-0001-4001-8001-000000000014" }),
+    );
+  });
+
+  it("marks conversation as Custom after saving any runtime override, and clears on Clear", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+
+    // Open advanced config, load overrides into the draft and flip a boolean.
+    await user.click(screen.getByTestId("chat-actions-runtime-collapsible"));
+    await user.click(screen.getByTestId("chat-actions-runtime-load-overrides"));
+    const useRetrieval = screen.getByRole("checkbox", { name: /Use retrieval/i });
+    await user.click(useRetrieval);
+
+    // Save should PATCH runtimeOverride and make the Custom badge visible.
+    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/^Custom$/i)).toBeInTheDocument();
+    });
+
+    // Clear should remove runtimeOverride and hide the badge.
+    await user.click(screen.getByRole("button", { name: /^Clear$/i }));
+    await waitFor(() => {
+      expect(screen.queryByText(/^Custom$/i)).not.toBeInTheDocument();
+    });
+  });
+
   it("shows optimistic user message and assistant status before POST resolves", async () => {
     let resolvePost!: (v: unknown) => void;
     vi.mocked(apiFetch).mockImplementation((url: string | { toString(): string }, init?: RequestInit) => {
@@ -733,7 +809,7 @@ describe("ChatPage", () => {
     );
   });
 
-  it("shows recommended default label instead of None when catalog omits the resolved id", async () => {
+  it("shows Unknown preset label when selected preset id is not in either catalog (never None)", async () => {
     ragPresetsData = [
       { id: "pr1", name: "P", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" },
     ];
@@ -741,9 +817,11 @@ describe("ChatPage", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
+    // Ignore unrelated initial effects (draft load, etc.).
+    vi.mocked(apiFetch).mockClear();
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     expect(presetSelect).toHaveValue("cafe0001-0001-4001-8001-000000000003");
-    expect(screen.getByRole("option", { name: /^Recommended default$/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /^Unknown preset$/ })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
     expect(patchConversationApiCalls()).toHaveLength(0);
   });
@@ -764,7 +842,7 @@ describe("ChatPage", () => {
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
   });
 
-  it("disables preset select and explains empty catalog without showing None", async () => {
+  it("disables preset select and explains empty product catalog while still showing experimental presets", async () => {
     ragPresetsData = [];
     const user = userEvent.setup();
     renderChat();
@@ -772,9 +850,11 @@ describe("ChatPage", () => {
     await openChatToolbarOverflow(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     expect(presetSelect).toBeDisabled();
-    expect(screen.getByRole("option", { name: /^Default configuration$/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /^Unknown preset$/ })).toBeInTheDocument();
     expect(screen.getAllByRole("status").some((n) => /No presets are available/i.test(n.textContent ?? ""))).toBe(true);
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
+    // Experimental group still loads from unified catalog.
+    expect(screen.getByRole("option", { name: /^P4 — Chunk \+ metadata retrieval$/ })).toBeInTheDocument();
   });
 
   it("when conversation omits preset ids, selects first system preset from catalog", async () => {
@@ -802,6 +882,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
     const limitCb = await screen.findByRole("checkbox", { name: /Limit retrieval to selected documents/i });
+    vi.mocked(apiFetch).mockClear();
     await user.click(limitCb);
     await waitFor(() => {
       expect(patchConversationApiCalls()).toHaveLength(1);
@@ -820,6 +901,53 @@ describe("ChatPage", () => {
     await user.selectOptions(presetSelect, "pr1");
     expect(screen.getByRole("combobox", { name: /Model/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Close$/i })).toBeInTheDocument();
+  });
+
+  it("renders Chat actions sections with padded body and sticky footer", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+
+    expect(screen.getByRole("region", { name: /Model & preset/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /Document scope/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /Runtime configuration/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /Chat actions/i })).toBeInTheDocument();
+
+    const body = screen.getByTestId("chat-actions-menu-body");
+    expect(body.className).toMatch(/\bpx-4\b/);
+    expect(body.className).toMatch(/\bpy-4\b/);
+
+    const footer = screen.getByTestId("chat-actions-menu-footer");
+    expect(footer.className).toMatch(/\bsticky\b/);
+    expect(footer.className).toMatch(/\bborder-t\b/);
+    expect(screen.getByRole("button", { name: /^Close$/i })).toBeInTheDocument();
+  });
+
+  it("advanced configuration collapsible opens and closes with aria-expanded", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+
+    const toggle = screen.getByTestId("chat-actions-runtime-collapsible");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("delete chat button stays after move button (destructive at end)", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+
+    const move = screen.getByTestId("chat-move-project-button");
+    const del = screen.getByTestId("chat-delete-menu-item");
+    const pos = move.compareDocumentPosition(del);
+    expect(pos & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("uploads documents directly from chat settings add documents control", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
+  resolveChatPresetLabel,
   resolveChatPresetSelectValue,
   resolveConversationPresetSelectValue,
   resolvePresetSelectLabel,
@@ -123,5 +124,36 @@ describe("conversation-preset-ui", () => {
 
   it("resolveChatPresetSelectValue falls back to deterministic id without catalog", () => {
     expect(resolveChatPresetSelectValue(undefined, undefined)).toBe(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
+  });
+
+  it("resolveChatPresetLabel shows experimental code+label when selectedPresetId is experimental productPresetId", () => {
+    const label = resolveChatPresetLabel(
+      [{ id: "pr1", name: "Prod", description: null, tags: [], values: {}, system: false, createdAt: "", updatedAt: "" }],
+      [
+        {
+          productPresetId: "exp4",
+          code: "P4",
+          family: "TFG",
+          label: "Chunk + metadata retrieval",
+          description: "",
+          requiredCapabilities: [],
+          supported: true,
+          supportStatus: "EXECUTABLE",
+          reasonIfUnsupported: null,
+          requiresMultiTurn: false,
+          mapsToRuntimeCapabilities: {},
+          allowedOutcomes: ["EXECUTED"],
+          chatSelectable: true,
+          labSelectable: true,
+        },
+      ],
+      "exp4",
+      labels,
+    );
+    expect(label).toBe("P4 — Chunk + metadata retrieval");
+  });
+
+  it("resolveChatPresetLabel shows Recommended Default when selectedPresetId is null", () => {
+    expect(resolveChatPresetLabel([], [], null, labels)).toBe("Recommended default");
   });
 });

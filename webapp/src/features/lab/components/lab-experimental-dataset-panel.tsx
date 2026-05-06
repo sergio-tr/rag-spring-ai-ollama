@@ -293,8 +293,19 @@ export function LabExperimentalDatasetPanel() {
                   </div>
                   <div className="text-muted-foreground mt-1">
                     {row.experimentalDatasetType}
-                    {row.questionCount != null ? ` · ${t("experimentalDatasetRowCounts", { q: row.questionCount, r: row.rowCount ?? row.questionCount })}` : null}
+                    {` · ${t("experimentalDatasetRowCountsV2", {
+                      llm: row.questionCounts.llmReaderQuestions ?? 0,
+                      emb: row.questionCounts.embeddingQueries ?? 0,
+                      rag: row.questionCounts.ragPresetQuestions ?? 0,
+                      presets: row.questionCounts.presetCatalog ?? 0,
+                      chunks: row.questionCounts.chunkRegistry ?? 0,
+                    })}`}
                   </div>
+                  {row.isDemoDataset ? (
+                    <p className="text-destructive mt-1 text-xs" data-testid="lab-dataset-demo-warning">
+                      {t("datasetBlockedDemoTfg")}
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ul>

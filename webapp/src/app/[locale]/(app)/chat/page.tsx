@@ -240,9 +240,13 @@ function ChatPageInner() {
   const syntheticPresetOptionNeeded = useMemo(() => {
     if (!presetSelectValue) return false;
     if (presetsLoading) return true;
-    if (!presets?.length) return true;
-    return !findPresetById(presets, presetSelectValue);
-  }, [presetSelectValue, presets, presetsLoading]);
+    const inProduct = Boolean(presets?.some((p) => p.id === presetSelectValue));
+    const inExperimental = Boolean(
+      experimentalPresets?.some((p) => p.productPresetId === presetSelectValue),
+    );
+    // Only synthesize an option when the selected id is not present in either catalog.
+    return !(inProduct || inExperimental);
+  }, [presetSelectValue, presets, experimentalPresets, presetsLoading]);
 
   const presetSelectDisabled =
     !!presetsError || patchConv.isPending || presetsLoading || presetsCatalogEmpty;
@@ -782,10 +786,15 @@ function ChatPageInner() {
   const onPresetChange = useCallback(
     (value: string) => {
       if (!conversationId || !value.trim()) return;
+      const exp = experimentalPresets?.find((p) => p.productPresetId === value);
+      if (exp && !exp.chatSelectable) {
+        // Disabled experimental presets must be visible but never persistable in Chat.
+        return;
+      }
       setPresetSelectValue(value);
       patchConv.mutate({ conversationId, body: { presetId: value } });
     },
-    [conversationId, patchConv],
+    [conversationId, patchConv, experimentalPresets],
   );
 
   const handleChatDocumentUpload = useCallback(
