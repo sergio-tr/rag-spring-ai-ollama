@@ -89,7 +89,7 @@ POM comments reference types that are **in** the instrumented bundle (not in the
 | EXC-017 | `com/uniovi/rag/domain/runtime/functioncalling/**` | `**/domain/runtime/functioncalling/**` | DTOs_records_enums | P9 records | Med | Unit invariants | **6.03** | — | — |
 | EXC-018 | `com/uniovi/rag/domain/runtime/advisor/**` | `**/domain/runtime/advisor/**` | DTOs_records_enums | P10 advisor domain | Med | Unit (`PackedContextSet`, etc.) | **6.03** | — | — |
 | EXC-019 | `com/uniovi/rag/domain/runtime/retrieval/**` | `**/domain/runtime/retrieval/**` | DTOs_records_enums | Retrieval diagnostics | Med | Unit invariants | **6.03** | — | — |
-| EXC-020 | **removed 6.21** (was `com/uniovi/rag/domain/entity/**`) | **removed 6.21** (was `**/domain/entity/**`) | DTOs_records_enums | Legacy dead pattern (no package) | — | N/A | **6.21** done | — | See `.cursor/plans/rag_service_domain_entity_coverage_decision_2026-04-21.plan.md` |
+| EXC-020 | **removed 6.21** (was `com/uniovi/rag/domain/entity/**`) | **removed 6.21** (was `**/domain/entity/**`) | DTOs_records_enums | Legacy dead pattern (no package) | — | N/A | **6.21** done | — | Domain entity coverage decision |
 | EXC-021 | `com/uniovi/rag/api/v5/dto/**` | `**/api/v5/dto/**` | DTOs_records_enums | API DTOs | Low | **Verified:** no `com.uniovi.rag.api` tree | **6.03** | — | Dead JaCoCo; clean Sonar line |
 | EXC-022 | `com/uniovi/rag/interfaces/rest/dto/**` | `**/interfaces/rest/dto/**/*.java` | DTOs_records_enums | REST records | Med | `@JsonTest`, factory tests | **6.03** | — | Large tree — prioritize Jackson |
 | EXC-023 | `com/uniovi/rag/api/auth/dto/**` | `**/api/auth/dto/**` | DTOs_records_enums | Auth DTOs | Low | **Verified:** no package | **6.03** | — | Dead JaCoCo |

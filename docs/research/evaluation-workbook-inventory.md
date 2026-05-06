@@ -49,7 +49,3 @@ The historical single-sheet **`evaluation/evaluation_dataset.xlsx`** is **not** 
 ## Phase 2 / Phase L (2026-05-04)
 
 [`EvaluationReferenceBundleLoader`](../../rag-service/src/main/java/com/uniovi/rag/application/evaluation/workbook/EvaluationReferenceBundleLoader.java) parses `REFERENCE_BUNDLE`, exposes counts and validation for `/lab/status`. Legacy Map projection via **`DatasetMinuteEvaluationService`** was removed; **`LegacyQuestionsAdapter`** is test/historical-only where retained.
-
-## References
-
-- Master plan: [`.cursor/plans/eval_models_and_presets.plan.md`](../../.cursor/plans/eval_models_and_presets.plan.md) (Phase 0 completed 2026-05-01).
