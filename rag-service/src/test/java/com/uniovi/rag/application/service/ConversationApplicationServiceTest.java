@@ -302,6 +302,94 @@ class ConversationApplicationServiceTest {
     }
 
     @Test
+    void patchConversation_acceptsExperimentalPresetWhenChatSelectable() {
+        UUID userId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        UUID presetId = UUID.randomUUID();
+        ConversationEntity c = mock(ConversationEntity.class);
+        when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(c);
+
+        RagPresetEntity preset = mock(RagPresetEntity.class);
+        when(preset.getId()).thenReturn(presetId);
+        when(preset.getTags()).thenReturn(List.of("experimental", "tfg"));
+        when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
+
+        when(experimentalPresetCatalogService.list())
+                .thenReturn(
+                        List.of(
+                                new ExperimentalPresetCatalogItemDto(
+                                        presetId.toString(),
+                                        "P4",
+                                        "S2",
+                                        "P4 preset",
+                                        "desc",
+                                        List.of("USE_RETRIEVAL", "METADATA"),
+                                        true,
+                                        "EXECUTABLE",
+                                        null,
+                                        false,
+                                        Map.of(),
+                                        List.of("EXECUTED", "FAILED", "SKIPPED"),
+                                        true,
+                                        true)));
+
+        service.patchConversation(
+                userId,
+                convId,
+                new PatchConversationRequest(null, presetId.toString(), null, null, null, null));
+
+        verify(c).setPreset(preset);
+        verify(conversationRepository).save(c);
+    }
+
+    @Test
+    void patchConversation_rejectsExperimentalPresetWhenNotChatSelectable_withClearReason() {
+        UUID userId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        UUID presetId = UUID.randomUUID();
+        ConversationEntity c = mock(ConversationEntity.class);
+        when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(c);
+
+        RagPresetEntity preset = mock(RagPresetEntity.class);
+        when(preset.getId()).thenReturn(presetId);
+        when(preset.getTags()).thenReturn(List.of("experimental", "tfg"));
+        when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
+
+        when(experimentalPresetCatalogService.list())
+                .thenReturn(
+                        List.of(
+                                new ExperimentalPresetCatalogItemDto(
+                                        presetId.toString(),
+                                        "P11",
+                                        "S3",
+                                        "P11 preset",
+                                        "desc",
+                                        List.of("CLARIFICATION"),
+                                        false,
+                                        "REQUIRES_MULTI_TURN",
+                                        "PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED",
+                                        true,
+                                        Map.of(),
+                                        List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
+                                        false,
+                                        true)));
+
+        ResponseStatusException ex =
+                assertThrows(
+                        ResponseStatusException.class,
+                        () ->
+                                service.patchConversation(
+                                        userId,
+                                        convId,
+                                        new PatchConversationRequest(null, presetId.toString(), null, null, null, null)));
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertThat(ex.getReason())
+                .contains("not selectable in Chat")
+                .contains("PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED");
+        verify(conversationRepository, never()).save(any());
+    }
+
+    @Test
     void deleteConversation_notFound() {
         UUID userId = UUID.randomUUID();
         UUID convId = UUID.randomUUID();
