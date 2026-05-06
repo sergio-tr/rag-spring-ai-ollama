@@ -8,6 +8,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 
 import java.text.Normalizer;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -84,6 +85,7 @@ public final class BenchmarkMvpMetricsCalculator {
     /** Flat row for CSV (string cells; use {@link BenchmarkMvpSchema#NOT_AVAILABLE} where needed). */
     public static Map<String, String> computeMvpFlatCsvRow(EvaluationResultEntity item, EvaluationRunEntity run) {
         Map<String, Object> mvp = computeMvpMetrics(item, run);
+        Map<String, Object> mp = payload(item);
         @SuppressWarnings("unchecked")
         Map<String, Object> ret = (Map<String, Object>) mvp.get("retrieval");
         @SuppressWarnings("unchecked")
@@ -118,6 +120,13 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("outcome", csvVal(op.get("outcome")));
         row.put("failureCode", csvVal(op.get("failureCode")));
         row.put("unsupportedReason", csvVal(op.get("unsupportedReason")));
+
+        // Embedding retrieval: export gold + retrieved id lists for reproducibility/debugging.
+        row.put("retrievalGoldMode", csvVal(mp.get("retrieval_gold_mode")));
+        row.put("goldChunkIds", joinIds(mp.get("gold_chunk_ids")));
+        row.put("goldDocumentIds", joinIds(mp.get("gold_document_ids")));
+        row.put("retrievedChunkIds", joinIds(mp.get("retrieved_chunk_ids")));
+        row.put("retrievedDocumentIds", joinIds(mp.get("retrieved_document_ids")));
         return row;
     }
 
@@ -242,6 +251,27 @@ public final class BenchmarkMvpMetricsCalculator {
             return "";
         }
         return String.valueOf(o);
+    }
+
+    private static String joinIds(Object raw) {
+        if (!(raw instanceof List<?> list) || list.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Object o : list) {
+            if (o == null) {
+                continue;
+            }
+            String s = String.valueOf(o).trim();
+            if (s.isEmpty()) {
+                continue;
+            }
+            if (!sb.isEmpty()) {
+                sb.append(';');
+            }
+            sb.append(s);
+        }
+        return sb.toString();
     }
 
     private static String truncate(String s, int max) {
