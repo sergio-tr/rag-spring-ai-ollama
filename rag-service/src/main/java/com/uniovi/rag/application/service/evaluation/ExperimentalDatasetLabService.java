@@ -6,10 +6,16 @@ import com.uniovi.rag.application.evaluation.workbook.ExperimentalDatasetKindMap
 import com.uniovi.rag.application.evaluation.workbook.ExperimentalDatasetMetrics;
 import com.uniovi.rag.application.evaluation.workbook.ExperimentalDatasetTemplateFactory;
 import com.uniovi.rag.application.evaluation.workbook.ReferenceBundleSnapshot;
+import com.uniovi.rag.application.evaluation.workbook.LabDatasetGateValidator;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
+import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.domain.evaluation.workbook.ExperimentalDatasetType;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationIssue;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationIssuePayload;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationIssueCode;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationSeverity;
 import com.uniovi.rag.domain.evaluation.workbook.WorkbookParseResult;
 import com.uniovi.rag.domain.evaluation.EvaluationDatasetScope;
 import com.uniovi.rag.domain.EvaluationDatasetType;
@@ -18,6 +24,7 @@ import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetListItemDto;
+import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetQuestionCountsDto;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetUploadResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationReportDto;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ValidationIssueDto;
@@ -32,7 +39,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -149,13 +158,21 @@ public class ExperimentalDatasetLabService {
         List<ExperimentalDatasetListItemDto> out = new ArrayList<>();
         ReferenceBundleSnapshot snap = referenceBundleLoader.getSnapshot();
         if (snap.classpathResourcePresent()) {
-            int qc = snap.workbook().llmReaderQuestions().size();
-            int total =
-                    snap.counts().llmReaderQuestions()
-                            + snap.counts().embeddingRetrievalQueries()
-                            + snap.counts().ragPresetQuestions()
-                            + snap.counts().corpusDocuments()
-                            + snap.counts().chunkRegistryEntries();
+            ExperimentalDatasetQuestionCountsDto counts =
+                    new ExperimentalDatasetQuestionCountsDto(
+                            snap.counts().llmReaderQuestions(),
+                            snap.counts().embeddingRetrievalQueries(),
+                            snap.counts().ragPresetQuestions(),
+                            snap.counts().presets(),
+                            snap.counts().chunkRegistryEntries());
+
+            boolean isDemo = isDemoWorkbook(snap.workbook(), snap.validationReport());
+            boolean canRunLlm = canRunKind(BenchmarkKind.LLM_JUDGE_QA, ExperimentalDatasetType.REFERENCE_BUNDLE, snap.workbook());
+            boolean canRunEmb = canRunKind(BenchmarkKind.EMBEDDING_RETRIEVAL, ExperimentalDatasetType.REFERENCE_BUNDLE, snap.workbook());
+            boolean canRunRag = canRunKind(BenchmarkKind.RAG_PRESET_END_TO_END, ExperimentalDatasetType.REFERENCE_BUNDLE, snap.workbook());
+
+            List<ValidationIssueDto> mergedIssues = mergeIssues(snap.validationReport(), ExperimentalDatasetType.REFERENCE_BUNDLE, snap.workbook());
+            String status = snap.validForReferenceUse() && !isDemo ? "VALID" : "INVALID";
             out.add(
                     new ExperimentalDatasetListItemDto(
                             REFERENCE_DATASET_LIST_ENTRY_ID,
@@ -163,9 +180,14 @@ public class ExperimentalDatasetLabService {
                             ExperimentalDatasetType.REFERENCE_BUNDLE.name(),
                             EvaluationDatasetType.RAG.name(),
                             true,
-                            qc,
-                            total,
-                            snap.validForReferenceUse() ? "VALID" : "INVALID",
+                            status,
+                            counts,
+                            true,
+                            isDemo,
+                            canRunLlm,
+                            canRunEmb,
+                            canRunRag,
+                            mergedIssues,
                             null,
                             "Internal classpath bundle (read-only)."));
         }
@@ -233,24 +255,198 @@ public class ExperimentalDatasetLabService {
         return new ExperimentalDatasetValidationReportDto(issues, hasErrors, hasWarnings);
     }
 
-    private static ExperimentalDatasetListItemDto toListItem(EvaluationDatasetEntity e) {
-        Integer qc = e.getQuestionCount();
-        int q = qc != null ? qc : 0;
+    private ExperimentalDatasetListItemDto toListItem(EvaluationDatasetEntity e) {
         String expKind =
                 e.getExperimentalKind() != null && !e.getExperimentalKind().isBlank()
                         ? e.getExperimentalKind()
                         : "UNKNOWN_LEGACY";
+
+        ExperimentalDatasetType experimentalType = parseExperimentalType(expKind);
+        if (experimentalType == null) {
+            return new ExperimentalDatasetListItemDto(
+                    e.getId(),
+                    e.getName(),
+                    expKind,
+                    e.getType().name(),
+                    false,
+                    "INVALID",
+                    new ExperimentalDatasetQuestionCountsDto(0, 0, 0, 0, 0),
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    issuesFromEntity(e),
+                    e.getUploadedAt(),
+                    e.getDescription());
+        }
+
+        WorkbookParseResult parsed = null;
+        try (InputStream in = evaluationDatasetStorePort.openStream(e.getStorageUri())) {
+            parsed = evaluationWorkbookParser.parse(in, experimentalType);
+        } catch (IOException ex) {
+            return new ExperimentalDatasetListItemDto(
+                    e.getId(),
+                    e.getName(),
+                    experimentalType.name(),
+                    e.getType().name(),
+                    false,
+                    "INVALID",
+                    new ExperimentalDatasetQuestionCountsDto(0, 0, 0, 0, 0),
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    List.of(new ValidationIssueDto(
+                            ValidationSeverity.ERROR.name(),
+                            ValidationIssueCode.WORKBOOK_IO_ERROR.name(),
+                            "",
+                            0,
+                            "",
+                            "Failed to read dataset binary")),
+                    e.getUploadedAt(),
+                    e.getDescription());
+        }
+
+        EvaluationWorkbook wb = parsed.workbook();
+        ExperimentalDatasetQuestionCountsDto counts = countsForWorkbook(wb);
+
+        boolean isDemo = isDemoWorkbook(wb, parsed.validationReport());
+        boolean isTemplateOnly = counts.llmReaderQuestions() == 0
+                && counts.embeddingQueries() == 0
+                && counts.ragPresetQuestions() == 0;
+
+        boolean canRunLlm = canRunKind(BenchmarkKind.LLM_JUDGE_QA, experimentalType, wb);
+        boolean canRunEmb = canRunKind(BenchmarkKind.EMBEDDING_RETRIEVAL, experimentalType, wb);
+        boolean canRunRag = canRunKind(BenchmarkKind.RAG_PRESET_END_TO_END, experimentalType, wb);
+
+        List<ValidationIssueDto> mergedIssues = mergeIssues(parsed.validationReport(), experimentalType, wb);
+
+        String status;
+        if (isDemo) {
+            status = "INVALID";
+        } else if (isTemplateOnly) {
+            status = "TEMPLATE_ONLY";
+        } else if (parsed.validationReport().hasErrors()) {
+            status = "INVALID";
+        } else {
+            status = "VALID";
+        }
+
         return new ExperimentalDatasetListItemDto(
                 e.getId(),
                 e.getName(),
-                expKind,
+                experimentalType.name(),
                 e.getType().name(),
                 false,
-                qc,
-                q,
-                e.getValidationStatus(),
+                status,
+                counts,
+                false,
+                isDemo,
+                canRunLlm,
+                canRunEmb,
+                canRunRag,
+                mergedIssues,
                 e.getUploadedAt(),
                 e.getDescription());
+    }
+
+    private static ExperimentalDatasetType parseExperimentalType(String expKind) {
+        if (expKind == null || expKind.isBlank()) {
+            return null;
+        }
+        try {
+            return ExperimentalDatasetType.valueOf(expKind);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    private static ExperimentalDatasetQuestionCountsDto countsForWorkbook(EvaluationWorkbook wb) {
+        if (wb == null) {
+            return new ExperimentalDatasetQuestionCountsDto(0, 0, 0, 0, 0);
+        }
+        return new ExperimentalDatasetQuestionCountsDto(
+                wb.llmReaderQuestions().size(),
+                wb.embeddingRetrievalQueries().size(),
+                wb.ragPresetQuestionsEnriched().size(),
+                wb.ragPresetCatalog().size(),
+                wb.chunkRegistry().size());
+    }
+
+    private static boolean isDemoWorkbook(EvaluationWorkbook wb, ValidationReport structural) {
+        if (structural != null
+                && structural.issues().stream()
+                        .anyMatch(i -> ValidationIssueCode.DATASET_DEMO_CONTENT_DETECTED == i.code())) {
+            return true;
+        }
+        if (wb == null) {
+            return false;
+        }
+        return wb.ragPresetQuestionsEnriched().stream().anyMatch(q -> "RAG_Q1".equalsIgnoreCase(q.id()))
+                || wb.llmReaderQuestions().stream().anyMatch(q -> "RAG_Q1".equalsIgnoreCase(q.id()));
+    }
+
+    private boolean canRunKind(BenchmarkKind kind, ExperimentalDatasetType type, EvaluationWorkbook wb) {
+        if (kind == null || type == null) {
+            return false;
+        }
+        if (kind == BenchmarkKind.LLM_JUDGE_QA
+                && !(type == ExperimentalDatasetType.LLM_MODEL_BASELINE || type == ExperimentalDatasetType.REFERENCE_BUNDLE)) {
+            return false;
+        }
+        if (kind == BenchmarkKind.EMBEDDING_RETRIEVAL
+                && !(type == ExperimentalDatasetType.EMBEDDING_MODEL_BASELINE || type == ExperimentalDatasetType.REFERENCE_BUNDLE)) {
+            return false;
+        }
+        if (kind == BenchmarkKind.RAG_PRESET_END_TO_END
+                && !(type == ExperimentalDatasetType.RAG_PRESET_BENCHMARK || type == ExperimentalDatasetType.REFERENCE_BUNDLE)) {
+            return false;
+        }
+        ValidationReport gate = new ValidationReport();
+        LabDatasetGateValidator.validatePreRun(kind, type, wb, gate);
+        return !gate.hasErrors();
+    }
+
+    private static List<ValidationIssueDto> mergeIssues(
+            ValidationReport structural, ExperimentalDatasetType type, EvaluationWorkbook wb) {
+        Map<String, ValidationIssueDto> unique = new LinkedHashMap<>();
+        if (structural != null) {
+            for (ValidationIssue i : structural.issues()) {
+                ValidationIssueDto dto = ValidationIssueDto.from(i);
+                unique.put(key(dto), dto);
+            }
+        }
+        for (BenchmarkKind k :
+                List.of(BenchmarkKind.LLM_JUDGE_QA, BenchmarkKind.EMBEDDING_RETRIEVAL, BenchmarkKind.RAG_PRESET_END_TO_END)) {
+            ValidationReport gate = new ValidationReport();
+            LabDatasetGateValidator.validatePreRun(k, type, wb, gate);
+            for (ValidationIssue i : gate.issues()) {
+                ValidationIssueDto dto = ValidationIssueDto.from(i);
+                unique.putIfAbsent(key(dto), dto);
+            }
+        }
+        return unique.values().stream().toList();
+    }
+
+    private static String key(ValidationIssueDto dto) {
+        if (dto == null) {
+            return "";
+        }
+        return String.valueOf(dto.code())
+                + "|" + String.valueOf(dto.sheet())
+                + "|" + dto.rowNumber()
+                + "|" + String.valueOf(dto.column())
+                + "|" + String.valueOf(dto.message());
+    }
+
+    private static List<ValidationIssueDto> issuesFromEntity(EvaluationDatasetEntity e) {
+        List<ValidationIssuePayload> payloads = e.getValidationIssues();
+        if (payloads == null || payloads.isEmpty()) {
+            return List.of();
+        }
+        return payloads.stream().map(ValidationIssueDto::from).toList();
     }
 
     private static String sanitizeFilename(String name) {

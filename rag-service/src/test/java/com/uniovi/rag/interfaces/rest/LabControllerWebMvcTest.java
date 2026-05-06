@@ -109,6 +109,7 @@ class LabControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.datasetKindsReady").value(true))
                 .andExpect(jsonPath("$.datasets.enabled").value(true))
+                .andExpect(jsonPath("$.validationStatus").value("VALID"))
                 .andExpect(jsonPath("$.protocolVersion").value("test-pv"));
     }
 
@@ -132,6 +133,7 @@ class LabControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.referenceBundleValid").value(false))
                 .andExpect(jsonPath("$.datasetKindsReady").value(false))
+                .andExpect(jsonPath("$.validationStatus").value("INVALID"))
                 .andExpect(jsonPath("$.validationIssues[0].code").value("WORKBOOK_IO_ERROR"));
     }
 

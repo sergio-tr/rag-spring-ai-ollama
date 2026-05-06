@@ -46,6 +46,9 @@ public final class ExperimentalWorkbookValidator {
             case RAG_PRESET_BENCHMARK -> validateRagPresetBenchmark(wb, report);
             case CLASSIFIER_DATASET -> validateClassifier(wb, report);
         }
+
+        // Additional Lab guardrails: block demo/empty/incomplete datasets early (upload + reference bundle).
+        LabDatasetGateValidator.validateUpload(type, wb, report);
     }
 
     private static void validateReferenceBundle(EvaluationWorkbook wb, ValidationReport report) {

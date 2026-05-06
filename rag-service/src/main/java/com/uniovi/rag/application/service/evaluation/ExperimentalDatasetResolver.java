@@ -1,6 +1,7 @@
 package com.uniovi.rag.application.service.evaluation;
 
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
+import com.uniovi.rag.application.evaluation.workbook.LabDatasetGateValidator;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalDataset;
@@ -8,6 +9,7 @@ import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalQuery;
 import com.uniovi.rag.domain.evaluation.workbook.ExperimentalDatasetType;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.domain.evaluation.workbook.WorkbookParseResult;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationDatasetEntity;
@@ -74,6 +76,14 @@ public class ExperimentalDatasetResolver {
             throw new BenchmarkDatasetResolutionException(parsed.validationReport());
         }
         var wb = parsed.workbook();
+
+        // Hard gate: typed jobs must never run on demo/too-small/incomplete datasets.
+        var gate = new ValidationReport();
+        LabDatasetGateValidator.validatePreRun(kind, experimental, wb, gate);
+        if (gate.hasErrors()) {
+            throw new BenchmarkDatasetResolutionException(gate);
+        }
+
         return switch (kind) {
             case LLM_JUDGE_QA -> {
                 List<LlmReaderQuestion> qs = wb.llmReaderQuestions();

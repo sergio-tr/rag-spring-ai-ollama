@@ -28,10 +28,16 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
 
 @ExtendWith(MockitoExtension.class)
 class BenchmarkRunOrchestratorTest {
@@ -191,6 +197,135 @@ class BenchmarkRunOrchestratorTest {
                         ex ->
                                 assertThat(((ResponseStatusException) ex).getStatusCode())
                                         .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void startJsonBenchmark_rejectsDemoOrTooSmallReferenceBundle_beforeCreatingRun() throws Exception {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser);
+
+        UUID dsId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        // Create a tiny workbook with explicit demo strings.
+        byte[] bytes = demoReferenceBundleBytes();
+
+        EvaluationDatasetEntity ds = Mockito.mock(EvaluationDatasetEntity.class);
+        UserEntity owner = Mockito.mock(UserEntity.class);
+        Mockito.when(owner.getId()).thenReturn(userId);
+        Mockito.when(ds.getOwner()).thenReturn(owner);
+        Mockito.when(ds.getDatasetScope()).thenReturn("USER_DATASET");
+        Mockito.when(ds.getExperimentalKind()).thenReturn("REFERENCE_BUNDLE");
+        Mockito.when(ds.getStorageUri()).thenReturn("datasets/u1/demo.xlsx");
+        when(evaluationDatasetRepository.findById(dsId)).thenReturn(Optional.of(ds));
+        when(evaluationDatasetStorePort.openStream(eq("datasets/u1/demo.xlsx"))).thenReturn(new ByteArrayInputStream(bytes));
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        dsId,
+                        null,
+                        EvaluationRunKind.PRODUCT_EXPLORATION,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null);
+
+        assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.RAG_PRESET_END_TO_END, req))
+                .isInstanceOf(LabDatasetGateException.class)
+                .satisfies(ex -> assertThat(((LabDatasetGateException) ex).code()).isIn(
+                        "DATASET_TOO_SMALL",
+                        "DATASET_DEMO_CONTENT_DETECTED",
+                        "EXPERIMENTAL_DATASET_INVALID"));
+    }
+
+    private static byte[] demoReferenceBundleBytes() throws Exception {
+        try (Workbook wb = new XSSFWorkbook()) {
+            // Minimal required reference sheets (headers + single row), with demo content.
+            Sheet readme = wb.createSheet("README");
+            readme.createRow(0).createCell(0).setCellValue("Item");
+            readme.getRow(0).createCell(1).setCellValue("Decision");
+            readme.createRow(1).createCell(0).setCellValue("Protocol version");
+            readme.getRow(1).createCell(1).setCellValue("demo");
+
+            Sheet corpus = wb.createSheet("corpus_documents");
+            corpus.createRow(0).createCell(0).setCellValue("document_id");
+            corpus.createRow(1).createCell(0).setCellValue("DOC_1");
+
+            Sheet chunks = wb.createSheet("chunk_registry");
+            chunks.createRow(0).createCell(0).setCellValue("chunk_id");
+            chunks.getRow(0).createCell(1).setCellValue("document_id");
+            chunks.createRow(1).createCell(0).setCellValue("CHUNK_1");
+            chunks.getRow(1).createCell(1).setCellValue("DOC_1");
+
+            Sheet llm = wb.createSheet("llm_reader_questions");
+            llm.createRow(0).createCell(0).setCellValue("id");
+            llm.getRow(0).createCell(1).setCellValue("question");
+            llm.createRow(1).createCell(0).setCellValue("LLM_Q1");
+            llm.getRow(1).createCell(1).setCellValue("Provide a grounded summary of the sample acta.");
+
+            Sheet emb = wb.createSheet("embedding_retrieval_queries");
+            emb.createRow(0).createCell(0).setCellValue("id");
+            emb.getRow(0).createCell(1).setCellValue("query");
+            emb.createRow(1).createCell(0).setCellValue("EMB_Q1");
+            emb.getRow(1).createCell(1).setCellValue("sample acta evidence");
+
+            Sheet rag = wb.createSheet("rag_preset_questions_enriched");
+            rag.createRow(0).createCell(0).setCellValue("id");
+            rag.getRow(0).createCell(1).setCellValue("question");
+            rag.getRow(0).createCell(2).setCellValue("expected_answer");
+            rag.createRow(1).createCell(0).setCellValue("RAG_Q1");
+            rag.getRow(1).createCell(1).setCellValue("What does the sample acta contain?");
+            rag.getRow(1).createCell(2).setCellValue("Evidence: Acta sample 1");
+
+            Sheet llmCand = wb.createSheet("llm_candidates");
+            llmCand.createRow(0).createCell(0).setCellValue("candidate_id");
+            llmCand.createRow(1).createCell(0).setCellValue("c1");
+
+            Sheet embCand = wb.createSheet("embedding_candidates");
+            embCand.createRow(0).createCell(0).setCellValue("candidate_id");
+            embCand.createRow(1).createCell(0).setCellValue("c1");
+
+            Sheet catalog = wb.createSheet("rag_preset_catalog_P0_P14");
+            catalog.createRow(0).createCell(0).setCellValue("preset_id");
+            catalog.createRow(1).createCell(0).setCellValue("P0");
+
+            Sheet metric = wb.createSheet("metric_spec");
+            metric.createRow(0).createCell(0).setCellValue("metric_id");
+            metric.createRow(1).createCell(0).setCellValue("m1");
+
+            Sheet schema = wb.createSheet("result_schema");
+            schema.createRow(0).createCell(0).setCellValue("field");
+            schema.createRow(1).createCell(0).setCellValue("outcome");
+
+            Sheet summary = wb.createSheet("summary_counts");
+            summary.createRow(0).createCell(0).setCellValue("Dataset");
+            summary.createRow(1).createCell(0).setCellValue("REFERENCE_BUNDLE");
+
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            wb.write(bos);
+            return bos.toByteArray();
+        }
     }
 }
 

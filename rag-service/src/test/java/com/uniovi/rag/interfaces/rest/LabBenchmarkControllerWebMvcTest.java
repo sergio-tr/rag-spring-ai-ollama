@@ -5,14 +5,17 @@ import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.evaluation.BenchmarkJobAccepted;
 import com.uniovi.rag.application.service.evaluation.BenchmarkRunOrchestrator;
 import com.uniovi.rag.application.service.evaluation.LabEvaluationRunService;
+import com.uniovi.rag.application.service.evaluation.LabDatasetGateException;
 import com.uniovi.rag.application.service.evaluation.LabMetricsComparisonService;
 import com.uniovi.rag.application.service.evaluation.StartBenchmarkRunRequest;
 import com.uniovi.rag.configuration.RagApiPathProperties;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.interfaces.rest.dto.CompareRunsResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.EvaluationRunDetailDto;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
 import com.uniovi.rag.security.RagPrincipal;
+import com.uniovi.rag.interfaces.rest.support.ApiGlobalExceptionHandler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = LabBenchmarkController.class)
 @ContextConfiguration(classes = RagWebMvcTestApplication.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(LabBenchmarkController.class)
+@Import({LabBenchmarkController.class, ApiGlobalExceptionHandler.class})
 class LabBenchmarkControllerWebMvcTest {
 
     @Autowired
@@ -97,6 +100,26 @@ class LabBenchmarkControllerWebMvcTest {
                 .andExpect(jsonPath("$.evaluationRunId").value(runId.toString()))
                 .andExpect(jsonPath("$.asyncTaskId").value(taskId.toString()))
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
+    }
+
+    @Test
+    void postBenchmark_rejectedByDatasetGate_returns422WithStructuredError() throws Exception {
+        UUID ds = UUID.randomUUID();
+        when(benchmarkRunOrchestrator.startJsonBenchmark(
+                        eq(userId), eq("USER"), eq(BenchmarkKind.RAG_PRESET_END_TO_END), any(StartBenchmarkRunRequest.class)))
+                .thenThrow(new LabDatasetGateException(
+                        "DATASET_TOO_SMALL",
+                        "Dataset is not eligible for RAG_PRESET_END_TO_END (see validationIssues).",
+                        new ValidationReport()));
+
+        String body = String.format(
+                "{\"datasetId\":\"%s\",\"runKind\":\"PRODUCT_EXPLORATION\"}", ds);
+
+        mockMvc.perform(post(path("/lab/benchmarks/RAG_PRESET_END_TO_END/runs")).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("DATASET_TOO_SMALL"))
+                .andExpect(jsonPath("$.error.code").value("DATASET_TOO_SMALL"));
     }
 
     @Test

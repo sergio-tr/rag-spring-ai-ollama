@@ -10,10 +10,12 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ClassPathResource;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -29,11 +31,13 @@ class EvaluationWorkbookParserTest {
         Workbook wb = new XSSFWorkbook();
         Sheet llm = wb.createSheet(WorkbookSheetNames.LLM_READER_QUESTIONS);
         writeRow(llm.createRow(0), "id", "question");
-        writeRow(llm.createRow(1), "q1", "What is RAG?");
+        for (int i = 1; i <= 10; i++) {
+            writeRow(llm.createRow(i), "q" + i, "What is RAG? " + i);
+        }
 
         WorkbookParseResult result = parse(wb, ExperimentalDatasetType.LLM_MODEL_BASELINE);
         assertThat(result.validationReport().hasErrors()).isFalse();
-        assertThat(result.workbook().llmReaderQuestions()).hasSize(1);
+        assertThat(result.workbook().llmReaderQuestions()).hasSize(10);
     }
 
     @Test
@@ -77,18 +81,26 @@ class EvaluationWorkbookParserTest {
     void embeddingBaseline_matchingGoldChunk_hasNoErrors() throws Exception {
         Workbook wb = new XSSFWorkbook();
         addChunkRegistry(wb, "c1", "d1");
-        addEmbeddingSheet(wb, "e1", "hello", "c1");
+        Sheet emb = wb.createSheet(WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES);
+        writeRow(emb.createRow(0), "id", "query", "gold_chunk_ids");
+        for (int i = 1; i <= 20; i++) {
+            writeRow(emb.createRow(i), "e" + i, "hello " + i, "c1");
+        }
 
         WorkbookParseResult result = parse(wb, ExperimentalDatasetType.EMBEDDING_MODEL_BASELINE);
         assertThat(result.validationReport().hasErrors()).isFalse();
-        assertThat(result.workbook().embeddingRetrievalQueries()).hasSize(1);
+        assertThat(result.workbook().embeddingRetrievalQueries()).hasSize(20);
     }
 
     @Test
     void embeddingBaseline_unknownGoldChunk_reportsUnknownRef() throws Exception {
         Workbook wb = new XSSFWorkbook();
         addChunkRegistry(wb, "c1", "d1");
-        addEmbeddingSheet(wb, "e1", "hello", "not-in-registry");
+        Sheet emb = wb.createSheet(WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES);
+        writeRow(emb.createRow(0), "id", "query", "gold_chunk_ids");
+        for (int i = 1; i <= 20; i++) {
+            writeRow(emb.createRow(i), "e" + i, "hello " + i, "not-in-registry");
+        }
 
         WorkbookParseResult result = parse(wb, ExperimentalDatasetType.EMBEDDING_MODEL_BASELINE);
         assertThat(codes(result, ValidationSeverity.ERROR)).contains(ValidationIssueCode.UNKNOWN_CHUNK_REF);
@@ -99,61 +111,24 @@ class EvaluationWorkbookParserTest {
         Workbook wb = new XSSFWorkbook();
         addChunkRegistry(wb, "c1", "d1");
         Sheet rag = wb.createSheet(WorkbookSheetNames.RAG_PRESET_QUESTIONS_ENRICHED);
-        writeRow(rag.createRow(0), "id", "question");
-        writeRow(rag.createRow(1), "r1", "Summarize the policy.");
+        writeRow(rag.createRow(0), "id", "question", "query_type", "difficulty");
+        for (int i = 1; i <= 20; i++) {
+            writeRow(rag.createRow(i), "r" + i, "Summarize the policy " + i, "COUNT_DOCUMENTS", "LOW");
+        }
 
         WorkbookParseResult result = parse(wb, ExperimentalDatasetType.RAG_PRESET_BENCHMARK);
         assertThat(result.validationReport().hasErrors()).isFalse();
-        assertThat(result.workbook().ragPresetQuestionsEnriched()).hasSize(1);
+        assertThat(result.workbook().ragPresetQuestionsEnriched()).hasSize(20);
     }
 
     @Test
-    void referenceBundle_allRequiredSheetsPresent_hasNoErrors() throws Exception {
-        Workbook wb = new XSSFWorkbook();
-
-        Sheet readme = wb.createSheet(WorkbookSheetNames.README);
-        writeRow(readme.createRow(0), "Item", "Decision");
-        writeRow(readme.createRow(1), "scope", "approved");
-
-        addCorpusMinimal(wb, "d1");
-        addChunkRegistry(wb, "c1", "d1");
-
-        Sheet llm = wb.createSheet(WorkbookSheetNames.LLM_READER_QUESTIONS);
-        writeRow(llm.createRow(0), "id", "question");
-        writeRow(llm.createRow(1), "q1", "Q?");
-
-        addEmbeddingSheet(wb, "e1", "query text", "");
-
-        Sheet rag = wb.createSheet(WorkbookSheetNames.RAG_PRESET_QUESTIONS_ENRICHED);
-        writeRow(rag.createRow(0), "id", "question");
-        writeRow(rag.createRow(1), "rq1", "R?");
-
-        Sheet llmCand = wb.createSheet(WorkbookSheetNames.LLM_CANDIDATES);
-        writeRow(llmCand.createRow(0), "candidate_id", "model");
-        writeRow(llmCand.createRow(1), "lc1", "m1");
-
-        Sheet embCand = wb.createSheet(WorkbookSheetNames.EMBEDDING_CANDIDATES);
-        writeRow(embCand.createRow(0), "candidate_id", "model");
-        writeRow(embCand.createRow(1), "ec1", "emb1");
-
-        Sheet catalog = wb.createSheet(WorkbookSheetNames.RAG_PRESET_CATALOG_P0_P14);
-        writeRow(catalog.createRow(0), "preset_id", "family", "name");
-        writeRow(catalog.createRow(1), "P0", "f", "n");
-
-        Sheet metrics = wb.createSheet(WorkbookSheetNames.METRIC_SPEC);
-        writeRow(metrics.createRow(0), "metric_id", "scope");
-        writeRow(metrics.createRow(1), "m1", "global");
-
-        Sheet schema = wb.createSheet(WorkbookSheetNames.RESULT_SCHEMA);
-        writeRow(schema.createRow(0), "field", "type");
-        writeRow(schema.createRow(1), "score", "number");
-
-        Sheet summary = wb.createSheet(WorkbookSheetNames.SUMMARY_COUNTS);
-        writeRow(summary.createRow(0), "Dataset", "Rows");
-        writeRow(summary.createRow(1), "llm_reader_questions", "1");
-
-        WorkbookParseResult result = parse(wb, ExperimentalDatasetType.REFERENCE_BUNDLE);
-        assertThat(result.validationReport().hasErrors()).isFalse();
+    void referenceBundle_classpathArtifact_hasNoErrors() throws Exception {
+        ClassPathResource r = new ClassPathResource(EvaluationReferenceBundleLoader.CLASSPATH_LOCATION);
+        assertThat(r.exists()).isTrue();
+        try (InputStream in = r.getInputStream()) {
+            WorkbookParseResult result = parser.parse(in, ExperimentalDatasetType.REFERENCE_BUNDLE);
+            assertThat(result.validationReport().hasErrors()).isFalse();
+        }
     }
 
     @Test
@@ -179,22 +154,10 @@ class EvaluationWorkbookParserTest {
         assertThat(codes(result, ValidationSeverity.ERROR)).contains(ValidationIssueCode.MISSING_SHEET);
     }
 
-    private static void addCorpusMinimal(Workbook wb, String documentId) {
-        Sheet corpus = wb.createSheet(WorkbookSheetNames.CORPUS_DOCUMENTS);
-        writeRow(corpus.createRow(0), "document_id");
-        writeRow(corpus.createRow(1), documentId);
-    }
-
     private static void addChunkRegistry(Workbook wb, String chunkId, String documentId) {
         Sheet reg = wb.createSheet(WorkbookSheetNames.CHUNK_REGISTRY);
         writeRow(reg.createRow(0), "chunk_id", "document_id");
         writeRow(reg.createRow(1), chunkId, documentId);
-    }
-
-    private static void addEmbeddingSheet(Workbook wb, String id, String query, String goldChunks) {
-        Sheet emb = wb.createSheet(WorkbookSheetNames.EMBEDDING_RETRIEVAL_QUERIES);
-        writeRow(emb.createRow(0), "id", "query", "gold_chunk_ids");
-        writeRow(emb.createRow(1), id, query, goldChunks);
     }
 
     private static void writeRow(Row row, String... values) {

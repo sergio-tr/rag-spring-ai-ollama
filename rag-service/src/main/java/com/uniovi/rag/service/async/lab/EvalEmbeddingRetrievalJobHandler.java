@@ -35,6 +35,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -232,15 +235,75 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                 List<Document> docs = vectorStore.similaritySearch(req);
                 long latencyMs = (System.nanoTime() - t0) / 1_000_000L;
 
-                double r1 = EmbeddingRetrievalMetrics.recallAt1(docs, expected);
-                double rk = EmbeddingRetrievalMetrics.recallAtK(docs, expected);
-                double r3 = EmbeddingRetrievalMetrics.recallAtN(docs, expected, 3);
-                double r5 = EmbeddingRetrievalMetrics.recallAtN(docs, expected, 5);
-                double mrr = EmbeddingRetrievalMetrics.mrr(docs, expected);
-                int rank = EmbeddingRetrievalMetrics.firstRelevantRank(docs, expected);
-                boolean goldFound = rank > 0;
+                GoldSpec gold = GoldSpec.fromQuery(q);
+                RetrievedIds retrieved = RetrievedIds.fromDocs(docs);
 
                 Map<String, Object> metrics = baseMetrics(ctx);
+                metrics.put("benchmark_protocol", protocol.name());
+                metrics.put("gold_chunk_ids", gold.goldChunkIds);
+                metrics.put("gold_document_ids", gold.goldDocumentIds);
+                metrics.put("retrieved_chunk_ids", retrieved.retrievedChunkIds);
+                metrics.put("retrieved_chunk_ids_scorable", retrieved.retrievedChunkIdsScorable);
+                metrics.put("retrieved_document_ids", retrieved.retrievedDocumentIds);
+
+                if (!gold.hasAnyGold()) {
+                    // No gold → not a valid retrieval item; skip with explicit reason.
+                    metrics.put("retrieval_gold_mode", null);
+                    metrics.put("reason", "missing_gold_ids");
+                    metrics.put("recall_at_1", 0.0);
+                    metrics.put("recall_at_3", 0.0);
+                    metrics.put("recall_at_5", 0.0);
+                    metrics.put("recall_at_k", 0.0);
+                    metrics.put("mrr", 0.0);
+                    metrics.put("first_relevant_rank", 0);
+                    metrics.put("retrieved_count", docs.size());
+                    metrics.put("gold_found", false);
+                    row.put("top_document_id", docs.isEmpty() ? null : docs.get(0).getId());
+                    row.put(BenchmarkResultRowKeys.LATENCY_MS, latencyMs);
+                    row.put("metrics", metrics);
+                    row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.SKIPPED.name());
+                    row.put(BenchmarkResultRowKeys.ERROR_CODE, "MISSING_GOLD_IDS");
+                    row.put(BenchmarkResultRowKeys.REASON, "missing_gold_ids");
+                    rows.add(row);
+                    continue;
+                }
+
+                RetrievalGoldMode mode = chooseGoldMode(gold, retrieved);
+                if (mode == null) {
+                    metrics.put("retrieval_gold_mode", null);
+                    metrics.put("reason", "missing_gold_ids_or_unscorable_retrieval_ids");
+                    metrics.put("recall_at_1", 0.0);
+                    metrics.put("recall_at_3", 0.0);
+                    metrics.put("recall_at_5", 0.0);
+                    metrics.put("recall_at_k", 0.0);
+                    metrics.put("mrr", 0.0);
+                    metrics.put("first_relevant_rank", 0);
+                    metrics.put("retrieved_count", docs.size());
+                    metrics.put("gold_found", false);
+                    row.put("top_document_id", docs.isEmpty() ? null : docs.get(0).getId());
+                    row.put(BenchmarkResultRowKeys.LATENCY_MS, latencyMs);
+                    row.put("metrics", metrics);
+                    row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.SKIPPED.name());
+                    row.put(BenchmarkResultRowKeys.ERROR_CODE, "MISSING_SCORABLE_IDS");
+                    row.put(BenchmarkResultRowKeys.REASON, "missing_gold_ids_or_unscorable_retrieval_ids");
+                    rows.add(row);
+                    continue;
+                }
+                metrics.put("retrieval_gold_mode", mode.name());
+
+                List<String> retrievedForScoring =
+                        mode == RetrievalGoldMode.CHUNK_ID ? retrieved.retrievedChunkIdsScorable : retrieved.retrievedDocumentIds;
+                Set<String> goldForScoring =
+                        mode == RetrievalGoldMode.CHUNK_ID ? gold.goldChunkIdsSet : gold.goldDocumentIdsSet;
+
+                double r1 = EmbeddingRetrievalMetrics.recallAtNByIds(retrievedForScoring, goldForScoring, 1);
+                double r3 = EmbeddingRetrievalMetrics.recallAtNByIds(retrievedForScoring, goldForScoring, 3);
+                double r5 = EmbeddingRetrievalMetrics.recallAtNByIds(retrievedForScoring, goldForScoring, 5);
+                double rk = EmbeddingRetrievalMetrics.recallAtKByIds(retrievedForScoring, goldForScoring);
+                double mrr = EmbeddingRetrievalMetrics.mrrByIds(retrievedForScoring, goldForScoring);
+                int rank = EmbeddingRetrievalMetrics.firstRelevantRankByIds(retrievedForScoring, goldForScoring);
+                boolean goldFound = rank > 0;
+
                 metrics.put("recall_at_1", r1);
                 metrics.put("recall_at_3", r3);
                 metrics.put("recall_at_5", r5);
@@ -249,7 +312,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                 metrics.put("first_relevant_rank", rank);
                 metrics.put("retrieved_count", docs.size());
                 metrics.put("gold_found", goldFound);
-                metrics.put("benchmark_protocol", protocol.name());
+                metrics.put("retrieved", retrieved.retrievedDebugRows);
 
                 row.put("top_document_id", docs.isEmpty() ? null : docs.get(0).getId());
                 row.put(BenchmarkResultRowKeys.LATENCY_MS, latencyMs);
@@ -315,6 +378,191 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         metrics.put("k", topK);
         metrics.put("embedding_downstream_rag", ctx.downstreamRag);
         return metrics;
+    }
+
+    private enum RetrievalGoldMode {
+        CHUNK_ID,
+        DOCUMENT_ID
+    }
+
+    private static RetrievalGoldMode chooseGoldMode(GoldSpec gold, RetrievedIds retrieved) {
+        // Prefer CHUNK_ID when both gold and retrieved ids are scorable (stable).
+        if (!gold.goldChunkIdsSet.isEmpty() && retrieved != null && !retrieved.retrievedChunkIdsScorable.isEmpty()) {
+            return RetrievalGoldMode.CHUNK_ID;
+        }
+        // Fallback: DOCUMENT_ID when present.
+        if (!gold.goldDocumentIdsSet.isEmpty()) {
+            return RetrievalGoldMode.DOCUMENT_ID;
+        }
+        // Gold exists but we cannot score it (e.g. only chunk gold, but no scorable retrieved chunk ids).
+        return null;
+    }
+
+    private record GoldSpec(List<String> goldDocumentIds, List<String> goldChunkIds, Set<String> goldDocumentIdsSet, Set<String> goldChunkIdsSet) {
+        static GoldSpec fromQuery(EmbeddingRetrievalQuery q) {
+            List<String> gDocs = q.goldDocumentIds() != null ? q.goldDocumentIds() : List.of();
+            List<String> gChunks = q.goldChunkIds() != null ? q.goldChunkIds() : List.of();
+            return new GoldSpec(
+                    normalizeList(gDocs),
+                    normalizeList(gChunks),
+                    normalizeSet(gDocs),
+                    normalizeSet(gChunks));
+        }
+
+        boolean hasAnyGold() {
+            return !goldDocumentIdsSet.isEmpty() || !goldChunkIdsSet.isEmpty();
+        }
+    }
+
+    private record RetrievedIds(
+            List<String> retrievedDocumentIds,
+            List<String> retrievedChunkIds,
+            List<String> retrievedChunkIdsScorable,
+            List<Map<String, Object>> retrievedDebugRows) {
+        static RetrievedIds fromDocs(List<Document> docs) {
+            List<String> docIds = new ArrayList<>();
+            List<String> chunkIds = new ArrayList<>();
+            List<String> chunkIdsScorable = new ArrayList<>();
+            List<Map<String, Object>> debug = new ArrayList<>();
+            if (docs == null) {
+                return new RetrievedIds(List.of(), List.of(), List.of(), List.of());
+            }
+            for (Document d : docs) {
+                String docId = normalizeId(extractDocumentId(d));
+                ChunkIdCandidate cc = extractChunkIdCandidate(d, docId);
+                String chunkId = normalizeId(cc.chunkId);
+                if (!docId.isEmpty()) {
+                    docIds.add(docId);
+                }
+                if (!chunkId.isEmpty()) {
+                    chunkIds.add(chunkId);
+                }
+                if (cc.scorable && !chunkId.isEmpty()) {
+                    chunkIdsScorable.add(chunkId);
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("document_id", docId.isEmpty() ? null : docId);
+                row.put("chunk_id", chunkId.isEmpty() ? null : chunkId);
+                Object score = d != null ? firstNonNull(d.getMetadata().get("distance"), d.getMetadata().get("score"), d.getMetadata().get("similarity")) : null;
+                if (score != null) {
+                    row.put("score", score);
+                }
+                debug.add(row);
+            }
+            return new RetrievedIds(docIds, chunkIds, chunkIdsScorable, debug);
+        }
+    }
+
+    private static Object firstNonNull(Object... values) {
+        if (values == null) {
+            return null;
+        }
+        for (Object v : values) {
+            if (v != null) {
+                return v;
+            }
+        }
+        return null;
+    }
+
+    private static String extractDocumentId(Document d) {
+        if (d == null) {
+            return "";
+        }
+        Map<String, Object> meta = d.getMetadata();
+        if (meta == null) {
+            return "";
+        }
+        Object id = meta.get("document_id");
+        if (id == null) {
+            id = meta.get("documentId");
+        }
+        if (id == null) {
+            id = meta.get("projectDocumentId");
+        }
+        if (id == null) {
+            id = meta.get("id");
+        }
+        return id != null ? String.valueOf(id) : "";
+    }
+
+    private record ChunkIdCandidate(String chunkId, boolean scorable) {}
+
+    private static ChunkIdCandidate extractChunkIdCandidate(Document d, String normalizedDocId) {
+        if (d == null) {
+            return new ChunkIdCandidate("", false);
+        }
+        Map<String, Object> meta = d.getMetadata();
+        Object cid = meta != null ? firstNonNull(meta.get("chunk_id"), meta.get("chunkId")) : null;
+        if (cid != null) {
+            return new ChunkIdCandidate(String.valueOf(cid), true);
+        }
+        Integer idx = extractChunkIndex(meta);
+        if (idx != null && normalizedDocId != null && !normalizedDocId.isBlank()) {
+            return new ChunkIdCandidate(normalizedDocId + ":" + idx, true);
+        }
+        // Last resort: use the vector store row id (debug only, not scorable against workbook gold ids).
+        return new ChunkIdCandidate(d.getId() != null ? String.valueOf(d.getId()) : "", false);
+    }
+
+    private static Integer extractChunkIndex(Map<String, Object> meta) {
+        if (meta == null) {
+            return null;
+        }
+        Object v = meta.get("chunk_index");
+        if (v == null) {
+            v = meta.get("chunkIndex");
+        }
+        if (v instanceof Number n) {
+            return n.intValue();
+        }
+        if (v instanceof String s) {
+            try {
+                return Integer.parseInt(s.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static List<String> normalizeList(List<String> raw) {
+        if (raw == null || raw.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String s : raw) {
+            String n = normalizeId(s);
+            if (!n.isEmpty()) {
+                out.add(n);
+            }
+        }
+        return out;
+    }
+
+    private static Set<String> normalizeSet(List<String> raw) {
+        Set<String> out = new HashSet<>();
+        if (raw == null) {
+            return out;
+        }
+        for (String s : raw) {
+            String n = normalizeId(s);
+            if (!n.isEmpty()) {
+                out.add(n);
+            }
+        }
+        return out;
+    }
+
+    private static String normalizeId(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String t = raw.trim();
+        if (t.isEmpty()) {
+            return "";
+        }
+        return t.toUpperCase(Locale.ROOT);
     }
 
     private record EmbeddingBenchmarkContext(

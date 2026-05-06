@@ -6,6 +6,7 @@ import com.uniovi.rag.interfaces.rest.auth.EmailNotVerifiedException;
 import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
 import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetValidationException;
+import com.uniovi.rag.application.service.evaluation.LabDatasetGateException;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationFailedDto;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationReportDto;
@@ -31,6 +32,9 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.lang.Nullable;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationIssue;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Standardizes JSON error responses for REST controllers.
@@ -204,6 +208,22 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .body(ExperimentalDatasetValidationFailedDto.of(report));
     }
 
+    @ExceptionHandler(LabDatasetGateException.class)
+    public ResponseEntity<ApiErrorResponse> handleLabDatasetGate(LabDatasetGateException ex, HttpServletRequest request) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("validationIssues", ex.validationReport().issues().stream().map(ApiGlobalExceptionHandler::issueMap).toList());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(new ApiErrorResponse(
+                Instant.now(),
+                HttpStatus.UNPROCESSABLE_ENTITY.value(),
+                trimOrFallback(ex.code(), "DATASET_INVALID"),
+                trimOrFallback(ex.getMessage(), "Dataset is not eligible for this Lab benchmark"),
+                request != null ? request.getRequestURI() : null,
+                request != null ? headerFirstNonBlank(request, "X-Request-Id", "x-request-id") : null,
+                null,
+                details
+        ));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnhandled(Exception ex, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(build(
@@ -253,6 +273,17 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static String trimOrFallback(String raw, String fallback) {
         String s = raw != null ? raw.trim() : "";
         return s.isEmpty() ? fallback : s;
+    }
+
+    private static Map<String, Object> issueMap(ValidationIssue i) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("severity", i.severity().name());
+        m.put("code", i.code().name());
+        m.put("sheet", i.sheet());
+        m.put("rowNumber", i.rowNumber());
+        m.put("column", i.column());
+        m.put("message", i.message());
+        return m;
     }
 }
 

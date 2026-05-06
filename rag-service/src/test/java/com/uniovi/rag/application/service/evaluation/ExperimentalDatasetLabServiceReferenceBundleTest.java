@@ -38,6 +38,8 @@ class ExperimentalDatasetLabServiceReferenceBundleTest {
         assertThat(items.getFirst().experimentalDatasetType()).isEqualTo("REFERENCE_BUNDLE");
         assertThat(items.getFirst().readOnly()).isTrue();
         assertThat(items.getFirst().validationStatus()).isEqualTo("VALID");
+        assertThat(items.getFirst().isReferenceBundle()).isTrue();
+        assertThat(items.getFirst().questionCounts().llmReaderQuestions()).isGreaterThan(0);
     }
 }
 

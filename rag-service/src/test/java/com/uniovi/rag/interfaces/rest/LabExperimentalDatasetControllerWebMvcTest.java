@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.evaluation.workbook.ValidationIssueCode;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationSeverity;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetListItemDto;
+import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetQuestionCountsDto;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetUploadResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationReportDto;
 import com.uniovi.rag.interfaces.rest.support.ApiGlobalExceptionHandler;
@@ -170,16 +171,23 @@ class LabExperimentalDatasetControllerWebMvcTest {
                                         "LLM_MODEL_BASELINE",
                                         "LLM_ONLY",
                                         false,
-                                        3,
-                                        3,
                                         "VALID",
+                                        new ExperimentalDatasetQuestionCountsDto(3, 0, 0, 0, 0),
+                                        false,
+                                        false,
+                                        true,
+                                        false,
+                                        false,
+                                        List.of(),
                                         Instant.parse("2026-05-01T12:00:00Z"),
                                         null)));
 
         mockMvc.perform(get(path("/lab/experimental-datasets")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].experimentalDatasetType").value("LLM_MODEL_BASELINE"))
-                .andExpect(jsonPath("$[0].readOnly").value(false));
+                .andExpect(jsonPath("$[0].readOnly").value(false))
+                .andExpect(jsonPath("$[0].questionCounts.llmReaderQuestions").value(3))
+                .andExpect(jsonPath("$[0].canRunLlmBaseline").value(true));
     }
 
     @Test

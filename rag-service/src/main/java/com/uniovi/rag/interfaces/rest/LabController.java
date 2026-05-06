@@ -71,6 +71,9 @@ public class LabController {
         m.put("referenceBundleAvailable", bundleAvailable);
         m.put("referenceBundleValid", bundleValid);
         m.put("datasetKindsReady", kindsReady);
+        if (bundleAvailable) {
+            m.put("validationStatus", bundleValid ? "VALID" : "INVALID");
+        }
 
         Optional<String> pv = bundleSnap.protocolVersion();
         if (pv.isPresent()) {

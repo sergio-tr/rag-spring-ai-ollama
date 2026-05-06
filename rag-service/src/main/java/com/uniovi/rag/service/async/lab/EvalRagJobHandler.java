@@ -63,14 +63,43 @@ class EvalRagJobHandler implements LabJobHandler {
                                 + "enqueue via POST /lab/benchmarks/RAG_PRESET_END_TO_END/runs with a typed evaluation_dataset.");
             }
             mutation.appendProgressLine(taskId, "Resolving typed dataset for RAG_PRESET_END_TO_END…");
+            var runWithDataset = evaluationRunRepository.findByIdFetchDataset(evaluationRunId).orElse(null);
             TypedBenchmarkDataset typed = experimentalDatasetResolver.resolve(evaluationRunId);
             if (!(typed instanceof TypedBenchmarkDataset.RagPresetQuestions rag)) {
                 throw new IllegalStateException("Resolver returned unexpected payload for RAG_PRESET_END_TO_END");
             }
+            String dsId = runWithDataset != null && runWithDataset.getDataset() != null ? String.valueOf(runWithDataset.getDataset().getId()) : null;
+            String dsKind = runWithDataset != null && runWithDataset.getDataset() != null ? runWithDataset.getDataset().getExperimentalKind() : null;
+            int questionCount = rag.questions() != null ? rag.questions().size() : 0;
+            int presetCount = rag.presetCatalog() != null ? rag.presetCatalog().size() : 0;
+            Set<RagExperimentalPresetCode> requestedPresets = requestedPresets(evaluationRunId);
+            int selectedPresetCount = requestedPresets != null && !requestedPresets.isEmpty() ? requestedPresets.size() : presetCount;
+            long expectedItemCount = (long) questionCount * (long) Math.max(1, selectedPresetCount);
+            mutation.appendProgressLine(
+                    taskId,
+                    "RAG dataset resolved: datasetId="
+                            + (dsId != null ? dsId : "unknown")
+                            + " experimentalKind="
+                            + (dsKind != null ? dsKind : "unknown")
+                            + " questions="
+                            + questionCount
+                            + " presets="
+                            + presetCount
+                            + " selectedPresets="
+                            + selectedPresetCount
+                            + " expectedItems="
+                            + expectedItemCount);
+
+            // Defensive check: never allow legacy/demo question ids in RAG preset benchmark payload.
+            boolean hasDemoId =
+                    rag.questions() != null
+                            && rag.questions().stream().anyMatch(q -> q != null && "RAG_Q1".equalsIgnoreCase(q.id()));
+            if (hasDemoId) {
+                throw new IllegalStateException("Demo dataset_question_id RAG_Q1 detected; aborting benchmark.");
+            }
             mutation.appendProgressLine(
                     taskId,
                     "Parsed dataset RAG_PRESET_END_TO_END: " + rag.questions().size() + " questions");
-            Set<RagExperimentalPresetCode> requestedPresets = requestedPresets(evaluationRunId);
             Map<String, Object> res =
                     typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
                             evaluationRunId,

@@ -56,7 +56,12 @@ public class LabEvaluationRunService {
                     "presetCode",
                     "outcome",
                     "failureCode",
-                    "unsupportedReason");
+                    "unsupportedReason",
+                    "retrievalGoldMode",
+                    "goldChunkIds",
+                    "goldDocumentIds",
+                    "retrievedChunkIds",
+                    "retrievedDocumentIds");
 
     /** Stable MVP CSV columns (shared by comparison exports and unit tests). */
     public static List<String> MVP_ITEMS_CSV_COLUMNS_FOR_TESTS() {

@@ -13,6 +13,8 @@ import com.uniovi.rag.domain.evaluation.EvaluationStudyType;
 import com.uniovi.rag.domain.evaluation.workbook.WorkbookParseResult;
 import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
+import com.uniovi.rag.application.evaluation.workbook.LabDatasetGateValidator;
+import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.infrastructure.persistence.EvaluationDatasetRepository;
 import com.uniovi.rag.infrastructure.persistence.EvaluationCampaignRepository;
@@ -122,6 +124,7 @@ public class BenchmarkRunOrchestrator {
         validateRunKind(roleName, request.runKind());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
+        validateDatasetPreRunEligibility(kind, dataset);
         validateScienceFields(kind, request);
 
         EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, request);
@@ -143,6 +146,39 @@ public class BenchmarkRunOrchestrator {
 
         attachTaskAndRunning(run, taskId);
         return BenchmarkJobAccepted.of(run.getId(), taskId);
+    }
+
+    private void validateDatasetPreRunEligibility(BenchmarkKind kind, EvaluationDatasetEntity dataset) {
+        if (kind == null || dataset == null) {
+            return;
+        }
+        if (kind == BenchmarkKind.CLASSIFIER_METRICS) {
+            return;
+        }
+        ExperimentalDatasetType experimental = BenchmarkDatasetCompatibility.resolveExperimentalType(dataset);
+        try (InputStream in = openDatasetStream(dataset)) {
+            WorkbookParseResult parsed = evaluationWorkbookParser.parse(in, experimental);
+            if (parsed.validationReport().hasErrors()) {
+                throw new LabDatasetGateException(
+                        "EXPERIMENTAL_DATASET_INVALID",
+                        "Dataset workbook failed validation; fix validationIssues before running a benchmark.",
+                        parsed.validationReport());
+            }
+            var gate = new ValidationReport();
+            LabDatasetGateValidator.validatePreRun(kind, experimental, parsed.workbook(), gate);
+            if (gate.hasErrors()) {
+                String primary = gate.issues().isEmpty() ? "DATASET_INVALID" : gate.issues().getFirst().code().name();
+                throw new LabDatasetGateException(
+                        primary,
+                        "Dataset is not eligible for " + kind.name() + " (see validationIssues).",
+                        gate);
+            }
+        } catch (IOException e) {
+            throw new LabDatasetGateException(
+                    "WORKBOOK_IO_ERROR",
+                    "Failed to open dataset workbook bytes for validation",
+                    new ValidationReport());
+        }
     }
 
     private BenchmarkJobAccepted startRagPresetCampaign(
