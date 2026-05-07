@@ -2,14 +2,18 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { HelpPopover } from "@/features/help/HelpPopover";
 import { Label } from "@/components/ui/label";
 import { LabBenchmarkResultsPanel } from "@/features/lab/components/lab-benchmark-results-panel";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
+import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
+import { useLabEvaluationDraft } from "@/features/lab/hooks/use-lab-evaluation-draft";
+import type { LabEvaluationDraftKind } from "@/features/lab/lib/lab-evaluation-draft";
 import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
-import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
+import { useModelsByType } from "@/features/chat/hooks/use-models-by-type";
 import {
   asyncTaskDtoFromSnapshot,
   type LabJobSectionKey,
@@ -25,7 +29,6 @@ import {
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
-import type { LabJobFollowMode } from "@/lib/lab-job-follow";
 import { useAppStore } from "@/store/app.store";
 import type {
   AsyncTaskStatusDto,
@@ -147,12 +150,13 @@ export function LabEvaluationRunCard({
   const t = useTranslations("Lab");
   const tHelp = useTranslations("Help");
   const { data: labStatus } = useLabStatus();
+  const activeJobs = useActiveLabJobs();
   const experimentalDatasets = useExperimentalDatasetsQuery();
   const experimentalPresets = useExperimentalPresetCatalog();
-  const modelsCatalog = useModelsCatalog();
+  const llmModels = useModelsByType("LLM");
+  const embeddingModels = useModelsByType("EMBEDDING");
   const activeProject = useAppStore((s) => s.activeProject);
 
-  const [followMode, setFollowMode] = useState<LabJobFollowMode>("poll");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<unknown>(null);
   const [accepted, setAccepted] = useState<LabJobAcceptedDto | null>(null);
@@ -161,14 +165,6 @@ export function LabEvaluationRunCard({
   const [taskStatus, setTaskStatus] = useState<AsyncTaskStatusDto | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [stoppedWaiting, setStoppedWaiting] = useState(false);
-  /** When null, the default compatible dataset is used without pinning user intent. */
-  const [userDatasetId, setUserDatasetId] = useState<string | null>(null);
-  const [llmModelId, setLlmModelId] = useState("");
-  const [embeddingModelId, setEmbeddingModelId] = useState("");
-  const [llmModelIds, setLlmModelIds] = useState<string[]>([]);
-  const [embeddingModelIds, setEmbeddingModelIds] = useState<string[]>([]);
-  const [embeddingDownstreamRag, setEmbeddingDownstreamRag] = useState(false);
-  const [selectedExperimentalPresetCodes, setSelectedExperimentalPresetCodes] = useState<string[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const traceDedupeRef = useRef(createLabJobTraceDedupe());
   const mountedEvalCardRef = useRef(true);
@@ -189,11 +185,72 @@ export function LabEvaluationRunCard({
     [benchmarkKind, experimentalDatasets.data],
   );
 
+  const availableLlmModels = useMemo(
+    () => llmModels.data?.map((m) => m.modelId).sort((a, b) => a.localeCompare(b)) ?? [],
+    [llmModels.data],
+  );
+  const availableEmbeddingModels = useMemo(
+    () => embeddingModels.data?.map((m) => m.modelId).sort((a, b) => a.localeCompare(b)) ?? [],
+    [embeddingModels.data],
+  );
+
+  const draftValidation = useMemo(
+    () => ({
+      compatibleDatasetRows: compatibleRows,
+      allDatasetRows: experimentalDatasets.data ?? [],
+      datasetsFetched: experimentalDatasets.isFetched,
+      availableLlmModelIds: availableLlmModels,
+      availableEmbeddingModelIds: availableEmbeddingModels,
+      catalogPresetCodes: (experimentalPresets.data ?? []).map((p) => p.code),
+      presetsCatalogReady: experimentalPresets.isSuccess,
+    }),
+    [
+      compatibleRows,
+      experimentalDatasets.data,
+      experimentalDatasets.isFetched,
+      availableLlmModels,
+      availableEmbeddingModels,
+      experimentalPresets.data,
+      experimentalPresets.isSuccess,
+    ],
+  );
+
+  const { draft, patchDraft, clearDraft, resetToRecommended, setLastEvaluationRunId, warnings } =
+    useLabEvaluationDraft(benchmarkKind as LabEvaluationDraftKind, draftValidation);
+
+  const draftBlocksRun =
+    warnings.datasetDeletedOrUnknown ||
+    warnings.datasetIncompatibleWithBenchmark ||
+    warnings.llmModelInvalid ||
+    warnings.llmModelsInvalid.length > 0 ||
+    warnings.embeddingModelInvalid ||
+    warnings.embeddingModelsInvalid.length > 0 ||
+    warnings.presetsUnknown.length > 0;
+
   const selectedDataset = useMemo(() => {
-    const id = userDatasetId ?? defaultDataset?.id ?? null;
+    const id = draft.datasetId?.trim();
     if (!id) return null;
     return compatibleRows.find((r) => r.id === id) ?? null;
-  }, [compatibleRows, defaultDataset, userDatasetId]);
+  }, [compatibleRows, draft.datasetId]);
+
+  const datasetSelectValue = draft.datasetId ?? "";
+
+  const showStaleDatasetOption =
+    Boolean(draft.datasetId) &&
+    (warnings.datasetDeletedOrUnknown || warnings.datasetIncompatibleWithBenchmark);
+
+  const recommendedDraftPartial = useMemo(
+    () => ({
+      datasetId: defaultDataset?.id ?? null,
+    }),
+    [defaultDataset?.id],
+  );
+
+  useEffect(() => {
+    if (draft.datasetId != null || draft.explicitDraftClear) return;
+    if (!defaultDataset?.id) return;
+    patchDraft({ datasetId: defaultDataset.id, explicitDraftClear: false });
+  }, [draft.datasetId, draft.explicitDraftClear, defaultDataset?.id, patchDraft]);
 
   const referenceKindsReady =
     labStatus?.datasetKindsReady ??
@@ -209,22 +266,23 @@ export function LabEvaluationRunCard({
     };
   }, []);
 
-  const hydratedEvalCardRef = useRef(false);
+  const hydratedJobUiRef = useRef(false);
   useEffect(() => {
-    if (hydratedEvalCardRef.current) return;
-    hydratedEvalCardRef.current = true;
+    if (hydratedJobUiRef.current) return;
+    hydratedJobUiRef.current = true;
+
     const rec = useLabJobSessionStore.getState().pickLatestForSection(sectionKey);
     if (!rec || rec.staleNotFound) return;
     queueMicrotask(() => {
       setAccepted(rec.accepted);
       setEvaluationRunId(rec.evaluationRunId ?? null);
-      setFollowMode(rec.followMode);
+      patchDraft({ followMode: rec.followMode });
       if (rec.lastStatus) {
         setTaskStatus(asyncTaskDtoFromSnapshot(rec.jobId, rec.lastStatus));
       }
       setStoppedWaiting(rec.stoppedWatching);
     });
-  }, [sectionKey]);
+  }, [patchDraft, sectionKey]);
 
   const resumeNonceEvalCard = useLabJobSessionStore((s) => s.resumeNonce);
 
@@ -236,7 +294,7 @@ export function LabEvaluationRunCard({
     traceLabJobResumedWatching(rec.jobId, t("traceJobResumedWatching"));
     setAccepted(rec.accepted);
     setEvaluationRunId(rec.evaluationRunId ?? null);
-    setFollowMode(rec.followMode);
+    patchDraft({ followMode: rec.followMode });
     setRunning(true);
     setErr(null);
     setStoppedWaiting(false);
@@ -301,13 +359,20 @@ export function LabEvaluationRunCard({
           ? (selectedDataset?.questionCounts.ragPresetQuestions ?? 0) <= 1
           : false;
   const hardBlocked = demoBlocked || tooSmallBlocked;
-  const canStart = hasCompatibleDataset && datasetIsValid && !hardBlocked;
+  const canStart = hasCompatibleDataset && datasetIsValid && !hardBlocked && !draftBlocksRun;
+
+  const otherActiveJobExists = useMemo(() => {
+    const jobs = activeJobs.data ?? [];
+    if (jobs.length === 0) return false;
+    const currentId = accepted?.jobId ?? null;
+    return jobs.some((j) => j.jobId && j.jobId !== currentId);
+  }, [accepted?.jobId, activeJobs.data]);
 
   const expectedSummary = useMemo(() => {
     if (!selectedDataset) return "";
     if (benchmarkKind === "LLM_JUDGE_QA") {
       const q = selectedDataset.questionCounts.llmReaderQuestions ?? 0;
-      const models = llmModelIds.length > 0 ? llmModelIds.length : 1;
+      const models = draft.llmModelIds.length > 0 ? draft.llmModelIds.length : 1;
       return t("benchmarkExpectedItemsLlm", { q, models, items: q * models });
     }
     if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
@@ -318,12 +383,12 @@ export function LabEvaluationRunCard({
       const q = selectedDataset.questionCounts.ragPresetQuestions ?? 0;
       const catalog = selectedDataset.questionCounts.presetCatalog ?? 0;
       const presets =
-        selectedExperimentalPresetCodes.length > 0 ? selectedExperimentalPresetCodes.length : catalog;
+        draft.selectedExperimentalPresetCodes.length > 0 ? draft.selectedExperimentalPresetCodes.length : catalog;
       const items = catalog > 0 ? q * presets : q;
       return t("benchmarkExpectedItemsRag", { q, presets: catalog > 0 ? presets : 1, items });
     }
     return "";
-  }, [benchmarkKind, llmModelIds.length, selectedDataset, selectedExperimentalPresetCodes.length, t]);
+  }, [benchmarkKind, draft.llmModelIds.length, draft.selectedExperimentalPresetCodes.length, selectedDataset, t]);
 
   async function run() {
     abortRef.current?.abort();
@@ -348,17 +413,24 @@ export function LabEvaluationRunCard({
         setErr(t("benchmarkNeedsValidDataset"));
         return;
       }
+      if (otherActiveJobExists) {
+        setErr(t("jobAlreadyRunning"));
+        return;
+      }
       const body: StartBenchmarkRunRequest = {
         datasetId: selectedDataset.id,
         projectId: activeProject?.id ?? undefined,
       };
-      if (benchmarkKind === "RAG_PRESET_END_TO_END" && selectedExperimentalPresetCodes.length > 0) {
-        body.experimentalPresetCodes = selectedExperimentalPresetCodes;
+      if (benchmarkKind === "RAG_PRESET_END_TO_END" && draft.selectedExperimentalPresetCodes.length > 0) {
+        body.experimentalPresetCodes = draft.selectedExperimentalPresetCodes;
       }
-      const lm = llmModelId.trim();
-      const em = embeddingModelId.trim();
-      const lmList = llmModelIds.map((x) => x.trim()).filter(Boolean);
-      const emList = embeddingModelIds.map((x) => x.trim()).filter(Boolean);
+      if (draft.runName.trim()) {
+        body.campaignName = draft.runName.trim();
+      }
+      const lm = draft.llmModelId.trim();
+      const em = draft.embeddingModelId.trim();
+      const lmList = draft.llmModelIds.map((x) => x.trim()).filter(Boolean);
+      const emList = draft.embeddingModelIds.map((x) => x.trim()).filter(Boolean);
       if (lmList.length > 0) {
         body.llmModelIds = lmList;
         body.campaignName = body.campaignName ?? `LLM campaign (${lmList.length})`;
@@ -371,7 +443,7 @@ export function LabEvaluationRunCard({
         body.embeddingModelId = em;
       }
       if (benchmarkKind === "EMBEDDING_RETRIEVAL") {
-        body.embeddingDownstreamRag = embeddingDownstreamRag;
+        body.embeddingDownstreamRag = draft.embeddingDownstreamRag;
       }
       const url = apiProductPath(`/lab/benchmarks/${benchmarkKind}/runs`);
       const accRaw = await apiFetch<BenchmarkJobAcceptedDto>(url, {
@@ -388,10 +460,11 @@ export function LabEvaluationRunCard({
       setAccepted(acc);
       setEvaluationRunId(accRaw.evaluationRunId);
       setCampaignId(accRaw.campaignId ?? null);
+      setLastEvaluationRunId(accRaw.evaluationRunId);
       useLabJobSessionStore.getState().upsertLabJobOnAccepted({
         accepted: acc,
         sectionKey,
-        followMode,
+        followMode: draft.followMode,
         taskTypeHint,
         evaluationRunId: accRaw.evaluationRunId,
       });
@@ -414,7 +487,7 @@ export function LabEvaluationRunCard({
           emitLabJobTraceForTick(traceDedupeRef.current, s, acc.jobId, traceMessages);
         },
         {
-          mode: followMode,
+          mode: draft.followMode,
           signal,
         },
       );
@@ -432,6 +505,9 @@ export function LabEvaluationRunCard({
         if (!mountedEvalCardRef.current) return;
         useLabJobSessionStore.getState().markLabJobStaleNotFound(asyncAccepted.jobId);
         setErr(t("jobRecoveryStaleShort"));
+      } else if (e instanceof ApiError && e.status === 409) {
+        if (!mountedEvalCardRef.current) return;
+        setErr(t("jobAlreadyRunning"));
       } else {
         if (!mountedEvalCardRef.current) return;
         setErr(e instanceof Error ? e.message : t("evalError"));
@@ -443,17 +519,24 @@ export function LabEvaluationRunCard({
     }
   }
 
+  async function cancelBackendJob() {
+    if (!accepted?.jobId) {
+      abortRef.current?.abort();
+      return;
+    }
+    try {
+      await apiFetch<void>(apiProductPath(`/lab/jobs/${accepted.jobId}/cancel`), { method: "POST" });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   const showResultsPanel = taskSucceeded(taskStatus) && !!evaluationRunId?.trim();
-  const availableLlmModels =
-    modelsCatalog.data?.allowlist
-      ?.filter((m) => m.type === "LLM" && m.inAllowlist && m.installedInOllama)
-      .map((m) => m.name)
-      .sort((a, b) => a.localeCompare(b)) ?? [];
-  const availableEmbeddingModels =
-    modelsCatalog.data?.allowlist
-      ?.filter((m) => m.type === "EMBEDDING" && m.inAllowlist && m.installedInOllama)
-      .map((m) => m.name)
-      .sort((a, b) => a.localeCompare(b)) ?? [];
+
+  const staleDatasetRow =
+    draft.datasetId != null
+      ? (experimentalDatasets.data ?? []).find((d) => d.id === draft.datasetId)
+      : undefined;
 
   return (
     <div className="space-y-4">
@@ -484,8 +567,8 @@ export function LabEvaluationRunCard({
                     <input
                       type="radio"
                       name={radioGroupName}
-                      checked={followMode === "poll"}
-                      onChange={() => setFollowMode("poll")}
+                      checked={draft.followMode === "poll"}
+                      onChange={() => patchDraft({ followMode: "poll" })}
                       disabled={running}
                     />
                     {t("followModePoll")}
@@ -494,8 +577,8 @@ export function LabEvaluationRunCard({
                     <input
                       type="radio"
                       name={radioGroupName}
-                      checked={followMode === "sse"}
-                      onChange={() => setFollowMode("sse")}
+                      checked={draft.followMode === "sse"}
+                      onChange={() => patchDraft({ followMode: "sse" })}
                       disabled={running}
                     />
                     {t("followModeSse")}
@@ -531,18 +614,111 @@ export function LabEvaluationRunCard({
             </output>
           )}
 
+          {draftBlocksRun ? (
+            <output
+              role="alert"
+              data-testid="lab-evaluation-draft-warnings"
+              className="block rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-amber-800 text-sm dark:text-amber-200"
+            >
+              <p className="font-medium">{t("evalDraftWarningsTitle")}</p>
+              <ul className="mt-1 list-inside list-disc space-y-0.5">
+                {warnings.datasetDeletedOrUnknown ? (
+                  <li>{t("evalDraftWarnDatasetMissing")}</li>
+                ) : null}
+                {warnings.datasetIncompatibleWithBenchmark ? (
+                  <li>{t("evalDraftWarnDatasetIncompatible")}</li>
+                ) : null}
+                {warnings.llmModelInvalid ? (
+                  <li>{t("evalDraftWarnLlmInvalid", { modelId: draft.llmModelId.trim() })}</li>
+                ) : null}
+                {warnings.llmModelsInvalid.length > 0 ? (
+                  <li>{t("evalDraftWarnLlmListInvalid", { models: warnings.llmModelsInvalid.join(", ") })}</li>
+                ) : null}
+                {warnings.embeddingModelInvalid ? (
+                  <li>{t("evalDraftWarnEmbeddingInvalid", { modelId: draft.embeddingModelId.trim() })}</li>
+                ) : null}
+                {warnings.embeddingModelsInvalid.length > 0 ? (
+                  <li>{t("evalDraftWarnEmbeddingListInvalid", { models: warnings.embeddingModelsInvalid.join(", ") })}</li>
+                ) : null}
+                {warnings.presetsUnknown.length > 0 ? (
+                  <li>{t("evalDraftWarnPresetsUnknown", { codes: warnings.presetsUnknown.join(", ") })}</li>
+                ) : null}
+              </ul>
+            </output>
+          ) : null}
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="min-w-[200px] flex-1 space-y-2">
+              <Label htmlFor={`lab-eval-run-name-${sectionKey}`}>{t("evalDraftRunNameLabel")}</Label>
+              <Input
+                id={`lab-eval-run-name-${sectionKey}`}
+                data-testid="lab-eval-run-name"
+                value={draft.runName}
+                disabled={running}
+                placeholder={t("evalDraftRunNamePlaceholder")}
+                onChange={(e) => patchDraft({ runName: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={running}
+                data-testid="lab-eval-draft-clear"
+                onClick={() => clearDraft()}
+              >
+                {t("evalDraftClear")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={running}
+                data-testid="lab-eval-draft-reset-recommended"
+                onClick={() => resetToRecommended(recommendedDraftPartial)}
+              >
+                {t("evalDraftResetRecommended")}
+              </Button>
+            </div>
+          </div>
+
+          {draft.lastEvaluationRunId ? (
+            <p className="text-muted-foreground text-xs" data-testid="lab-eval-draft-last-run">
+              {t("evalDraftLastRunHint", { runId: draft.lastEvaluationRunId })}
+            </p>
+          ) : null}
+
           <div className="space-y-2">
             <Label htmlFor={`lab-benchmark-dataset-${sectionKey}`}>{t("benchmarkDatasetLabel")}</Label>
             <select
               id={`lab-benchmark-dataset-${sectionKey}`}
               data-testid="lab-benchmark-dataset-select"
               className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-              value={selectedDataset?.id ?? ""}
+              value={datasetSelectValue}
               disabled={running || compatibleRows.length === 0}
-              onChange={(e) => setUserDatasetId(e.target.value || null)}
+              onChange={(e) => {
+                const v = e.target.value;
+                patchDraft({
+                  datasetId: v ? v : null,
+                  explicitDraftClear: !v,
+                });
+              }}
             >
               {compatibleRows.length === 0 ? (
                 <option value="">{t("benchmarkDatasetPlaceholderNone")}</option>
+              ) : (
+                <option value="">{t("benchmarkDatasetPlaceholderChoose")}</option>
+              )}
+              {showStaleDatasetOption && draft.datasetId ? (
+                <option value={draft.datasetId} disabled>
+                  {warnings.datasetDeletedOrUnknown
+                    ? t("benchmarkDatasetStaleMissingOption", { id: draft.datasetId })
+                    : t("benchmarkDatasetStaleIncompatibleOption", {
+                        name: staleDatasetRow?.name ?? t("experimentalDatasetUnnamed"),
+                        id: draft.datasetId,
+                      })}
+                </option>
               ) : null}
               {compatibleRows.map((row) => (
                 <option key={row.id} value={row.id}>
@@ -601,7 +777,7 @@ export function LabEvaluationRunCard({
 
           {(benchmarkKind === "LLM_JUDGE_QA" ||
             benchmarkKind === "RAG_PRESET_END_TO_END" ||
-            (benchmarkKind === "EMBEDDING_RETRIEVAL" && embeddingDownstreamRag)) && (
+            (benchmarkKind === "EMBEDDING_RETRIEVAL" && draft.embeddingDownstreamRag)) && (
             <div className="space-y-2">
               <Label htmlFor={`lab-llm-model-${sectionKey}`}>{t("benchmarkLlmModelOptional")}</Label>
               {benchmarkKind === "LLM_JUDGE_QA" && availableLlmModels.length > 0 ? (
@@ -610,12 +786,21 @@ export function LabEvaluationRunCard({
                     multiple
                     data-testid="lab-benchmark-llm-models-multi"
                     className="border-input bg-background ring-offset-background focus-visible:ring-ring min-h-28 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    value={llmModelIds}
+                    value={draft.llmModelIds}
                     disabled={running}
                     onChange={(e) =>
-                      setLlmModelIds(Array.from(e.target.selectedOptions).map((o) => o.value))
+                      patchDraft({
+                        llmModelIds: Array.from(e.target.selectedOptions).map((o) => o.value),
+                      })
                     }
                   >
+                    {draft.llmModelIds
+                      .filter((id) => id.trim() !== "" && !availableLlmModels.includes(id))
+                      .map((name) => (
+                        <option key={`stale-${name}`} value={name} disabled>
+                          {name}
+                        </option>
+                      ))}
                     {availableLlmModels.map((name) => (
                       <option key={name} value={name}>
                         {name}
@@ -630,15 +815,20 @@ export function LabEvaluationRunCard({
                     id={`lab-llm-model-${sectionKey}`}
                     data-testid="lab-benchmark-llm-model"
                     className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    value={llmModelId}
+                    value={draft.llmModelId}
                     disabled={running || availableLlmModels.length === 0}
-                    onChange={(e) => setLlmModelId(e.target.value)}
+                    onChange={(e) => patchDraft({ llmModelId: e.target.value })}
                   >
                     {availableLlmModels.length === 0 ? (
                       <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
                     ) : (
                       <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
                     )}
+                    {warnings.llmModelInvalid && draft.llmModelId.trim() !== "" ? (
+                      <option value={draft.llmModelId} disabled>
+                        {draft.llmModelId}
+                      </option>
+                    ) : null}
                     {availableLlmModels.map((name) => (
                       <option key={name} value={name}>
                         {name}
@@ -664,12 +854,21 @@ export function LabEvaluationRunCard({
                     multiple
                     data-testid="lab-benchmark-embedding-models-multi"
                     className="border-input bg-background ring-offset-background focus-visible:ring-ring min-h-28 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    value={embeddingModelIds}
+                    value={draft.embeddingModelIds}
                     disabled={running}
                     onChange={(e) =>
-                      setEmbeddingModelIds(Array.from(e.target.selectedOptions).map((o) => o.value))
+                      patchDraft({
+                        embeddingModelIds: Array.from(e.target.selectedOptions).map((o) => o.value),
+                      })
                     }
                   >
+                    {draft.embeddingModelIds
+                      .filter((id) => id.trim() !== "" && !availableEmbeddingModels.includes(id))
+                      .map((name) => (
+                        <option key={`stale-${name}`} value={name} disabled>
+                          {name}
+                        </option>
+                      ))}
                     {availableEmbeddingModels.map((name) => (
                       <option key={name} value={name}>
                         {name}
@@ -686,11 +885,16 @@ export function LabEvaluationRunCard({
                     id={`lab-emb-model-${sectionKey}`}
                     data-testid="lab-benchmark-embedding-model"
                     className="border-input bg-background ring-offset-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                    value={embeddingModelId}
+                    value={draft.embeddingModelId}
                     disabled={running || availableEmbeddingModels.length === 0}
-                    onChange={(e) => setEmbeddingModelId(e.target.value)}
+                    onChange={(e) => patchDraft({ embeddingModelId: e.target.value })}
                   >
                     <option value="">{t("benchmarkEmbeddingModelPlaceholder")}</option>
+                    {warnings.embeddingModelInvalid && draft.embeddingModelId.trim() !== "" ? (
+                      <option value={draft.embeddingModelId} disabled>
+                        {draft.embeddingModelId}
+                      </option>
+                    ) : null}
                     {availableEmbeddingModels.map((name) => (
                       <option key={name} value={name}>
                         {name}
@@ -698,9 +902,7 @@ export function LabEvaluationRunCard({
                     ))}
                   </select>
                   {availableEmbeddingModels.length === 0 ? (
-                    <output className="text-muted-foreground block text-xs">
-                      Model catalog is unavailable. Configure the classifier service registry to expose embedding models.
-                    </output>
+                    <output className="text-muted-foreground block text-xs">{t("noEmbeddingModelsAvailable")}</output>
                   ) : null}
                 </>
               )}
@@ -718,7 +920,9 @@ export function LabEvaluationRunCard({
                   disabled={running}
                   data-testid="lab-experimental-presets-select-all"
                   onClick={() =>
-                    setSelectedExperimentalPresetCodes((experimentalPresets.data ?? []).map((p) => p.code))
+                    patchDraft({
+                      selectedExperimentalPresetCodes: (experimentalPresets.data ?? []).map((p) => p.code),
+                    })
                   }
                 >
                   {t("benchmarkExperimentalPresetsSelectAll")}
@@ -730,9 +934,11 @@ export function LabEvaluationRunCard({
                   disabled={running}
                   data-testid="lab-experimental-presets-select-core"
                   onClick={() =>
-                    setSelectedExperimentalPresetCodes(
-                      (experimentalPresets.data ?? []).map((p) => p.code).filter((c) => /^P[0-8]$/.test(c)),
-                    )
+                    patchDraft({
+                      selectedExperimentalPresetCodes: (experimentalPresets.data ?? [])
+                        .map((p) => p.code)
+                        .filter((c) => /^P[0-8]$/.test(c)),
+                    })
                   }
                 >
                   {t("benchmarkExperimentalPresetsSelectCore")}
@@ -743,7 +949,7 @@ export function LabEvaluationRunCard({
                   size="sm"
                   disabled={running}
                   data-testid="lab-experimental-presets-clear"
-                  onClick={() => setSelectedExperimentalPresetCodes([])}
+                  onClick={() => patchDraft({ selectedExperimentalPresetCodes: [] })}
                 >
                   {t("benchmarkExperimentalPresetsClear")}
                 </Button>
@@ -753,7 +959,7 @@ export function LabEvaluationRunCard({
                 className="max-h-60 space-y-2 overflow-auto rounded-md border p-2"
               >
                 {(experimentalPresets.data ?? []).map((p) => {
-                  const checked = selectedExperimentalPresetCodes.includes(p.code);
+                  const checked = draft.selectedExperimentalPresetCodes.includes(p.code);
                   return (
                     <label key={p.code} className="block space-y-0.5 rounded border px-2 py-1 text-sm">
                       <span className="flex items-center gap-2">
@@ -763,9 +969,11 @@ export function LabEvaluationRunCard({
                           disabled={running}
                           checked={checked}
                           onChange={(e) =>
-                            setSelectedExperimentalPresetCodes((prev) =>
-                              e.target.checked ? [...prev, p.code] : prev.filter((x) => x !== p.code),
-                            )
+                            patchDraft((prev) => ({
+                              selectedExperimentalPresetCodes: e.target.checked
+                                ? Array.from(new Set([...prev.selectedExperimentalPresetCodes, p.code]))
+                                : prev.selectedExperimentalPresetCodes.filter((x) => x !== p.code),
+                            }))
                           }
                         />
                         <span className="font-medium">
@@ -793,9 +1001,9 @@ export function LabEvaluationRunCard({
               <input
                 type="checkbox"
                 data-testid="lab-benchmark-embedding-downstream"
-                checked={embeddingDownstreamRag}
+                checked={draft.embeddingDownstreamRag}
                 disabled={running}
-                onChange={(e) => setEmbeddingDownstreamRag(e.target.checked)}
+                onChange={(e) => patchDraft({ embeddingDownstreamRag: e.target.checked })}
               />
               {t("benchmarkEmbeddingDownstreamLabel")}
             </label>
@@ -805,17 +1013,23 @@ export function LabEvaluationRunCard({
             <Button
               type="button"
               data-testid={runButtonTestId}
-              disabled={running || !canStart}
+              disabled={running || !canStart || otherActiveJobExists}
               onClick={() => void run()}
             >
               {running ? t("evalRunning") : t("runEval")}
             </Button>
             {running ? (
-              <Button type="button" variant="outline" onClick={() => abortRef.current?.abort()}>
+              <Button type="button" variant="outline" onClick={() => void cancelBackendJob()}>
                 {t("jobCancel")}
               </Button>
             ) : null}
           </div>
+
+          {otherActiveJobExists ? (
+            <p className="text-destructive text-sm" role="alert">
+              {t("jobAlreadyRunning")}
+            </p>
+          ) : null}
 
           {err ? (
             <p className="text-destructive text-sm" role="alert">

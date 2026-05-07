@@ -1,6 +1,7 @@
 "use client";
 
 import { AppSubnavSectionLayout } from "@/components/layout/app-subnav-section-layout";
+import { LabActiveJobsBanner } from "@/features/lab/components/lab-active-jobs-banner";
 import { LabBackgroundJobBanner } from "@/features/lab/components/lab-background-job-banner";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -27,6 +28,7 @@ export default function LabLayout({ children }: Readonly<{ children: ReactNode }
       tabs={tabs}
     >
       <div className="space-y-4">
+        <LabActiveJobsBanner />
         <LabBackgroundJobBanner />
         {children}
       </div>
