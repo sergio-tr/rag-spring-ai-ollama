@@ -7,6 +7,8 @@ import com.uniovi.rag.interfaces.rest.auth.InvalidCredentialsException;
 import com.uniovi.rag.interfaces.rest.auth.FeatureDisabledException;
 import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetValidationException;
 import com.uniovi.rag.application.service.evaluation.LabDatasetGateException;
+import com.uniovi.rag.application.service.evaluation.LabJobConcurrencyException;
+import com.uniovi.rag.service.admin.AdminModelCheckException;
 import com.uniovi.rag.interfaces.rest.NotFoundException;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationFailedDto;
 import com.uniovi.rag.interfaces.rest.dto.experimental.ExperimentalDatasetValidationReportDto;
@@ -222,6 +224,34 @@ public class ApiGlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 null,
                 details
         ));
+    }
+
+    @ExceptionHandler(LabJobConcurrencyException.class)
+    public ResponseEntity<ApiErrorResponse> handleLabJobConcurrency(LabJobConcurrencyException ex, HttpServletRequest request) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        if (ex.activeJob() != null) {
+            details.put("activeJob", ex.activeJob());
+        }
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiErrorResponse(
+                Instant.now(),
+                HttpStatus.CONFLICT.value(),
+                "LAB_JOB_ALREADY_RUNNING",
+                trimOrFallback(ex.getMessage(), "A Lab job is already running"),
+                request != null ? request.getRequestURI() : null,
+                request != null ? headerFirstNonBlank(request, "X-Request-Id", "x-request-id") : null,
+                null,
+                details
+        ));
+    }
+
+    @ExceptionHandler(AdminModelCheckException.class)
+    public ResponseEntity<ApiErrorResponse> handleAdminModelCheck(AdminModelCheckException ex, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(build(
+                request,
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                trimOrFallback(ex.code(), "MODEL_INVALID"),
+                trimOrFallback(ex.getMessage(), "Model check failed"),
+                null));
     }
 
     @ExceptionHandler(Exception.class)
