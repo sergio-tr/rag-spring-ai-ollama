@@ -43,4 +43,26 @@ describe("ExplainabilityPanel", () => {
     expect(screen.getByText("RAG")).toBeInTheDocument();
     expect(screen.getByText("retrieve")).toBeInTheDocument();
   });
+
+  it("renders runtime telemetry when present", () => {
+    useChatExplainStore.setState({
+      isStreaming: false,
+      lastDone: {
+        answer: "a",
+        queryType: "PLAIN",
+        usedTool: false,
+        toolUsed: null,
+        sources: [],
+        pipelineSteps: [],
+        runtimeTelemetry: { memoryOutcome: "CONDENSED", routingRouteKind: "RETRIEVAL_WORKFLOW_ROUTE" },
+      },
+    });
+    render(
+      <IntlTestProvider>
+        <ExplainabilityPanel />
+      </IntlTestProvider>,
+    );
+    expect(screen.getByTestId("explain-runtime-telemetry")).toBeInTheDocument();
+    expect(screen.getByText("memoryOutcome")).toBeInTheDocument();
+  });
 });

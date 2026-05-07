@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ApiError, apiFetch, apiProductPath, getSafeApiErrorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { ProjectDocumentDto } from "@/types/api";
+import { useProjectIndexProfile } from "@/features/projects/hooks/use-project-index-profile";
 
 type DocumentUploadZoneProps = {
   projectId: string | undefined;
@@ -71,6 +72,42 @@ function nextClientId(): string {
 
 async function sleep(ms: number): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function ActiveIndexProfileCallout({ projectId }: Readonly<{ projectId: string | undefined }>) {
+  const t = useTranslations("Documents");
+  const profile = useProjectIndexProfile(projectId ?? null);
+  if (!projectId) return null;
+  return (
+    <div className="rounded-lg border bg-muted/20 px-3 py-2 text-xs">
+      <p className="font-medium">{t("activeIndexProfileTitle")}</p>
+      {profile.isLoading ? (
+        <p className="text-muted-foreground mt-1">{t("activeIndexProfileLoading")}</p>
+      ) : profile.isError ? (
+        <p className="text-destructive mt-1" role="alert">
+          {t("activeIndexProfileError")}
+        </p>
+      ) : profile.data ? (
+        <ul className="text-muted-foreground mt-2 grid gap-1 sm:grid-cols-2">
+          <li>
+            <span className="font-medium text-foreground">strategy:</span> {profile.data.materializationStrategy ?? "—"}
+          </li>
+          <li>
+            <span className="font-medium text-foreground">metadata:</span>{" "}
+            {profile.data.metadataEnabled ? "on" : "off"}
+          </li>
+          <li className="sm:col-span-2">
+            <span className="font-medium text-foreground">embedding:</span>{" "}
+            {profile.data.embeddingModelId?.trim() ? profile.data.embeddingModelId : "—"}
+          </li>
+          <li>
+            <span className="font-medium text-foreground">chunk:</span> {profile.data.chunkMaxChars}
+          </li>
+        </ul>
+      ) : null}
+      <p className="text-muted-foreground mt-2">{t("indexChangeRequiresReindex")}</p>
+    </div>
+  );
 }
 
 async function pollDocumentStatus(options: {
@@ -240,6 +277,7 @@ export function DocumentUploadZone({ projectId }: Readonly<DocumentUploadZonePro
 
   return (
     <div className="space-y-3">
+      <ActiveIndexProfileCallout projectId={projectId} />
       <div
         role="group"
         tabIndex={0}

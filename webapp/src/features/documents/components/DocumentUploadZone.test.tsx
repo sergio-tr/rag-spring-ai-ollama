@@ -19,6 +19,25 @@ vi.mock("@/lib/api-client", async () => {
   };
 });
 
+vi.mock("@/features/projects/hooks/use-project-index-profile", () => ({
+  useProjectIndexProfile: () => ({
+    data: {
+      projectId: "p1",
+      materializationStrategy: "CHUNK_LEVEL",
+      metadataEnabled: false,
+      metadataProfile: null,
+      embeddingModelId: "mxbai-embed-large",
+      chunkMaxChars: 400,
+      chunkOverlap: null,
+      profileHash: "x",
+      createdAt: "",
+      updatedAt: "",
+    },
+    isLoading: false,
+    isError: false,
+  }),
+}));
+
 describe("DocumentUploadZone", () => {
   beforeEach(() => {
     apiMock.apiFetch.mockReset();
