@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.query.pipeline;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.domain.runtime.RagEffectiveFeatures;
 import com.uniovi.rag.domain.runtime.RetrievalPolicyResolver;
 import com.uniovi.rag.application.model.DraftAndContext;
@@ -89,6 +90,8 @@ public final class AnswerGenerationKernel {
     private final ChatRequestSpecFactory chatRequestSpecFactory;
     @Nullable
     private final NaiveCorpusContextService naiveCorpusContextService;
+    @Nullable
+    private final RagRuntimeProperties runtimeProperties;
 
     /**
      * When {@code true}, restores behaviour where advisor could run alongside post-retrieval (legacy). Default {@code false}.
@@ -105,7 +108,8 @@ public final class AnswerGenerationKernel {
             QuestionAnswerAdvisor questionAnswerAdvisor,
             ChatRequestSpecFactory chatRequestSpecFactory,
             @Nullable NaiveCorpusContextService naiveCorpusContextService,
-            boolean legacyAdvisorWithPostRetrieval) {}
+            boolean legacyAdvisorWithPostRetrieval,
+            @Nullable RagRuntimeProperties runtimeProperties) {}
 
     public AnswerGenerationKernel(Dependencies deps) {
         this.featureConfig = deps.featureConfig();
@@ -117,6 +121,7 @@ public final class AnswerGenerationKernel {
         this.chatRequestSpecFactory = deps.chatRequestSpecFactory();
         this.naiveCorpusContextService = deps.naiveCorpusContextService();
         this.legacyAdvisorWithPostRetrieval = deps.legacyAdvisorWithPostRetrieval();
+        this.runtimeProperties = deps.runtimeProperties();
     }
 
     public DraftAndContext askModelWithPreStep(String query, JSONObject nerEntities, QueryType queryType, String preStepThought) {
@@ -379,11 +384,12 @@ public final class AnswerGenerationKernel {
     }
 
     private String callLlmWithPromptContext(String query, QueryType queryType, String context) {
+        String safeContext = truncateContextIfNeeded(context);
         String prompt = String.format(
                 DEFAULT_PROMPT_TEMPLATE,
                 queryTypeOrUnknown(queryType),
                 query,
-                context
+                safeContext
         );
 
         Exception lastException = null;
@@ -424,6 +430,26 @@ public final class AnswerGenerationKernel {
         }
 
         return generateNoContextResponse(query);
+    }
+
+    private String truncateContextIfNeeded(String context) {
+        if (context == null) {
+            return "";
+        }
+        int max = 12_000;
+        if (runtimeProperties != null && runtimeProperties.getContext() != null) {
+            max = runtimeProperties.getContext().getLegacyContextMaxChars();
+        }
+        String t = context.trim();
+        if (t.length() <= max) {
+            return t;
+        }
+        int head = (int) (max * 0.65);
+        int tail = Math.max(0, max - head);
+        if (tail == 0) {
+            return t.substring(0, max);
+        }
+        return t.substring(0, head) + "\n...[context truncated]\n" + t.substring(Math.max(0, t.length() - tail));
     }
 
     public String generateNoContextResponse(String query) {

@@ -19,13 +19,16 @@ import java.util.Optional;
 public class FullCorpusWorkflow extends AbstractExecutionWorkflow {
 
     private final SnapshotCorpusAssembler snapshotCorpusAssembler;
+    private final RuntimePromptBudgeter promptBudgeter;
 
     public FullCorpusWorkflow(
             ChatClient chatClient,
             SnapshotCorpusAssembler snapshotCorpusAssembler,
+            RuntimePromptBudgeter promptBudgeter,
             @Autowired(required = false) ObservabilitySupport observability) {
         super(chatClient, observability);
         this.snapshotCorpusAssembler = snapshotCorpusAssembler;
+        this.promptBudgeter = promptBudgeter;
     }
 
     @Override
@@ -43,6 +46,20 @@ public class FullCorpusWorkflow extends AbstractExecutionWorkflow {
         boolean abstention = false;
         String abstentionReason = "";
         String corpusSafe = corpus != null ? corpus : "";
+        RuntimePromptBudgeter.BudgetResult budget = promptBudgeter != null
+                ? promptBudgeter.budgetForFullCorpus(corpusSafe)
+                : RuntimePromptBudgeter.truncate("full_corpus", corpusSafe, 20_000, "default_full_corpus_max_chars");
+        corpusSafe = budget.textUsed();
+        stages.add(stage(
+                "context_budget",
+                t1,
+                ExecutionStageOutcome.SUCCESS,
+                "stage=" + budget.stage()
+                        + " truncated=" + budget.truncated()
+                        + " originalChars=" + budget.originalChars()
+                        + " finalChars=" + budget.finalChars()
+                        + " budgetChars=" + budget.budgetChars()
+                        + " reason=" + budget.reason()));
         if (docBound && corpusSafe.isBlank()) {
             answer = RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(q);
             abstention = true;

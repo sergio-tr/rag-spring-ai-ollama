@@ -24,6 +24,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 
+import com.uniovi.rag.configuration.RagRuntimeProperties;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
@@ -116,7 +118,11 @@ class WorkflowSelectorTest {
         selector =
                 new WorkflowSelector(
                         new DirectLlmWorkflow(chatClient, null),
-                        new FullCorpusWorkflow(chatClient, mock(SnapshotCorpusAssembler.class), null),
+                        new FullCorpusWorkflow(
+                                chatClient,
+                                mock(SnapshotCorpusAssembler.class),
+                                new RuntimePromptBudgeter(new RagRuntimeProperties()),
+                                null),
                         new DocumentDenseRagWorkflow(
                                 chatClient,
                                 mock(AdvancedRetrievalPipeline.class),

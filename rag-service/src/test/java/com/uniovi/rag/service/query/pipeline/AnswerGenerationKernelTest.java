@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.query.pipeline;
 
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.configuration.RagRuntimeProperties;
 import com.uniovi.rag.application.model.DraftAndContext;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.service.analyser.NERQueryEnricher;
@@ -75,7 +76,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         String out = kernel.askModel("What is 2+2?", new JSONObject(), QueryType.BOOLEAN_QUERY);
         assertEquals("This is a valid synthetic answer for testing.", out);
@@ -96,7 +98,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         DraftAndContext draft = kernel.askModelWithPreStep("q", new JSONObject(), QueryType.GET_FIELD, null);
         assertNotNull(draft);
@@ -121,7 +124,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         assertEquals("Ha ha.", kernel.askModel("tell me a joke", new JSONObject(), QueryType.BOOLEAN_QUERY));
         verify(retriever, never()).retrieve(any());
@@ -148,7 +152,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         DraftAndContext draft = kernel.askModelWithPreStep(
                 "tell me a joke", new JSONObject(), QueryType.BOOLEAN_QUERY, null);
@@ -174,7 +179,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         assertNull(kernel.askModelWithPreStep(
                 "acta del pleno municipal", new JSONObject(), QueryType.GET_FIELD, null));
@@ -202,7 +208,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         DraftAndContext draft = kernel.askModelWithPreStep(
                 "acta del pleno", new JSONObject(), QueryType.GET_FIELD, "reasoning step");
@@ -232,7 +239,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         DraftAndContext draft = kernel.askModelWithPreStep(
                 "acta del pleno", new JSONObject(), QueryType.GET_FIELD, null);
@@ -255,7 +263,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         when(callResponseSpec.content()).thenReturn("  trimmed body  ");
 
@@ -278,7 +287,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         assertEquals("I could not generate a response. Please try again.", kernel.generateNoContextResponse("hello"));
     }
@@ -308,7 +318,8 @@ class AnswerGenerationKernelTest {
                                 advisor,
                                 chatRequestSpecFactory,
                                 naive,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         assertEquals(
                 "From advisor",
@@ -342,7 +353,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         assertEquals(
                 "RAG body",
@@ -378,7 +390,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         JSONObject nerEntities = new JSONObject();
         nerEntities.put("PLACE", "Oviedo");
@@ -418,7 +431,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         assertEquals("out", kernel.askModel("topic without acta keywords", new JSONObject(), QueryType.GET_FIELD));
         verify(post).process(any(), anyString());
@@ -447,7 +461,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 naive,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         assertEquals(
                 "naive out",
@@ -479,7 +494,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 naive,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         DraftAndContext draft =
                 kernel.askModelWithPreStep(
@@ -513,7 +529,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 naive,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         DraftAndContext draft =
                 kernel.askModelWithPreStep("relativity basics", new JSONObject(), QueryType.GET_FIELD, null);
@@ -548,7 +565,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         assertEquals(
                 "ok",
@@ -588,7 +606,8 @@ class AnswerGenerationKernelTest {
                                 advisor,
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         assertEquals("ok", kernel.askModel("q", new JSONObject(), QueryType.GET_FIELD));
     }
@@ -623,7 +642,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         JSONObject ner = new JSONObject().put("x", "y");
         DraftAndContext out = kernel.askModelWithPreStep("q", ner, QueryType.GET_FIELD, "thought");
@@ -655,7 +675,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         assertThrows(NullPointerException.class, () -> kernel.askModel("q", new JSONObject(), QueryType.GET_FIELD));
     }
@@ -686,7 +707,8 @@ class AnswerGenerationKernelTest {
                                 mock(QuestionAnswerAdvisor.class),
                                 chatRequestSpecFactory,
                                 null,
-                                false));
+                                false,
+                                new RagRuntimeProperties()));
 
         try {
             Thread.currentThread().interrupt();

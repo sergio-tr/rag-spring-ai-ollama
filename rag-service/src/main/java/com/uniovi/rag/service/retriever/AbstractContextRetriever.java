@@ -3,6 +3,7 @@ package com.uniovi.rag.service.retriever;
 import com.uniovi.rag.domain.runtime.RagExecutionContext;
 import com.uniovi.rag.domain.runtime.RagExecutionContextHolder;
 import com.uniovi.rag.infrastructure.observability.Loggable;
+import com.uniovi.rag.application.service.runtime.RuntimePromptBudgeter;
 import com.uniovi.rag.util.DateParsingSupport;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -584,6 +585,15 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
                 combinedContent.append(content.trim());
             }
         }
+        // Defensive: do not allow combined per-document content to grow without bound, otherwise
+        // legacy prompt assembly can exceed LLM context window and fail with 400.
+        String combinedText =
+                RuntimePromptBudgeter.truncate(
+                        "combined_document",
+                        combinedContent.toString(),
+                        12_000,
+                        "default_combined_document_max_chars")
+                        .textUsed();
         
         // Select chunk with most complete metadata
         Document bestMetadataChunk = sortedChunks.stream()
@@ -599,7 +609,7 @@ public abstract class AbstractContextRetriever implements ContextRetriever, Logg
         combinedMetadata.remove("chunk_index");
         combinedMetadata.remove("total_chunks");
         
-        return new Document(combinedContent.toString(), combinedMetadata);
+        return new Document(combinedText, combinedMetadata);
     }
     
     /**

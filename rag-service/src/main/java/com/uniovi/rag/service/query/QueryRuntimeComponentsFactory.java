@@ -55,7 +55,8 @@ public final class QueryRuntimeComponentsFactory {
                                 questionAnswerAdvisor,
                                 chatRequestSpecFactory,
                                 naiveCorpusContextService,
-                                legacyAdvisor));
+                                legacyAdvisor,
+                                runtimeProperties));
         ResponseSynthesisPipeline pipeline = new ResponseSynthesisPipeline(featureConfig, dateExistenceGuard, kernel);
         return new QueryRuntimeComponents(preparer, pipeline);
     }

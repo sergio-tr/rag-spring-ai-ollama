@@ -22,6 +22,8 @@ import com.uniovi.rag.domain.runtime.query.StructuredRewriteResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
 
+import com.uniovi.rag.configuration.RagRuntimeProperties;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,7 +48,7 @@ class FullCorpusWorkflowTest {
         when(assembler.assembleFullCorpusText(any(ExecutionContext.class)))
                 .thenReturn("CORPUS");
 
-        FullCorpusWorkflow wf = new FullCorpusWorkflow(chatClient, assembler, null);
+        FullCorpusWorkflow wf = new FullCorpusWorkflow(chatClient, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), null);
 
         ExecutionContext ctx = minimalCtx();
         RagExecutionResult out = wf.execute(ctx);
