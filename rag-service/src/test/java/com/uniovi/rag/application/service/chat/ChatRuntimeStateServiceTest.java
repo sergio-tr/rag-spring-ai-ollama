@@ -70,7 +70,7 @@ class ChatRuntimeStateServiceTest {
                                 List.of(),
                                 List.of(),
                                 "dense",
-                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false));
 
         var dto = sut.getRuntimeState(uid, cid);
@@ -106,7 +106,7 @@ class ChatRuntimeStateServiceTest {
                                 List.of(),
                                 List.of(),
                                 "dense",
-                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false));
 
         var dto = sut.getRuntimeState(uid, cid);

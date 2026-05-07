@@ -112,6 +112,7 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 "S2",
                                 "P0 preset",
                                 "desc",
+                                null,
                                 List.of(),
                                 true,
                                 "EXECUTABLE",
@@ -128,6 +129,7 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 "S2",
                                 "P4 preset",
                                 "desc",
+                                null,
                                 List.of(),
                                 true,
                                 "EXECUTABLE",
@@ -144,6 +146,7 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 "S2",
                                 "P6 preset",
                                 "desc",
+                                null,
                                 List.of("USE_RETRIEVAL", "TOOLS"),
                                 true,
                                 "EXECUTABLE",
@@ -160,6 +163,7 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 "S2",
                                 "P8 preset",
                                 "desc",
+                                null,
                                 List.of("USE_RETRIEVAL", "RANKER", "POST_RETRIEVAL"),
                                 true,
                                 "EXECUTABLE",
@@ -172,10 +176,11 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 false),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000021",
-                                "P11",
+                                "P13",
                                 "S3",
-                                "P11 preset",
+                                "P13 preset",
                                 "desc",
+                                null,
                                 List.of(),
                                 true,
                                 "REQUIRES_MULTI_TURN",
@@ -188,10 +193,11 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 false),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000022",
-                                "P12",
+                                "P14",
                                 "S3",
-                                "P12 preset",
+                                "P14 preset",
                                 "desc",
+                                null,
                                 List.of(),
                                 true,
                                 "REQUIRES_MULTI_TURN",
@@ -212,6 +218,7 @@ class ChatPresetCatalogControllerWebMvcTest {
                             "S2",
                             "PX" + idx + " preset",
                             "desc",
+                            null,
                             List.of(),
                             true,
                             "EXECUTABLE",
@@ -229,8 +236,8 @@ class ChatPresetCatalogControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productPresets.length()").value(3))
                 .andExpect(jsonPath("$.experimentalPresets.length()").value(15))
-                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P11')].chatSelectable").value(true))
-                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P12')].chatSelectable").value(true))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P13')].chatSelectable").value(true))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P14')].chatSelectable").value(true))
                 .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P6')].chatSelectable").value(true))
                 .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P8')].chatSelectable").value(true));
     }

@@ -97,7 +97,7 @@ class ConversationApplicationServicePatchValidationTest {
                                 List.of(),
                                 List.of(),
                                 "wf",
-                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false))
                 .thenReturn(
                         // Effective config validate (after override) -> unsupported
@@ -110,7 +110,7 @@ class ConversationApplicationServicePatchValidationTest {
                                                 "UNSUPPORTED_RUNTIME_CONFIGURATION", null, "bad", "ERROR")),
                                 List.of(),
                                 null,
-                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false));
 
         assertThatThrownBy(

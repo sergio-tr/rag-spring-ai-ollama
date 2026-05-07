@@ -36,7 +36,7 @@ class LabExperimentalPresetCatalogServiceTest {
                                 "No retrieval",
                                 ""),
                         new RagPresetDefinition(
-                                RagExperimentalPresetCode.P11,
+                                RagExperimentalPresetCode.P13,
                                 "conversational",
                                 "Clarification loop",
                                 "on",
@@ -59,21 +59,21 @@ class LabExperimentalPresetCatalogServiceTest {
         assertThat(rows).extracting("code").doesNotHaveDuplicates();
         assertThat(rows).allMatch(r -> r.productPresetId() != null && !r.productPresetId().isBlank());
         assertThat(rows).allMatch(r -> r.labOnly() == (r.labSelectable() && !r.chatSelectable()));
-        var p11 = rows.stream().filter(r -> "P11".equals(r.code())).findFirst().orElseThrow();
-        assertThat(p11.supported()).isTrue();
-        assertThat(p11.supportStatus()).isEqualTo("REQUIRES_MULTI_TURN");
-        assertThat(p11.reasonIfUnsupported()).isNull();
-        assertThat(p11.chatSelectable()).isTrue();
-        assertThat(p11.requiresMultiTurn()).isTrue();
-
-        var p12 = rows.stream().filter(r -> "P12".equals(r.code())).findFirst().orElseThrow();
-        assertThat(p12.chatSelectable()).isTrue();
-        assertThat(p12.requiresMultiTurn()).isTrue();
-
         var p13 = rows.stream().filter(r -> "P13".equals(r.code())).findFirst().orElseThrow();
-        var p14 = rows.stream().filter(r -> "P14".equals(r.code())).findFirst().orElseThrow();
+        assertThat(p13.supported()).isTrue();
+        assertThat(p13.supportStatus()).isEqualTo("REQUIRES_MULTI_TURN");
+        assertThat(p13.reasonIfUnsupported()).isNull();
         assertThat(p13.chatSelectable()).isTrue();
+        assertThat(p13.requiresMultiTurn()).isTrue();
+
+        var p14 = rows.stream().filter(r -> "P14".equals(r.code())).findFirst().orElseThrow();
         assertThat(p14.chatSelectable()).isTrue();
+        assertThat(p14.requiresMultiTurn()).isTrue();
+
+        var p11 = rows.stream().filter(r -> "P11".equals(r.code())).findFirst().orElseThrow();
+        var p12 = rows.stream().filter(r -> "P12".equals(r.code())).findFirst().orElseThrow();
+        assertThat(p11.requiresMultiTurn()).isFalse();
+        assertThat(p12.requiresMultiTurn()).isFalse();
 
         // Post-retrieval is implemented, so P8 can be chat-selectable (unless blocked for other reasons).
         var p6 = rows.stream().filter(r -> "P6".equals(r.code())).findFirst().orElseThrow();

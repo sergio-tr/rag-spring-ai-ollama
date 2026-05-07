@@ -94,14 +94,14 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     }
 
     @Test
-    void catalog_with_p11_emits_not_supported_without_evaluation_service_for_blocked_preset() {
+    void catalog_with_p13_emits_not_supported_without_evaluation_service_for_blocked_preset() {
         when(experimentalSnapshotFactory.buildLlmSnapshot(null)).thenReturn(llmSnap());
         when(experimentalSnapshotFactory.buildEmbeddingSnapshot(null)).thenReturn(embSnap());
 
         RagPresetQuestion q = sampleQuestion();
-        RagPresetDefinition p11 =
+        RagPresetDefinition p13 =
                 new RagPresetDefinition(
-                        RagExperimentalPresetCode.P11,
+                        RagExperimentalPresetCode.P13,
                         "",
                         "",
                         "",
@@ -117,7 +117,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 orchestrator()
                         .runPresetBenchmark(
                                 null,
-                                new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of(p11)),
+                                new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of(p13)),
                                 new RagFeatureConfiguration(),
                                 new RagImplementationProperties(),
                                 null,

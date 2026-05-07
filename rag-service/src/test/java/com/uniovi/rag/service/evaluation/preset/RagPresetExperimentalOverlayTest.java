@@ -30,14 +30,14 @@ class RagPresetExperimentalOverlayTest {
         RagPresetExperimentalOverlay.Overlay o =
                 RagPresetExperimentalOverlay.build(new RagFeatureConfiguration(), RagExperimentalPresetCode.P1);
         ObjectNode j = o.terminalRuntimeJson();
-        assertThat(j.get("useRetrieval").asBoolean()).isTrue();
+        assertThat(j.get("useRetrieval").asBoolean()).isFalse();
         assertThat(j.get("naiveFullCorpusInPromptEnabled").asBoolean()).isTrue();
     }
 
     @Test
-    void p14_enables_judge_flags() {
+    void p12_enables_judge_flags() {
         RagPresetExperimentalOverlay.Overlay o =
-                RagPresetExperimentalOverlay.build(new RagFeatureConfiguration(), RagExperimentalPresetCode.P14);
+                RagPresetExperimentalOverlay.build(new RagFeatureConfiguration(), RagExperimentalPresetCode.P12);
         assertThat(o.features().isJudgeEnabled()).isTrue();
         assertThat(o.terminalRuntimeJson().get("judgeEnabled").asBoolean()).isTrue();
     }

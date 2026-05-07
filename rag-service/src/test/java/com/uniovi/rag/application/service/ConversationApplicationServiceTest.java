@@ -106,7 +106,7 @@ class ConversationApplicationServiceTest {
                                 List.of(),
                                 List.of(),
                                 "dense_chunk_workflow",
-                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false));
         lenient()
                 .when(runtimeConfigValidationService.validate(any(), any()))
@@ -118,7 +118,7 @@ class ConversationApplicationServiceTest {
                                 List.of(),
                                 List.of(),
                                 "dense_chunk_workflow",
-                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false));
         lenient()
                 .when(knowledgeDocumentRepository.countByProject_IdAndStatus(any(), eq(ProjectDocumentStatus.READY)))
@@ -327,6 +327,7 @@ class ConversationApplicationServiceTest {
                                         "S2",
                                         "Blocked preset",
                                         "desc",
+                                        null,
                                         List.of(),
                                         false,
                                         "NOT_SUPPORTED",
@@ -374,6 +375,7 @@ class ConversationApplicationServiceTest {
                                         "S2",
                                         "P4 preset",
                                         "desc",
+                                        null,
                                         List.of("USE_RETRIEVAL", "METADATA"),
                                         true,
                                         "EXECUTABLE",
@@ -416,6 +418,7 @@ class ConversationApplicationServiceTest {
                                         "S3",
                                         "P11 preset",
                                         "desc",
+                                        null,
                                         List.of("CLARIFICATION"),
                                         false,
                                         "REQUIRES_MULTI_TURN",
@@ -536,6 +539,7 @@ class ConversationApplicationServiceTest {
                                         "S3",
                                         "P11 preset",
                                         "desc",
+                                        null,
                                         List.of("CLARIFICATION"),
                                         false,
                                         "REQUIRES_MULTI_TURN",
@@ -583,6 +587,7 @@ class ConversationApplicationServiceTest {
                                         "S2",
                                         "P4 preset",
                                         "desc",
+                                        null,
                                         List.of("USE_RETRIEVAL", "METADATA"),
                                         true,
                                         "EXECUTABLE",
@@ -633,7 +638,7 @@ class ConversationApplicationServiceTest {
                                                 "ERROR")),
                                 List.of(),
                                 null,
-                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false));
 
         ResponseStatusException ex =
@@ -669,7 +674,7 @@ class ConversationApplicationServiceTest {
                                                 "ERROR")),
                                 List.of(),
                                 null,
-                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), true),
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), true, null, null, false, "REQUIRES_REINDEX"),
                                 true));
 
         ResponseStatusException ex =

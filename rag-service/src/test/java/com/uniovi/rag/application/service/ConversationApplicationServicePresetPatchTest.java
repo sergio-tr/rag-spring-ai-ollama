@@ -89,7 +89,7 @@ class ConversationApplicationServicePresetPatchTest {
                                 List.of(),
                                 List.of(),
                                 "dense_chunk_workflow",
-                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false));
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
@@ -106,6 +106,7 @@ class ConversationApplicationServicePresetPatchTest {
                                         "S2",
                                         "P4 preset",
                                         "desc",
+                                        null,
                                         List.of(),
                                         true,
                                         "EXECUTABLE",
@@ -141,7 +142,7 @@ class ConversationApplicationServicePresetPatchTest {
                                 List.of(),
                                 List.of(),
                                 "dense_chunk_workflow",
-                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN"),
                                 false));
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
@@ -158,6 +159,7 @@ class ConversationApplicationServicePresetPatchTest {
                                         "S3",
                                         "P11 preset",
                                         "desc",
+                                        null,
                                         List.of(),
                                         false,
                                         "NOT_SUPPORTED",
