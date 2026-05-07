@@ -42,6 +42,10 @@ export type ChatToolbarApi = {
   runtimeOverride: Record<string, unknown>;
   saveRuntimeOverride: (next: Record<string, unknown>) => void;
   clearRuntimeOverride: () => void;
+  effectiveRuntimeConfig: Record<string, unknown> | null;
+  effectiveRuntimeConfigLoading: boolean;
+  effectiveRuntimeConfigError: string | null;
+  refreshEffectiveRuntimeConfig: () => void;
 };
 
 type ChatToolbarState = {

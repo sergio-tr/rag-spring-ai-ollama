@@ -60,7 +60,7 @@ describe("use-conversations", () => {
       updatedAt: "",
     });
     const { result } = renderHook(() => useCreateConversation("p1"), { wrapper: makeWrapper(qc) });
-    await result.current.mutateAsync();
+    await result.current.mutateAsync(undefined);
     expect(apiFetch).toHaveBeenCalled();
   });
 

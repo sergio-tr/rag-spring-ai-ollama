@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { useAppStore } from "@/store/app.store";
-import type { ConversationDto, MessageDto, PatchConversationBody } from "@/types/api";
+import type { ConversationDto, CreateConversationBody, MessageDto, PatchConversationBody } from "@/types/api";
 import { CHAT_DETERMINISTIC_DEFAULT_PRESET_ID } from "@/features/chat/lib/conversation-preset-ui";
 
 const convKey = (projectId: string) => ["conversations", projectId] as const;
@@ -33,6 +33,9 @@ export function mergeConversationPatchOptimistic(
   } else if (body.runtimeOverride !== undefined) {
     next.runtimeOverride = body.runtimeOverride ? { ...body.runtimeOverride } : {};
   }
+  if (body.clearPendingClarification) {
+    next.pendingClarification = null;
+  }
   return next;
 }
 
@@ -52,12 +55,12 @@ export function useConversations(projectId: string | undefined) {
 
 export function useCreateConversation(projectId: string | undefined) {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
+  return useMutation<ConversationDto, Error, CreateConversationBody | undefined>({
+    mutationFn: (body) =>
       apiFetch<ConversationDto>(apiProductPath(`/projects/${projectId}/conversations`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(body ?? {}),
       }),
     onSuccess: () => {
       if (projectId) {

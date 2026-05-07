@@ -103,7 +103,7 @@ describe("use-conversations hooks", () => {
     const { wrapper, qc } = createWrapper();
     const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
     const { result } = renderHook(() => useCreateConversation("p1"), { wrapper });
-    await result.current.mutateAsync();
+    await result.current.mutateAsync(undefined);
     expect(apiFetch).toHaveBeenCalledWith(
       expect.stringMatching(/\/projects\/p1\/conversations$/),
       expect.objectContaining({ method: "POST" }),

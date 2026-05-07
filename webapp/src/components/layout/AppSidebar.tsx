@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiFetch, authApiPath } from "@/lib/api-client";
 import { useProjectList, useActivateProject } from "@/features/projects/hooks/use-projects";
 import { DeleteConversationDialog } from "@/features/chat/components/DeleteConversationDialog";
+import { NewConversationDialog } from "@/features/chat/components/NewConversationDialog";
 import { useConversations, useCreateConversation } from "@/features/chat/hooks/use-conversations";
 import { useAppStore } from "@/store/app.store";
 import type { ProjectSummary } from "@/types/api";
@@ -183,6 +184,7 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [convWizardOpen, setConvWizardOpen] = useState(false);
 
   const searchQuery = searchText.trim().toLowerCase();
 
@@ -251,10 +253,9 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
             type="button"
             size="sm"
             disabled={!activeProject || createConversation.isPending}
-            onClick={async () => {
+            onClick={() => {
               if (!activeProject?.id) return;
-              const c = await createConversation.mutateAsync();
-              router.push(buildProjectScopedChatHref(activeProject.id, c.id));
+              setConvWizardOpen(true);
             }}
           >
             {tChat("newConversation")}
@@ -439,6 +440,16 @@ function AppSidebarContent(props?: AppSidebarChromeProps) {
           </Button>
         ) : null}
       </div>
+      {activeProject?.id ? (
+        <NewConversationDialog
+          projectId={activeProject.id}
+          open={convWizardOpen}
+          onOpenChange={setConvWizardOpen}
+          onCreated={(c) => {
+            router.push(buildProjectScopedChatHref(activeProject.id, c.id));
+          }}
+        />
+      ) : null}
     </aside>
   );
 }

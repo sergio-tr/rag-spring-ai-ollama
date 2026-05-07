@@ -9,9 +9,9 @@ import { InlineHelpStatus } from "@/features/help/InlineHelpStatus";
 import { ChatConversationDocumentsSheet } from "@/features/chat/components/ChatConversationDocumentsSheet";
 import { DeleteConversationDialog } from "@/features/chat/components/DeleteConversationDialog";
 import { MoveConversationDialog } from "@/features/chat/components/MoveConversationDialog";
+import { NewConversationDialog } from "@/features/chat/components/NewConversationDialog";
 import {
   CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
-  findPresetById,
   resolveChatPresetSelectValue,
 } from "@/features/chat/lib/conversation-preset-ui";
 import {
@@ -40,6 +40,7 @@ import {
 } from "@/lib/api-client";
 import { resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
 import { followLabJob } from "@/lib/lab-job-follow";
+import { cn } from "@/lib/utils";
 import { useRuntimeConfigValidate } from "@/features/chat/hooks/use-runtime-config-validate";
 import { Link, useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
@@ -48,15 +49,20 @@ import { useTraceStore } from "@/features/trace/trace.store";
 import type {
   ConversationDraftDto,
   LabJobAcceptedDto,
+  MessageDto,
   PatchUserMessageBody,
   PostMessageBody,
   ProjectDocumentDto,
+  StreamDonePayload,
 } from "@/types/api";
 import { ChevronDown, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
+import { ChatConfigurationSidePanel } from "@/features/chat/components/ChatConfigurationSidePanel";
+import { useChatConfigurationPanelStore } from "@/features/chat/store/chat-configuration-panel.store";
 
 const CHAT_CONV_LIST_COLLAPSED_KEY = "chat-conv-list-collapsed";
 
@@ -73,6 +79,62 @@ async function cancelChatJob(jobId: string, signal?: AbortSignal): Promise<void>
     method: "POST",
     signal,
   });
+}
+
+function coerceBool(v: unknown): boolean {
+  return v === true || v === "true";
+}
+
+function streamDonePayloadFromAssistantMessage(m: MessageDto): StreamDonePayload {
+  const meta = m.executionMetadata ?? {};
+  const telemetry: Record<string, unknown> = {};
+  const keys = [
+    "reasoningAttempted",
+    "reasoningStrategy",
+    "reasoningPlanSummaryTruncated",
+    "retrievalRerankApplied",
+    "retrievalDenseCandidateCount",
+    "retrievalAfterFusionCount",
+    "retrievalBeforePostRetrievalCount",
+    "retrievalAfterRerankCount",
+    "retrievalAfterFilterCount",
+    "retrievalAfterCompressionCount",
+    "retrievalProtectedCandidateCount",
+    "retrievalDroppedCandidateCount",
+    "retrievalRerankScoreSummaryTruncated",
+    "memoryAttempted",
+    "memoryOutcome",
+    "memoryCondensationUsed",
+    "routingAttempted",
+    "routingRouteKind",
+    "routingOutcome",
+    "routingFallbackApplied",
+    "routingFallbackRouteKind",
+    "judgeAttempted",
+    "judgeFinalOutcome",
+    "judgeFinalAnswerFromRetry",
+    "judgeCandidateSource",
+    "clarificationRequired",
+    "clarificationOutcome",
+  ];
+  for (const k of keys) {
+    if (meta[k] !== undefined && meta[k] !== null) {
+      telemetry[k] = meta[k];
+    }
+  }
+  return {
+    answer: m.content,
+    queryType: m.queryType,
+    usedTool: false,
+    toolUsed: null,
+    sources: Array.isArray(m.sources) ? m.sources : [],
+    pipelineSteps: Array.isArray(m.pipelineSteps) ? m.pipelineSteps : [],
+    runtimeTelemetry: Object.keys(telemetry).length > 0 ? telemetry : undefined,
+  };
+}
+
+function isAssistantClarificationTurn(m: MessageDto): boolean {
+  return m.role === "ASSISTANT" && coerceBool(m.executionMetadata?.clarificationRequired);
 }
 
 function isAssistantRetryable(status: string | null | undefined): boolean {
@@ -146,6 +208,9 @@ function ChatPageInner() {
     null,
   );
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [newConvWizardOpen, setNewConvWizardOpen] = useState(false);
+  const configPanelOpen = useChatConfigurationPanelStore((s) => s.open);
+  const setConfigPanelOpen = useChatConfigurationPanelStore((s) => s.setOpen);
   const abortRef = useRef<AbortController | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -336,6 +401,28 @@ function ChatPageInner() {
     [t],
   );
 
+  const effectiveOverrideKey = useMemo(() => {
+    try {
+      return JSON.stringify(activeConv?.runtimeOverride ?? {});
+    } catch {
+      return "unserializable";
+    }
+  }, [activeConv]);
+
+  const effectiveRuntimeConfigQuery = useQuery({
+    queryKey: ["chat", "runtime-config", "effective", conversationId ?? "", presetSelectValue ?? "", effectiveOverrideKey],
+    enabled: Boolean(conversationId),
+    queryFn: async () => {
+      if (!conversationId) throw new Error("conversationId is required");
+      return validateRuntimeConfig.mutateAsync({
+        conversationId,
+        presetId: presetSelectValue || null,
+        overrides: activeConv?.runtimeOverride ?? {},
+      });
+    },
+    staleTime: 10_000,
+  });
+
   /** Cancel in-flight chat job when switching project, conversation, or unmounting. */
   useEffect(() => {
     return () => {
@@ -445,12 +532,12 @@ function ChatPageInner() {
           { signal, throwOnFailed: false },
         );
         activeJobIdRef.current = null;
-        setLastDone(null);
         resetStreaming();
         setStreaming(false);
-        await refetchMessages();
+        const refreshed = await refetchMessages();
 
         if (terminal.status === "FAILED") {
+          setLastDone(null);
           setAssistantPhase("failed");
           const sanitized = sanitizePlainErrorTextForUi(terminal.errorMessage, 280);
           const hint = resolveChatJobFailureUserHint({
@@ -472,6 +559,15 @@ function ChatPageInner() {
         } else {
           setAssistantPhase(null);
           setSendError(null);
+          const list = refreshed.data ?? [];
+          const lastAssistant = [...list]
+            .reverse()
+            .find((x) => x.role === "ASSISTANT" && x.status === "DONE");
+          if (lastAssistant) {
+            setLastDone(streamDonePayloadFromAssistantMessage(lastAssistant));
+          } else {
+            setLastDone(null);
+          }
           useTraceStore.getState().addTraceEvent({
             section: "chat",
             action: "assistant_response_received",
@@ -529,7 +625,7 @@ function ChatPageInner() {
     setSendError(null);
     try {
       if (!targetConversationId) {
-        const created = await createConv.mutateAsync();
+        const created = await createConv.mutateAsync(undefined);
         targetConversationId = created.id;
         selectConversation(created.id);
       }
@@ -543,7 +639,7 @@ function ChatPageInner() {
         const validation = await validateRuntimeConfig.mutateAsync({
           conversationId: targetConversationId,
           presetId: presetForValidation,
-          overrides: null,
+          overrides: activeConv?.runtimeOverride ?? {},
         });
         if (!validation.valid || !validation.supported) {
           const msg =
@@ -956,6 +1052,22 @@ function ChatPageInner() {
   };
 
   useEffect(() => {
+    useChatConfigurationPanelStore.getState().hydrateFromStorage();
+  }, []);
+
+  const effectiveRuntimeConfig = effectiveRuntimeConfigQuery.data?.effectiveConfig ?? null;
+  const effectiveRuntimeConfigLoading = effectiveRuntimeConfigQuery.isLoading || effectiveRuntimeConfigQuery.isFetching;
+  const effectiveRuntimeConfigError = effectiveRuntimeConfigQuery.isError
+    ? getSafeApiErrorMessage(effectiveRuntimeConfigQuery.error)
+    : !effectiveRuntimeConfigQuery.data?.valid || !effectiveRuntimeConfigQuery.data?.supported
+      ? effectiveRuntimeConfigQuery.data?.errors?.[0]?.message ?? null
+      : null;
+
+  const refreshEffectiveRuntimeConfig = useCallback(() => {
+    void effectiveRuntimeConfigQuery.refetch();
+  }, [effectiveRuntimeConfigQuery]);
+
+  useEffect(() => {
     if (!projectId) {
       useChatToolbarStore.getState().setApi(null);
       return;
@@ -1003,6 +1115,10 @@ function ChatPageInner() {
         if (!conversationId) return;
         patchConv.mutate({ conversationId, body: { clearRuntimeOverride: true } });
       },
+      effectiveRuntimeConfig,
+      effectiveRuntimeConfigLoading,
+      effectiveRuntimeConfigError,
+      refreshEffectiveRuntimeConfig,
     });
     return () => useChatToolbarStore.getState().setApi(null);
   }, [
@@ -1034,6 +1150,11 @@ function ChatPageInner() {
     uploadError,
     uploadNotice,
     activeConv?.runtimeOverride,
+    effectiveRuntimeConfig,
+    effectiveRuntimeConfigLoading,
+    effectiveRuntimeConfigError,
+    refreshEffectiveRuntimeConfig,
+    patchConv,
   ]);
 
   if (!projectId) {
@@ -1089,11 +1210,7 @@ function ChatPageInner() {
             className="w-full"
             data-testid="chat-new-conversation"
             disabled={createConv.isPending}
-            onClick={async () => {
-              const c = await createConv.mutateAsync();
-              selectConversation(c.id);
-              void refetchMessages();
-            }}
+            onClick={() => setNewConvWizardOpen(true)}
           >
             {t("newConversation")}
           </Button>
@@ -1133,10 +1250,10 @@ function ChatPageInner() {
           </div>
         </aside>
       )}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:flex-row md:gap-3">
         <div
           data-testid="chat-readable-column"
-          className="mx-auto flex w-full min-h-0 min-w-0 max-w-chat-readable flex-1 flex-col gap-3 px-2 sm:px-3 md:px-5"
+          className="flex w-full min-h-0 min-w-0 flex-1 flex-col gap-3 px-2 sm:px-3 md:px-5"
         >
         {conversationId && active ? (
           <header className="flex flex-wrap items-end gap-3 gap-y-2 border-border border-b pb-3">
@@ -1285,7 +1402,12 @@ function ChatPageInner() {
               className={
                 m.role === "USER"
                   ? "ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-primary-foreground text-sm leading-relaxed"
-                  : "mr-auto max-w-[85%] rounded-lg border bg-background px-3 py-2 text-sm leading-relaxed"
+                  : cn(
+                      "mr-auto max-w-[85%] rounded-lg border px-3 py-2 text-sm leading-relaxed",
+                      isAssistantClarificationTurn(m)
+                        ? "border-amber-500/55 bg-amber-500/10"
+                        : "bg-background",
+                    )
               }
             >
               {m.role === "USER" &&
@@ -1328,6 +1450,14 @@ function ChatPageInner() {
                 </div>
               ) : (
                 <>
+                  {isAssistantClarificationTurn(m) ? (
+                    <p
+                      className="text-muted-foreground mb-1 text-[11px] font-semibold tracking-wide uppercase"
+                      data-testid="chat-clarification-label"
+                    >
+                      {t("clarificationQuestionLabel")}
+                    </p>
+                  ) : null}
                   <p className="whitespace-pre-wrap break-words">{m.content}</p>
                   {m.role === "ASSISTANT" && Array.isArray(m.sources) && m.sources.length > 0 ? (
                     <div className="mt-2 border-border border-t pt-2">
@@ -1435,6 +1565,42 @@ function ChatPageInner() {
               {getSafeApiErrorMessage(patchConv.error)}
             </p>
           ) : null}
+          {conversationId && messages && messages.length === 0 ? (
+            <p
+              className="text-muted-foreground rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs"
+              role="status"
+            >
+              {t("emptyConversationAdjustHint")}
+            </p>
+          ) : null}
+          {effectiveRuntimeConfig && coerceBool(effectiveRuntimeConfig.memoryEnabled) ? (
+            <p className="text-muted-foreground text-xs" data-testid="chat-memory-badge" role="status">
+              {t("memoryActiveBadge")}
+            </p>
+          ) : null}
+          {conversationId &&
+          activeConv?.pendingClarification &&
+          Object.keys(activeConv.pendingClarification).length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs">
+              <span className="text-muted-foreground flex-1">{t("clarificationPendingBanner")}</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 shrink-0"
+                disabled={patchConv.isPending}
+                onClick={() => {
+                  if (!conversationId) return;
+                  void patchConv.mutateAsync({
+                    conversationId,
+                    body: { clearPendingClarification: true },
+                  });
+                }}
+              >
+                {t("cancelClarification")}
+              </Button>
+            </div>
+          ) : null}
           <Textarea
             data-testid="chat-message-composer"
             value={input}
@@ -1476,6 +1642,10 @@ function ChatPageInner() {
           </div>
         </div>
         </div>
+        <ChatConfigurationSidePanel
+          open={Boolean(conversationId && configPanelOpen)}
+          onClose={() => setConfigPanelOpen(false)}
+        />
         <MoveConversationDialog
           sourceProjectId={projectId}
           conversationId={conversationId}
@@ -1499,6 +1669,17 @@ function ChatPageInner() {
             }
           }}
         />
+        {projectId ? (
+          <NewConversationDialog
+            projectId={projectId}
+            open={newConvWizardOpen}
+            onOpenChange={setNewConvWizardOpen}
+            onCreated={(c) => {
+              selectConversation(c.id);
+              void refetchMessages();
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );

@@ -13,6 +13,7 @@ import type {
 } from "@/types/api";
 import { mergeConversationPatchOptimistic } from "@/features/chat/hooks/use-conversations";
 import { ChatToolbarOverflowMenu } from "@/features/chat/components/ChatToolbarOverflowMenu";
+import { useChatConfigurationPanelStore } from "@/features/chat/store/chat-configuration-panel.store";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import ChatPage from "./page";
 
@@ -25,6 +26,22 @@ const chatExplainMocks = vi.hoisted(() => ({
 }));
 
 const routerPushMock = vi.fn();
+
+function setMatchMediaDesktop(isDesktop: boolean) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: isDesktop ? query.includes("min-width") : false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
 
 vi.mock("@/navigation", () => ({
   Link: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -275,6 +292,23 @@ function patchConversationApiCalls() {
 function defaultApiFetch(url: string | { toString(): string }, init?: RequestInit): Promise<unknown> {
   const u = typeof url === "string" ? url : url.toString();
   const method = (init?.method ?? "GET").toUpperCase();
+  if (method === "GET" && u.includes("/projects/p1/index-profile")) {
+    return Promise.resolve({
+      projectId: "p1",
+      materializationStrategy: "CHUNK_LEVEL",
+      metadataEnabled: false,
+      metadataProfile: null,
+      embeddingModelId: "mxbai-embed-large",
+      chunkMaxChars: 400,
+      chunkOverlap: null,
+      profileHash: "hash",
+      createdAt: "",
+      updatedAt: "",
+    });
+  }
+  if (method === "GET" && u.includes("/projects/p1/knowledge/snapshots/active")) {
+    return Promise.resolve(null);
+  }
   if (method === "GET" && u.includes("/chat/presets/catalog")) {
     return Promise.resolve({
       productPresets: [...ragPresetsData],
@@ -301,14 +335,30 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           family: "S2",
           label: "P6 preset",
           description: "Minimal dev preset row",
-          requiredCapabilities: ["USE_RETRIEVAL", "REASONING"],
-          supported: false,
-          supportStatus: "NOT_SUPPORTED",
-          reasonIfUnsupported: "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+          requiredCapabilities: ["USE_RETRIEVAL", "TOOLS"],
+          supported: true,
+          supportStatus: "EXECUTABLE",
+          reasonIfUnsupported: null,
           requiresMultiTurn: false,
           mapsToRuntimeCapabilities: { code: "P6" },
           allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
-          chatSelectable: false,
+          chatSelectable: true,
+          labSelectable: true,
+        },
+        {
+          productPresetId: "cafe0001-0001-4001-8001-000000000018",
+          code: "P8",
+          family: "S2",
+          label: "P8 preset",
+          description: "Minimal dev preset row",
+          requiredCapabilities: ["USE_RETRIEVAL", "RANKER", "POST_RETRIEVAL"],
+          supported: true,
+          supportStatus: "EXECUTABLE",
+          reasonIfUnsupported: null,
+          requiresMultiTurn: false,
+          mapsToRuntimeCapabilities: { code: "P8" },
+          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+          chatSelectable: true,
           labSelectable: true,
         },
       ],
@@ -334,11 +384,35 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           label: "Reasoning",
           description: "desc",
           group: "Advanced",
-          implemented: false,
+          implemented: true,
           configurable: true,
           requires: [],
           excludes: [],
-          reasonIfNotImplemented: "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+          reasonIfNotImplemented: null,
+          options: {},
+        },
+        {
+          key: "rankerEnabled",
+          label: "Ranker",
+          description: "desc",
+          group: "Advanced",
+          implemented: true,
+          configurable: true,
+          requires: ["useRetrieval"],
+          excludes: [],
+          reasonIfNotImplemented: null,
+          options: {},
+        },
+        {
+          key: "postRetrievalEnabled",
+          label: "Post-retrieval",
+          description: "desc",
+          group: "Advanced",
+          implemented: true,
+          configurable: true,
+          requires: ["useRetrieval"],
+          excludes: [],
+          reasonIfNotImplemented: null,
           options: {},
         },
       ],
@@ -435,7 +509,15 @@ function ChatPageWithToolbar() {
 }
 
 async function openChatToolbarOverflow(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByTestId("chat-actions-menu-trigger"));
+  const btn = screen.getByTestId("chat-config-trigger");
+  await waitFor(() => expect(btn).toBeEnabled());
+  // Wait for useMediaQuery hydration: desktop must control the side panel, not the mobile drawer.
+  await waitFor(() => expect(btn).toHaveAttribute("aria-controls", "chat-configuration-side-panel"));
+  // Trigger toggles; avoid a second click closing an already-open panel (multi-step flows call this twice).
+  if (btn.getAttribute("aria-expanded") !== "true") {
+    await user.click(btn);
+  }
+  await screen.findByTestId("chat-configuration-side-panel");
 }
 
 function renderChat() {
@@ -458,6 +540,10 @@ function renderChat() {
 
 describe("ChatPage", () => {
   beforeEach(() => {
+    setMatchMediaDesktop(true);
+    window.localStorage.clear();
+    useChatConfigurationPanelStore.setState({ open: false, hydrated: false });
+    useChatToolbarStore.getState().setApi(null);
     uploadMutateAsyncMock.mockReset();
     uploadMutateAsyncMock.mockResolvedValue({
       id: "d-up",
@@ -588,14 +674,13 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
 
-    // Open advanced config, load overrides into the draft and flip a boolean.
-    await user.click(screen.getByTestId("chat-actions-runtime-collapsible"));
-    await user.click(screen.getByTestId("chat-actions-runtime-load-overrides"));
+    // Open advanced config, refresh effective config and flip a boolean (auto-saves to runtimeOverride).
+    await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    await user.click(screen.getByTestId("chat-config-runtime-refresh-effective"));
     const useRetrieval = screen.getByRole("checkbox", { name: /Use retrieval/i });
     await user.click(useRetrieval);
 
-    // Save should PATCH runtimeOverride and make the Custom badge visible.
-    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+    // Toggling should PATCH runtimeOverride and make the Custom badge visible.
     await waitFor(() => {
       expect(screen.getByText(/^Custom$/i)).toBeInTheDocument();
     });
@@ -903,25 +988,63 @@ describe("ChatPage", () => {
     expect(screen.getByRole("button", { name: /^Close$/i })).toBeInTheDocument();
   });
 
+  it("toggles the persistent right side panel with ⋮ on desktop", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+
+    expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("chat-config-trigger"));
+    expect(screen.getByTestId("chat-configuration-side-panel")).toBeInTheDocument();
+    await user.click(screen.getByTestId("chat-config-trigger"));
+    expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
+  });
+
+  it("persists open state of the desktop panel in localStorage", async () => {
+    window.localStorage.setItem("chat-config-panel-open-v1", "true");
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    expect(await screen.findByTestId("chat-configuration-side-panel")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("chat-config-trigger"));
+    expect(window.localStorage.getItem("chat-config-panel-open-v1")).toBe("false");
+  });
+
+  it("uses drawer/sheet on mobile when ⋮ is clicked", async () => {
+    setMatchMediaDesktop(false);
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+
+    await user.click(screen.getByTestId("chat-config-trigger"));
+    expect(screen.queryByTestId("chat-configuration-side-panel")).not.toBeInTheDocument();
+    // Drawer content should render headings when open.
+    expect(await screen.findByRole("heading", { level: 3, name: "Document scope" })).toBeInTheDocument();
+  });
+
   it("renders Chat actions sections with padded body and sticky footer", async () => {
     const user = userEvent.setup();
     renderChat();
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
 
-    expect(screen.getByRole("region", { name: /Model & preset/i })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /Document scope/i })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /Runtime configuration/i })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /Chat actions/i })).toBeInTheDocument();
-
-    const body = screen.getByTestId("chat-actions-menu-body");
-    expect(body.className).toMatch(/\bpx-4\b/);
-    expect(body.className).toMatch(/\bpy-4\b/);
-
-    const footer = screen.getByTestId("chat-actions-menu-footer");
-    expect(footer.className).toMatch(/\bsticky\b/);
-    expect(footer.className).toMatch(/\bborder-t\b/);
+    const panel = screen.getByTestId("chat-configuration-side-panel");
+    expect(panel).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Close$/i })).toBeInTheDocument();
+
+    expect(screen.queryByText(/Unavailable capabilities/i)).not.toBeInTheDocument();
+
+    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent ?? "");
+    const idx = (s: string) => headings.findIndex((h) => h === s);
+    expect(idx("Document scope")).toBeLessThan(idx("Index/project capabilities"));
+    expect(idx("Index/project capabilities")).toBeLessThan(idx("Model & preset"));
+    expect(idx("Model & preset")).toBeLessThan(idx("Runtime configuration"));
+
+    // Padding sanity: inner body is padded.
+    const body = panel.querySelector("div.min-h-0.flex-1.overflow-y-auto") as HTMLElement | null;
+    expect(body?.className ?? "").toMatch(/\bpx-4\b/);
+    expect(body?.className ?? "").toMatch(/\bpy-4\b/);
   });
 
   it("advanced configuration collapsible opens and closes with aria-expanded", async () => {
@@ -930,7 +1053,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
 
-    const toggle = screen.getByTestId("chat-actions-runtime-collapsible");
+    const toggle = screen.getByTestId("chat-config-runtime-collapsible");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
