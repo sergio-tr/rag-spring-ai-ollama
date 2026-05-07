@@ -66,7 +66,11 @@ public record ExecutionTrace(
         String retrievalQuery,
         String packedContextPreview,
         int sourceCount,
-        List<String> retrievedDocumentNames) {
+        List<String> retrievedDocumentNames,
+        String answerGroundingPolicy,
+        int promptContextCharCount,
+        boolean abstentionTriggered,
+        String abstentionReason) {
 
     public ExecutionTrace {
         stages = List.copyOf(stages);
@@ -100,6 +104,8 @@ public record ExecutionTrace(
         retrievalQuery = retrievalQuery == null ? "" : retrievalQuery;
         packedContextPreview = packedContextPreview == null ? "" : packedContextPreview;
         retrievedDocumentNames = List.copyOf(Objects.requireNonNullElseGet(retrievedDocumentNames, List::of));
+        answerGroundingPolicy = answerGroundingPolicy == null ? "" : answerGroundingPolicy;
+        abstentionReason = abstentionReason == null ? "" : abstentionReason;
     }
 
     public static ExecutionTrace placeholder() {
@@ -160,6 +166,10 @@ public record ExecutionTrace(
                 "",
                 "",
                 0,
-                List.of());
+                List.of(),
+                "",
+                0,
+                false,
+                "");
     }
 }

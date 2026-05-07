@@ -1,5 +1,8 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
+import com.uniovi.rag.domain.runtime.policy.AnswerGroundingPolicy;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalCandidate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -46,17 +49,39 @@ public final class RuntimeAnswerPrompts {
             Provide your direct answer now (in the same language as the question):
             """;
 
-    private static final String DOCUMENT_BOUND_TEMPLATE =
+    /**
+     * Attempt-first grounded template: never substitute a blanket abstention when context is non-empty.
+     */
+    private static final String ATTEMPT_DOCUMENT_TEMPLATE =
             """
-            You are a helpful assistant. The user is asking a question that MUST be answered using ONLY the provided document context.
+            You are a helpful assistant answering questions about meeting minutes / project documents.
+
+            The CONTEXT below contains retrieved fragments; they may be partial, noisy, or not an exact match for every constraint in the question.
 
             CRITICAL RULES:
-            1. You MUST NOT use general world knowledge. Use ONLY the context below.
-            2. If the context is empty, reply with EXACTLY this sentence (and nothing else):
-               "%s"
-            3. If the context is not empty but does NOT contain enough evidence to answer (for example, the user asked for a specific date but the retrieved documents have a different date), do NOT claim there are no documents.
-               Instead, explain what is missing or mismatched, and mention the closest retrieved documents (file names and dates) ONLY if they appear in the context.
-            4. Do not invent names, dates, counts, presidents, assistants, or meeting facts not present in the context.
+            1. Base factual claims ONLY on the CONTEXT. Do not invent acta-specific names, dates, attendees, or facts not supported by the CONTEXT.
+            2. If the CONTEXT is non-empty, you MUST attempt a useful answer: summarize, extract, or explain what the CONTEXT supports — even if the answer may be incomplete or imperfect.
+            3. If an exact constraint (for example a specific calendar date) is not satisfied but related fragments exist, say clearly that you did not find an exact match for that constraint, mention the closest documents/dates that appear in the CONTEXT, then continue with a partial summary using cautious wording (for Spanish you may use phrases like "Con los documentos recuperados, parece que..." or "No puedo confirmarlo al 100%%, pero...").
+            4. Do NOT reply with only a generic "no information" message when the CONTEXT is non-empty.
+            5. Answer in the SAME LANGUAGE as the user's question.
+            6. Be concise.
+
+            %s
+            <Question> %s </Question>
+            <Context> %s </Context>
+
+            Answer now:
+            """;
+
+    private static final String STRICT_DOCUMENT_TEMPLATE =
+            """
+            You are a helpful assistant. The user asks about project/meeting documents; use ONLY the CONTEXT below.
+
+            CRITICAL RULES:
+            1. Do not use general world knowledge for document-specific facts.
+            2. If the CONTEXT is non-empty, produce the best grounded answer you can; prefer partial, hedged answers over refusing when fragments exist.
+            3. If a precise constraint (e.g. exact date) is not met but nearby evidence exists in the CONTEXT, explain the mismatch and still summarize supported facts with uncertainty language.
+            4. Never invent names, dates, counts, or attendees not present in the CONTEXT.
             5. Answer in the SAME LANGUAGE as the user's question.
 
             %s
@@ -66,36 +91,163 @@ public final class RuntimeAnswerPrompts {
             Answer now:
             """;
 
+    private static final String NEGATIVE_DOCUMENT_TEMPLATE =
+            """
+            You are a helpful assistant. The CONTEXT below may have been filtered or compressed after retrieval; treat it as the surviving evidence.
+
+            CRITICAL RULES:
+            1. Base factual claims ONLY on the CONTEXT; do not invent document facts.
+            2. If the CONTEXT is non-empty, answer from what remains; express uncertainty where evidence is thin.
+            3. If an exact match for the question is missing but related fragments exist, explain that gap and give the best partial summary.
+            4. Answer in the SAME LANGUAGE as the user's question.
+
+            %s
+            <Question> %s </Question>
+            <Context> %s </Context>
+
+            Answer now:
+            """;
+
+    private static final String DIRECT_BASELINE_USER_TEMPLATE =
+            """
+            You are a helpful assistant. For this turn you are NOT using retrieved project documents (retrieval is disabled).
+            Answer the user's question directly with general knowledge where appropriate.
+            If the question is specifically about internal meeting minutes or uploaded documents for this project, clearly state that you are not consulting those documents.
+
+            %s
+            <Question> %s </Question>
+
+            Answer now:
+            """;
+
     private RuntimeAnswerPrompts() {
     }
 
     public static String ragUserTurn(String rawQuestion, String contextBlock) {
-        return ragUserTurn(rawQuestion, contextBlock, false, null);
+        return ragUserTurn(rawQuestion, contextBlock, AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT, false, Optional.empty(), null);
     }
 
     public static String ragUserTurn(String rawQuestion, String contextBlock, boolean documentBound) {
-        return ragUserTurn(rawQuestion, contextBlock, documentBound, null);
+        return ragUserTurn(
+                rawQuestion, contextBlock, AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT, documentBound, Optional.empty(), null);
     }
 
     /**
-     * Builds the user-turn prompt for the orchestrated runtime.
-     *
-     * @param answerPlanBlock optional, safe plan block (e.g. {@code <AnswerPlan>...}).
+     * @deprecated Prefer {@link #ragUserTurn(String, String, AnswerGroundingPolicy, boolean, Optional, String)}.
      */
+    @Deprecated
     public static String ragUserTurn(
             String rawQuestion,
             String contextBlock,
             boolean documentBound,
             String answerPlanBlock) {
+        return ragUserTurn(
+                rawQuestion,
+                contextBlock,
+                AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT,
+                documentBound,
+                Optional.empty(),
+                answerPlanBlock);
+    }
+
+    public static String directBaselineUserTurn(String rawQuestion, String answerPlanBlock) {
         String q = rawQuestion != null ? rawQuestion : "";
-        String c = contextBlock != null ? contextBlock : "";
         String plan = answerPlanBlock != null && !answerPlanBlock.isBlank() ? answerPlanBlock.trim() : "";
         String planSection = plan.isBlank() ? "" : plan + "\n";
-        if (documentBound) {
-            String abstain = insufficientDocumentContextMessageFor(q);
-            return String.format(DOCUMENT_BOUND_TEMPLATE, abstain, planSection, q, c);
+        return String.format(DIRECT_BASELINE_USER_TEMPLATE, planSection, q);
+    }
+
+    /**
+     * When {@code promptContextText} is blank (e.g. compression dropped all), rebuild a minimal context from candidates
+     * so generation can still use non-empty evidence when sources exist.
+     */
+    public static String effectivePromptContext(String promptContextText, List<RetrievalCandidate> candidates) {
+        if (promptContextText != null && !promptContextText.isBlank()) {
+            return promptContextText;
         }
-        return String.format(GENERAL_TEMPLATE, planSection, q, c);
+        return fallbackContextFromCandidates(candidates, 24_000);
+    }
+
+    public static String fallbackContextFromCandidates(List<RetrievalCandidate> candidates, int maxChars) {
+        if (candidates == null || candidates.isEmpty() || maxChars <= 0) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        int budget = maxChars;
+        for (RetrievalCandidate c : candidates) {
+            if (budget <= 0) {
+                break;
+            }
+            String fn = safeFilename(c);
+            String body = c != null && c.content() != null ? c.content() : "";
+            String header = fn.isBlank() ? "" : "File: " + fn + "\n";
+            String chunk = header + body + "\n\n---\n\n";
+            if (chunk.length() > budget) {
+                chunk = chunk.substring(0, budget);
+            }
+            sb.append(chunk);
+            budget -= chunk.length();
+        }
+        return sb.toString().trim();
+    }
+
+    /**
+     * Builds the user-turn prompt for the orchestrated runtime.
+     *
+     * @param dateMismatchNotice when present, prepended to the context block so the model explains mismatch and still answers.
+     * @param answerPlanBlock optional, safe plan block (e.g. {@code <AnswerPlan>...}).
+     */
+    public static String ragUserTurn(
+            String rawQuestion,
+            String contextBlock,
+            AnswerGroundingPolicy policy,
+            boolean documentScopedQuestion,
+            Optional<String> dateMismatchNotice,
+            String answerPlanBlock) {
+        String q = rawQuestion != null ? rawQuestion : "";
+        String c0 = contextBlock != null ? contextBlock : "";
+        String plan = answerPlanBlock != null && !answerPlanBlock.isBlank() ? answerPlanBlock.trim() : "";
+        String planSection = plan.isBlank() ? "" : plan + "\n";
+
+        if (!documentScopedQuestion) {
+            return String.format(GENERAL_TEMPLATE, planSection, q, c0);
+        }
+
+        String notice =
+                dateMismatchNotice.filter(s -> s != null && !s.isBlank()).map(s -> s.trim() + "\n\n").orElse("");
+        String contextCombined = notice + c0;
+
+        AnswerGroundingPolicy p = policy != null ? policy : AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT;
+        return switch (p) {
+            case DIRECT_BASELINE -> String.format(DIRECT_BASELINE_USER_TEMPLATE, planSection, q);
+            case STRICT_GROUNDED -> String.format(STRICT_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
+            case NEGATIVE_GROUNDED -> String.format(NEGATIVE_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
+            case ATTEMPT_WITH_CONTEXT -> String.format(ATTEMPT_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
+        };
+    }
+
+    /**
+     * Telemetry stage merged into {@link com.uniovi.rag.domain.runtime.engine.ExecutionTrace}.
+     */
+    public static ExecutionStageTrace runtimeAnswerMetaStage(
+            AnswerGroundingPolicy policy,
+            int contextCharCount,
+            int sourceCount,
+            boolean abstentionTriggered,
+            String abstentionReason) {
+        String reason = abstentionReason != null ? abstentionReason.replace('\n', ' ').trim() : "";
+        String msg =
+                "policy="
+                        + (policy != null ? policy.name() : "")
+                        + " contextChars="
+                        + contextCharCount
+                        + " sourceCount="
+                        + sourceCount
+                        + " abstention="
+                        + abstentionTriggered
+                        + " reason="
+                        + reason;
+        return new ExecutionStageTrace("runtime_answer_meta", 0L, ExecutionStageOutcome.SUCCESS, msg);
     }
 
     public static boolean requiresStrictDocumentGrounding(String rawQuestion) {
