@@ -2,6 +2,7 @@ package com.uniovi.rag.service.evaluation.preset;
 
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
+import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
@@ -13,6 +14,9 @@ import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.domain.evaluation.workbook.DifficultyLevel;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import java.util.ArrayList;
@@ -39,6 +43,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     @Mock private EvaluationService evaluationService;
     @Mock private EvaluationRunRepository evaluationRunRepository;
     @Mock private ExperimentalSnapshotFactory experimentalSnapshotFactory;
+    @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
 
     private static LlmExperimentalSnapshot llmSnap() {
         return new LlmExperimentalSnapshot(
@@ -51,7 +56,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
 
     private TypedRagPresetBenchmarkOrchestrator orchestrator() {
         return new TypedRagPresetBenchmarkOrchestrator(
-                evaluationService, evaluationRunRepository, experimentalSnapshotFactory);
+                evaluationService, evaluationRunRepository, experimentalSnapshotFactory, knowledgeSnapshotService);
     }
 
     @Test
@@ -137,6 +142,158 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any());
         Mockito.verify(evaluationService).summarizeJudgeResults(ArgumentMatchers.anyList());
+    }
+
+    @Test
+    void p8_with_chunk_snapshot_is_skipped_and_does_not_call_evaluation_service() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any()))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", true, "h1", UUID.randomUUID())));
+
+        RagPresetQuestion q = sampleQuestion();
+        RagPresetDefinition p8 = preset(RagExperimentalPresetCode.P8);
+        // Run entity with project id so orchestrator can resolve active snapshot.
+        var run = new EvaluationRunEntity();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(UUID.randomUUID());
+        run.setProject(project);
+        when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                UUID.randomUUID(),
+                                new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of(p8)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
+        assertThat(String.valueOf(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)))
+                .isEqualTo("MATERIALIZATION_NOT_SUPPORTED");
+        assertThat(rows.get(0)).containsKey("metrics_payload");
+        Mockito.verify(evaluationService, Mockito.never())
+                .evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any());
+    }
+
+    @Test
+    void p4_with_chunk_snapshot_missing_metadata_is_skipped_and_does_not_call_evaluation_service() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any()))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", false, "h2", UUID.randomUUID())));
+
+        RagPresetQuestion q = sampleQuestion();
+        RagPresetDefinition p4 = preset(RagExperimentalPresetCode.P4);
+        var run = new EvaluationRunEntity();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(UUID.randomUUID());
+        run.setProject(project);
+        when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                UUID.randomUUID(),
+                                new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of(p4)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                null,
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) out.get("results");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get(BenchmarkResultRowKeys.ITEM_OUTCOME)).isEqualTo(BenchmarkItemOutcome.SKIPPED.name());
+        assertThat(String.valueOf(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)))
+                .isEqualTo("METADATA_SUPPORT_REQUIRED");
+        Mockito.verify(evaluationService, Mockito.never())
+                .evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any());
+    }
+
+    @Test
+    void p3_with_hybrid_snapshot_executes() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(ArgumentMatchers.any()))
+                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "h3", UUID.randomUUID())));
+
+        List<RagPresetQuestion> questions = List.of(sampleQuestion());
+        RagPresetDefinition p3 = preset(RagExperimentalPresetCode.P3);
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                ArgumentMatchers.any(),
+                ArgumentMatchers.any(),
+                ArgumentMatchers.eq(questions),
+                ArgumentMatchers.any()))
+                .thenReturn(Map.of("results", baseRowsFor(questions.size()), "evaluation_summary", Map.of()));
+        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
+
+        var run = new EvaluationRunEntity();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(UUID.randomUUID());
+        run.setProject(project);
+        when(evaluationRunRepository.findById(ArgumentMatchers.any())).thenReturn(Optional.of(run));
+
+        orchestrator()
+                .runPresetBenchmark(
+                        UUID.randomUUID(),
+                        new TypedBenchmarkDataset.RagPresetQuestions(questions, List.of(p3)),
+                        new RagFeatureConfiguration(),
+                        new RagImplementationProperties(),
+                        null,
+                        null);
+
+        Mockito.verify(evaluationService)
+                .evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(questions),
+                        ArgumentMatchers.any());
+    }
+
+    @Test
+    void p0_without_snapshot_executes() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(null)).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(null)).thenReturn(embSnap());
+
+        List<RagPresetQuestion> questions = List.of(sampleQuestion());
+        RagPresetDefinition p0 = preset(RagExperimentalPresetCode.P0);
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                ArgumentMatchers.any(),
+                ArgumentMatchers.any(),
+                ArgumentMatchers.eq(questions),
+                ArgumentMatchers.any()))
+                .thenReturn(Map.of("results", baseRowsFor(questions.size()), "evaluation_summary", Map.of()));
+        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
+
+        orchestrator()
+                .runPresetBenchmark(
+                        null,
+                        new TypedBenchmarkDataset.RagPresetQuestions(questions, List.of(p0)),
+                        new RagFeatureConfiguration(),
+                        new RagImplementationProperties(),
+                        null,
+                        null);
+
+        Mockito.verify(evaluationService)
+                .evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.eq(questions),
+                        ArgumentMatchers.any());
     }
 
     @Test
@@ -262,5 +419,28 @@ class TypedRagPresetBenchmarkOrchestratorTest {
             out.add(new HashMap<>());
         }
         return out;
+    }
+
+    private static KnowledgeIndexSnapshotEntity mockSnapshot(
+            String strategy,
+            boolean supportsMetadata,
+            String profileHash,
+            UUID snapshotId) {
+        KnowledgeIndexSnapshotEntity snap = new KnowledgeIndexSnapshotEntity();
+        try {
+            var f = KnowledgeIndexSnapshotEntity.class.getDeclaredField("id");
+            f.setAccessible(true);
+            f.set(snap, snapshotId);
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to set snapshot id for test", e);
+        }
+        snap.setIndexProfileHash(profileHash);
+        snap.setIndexProfileJsonb(Map.of(
+                "materializationStrategy", strategy,
+                "supportsMetadata", supportsMetadata,
+                "embeddingModelId", "emb",
+                "chunkMaxChars", 400,
+                "chunkOverlap", 40));
+        return snap;
     }
 }

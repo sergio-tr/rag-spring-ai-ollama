@@ -1,7 +1,10 @@
 package com.uniovi.rag.service.evaluation.preset;
 
+import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
+import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
+import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
@@ -13,6 +16,8 @@ import com.uniovi.rag.domain.evaluation.workbook.RagPresetDefinition;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.evaluation.baseline.ExperimentalSnapshotFactory;
@@ -42,18 +47,22 @@ public class TypedRagPresetBenchmarkOrchestrator {
 
     private static final String JSON_KEY_CORRECT_ANSWER = "correct_answer";
     private static final String JSON_KEY_GENERATED_ANSWER = "generated_answer";
+    private static final String JSON_KEY_METRICS_PAYLOAD = "metrics_payload";
 
     private final EvaluationService evaluationService;
     private final EvaluationRunRepository evaluationRunRepository;
     private final ExperimentalSnapshotFactory experimentalSnapshotFactory;
+    private final KnowledgeSnapshotService knowledgeSnapshotService;
 
     public TypedRagPresetBenchmarkOrchestrator(
             EvaluationService evaluationService,
             EvaluationRunRepository evaluationRunRepository,
-            ExperimentalSnapshotFactory experimentalSnapshotFactory) {
+            ExperimentalSnapshotFactory experimentalSnapshotFactory,
+            KnowledgeSnapshotService knowledgeSnapshotService) {
         this.evaluationService = evaluationService;
         this.evaluationRunRepository = evaluationRunRepository;
         this.experimentalSnapshotFactory = experimentalSnapshotFactory;
+        this.knowledgeSnapshotService = knowledgeSnapshotService;
     }
 
     @SuppressWarnings("unchecked")
@@ -146,6 +155,21 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 continue;
             }
 
+            PreflightIndexCompatibility gate = checkPresetIndexCompatibility(run, preset);
+            if (!gate.compatible()) {
+                for (RagPresetQuestion q : questions) {
+                    bump.run();
+                    allRows.add(skippedRow(
+                            q,
+                            def.name(),
+                            preset,
+                            gate,
+                            llmSnap.model(),
+                            embSnap.model()));
+                }
+                continue;
+            }
+
             RagPresetExperimentalOverlay.Overlay overlay = RagPresetExperimentalOverlay.build(base, preset);
             lastConfigurationMap = new LinkedHashMap<>();
             overlay.features().getConfiguration().forEach(lastConfigurationMap::put);
@@ -195,6 +219,50 @@ public class TypedRagPresetBenchmarkOrchestrator {
         return out;
     }
 
+    private PreflightIndexCompatibility checkPresetIndexCompatibility(
+            EvaluationRunEntity run,
+            RagExperimentalPresetCode preset) {
+        ExperimentalPresetCanonicalCatalog.IndexRequirements req =
+                preset != null ? ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(preset) : null;
+        // Presets that require no index must never be blocked by snapshot absence.
+        if (req == null || req.requiredMaterialization() == null
+                || req.requiredMaterialization() == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
+            return PreflightIndexCompatibility.compatible(req, null, null, null);
+        }
+
+        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run);
+        boolean hasActive = snap != null && snap.getId() != null;
+        Map<String, Object> profile = hasActive && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
+        String profileHash = hasActive ? snap.getIndexProfileHash() : null;
+        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
+        IndexCompatibilityResult idx = IndexCompatibilityResult.check(req, hasActive, caps);
+        return new PreflightIndexCompatibility(
+                idx.compatible(),
+                idx.requiresReindex(),
+                idx.status(),
+                idx.reasonCode(),
+                idx.message(),
+                req,
+                caps,
+                hasActive ? snap.getId() : null,
+                profileHash);
+    }
+
+    private KnowledgeIndexSnapshotEntity resolveSnapshot(EvaluationRunEntity run) {
+        if (run == null) {
+            return null;
+        }
+        KnowledgeIndexSnapshotEntity explicit = run.getIndexSnapshot();
+        if (explicit != null && explicit.getId() != null) {
+            return explicit;
+        }
+        ProjectEntity p = run.getProject();
+        if (p == null || p.getId() == null) {
+            return null;
+        }
+        return knowledgeSnapshotService.findActiveProjectSnapshot(p.getId()).orElse(null);
+    }
+
     private static void enrichRows(
             List<Map<String, Object>> rows,
             String presetLabel,
@@ -229,6 +297,25 @@ public class TypedRagPresetBenchmarkOrchestrator {
         row.put(BenchmarkResultRowKeys.ERROR_CODE, errorCode);
         row.put(BenchmarkResultRowKeys.REASON, errorCode);
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
+        return row;
+    }
+
+    private static Map<String, Object> skippedRow(
+            RagPresetQuestion q,
+            String presetLabel,
+            RagExperimentalPresetCode preset,
+            PreflightIndexCompatibility gate,
+            String llmModelId,
+            String embeddingModelId) {
+        Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
+        row.put(JSON_KEY_GENERATED_ANSWER, "");
+        row.put("llm_evaluation", "");
+        row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.SKIPPED.name());
+        String code = gate != null && gate.reasonCode() != null ? gate.reasonCode() : "INDEX_REQUIRES_REINDEX";
+        row.put(BenchmarkResultRowKeys.ERROR_CODE, code);
+        row.put(BenchmarkResultRowKeys.REASON, gate != null && gate.message() != null ? gate.message() : code);
+        row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
+        row.put(JSON_KEY_METRICS_PAYLOAD, buildIndexGateMetricsPayload(presetLabel, preset, gate));
         return row;
     }
 
@@ -273,5 +360,68 @@ public class TypedRagPresetBenchmarkOrchestrator {
         row.put("tool_used", null);
         row.put("used_tool", false);
         return row;
+    }
+
+    private static Map<String, Object> buildIndexGateMetricsPayload(
+            String presetLabel,
+            RagExperimentalPresetCode preset,
+            PreflightIndexCompatibility gate) {
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put(BenchmarkResultRowKeys.PRESET_CODE, preset != null ? preset.name() : null);
+        metrics.put(BenchmarkResultRowKeys.PRESET_LABEL, presetLabel);
+        if (gate == null) {
+            return metrics;
+        }
+        metrics.put("indexCompatibilityStatus", gate.status());
+        metrics.put("requiresReindex", gate.requiresReindex());
+        metrics.put("indexSnapshotId", gate.indexSnapshotId() != null ? gate.indexSnapshotId().toString() : null);
+        metrics.put("indexProfileHash", gate.indexProfileHash());
+        metrics.put("presetIndexRequirements", indexRequirementsMap(gate.presetIndexRequirements()));
+        metrics.put("activeSnapshotCapabilities", snapshotCapsMap(gate.activeSnapshotCapabilities()));
+        return metrics;
+    }
+
+    private static Map<String, Object> indexRequirementsMap(ExperimentalPresetCanonicalCatalog.IndexRequirements req) {
+        if (req == null) {
+            return Map.of();
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put(
+                "requiredMaterializationStrategy",
+                req.requiredMaterialization() != null ? req.requiredMaterialization().name() : null);
+        m.put("requiresMetadataSupport", req.requiresMetadataSupport());
+        return m;
+    }
+
+    private static Map<String, Object> snapshotCapsMap(IndexSnapshotCapabilities caps) {
+        if (caps == null) {
+            return Map.of();
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("materializationStrategy", caps.materializationStrategy());
+        m.put("supportsMetadata", caps.supportsMetadata());
+        m.put("embeddingModelId", caps.embeddingModelId());
+        m.put("chunkMaxChars", caps.chunkMaxChars());
+        m.put("chunkOverlap", caps.chunkOverlap());
+        return m;
+    }
+
+    private record PreflightIndexCompatibility(
+            boolean compatible,
+            boolean requiresReindex,
+            String status,
+            String reasonCode,
+            String message,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements presetIndexRequirements,
+            IndexSnapshotCapabilities activeSnapshotCapabilities,
+            UUID indexSnapshotId,
+            String indexProfileHash) {
+        static PreflightIndexCompatibility compatible(
+                ExperimentalPresetCanonicalCatalog.IndexRequirements req,
+                IndexSnapshotCapabilities caps,
+                UUID indexSnapshotId,
+                String indexProfileHash) {
+            return new PreflightIndexCompatibility(true, false, "COMPATIBLE", null, null, req, caps, indexSnapshotId, indexProfileHash);
+        }
     }
 }
