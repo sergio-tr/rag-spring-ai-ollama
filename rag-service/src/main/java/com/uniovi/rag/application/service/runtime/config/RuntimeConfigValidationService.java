@@ -13,10 +13,13 @@ import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
+import com.uniovi.rag.interfaces.rest.dto.RuntimePresetIndexRequirementsDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeSnapshotCapabilitiesDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
 import com.uniovi.rag.application.service.runtime.WorkflowSelector;
+import com.uniovi.rag.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -151,7 +154,7 @@ public class RuntimeConfigValidationService {
 
         Map<String, Object> effectiveConfig = new LinkedHashMap<>();
         RuntimeIndexCompatibilityDto indexCompatibility =
-                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false);
+                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false, null, null, true, "UNKNOWN");
         boolean requiresReindex = false;
         if (resolved.toRagConfig() != null) {
             effectiveConfig = objectMapper.convertValue(resolved.toRagConfig(), Map.class);
@@ -170,13 +173,6 @@ public class RuntimeConfigValidationService {
         boolean hasActiveIndex = active != null && active.getId() != null;
         Map<String, Object> activeProfile = hasActiveIndex && active.getIndexProfileJsonb() != null ? active.getIndexProfileJsonb() : Map.of();
         String activeProfileHash = hasActiveIndex ? active.getIndexProfileHash() : null;
-        indexCompatibility =
-                new RuntimeIndexCompatibilityDto(
-                        selection.projectSharedSnapshotId().orElse(null),
-                        selection.chatLocalSnapshotId().orElse(null),
-                        activeProfileHash,
-                        activeProfile,
-                        hasActiveIndex);
 
         RagConfig rag = resolved.toRagConfig();
         if (rag != null) {
@@ -188,37 +184,53 @@ public class RuntimeConfigValidationService {
                                 "Tools and function calling are both enabled. Function calling takes precedence over deterministic tools.",
                                 "WARNING"));
             }
-            if (hasActiveIndex) {
-                String idxStrategy = stringOrNull(activeProfile.get("materializationStrategy"));
-                Boolean idxSupportsMetadata = boolOrNull(activeProfile.get("supportsMetadata"));
-                boolean strategyMismatch =
-                        idxStrategy != null && rag.materializationStrategy() != null
-                                && !idxStrategy.equalsIgnoreCase(rag.materializationStrategy().name());
-                boolean metadataMismatch =
-                        idxSupportsMetadata != null && rag.metadataEnabled() && !idxSupportsMetadata;
+            IndexSnapshotCapabilities snapCaps = IndexSnapshotCapabilities.fromIndexProfile(activeProfile);
 
-                if (strategyMismatch || metadataMismatch) {
-                    requiresReindex = true;
-                    valid = false;
-                    supported = false;
-                    if (strategyMismatch) {
-                        errors.add(
-                                new RuntimeConfigValidationIssueDto(
-                                        "INDEX_REQUIRES_REINDEX",
-                                        "materializationStrategy",
-                                        "Selected runtime materializationStrategy is incompatible with the active index snapshot. Reindex is required.",
-                                        "ERROR"));
-                    }
-                    if (metadataMismatch) {
-                        errors.add(
-                                new RuntimeConfigValidationIssueDto(
-                                        "INDEX_REQUIRES_REINDEX",
-                                        "metadataEnabled",
-                                        "Selected runtime metadata-aware behavior requires an index snapshot that supports metadata. Reindex is required.",
-                                        "ERROR"));
-                    }
-                }
+            ExperimentalPresetCanonicalCatalog.IndexRequirements presetReq = resolveIndexRequirements(presetId, rag);
+            IndexCompatibilityResult idx =
+                    IndexCompatibilityResult.check(presetReq, hasActiveIndex, snapCaps);
+
+            indexCompatibility =
+                    new RuntimeIndexCompatibilityDto(
+                            selection.projectSharedSnapshotId().orElse(null),
+                            selection.chatLocalSnapshotId().orElse(null),
+                            activeProfileHash,
+                            activeProfile,
+                            hasActiveIndex,
+                            new RuntimeSnapshotCapabilitiesDto(
+                                    snapCaps.materializationStrategy(),
+                                    snapCaps.supportsMetadata(),
+                                    snapCaps.embeddingModelId(),
+                                    snapCaps.chunkMaxChars(),
+                                    snapCaps.chunkOverlap()),
+                            new RuntimePresetIndexRequirementsDto(
+                                    presetReq.requiredMaterialization() != null ? presetReq.requiredMaterialization().name() : null,
+                                    presetReq.requiresMetadataSupport()),
+                            idx.compatible(),
+                            idx.status());
+
+            if (!idx.compatible()) {
+                requiresReindex = idx.requiresReindex();
+                valid = false;
+                supported = false;
+                errors.add(
+                        new RuntimeConfigValidationIssueDto(
+                                idx.reasonCode() != null ? idx.reasonCode() : "INDEX_CAPABILITY_MISMATCH",
+                                "indexCompatibility",
+                                idx.message(),
+                                "ERROR"));
             } else {
+                // Snapshot has metadata but the selected preset/runtime does not require it.
+                if (hasActiveIndex && Boolean.TRUE.equals(snapCaps.supportsMetadata()) && !presetReq.requiresMetadataSupport()) {
+                    warnings.add(
+                            new RuntimeConfigValidationIssueDto(
+                                    "METADATA_AVAILABLE_NOT_USED",
+                                    "metadataEnabled",
+                                    "Active index supports metadata, but this preset does not require metadata-aware behavior.",
+                                    "WARNING"));
+                }
+            }
+            if (!hasActiveIndex && presetReq.requiredMaterialization() == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
                 warnings.add(
                         new RuntimeConfigValidationIssueDto(
                                 "NO_ACTIVE_INDEX",
@@ -249,6 +261,30 @@ public class RuntimeConfigValidationService {
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid presetId");
         }
+    }
+
+    private static ExperimentalPresetCanonicalCatalog.IndexRequirements resolveIndexRequirements(
+            Optional<UUID> presetIdOpt, RagConfig rag) {
+        if (presetIdOpt != null && presetIdOpt.isPresent()) {
+            var code = ExperimentalPresetCanonicalCatalog.tryResolveCodeByProductPresetId(presetIdOpt.get());
+            if (code != null) {
+                return ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(code);
+            }
+        }
+        // Fallback for non-experimental presets: derive required index capabilities from the resolved runtime config.
+        if (rag == null || !rag.useRetrieval()) {
+            return ExperimentalPresetCanonicalCatalog.IndexRequirements.none();
+        }
+        ExperimentalPresetCanonicalCatalog.RequiredMaterialization req =
+                rag.materializationStrategy() != null
+                        ? switch (rag.materializationStrategy()) {
+                            case DOCUMENT_LEVEL -> ExperimentalPresetCanonicalCatalog.RequiredMaterialization.DOCUMENT_LEVEL;
+                            case CHUNK_LEVEL -> ExperimentalPresetCanonicalCatalog.RequiredMaterialization.CHUNK_LEVEL;
+                            case HYBRID -> ExperimentalPresetCanonicalCatalog.RequiredMaterialization.HYBRID;
+                            default -> ExperimentalPresetCanonicalCatalog.RequiredMaterialization.CHUNK_LEVEL;
+                        }
+                        : ExperimentalPresetCanonicalCatalog.RequiredMaterialization.CHUNK_LEVEL;
+        return new ExperimentalPresetCanonicalCatalog.IndexRequirements(req, rag.metadataEnabled());
     }
 }
 
