@@ -1,6 +1,7 @@
 package com.uniovi.rag.service.async.chat;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.application.model.ChatSource;
 import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.application.service.ChatMessageWorkService;
 import com.uniovi.rag.domain.AsyncTaskType;
@@ -9,6 +10,7 @@ import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.interfaces.rest.dto.ChatSourceDto;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.query.ProcessQueryService;
 import java.util.LinkedHashMap;
@@ -150,7 +152,7 @@ class ChatMessageJobHandlerTest {
                 .thenReturn(QueryResponse.fromLLMWithSources(
                         "answer text here",
                         QueryType.BOOLEAN_QUERY,
-                        List.of(Map.of("id", "s1"))));
+                        List.of(new ChatSource("s1", null, "f.pdf", "snip", 0.5, "distance", 1, null, null))));
         when(chatMessageWorkService.currentTraceId()).thenReturn("trace-1");
 
         handler.run(task, mutation);
@@ -160,7 +162,7 @@ class ChatMessageJobHandlerTest {
                         eq(asstId),
                         eq(convId),
                         eq("answer text here"),
-                        eq(List.of(Map.of("id", "s1"))),
+                        eq(List.of(new ChatSourceDto("s1", null, "f.pdf", "snip", 0.5, "distance", 1, null, null))),
                         eq("BOOLEAN_QUERY"),
                         eq("trace-1"),
                         any(),

@@ -7,6 +7,8 @@ import com.uniovi.rag.infrastructure.persistence.MessageRepository;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
+import com.uniovi.rag.interfaces.rest.dto.ChatSourceDto;
+import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import io.micrometer.tracing.Tracer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -51,7 +53,7 @@ public class ChatMessageWorkService {
             UUID assistantMessageId,
             UUID conversationId,
             String answer,
-            List<Map<String, Object>> sources,
+            List<ChatSourceDto> sources,
             String queryType,
             String traceId,
             List<Map<String, Object>> pipelineSteps,
@@ -75,7 +77,7 @@ public class ChatMessageWorkService {
             UUID assistantMessageId,
             UUID conversationId,
             String answer,
-            List<Map<String, Object>> sources,
+            List<ChatSourceDto> sources,
             String queryType,
             String traceId,
             List<Map<String, Object>> pipelineSteps,
@@ -84,7 +86,7 @@ public class ChatMessageWorkService {
             Map<String, Object> chatTelemetry) {
         MessageEntity m = messageRepository.findById(assistantMessageId).orElseThrow();
         m.setContent(answer != null ? answer : "");
-        m.setSources(sources);
+        m.setSources(ChatSourceMapper.toPersistedMaps(sources));
         m.setQueryType(queryType);
         m.setTraceId(traceId);
         m.setPipelineSteps(pipelineSteps);

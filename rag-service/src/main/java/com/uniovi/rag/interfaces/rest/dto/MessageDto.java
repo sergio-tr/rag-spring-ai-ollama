@@ -12,7 +12,7 @@ public record MessageDto(
         MessageRole role,
         String content,
         Instant createdAt,
-        List<Map<String, Object>> sources,
+        List<ChatSourceDto> sources,
         String queryType,
         List<Map<String, Object>> pipelineSteps,
         String status,

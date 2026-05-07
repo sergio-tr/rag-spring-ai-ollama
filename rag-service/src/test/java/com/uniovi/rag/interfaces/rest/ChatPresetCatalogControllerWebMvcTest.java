@@ -120,7 +120,8 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 Map.of(),
                                 List.of("EXECUTED", "FAILED", "SKIPPED"),
                                 true,
-                                true),
+                                true,
+                                false),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000014",
                                 "P4",
@@ -135,7 +136,8 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 Map.of(),
                                 List.of("EXECUTED", "FAILED", "SKIPPED"),
                                 true,
-                                true),
+                                true,
+                                false),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000016",
                                 "P6",
@@ -150,7 +152,8 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 Map.of(),
                                 List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                 true,
-                                true),
+                                true,
+                                false),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000018",
                                 "P8",
@@ -165,7 +168,8 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 Map.of(),
                                 List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                 true,
-                                true),
+                                true,
+                                false),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000021",
                                 "P11",
@@ -180,7 +184,8 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 Map.of(),
                                 List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                 true,
-                                true),
+                                true,
+                                false),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000022",
                                 "P12",
@@ -195,7 +200,8 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 Map.of(),
                                 List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                 true,
-                                true)));
+                                true,
+                                false)));
         // Fill up to 15 with placeholders.
         while (experimental.size() < 15) {
             int idx = experimental.size();
@@ -214,7 +220,8 @@ class ChatPresetCatalogControllerWebMvcTest {
                             Map.of(),
                             List.of("EXECUTED", "FAILED", "SKIPPED"),
                             true,
-                            true));
+                            true,
+                            false));
         }
         when(labExperimentalPresetCatalogService.list()).thenReturn(experimental);
 

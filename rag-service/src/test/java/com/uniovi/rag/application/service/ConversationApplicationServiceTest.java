@@ -3,6 +3,7 @@ package com.uniovi.rag.application.service;
 import com.uniovi.rag.domain.MessageRole;
 import com.uniovi.rag.domain.MessageProcessingStatus;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDto;
 import com.uniovi.rag.interfaces.rest.dto.CreateConversationRequest;
 import com.uniovi.rag.interfaces.rest.dto.MessageDto;
@@ -15,6 +16,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
@@ -101,6 +103,18 @@ class ConversationApplicationServiceTest {
                                 true,
                                 true,
                                 Map.of(),
+                                List.of(),
+                                List.of(),
+                                "dense_chunk_workflow",
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                false));
+        lenient()
+                .when(runtimeConfigValidationService.validate(any(), any()))
+                .thenReturn(
+                        new RuntimeConfigValidateResponse(
+                                true,
+                                true,
+                                Map.of("useRetrieval", true),
                                 List.of(),
                                 List.of(),
                                 "dense_chunk_workflow",
@@ -206,7 +220,10 @@ class ConversationApplicationServiceTest {
         when(project.getOwner()).thenReturn(owner);
         when(project.getId()).thenReturn(projectId);
         when(projectAccessService.requireOwnedProject(userId, projectId)).thenReturn(project);
-        when(knowledgeDocumentRepository.findByIdAndProject_Id(docId, projectId)).thenReturn(Optional.of(mock()));
+        var doc = mock(KnowledgeDocumentEntity.class);
+        when(doc.getStatus()).thenReturn(ProjectDocumentStatus.READY);
+        when(doc.getCorpusScope()).thenReturn(CorpusScope.PROJECT_SHARED);
+        when(knowledgeDocumentRepository.findByIdAndProject_Id(docId, projectId)).thenReturn(Optional.of(doc));
         when(conversationRepository.save(any(ConversationEntity.class)))
                 .thenAnswer(
                         inv -> {
@@ -273,8 +290,13 @@ class ConversationApplicationServiceTest {
         UUID convId = UUID.randomUUID();
         UUID presetId = UUID.randomUUID();
         ConversationEntity c = mock(ConversationEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(UUID.randomUUID());
+        when(c.getProject()).thenReturn(project);
+        when(c.getRuntimeOverride()).thenReturn(Map.of());
         when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(c);
         RagPresetEntity preset = mock(RagPresetEntity.class);
+        when(preset.getId()).thenReturn(presetId);
         when(presetService.requireVisiblePreset(userId, presetId)).thenReturn(preset);
 
         service.patchConversation(
@@ -313,6 +335,7 @@ class ConversationApplicationServiceTest {
                                         Map.of(),
                                         List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                         false,
+                                        true,
                                         true)));
 
         ResponseStatusException ex =
@@ -331,6 +354,10 @@ class ConversationApplicationServiceTest {
         UUID convId = UUID.randomUUID();
         UUID presetId = UUID.randomUUID();
         ConversationEntity c = mock(ConversationEntity.class);
+        ProjectEntity project = mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(UUID.randomUUID());
+        when(c.getProject()).thenReturn(project);
+        when(c.getRuntimeOverride()).thenReturn(Map.of());
         when(projectAccessService.requireConversationForUser(userId, convId)).thenReturn(c);
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
@@ -355,7 +382,8 @@ class ConversationApplicationServiceTest {
                                         Map.of(),
                                         List.of("EXECUTED", "FAILED", "SKIPPED"),
                                         true,
-                                        true)));
+                                        true,
+                                        false)));
 
         service.patchConversation(
                 userId,
@@ -396,6 +424,7 @@ class ConversationApplicationServiceTest {
                                         Map.of(),
                                         List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                         false,
+                                        true,
                                         true)));
 
         ResponseStatusException ex =
@@ -515,6 +544,7 @@ class ConversationApplicationServiceTest {
                                         Map.of(),
                                         List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                         false,
+                                        true,
                                         true)));
 
         ResponseStatusException ex =
@@ -561,7 +591,8 @@ class ConversationApplicationServiceTest {
                                         Map.of(),
                                         List.of("EXECUTED", "FAILED", "SKIPPED"),
                                         true,
-                                        true)));
+                                        true,
+                                        false)));
 
         when(conversationRepository.save(any(ConversationEntity.class)))
                 .thenAnswer(

@@ -5,6 +5,7 @@ import com.uniovi.rag.interfaces.rest.dto.ConversationDto;
 import com.uniovi.rag.interfaces.rest.dto.CreateConversationRequest;
 import com.uniovi.rag.interfaces.rest.dto.MessageDto;
 import com.uniovi.rag.interfaces.rest.dto.PatchConversationRequest;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
@@ -15,11 +16,14 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
+import com.uniovi.rag.application.service.chat.RuntimeOverrideNormalizer;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
+import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.service.preset.PresetService;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -28,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -80,7 +85,10 @@ public class ConversationApplicationService {
                 ? body.title().trim()
                 : "New chat";
         List<String> filter =
-                resolveAndValidateDocumentFilter(project.getId(), body != null ? body.documentFilter() : null);
+                resolveAndValidateDocumentFilter(
+                        project.getId(),
+                        null,
+                        body != null ? body.documentFilter() : null);
         ConversationEntity c = ConversationEntity.create(project.getOwner(), project, title, filter);
 
         if (body != null && body.initialPresetId() != null && !body.initialPresetId().isBlank()) {
@@ -156,15 +164,26 @@ public class ConversationApplicationService {
     public ConversationDto patchConversation(
             UUID userId, UUID conversationId, PatchConversationRequest body) {
         ConversationEntity c = projectAccessService.requireConversationForUser(userId, conversationId);
-        boolean changed = false;
-        if (body != null && body.title() != null && !body.title().isBlank()) {
-            c.setTitle(body.title().trim());
-            changed = true;
+        if (body == null) {
+            return toConversationDtoBaseline(c);
         }
-        if (body != null && Boolean.TRUE.equals(body.clearPreset())) {
-            c.setPreset(null);
-            changed = true;
-        } else if (body != null && body.presetId() != null && !body.presetId().isBlank()) {
+
+        boolean touchesRuntimeConfig =
+                Boolean.TRUE.equals(body.clearPreset())
+                        || (body.presetId() != null && !body.presetId().isBlank())
+                        || body.documentFilter() != null
+                        || Boolean.TRUE.equals(body.clearRuntimeOverride())
+                        || body.runtimeOverride() != null;
+
+        // Stage all candidate mutations in-memory before persisting (no partial persistence on validation failure).
+        String candidateTitle =
+                body.title() != null && !body.title().isBlank() ? body.title().trim() : c.getTitle();
+        boolean clearPending = Boolean.TRUE.equals(body.clearPendingClarification());
+
+        RagPresetEntity candidatePreset = c.getPreset();
+        if (Boolean.TRUE.equals(body.clearPreset())) {
+            candidatePreset = null;
+        } else if (body.presetId() != null && !body.presetId().isBlank()) {
             UUID presetId;
             try {
                 presetId = UUID.fromString(body.presetId().trim());
@@ -173,25 +192,95 @@ public class ConversationApplicationService {
             }
             RagPresetEntity preset = presetService.requireVisiblePreset(userId, presetId);
             validateExperimentalPresetSupport(preset);
-            c.setPreset(preset);
-            changed = true;
+            candidatePreset = preset;
         }
-        if (body != null && body.documentFilter() != null) {
-            c.setDocumentFilter(resolveAndValidateDocumentFilter(c.getProject().getId(), body.documentFilter()));
-            changed = true;
+
+        List<String> candidateDocumentFilter =
+                body.documentFilter() != null
+                        ? resolveAndValidateDocumentFilter(c.getProject().getId(), conversationId, body.documentFilter())
+                        : (c.getDocumentFilter() != null ? List.copyOf(c.getDocumentFilter()) : List.of());
+
+        Map<String, Object> candidateOverrideRaw =
+                Boolean.TRUE.equals(body.clearRuntimeOverride())
+                        ? Map.of()
+                        : (body.runtimeOverride() != null ? new LinkedHashMap<>(body.runtimeOverride()) : c.getRuntimeOverride());
+        candidateOverrideRaw = candidateOverrideRaw != null ? candidateOverrideRaw : Map.of();
+
+        if (touchesRuntimeConfig) {
+            UUID projectId = c.getProject() != null ? c.getProject().getId() : null;
+            if (projectId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "conversation missing project");
+            }
+
+            UUID selectedPresetId = candidatePreset != null ? candidatePreset.getId() : null;
+            UUID effectivePresetId = chatPresetDefaults.effectivePresetIdForApi(selectedPresetId);
+
+            // Base effective config without candidate overrides.
+            RuntimeConfigValidateResponse baseVr =
+                    runtimeConfigValidationService.validate(
+                            userId,
+                            new RuntimeConfigValidateRequest(
+                                    conversationId,
+                                    effectivePresetId != null ? effectivePresetId.toString() : null,
+                                    null,
+                                    Map.of()));
+            Map<String, Object> baseEffectiveConfig =
+                    baseVr.effectiveConfig() != null ? baseVr.effectiveConfig() : Map.of();
+
+            RuntimeOverrideNormalizer.NormalizedOverride normalized =
+                    RuntimeOverrideNormalizer.normalize(candidateOverrideRaw, baseEffectiveConfig);
+
+            RuntimeConfigValidateResponse vr =
+                    runtimeConfigValidationService.validate(
+                            userId,
+                            new RuntimeConfigValidateRequest(
+                                    conversationId,
+                                    effectivePresetId != null ? effectivePresetId.toString() : null,
+                                    null,
+                                    normalized.runtimeOverride()));
+
+            long readyDocs =
+                    knowledgeDocumentRepository.countByProject_IdAndStatus(projectId, ProjectDocumentStatus.READY);
+            if (vr.requiresReindex() && readyDocs > 0) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Runtime configuration is incompatible with the indexed corpus. Reindex the project or adjust settings.");
+            }
+
+            boolean allowDespiteIndexMismatch = vr.requiresReindex() && readyDocs == 0;
+            if ((!vr.supported() || !vr.valid()) && !allowDespiteIndexMismatch) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, firstBlockingReason(vr));
+            }
+
+            // Persist only after validation has passed; runtimeOverride must be diff-only.
+            candidateOverrideRaw = normalized.runtimeOverride();
         }
-        if (body != null && Boolean.TRUE.equals(body.clearRuntimeOverride())) {
-            c.setRuntimeOverride(Map.of());
-            changed = true;
-        } else if (body != null && body.runtimeOverride() != null) {
-            c.setRuntimeOverride(body.runtimeOverride());
-            changed = true;
-        }
-        if (body != null && Boolean.TRUE.equals(body.clearPendingClarification())) {
-            c.setPendingClarification(null);
-            changed = true;
-        }
+
+        boolean overrideChanged =
+                touchesRuntimeConfig
+                        && !Objects.equals(
+                                candidateOverrideRaw,
+                                c.getRuntimeOverride() != null ? c.getRuntimeOverride() : Map.of());
+        boolean changed =
+                !Objects.equals(candidateTitle, c.getTitle())
+                        || !Objects.equals(candidatePreset, c.getPreset())
+                        || (body.documentFilter() != null
+                                && !Objects.equals(candidateDocumentFilter, c.getDocumentFilter()))
+                        || overrideChanged
+                        || clearPending;
+
         if (changed) {
+            c.setTitle(candidateTitle);
+            c.setPreset(candidatePreset);
+            if (body.documentFilter() != null) {
+                c.setDocumentFilter(candidateDocumentFilter);
+            }
+            if (touchesRuntimeConfig) {
+                c.setRuntimeOverride(candidateOverrideRaw);
+            }
+            if (clearPending) {
+                c.setPendingClarification(null);
+            }
             c.touchUpdated();
             conversationRepository.save(c);
         }
@@ -280,7 +369,7 @@ public class ConversationApplicationService {
     /**
      * Normalizes document ids and ensures each belongs to the project. Empty input yields an empty list (no filter).
      */
-    private List<String> resolveAndValidateDocumentFilter(UUID projectId, List<String> raw) {
+    private List<String> resolveAndValidateDocumentFilter(UUID projectId, UUID conversationId, List<String> raw) {
         if (raw == null || raw.isEmpty()) {
             return List.of();
         }
@@ -295,9 +384,24 @@ public class ConversationApplicationService {
             } catch (IllegalArgumentException e) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid document id in documentFilter");
             }
-            if (knowledgeDocumentRepository.findByIdAndProject_Id(docId, projectId).isEmpty()) {
+            var hit = knowledgeDocumentRepository.findByIdAndProject_Id(docId, projectId);
+            if (hit.isEmpty()) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "documentFilter contains id not in project: " + docId);
+            }
+            var doc = hit.get();
+            if (doc.getStatus() == null || doc.getStatus() != ProjectDocumentStatus.READY) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "documentFilter contains non-READY document: " + docId);
+            }
+            if (doc.getCorpusScope() == CorpusScope.CHAT_LOCAL) {
+                if (doc.getConversation() == null
+                        || doc.getConversation().getId() == null
+                        || conversationId == null
+                        || !conversationId.equals(doc.getConversation().getId())) {
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST, "documentFilter contains CHAT_LOCAL document from another conversation: " + docId);
+                }
             }
             normalized.add(docId.toString());
         }
@@ -310,7 +414,7 @@ public class ConversationApplicationService {
                 m.getRole(),
                 m.getContent(),
                 m.getCreatedAt(),
-                m.getSources(),
+                ChatSourceMapper.toDtos(ChatSourceMapper.fromLegacyMaps(m.getSources())),
                 m.getQueryType(),
                 m.getPipelineSteps(),
                 m.getStatus() != null ? m.getStatus().name() : null,

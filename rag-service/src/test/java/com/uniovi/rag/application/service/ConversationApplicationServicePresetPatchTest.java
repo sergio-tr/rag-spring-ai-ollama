@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
 import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
+import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.MessageRepository;
@@ -19,6 +20,8 @@ import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.interfaces.rest.dto.ExperimentalPresetCatalogItemDto;
 import com.uniovi.rag.interfaces.rest.dto.PatchConversationRequest;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
 import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.service.preset.PresetService;
 import com.uniovi.rag.service.project.ProjectAccessService;
@@ -74,6 +77,20 @@ class ConversationApplicationServicePresetPatchTest {
 
         ConversationEntity conv = mockConversation(uid, cid);
         when(projectAccessService.requireConversationForUser(uid, cid)).thenReturn(conv);
+        when(chatPresetDefaults.effectivePresetIdForApi(any()))
+                .thenAnswer(inv -> inv.getArgument(0) != null ? inv.getArgument(0) : ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID);
+        when(knowledgeDocumentRepository.countByProject_IdAndStatus(any(), eq(ProjectDocumentStatus.READY))).thenReturn(0L);
+        when(runtimeConfigValidationService.validate(eq(uid), any()))
+                .thenReturn(
+                        new RuntimeConfigValidateResponse(
+                                true,
+                                true,
+                                Map.of("useRetrieval", true),
+                                List.of(),
+                                List.of(),
+                                "dense_chunk_workflow",
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                false));
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
         when(preset.getId()).thenReturn(presetId);
@@ -97,7 +114,8 @@ class ConversationApplicationServicePresetPatchTest {
                                         Map.of(),
                                         List.of("EXECUTED"),
                                         true,
-                                        true)));
+                                        true,
+                                        false)));
 
         // Should not throw.
         sut.patchConversation(uid, cid, new PatchConversationRequest(null, presetId.toString(), null, null, null, null, null));
@@ -111,6 +129,20 @@ class ConversationApplicationServicePresetPatchTest {
 
         ConversationEntity conv = mockConversation(uid, cid);
         when(projectAccessService.requireConversationForUser(uid, cid)).thenReturn(conv);
+        when(chatPresetDefaults.effectivePresetIdForApi(any()))
+                .thenAnswer(inv -> inv.getArgument(0) != null ? inv.getArgument(0) : ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID);
+        when(knowledgeDocumentRepository.countByProject_IdAndStatus(any(), eq(ProjectDocumentStatus.READY))).thenReturn(0L);
+        when(runtimeConfigValidationService.validate(eq(uid), any()))
+                .thenReturn(
+                        new RuntimeConfigValidateResponse(
+                                true,
+                                true,
+                                Map.of("useRetrieval", true),
+                                List.of(),
+                                List.of(),
+                                "dense_chunk_workflow",
+                                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false),
+                                false));
 
         RagPresetEntity preset = mock(RagPresetEntity.class);
         when(preset.getId()).thenReturn(presetId);
@@ -134,6 +166,7 @@ class ConversationApplicationServicePresetPatchTest {
                                         Map.of(),
                                         List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
                                         false,
+                                        true,
                                         true)));
 
         assertThatThrownBy(

@@ -1,10 +1,12 @@
 package com.uniovi.rag.service.async.chat;
 
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.application.service.runtime.ChatSourceMapper;
 import com.uniovi.rag.application.model.QueryResponse;
 import com.uniovi.rag.application.service.ChatMessageWorkService;
 import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.interfaces.rest.dto.ChatSourceDto;
 import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.async.lab.LabJobHandler;
@@ -111,13 +113,13 @@ public class ChatMessageJobHandler implements LabJobHandler {
                 finishCancelled(taskId, conversationId, assistantId, mutation);
                 return;
             }
-            List<Map<String, Object>> sources = qr.getSources();
             log.info(
                     "chat_runtime_result taskId={} conversationId={} projectId={} sourceCount={}",
                     taskId,
                     conversationId,
                     projectId,
-                    sources != null ? sources.size() : 0);
+                    qr.getSources() != null ? qr.getSources().size() : 0);
+            List<ChatSourceDto> sourceDtos = ChatSourceMapper.toDtos(qr.getSources());
             List<Map<String, Object>> steps = buildPipelineSteps(qr);
             String qt = qr.getQueryType() != null ? qr.getQueryType().name() : null;
             String traceId = chatMessageWorkService.currentTraceId();
@@ -128,7 +130,7 @@ public class ChatMessageJobHandler implements LabJobHandler {
                     assistantId,
                     conversationId,
                     answer,
-                    sources,
+                    sourceDtos,
                     qt,
                     traceId,
                     steps,
@@ -138,7 +140,7 @@ public class ChatMessageJobHandler implements LabJobHandler {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("answer", answer);
             result.put("queryType", qt);
-            result.put("sources", sources);
+            result.put("sources", ChatSourceMapper.toPersistedMaps(sourceDtos));
             result.put("pipelineSteps", steps);
             result.put("phase", "done");
             mutation.markSucceeded(taskId, result);
