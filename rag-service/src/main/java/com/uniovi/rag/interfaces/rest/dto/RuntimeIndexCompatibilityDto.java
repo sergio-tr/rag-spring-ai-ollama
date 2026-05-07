@@ -8,6 +8,10 @@ public record RuntimeIndexCompatibilityDto(
         UUID activeConversationSnapshotId,
         String activeIndexProfileHash,
         Map<String, Object> activeIndexProfile,
-        boolean hasActiveIndex
+        boolean hasActiveIndex,
+        RuntimeSnapshotCapabilitiesDto activeSnapshotCapabilities,
+        RuntimePresetIndexRequirementsDto presetIndexRequirements,
+        boolean compatibleWithPreset,
+        String compatibilityStatus
 ) {}
 
