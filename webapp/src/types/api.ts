@@ -29,6 +29,28 @@ export type MeResponse = {
   emailVerifiedAt: string | null;
 };
 
+export type ProjectIndexProfileSummary = {
+  projectId: string;
+  materializationStrategy: string | null;
+  metadataEnabled: boolean;
+  metadataProfile: string | null;
+  embeddingModelId: string | null;
+  chunkMaxChars: number;
+  chunkOverlap: number | null;
+  profileHash: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UpsertProjectIndexProfileBody = {
+  materializationStrategy?: string | null;
+  metadataEnabled?: boolean | null;
+  metadataProfile?: string | null;
+  embeddingModelId?: string | null;
+  chunkMaxChars?: number | null;
+  chunkOverlap?: number | null;
+};
+
 export type ProjectSummary = {
   id: string;
   name: string;
@@ -39,6 +61,8 @@ export type ProjectSummary = {
   projectPrompt?: string | null;
   colorHex?: string | null;
   iconKey?: string | null;
+  /** Present on POST create / GET detail; omitted on list to avoid extra joins. */
+  indexProfile?: ProjectIndexProfileSummary | null;
 };
 
 export type ProjectListResponse = {
@@ -50,6 +74,15 @@ export type CreateProjectBody = {
   name: string;
   description?: string;
   initialPresetId?: string;
+  initialIndexProfile?: UpsertProjectIndexProfileBody | null;
+};
+
+/** POST /projects/{id}/conversations optional seed payload */
+export type CreateConversationBody = {
+  title?: string | null;
+  documentFilter?: string[];
+  initialPresetId?: string | null;
+  initialRuntimeOverride?: Record<string, unknown> | null;
 };
 
 export type ActivateProjectResponse = {
@@ -86,6 +119,18 @@ export type ConversationDto = {
   documentFilter?: string[];
   /** Conversation-scoped runtime override keys (merged on top of preset + project config). */
   runtimeOverride?: Record<string, unknown>;
+  /** Populated when returned from POST create after validation preview; omitted or empty on list. */
+  effectiveRuntimePreview?: Record<string, unknown>;
+  runtimeWarnings?: RuntimeConfigValidationIssueDto[];
+  indexCompatibility?: {
+    activeProjectSnapshotId: string | null;
+    activeConversationSnapshotId: string | null;
+    activeIndexProfileHash: string | null;
+    activeIndexProfile: Record<string, unknown>;
+    hasActiveIndex: boolean;
+  } | null;
+  /** Backend clarification wait-state (`pending_clarification_jsonb`) when follow-up is expected. */
+  pendingClarification?: Record<string, unknown> | null;
 };
 
 export type RagPresetDto = {
@@ -105,6 +150,49 @@ export type AdminAllowlistEntryDto = {
   type: "LLM" | "EMBEDDING";
   inAllowlist: boolean;
   installedAt: string | null;
+};
+
+export type AdminModelEntryDto = {
+  id: string;
+  modelId: string;
+  displayName: string | null;
+  modelType: "LLM" | "EMBEDDING";
+  enabled: boolean;
+  available: boolean;
+  lastCheckedAt: string | null;
+  lastPullStatus: string | null;
+  lastPullError: string | null;
+  installedAt: string | null;
+  tags: string[] | null;
+};
+
+export type AdminModelCheckRequest = {
+  modelId: string;
+  modelType: "LLM" | "EMBEDDING";
+  pullIfMissing: boolean;
+};
+
+export type AdminModelCheckResponse = {
+  modelId: string;
+  requestedType: "LLM" | "EMBEDDING";
+  existsLocal: boolean;
+  canPull: boolean;
+  pulled: boolean;
+  embeddingProbeOk: boolean;
+  matchedLocalIds: string[];
+  checkedAt: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  pullSummary: string | null;
+};
+
+export type AdminModelUpsertRequest = {
+  modelId: string;
+  displayName?: string | null;
+  modelType: "LLM" | "EMBEDDING";
+  enabled: boolean;
+  pullIfMissing: boolean;
+  tags?: string[] | null;
 };
 
 export type LabValidationIssueDto = {
@@ -150,6 +238,21 @@ export type LabJobAcceptedDto = {
   status: string;
   pollPath: string;
   streamPath: string;
+};
+
+export type ActiveLabJobDto = {
+  jobId: string;
+  benchmarkKind: string | null;
+  evaluationRunId: string;
+  projectId: string | null;
+  datasetId: string | null;
+  status: string;
+  progress: string | null;
+  startedAt: string | null;
+  updatedAt: string | null;
+  pollPath: string | null;
+  streamPath: string | null;
+  cancellable: boolean;
 };
 
 /** POST `{product}/me/account/export|deletion` → HTTP 202 (poll via `/me/account/jobs/{id}`, not Lab). */
@@ -265,6 +368,8 @@ export type RuntimeConfigCapabilityDto = {
   excludes: string[];
   reasonIfNotImplemented: string | null;
   options: Record<string, unknown>;
+  /** e.g. MULTI_TURN_REQUIRED — orthogonal to `implemented`; used for UX hints. */
+  supportMode?: string | null;
 };
 
 export type RuntimeConfigCapabilitiesResponse = {
@@ -292,6 +397,14 @@ export type RuntimeConfigValidateResponse = {
   errors: RuntimeConfigValidationIssueDto[];
   warnings: RuntimeConfigValidationIssueDto[];
   selectedWorkflow: string | null;
+  indexCompatibility?: {
+    activeProjectSnapshotId: string | null;
+    activeConversationSnapshotId: string | null;
+    activeIndexProfileHash: string | null;
+    activeIndexProfile: Record<string, unknown>;
+    hasActiveIndex: boolean;
+  } | null;
+  requiresReindex?: boolean;
 };
 
 export type EvaluationRunDetailDto = {
@@ -364,6 +477,8 @@ export type StreamDonePayload = {
   toolUsed: string | null;
   sources: Record<string, unknown>[];
   pipelineSteps: Record<string, unknown>[];
+  /** Privacy-safe runtime hints mirrored from the last assistant message metadata. */
+  runtimeTelemetry?: Record<string, unknown>;
 };
 
 /** POST `{product}/conversations/{id}/messages` (JSON body) → HTTP 202 + {@link LabJobAcceptedDto}. */
@@ -392,6 +507,7 @@ export type PatchConversationBody = {
   documentFilter?: string[] | null;
   runtimeOverride?: Record<string, unknown> | null;
   clearRuntimeOverride?: boolean;
+  clearPendingClarification?: boolean;
 };
 
 /** GET `{product}/models` — allowlist vs Ollama tags. */
@@ -406,6 +522,16 @@ export type ModelsCatalogResponse = {
   ollamaReachable: boolean;
   installedModelNames: string[];
   allowlist: ModelsCatalogAllowlistEntry[];
+};
+
+/** GET `{product}/models?type=LLM|EMBEDDING` — filtered selectable models. */
+export type SelectableModelDto = {
+  modelId: string;
+  displayName: string | null;
+  type: "LLM" | "EMBEDDING";
+  tags: string[];
+  available: boolean;
+  lastCheckedAt: string | null;
 };
 
 /** GET {product}/lab/classifier/models */
