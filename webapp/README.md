@@ -33,6 +33,10 @@ The **Chat** page (`src/app/[locale]/(app)/chat/page.tsx`) loads conversations w
 
 Use **`PATCH {product}/conversations/{id}`** from the same UI for `presetId` / `clearPreset` and `documentFilter` (subset of project document UUIDs). Model and preset dropdowns use **`GET {product}/models`** and **`GET {product}/presets`**.
 
+**Index/project capabilities (vs per-chat runtime):** the Chat panel shows read-only index capabilities from **`GET {product}/projects/{id}/index-profile`** and the active snapshot from **`GET {product}/projects/{id}/knowledge/snapshots/active`**. Updates use **`PUT …/index-profile`** (project settings / creation flow); changing materialization/metadata-related settings after documents are indexed may require **reindex** per backend rules. Runtime validation uses **`POST …/runtime-config/validate`** with `indexCompatibility` / `requiresReindex` when the UI merges overrides.
+
+**Conversation bootstrap:** **`POST {product}/projects/{projectId}/conversations`** may include **`initialPresetId`**, **`initialRuntimeOverride`**, and **`documentFilter`** so chats start configured before the first message (`NewConversationDialog` from Chat, sidebar, or project cards). **`POST {product}/projects`** may send **`initialIndexProfile`** (persisted with the new project; see `NewProjectDialog`).
+
 **Move conversation:** `POST {product}/projects/{sourceProjectId}/conversations/{conversationId}/move?destinationProjectId=` (**204 No Content**) reassigns the chat to another project you own; only **chat-local** corpus documents move with it, not shared project documents. The UI clears the persisted document subset after a move (`MoveConversationDialog`, `useMoveConversation`).
 
 ### Research Lab
