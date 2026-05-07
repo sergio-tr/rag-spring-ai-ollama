@@ -14,4 +14,6 @@ public record PatchConversationRequest(
         Boolean clearPreset,
         List<String> documentFilter,
         Map<String, Object> runtimeOverride,
-        Boolean clearRuntimeOverride) {}
+        Boolean clearRuntimeOverride,
+        /** Clears {@code pending_clarification_jsonb} on the conversation (best-effort cancel of clarification flow). */
+        Boolean clearPendingClarification) {}

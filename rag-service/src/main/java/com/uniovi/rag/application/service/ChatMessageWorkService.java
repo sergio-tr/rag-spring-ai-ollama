@@ -57,6 +57,31 @@ public class ChatMessageWorkService {
             List<Map<String, Object>> pipelineSteps,
             String llmModel,
             Duration duration) {
+        applyAssistantSuccess(
+                assistantMessageId,
+                conversationId,
+                answer,
+                sources,
+                queryType,
+                traceId,
+                pipelineSteps,
+                llmModel,
+                duration,
+                Map.of());
+    }
+
+    @Transactional
+    public void applyAssistantSuccess(
+            UUID assistantMessageId,
+            UUID conversationId,
+            String answer,
+            List<Map<String, Object>> sources,
+            String queryType,
+            String traceId,
+            List<Map<String, Object>> pipelineSteps,
+            String llmModel,
+            Duration duration,
+            Map<String, Object> chatTelemetry) {
         MessageEntity m = messageRepository.findById(assistantMessageId).orElseThrow();
         m.setContent(answer != null ? answer : "");
         m.setSources(sources);
@@ -70,6 +95,9 @@ public class ChatMessageWorkService {
         }
         meta.put("durationMs", duration != null ? duration.toMillis() : null);
         meta.put("documentCount", sources != null ? sources.size() : 0);
+        if (chatTelemetry != null && !chatTelemetry.isEmpty()) {
+            meta.putAll(chatTelemetry);
+        }
         m.setExecutionMetadata(meta);
         messageRepository.save(m);
         touchConversation(conversationId);

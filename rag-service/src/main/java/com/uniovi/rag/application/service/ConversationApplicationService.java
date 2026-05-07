@@ -1,9 +1,13 @@
 package com.uniovi.rag.application.service;
 
+import com.uniovi.rag.domain.ProjectDocumentStatus;
 import com.uniovi.rag.interfaces.rest.dto.ConversationDto;
 import com.uniovi.rag.interfaces.rest.dto.CreateConversationRequest;
 import com.uniovi.rag.interfaces.rest.dto.MessageDto;
 import com.uniovi.rag.interfaces.rest.dto.PatchConversationRequest;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.MessageRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
@@ -12,15 +16,16 @@ import com.uniovi.rag.infrastructure.persistence.jpa.MessageEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.RagPresetEntity;
 import com.uniovi.rag.application.service.evaluation.LabExperimentalPresetCatalogService;
+import com.uniovi.rag.application.service.runtime.config.RuntimeConfigValidationService;
 import com.uniovi.rag.service.config.ChatPresetDefaults;
 import com.uniovi.rag.service.preset.PresetService;
 import com.uniovi.rag.service.project.ProjectAccessService;
-import com.uniovi.rag.domain.runtime.RagConfig;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -38,6 +43,7 @@ public class ConversationApplicationService {
     private final PresetService presetService;
     private final ChatPresetDefaults chatPresetDefaults;
     private final LabExperimentalPresetCatalogService experimentalPresetCatalogService;
+    private final RuntimeConfigValidationService runtimeConfigValidationService;
 
     public ConversationApplicationService(
             ProjectAccessService projectAccessService,
@@ -46,7 +52,8 @@ public class ConversationApplicationService {
             KnowledgeDocumentRepository knowledgeDocumentRepository,
             PresetService presetService,
             ChatPresetDefaults chatPresetDefaults,
-            LabExperimentalPresetCatalogService experimentalPresetCatalogService) {
+            LabExperimentalPresetCatalogService experimentalPresetCatalogService,
+            RuntimeConfigValidationService runtimeConfigValidationService) {
         this.projectAccessService = projectAccessService;
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
@@ -54,6 +61,7 @@ public class ConversationApplicationService {
         this.presetService = presetService;
         this.chatPresetDefaults = chatPresetDefaults;
         this.experimentalPresetCatalogService = experimentalPresetCatalogService;
+        this.runtimeConfigValidationService = runtimeConfigValidationService;
     }
 
     public List<ConversationDto> listConversations(UUID userId, UUID projectId) {
@@ -61,7 +69,7 @@ public class ConversationApplicationService {
         return conversationRepository
                 .findByProject_IdAndUser_IdOrderByUpdatedAtDesc(projectId, userId)
                 .stream()
-                .map(this::toConversationDto)
+                .map(this::toConversationDtoBaseline)
                 .toList();
     }
 
@@ -74,8 +82,75 @@ public class ConversationApplicationService {
         List<String> filter =
                 resolveAndValidateDocumentFilter(project.getId(), body != null ? body.documentFilter() : null);
         ConversationEntity c = ConversationEntity.create(project.getOwner(), project, title, filter);
-        chatPresetDefaults.loadDeterministicDefaultPreset().ifPresent(c::setPreset);
-        return toConversationDto(conversationRepository.save(c));
+
+        if (body != null && body.initialPresetId() != null && !body.initialPresetId().isBlank()) {
+            UUID presetId;
+            try {
+                presetId = UUID.fromString(body.initialPresetId().trim());
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid initialPresetId");
+            }
+            RagPresetEntity preset = presetService.requireVisiblePreset(userId, presetId);
+            validateExperimentalPresetSupport(preset);
+            c.setPreset(preset);
+        } else {
+            chatPresetDefaults.loadDeterministicDefaultPreset().ifPresent(c::setPreset);
+        }
+
+        Map<String, Object> initialOverrides =
+                body != null && body.initialRuntimeOverride() != null && !body.initialRuntimeOverride().isEmpty()
+                        ? new LinkedHashMap<>(body.initialRuntimeOverride())
+                        : Map.of();
+        c.setRuntimeOverride(initialOverrides);
+
+        UUID presetUuidForPreview =
+                c.getPreset() != null
+                        ? c.getPreset().getId()
+                        : ChatPresetDefaults.DETERMINISTIC_DEFAULT_CHAT_PRESET_ID;
+
+        long readyDocs =
+                knowledgeDocumentRepository.countByProject_IdAndStatus(projectId, ProjectDocumentStatus.READY);
+
+        RuntimeConfigValidateResponse vr =
+                runtimeConfigValidationService.validateDraft(userId, projectId, presetUuidForPreview, initialOverrides);
+
+        if (vr.requiresReindex() && readyDocs > 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Runtime configuration is incompatible with the indexed corpus. Reindex the project or adjust settings.");
+        }
+        boolean allowDespiteIndexMismatch = vr.requiresReindex() && readyDocs == 0;
+        if (!vr.supported() && !allowDespiteIndexMismatch) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, firstBlockingReason(vr));
+        }
+
+        List<RuntimeConfigValidationIssueDto> mergedWarnings = new ArrayList<>(vr.warnings());
+        if (vr.requiresReindex() && readyDocs == 0) {
+            for (RuntimeConfigValidationIssueDto err : vr.errors()) {
+                mergedWarnings.add(
+                        new RuntimeConfigValidationIssueDto(
+                                err.code(),
+                                err.field(),
+                                err.message(),
+                                "WARNING"));
+            }
+        }
+
+        c = conversationRepository.save(c);
+        Map<String, Object> preview =
+                vr.effectiveConfig() != null && !vr.effectiveConfig().isEmpty()
+                        ? Map.copyOf(vr.effectiveConfig())
+                        : Map.of();
+        RuntimeIndexCompatibilityDto idxCompat = vr.indexCompatibility();
+        return toConversationDtoWithHints(c, preview, mergedWarnings, idxCompat);
+    }
+
+    private static String firstBlockingReason(RuntimeConfigValidateResponse vr) {
+        return vr.errors().stream()
+                .map(RuntimeConfigValidationIssueDto::message)
+                .filter(m -> m != null && !m.isBlank())
+                .findFirst()
+                .orElse("Unsupported runtime configuration.");
     }
 
     public ConversationDto patchConversation(
@@ -112,11 +187,15 @@ public class ConversationApplicationService {
             c.setRuntimeOverride(body.runtimeOverride());
             changed = true;
         }
+        if (body != null && Boolean.TRUE.equals(body.clearPendingClarification())) {
+            c.setPendingClarification(null);
+            changed = true;
+        }
         if (changed) {
             c.touchUpdated();
             conversationRepository.save(c);
         }
-        return toConversationDto(c);
+        return toConversationDtoBaseline(c);
     }
 
     private void validateExperimentalPresetSupport(RagPresetEntity preset) {
@@ -162,12 +241,40 @@ public class ConversationApplicationService {
                 .toList();
     }
 
-    private ConversationDto toConversationDto(ConversationEntity c) {
+    private ConversationDto toConversationDtoBaseline(ConversationEntity c) {
+        return toConversationDtoWithHints(c, Map.of(), List.of(), null);
+    }
+
+    private ConversationDto toConversationDtoWithHints(
+            ConversationEntity c,
+            Map<String, Object> effectiveRuntimePreview,
+            List<RuntimeConfigValidationIssueDto> runtimeWarnings,
+            RuntimeIndexCompatibilityDto indexCompatibility) {
         UUID presetId = c.getPreset() != null ? c.getPreset().getId() : null;
         List<String> docs = c.getDocumentFilter() != null ? List.copyOf(c.getDocumentFilter()) : List.of();
         Map<String, Object> runtimeOverride = c.getRuntimeOverride() != null ? Map.copyOf(c.getRuntimeOverride()) : Map.of();
         UUID effectivePresetId = chatPresetDefaults.effectivePresetIdForApi(presetId);
-        return new ConversationDto(c.getId(), c.getTitle(), c.getUpdatedAt(), presetId, docs, runtimeOverride, effectivePresetId);
+        Map<String, Object> preview =
+                effectiveRuntimePreview != null && !effectiveRuntimePreview.isEmpty()
+                        ? Map.copyOf(effectiveRuntimePreview)
+                        : Map.of();
+        List<RuntimeConfigValidationIssueDto> warns =
+                runtimeWarnings != null ? List.copyOf(runtimeWarnings) : List.of();
+        Map<String, Object> pendingRaw = c.getPendingClarification();
+        Map<String, Object> pending =
+                pendingRaw != null && !pendingRaw.isEmpty() ? Map.copyOf(pendingRaw) : null;
+        return new ConversationDto(
+                c.getId(),
+                c.getTitle(),
+                c.getUpdatedAt(),
+                presetId,
+                docs,
+                runtimeOverride,
+                effectivePresetId,
+                preview,
+                warns,
+                indexCompatibility,
+                pending);
     }
 
     /**

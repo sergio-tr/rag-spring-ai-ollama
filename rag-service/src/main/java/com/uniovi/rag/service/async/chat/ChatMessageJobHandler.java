@@ -122,6 +122,8 @@ public class ChatMessageJobHandler implements LabJobHandler {
             String qt = qr.getQueryType() != null ? qr.getQueryType().name() : null;
             String traceId = chatMessageWorkService.currentTraceId();
             Duration duration = Duration.between(start, Instant.now());
+            Map<String, Object> telemetry =
+                    qr.getChatTelemetry() != null ? qr.getChatTelemetry() : Map.of();
             chatMessageWorkService.applyAssistantSuccess(
                     assistantId,
                     conversationId,
@@ -131,7 +133,8 @@ public class ChatMessageJobHandler implements LabJobHandler {
                     traceId,
                     steps,
                     llmModel,
-                    duration);
+                    duration,
+                    telemetry);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("answer", answer);
             result.put("queryType", qt);
@@ -169,6 +172,93 @@ public class ChatMessageJobHandler implements LabJobHandler {
                 "id", "classification",
                 "name", "Classification",
                 "detail", qr.getQueryType() != null ? qr.getQueryType().name() : ""));
+        Map<String, Object> tel = qr.getChatTelemetry() != null ? qr.getChatTelemetry() : Map.of();
+        if (Boolean.TRUE.equals(tel.get("clarificationRequired"))) {
+            steps.add(Map.of(
+                    "id",
+                    "clarification",
+                    "name",
+                    "Clarification",
+                    "detail",
+                    tel.get("clarificationOutcome") != null
+                            ? String.valueOf(tel.get("clarificationOutcome"))
+                            : "pending"));
+        }
+        if (Boolean.TRUE.equals(tel.get("routingAttempted"))) {
+            String route = tel.get("routingRouteKind") != null ? String.valueOf(tel.get("routingRouteKind")) : "";
+            String fallback =
+                    Boolean.TRUE.equals(tel.get("routingFallbackApplied"))
+                            ? "fallback="
+                                    + (tel.get("routingFallbackRouteKind") != null
+                                            ? String.valueOf(tel.get("routingFallbackRouteKind"))
+                                            : "?")
+                            : "fallback=no";
+            steps.add(Map.of(
+                    "id",
+                    "routing",
+                    "name",
+                    "Adaptive routing",
+                    "detail",
+                    (tel.get("routingOutcome") != null ? String.valueOf(tel.get("routingOutcome")) + " " : "")
+                            + route
+                            + " "
+                            + fallback));
+        }
+        if (Boolean.TRUE.equals(tel.get("memoryAttempted"))) {
+            steps.add(Map.of(
+                    "id",
+                    "memory",
+                    "name",
+                    "Memory",
+                    "detail",
+                    tel.get("memoryOutcome") != null ? String.valueOf(tel.get("memoryOutcome")) : "attempted"));
+        }
+        if (Boolean.TRUE.equals(tel.get("reasoningAttempted"))) {
+            steps.add(Map.of(
+                    "id",
+                    "reasoning",
+                    "name",
+                    "Reasoning",
+                    "detail",
+                    "strategy="
+                            + (tel.get("reasoningStrategy") != null ? tel.get("reasoningStrategy") : "")
+                            + " summary="
+                            + (tel.get("reasoningPlanSummaryTruncated") != null
+                                    ? tel.get("reasoningPlanSummaryTruncated")
+                                    : "")));
+        }
+        if (tel.containsKey("retrievalRerankApplied")) {
+            steps.add(Map.of(
+                    "id",
+                    "retrieval_advanced",
+                    "name",
+                    "Retrieval (rank / post)",
+                    "detail",
+                    "rerank="
+                            + tel.get("retrievalRerankApplied")
+                            + " counts fusion="
+                            + tel.getOrDefault("retrievalAfterFusionCount", "?")
+                            + " rerank="
+                            + tel.getOrDefault("retrievalAfterRerankCount", "?")
+                            + " filter="
+                            + tel.getOrDefault("retrievalAfterFilterCount", "?")
+                            + " compress="
+                            + tel.getOrDefault("retrievalAfterCompressionCount", "?")
+                            + " protected="
+                            + tel.getOrDefault("retrievalProtectedCandidateCount", "?")
+                            + " dropped="
+                            + tel.getOrDefault("retrievalDroppedCandidateCount", "?")));
+        }
+        if (Boolean.TRUE.equals(tel.get("judgeAttempted"))) {
+            steps.add(Map.of(
+                    "id",
+                    "judge",
+                    "name",
+                    "Judge",
+                    "detail",
+                    (tel.get("judgeFinalOutcome") != null ? String.valueOf(tel.get("judgeFinalOutcome")) : "")
+                            + (Boolean.TRUE.equals(tel.get("judgeFinalAnswerFromRetry")) ? " (retry answer)" : "")));
+        }
         steps.add(Map.of(
                 "id", "generation",
                 "name", "Generation",

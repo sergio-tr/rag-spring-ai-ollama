@@ -14,6 +14,8 @@ import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.application.service.AuditApplicationService;
 import com.uniovi.rag.application.service.account.ProjectVisualStyleValidator;
+import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileApplicationService;
+import com.uniovi.rag.interfaces.rest.dto.ProjectIndexProfileDto;
 import com.uniovi.rag.service.preset.PresetService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -36,6 +38,7 @@ public class ProjectService {
     private final ProjectAccessService projectAccessService;
     private final PresetService presetService;
     private final AuditApplicationService auditApplicationService;
+    private final ProjectIndexProfileApplicationService projectIndexProfileApplicationService;
 
     public ProjectService(
             ProjectRepository projectRepository,
@@ -44,7 +47,8 @@ public class ProjectService {
             ConversationRepository conversationRepository,
             ProjectAccessService projectAccessService,
             PresetService presetService,
-            AuditApplicationService auditApplicationService) {
+            AuditApplicationService auditApplicationService,
+            ProjectIndexProfileApplicationService projectIndexProfileApplicationService) {
         this.projectRepository = projectRepository;
         this.userRepository = userRepository;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
@@ -52,6 +56,7 @@ public class ProjectService {
         this.projectAccessService = projectAccessService;
         this.presetService = presetService;
         this.auditApplicationService = auditApplicationService;
+        this.projectIndexProfileApplicationService = projectIndexProfileApplicationService;
     }
 
     @Transactional(readOnly = true)
@@ -61,7 +66,7 @@ public class ProjectService {
         Page<ProjectEntity> slice =
                 projectRepository.findByOwner_IdOrderByUpdatedAtDesc(userId, PageRequest.of(p, s));
         return new ProjectListResponseDto(
-                slice.getContent().stream().map(this::toSummary).toList(),
+                slice.getContent().stream().map(proj -> toSummary(proj, null)).toList(),
                 slice.getTotalElements());
     }
 
@@ -80,13 +85,21 @@ public class ProjectService {
             }
             presetService.applyInitialPresetToProject(userId, p.getId(), presetId);
         }
-        return toSummary(p);
+
+        ProjectIndexProfileDto indexProfile;
+        if (req.initialIndexProfile() != null) {
+            indexProfile = projectIndexProfileApplicationService.put(userId, p.getId(), req.initialIndexProfile());
+        } else {
+            indexProfile = projectIndexProfileApplicationService.get(userId, p.getId());
+        }
+        return toSummary(p, indexProfile);
     }
 
     @Transactional(readOnly = true)
     public ProjectSummaryDto get(UUID userId, UUID projectId) {
         ProjectEntity p = projectAccessService.requireOwnedProject(userId, projectId);
-        return toSummary(p);
+        ProjectIndexProfileDto indexProfile = projectIndexProfileApplicationService.get(userId, projectId);
+        return toSummary(p, indexProfile);
     }
 
     @Transactional
@@ -119,7 +132,7 @@ public class ProjectService {
         }
         p.setUpdatedAt(Instant.now());
         p = projectRepository.save(p);
-        return toSummary(p);
+        return toSummary(p, null);
     }
 
     @Transactional
@@ -134,7 +147,7 @@ public class ProjectService {
         return new ActivateProjectResponseDto(projectId);
     }
 
-    private ProjectSummaryDto toSummary(ProjectEntity p) {
+    private ProjectSummaryDto toSummary(ProjectEntity p, ProjectIndexProfileDto indexProfile) {
         long docs = knowledgeDocumentRepository.countByProject_Id(p.getId());
         long convs = conversationRepository.countByProject_Id(p.getId());
         return new ProjectSummaryDto(
@@ -146,6 +159,7 @@ public class ProjectService {
                 p.getUpdatedAt(),
                 p.getProjectPrompt(),
                 p.getColorHex(),
-                p.getIconKey());
+                p.getIconKey(),
+                indexProfile);
     }
 }

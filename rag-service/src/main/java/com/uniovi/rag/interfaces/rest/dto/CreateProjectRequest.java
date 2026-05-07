@@ -6,5 +6,14 @@ import jakarta.validation.constraints.Size;
 public record CreateProjectRequest(
         @NotBlank @Size(max = 255) String name,
         @Size(max = 4000) String description,
-        String initialPresetId) {
+        String initialPresetId,
+        /** Optional index capabilities applied immediately after project creation (before documents). */
+        UpsertProjectIndexProfileRequest initialIndexProfile) {
+
+    public CreateProjectRequest(
+            @NotBlank @Size(max = 255) String name,
+            @Size(max = 4000) String description,
+            String initialPresetId) {
+        this(name, description, initialPresetId, null);
+    }
 }
