@@ -9,12 +9,44 @@ import { useLabStatus } from "@/features/lab/hooks/use-lab-status";
 import type { ExperimentalDatasetListItemDto, LabValidationIssueDto } from "@/types/api";
 import { Link } from "@/navigation";
 import { useTranslations } from "next-intl";
+import { useEffect } from "react";
+import { ApiError } from "@/lib/api-client";
 
 export default function LabOverviewPage() {
   const t = useTranslations("Lab");
   const tHelp = useTranslations("Help");
-  const { data: status, isError, isLoading, refetch } = useLabStatus();
+  const { data: status, isError, isLoading, refetch, error: statusError } = useLabStatus();
   const experimentalList = useExperimentalDatasetsQuery();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#datasets") return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 25;
+
+    const tick = () => {
+      if (cancelled) return;
+      const el = document.getElementById("datasets");
+      if (el) {
+        try {
+          el.scrollIntoView({ behavior: "instant" as ScrollBehavior, block: "start" });
+        } catch {
+          el.scrollIntoView();
+        }
+        return;
+      }
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        window.setTimeout(tick, 60);
+      }
+    };
+    tick();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -38,7 +70,7 @@ export default function LabOverviewPage() {
               </Badge>
               <Link
                 className="text-primary inline-flex items-center underline underline-offset-4"
-                href="/lab#datasets"
+                href="#datasets"
               >
                 {t("tfgStep1JumpToDatasets")}
               </Link>
@@ -105,7 +137,13 @@ export default function LabOverviewPage() {
         <CardContent className="space-y-4">
           {isError && (
             <p className="text-destructive text-sm" role="alert">
-              {t("statusError")}
+              {statusError instanceof ApiError && statusError.status === 401
+                ? "Authentication required."
+                : statusError instanceof ApiError && statusError.status === 403
+                  ? "Insufficient permissions."
+                  : statusError instanceof ApiError && statusError.status === 404
+                    ? "Lab resources not found."
+                    : t("statusError")}
             </p>
           )}
           {isLoading && !status && <p className="text-muted-foreground text-sm">{t("statusLoading")}</p>}

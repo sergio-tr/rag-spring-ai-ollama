@@ -143,6 +143,7 @@ function presetCodesFixture() {
     allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED", "NOT_SUPPORTED"],
     chatSelectable: true,
     labSelectable: true,
+    labOnly: false,
   }));
 }
 
@@ -188,6 +189,7 @@ describe("LabEvaluationRunCard", () => {
           allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED", "NOT_SUPPORTED"],
           chatSelectable: false,
           labSelectable: true,
+          labOnly: true,
         },
       ],
       isSuccess: true,

@@ -14,7 +14,7 @@ import {
   suggestedTemplateFilename,
   triggerBrowserBlobDownload,
 } from "@/features/lab/lib/experimental-datasets-api";
-import { getSafeApiErrorMessage } from "@/lib/api-client";
+import { ApiError, getSafeApiErrorMessage } from "@/lib/api-client";
 import type {
   ExperimentalDatasetTemplateKind,
   ExperimentalDatasetValidationReportDto,
@@ -73,7 +73,7 @@ function ValidationReportBlock({
 export function LabExperimentalDatasetPanel() {
   const t = useTranslations("Lab");
   const tHelp = useTranslations("Help");
-  const { data: datasets, isLoading, isError, refetch } = useExperimentalDatasetsQuery();
+  const { data: datasets, isLoading, isError, refetch, error: listError } = useExperimentalDatasetsQuery();
   const uploadMutation = useUploadExperimentalDatasetMutation();
 
   const [datasetKind, setDatasetKind] = useState<ExperimentalDatasetTemplateKind>("llm-model-baseline");
@@ -134,6 +134,15 @@ export function LabExperimentalDatasetPanel() {
         />
       </CardHeader>
       <CardContent className="space-y-6">
+        {isError && (
+          <p className="text-destructive text-sm" role="alert">
+            {listError instanceof ApiError && listError.status === 401
+              ? "Authentication required."
+              : listError instanceof ApiError && listError.status === 403
+                ? "Insufficient permissions."
+                : getSafeApiErrorMessage(listError)}
+          </p>
+        )}
         <div className="space-y-2">
           <Label>{t("experimentalDatasetTemplatesTitle")}</Label>
           <div className="flex flex-wrap gap-2">

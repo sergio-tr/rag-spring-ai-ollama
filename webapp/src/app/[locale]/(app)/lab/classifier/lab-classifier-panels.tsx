@@ -218,9 +218,21 @@ export function LabClassifierTrainPanel(
     });
   }, [resumeNonceTrain, resumeTrainFromPersisted]);
 
+  const modelNameTrimmed = modelName.trim();
+  const modelNameError =
+    modelNameTrimmed.length === 0
+      ? t("fieldRequired")
+      : modelNameTrimmed.length > 80
+        ? t("fieldTooLong")
+        : null;
+
   async function runTrain() {
     if (!trainFile) {
       setTrainErr(t("classifierTrainFileRequired"));
+      return;
+    }
+    if (modelNameError) {
+      setTrainErr(modelNameError);
       return;
     }
     trainAbortRef.current?.abort();
@@ -237,7 +249,7 @@ export function LabClassifierTrainPanel(
     try {
       const fd = new FormData();
       fd.append("file", trainFile);
-      fd.append("model_name", modelName);
+      fd.append("model_name", modelNameTrimmed);
       fd.append("epochs", "50");
       fd.append("batch_size", "8");
 
@@ -353,8 +365,18 @@ export function LabClassifierTrainPanel(
           </div>
         </details>
         <div className="grid gap-2">
-          <Label htmlFor="cmodel">{t("classifierModelName")}</Label>
-          <Input id="cmodel" value={modelName} onChange={(e) => setModelName(e.target.value)} />
+          <Label htmlFor="cmodel">New model name</Label>
+          <Input
+            id="cmodel"
+            value={modelName}
+            aria-invalid={modelNameError != null}
+            onChange={(e) => setModelName(e.target.value)}
+          />
+          <p className="text-muted-foreground text-xs">
+            This creates a new classifier model. To evaluate or activate an existing model, use the model selector
+            below.
+          </p>
+          {modelNameError ? <p className="text-destructive text-xs">{modelNameError}</p> : null}
         </div>
         <div className="grid gap-2">
           <Label htmlFor="cfile">{t("classifierTrainFile")}</Label>
@@ -369,7 +391,7 @@ export function LabClassifierTrainPanel(
           <Button
             type="button"
             data-testid="lab-classifier-train"
-            disabled={trainRunning || !classifierOk}
+            disabled={trainRunning || !classifierOk || modelNameError != null}
             onClick={() => void runTrain()}
           >
             {trainRunning ? t("evalRunning") : t("classifierTrainSubmit")}
@@ -787,12 +809,17 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
   const modelsQuery = useClassifierModelsQuery(classifierOk);
 
   const [clsQuery, setClsQuery] = useState("How many meetings?");
-  const [clsModelId, setClsModelId] = useState("default");
+  const [clsModelId, setClsModelId] = useState("");
   const [clsOut, setClsOut] = useState<unknown>(null);
   const [clsErr, setClsErr] = useState<string | null>(null);
   const [clsRunning, setClsRunning] = useState(false);
 
   async function runClassify() {
+    const q = clsQuery.trim();
+    if (!q) {
+      setClsErr(t("fieldRequired"));
+      return;
+    }
     setClsRunning(true);
     setClsErr(null);
     setClsOut(null);
@@ -800,7 +827,7 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
       const data = await apiFetch<unknown>(apiProductPath("/lab/classifier/classify"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: clsQuery, modelId: clsModelId }),
+        body: JSON.stringify({ query: q, modelId: clsModelId || null }),
       });
       setClsOut(data);
     } catch (e) {
@@ -830,14 +857,17 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
             onChange={(e) => setClsModelId(e.target.value)}
           >
             {(modelsQuery.data ?? []).length === 0 ? (
-              <option value="default">{t("benchmarkLlmModelPlaceholder")}</option>
+              <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
             ) : (
-              (modelsQuery.data ?? []).map((m) => (
-                <option key={m.id} value={m.inferenceTag}>
-                  {m.name} · {m.inferenceTag}
-                  {m.active ? " · ACTIVE" : ""}
-                </option>
-              ))
+              <>
+                <option value="">{t("benchmarkLlmModelPlaceholder")}</option>
+                {(modelsQuery.data ?? []).map((m) => (
+                  <option key={m.id} value={m.inferenceTag}>
+                    {m.name} · {m.inferenceTag}
+                    {m.active ? " · ACTIVE" : ""}
+                  </option>
+                ))}
+              </>
             )}
           </select>
           {(modelsQuery.data ?? []).length === 0 ? (
@@ -848,7 +878,11 @@ export function LabClassifierClassifyPanel(props: Readonly<{ classifierOk: boole
             </p>
           ) : null}
         </div>
-        <Button type="button" disabled={clsRunning || !classifierOk} onClick={() => void runClassify()}>
+        <Button
+          type="button"
+          disabled={clsRunning || !classifierOk || clsQuery.trim().length === 0}
+          onClick={() => void runClassify()}
+        >
           {clsRunning ? t("evalRunning") : t("classifierClassifySubmit")}
         </Button>
         {clsErr === null ? null : <p className="text-destructive text-sm">{clsErr}</p>}

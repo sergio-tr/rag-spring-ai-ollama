@@ -213,7 +213,7 @@ describe("LabOverviewPage", () => {
     );
 
     const link = screen.getByRole("link", { name: /Go to templates & uploads/i });
-    expect(link).toHaveAttribute("href", "/en/lab#datasets");
+    expect(link).toHaveAttribute("href", "/en#datasets");
   });
 
   it("renders the three TFG workflows with links to each evaluation page", () => {
