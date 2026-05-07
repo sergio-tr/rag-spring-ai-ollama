@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.knowledge.IndexSignature;
 import com.uniovi.rag.domain.knowledge.KnowledgeBuildProjection;
 import com.uniovi.rag.domain.knowledge.KnowledgeSnapshotScopeType;
 import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.domain.knowledge.SnapshotSignatureHasher;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
@@ -53,10 +54,8 @@ public class KnowledgePipelineOrchestrator {
     private final BinaryStoragePort binaryStoragePort;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
     private final KnowledgeIndexingService knowledgeIndexingService;
+    private final ProjectIndexProfileService projectIndexProfileService;
     private final TransactionTemplate transactionTemplate;
-    private final int chunkMaxChars;
-    private final String embeddingModelId;
-    private final MaterializationStrategy materializationStrategy;
     private final MeterRegistry meterRegistry;
 
     public KnowledgePipelineOrchestrator(
@@ -65,20 +64,16 @@ public class KnowledgePipelineOrchestrator {
             BinaryStoragePort binaryStoragePort,
             KnowledgeSnapshotService knowledgeSnapshotService,
             KnowledgeIndexingService knowledgeIndexingService,
+            ProjectIndexProfileService projectIndexProfileService,
             PlatformTransactionManager transactionManager,
-            @Value("${rag.chunk.max-chars:400}") int chunkMaxChars,
-            @Value("${spring.ai.ollama.embedding.model:mxbai-embed-large}") String embeddingModelId,
-            @Value("${rag.knowledge.materialization-strategy:CHUNK_LEVEL}") String materializationStrategyRaw,
             @Autowired(required = false) MeterRegistry meterRegistry) {
         this.jdbcTemplate = jdbcTemplate;
         this.knowledgeDocumentRepository = knowledgeDocumentRepository;
         this.binaryStoragePort = binaryStoragePort;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.knowledgeIndexingService = knowledgeIndexingService;
+        this.projectIndexProfileService = projectIndexProfileService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
-        this.chunkMaxChars = chunkMaxChars > 0 ? chunkMaxChars : 400;
-        this.embeddingModelId = embeddingModelId;
-        this.materializationStrategy = parseMaterializationStrategy(materializationStrategyRaw);
         this.meterRegistry = meterRegistry;
     }
 
@@ -93,15 +88,9 @@ public class KnowledgePipelineOrchestrator {
                 .increment();
     }
 
-    private static MaterializationStrategy parseMaterializationStrategy(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return MaterializationStrategy.CHUNK_LEVEL;
-        }
-        try {
-            return MaterializationStrategy.valueOf(raw.trim());
-        } catch (IllegalArgumentException e) {
-            return MaterializationStrategy.CHUNK_LEVEL;
-        }
+    private ProjectIndexProfile loadProfile(UUID projectId) {
+        // Ensure every project has a profile row (created lazily for legacy projects).
+        return projectIndexProfileService.ensureDefault(projectId);
     }
 
     public void ingestFromTempFile(
@@ -198,7 +187,8 @@ public class KnowledgePipelineOrchestrator {
             scopeDocs.add(rowReloaded);
             scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
         }
-        IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null);
+        ProjectIndexProfile profile = loadProfile(projectId);
+        IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, profile);
         String indexSigHex = sig.indexSigHex();
         String snapshotSigHex = sig.snapshotSigHex();
 
@@ -220,12 +210,15 @@ public class KnowledgePipelineOrchestrator {
                         snapScope,
                         snapshotSigHex,
                         resolvedConfigSnapshotId,
-                        resolvedConfigHash);
+                        resolvedConfigHash,
+                        profile.toSnapshotJsonb(),
+                        profile.profileHash());
 
         previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
         deleteVectorsForScopeDocs(scopeDocs);
 
-        MaterializationStrategy strategy = materializationStrategy;
+        MaterializationStrategy strategy = profile.materializationStrategy();
+        int chunkMaxChars = profile.chunkMaxChars();
         for (KnowledgeDocumentEntity doc : scopeDocs) {
             try {
                 knowledgeIndexingService.processDocument(
@@ -277,7 +270,8 @@ public class KnowledgePipelineOrchestrator {
             scopeDocs.add(row);
             scopeDocs.sort(Comparator.comparing(KnowledgeDocumentEntity::getId));
         }
-        IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null);
+        ProjectIndexProfile profile = loadProfile(projectId);
+        IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, profile);
         String indexSigHex = sig.indexSigHex();
         String snapshotSigHex = sig.snapshotSigHex();
 
@@ -299,12 +293,15 @@ public class KnowledgePipelineOrchestrator {
                         snapScope,
                         snapshotSigHex,
                         resolvedConfigSnapshotId,
-                        resolvedConfigHash);
+                        resolvedConfigHash,
+                        profile.toSnapshotJsonb(),
+                        profile.profileHash());
 
         previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
         deleteVectorsForScopeDocs(scopeDocs);
 
-        MaterializationStrategy strategy = materializationStrategy;
+        MaterializationStrategy strategy = profile.materializationStrategy();
+        int chunkMaxChars = profile.chunkMaxChars();
         String ct = row.getMimeType() != null ? row.getMimeType() : "application/octet-stream";
         for (KnowledgeDocumentEntity doc : scopeDocs) {
             try {
@@ -376,23 +373,27 @@ public class KnowledgePipelineOrchestrator {
      */
     public String previewSnapshotSignatureHex(UUID projectId, CorpusScope corpusScope, UUID conversationId) {
         List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
-        return computeSignaturePair(scopeDocs, null).snapshotSigHex();
+        ProjectIndexProfile profile = loadProfile(projectId);
+        return computeSignaturePair(scopeDocs, null, profile).snapshotSigHex();
     }
 
     public String previewSnapshotSignatureHex(
             UUID projectId, CorpusScope corpusScope, UUID conversationId, KnowledgeBuildProjection projection) {
         List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
-        return computeSignaturePair(scopeDocs, projection).snapshotSigHex();
+        ProjectIndexProfile profile = loadProfile(projectId);
+        return computeSignaturePair(scopeDocs, projection, profile).snapshotSigHex();
     }
 
     private record IndexAndSnapshotSig(String indexSigHex, String snapshotSigHex) {}
 
     private IndexAndSnapshotSig computeSignaturePair(
-            List<KnowledgeDocumentEntity> scopeDocs, KnowledgeBuildProjection projectionOrNull) {
-        String embed = projectionOrNull != null ? projectionOrNull.embeddingModelId() : embeddingModelId;
-        int chunk = projectionOrNull != null ? projectionOrNull.chunkMaxChars() : chunkMaxChars;
+            List<KnowledgeDocumentEntity> scopeDocs,
+            KnowledgeBuildProjection projectionOrNull,
+            ProjectIndexProfile profile) {
+        String embed = projectionOrNull != null ? projectionOrNull.embeddingModelId() : profile.embeddingModelId();
+        int chunk = projectionOrNull != null ? projectionOrNull.chunkMaxChars() : profile.chunkMaxChars();
         MaterializationStrategy strat =
-                projectionOrNull != null ? projectionOrNull.materializationStrategy() : materializationStrategy;
+                projectionOrNull != null ? projectionOrNull.materializationStrategy() : profile.materializationStrategy();
         IndexSignature indexSignature = IndexSignature.forStrategy(embed, chunk, strat);
         String indexSigHex = indexSignature.toHashHex();
         List<UUID> docIds = scopeDocs.stream().map(KnowledgeDocumentEntity::getId).sorted().toList();
@@ -422,7 +423,8 @@ public class KnowledgePipelineOrchestrator {
         KnowledgeIndexSnapshotEntity building = null;
         try {
             recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "started");
-            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, projection);
+            ProjectIndexProfile profile = loadProfile(projectId);
+            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, projection, profile);
             String indexSigHex = sig.indexSigHex();
             String snapshotSigHex = sig.snapshotSigHex();
 
@@ -444,7 +446,9 @@ public class KnowledgePipelineOrchestrator {
                             snapScope,
                             snapshotSigHex,
                             resolvedConfigSnapshotId,
-                            projection.configHash());
+                            projection.configHash(),
+                            profile.toSnapshotJsonb(),
+                            profile.profileHash());
 
             previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
             for (KnowledgeDocumentEntity d : scopeDocs) {

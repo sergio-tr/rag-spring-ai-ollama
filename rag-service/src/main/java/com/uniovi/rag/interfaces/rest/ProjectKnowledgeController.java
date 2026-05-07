@@ -8,6 +8,7 @@ import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildExecuteReque
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildExecuteResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildPreviewRequest;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeRebuildPreviewResponse;
+import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeActiveSnapshotResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeSnapshotDetailResponse;
 import com.uniovi.rag.interfaces.rest.dto.knowledge.KnowledgeSnapshotSummaryResponse;
 import com.uniovi.rag.security.RagPrincipal;
@@ -117,5 +118,12 @@ public class ProjectKnowledgeController {
             @RequestParam(value = "conversationId", required = false) UUID conversationId) {
         return projectKnowledgeApplicationService.getSnapshot(
                 principal.userId(), projectId, snapshotId, corpusScope, conversationId);
+    }
+
+    @GetMapping("/snapshots/active")
+    public KnowledgeActiveSnapshotResponse activeSnapshot(
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable UUID projectId) {
+        return projectKnowledgeApplicationService.getActiveProjectSnapshot(principal.userId(), projectId);
     }
 }
