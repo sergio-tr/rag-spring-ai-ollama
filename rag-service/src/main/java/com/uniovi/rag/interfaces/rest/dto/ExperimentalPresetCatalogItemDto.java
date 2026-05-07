@@ -9,6 +9,7 @@ public record ExperimentalPresetCatalogItemDto(
         String family,
         String label,
         String description,
+        RuntimePresetIndexRequirementsDto indexRequirements,
         List<String> requiredCapabilities,
         boolean supported,
         String supportStatus,

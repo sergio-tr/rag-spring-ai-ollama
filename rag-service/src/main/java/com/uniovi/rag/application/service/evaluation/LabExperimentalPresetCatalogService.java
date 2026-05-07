@@ -10,8 +10,9 @@ import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetDefinition;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.interfaces.rest.dto.ExperimentalPresetCatalogItemDto;
+import com.uniovi.rag.interfaces.rest.dto.RuntimePresetIndexRequirementsDto;
 import com.uniovi.rag.service.evaluation.preset.ExperimentalPresetBenchmarkGate;
-import com.uniovi.rag.service.evaluation.preset.RagPresetExperimentalOverlay;
+import com.uniovi.rag.service.evaluation.preset.ExperimentalPresetCanonicalCatalog;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -51,9 +52,8 @@ public class LabExperimentalPresetCatalogService {
         List<ExperimentalPresetCatalogItemDto> out = new ArrayList<>();
         for (RagExperimentalPresetCode code : RagExperimentalPresetCode.values()) {
             RagPresetDefinition d = defs.get(code);
-            RagPresetExperimentalOverlay.Overlay overlay =
-                    RagPresetExperimentalOverlay.build(ragFeatureConfiguration, code);
-            RagConfig effective = resolveEffectiveConfig(overlay.terminalRuntimeJson());
+            // Canonical source of truth: effective runtime config must match Chat's seeded rag_preset.values.
+            RagConfig effective = resolveEffectiveConfig(ExperimentalPresetCanonicalCatalog.effectiveTerminalRuntimeJson(code));
 
             Optional<String> blockedByLabHarness = ExperimentalPresetBenchmarkGate.blockReason(code);
             Optional<String> blockedByRuntime = runtimeBlockReason(effective);
@@ -65,6 +65,7 @@ public class LabExperimentalPresetCatalogService {
             boolean chatSelectable = runtimeOk;
             boolean labSelectable = blockedByLabHarness.isEmpty();
             boolean labOnly = labSelectable && !chatSelectable;
+            var idxReq = ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(code);
             out.add(
                     new ExperimentalPresetCatalogItemDto(
                             experimentalProductPresetId(code),
@@ -72,6 +73,9 @@ public class LabExperimentalPresetCatalogService {
                             d != null ? d.family() : "UNSPECIFIED",
                             d != null && !d.name().isBlank() ? d.name() : code.name(),
                             d != null ? d.objective() : "",
+                            new RuntimePresetIndexRequirementsDto(
+                                    idxReq.requiredMaterialization() != null ? idxReq.requiredMaterialization().name() : null,
+                                    idxReq.requiresMetadataSupport()),
                             requiredCapabilities,
                             supported,
                             supportStatus,
@@ -92,14 +96,15 @@ public class LabExperimentalPresetCatalogService {
         if (!runtimeOk) {
             return "NOT_SUPPORTED";
         }
-        if (labBenchmarkBlocked && (code == RagExperimentalPresetCode.P11 || code == RagExperimentalPresetCode.P12)) {
+        if (labBenchmarkBlocked && (code == RagExperimentalPresetCode.P13 || code == RagExperimentalPresetCode.P14)) {
             return "REQUIRES_MULTI_TURN";
         }
         return "EXECUTABLE";
     }
 
     private static boolean requiresMultiTurn(RagExperimentalPresetCode code) {
-        return code == RagExperimentalPresetCode.P11 || code == RagExperimentalPresetCode.P12;
+        // Canonical: only P13/P14 require multi-turn.
+        return ExperimentalPresetCanonicalCatalog.requiresMultiTurn(code);
     }
 
     private RagConfig resolveEffectiveConfig(ObjectNode terminalJson) {
@@ -133,26 +138,7 @@ public class LabExperimentalPresetCatalogService {
     }
 
     private static String experimentalProductPresetId(RagExperimentalPresetCode code) {
-        // Stable IDs seeded in V19__tfg_experimental_presets_p0_p14.sql
-        UUID id =
-                switch (code) {
-                    case P0 -> UUID.fromString("cafe0001-0001-4001-8001-000000000010");
-                    case P1 -> UUID.fromString("cafe0001-0001-4001-8001-000000000011");
-                    case P2 -> UUID.fromString("cafe0001-0001-4001-8001-000000000012");
-                    case P3 -> UUID.fromString("cafe0001-0001-4001-8001-000000000013");
-                    case P4 -> UUID.fromString("cafe0001-0001-4001-8001-000000000014");
-                    case P5 -> UUID.fromString("cafe0001-0001-4001-8001-000000000015");
-                    case P6 -> UUID.fromString("cafe0001-0001-4001-8001-000000000016");
-                    case P7 -> UUID.fromString("cafe0001-0001-4001-8001-000000000017");
-                    case P8 -> UUID.fromString("cafe0001-0001-4001-8001-000000000018");
-                    case P9 -> UUID.fromString("cafe0001-0001-4001-8001-000000000019");
-                    case P10 -> UUID.fromString("cafe0001-0001-4001-8001-000000000020");
-                    case P11 -> UUID.fromString("cafe0001-0001-4001-8001-000000000021");
-                    case P12 -> UUID.fromString("cafe0001-0001-4001-8001-000000000022");
-                    case P13 -> UUID.fromString("cafe0001-0001-4001-8001-000000000023");
-                    case P14 -> UUID.fromString("cafe0001-0001-4001-8001-000000000024");
-                };
-        return id.toString();
+        return ExperimentalPresetCanonicalCatalog.productPresetId(code).toString();
     }
 
     private static Map<String, Object> capabilities(RagPresetDefinition d, RagExperimentalPresetCode code) {
