@@ -313,11 +313,52 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
     const selectedPresetId = conv?.presetId ?? null;
     const effectivePresetId = conv?.effectivePresetId ?? DEFAULT_EFFECTIVE_PRESET_ID;
     const runtimeOverride = conv?.runtimeOverride ?? {};
-    const baseEffectiveConfig: Record<string, unknown> = {
-      useRetrieval: true,
-      rankerEnabled: false,
-      memoryEnabled: false,
-    };
+    const baseEffectiveConfig: Record<string, unknown> = (() => {
+      // Minimal runtime-state stub: vary baseEffectiveConfig by selected preset so UI can render
+      // accumulative flags deterministically in tests.
+      if (selectedPresetId === "cafe0001-0001-4001-8001-000000000018") {
+        // P8 (advanced retrieval)
+        return {
+          useRetrieval: true,
+          metadataEnabled: true,
+          expansionEnabled: true,
+          toolsEnabled: true,
+          reasoningEnabled: true,
+          rankerEnabled: true,
+          postRetrievalEnabled: true,
+          functionCallingEnabled: false,
+          useAdvisor: false,
+          adaptiveRoutingEnabled: false,
+          judgeEnabled: false,
+          clarificationEnabled: false,
+          memoryEnabled: false,
+        };
+      }
+      if (selectedPresetId === "cafe0001-0001-4001-8001-000000000024") {
+        // P12 (judge-enhanced)
+        return {
+          useRetrieval: true,
+          metadataEnabled: true,
+          expansionEnabled: true,
+          toolsEnabled: true,
+          reasoningEnabled: true,
+          rankerEnabled: true,
+          postRetrievalEnabled: true,
+          functionCallingEnabled: true,
+          useAdvisor: true,
+          adaptiveRoutingEnabled: true,
+          judgeEnabled: true,
+          clarificationEnabled: false,
+          memoryEnabled: false,
+        };
+      }
+      // Default baseline for most tests.
+      return {
+        useRetrieval: true,
+        rankerEnabled: false,
+        memoryEnabled: false,
+      };
+    })();
     const effectiveConfig: Record<string, unknown> = { ...baseEffectiveConfig, ...runtimeOverride };
     const manualOverrideKeys = Object.keys(runtimeOverride);
     return Promise.resolve({
@@ -416,6 +457,74 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           labSelectable: true,
           labOnly: false,
         },
+        {
+          productPresetId: "cafe0001-0001-4001-8001-000000000023",
+          code: "P11",
+          family: "S4",
+          label: "Adaptive routing",
+          description: "Minimal dev preset row",
+          requiredCapabilities: ["ADAPTIVE_ROUTING"],
+          supported: true,
+          supportStatus: "EXECUTABLE",
+          reasonIfUnsupported: null,
+          requiresMultiTurn: false,
+          mapsToRuntimeCapabilities: { code: "P11" },
+          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+          chatSelectable: true,
+          labSelectable: true,
+          labOnly: false,
+        },
+        {
+          productPresetId: "cafe0001-0001-4001-8001-000000000024",
+          code: "P12",
+          family: "S4",
+          label: "Judge-enhanced",
+          description: "Minimal dev preset row",
+          requiredCapabilities: ["JUDGE"],
+          supported: true,
+          supportStatus: "EXECUTABLE",
+          reasonIfUnsupported: null,
+          requiresMultiTurn: false,
+          mapsToRuntimeCapabilities: { code: "P12" },
+          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+          chatSelectable: true,
+          labSelectable: true,
+          labOnly: false,
+        },
+        {
+          productPresetId: "cafe0001-0001-4001-8001-000000000021",
+          code: "P13",
+          family: "S4",
+          label: "Clarification loop",
+          description: "Minimal dev preset row",
+          requiredCapabilities: ["CLARIFICATION"],
+          supported: true,
+          supportStatus: "REQUIRES_MULTI_TURN",
+          reasonIfUnsupported: null,
+          requiresMultiTurn: true,
+          mapsToRuntimeCapabilities: { code: "P13" },
+          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+          chatSelectable: true,
+          labSelectable: false,
+          labOnly: false,
+        },
+        {
+          productPresetId: "cafe0001-0001-4001-8001-000000000022",
+          code: "P14",
+          family: "S4",
+          label: "Memory flow",
+          description: "Minimal dev preset row",
+          requiredCapabilities: ["MEMORY"],
+          supported: true,
+          supportStatus: "REQUIRES_MULTI_TURN",
+          reasonIfUnsupported: null,
+          requiresMultiTurn: true,
+          mapsToRuntimeCapabilities: { code: "P14" },
+          allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
+          chatSelectable: true,
+          labSelectable: false,
+          labOnly: false,
+        },
       ],
     });
   }
@@ -495,6 +604,90 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           engineWired: true,
           supportMode: "SUPPORTED",
           displayOrder: 4,
+          requiresIndexSnapshot: false,
+          requiresReindexWhenChanged: false,
+          group: "Advanced",
+          implemented: true,
+          configurable: true,
+          requires: ["useRetrieval"],
+          excludes: [],
+          reasonIfDisabled: null,
+          reasonIfNotImplemented: null,
+          options: {},
+        },
+        {
+          key: "functionCallingEnabled",
+          label: "Function calling",
+          description: "desc",
+          category: "RUNTIME_HOT_SWAPPABLE",
+          visibleInChat: true,
+          configurableInChat: true,
+          engineWired: true,
+          supportMode: "SUPPORTED",
+          displayOrder: 5,
+          requiresIndexSnapshot: false,
+          requiresReindexWhenChanged: false,
+          group: "Advanced",
+          implemented: true,
+          configurable: true,
+          requires: ["useRetrieval"],
+          excludes: [],
+          reasonIfDisabled: null,
+          reasonIfNotImplemented: null,
+          options: {},
+        },
+        {
+          key: "useAdvisor",
+          label: "Advisor",
+          description: "desc",
+          category: "RUNTIME_HOT_SWAPPABLE",
+          visibleInChat: true,
+          configurableInChat: true,
+          engineWired: true,
+          supportMode: "SUPPORTED",
+          displayOrder: 6,
+          requiresIndexSnapshot: false,
+          requiresReindexWhenChanged: false,
+          group: "Advanced",
+          implemented: true,
+          configurable: true,
+          requires: ["useRetrieval"],
+          excludes: [],
+          reasonIfDisabled: null,
+          reasonIfNotImplemented: null,
+          options: {},
+        },
+        {
+          key: "adaptiveRoutingEnabled",
+          label: "Adaptive routing",
+          description: "desc",
+          category: "RUNTIME_HOT_SWAPPABLE",
+          visibleInChat: true,
+          configurableInChat: true,
+          engineWired: true,
+          supportMode: "SUPPORTED",
+          displayOrder: 7,
+          requiresIndexSnapshot: false,
+          requiresReindexWhenChanged: false,
+          group: "Advanced",
+          implemented: true,
+          configurable: true,
+          requires: ["useRetrieval"],
+          excludes: [],
+          reasonIfDisabled: null,
+          reasonIfNotImplemented: null,
+          options: {},
+        },
+        {
+          key: "judgeEnabled",
+          label: "Judge",
+          description: "desc",
+          category: "RUNTIME_HOT_SWAPPABLE",
+          visibleInChat: true,
+          configurableInChat: true,
+          engineWired: true,
+          supportMode: "SUPPORTED",
+          displayOrder: 8,
           requiresIndexSnapshot: false,
           requiresReindexWhenChanged: false,
           group: "Advanced",
@@ -757,6 +950,58 @@ describe("ChatPage", () => {
     expect(JSON.parse(String(init.body))).toEqual(
       expect.objectContaining({ presetId: "cafe0001-0001-4001-8001-000000000014" }),
     );
+  });
+
+  it("marks only P13/P14 experimental presets as REQUIRES_MULTI_TURN in option label", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+
+    const presetSelect = screen.getByRole("combobox", { name: /^Preset$/i }) as HTMLSelectElement;
+    const optionTextByCode = new Map(
+      Array.from(presetSelect.options)
+        .map((o) => o.text)
+        .filter(Boolean)
+        .map((t) => [String(t).split(" — ")[0]?.trim() ?? "", String(t)]),
+    );
+
+    expect(optionTextByCode.get("P11") ?? "").not.toContain("[REQUIRES_MULTI_TURN]");
+    expect(optionTextByCode.get("P12") ?? "").not.toContain("[REQUIRES_MULTI_TURN]");
+    expect(optionTextByCode.get("P13") ?? "").toContain("[REQUIRES_MULTI_TURN]");
+    expect(optionTextByCode.get("P14") ?? "").toContain("[REQUIRES_MULTI_TURN]");
+  });
+
+  it("shows accumulated flags in runtime toggles when P8 is selected", async () => {
+    const user = userEvent.setup();
+    mockConvRows[0].presetId = "cafe0001-0001-4001-8001-000000000018";
+    mockConvRows[0].effectivePresetId = "cafe0001-0001-4001-8001-000000000018";
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+
+    await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    await user.click(screen.getByTestId("chat-config-runtime-refresh-effective"));
+    expect(screen.getByRole("checkbox", { name: /Use retrieval/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Ranker/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Post-retrieval/i })).toBeChecked();
+  });
+
+  it("shows retrieval+metadata+advanced+FC+advisors+adaptive+judge when P12 is selected", async () => {
+    const user = userEvent.setup();
+    mockConvRows[0].presetId = "cafe0001-0001-4001-8001-000000000024";
+    mockConvRows[0].effectivePresetId = "cafe0001-0001-4001-8001-000000000024";
+    renderChat();
+    await user.click(screen.getByRole("button", { name: /^T1$/ }));
+    await openChatToolbarOverflow(user);
+
+    await user.click(screen.getByTestId("chat-config-runtime-collapsible"));
+    await user.click(screen.getByTestId("chat-config-runtime-refresh-effective"));
+    expect(screen.getByRole("checkbox", { name: /Use retrieval/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Function calling/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Advisor/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Adaptive routing/i })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Judge/i })).toBeChecked();
   });
 
   it("marks conversation as Custom after saving any runtime override, and clears on Clear", async () => {
