@@ -37,6 +37,18 @@ export SONAR_TOKEN=your_token
 .github/local/run-pr-main.sh
 ```
 
+## Closure mode (strict integration + fullstack E2E)
+
+When collecting closure-grade evidence (TFG annexes, release readiness), run:
+
+```bash
+# Strict stack integration (no false-green: fails if everything was skipped)
+.github/local/run-integration-ci-like.sh
+
+# Fullstack E2E (proxy-mode parity)
+.github/local/run-e2e-fullstack-ci-like.sh
+```
+
 ### Manual Postgres (optional)
 
 ```bash
@@ -56,3 +68,4 @@ psql -U postgres -d vectordb -f .github/local/ci-postgres-extensions.sql
 * [`docs/operations/local-ci-parity.md`](../../docs/operations/local-ci-parity.md)
 * [`.github/workflows/ci.yml`](../workflows/ci.yml)
 * [`.github/workflows/reusable-ci-core.yml`](../workflows/reusable-ci-core.yml)
+* [`docs/testing/baseline-runbook.md`](../../docs/testing/baseline-runbook.md)

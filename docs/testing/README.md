@@ -43,6 +43,7 @@
 | Layer | Canonical doc |
 | --- | --- |
 | **Baseline runbook** (exact local + CI commands for rag-service, classifier, webapp, Sonar inputs) | [baseline-runbook.md](baseline-runbook.md) |
+| **Closure-grade validation** (strict stack integration + Playwright `@fullstack` + evidence artifacts) | [baseline-runbook.md](baseline-runbook.md#4-stack-integration-strict-no-false-green) |
 | Backend verify (Surefire + JaCoCo) | [../../rag-service/README.md](../../rag-service/README.md) |
 | External dependency mocks (rag-service testsupport) | [external-test-harness.md](external-test-harness.md) |
 | Classifier pytest + coverage | [../../classifier-service/README.md](../../classifier-service/README.md) |

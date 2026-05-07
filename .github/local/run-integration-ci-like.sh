@@ -41,6 +41,15 @@ require() {
 require docker
 require curl
 
+PYTEST_LOG_PATH="${PYTEST_LOG_PATH:-/tmp/pytest-integration-ci-like.log}"
+
+# Closure-grade strictness defaults:
+# - INTEGRATION_STRICT=1 prevents "all skipped because stack is down" false-green.
+# - INTEGRATION_REQUIRE_CLASSIFIER=1 can be set by operators when classifier reachability is required for closure.
+export INTEGRATION_STRICT="${INTEGRATION_STRICT:-1}"
+export INTEGRATION_FAIL_ON_UNREACHABLE="${INTEGRATION_FAIL_ON_UNREACHABLE:-${INTEGRATION_STRICT}}"
+export INTEGRATION_REQUIRE_CLASSIFIER="${INTEGRATION_REQUIRE_CLASSIFIER:-0}"
+
 if [[ ! -f "${REPO_ROOT}/.github/local/ci-postgres-extensions.sql" ]]; then
   echo "error: missing .github/local/ci-postgres-extensions.sql" >&2
   exit 1
@@ -170,12 +179,17 @@ seed_admin() {
 
 run_pytest_linux() {
   log "Running pytest in python:3.11-slim container."
+  rm -f "${PYTEST_LOG_PATH}"
+  set +e
   docker run --rm \
     -v "${REPO_ROOT}:/repo" \
     -w /repo \
     -v "${PIP_CACHE_VOLUME}:/root/.cache/pip" \
     -e INTEGRATION_USE_TESTCONTAINERS="0" \
     -e INTEGRATION_CHECK_OBS="0" \
+    -e INTEGRATION_STRICT="${INTEGRATION_STRICT}" \
+    -e INTEGRATION_FAIL_ON_UNREACHABLE="${INTEGRATION_FAIL_ON_UNREACHABLE}" \
+    -e INTEGRATION_REQUIRE_CLASSIFIER="${INTEGRATION_REQUIRE_CLASSIFIER}" \
     -e INTEGRATION_BACKEND_URL="http://host.docker.internal:9000" \
     -e INTEGRATION_CLASSIFIER_URL="http://host.docker.internal:8000" \
     -e INTEGRATION_ADMIN_EMAIL="${INTEGRATION_ADMIN_EMAIL}" \
@@ -183,6 +197,55 @@ run_pytest_linux() {
     -e INTEGRATION_RAG_PRODUCT_BASE_PATH="/api/v5" \
     python:3.11-slim bash -lc \
       "pip install -r tests/integration/requirements.txt >/dev/null && python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py"
+  status=$?
+  set -e
+
+  # Capture full output for evidence and post-run validation.
+  # (In strict closure mode we fail the run if pytest would otherwise be false-green.)
+  if [[ -f "${PYTEST_LOG_PATH}" ]]; then
+    : # already captured
+  fi
+
+  return "${status}"
+}
+
+guard_no_false_green() {
+  if [[ ! -f "${PYTEST_LOG_PATH}" ]]; then
+    echo "error: pytest log missing at ${PYTEST_LOG_PATH}" >&2
+    exit 1
+  fi
+  local collected
+  collected="$(
+    grep -Eo 'collected[[:space:]]+[0-9]+[[:space:]]+items' "${PYTEST_LOG_PATH}" \
+      | tail -n 1 \
+      | grep -Eo '[0-9]+' \
+      | tail -n 1 || true
+  )"
+  if [[ -z "${collected}" ]]; then
+    echo "error: could not parse pytest collected count from ${PYTEST_LOG_PATH}" >&2
+    exit 2
+  fi
+  if [[ "${collected}" -le 0 ]]; then
+    echo "error: pytest collected ${collected} items (invalid closure)" >&2
+    exit 2
+  fi
+
+  local summary
+  summary="$(grep -E '==.*(passed|failed|skipped).*(in|seconds|ms|s)' "${PYTEST_LOG_PATH}" | tail -n 1 || true)"
+  if [[ -z "${summary}" ]]; then
+    # Be conservative: if we can't parse, don't claim closure-grade validity.
+    echo "error: could not parse pytest summary line from ${PYTEST_LOG_PATH}" >&2
+    exit 3
+  fi
+  local skipped
+  skipped="$(echo "${summary}" | grep -Eo '[0-9]+[[:space:]]+skipped' | grep -Eo '[0-9]+' | head -n 1 || true)"
+  if [[ -z "${skipped}" ]]; then
+    skipped=0
+  fi
+  if [[ "${skipped}" -eq "${collected}" ]]; then
+    echo "error: false-green integration run: skipped == collected == ${collected}" >&2
+    exit 4
+  fi
 }
 
 stop_backend() {
@@ -207,5 +270,28 @@ start_backend
 start_classifier
 wait_for_backend
 seed_admin
-run_pytest_linux
+log "Pytest log: ${PYTEST_LOG_PATH}"
+set -o pipefail
+docker run --rm \
+  -v "${REPO_ROOT}:/repo" \
+  -w /repo \
+  -v "${PIP_CACHE_VOLUME}:/root/.cache/pip" \
+  -e INTEGRATION_USE_TESTCONTAINERS="0" \
+  -e INTEGRATION_CHECK_OBS="0" \
+  -e INTEGRATION_STRICT="${INTEGRATION_STRICT}" \
+  -e INTEGRATION_FAIL_ON_UNREACHABLE="${INTEGRATION_FAIL_ON_UNREACHABLE}" \
+  -e INTEGRATION_REQUIRE_CLASSIFIER="${INTEGRATION_REQUIRE_CLASSIFIER}" \
+  -e INTEGRATION_BACKEND_URL="http://host.docker.internal:9000" \
+  -e INTEGRATION_CLASSIFIER_URL="http://host.docker.internal:8000" \
+  -e INTEGRATION_ADMIN_EMAIL="${INTEGRATION_ADMIN_EMAIL}" \
+  -e INTEGRATION_ADMIN_PASSWORD="${INTEGRATION_ADMIN_PASSWORD}" \
+  -e INTEGRATION_RAG_PRODUCT_BASE_PATH="/api/v5" \
+  python:3.11-slim bash -lc \
+    "pip install -r tests/integration/requirements.txt >/dev/null && python -m pytest tests/integration -v --tb=short --ignore=tests/integration/test_tc_postgres_smoke.py" \
+  2>&1 | tee "${PYTEST_LOG_PATH}"
+pytest_status=${PIPESTATUS[0]}
+if [[ "${pytest_status}" != "0" ]]; then
+  exit "${pytest_status}"
+fi
+guard_no_false_green
 
