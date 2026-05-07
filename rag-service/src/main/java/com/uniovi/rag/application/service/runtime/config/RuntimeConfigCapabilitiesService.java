@@ -86,95 +86,110 @@ public class RuntimeConfigCapabilitiesService {
                         null,
                         Map.of()));
 
-        // Advanced runtime flags (ranker/post-retrieval remain blocked; reasoning is implemented as a safe structured plan).
+        Map<String, Object> indexWarn =
+                Map.of(
+                        "indexHint",
+                        "Dense retrieval features require an active index snapshot compatible with materialization (validation warns when missing).");
         out.add(
                 cap(
                         "reasoningEnabled",
                         "Reasoning",
-                        "Generates an internal safe structured answer plan (no chain-of-thought) to guide controlled generation.",
+                        "Structured answer plan (safe JSON guidance only; no chain-of-thought) used internally before generation.",
                         "Advanced",
                         true,
                         true,
                         List.of(),
                         List.of(),
                         null,
-                        Map.of()));
+                        indexWarn));
         out.add(
                 cap(
                         "rankerEnabled",
                         "Ranker",
-                        "Applies deterministic reranking after retrieval fusion and before filtering/compression.",
+                        "Deterministic reranking after fusion and before filtering/compression.",
                         "Advanced",
                         true,
                         true,
                         List.of("useRetrieval"),
                         List.of(),
                         null,
-                        Map.of()));
+                        indexWarn));
         out.add(
                 cap(
                         "postRetrievalEnabled",
                         "Post-retrieval",
-                        "Applies advanced post-retrieval filtering and evidence-aware compression after reranking.",
+                        "Advanced filtering and evidence-aware compression after reranking.",
                         "Advanced",
                         true,
                         true,
                         List.of("useRetrieval"),
                         List.of(),
                         null,
-                        Map.of()));
+                        indexWarn));
 
-        // Multi-turn features exist in the config but Chat does not support the harness yet.
         out.add(
                 cap(
                         "clarificationEnabled",
                         "Clarification",
-                        "Multi-turn clarification loop. Not supported in Chat UX yet.",
+                        "Deterministic clarification loop when the query needs narrowing (multi-turn).",
                         "Multi-turn",
-                        false,
+                        true,
                         true,
                         List.of(),
                         List.of(),
-                        "REQUIRES_MULTI_TURN",
-                        Map.of()));
+                        null,
+                        Map.of(
+                                "multiTurnHint",
+                                "May use multiple turns until the query is specific enough."),
+                        "MULTI_TURN_REQUIRED"));
         out.add(
                 cap(
                         "memoryEnabled",
                         "Memory",
-                        "Conversation memory condensation. Not supported in Chat UX yet.",
+                        "Uses bounded conversation history / condensation before retrieval when conversation scope exists.",
                         "Multi-turn",
-                        false,
+                        true,
                         true,
                         List.of(),
                         List.of(),
-                        "REQUIRES_MULTI_TURN",
-                        Map.of()));
+                        null,
+                        Map.of(
+                                "multiTurnHint",
+                                "May use multiple turns as the condensed memory updates across messages."),
+                        "MULTI_TURN_REQUIRED"));
 
-        // Exposed for future wiring; currently treated as not implemented.
         out.add(
                 cap(
                         "adaptiveRoutingEnabled",
                         "Adaptive routing",
-                        "Route selection based on classifier/heuristics. Not implemented in Chat runtime.",
+                        "Selects among workflow families (direct retrieval, tools, advisor) using deterministic routing gates.",
                         "Advanced",
-                        false,
+                        true,
                         true,
                         List.of(),
                         List.of(),
-                        "NOT_IMPLEMENTED",
-                        Map.of()));
+                        null,
+                        Map.of(
+                                "routingNote",
+                                "When disabled, a compatibility route is used (retrieval vs direct) without classifier-driven switching."),
+                        null));
         out.add(
                 cap(
                         "judgeEnabled",
                         "Judge",
-                        "Evaluation-only judging. Not implemented in Chat runtime.",
+                        "Post-answer evaluation; workflow answers may trigger one bounded regeneration retry when policy allows.",
                         "Advanced",
-                        false,
+                        true,
                         true,
                         List.of(),
                         List.of(),
-                        "NOT_IMPLEMENTED",
-                        Map.of()));
+                        null,
+                        Map.of(
+                                "defaultMode",
+                                "EVALUATE_AND_CONDITIONAL_RETRY",
+                                "retryScope",
+                                "Workflow answers only (tool-only paths do not retry)"),
+                        null));
 
         return new RuntimeConfigCapabilitiesResponse(out);
     }
@@ -190,6 +205,32 @@ public class RuntimeConfigCapabilitiesService {
             List<String> excludes,
             String reasonIfNotImplemented,
             Map<String, Object> options) {
+        return cap(
+                key,
+                label,
+                description,
+                group,
+                implemented,
+                configurable,
+                requires,
+                excludes,
+                reasonIfNotImplemented,
+                options,
+                null);
+    }
+
+    private static RuntimeConfigCapabilityDto cap(
+            String key,
+            String label,
+            String description,
+            String group,
+            boolean implemented,
+            boolean configurable,
+            List<String> requires,
+            List<String> excludes,
+            String reasonIfNotImplemented,
+            Map<String, Object> options,
+            String supportMode) {
         return new RuntimeConfigCapabilityDto(
                 key,
                 label,
@@ -200,7 +241,8 @@ public class RuntimeConfigCapabilitiesService {
                 requires != null ? List.copyOf(requires) : List.of(),
                 excludes != null ? List.copyOf(excludes) : List.of(),
                 reasonIfNotImplemented,
-                options != null ? new LinkedHashMap<>(options) : Map.of());
+                options != null ? new LinkedHashMap<>(options) : Map.of(),
+                supportMode);
     }
 
     private static List<String> materializationValues() {

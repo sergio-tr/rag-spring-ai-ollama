@@ -6,8 +6,13 @@ import com.uniovi.rag.application.config.ConfigResolverService;
 import com.uniovi.rag.application.config.RuntimeConfigResolutionInput;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
+import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
+import com.uniovi.rag.application.service.runtime.KnowledgeRuntimeSnapshotSelector;
+import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.ConversationEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import com.uniovi.rag.interfaces.rest.dto.RuntimeIndexCompatibilityDto;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateRequest;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidateResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigValidationIssueDto;
@@ -30,16 +35,22 @@ public class RuntimeConfigValidationService {
     private final ObjectMapper objectMapper;
     private final ConfigResolverService configResolverService;
     private final WorkflowSelector workflowSelector;
+    private final KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector;
+    private final KnowledgeSnapshotService knowledgeSnapshotService;
 
     public RuntimeConfigValidationService(
             ConversationRepository conversationRepository,
             ObjectMapper objectMapper,
             ConfigResolverService configResolverService,
-            WorkflowSelector workflowSelector) {
+            WorkflowSelector workflowSelector,
+            KnowledgeRuntimeSnapshotSelector knowledgeRuntimeSnapshotSelector,
+            KnowledgeSnapshotService knowledgeSnapshotService) {
         this.conversationRepository = conversationRepository;
         this.objectMapper = objectMapper;
         this.configResolverService = configResolverService;
         this.workflowSelector = workflowSelector;
+        this.knowledgeRuntimeSnapshotSelector = knowledgeRuntimeSnapshotSelector;
+        this.knowledgeSnapshotService = knowledgeSnapshotService;
     }
 
     public RuntimeConfigValidateResponse validate(UUID userId, RuntimeConfigValidateRequest req) {
@@ -59,23 +70,47 @@ public class RuntimeConfigValidationService {
         }
 
         Optional<UUID> presetId = parseUuidOptional(req.presetId());
-        JsonNode overrideNode = req.overrides() != null && !req.overrides().isEmpty()
-                ? objectMapper.convertValue(req.overrides(), JsonNode.class)
-                : null;
+        return validateForProject(
+                userId, projectId, req.conversationId(), presetId, req.overrides(), "runtime_config_validate");
+    }
+
+    /**
+     * Validates runtime configuration for a conversation that does not exist yet (preset + overrides draft).
+     *
+     * @param presetId explicit preset for preview; when {@code null}, callers should pass deterministic default id for UX parity.
+     */
+    public RuntimeConfigValidateResponse validateDraft(
+            UUID userId, UUID projectId, UUID presetId, Map<String, Object> overrides) {
+        Optional<UUID> presetOpt = presetId != null ? Optional.of(presetId) : Optional.empty();
+        return validateForProject(
+                userId, projectId, null, presetOpt, overrides != null ? overrides : Map.of(), "runtime_config_validate_draft");
+    }
+
+    private RuntimeConfigValidateResponse validateForProject(
+            UUID userId,
+            UUID projectId,
+            UUID conversationIdForSnapshot,
+            Optional<UUID> presetId,
+            Map<String, Object> overrides,
+            String correlationId) {
+        JsonNode overrideNode =
+                overrides != null && !overrides.isEmpty()
+                        ? objectMapper.convertValue(overrides, JsonNode.class)
+                        : null;
 
         ResolvedRuntimeConfig resolved =
                 configResolverService.preview(
                         new RuntimeConfigResolutionInput(
                                 userId,
                                 projectId,
-                                Optional.of(req.conversationId()),
+                                conversationIdForSnapshot != null ? Optional.of(conversationIdForSnapshot) : Optional.empty(),
                                 presetId,
                                 Optional.empty(),
                                 Optional.ofNullable(overrideNode),
                                 Set.of(),
                                 Optional.empty(),
                                 Optional.empty(),
-                                Optional.of("runtime_config_validate")));
+                                Optional.ofNullable(correlationId)));
 
         List<RuntimeConfigValidationIssueDto> errors = new ArrayList<>();
         List<RuntimeConfigValidationIssueDto> warnings = new ArrayList<>();
@@ -115,12 +150,86 @@ public class RuntimeConfigValidationService {
         }
 
         Map<String, Object> effectiveConfig = new LinkedHashMap<>();
+        RuntimeIndexCompatibilityDto indexCompatibility =
+                new RuntimeIndexCompatibilityDto(null, null, null, Map.of(), false);
+        boolean requiresReindex = false;
         if (resolved.toRagConfig() != null) {
-            // UX-oriented: expose the resolved config as a JSON map (stable keys match rag_preset.values).
             effectiveConfig = objectMapper.convertValue(resolved.toRagConfig(), Map.class);
         }
 
-        return new RuntimeConfigValidateResponse(valid, supported, effectiveConfig, errors, warnings, selectedWorkflow);
+        var selection = knowledgeRuntimeSnapshotSelector.select(projectId, conversationIdForSnapshot);
+        KnowledgeIndexSnapshotEntity projectSnap =
+                knowledgeSnapshotService.findActiveProjectSnapshot(projectId).orElse(null);
+        KnowledgeIndexSnapshotEntity chatSnap =
+                conversationIdForSnapshot == null
+                        ? null
+                        : knowledgeSnapshotService
+                                .findActiveConversationSnapshot(conversationIdForSnapshot)
+                                .orElse(null);
+        KnowledgeIndexSnapshotEntity active = chatSnap != null ? chatSnap : projectSnap;
+        boolean hasActiveIndex = active != null && active.getId() != null;
+        Map<String, Object> activeProfile = hasActiveIndex && active.getIndexProfileJsonb() != null ? active.getIndexProfileJsonb() : Map.of();
+        String activeProfileHash = hasActiveIndex ? active.getIndexProfileHash() : null;
+        indexCompatibility =
+                new RuntimeIndexCompatibilityDto(
+                        selection.projectSharedSnapshotId().orElse(null),
+                        selection.chatLocalSnapshotId().orElse(null),
+                        activeProfileHash,
+                        activeProfile,
+                        hasActiveIndex);
+
+        RagConfig rag = resolved.toRagConfig();
+        if (rag != null) {
+            if (hasActiveIndex) {
+                String idxStrategy = stringOrNull(activeProfile.get("materializationStrategy"));
+                Boolean idxSupportsMetadata = boolOrNull(activeProfile.get("supportsMetadata"));
+                boolean strategyMismatch =
+                        idxStrategy != null && rag.materializationStrategy() != null
+                                && !idxStrategy.equalsIgnoreCase(rag.materializationStrategy().name());
+                boolean metadataMismatch =
+                        idxSupportsMetadata != null && rag.metadataEnabled() && !idxSupportsMetadata;
+
+                if (strategyMismatch || metadataMismatch) {
+                    requiresReindex = true;
+                    valid = false;
+                    supported = false;
+                    if (strategyMismatch) {
+                        errors.add(
+                                new RuntimeConfigValidationIssueDto(
+                                        "INDEX_REQUIRES_REINDEX",
+                                        "materializationStrategy",
+                                        "Selected runtime materializationStrategy is incompatible with the active index snapshot. Reindex is required.",
+                                        "ERROR"));
+                    }
+                    if (metadataMismatch) {
+                        errors.add(
+                                new RuntimeConfigValidationIssueDto(
+                                        "INDEX_REQUIRES_REINDEX",
+                                        "metadataEnabled",
+                                        "Selected runtime metadata-aware behavior requires an index snapshot that supports metadata. Reindex is required.",
+                                        "ERROR"));
+                    }
+                }
+            } else {
+                warnings.add(
+                        new RuntimeConfigValidationIssueDto(
+                                "NO_ACTIVE_INDEX",
+                                null,
+                                "No active index snapshot yet. Index/project capabilities will apply when documents are indexed.",
+                                "WARNING"));
+            }
+        }
+
+        return new RuntimeConfigValidateResponse(
+                valid, supported, effectiveConfig, errors, warnings, selectedWorkflow, indexCompatibility, requiresReindex);
+    }
+
+    private static String stringOrNull(Object o) {
+        return o instanceof String s ? s : null;
+    }
+
+    private static Boolean boolOrNull(Object o) {
+        return o instanceof Boolean b ? b : null;
     }
 
     private static Optional<UUID> parseUuidOptional(String raw) {

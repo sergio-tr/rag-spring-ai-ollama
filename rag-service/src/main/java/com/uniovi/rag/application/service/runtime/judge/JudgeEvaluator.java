@@ -70,7 +70,9 @@ public class JudgeEvaluator {
                 - Output exactly one label on the first line.
                 - %s
                 - If the answer is acceptable, output ACCEPTED.
-                - If the answer contains unsupported claims or is clearly incorrect, do not invent facts.
+                - If the answer stays within retrieved context, expresses uncertainty appropriately, and avoids inventing facts, prefer ACCEPTED over rejection.
+                - If the answer contains unsupported claims or is clearly incorrect, do not invent facts; use REJECTED or RETRY only when necessary.
+                - Do not force blanket abstention when the candidate attempts a good-faith partial summary from available context.
 
                 Optionally include feedback after the first line starting with "FEEDBACK:".
                 """.formatted(

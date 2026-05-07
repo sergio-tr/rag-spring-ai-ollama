@@ -9,6 +9,8 @@ public record RuntimeConfigValidateResponse(
         Map<String, Object> effectiveConfig,
         List<RuntimeConfigValidationIssueDto> errors,
         List<RuntimeConfigValidationIssueDto> warnings,
-        String selectedWorkflow
+        String selectedWorkflow,
+        RuntimeIndexCompatibilityDto indexCompatibility,
+        boolean requiresReindex
 ) {}
 

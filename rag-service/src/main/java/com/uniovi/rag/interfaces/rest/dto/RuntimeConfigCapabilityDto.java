@@ -13,6 +13,8 @@ public record RuntimeConfigCapabilityDto(
         List<String> requires,
         List<String> excludes,
         String reasonIfNotImplemented,
-        Map<String, Object> options
+        Map<String, Object> options,
+        /** UX hint when multi-turn flows apply ({@code MULTI_TURN_REQUIRED}) — orthogonal to {@link #implemented}. */
+        String supportMode
 ) {}
 
