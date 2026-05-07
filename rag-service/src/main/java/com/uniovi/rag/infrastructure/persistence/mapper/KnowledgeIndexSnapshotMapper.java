@@ -20,6 +20,8 @@ public final class KnowledgeIndexSnapshotMapper {
                 e.getStatus(),
                 e.getResolvedConfigSnapshotId(),
                 e.getResolvedConfigHash(),
+                e.getIndexProfileJsonb(),
+                e.getIndexProfileHash(),
                 e.getCreatedAt(),
                 e.getUpdatedAt());
     }

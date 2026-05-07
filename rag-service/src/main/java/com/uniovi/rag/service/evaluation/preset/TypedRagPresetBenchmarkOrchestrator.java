@@ -18,6 +18,7 @@ import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.evaluation.baseline.ExperimentalSnapshotFactory;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.domain.exception.ErrorCode;
+import com.uniovi.rag.service.async.LabJobCancelledException;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -63,6 +64,25 @@ public class TypedRagPresetBenchmarkOrchestrator {
             RagImplementationProperties implementationProperties,
             Set<RagExperimentalPresetCode> requestedPresets,
             BiConsumer<Integer, Integer> itemProgress) {
+        return runPresetBenchmark(
+                evaluationRunId,
+                rag,
+                applicationFeatureDefaults,
+                implementationProperties,
+                requestedPresets,
+                itemProgress,
+                null);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> runPresetBenchmark(
+            UUID evaluationRunId,
+            TypedBenchmarkDataset.RagPresetQuestions rag,
+            RagFeatureConfiguration applicationFeatureDefaults,
+            RagImplementationProperties implementationProperties,
+            Set<RagExperimentalPresetCode> requestedPresets,
+            BiConsumer<Integer, Integer> itemProgress,
+            Runnable cancellationCheck) {
         RagImplementationProperties impl =
                 implementationProperties != null ? implementationProperties : new RagImplementationProperties();
         RagFeatureConfiguration base =
@@ -93,6 +113,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
         int totalOps = sorted.size() * Math.max(1, questions.size());
         AtomicInteger progressed = new AtomicInteger(0);
         Runnable bump = () -> {
+            if (cancellationCheck != null) {
+                cancellationCheck.run();
+            }
             if (itemProgress != null) {
                 itemProgress.accept(progressed.incrementAndGet(), totalOps);
             }
@@ -100,8 +123,19 @@ public class TypedRagPresetBenchmarkOrchestrator {
 
         List<Map<String, Object>> allRows = new ArrayList<>();
         Map<String, Object> lastConfigurationMap = new LinkedHashMap<>();
+        boolean cancelled = false;
+        String cancelReason = null;
 
         for (RagPresetDefinition def : sorted) {
+            try {
+                if (cancellationCheck != null) {
+                    cancellationCheck.run();
+                }
+            } catch (LabJobCancelledException ex) {
+                cancelled = true;
+                cancelReason = ex.getMessage();
+                break;
+            }
             RagExperimentalPresetCode preset = def.presetId();
             Optional<String> blocked = ExperimentalPresetBenchmarkGate.blockReason(preset);
             if (blocked.isPresent()) {
@@ -140,12 +174,24 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     }
                 }
             }
+            if (cancelled) {
+                break;
+            }
         }
 
         Map<String, Object> out = new HashMap<>();
         out.put("configuration", Map.of("preset_benchmark", true, "last_preset_feature_flags", lastConfigurationMap));
         out.put("results", allRows);
-        out.put("evaluation_summary", evaluationService.summarizeJudgeResults(allRows));
+        Map<String, Object> summary = new LinkedHashMap<>(evaluationService.summarizeJudgeResults(allRows));
+        if (cancelled) {
+            summary.put("cancelled", true);
+            if (cancelReason != null && !cancelReason.isBlank()) {
+                summary.put("cancel_reason", cancelReason);
+            }
+            summary.put("completed_items", allRows.size());
+            summary.put("total_items", totalOps);
+        }
+        out.put("evaluation_summary", summary);
         return out;
     }
 

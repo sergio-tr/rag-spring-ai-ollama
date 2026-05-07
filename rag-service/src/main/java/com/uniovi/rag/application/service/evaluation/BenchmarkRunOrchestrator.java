@@ -33,8 +33,11 @@ import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntit
 import com.uniovi.rag.infrastructure.persistence.jpa.UserEntity;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
+import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import com.uniovi.rag.service.project.ProjectAccessService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +60,8 @@ import java.util.LinkedHashMap;
 @Service
 public class BenchmarkRunOrchestrator {
 
+    private static final Logger log = LoggerFactory.getLogger(BenchmarkRunOrchestrator.class);
+
     private final UserRepository userRepository;
     private final EvaluationDatasetRepository evaluationDatasetRepository;
     private final EvaluationCampaignRepository evaluationCampaignRepository;
@@ -66,6 +71,7 @@ public class BenchmarkRunOrchestrator {
     private final RagPresetRepository ragPresetRepository;
     private final AsyncTaskRepository asyncTaskRepository;
     private final AsyncTaskService asyncTaskService;
+    private final LabJobLifecycleService labJobLifecycleService;
     private final ProjectAccessService projectAccessService;
     private final RagRuntimeProperties ragRuntimeProperties;
     private final EvaluationDatasetStorePort evaluationDatasetStorePort;
@@ -81,6 +87,7 @@ public class BenchmarkRunOrchestrator {
             RagPresetRepository ragPresetRepository,
             AsyncTaskRepository asyncTaskRepository,
             AsyncTaskService asyncTaskService,
+            LabJobLifecycleService labJobLifecycleService,
             ProjectAccessService projectAccessService,
             RagRuntimeProperties ragRuntimeProperties,
             EvaluationDatasetStorePort evaluationDatasetStorePort,
@@ -94,6 +101,7 @@ public class BenchmarkRunOrchestrator {
         this.ragPresetRepository = ragPresetRepository;
         this.asyncTaskRepository = asyncTaskRepository;
         this.asyncTaskService = asyncTaskService;
+        this.labJobLifecycleService = labJobLifecycleService;
         this.projectAccessService = projectAccessService;
         this.ragRuntimeProperties = ragRuntimeProperties;
         this.evaluationDatasetStorePort = evaluationDatasetStorePort;
@@ -122,6 +130,7 @@ public class BenchmarkRunOrchestrator {
         }
 
         validateRunKind(roleName, request.runKind());
+        requireNoActiveLabJob(userId, request.projectId());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
         validateDatasetPreRunEligibility(kind, dataset);
@@ -184,6 +193,7 @@ public class BenchmarkRunOrchestrator {
     private BenchmarkJobAccepted startRagPresetCampaign(
             UUID userId, String roleName, BenchmarkKind kind, StartBenchmarkRunRequest request) {
         validateRunKind(roleName, request.runKind());
+        requireNoActiveLabJob(userId, request.projectId());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
         validateScienceFields(kind, request);
@@ -224,6 +234,7 @@ public class BenchmarkRunOrchestrator {
     private BenchmarkJobAccepted startLlmCampaign(
             UUID userId, String roleName, BenchmarkKind kind, StartBenchmarkRunRequest request) {
         validateRunKind(roleName, request.runKind());
+        requireNoActiveLabJob(userId, request.projectId());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
         validateScienceFields(kind, request);
@@ -518,6 +529,22 @@ public class BenchmarkRunOrchestrator {
         run.setAsyncTask(task);
         run.setStatus(EvaluationRunStatus.RUNNING);
         evaluationRunRepository.save(run);
+    }
+
+    private void requireNoActiveLabJob(UUID userId, UUID projectIdOrNull) {
+        ActiveLabJobDto active = labJobLifecycleService.findFirstActiveJobForScope(userId, projectIdOrNull);
+        if (active == null || active.jobId() == null) {
+            return;
+        }
+        log.info(
+                "lab_job_rejected_concurrent userId={} projectId={} activeJobId={} activeBenchmarkKind={}",
+                userId,
+                projectIdOrNull,
+                active.jobId(),
+                active.benchmarkKind());
+        throw new LabJobConcurrencyException(
+                "Another Lab evaluation is already running. Cancel it or wait for it to finish.",
+                active);
     }
 
     private static EvaluationRunType mapRunType(BenchmarkKind kind) {

@@ -57,12 +57,12 @@ public class LabExperimentalPresetCatalogService {
 
             Optional<String> blockedByLabHarness = ExperimentalPresetBenchmarkGate.blockReason(code);
             Optional<String> blockedByRuntime = runtimeBlockReason(effective);
-            Optional<String> blocked = blockedByLabHarness.isPresent() ? blockedByLabHarness : blockedByRuntime;
 
-            String supportStatus = supportStatus(code, blocked);
-            boolean supported = blocked.isEmpty();
+            boolean runtimeOk = blockedByRuntime.isEmpty();
+            boolean supported = runtimeOk;
+            String supportStatus = supportStatus(code, runtimeOk, blockedByLabHarness.isPresent());
             List<String> requiredCapabilities = requiredCapabilities(effective);
-            boolean chatSelectable = supported && !requiresMultiTurn(code);
+            boolean chatSelectable = runtimeOk;
             boolean labSelectable = true;
             out.add(
                     new ExperimentalPresetCatalogItemDto(
@@ -74,7 +74,7 @@ public class LabExperimentalPresetCatalogService {
                             requiredCapabilities,
                             supported,
                             supportStatus,
-                            blocked.orElse(null),
+                            blockedByRuntime.orElse(null),
                             requiresMultiTurn(code),
                             capabilities(d, code),
                             ALLOWED_OUTCOMES,
@@ -85,12 +85,13 @@ public class LabExperimentalPresetCatalogService {
         return out;
     }
 
-    private static String supportStatus(RagExperimentalPresetCode code, Optional<String> blocked) {
-        if (blocked.isPresent()) {
-            return switch (code) {
-                case P11, P12 -> "REQUIRES_MULTI_TURN";
-                default -> "NOT_SUPPORTED";
-            };
+    private static String supportStatus(
+            RagExperimentalPresetCode code, boolean runtimeOk, boolean labBenchmarkBlocked) {
+        if (!runtimeOk) {
+            return "NOT_SUPPORTED";
+        }
+        if (labBenchmarkBlocked && (code == RagExperimentalPresetCode.P11 || code == RagExperimentalPresetCode.P12)) {
+            return "REQUIRES_MULTI_TURN";
         }
         return "EXECUTABLE";
     }

@@ -7,6 +7,7 @@ import com.uniovi.rag.infrastructure.observability.ObservabilitySupport;
 import com.uniovi.rag.infrastructure.observability.TraceMdcBridge;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.AsyncTaskRepository;
+import com.uniovi.rag.service.async.LabJobCancelledException;
 import com.uniovi.rag.service.async.lab.LabJobHandler;
 import com.uniovi.rag.interfaces.rest.support.UserFacingErrorSanitizer;
 import com.uniovi.rag.service.async.lab.LabJobPayloadKeys;
@@ -105,11 +106,25 @@ public class AsyncLabTaskRunner {
                 return;
             }
             if (pre.getStatus() != AsyncTaskStatus.QUEUED) {
+                if (pre.getStatus() == AsyncTaskStatus.CANCELLING || pre.getStatus() == AsyncTaskStatus.CANCELLED) {
+                    mutation.markCancelled(taskId, "Cancelled before start");
+                    return;
+                }
                 log.debug("async_task_skip taskId={} status={} — not queued (duplicate dispatch or already advanced)", taskId, pre.getStatus());
                 return;
             }
             type = pre.getTaskType();
             log.info("async_task_start taskId={} taskType={}", taskId, type.name());
+            if (type == AsyncTaskType.EVAL_LLM
+                    || type == AsyncTaskType.EVAL_RAG
+                    || type == AsyncTaskType.EVAL_EMBEDDING_RETRIEVAL
+                    || type == AsyncTaskType.CLASSIFIER_EVAL
+                    || type == AsyncTaskType.CLASSIFIER_TRAIN) {
+                Object runId = pre.getRequestPayload() != null
+                        ? pre.getRequestPayload().get(LabJobPayloadKeys.EVALUATION_RUN_ID)
+                        : null;
+                log.info("lab_job_started taskId={} taskType={} evaluationRunId={}", taskId, type.name(), runId);
+            }
             if (meterRegistry != null) {
                 meterRegistry
                         .counter(
@@ -129,6 +144,9 @@ public class AsyncLabTaskRunner {
             }
             handler.run(task, mutation);
             success = true;
+        } catch (LabJobCancelledException e) {
+            log.info("async_task_cancelled taskId={} msg={}", taskId, e.getMessage());
+            mutation.markCancelled(taskId, shortMessage(e));
         } catch (Exception e) {
             log.warn("Async task {} failed: {}", taskId, e.getMessage());
             mutation.markFailed(taskId, shortMessage(e));

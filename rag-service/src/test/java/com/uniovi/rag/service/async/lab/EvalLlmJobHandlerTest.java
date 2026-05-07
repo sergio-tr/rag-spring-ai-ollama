@@ -6,6 +6,7 @@ import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.LlmReaderQuestion;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.service.evaluation.baseline.ModelBaselineEvaluationOrchestrator;
@@ -42,9 +43,12 @@ class EvalLlmJobHandlerTest {
     @Mock
     private AsyncTaskMutationService mutation;
 
+    @Mock
+    private AsyncTaskCancellationService cancellationService;
+
     private EvalLlmJobHandler handler() {
         return new EvalLlmJobHandler(
-                canonicalPersistence, experimentalDatasetResolver, modelBaselineEvaluationOrchestrator);
+                canonicalPersistence, experimentalDatasetResolver, modelBaselineEvaluationOrchestrator, cancellationService);
     }
 
     @Test
@@ -74,7 +78,7 @@ class EvalLlmJobHandlerTest {
         when(experimentalDatasetResolver.resolve(runId)).thenReturn(bundle);
         Map<String, Object> eval = Map.of("score", 1);
         when(modelBaselineEvaluationOrchestrator.runLlmJudgeBaseline(
-                        eq(runId), eq(bundle), ArgumentMatchers.any()))
+                        eq(runId), eq(bundle), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenReturn(eval);
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
 
@@ -102,7 +106,7 @@ class EvalLlmJobHandlerTest {
         UUID runId = UUID.randomUUID();
         TypedBenchmarkDataset.LlmQuestions bundle = new TypedBenchmarkDataset.LlmQuestions(List.of(), List.of());
         when(experimentalDatasetResolver.resolve(runId)).thenReturn(bundle);
-        when(modelBaselineEvaluationOrchestrator.runLlmJudgeBaseline(eq(runId), eq(bundle), ArgumentMatchers.any()))
+        when(modelBaselineEvaluationOrchestrator.runLlmJudgeBaseline(eq(runId), eq(bundle), ArgumentMatchers.any(), ArgumentMatchers.any()))
                 .thenThrow(new RuntimeException("eval failed"));
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
 

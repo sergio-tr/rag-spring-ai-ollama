@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -56,6 +57,8 @@ public class KnowledgeIndexSnapshotService {
         e.setScopeType(KnowledgeSnapshotScopeType.PROJECT);
         e.setProject(project);
         e.setStatus(IndexSnapshotStatus.ACTIVE);
+        e.setIndexProfileJsonb(Map.of());
+        e.setIndexProfileHash(null);
         e.setCreatedAt(now);
         e.setUpdatedAt(now);
         return knowledgeIndexSnapshotRepository.save(e);

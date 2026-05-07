@@ -7,6 +7,8 @@ import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.service.async.AsyncTaskCancellationService;
+import com.uniovi.rag.service.async.LabJobCancelledException;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.service.evaluation.baseline.ModelBaselineEvaluationOrchestrator;
 import org.springframework.stereotype.Component;
@@ -20,14 +22,17 @@ class EvalLlmJobHandler implements LabJobHandler {
     private final EvaluationCanonicalPersistenceService canonicalPersistence;
     private final ExperimentalDatasetResolver experimentalDatasetResolver;
     private final ModelBaselineEvaluationOrchestrator modelBaselineEvaluationOrchestrator;
+    private final AsyncTaskCancellationService cancellationService;
 
     EvalLlmJobHandler(
             EvaluationCanonicalPersistenceService canonicalPersistence,
             ExperimentalDatasetResolver experimentalDatasetResolver,
-            ModelBaselineEvaluationOrchestrator modelBaselineEvaluationOrchestrator) {
+            ModelBaselineEvaluationOrchestrator modelBaselineEvaluationOrchestrator,
+            AsyncTaskCancellationService cancellationService) {
         this.canonicalPersistence = canonicalPersistence;
         this.experimentalDatasetResolver = experimentalDatasetResolver;
         this.modelBaselineEvaluationOrchestrator = modelBaselineEvaluationOrchestrator;
+        this.cancellationService = cancellationService;
     }
 
     @Override
@@ -58,9 +63,19 @@ class EvalLlmJobHandler implements LabJobHandler {
                     modelBaselineEvaluationOrchestrator.runLlmJudgeBaseline(
                             evaluationRunId,
                             llm,
-                            (i, n) -> mutation.appendProgressLine(taskId, "Running item " + i + "/" + n));
+                            (i, n) -> {
+                                cancellationService.throwIfCancellationRequested(taskId);
+                                mutation.appendProgressLine(taskId, "Running item " + i + "/" + n);
+                            },
+                            () -> cancellationService.throwIfCancellationRequested(taskId));
             canonicalPersistence.persistLlmJudgeFromEvaluationMap(
                     evaluationRunId, res, BenchmarkKind.LLM_JUDGE_QA);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> summary = (Map<String, Object>) res.get("evaluation_summary");
+            if (summary != null && Boolean.TRUE.equals(summary.get("cancelled"))) {
+                mutation.appendProgressLine(taskId, "Cancellation requested by user");
+                throw new LabJobCancelledException("Cancellation requested by user");
+            }
             mutation.markSucceeded(taskId, res);
         } catch (BenchmarkDatasetResolutionException e) {
             if (evaluationRunId != null) {

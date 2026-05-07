@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -53,7 +54,9 @@ public class KnowledgeSnapshotService {
             KnowledgeSnapshotScopeType scopeType,
             String signatureHash,
             UUID resolvedConfigSnapshotId,
-            String resolvedConfigHash) {
+            String resolvedConfigHash,
+            Map<String, Object> indexProfileJsonb,
+            String indexProfileHash) {
         if (resolvedConfigSnapshotId == null || resolvedConfigHash == null || resolvedConfigHash.isBlank()) {
             throw new IllegalArgumentException("resolved_config_snapshot linkage required for knowledge_index_snapshot");
         }
@@ -66,6 +69,8 @@ public class KnowledgeSnapshotService {
         e.setStatus(IndexSnapshotStatus.BUILDING);
         e.setResolvedConfigSnapshotId(resolvedConfigSnapshotId);
         e.setResolvedConfigHash(resolvedConfigHash);
+        e.setIndexProfileJsonb(indexProfileJsonb != null ? indexProfileJsonb : Map.of());
+        e.setIndexProfileHash(indexProfileHash);
         e.setCreatedAt(now);
         e.setUpdatedAt(now);
         return snapshotRepository.save(e);

@@ -13,6 +13,7 @@ import com.uniovi.rag.domain.model.QueryType;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.service.evaluation.EvaluationService;
+import com.uniovi.rag.service.async.LabJobCancelledException;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
@@ -23,7 +24,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
-
 /**
  * Phase 5 LLM model baseline: protocol-aware generation (oracle vs full document), snapshot persistence, optional model
  * catalog gate, per-item resilience.
@@ -64,6 +64,14 @@ public class ModelBaselineEvaluationOrchestrator {
             UUID evaluationRunId,
             TypedBenchmarkDataset.LlmQuestions bundle,
             BiConsumer<Integer, Integer> itemProgress) {
+        return runLlmJudgeBaseline(evaluationRunId, bundle, itemProgress, null);
+    }
+
+    public Map<String, Object> runLlmJudgeBaseline(
+            UUID evaluationRunId,
+            TypedBenchmarkDataset.LlmQuestions bundle,
+            BiConsumer<Integer, Integer> itemProgress,
+            Runnable cancellationCheck) {
         EvaluationRunEntity run =
                 evaluationRunId != null ? evaluationRunRepository.findById(evaluationRunId).orElse(null) : null;
         LlmExperimentalSnapshot llmSnap = experimentalSnapshotFactory.buildLlmSnapshot(run);
@@ -80,7 +88,18 @@ public class ModelBaselineEvaluationOrchestrator {
         List<LlmReaderQuestion> questions = bundle.questions();
         int total = questions.size();
         int idx = 0;
+        boolean cancelled = false;
+        String cancelReason = null;
         for (LlmReaderQuestion q : questions) {
+            try {
+                if (cancellationCheck != null) {
+                    cancellationCheck.run();
+                }
+            } catch (LabJobCancelledException ex) {
+                cancelled = true;
+                cancelReason = ex.getMessage();
+                break;
+            }
             idx++;
             if (itemProgress != null) {
                 itemProgress.accept(idx, total);
@@ -143,6 +162,14 @@ public class ModelBaselineEvaluationOrchestrator {
                                 fullDoc,
                                 truncation);
                 row.put(JSON_KEY_GENERATED_ANSWER, generated != null ? generated : "");
+                try {
+                    if (cancellationCheck != null) {
+                        cancellationCheck.run();
+                    }
+                } catch (LabJobCancelledException ex) {
+                    cancelled = true;
+                    cancelReason = ex.getMessage();
+                }
                 String gold = row.get(JSON_KEY_CORRECT_ANSWER) instanceof String s ? s : "";
                 String judge = evaluationService.judgeQaAnswer(q.question(), gold, generated);
                 row.put("llm_evaluation", judge != null ? judge : "");
@@ -161,12 +188,24 @@ public class ModelBaselineEvaluationOrchestrator {
             }
             row.put("baseline_metrics", baselineMetrics);
             rows.add(row);
+            if (cancelled) {
+                break;
+            }
         }
 
         Map<String, Object> out = new HashMap<>();
         out.put("configuration", Map.of("baseline_phase5", true, "protocol_driver", "ModelBaselineEvaluationOrchestrator"));
         out.put("results", rows);
-        out.put("evaluation_summary", evaluationService.summarizeJudgeResults(rows));
+        Map<String, Object> summary = new LinkedHashMap<>(evaluationService.summarizeJudgeResults(rows));
+        if (cancelled) {
+            summary.put("cancelled", true);
+            if (cancelReason != null && !cancelReason.isBlank()) {
+                summary.put("cancel_reason", cancelReason);
+            }
+            summary.put("completed_items", rows.size());
+            summary.put("total_items", total);
+        }
+        out.put("evaluation_summary", summary);
         return out;
     }
 }

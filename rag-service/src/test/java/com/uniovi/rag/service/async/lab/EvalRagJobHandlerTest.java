@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator;
@@ -53,6 +54,9 @@ class EvalRagJobHandlerTest {
     @Mock
     private AsyncTaskMutationService mutation;
 
+    @Mock
+    private AsyncTaskCancellationService cancellationService;
+
     private EvalRagJobHandler handler() {
         return new EvalRagJobHandler(
                 featureConfiguration,
@@ -60,7 +64,8 @@ class EvalRagJobHandlerTest {
                 canonicalPersistence,
                 evaluationRunRepository,
                 experimentalDatasetResolver,
-                typedRagPresetBenchmarkOrchestrator);
+                typedRagPresetBenchmarkOrchestrator,
+                cancellationService);
     }
 
     @Test
@@ -98,6 +103,7 @@ class EvalRagJobHandlerTest {
                         eq(featureConfiguration),
                         eq(implementationProperties),
                         ArgumentMatchers.anySet(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.any()))
                 .thenReturn(eval);
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
@@ -111,6 +117,7 @@ class EvalRagJobHandlerTest {
                         eq(featureConfiguration),
                         eq(implementationProperties),
                         ArgumentMatchers.anySet(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.any());
         verify(canonicalPersistence).persistLlmJudgeFromEvaluationMap(runId, eval, BenchmarkKind.RAG_PRESET_END_TO_END);
         verify(mutation).markSucceeded(taskId, eval);
@@ -156,6 +163,7 @@ class EvalRagJobHandlerTest {
                         eq(featureConfiguration),
                         eq(implementationProperties),
                         ArgumentMatchers.anySet(),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.any()))
                 .thenThrow(new RuntimeException("boom"));
         AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));

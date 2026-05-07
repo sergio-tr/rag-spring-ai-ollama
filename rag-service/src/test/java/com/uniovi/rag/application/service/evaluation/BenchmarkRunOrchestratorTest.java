@@ -15,6 +15,7 @@ import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepositor
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
+import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.service.async.AsyncTaskService;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,7 @@ class BenchmarkRunOrchestratorTest {
     @Mock private RagPresetRepository ragPresetRepository;
     @Mock private AsyncTaskRepository asyncTaskRepository;
     @Mock private AsyncTaskService asyncTaskService;
+    @Mock private LabJobLifecycleService labJobLifecycleService;
     @Mock private ProjectAccessService projectAccessService;
     @Mock private RagRuntimeProperties ragRuntimeProperties;
     @Mock private EvaluationDatasetStorePort evaluationDatasetStorePort;
@@ -69,6 +71,7 @@ class BenchmarkRunOrchestratorTest {
                         ragPresetRepository,
                         asyncTaskRepository,
                         asyncTaskService,
+                        labJobLifecycleService,
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
@@ -101,6 +104,65 @@ class BenchmarkRunOrchestratorTest {
     }
 
     @Test
+    void startJsonBenchmark_rejectsWhenAnotherActiveJobExists() {
+        BenchmarkRunOrchestrator orch =
+                new BenchmarkRunOrchestrator(
+                        userRepository,
+                        evaluationDatasetRepository,
+                        evaluationCampaignRepository,
+                        evaluationRunRepository,
+                        resolvedConfigSnapshotRepository,
+                        knowledgeIndexSnapshotRepository,
+                        ragPresetRepository,
+                        asyncTaskRepository,
+                        asyncTaskService,
+                        labJobLifecycleService,
+                        projectAccessService,
+                        ragRuntimeProperties,
+                        evaluationDatasetStorePort,
+                        evaluationWorkbookParser);
+
+        UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        when(labJobLifecycleService.findFirstActiveJobForScope(eq(userId), eq(projectId)))
+                .thenReturn(new ActiveLabJobDto(
+                        UUID.randomUUID(),
+                        "LLM_JUDGE_QA",
+                        UUID.randomUUID(),
+                        projectId,
+                        UUID.randomUUID(),
+                        "RUNNING",
+                        "x",
+                        null,
+                        null,
+                        "/lab/jobs/x",
+                        "/lab/jobs/x/events",
+                        true
+                ));
+
+        StartBenchmarkRunRequest req =
+                new StartBenchmarkRunRequest(
+                        UUID.randomUUID(),
+                        projectId,
+                        EvaluationRunKind.SCIENCE,
+                        "n",
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        List.of(),
+                        List.of(),
+                        false,
+                        null);
+
+        assertThatThrownBy(() -> orch.startJsonBenchmark(userId, "USER", BenchmarkKind.LLM_JUDGE_QA, req))
+                .isInstanceOf(LabJobConcurrencyException.class);
+    }
+
+    @Test
     void startJsonBenchmark_returnsNotFoundWhenDatasetMissing() {
         BenchmarkRunOrchestrator orch =
                 new BenchmarkRunOrchestrator(
@@ -113,6 +175,7 @@ class BenchmarkRunOrchestratorTest {
                         ragPresetRepository,
                         asyncTaskRepository,
                         asyncTaskService,
+                        labJobLifecycleService,
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
@@ -159,6 +222,7 @@ class BenchmarkRunOrchestratorTest {
                         ragPresetRepository,
                         asyncTaskRepository,
                         asyncTaskService,
+                        labJobLifecycleService,
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,
@@ -212,6 +276,7 @@ class BenchmarkRunOrchestratorTest {
                         ragPresetRepository,
                         asyncTaskRepository,
                         asyncTaskService,
+                        labJobLifecycleService,
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,

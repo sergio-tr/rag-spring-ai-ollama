@@ -98,6 +98,26 @@ public class AsyncTaskMutationService {
         asyncTaskRepository.save(e);
     }
 
+    @Transactional
+    public void requestCancellation(UUID taskId, String reason) {
+        AsyncTaskEntity e = asyncTaskRepository.findById(taskId).orElseThrow();
+        if (e.getStatus() == AsyncTaskStatus.SUCCEEDED
+                || e.getStatus() == AsyncTaskStatus.FAILED
+                || e.getStatus() == AsyncTaskStatus.CANCELLED) {
+            return;
+        }
+        if (e.getStatus() == AsyncTaskStatus.CANCELLING) {
+            return;
+        }
+        Instant now = Instant.now();
+        e.setStatus(AsyncTaskStatus.CANCELLING);
+        e.setUpdatedAt(now);
+        String msg = (reason != null && !reason.isBlank()) ? reason : "Cancellation requested by user";
+        e.setErrorMessage(msg);
+        appendProgress(e, msg);
+        asyncTaskRepository.save(e);
+    }
+
     /**
      * Live partial answer for {@link com.uniovi.rag.domain.AsyncTaskType#CHAT_MESSAGE} (polled via GET /lab/jobs/{id}).
      */

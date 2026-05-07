@@ -3,6 +3,8 @@ package com.uniovi.rag.interfaces.rest;
 
 import static com.uniovi.rag.testsupport.RagApiTestPaths.path;
 import com.uniovi.rag.application.service.ChatMessageApplicationService;
+import com.uniovi.rag.application.service.evaluation.LabJobLifecycleService;
+import com.uniovi.rag.interfaces.rest.dto.ActiveLabJobDto;
 import com.uniovi.rag.interfaces.rest.dto.AsyncTaskStatusDto;
 import com.uniovi.rag.configuration.LabAsyncConfiguration;
 import com.uniovi.rag.testsupport.webmvc.RagWebMvcTestApplication;
@@ -47,6 +49,9 @@ class LabJobControllerWebMvcTest {
     @MockitoBean
     private ChatMessageApplicationService chatMessageApplicationService;
 
+    @MockitoBean
+    private LabJobLifecycleService labJobLifecycleService;
+
     private UUID userId;
     private UUID taskId;
 
@@ -89,5 +94,29 @@ class LabJobControllerWebMvcTest {
                 .andExpect(jsonPath("$.id").value(taskId.toString()))
                 .andExpect(jsonPath("$.status").value("RUNNING"))
                 .andExpect(jsonPath("$.taskType").value("EVAL_RAG"));
+    }
+
+    @Test
+    void active_returnsActiveJobs() throws Exception {
+        when(labJobLifecycleService.listActiveJobs(eq(userId)))
+                .thenReturn(List.of(new ActiveLabJobDto(
+                        taskId,
+                        "RAG_PRESET_END_TO_END",
+                        UUID.randomUUID(),
+                        null,
+                        null,
+                        "RUNNING",
+                        "x",
+                        Instant.parse("2026-01-01T00:00:00Z"),
+                        Instant.parse("2026-01-01T00:00:01Z"),
+                        "/lab/jobs/" + taskId,
+                        "/lab/jobs/" + taskId + "/events",
+                        true
+                )));
+
+        mockMvc.perform(get(path("/lab/jobs/active")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].jobId").value(taskId.toString()))
+                .andExpect(jsonPath("$[0].status").value("RUNNING"));
     }
 }

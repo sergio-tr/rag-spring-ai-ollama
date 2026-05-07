@@ -17,6 +17,8 @@ import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.service.async.AsyncTaskCancellationService;
+import com.uniovi.rag.service.async.LabJobCancelledException;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.evaluation.baseline.BaselineRunSnapshotWriter;
@@ -58,6 +60,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
     private final OllamaModelCatalogClient ollamaModelCatalogClient;
     private final EvaluationRunRepository evaluationRunRepository;
     private final int topK;
+    private final AsyncTaskCancellationService cancellationService;
 
     EvalEmbeddingRetrievalJobHandler(
             PgVectorStore vectorStore,
@@ -69,6 +72,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
             ModelBaselineLlmRunner modelBaselineLlmRunner,
             OllamaModelCatalogClient ollamaModelCatalogClient,
             EvaluationRunRepository evaluationRunRepository,
+            AsyncTaskCancellationService cancellationService,
             @Value("${spring.ai.ollama.top-k:5}") int topK) {
         this.vectorStore = vectorStore;
         this.evaluationService = evaluationService;
@@ -79,6 +83,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         this.modelBaselineLlmRunner = modelBaselineLlmRunner;
         this.ollamaModelCatalogClient = ollamaModelCatalogClient;
         this.evaluationRunRepository = evaluationRunRepository;
+        this.cancellationService = cancellationService;
         this.topK = Math.max(1, topK);
     }
 
@@ -91,9 +96,9 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
     public void run(AsyncTaskEntity task, AsyncTaskMutationService mutation) {
         UUID taskId = task.getId();
         UUID evaluationRunId = LabJobPayloads.evaluationRunId(task.getRequestPayload());
+        List<Map<String, Object>> rows = null;
         LabEvalConcurrency.SERIAL_EVAL.lock();
         try {
-            List<Map<String, Object>> rows;
             EmbeddingRetrievalDataset embeddingDs = null;
             EmbeddingBenchmarkContext ctx = EmbeddingBenchmarkContext.disabled();
 
@@ -167,6 +172,21 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                 canonicalPersistence.persistEmbeddingRetrievalResults(evaluationRunId, payload);
             }
             mutation.markSucceeded(taskId, payload);
+        } catch (LabJobCancelledException e) {
+            // Persist partial results (exportable) and mark run as PARTIAL_CANCELLED.
+            Map<String, Object> summary = new LinkedHashMap<>();
+            Map<String, Object> retrieval = new LinkedHashMap<>();
+            retrieval.put("cancelled", true);
+            retrieval.put("cancel_reason", e.getMessage());
+            summary.put("retrieval", retrieval);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("results", List.copyOf(rows != null ? rows : List.of()));
+            payload.put("evaluation_summary", summary);
+            if (evaluationRunId != null) {
+                canonicalPersistence.persistEmbeddingRetrievalResults(evaluationRunId, payload);
+            }
+            mutation.appendProgressLine(taskId, "Cancellation requested by user");
+            throw e;
         } catch (BenchmarkDatasetResolutionException e) {
             if (evaluationRunId != null) {
                 canonicalPersistence.markRunFailed(evaluationRunId, e.getMessage());
@@ -191,6 +211,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
         int n = queries.size();
         int idx = 0;
         for (EmbeddingRetrievalQuery q : queries) {
+            cancellationService.throwIfCancellationRequested(taskId);
             idx++;
             mutation.appendProgressLine(taskId, "Running item " + idx + "/" + n);
             Map<String, Object> row = new LinkedHashMap<>();
@@ -332,6 +353,7 @@ class EvalEmbeddingRetrievalJobHandler implements LabJobHandler {
                                     modelBaselineLlmRunner.generateAnswerFromRetrievedChunks(
                                             ctx.llmSnapshot(), ctx.prompts(), question, docs);
                             row.put("generated_answer", answer != null ? answer : "");
+                            cancellationService.throwIfCancellationRequested(taskId);
                             String judge =
                                     evaluationService.judgeQaAnswer(question, expected, answer != null ? answer : "");
                             row.put("llm_evaluation", judge != null ? judge : "");

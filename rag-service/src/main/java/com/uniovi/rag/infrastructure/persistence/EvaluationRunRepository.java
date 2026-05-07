@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import com.uniovi.rag.domain.AsyncTaskStatus;
 
 public interface EvaluationRunRepository extends JpaRepository<EvaluationRunEntity, UUID> {
 
@@ -16,6 +17,38 @@ public interface EvaluationRunRepository extends JpaRepository<EvaluationRunEnti
     List<EvaluationRunEntity> findByIdInAndUser_Id(List<UUID> ids, UUID userId);
 
     Optional<EvaluationRunEntity> findByAsyncTask_Id(UUID asyncTaskId);
+
+    @Query("""
+            SELECT r FROM EvaluationRunEntity r
+            JOIN FETCH r.asyncTask t
+            JOIN FETCH r.dataset d
+            LEFT JOIN FETCH r.project p
+            WHERE r.user.id = :userId
+              AND t.status IN :statuses
+            ORDER BY r.createdAt DESC
+            """)
+    List<EvaluationRunEntity> findActiveRunsByUser(
+            @Param("userId") UUID userId,
+            @Param("statuses") List<AsyncTaskStatus> statuses);
+
+    @Query("""
+            SELECT r FROM EvaluationRunEntity r
+            JOIN FETCH r.asyncTask t
+            JOIN FETCH r.dataset d
+            LEFT JOIN FETCH r.project p
+            WHERE r.user.id = :userId
+              AND t.status IN :statuses
+              AND (
+                   :projectId IS NULL
+                   OR p.id = :projectId
+                   OR p.id IS NULL
+              )
+            ORDER BY r.createdAt DESC
+            """)
+    List<EvaluationRunEntity> findActiveRunsByUserAndProjectScope(
+            @Param("userId") UUID userId,
+            @Param("projectId") UUID projectId,
+            @Param("statuses") List<AsyncTaskStatus> statuses);
 
     @Query("SELECT r FROM EvaluationRunEntity r JOIN FETCH r.dataset WHERE r.id = :id")
     Optional<EvaluationRunEntity> findByIdFetchDataset(@Param("id") UUID id);

@@ -11,6 +11,8 @@ import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
+import com.uniovi.rag.service.async.AsyncTaskCancellationService;
+import com.uniovi.rag.service.async.LabJobCancelledException;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.service.evaluation.preset.TypedRagPresetBenchmarkOrchestrator;
 import org.springframework.stereotype.Component;
@@ -30,6 +32,7 @@ class EvalRagJobHandler implements LabJobHandler {
     private final EvaluationRunRepository evaluationRunRepository;
     private final ExperimentalDatasetResolver experimentalDatasetResolver;
     private final TypedRagPresetBenchmarkOrchestrator typedRagPresetBenchmarkOrchestrator;
+    private final AsyncTaskCancellationService cancellationService;
 
     EvalRagJobHandler(
             RagFeatureConfiguration featureConfiguration,
@@ -37,13 +40,15 @@ class EvalRagJobHandler implements LabJobHandler {
             EvaluationCanonicalPersistenceService canonicalPersistence,
             EvaluationRunRepository evaluationRunRepository,
             ExperimentalDatasetResolver experimentalDatasetResolver,
-            TypedRagPresetBenchmarkOrchestrator typedRagPresetBenchmarkOrchestrator) {
+            TypedRagPresetBenchmarkOrchestrator typedRagPresetBenchmarkOrchestrator,
+            AsyncTaskCancellationService cancellationService) {
         this.featureConfiguration = featureConfiguration;
         this.implementationProperties = implementationProperties;
         this.canonicalPersistence = canonicalPersistence;
         this.evaluationRunRepository = evaluationRunRepository;
         this.experimentalDatasetResolver = experimentalDatasetResolver;
         this.typedRagPresetBenchmarkOrchestrator = typedRagPresetBenchmarkOrchestrator;
+        this.cancellationService = cancellationService;
     }
 
     @Override
@@ -107,10 +112,19 @@ class EvalRagJobHandler implements LabJobHandler {
                             featureConfiguration,
                             implementationProperties,
                             requestedPresets,
-                            (i, n) ->
-                                    mutation.appendProgressLine(taskId, "Running item " + i + "/" + n));
+                            (i, n) -> {
+                                cancellationService.throwIfCancellationRequested(taskId);
+                                mutation.appendProgressLine(taskId, "Running item " + i + "/" + n);
+                            },
+                            () -> cancellationService.throwIfCancellationRequested(taskId));
             canonicalPersistence.persistLlmJudgeFromEvaluationMap(
                     evaluationRunId, res, BenchmarkKind.RAG_PRESET_END_TO_END);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> summary = (Map<String, Object>) res.get("evaluation_summary");
+            if (summary != null && Boolean.TRUE.equals(summary.get("cancelled"))) {
+                mutation.appendProgressLine(taskId, "Cancellation requested by user");
+                throw new LabJobCancelledException("Cancellation requested by user");
+            }
             mutation.markSucceeded(taskId, res);
         } catch (BenchmarkDatasetResolutionException e) {
             if (evaluationRunId != null) {

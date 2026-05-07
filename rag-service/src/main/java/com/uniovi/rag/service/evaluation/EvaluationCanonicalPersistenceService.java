@@ -60,6 +60,29 @@ public class EvaluationCanonicalPersistenceService {
     }
 
     @Transactional
+    public void markRunCancelled(UUID runId, String reason) {
+        if (!persistenceEnabled || runId == null) {
+            return;
+        }
+        EvaluationRunEntity run = evaluationRunRepository.findById(runId).orElse(null);
+        if (run == null) {
+            return;
+        }
+        run.setStatus(EvaluationRunStatus.CANCELLED);
+        run.setCompletedAt(Instant.now());
+        Map<String, Object> agg = run.getAggregatesJson() != null
+                ? new LinkedHashMap<>(run.getAggregatesJson())
+                : new LinkedHashMap<>();
+        if (reason != null && !reason.isBlank()) {
+            agg.put("cancelled", reason);
+        } else {
+            agg.put("cancelled", true);
+        }
+        run.setAggregatesJson(agg);
+        evaluationRunRepository.save(run);
+    }
+
+    @Transactional
     public void persistLlmJudgeFromEvaluationMap(UUID runId, Map<String, Object> evaluationPayload, BenchmarkKind kind) {
         if (!persistenceEnabled || runId == null || evaluationPayload == null) {
             return;
@@ -103,7 +126,11 @@ public class EvaluationCanonicalPersistenceService {
         @SuppressWarnings("unchecked")
         Map<String, Object> summary = (Map<String, Object>) evaluationPayload.get("evaluation_summary");
         run.setAggregatesJson(summary != null ? new LinkedHashMap<>(summary) : Map.of());
-        run.setStatus(EvaluationRunStatus.DONE);
+        if (summary != null && Boolean.TRUE.equals(summary.get("cancelled"))) {
+            run.setStatus(EvaluationRunStatus.PARTIAL_CANCELLED);
+        } else {
+            run.setStatus(EvaluationRunStatus.DONE);
+        }
         run.setProgress(100);
         run.setCompletedAt(Instant.now());
         evaluationRunRepository.save(run);
@@ -152,7 +179,11 @@ public class EvaluationCanonicalPersistenceService {
         @SuppressWarnings("unchecked")
         Map<String, Object> summary = (Map<String, Object>) payload.get("evaluation_summary");
         run.setAggregatesJson(summary != null ? new LinkedHashMap<>(summary) : Map.of());
-        run.setStatus(EvaluationRunStatus.DONE);
+        if (summary != null && Boolean.TRUE.equals(summary.get("cancelled"))) {
+            run.setStatus(EvaluationRunStatus.PARTIAL_CANCELLED);
+        } else {
+            run.setStatus(EvaluationRunStatus.DONE);
+        }
         run.setProgress(100);
         run.setCompletedAt(Instant.now());
         evaluationRunRepository.save(run);

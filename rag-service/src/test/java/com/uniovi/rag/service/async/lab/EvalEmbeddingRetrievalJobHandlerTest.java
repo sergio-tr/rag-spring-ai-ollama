@@ -10,6 +10,8 @@ import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalDataset;
 import com.uniovi.rag.domain.evaluation.workbook.EmbeddingRetrievalQuery;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.service.async.AsyncTaskCancellationService;
+import com.uniovi.rag.service.async.LabJobCancelledException;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
 import com.uniovi.rag.service.evaluation.EvaluationService;
@@ -94,6 +96,9 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     @Mock
     private AsyncTaskMutationService mutation;
 
+    @Mock
+    private AsyncTaskCancellationService cancellationService;
+
     private EvalEmbeddingRetrievalJobHandler handler(int topK) {
         return new EvalEmbeddingRetrievalJobHandler(
                 vectorStore,
@@ -105,6 +110,7 @@ class EvalEmbeddingRetrievalJobHandlerTest {
                 modelBaselineLlmRunner,
                 ollamaModelCatalogClient,
                 evaluationRunRepository,
+                cancellationService,
                 topK);
     }
 
@@ -118,6 +124,69 @@ class EvalEmbeddingRetrievalJobHandlerTest {
     @Test
     void taskType_isEvalEmbeddingRetrieval() {
         assertThat(handler(3).taskType()).isEqualTo(AsyncTaskType.EVAL_EMBEDDING_RETRIEVAL);
+    }
+
+    @Test
+    void cancellation_stopsBeforeNextItem_andPersistsPartialAsCancelled() {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        stubBaselineForCanonicalRun(runId);
+
+        List<EmbeddingRetrievalQuery> queries =
+                List.of(
+                        new EmbeddingRetrievalQuery(
+                                "q1",
+                                "Q1",
+                                "",
+                                Optional.empty(),
+                                Optional.empty(),
+                                "",
+                                List.of(),
+                                List.of(),
+                                "",
+                                "",
+                                ""),
+                        new EmbeddingRetrievalQuery(
+                                "q2",
+                                "Q2",
+                                "",
+                                Optional.empty(),
+                                Optional.empty(),
+                                "",
+                                List.of(),
+                                List.of(),
+                                "",
+                                "",
+                                ""),
+                        new EmbeddingRetrievalQuery(
+                                "q3",
+                                "Q3",
+                                "",
+                                Optional.empty(),
+                                Optional.empty(),
+                                "",
+                                List.of(),
+                                List.of(),
+                                "",
+                                "",
+                                ""));
+        EmbeddingRetrievalDataset ds = new EmbeddingRetrievalDataset(queries, List.of(), List.of());
+        when(experimentalDatasetResolver.resolve(runId)).thenReturn(new TypedBenchmarkDataset.EmbeddingQuestions(ds));
+        when(vectorStore.similaritySearch(any(SearchRequest.class))).thenReturn(List.of(new Document("d1")));
+
+        // Allow first item, then request cancellation before second.
+        Mockito.doNothing()
+                .doThrow(new LabJobCancelledException("Cancellation requested by user"))
+                .when(cancellationService)
+                .throwIfCancellationRequested(eq(taskId));
+
+        AsyncTaskEntity task = Mockito.mock(AsyncTaskEntity.class);
+        when(task.getId()).thenReturn(taskId);
+        when(task.getRequestPayload()).thenReturn(Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
+
+        assertThatThrownBy(() -> handler(2).run(task, mutation)).isInstanceOf(LabJobCancelledException.class);
+        verify(canonicalPersistence).persistEmbeddingRetrievalResults(eq(runId), any());
+        verify(mutation).appendProgressLine(eq(taskId), ArgumentMatchers.contains("Cancellation requested"));
     }
 
     @Test
