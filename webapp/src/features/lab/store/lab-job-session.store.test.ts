@@ -139,6 +139,22 @@ describe("useLabJobSessionStore", () => {
     expect(useLabJobSessionStore.getState().records.some((r) => r.jobId === "job-clear")).toBe(false);
   });
 
+  it("clearOtherLabJobsForSection keeps only the retained job id for that section", () => {
+    useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+      accepted: acc("keep-me"),
+      sectionKey: "evaluation-llm",
+      followMode: "poll",
+    });
+    useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+      accepted: acc("drop-me"),
+      sectionKey: "evaluation-llm",
+      followMode: "poll",
+    });
+    useLabJobSessionStore.getState().clearOtherLabJobsForSection("evaluation-llm", "keep-me");
+    const ids = useLabJobSessionStore.getState().records.filter((r) => r.sectionKey === "evaluation-llm").map((r) => r.jobId);
+    expect(ids).toEqual(["keep-me"]);
+  });
+
   it("patchLabJobPollTimedOut sets pollTimedOut flag", () => {
     useLabJobSessionStore.getState().upsertLabJobOnAccepted({
       accepted: acc("job-to"),

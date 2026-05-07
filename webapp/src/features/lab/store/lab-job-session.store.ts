@@ -40,6 +40,9 @@ export type LabJobSessionStore = {
 
   clearLabJobRecord: (jobId: string) => void;
 
+  /** Backend wins: remove other rows for the same section so a stale cache cannot override the active job. */
+  clearOtherLabJobsForSection: (sectionKey: LabJobSectionKey, keepJobId: string) => void;
+
   requestResumeLabJob: (sectionKey: LabJobSectionKey, jobId: string) => void;
 
   consumePendingResume: (sectionKey: LabJobSectionKey) => PersistedLabJobRecord | null;
@@ -158,6 +161,16 @@ export const useLabJobSessionStore = create<LabJobSessionStore>()(
         set((s) => ({
           records: s.records.filter((r) => r.jobId !== jobId),
           pendingResume: s.pendingResume?.jobId === jobId ? null : s.pendingResume,
+        }));
+      },
+
+      clearOtherLabJobsForSection: (sectionKey, keepJobId) => {
+        set((s) => ({
+          records: s.records.filter((r) => !(r.sectionKey === sectionKey && r.jobId !== keepJobId)),
+          pendingResume:
+            s.pendingResume?.sectionKey === sectionKey && s.pendingResume.jobId !== keepJobId
+              ? null
+              : s.pendingResume,
         }));
       },
 

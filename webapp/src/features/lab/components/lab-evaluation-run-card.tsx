@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { LabBenchmarkResultsPanel } from "@/features/lab/components/lab-benchmark-results-panel";
 import { LabJobPanel } from "@/features/lab/components/lab-job-panel";
 import { useActiveLabJobs } from "@/features/lab/hooks/use-active-lab-jobs";
+import { activeJobMatchesCard, useLabActiveJobRecovery } from "@/features/lab/hooks/use-lab-active-job-recovery";
 import { useExperimentalDatasetsQuery } from "@/features/lab/hooks/use-experimental-datasets";
 import { useExperimentalPresetCatalog } from "@/features/lab/hooks/use-experimental-preset-catalog";
 import { useLabEvaluationDraft } from "@/features/lab/hooks/use-lab-evaluation-draft";
@@ -29,6 +30,7 @@ import {
 import { useLabJobSessionStore } from "@/features/lab/store/lab-job-session.store";
 import { ApiError, apiFetch, apiProductPath } from "@/lib/api-client";
 import { followLabJob } from "@/lib/lab-job-follow";
+import { fetchLabJobStatusOnce } from "@/lib/async-task";
 import { useAppStore } from "@/store/app.store";
 import type {
   AsyncTaskStatusDto,
@@ -168,6 +170,10 @@ export function LabEvaluationRunCard({
   const abortRef = useRef<AbortController | null>(null);
   const traceDedupeRef = useRef(createLabJobTraceDedupe());
   const mountedEvalCardRef = useRef(true);
+  /** Prevents duplicate backend-driven auto-follow for the same job (incl. React strict double-invoke). */
+  const backendAutoFollowHandledRef = useRef<string | null>(null);
+  /** R4: one-shot probe per session job when active list is empty (reset when list becomes non-empty). */
+  const r4SessionProbeKeyRef = useRef<string | null>(null);
 
   const compatibleRows = useMemo(() => {
     const allowed = compatibleExperimentalTypes(benchmarkKind);
@@ -217,6 +223,22 @@ export function LabEvaluationRunCard({
 
   const { draft, patchDraft, clearDraft, resetToRecommended, setLastEvaluationRunId, warnings } =
     useLabEvaluationDraft(benchmarkKind as LabEvaluationDraftKind, draftValidation);
+
+  const sessionRecords = useLabJobSessionStore((s) => s.records);
+  const clearOtherLabJobsForSection = useLabJobSessionStore((s) => s.clearOtherLabJobsForSection);
+  const labRecovery = useLabActiveJobRecovery({
+    sectionKey,
+    benchmarkKind,
+    activeProjectId: activeProject?.id ?? null,
+    draftFollowMode: draft.followMode,
+    backendActiveJobs: activeJobs.data ?? null,
+    backendActiveJobsLoading: !activeJobs.isFetched,
+    backendActiveJobsError: activeJobs.isError ? activeJobs.error : null,
+    sessionRecords,
+  });
+
+  const autoFollowJobId =
+    labRecovery.decision.kind === "auto_follow" ? labRecovery.decision.candidate.jobId : null;
 
   const draftBlocksRun =
     warnings.datasetDeletedOrUnknown ||
@@ -347,6 +369,91 @@ export function LabEvaluationRunCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- resumeNonce-driven only
   }, [resumeNonceEvalCard]);
 
+  useEffect(() => {
+    if (!autoFollowJobId || labRecovery.decision.kind !== "auto_follow") return;
+    const candidate = labRecovery.decision.candidate;
+    if (backendAutoFollowHandledRef.current === autoFollowJobId) {
+      if (running) return;
+      if (taskStatus?.id === autoFollowJobId && taskStatus.terminal) return;
+      return;
+    }
+    if (running && accepted?.jobId && accepted.jobId !== autoFollowJobId) return;
+
+    backendAutoFollowHandledRef.current = autoFollowJobId;
+    void (async () => {
+      try {
+        clearOtherLabJobsForSection(sectionKey, candidate.jobId);
+        useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+          accepted: candidate.accepted,
+          sectionKey,
+          followMode: candidate.resolvedFollowMode,
+          taskTypeHint,
+          evaluationRunId: candidate.evaluationRunId,
+        });
+        const status = await fetchLabJobStatusOnce(candidate.jobId);
+        if (!mountedEvalCardRef.current) return;
+        useLabJobSessionStore.getState().patchLabJobFromTick(candidate.jobId, status);
+        const rec = useLabJobSessionStore.getState().pickLatestForSection(sectionKey);
+        if (!rec) return;
+        await resumeEvalFromPersisted(rec);
+      } catch (e) {
+        backendAutoFollowHandledRef.current = null;
+        if (!mountedEvalCardRef.current) return;
+        if (e instanceof ApiError && e.status === 404) {
+          useLabJobSessionStore.getState().markLabJobStaleNotFound(candidate.jobId);
+          setErr(t("jobRecoveryStaleShort"));
+        } else if (!(e instanceof DOMException && e.name === "AbortError")) {
+          setErr(e instanceof Error ? e.message : t("evalError"));
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resumeEvalFromPersisted is intentionally stable-by-closure; narrow deps avoid session-record churn.
+  }, [
+    autoFollowJobId,
+    labRecovery.decision.kind,
+    labRecovery.decision.kind === "auto_follow" ? labRecovery.decision.candidate.jobId : "",
+    labRecovery.decision.kind === "auto_follow" ? labRecovery.decision.candidate.evaluationRunId : "",
+    running,
+    accepted?.jobId,
+    taskStatus?.id,
+    taskStatus?.terminal,
+    sectionKey,
+    taskTypeHint,
+    clearOtherLabJobsForSection,
+    t,
+  ]);
+
+  useEffect(() => {
+    if (!activeJobs.isFetched) return;
+    const jobs = activeJobs.data ?? [];
+    if (jobs.length > 0) {
+      r4SessionProbeKeyRef.current = null;
+      return;
+    }
+    const rec = useLabJobSessionStore.getState().pickLatestForSection(sectionKey);
+    if (!rec?.accepted?.jobId) return;
+    if (rec.staleNotFound || rec.lastStatus?.terminal) return;
+    const probeKey = `${sectionKey}:${rec.jobId}`;
+    if (r4SessionProbeKeyRef.current === probeKey) return;
+    r4SessionProbeKeyRef.current = probeKey;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const s = await fetchLabJobStatusOnce(rec.jobId);
+        if (cancelled || !mountedEvalCardRef.current) return;
+        useLabJobSessionStore.getState().patchLabJobFromTick(rec.jobId, s);
+      } catch (e) {
+        if (cancelled || !mountedEvalCardRef.current) return;
+        if (e instanceof ApiError && e.status === 404) {
+          useLabJobSessionStore.getState().markLabJobStaleNotFound(rec.jobId);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeJobs.isFetched, activeJobs.data, sectionKey]);
+
   const hasCompatibleDataset = !experimentalDatasets.isLoading && selectedDataset != null;
   const datasetIsValid = selectedDataset?.validationStatus === "VALID";
   const demoBlocked = selectedDataset?.isDemoDataset === true;
@@ -364,9 +471,15 @@ export function LabEvaluationRunCard({
   const otherActiveJobExists = useMemo(() => {
     const jobs = activeJobs.data ?? [];
     if (jobs.length === 0) return false;
+    const scopeId = activeProject?.id ?? null;
+    const matching = jobs.filter((j) => activeJobMatchesCard(j, benchmarkKind, scopeId));
+    if (matching.length > 1) return true;
     const currentId = accepted?.jobId ?? null;
-    return jobs.some((j) => j.jobId && j.jobId !== currentId);
-  }, [accepted?.jobId, activeJobs.data]);
+    if (currentId) {
+      return jobs.some((j) => Boolean(j.jobId) && j.jobId !== currentId);
+    }
+    return jobs.some((j) => !activeJobMatchesCard(j, benchmarkKind, scopeId));
+  }, [accepted?.jobId, activeJobs.data, activeProject?.id, benchmarkKind]);
 
   const expectedSummary = useMemo(() => {
     if (!selectedDataset) return "";
@@ -1047,6 +1160,42 @@ export function LabEvaluationRunCard({
             <p className="text-muted-foreground text-xs" data-testid="lab-expected-items-summary">
               {expectedSummary}
             </p>
+          ) : null}
+
+          {labRecovery.decision.kind === "cta" ? (
+            <output
+              role="status"
+              data-testid="lab-active-job-recovery-cta"
+              className="block rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-100"
+            >
+              <p className="font-medium">{t("labRecoveryMultipleTitle")}</p>
+              <p className="text-muted-foreground mt-1 text-xs">{t("labRecoveryMultipleHint")}</p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                {labRecovery.decision.candidates.map((c) => (
+                  <Button
+                    key={c.jobId}
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={running}
+                    data-testid={`lab-recovery-resume-${c.jobId}`}
+                    onClick={() => {
+                      clearOtherLabJobsForSection(sectionKey, c.jobId);
+                      useLabJobSessionStore.getState().upsertLabJobOnAccepted({
+                        accepted: c.accepted,
+                        sectionKey,
+                        followMode: c.resolvedFollowMode,
+                        taskTypeHint,
+                        evaluationRunId: c.evaluationRunId,
+                      });
+                      useLabJobSessionStore.getState().requestResumeLabJob(sectionKey, c.jobId);
+                    }}
+                  >
+                    {t("labRecoveryResumeJob", { jobId: c.jobId.slice(0, 8) })}
+                  </Button>
+                ))}
+              </div>
+            </output>
           ) : null}
 
           {!accepted && !taskStatus ? null : (

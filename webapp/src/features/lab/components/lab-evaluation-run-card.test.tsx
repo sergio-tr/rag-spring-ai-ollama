@@ -192,7 +192,7 @@ describe("LabEvaluationRunCard", () => {
       ],
       isSuccess: true,
     } as never);
-    vi.mocked(useActiveLabJobs).mockReturnValue({ data: [], isLoading: false } as never);
+    vi.mocked(useActiveLabJobs).mockReturnValue({ data: [], isLoading: false, isFetched: true, isError: false } as never);
     vi.mocked(useModelsByType).mockImplementation(((type: string) => ({
       data:
         type === "LLM"
