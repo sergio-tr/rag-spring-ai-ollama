@@ -71,13 +71,18 @@ class RuntimeConfigControllerWebMvcTest {
                                                 "useRetrieval",
                                                 "Use retrieval",
                                                 "desc",
-                                                "Retrieval",
+                                                "RUNTIME_HOT_SWAPPABLE",
                                                 true,
                                                 true,
-                                                List.of(),
-                                                List.of(),
+                                                true,
+                                                true,
                                                 null,
-                                                Map.of(),
+                                                10,
+                                                List.of(),
+                                                List.of(),
+                                                false,
+                                                false,
+                                                null,
                                                 null))));
 
         mockMvc.perform(get(path("/runtime-config/capabilities")))

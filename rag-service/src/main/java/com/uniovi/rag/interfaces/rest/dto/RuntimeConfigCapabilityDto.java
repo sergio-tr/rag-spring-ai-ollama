@@ -1,20 +1,23 @@
 package com.uniovi.rag.interfaces.rest.dto;
 
 import java.util.List;
-import java.util.Map;
 
 public record RuntimeConfigCapabilityDto(
         String key,
         String label,
         String description,
-        String group,
+        String category, // RUNTIME_HOT_SWAPPABLE | INDEX_BOUND | LAB_ONLY | INTERNAL
+        boolean visibleInChat,
+        boolean configurableInChat,
         boolean implemented,
-        boolean configurable,
+        boolean engineWired,
+        String supportMode,
+        int displayOrder,
         List<String> requires,
         List<String> excludes,
-        String reasonIfNotImplemented,
-        Map<String, Object> options,
-        /** UX hint when multi-turn flows apply ({@code MULTI_TURN_REQUIRED}) — orthogonal to {@link #implemented}. */
-        String supportMode
+        boolean requiresIndexSnapshot,
+        boolean requiresReindexWhenChanged,
+        String reasonIfDisabled,
+        String reasonIfNotImplemented
 ) {}
 

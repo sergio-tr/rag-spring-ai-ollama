@@ -42,6 +42,9 @@ public class RuntimeExecutionTraceEntityMapper {
             String correlationId,
             ExecutionTrace trace
     ) {
+        if (userId == null) {
+            throw new IllegalArgumentException("userId is required");
+        }
         RuntimeExecutionTraceEntity e = RuntimeExecutionTraceEntity.newForInsert();
         e.setUserId(userId);
         e.setProjectId(projectId);

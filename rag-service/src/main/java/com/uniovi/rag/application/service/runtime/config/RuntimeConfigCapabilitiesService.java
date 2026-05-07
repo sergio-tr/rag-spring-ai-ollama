@@ -1,18 +1,15 @@
 package com.uniovi.rag.application.service.runtime.config;
 
-import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigCapabilitiesResponse;
 import com.uniovi.rag.interfaces.rest.dto.RuntimeConfigCapabilityDto;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import org.springframework.stereotype.Service;
 
 /**
  * Chat-facing capability matrix for manual runtime configuration.
  * <p>
- * This is intentionally explicit and UX-oriented (labels, groups, requires/excludes) so the frontend can
+ * This is intentionally explicit and UX-oriented (labels, ordering, requires/excludes) so the frontend can
  * disable controls and prevent invalid/unsupported configs before sending a message.
  */
 @Service
@@ -21,237 +18,218 @@ public class RuntimeConfigCapabilitiesService {
     public RuntimeConfigCapabilitiesResponse getCapabilities() {
         List<RuntimeConfigCapabilityDto> out = new ArrayList<>();
 
-        out.add(
-                cap(
-                        "useRetrieval",
-                        "Use retrieval",
-                        "When enabled, the runtime uses dense retrieval over the knowledge base.",
-                        "Retrieval",
-                        true,
-                        true,
-                        List.of(),
-                        List.of(),
-                        null,
-                        Map.of()));
+        out.add(runtimeToggle(
+                "useRetrieval",
+                "Use retrieval",
+                "When enabled, the runtime uses dense retrieval over the knowledge base.",
+                10,
+                List.of(),
+                List.of()));
+
+        out.add(runtimeToggle(
+                "naiveFullCorpusInPromptEnabled",
+                "Naive full corpus in prompt",
+                "When enabled without retrieval, the runtime injects the corpus text directly into the prompt (limited by context window).",
+                20,
+                List.of(),
+                List.of("useRetrieval")));
+
+        out.add(runtimeToggle(
+                "expansionEnabled",
+                "Query expansion",
+                "Optional query expansion before retrieval/tool routing.",
+                30,
+                List.of(),
+                List.of()));
+
+        out.add(runtimeToggle(
+                "nerEnabled",
+                "NER",
+                "Named entity extraction for query understanding and tool/routing improvements.",
+                40,
+                List.of(),
+                List.of()));
+
+        out.add(runtimeToggle(
+                "toolsEnabled",
+                "Tools",
+                "Deterministic tool adapter execution (when a query type is available).",
+                50,
+                List.of(),
+                List.of()));
 
         out.add(
-                cap(
-                        "naiveFullCorpusInPromptEnabled",
-                        "Naive full corpus in prompt",
-                        "When enabled without retrieval, the runtime injects the corpus text directly into the prompt (limited by context window).",
-                        "Retrieval",
+                new RuntimeConfigCapabilityDto(
+                        "functionCallingEnabled",
+                        "Function calling",
+                        "Spring AI function calling path for tools (ChatClient.tools(adapter)); takes precedence over deterministic tools when both are enabled.",
+                        "RUNTIME_HOT_SWAPPABLE",
                         true,
                         true,
-                        List.of(),
-                        List.of("useRetrieval"),
+                        true,
+                        true,
                         null,
-                        Map.of()));
+                        60,
+                        List.of(),
+                        List.of(),
+                        false,
+                        false,
+                        "When enabled together with Tools, function calling takes precedence.",
+                        null));
+
+        out.add(runtimeToggle(
+                "useAdvisor",
+                "Advisor",
+                "Enables advisor packing. Requires retrieval and a dense retrieval workflow.",
+                70,
+                List.of("useRetrieval"),
+                List.of()));
+
+        out.add(runtimeToggle(
+                "reasoningEnabled",
+                "Reasoning",
+                "Structured answer plan (safe JSON guidance only; no chain-of-thought) used internally before generation.",
+                80,
+                List.of(),
+                List.of()));
+
+        out.add(runtimeToggle(
+                "rankerEnabled",
+                "Ranker",
+                "Deterministic reranking after fusion and before filtering/compression.",
+                90,
+                List.of("useRetrieval"),
+                List.of()));
+
+        out.add(runtimeToggle(
+                "postRetrievalEnabled",
+                "Post-retrieval",
+                "Advanced filtering and evidence-aware compression after reranking.",
+                100,
+                List.of("useRetrieval"),
+                List.of()));
+
+        out.add(indexBound(
+                "materializationStrategy",
+                "Materialization strategy",
+                "Controls how documents/chunks are embedded and retrieved (document-level vs chunk-level).",
+                110,
+                List.of("useRetrieval"),
+                List.of("naiveFullCorpusInPromptEnabled"),
+                "Index snapshot compatibility; changing requires reindex."));
+
+        out.add(indexBound(
+                "metadataEnabled",
+                "Metadata-aware retrieval",
+                "Index-level metadata support for metadata-aware retrieval behaviors.",
+                120,
+                List.of("useRetrieval"),
+                List.of(),
+                "Index snapshot compatibility; changing requires reindex."));
 
         out.add(
-                cap(
-                        "materializationStrategy",
-                        "Materialization strategy",
-                        "Controls how documents/chunks are embedded and retrieved (document-level vs chunk-level).",
-                        "Retrieval",
-                        true,
-                        true,
-                        List.of("useRetrieval"),
-                        List.of("naiveFullCorpusInPromptEnabled"),
-                        null,
-                        Map.of("allowedValues", materializationValues())));
-
-        out.add(
-                cap(
-                        "metadataEnabled",
-                        "Metadata-aware retrieval",
-                        "When enabled with chunk-level retrieval, metadata fields are used for filtering/packing context.",
-                        "Retrieval",
-                        true,
-                        true,
-                        List.of("useRetrieval"),
-                        List.of(),
-                        null,
-                        Map.of()));
-
-        out.add(
-                cap(
-                        "useAdvisor",
-                        "Advisor",
-                        "Enables advisor packing. Requires retrieval and a dense retrieval workflow.",
-                        "Agentic",
-                        true,
-                        true,
-                        List.of("useRetrieval"),
-                        List.of(),
-                        null,
-                        Map.of()));
-
-        Map<String, Object> indexWarn =
-                Map.of(
-                        "indexHint",
-                        "Dense retrieval features require an active index snapshot compatible with materialization (validation warns when missing).");
-        out.add(
-                cap(
-                        "reasoningEnabled",
-                        "Reasoning",
-                        "Structured answer plan (safe JSON guidance only; no chain-of-thought) used internally before generation.",
-                        "Advanced",
-                        true,
-                        true,
-                        List.of(),
-                        List.of(),
-                        null,
-                        indexWarn));
-        out.add(
-                cap(
-                        "rankerEnabled",
-                        "Ranker",
-                        "Deterministic reranking after fusion and before filtering/compression.",
-                        "Advanced",
-                        true,
-                        true,
-                        List.of("useRetrieval"),
-                        List.of(),
-                        null,
-                        indexWarn));
-        out.add(
-                cap(
-                        "postRetrievalEnabled",
-                        "Post-retrieval",
-                        "Advanced filtering and evidence-aware compression after reranking.",
-                        "Advanced",
-                        true,
-                        true,
-                        List.of("useRetrieval"),
-                        List.of(),
-                        null,
-                        indexWarn));
-
-        out.add(
-                cap(
+                runtimeToggle(
                         "clarificationEnabled",
                         "Clarification",
                         "Deterministic clarification loop when the query needs narrowing (multi-turn).",
-                        "Multi-turn",
-                        true,
-                        true,
+                        130,
                         List.of(),
                         List.of(),
-                        null,
-                        Map.of(
-                                "multiTurnHint",
-                                "May use multiple turns until the query is specific enough."),
                         "MULTI_TURN_REQUIRED"));
         out.add(
-                cap(
+                runtimeToggle(
                         "memoryEnabled",
                         "Memory",
                         "Uses bounded conversation history / condensation before retrieval when conversation scope exists.",
-                        "Multi-turn",
-                        true,
-                        true,
+                        140,
                         List.of(),
                         List.of(),
-                        null,
-                        Map.of(
-                                "multiTurnHint",
-                                "May use multiple turns as the condensed memory updates across messages."),
                         "MULTI_TURN_REQUIRED"));
 
         out.add(
-                cap(
+                runtimeToggle(
                         "adaptiveRoutingEnabled",
                         "Adaptive routing",
                         "Selects among workflow families (direct retrieval, tools, advisor) using deterministic routing gates.",
-                        "Advanced",
-                        true,
-                        true,
+                        150,
                         List.of(),
-                        List.of(),
-                        null,
-                        Map.of(
-                                "routingNote",
-                                "When disabled, a compatibility route is used (retrieval vs direct) without classifier-driven switching."),
-                        null));
+                        List.of()));
         out.add(
-                cap(
+                runtimeToggle(
                         "judgeEnabled",
                         "Judge",
                         "Post-answer evaluation; workflow answers may trigger one bounded regeneration retry when policy allows.",
-                        "Advanced",
-                        true,
-                        true,
+                        160,
                         List.of(),
-                        List.of(),
-                        null,
-                        Map.of(
-                                "defaultMode",
-                                "EVALUATE_AND_CONDITIONAL_RETRY",
-                                "retryScope",
-                                "Workflow answers only (tool-only paths do not retry)"),
-                        null));
+                        List.of()));
 
         return new RuntimeConfigCapabilitiesResponse(out);
     }
 
-    private static RuntimeConfigCapabilityDto cap(
+    private static RuntimeConfigCapabilityDto runtimeToggle(
             String key,
             String label,
             String description,
-            String group,
-            boolean implemented,
-            boolean configurable,
+            int displayOrder,
             List<String> requires,
-            List<String> excludes,
-            String reasonIfNotImplemented,
-            Map<String, Object> options) {
-        return cap(
-                key,
-                label,
-                description,
-                group,
-                implemented,
-                configurable,
-                requires,
-                excludes,
-                reasonIfNotImplemented,
-                options,
-                null);
+            List<String> excludes) {
+        return runtimeToggle(key, label, description, displayOrder, requires, excludes, null);
     }
 
-    private static RuntimeConfigCapabilityDto cap(
+    private static RuntimeConfigCapabilityDto runtimeToggle(
             String key,
             String label,
             String description,
-            String group,
-            boolean implemented,
-            boolean configurable,
+            int displayOrder,
             List<String> requires,
             List<String> excludes,
-            String reasonIfNotImplemented,
-            Map<String, Object> options,
             String supportMode) {
         return new RuntimeConfigCapabilityDto(
                 key,
                 label,
                 description,
-                group,
-                implemented,
-                configurable,
+                "RUNTIME_HOT_SWAPPABLE",
+                true,
+                true,
+                true,
+                true,
+                supportMode,
+                displayOrder,
                 requires != null ? List.copyOf(requires) : List.of(),
                 excludes != null ? List.copyOf(excludes) : List.of(),
-                reasonIfNotImplemented,
-                options != null ? new LinkedHashMap<>(options) : Map.of(),
-                supportMode);
+                false,
+                false,
+                null,
+                null);
     }
 
-    private static List<String> materializationValues() {
-        // Chat supports a subset; STRUCTURED_SEARCH is exposed but will validate as unsupported when combined with retrieval.
-        return List.of(
-                MaterializationStrategy.DOCUMENT_LEVEL.name(),
-                MaterializationStrategy.CHUNK_LEVEL.name(),
-                MaterializationStrategy.HYBRID.name(),
-                MaterializationStrategy.STRUCTURED_SEARCH.name());
+    private static RuntimeConfigCapabilityDto indexBound(
+            String key,
+            String label,
+            String description,
+            int displayOrder,
+            List<String> requires,
+            List<String> excludes,
+            String reasonIfDisabled) {
+        return new RuntimeConfigCapabilityDto(
+                key,
+                label,
+                description,
+                "INDEX_BOUND",
+                true,
+                false,
+                true,
+                true,
+                null,
+                displayOrder,
+                requires != null ? List.copyOf(requires) : List.of(),
+                excludes != null ? List.copyOf(excludes) : List.of(),
+                true,
+                true,
+                reasonIfDisabled,
+                null);
     }
+
+    // materializationStrategy values are index-bound and surfaced via index profile/snapshot endpoints.
 }
 

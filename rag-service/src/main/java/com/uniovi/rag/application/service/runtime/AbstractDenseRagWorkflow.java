@@ -127,7 +127,9 @@ abstract class AbstractDenseRagWorkflow extends AbstractExecutionWorkflow {
                         null,
                         Optional.ofNullable(curated.diagnostics()),
                         stages)
-                .withResponseSources(RuntimeRetrievedSourceMapper.toChatSources(curated.finalCandidates()));
+                .withResponseSources(
+                        ChatSourceMapper.toPersistedMapsFromInternal(
+                                RuntimeRetrievedSourceMapper.toChatSources(curated.finalCandidates())));
     }
 
     private static String preview(String s) {

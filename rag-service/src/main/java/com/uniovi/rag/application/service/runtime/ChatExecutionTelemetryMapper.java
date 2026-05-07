@@ -64,13 +64,25 @@ public final class ChatExecutionTelemetryMapper {
 
         if (!trace.answerGroundingPolicy().isBlank()) {
             m.put("answerGroundingPolicy", trace.answerGroundingPolicy());
+            // R4 stable key (avoid recomputing policy elsewhere).
+            m.put("answerPolicy", trace.answerGroundingPolicy());
         }
         m.put("promptContextCharCount", trace.promptContextCharCount());
         m.put("sourceCount", trace.sourceCount());
         m.put("abstentionTriggered", trace.abstentionTriggered());
         if (!trace.abstentionReason().isBlank()) {
             m.put("abstentionReason", trace.abstentionReason());
+            m.put("abstentionReasonCode", trace.abstentionReason());
         }
+
+        // R4 summary fields (no chain-of-thought).
+        m.put("contextChunkCount", trace.packedContextBlockCount());
+        m.put("effectiveContextPresent", trace.promptContextCharCount() > 0 || trace.packedContextBlockCount() > 0);
+        m.put("closestEvidenceAvailable", trace.sourceCount() > 0);
+        m.put("judgeApplied", trace.judgeAttempted());
+        m.put("memoryApplied", trace.memoryCondensationUsed());
+        m.put("adaptiveRoutingApplied", trace.routingAttempted());
+        m.put("clarificationRequired", clarificationRequired);
 
         return Map.copyOf(m);
     }

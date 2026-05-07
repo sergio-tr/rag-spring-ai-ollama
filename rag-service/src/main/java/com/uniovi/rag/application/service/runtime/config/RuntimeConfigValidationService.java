@@ -180,6 +180,14 @@ public class RuntimeConfigValidationService {
 
         RagConfig rag = resolved.toRagConfig();
         if (rag != null) {
+            if (rag.toolsEnabled() && rag.functionCallingEnabled()) {
+                warnings.add(
+                        new RuntimeConfigValidationIssueDto(
+                                "TOOLS_FUNCTION_CALLING_PRECEDENCE",
+                                null,
+                                "Tools and function calling are both enabled. Function calling takes precedence over deterministic tools.",
+                                "WARNING"));
+            }
             if (hasActiveIndex) {
                 String idxStrategy = stringOrNull(activeProfile.get("materializationStrategy"));
                 Boolean idxSupportsMetadata = boolOrNull(activeProfile.get("supportsMetadata"));
