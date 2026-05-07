@@ -56,15 +56,19 @@ class LabExperimentalPresetCatalogServiceTest {
 
         assertThat(rows).hasSize(15);
         assertThat(rows).extracting("code").contains("P0", "P14");
+        assertThat(rows).extracting("code").doesNotHaveDuplicates();
         assertThat(rows).allMatch(r -> r.productPresetId() != null && !r.productPresetId().isBlank());
+        assertThat(rows).allMatch(r -> r.labOnly() == (r.labSelectable() && !r.chatSelectable()));
         var p11 = rows.stream().filter(r -> "P11".equals(r.code())).findFirst().orElseThrow();
         assertThat(p11.supported()).isTrue();
         assertThat(p11.supportStatus()).isEqualTo("REQUIRES_MULTI_TURN");
         assertThat(p11.reasonIfUnsupported()).isNull();
         assertThat(p11.chatSelectable()).isTrue();
+        assertThat(p11.requiresMultiTurn()).isTrue();
 
         var p12 = rows.stream().filter(r -> "P12".equals(r.code())).findFirst().orElseThrow();
         assertThat(p12.chatSelectable()).isTrue();
+        assertThat(p12.requiresMultiTurn()).isTrue();
 
         var p13 = rows.stream().filter(r -> "P13".equals(r.code())).findFirst().orElseThrow();
         var p14 = rows.stream().filter(r -> "P14".equals(r.code())).findFirst().orElseThrow();

@@ -17,4 +17,5 @@ public record ExperimentalPresetCatalogItemDto(
         Map<String, Object> mapsToRuntimeCapabilities,
         List<String> allowedOutcomes,
         boolean chatSelectable,
-        boolean labSelectable) {}
+        boolean labSelectable,
+        boolean labOnly) {}

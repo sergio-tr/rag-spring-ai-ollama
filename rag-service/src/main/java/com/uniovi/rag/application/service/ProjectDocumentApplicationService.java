@@ -6,6 +6,7 @@ import com.uniovi.rag.interfaces.rest.dto.ProjectDocumentDebugDto;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.application.service.knowledge.KnowledgeIngestionService;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.service.project.ProjectAccessService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpStatus;
@@ -52,6 +53,19 @@ public class ProjectDocumentApplicationService {
     public List<ProjectDocumentDto> listDocuments(UUID userId, UUID projectId) {
         projectAccessService.requireOwnedProject(userId, projectId);
         return knowledgeDocumentRepository.findByProject_IdOrderByUploadedAtDesc(projectId).stream()
+                .map(ProjectDocumentApplicationService::toDto)
+                .toList();
+    }
+
+    public List<ProjectDocumentDto> listDocumentsForConversation(UUID userId, UUID projectId, UUID conversationId) {
+        projectAccessService.requireConversationForUser(userId, conversationId);
+        return knowledgeDocumentRepository.findByProject_IdOrderByUploadedAtDesc(projectId).stream()
+                .filter(
+                        d ->
+                                d.getCorpusScope() == CorpusScope.PROJECT_SHARED
+                                        || (d.getCorpusScope() == CorpusScope.CHAT_LOCAL
+                                                && d.getConversation() != null
+                                                && conversationId.equals(d.getConversation().getId())))
                 .map(ProjectDocumentApplicationService::toDto)
                 .toList();
     }
@@ -138,7 +152,9 @@ public class ProjectDocumentApplicationService {
     public ProjectDocumentDto retryIngestFromStoredBinary(UUID userId, UUID documentId) {
         KnowledgeDocumentEntity row = projectAccessService.requireDocumentForUser(userId, documentId);
         if (row.getStorageUri() == null || row.getStorageUri().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Document has no stored binary; reindex requires a file upload.");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "STORED_BINARY_MISSING: Stored binary is missing; upload the file again to reindex.");
         }
         row.setStatus(ProjectDocumentStatus.INGESTING);
         row.setErrorMessage(null);

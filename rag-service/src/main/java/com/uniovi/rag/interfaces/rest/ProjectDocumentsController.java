@@ -39,8 +39,16 @@ public class ProjectDocumentsController {
 
     @GetMapping
     public List<ProjectDocumentDto> list(
-            @AuthenticationPrincipal RagPrincipal principal, @PathVariable UUID projectId) {
-        return projectDocumentApplicationService.listDocuments(principal.userId(), projectId);
+            @AuthenticationPrincipal RagPrincipal principal,
+            @PathVariable UUID projectId,
+            @RequestParam(name = "conversationId", required = false) UUID conversationId,
+            @RequestParam(name = "includeProjectShared", required = false, defaultValue = "true") boolean includeProjectShared) {
+        if (conversationId == null) {
+            return projectDocumentApplicationService.listDocuments(principal.userId(), projectId);
+        }
+        // Current contract: when conversationId is provided, Chat wants PROJECT_SHARED + that conversation's CHAT_LOCAL.
+        // includeProjectShared is kept for forward compatibility; current behavior always includes project-shared.
+        return projectDocumentApplicationService.listDocumentsForConversation(principal.userId(), projectId, conversationId);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

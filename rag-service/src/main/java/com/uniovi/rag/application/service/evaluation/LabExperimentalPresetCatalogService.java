@@ -63,7 +63,8 @@ public class LabExperimentalPresetCatalogService {
             String supportStatus = supportStatus(code, runtimeOk, blockedByLabHarness.isPresent());
             List<String> requiredCapabilities = requiredCapabilities(effective);
             boolean chatSelectable = runtimeOk;
-            boolean labSelectable = true;
+            boolean labSelectable = blockedByLabHarness.isEmpty();
+            boolean labOnly = labSelectable && !chatSelectable;
             out.add(
                     new ExperimentalPresetCatalogItemDto(
                             experimentalProductPresetId(code),
@@ -79,7 +80,8 @@ public class LabExperimentalPresetCatalogService {
                             capabilities(d, code),
                             ALLOWED_OUTCOMES,
                             chatSelectable,
-                            labSelectable));
+                            labSelectable,
+                            labOnly));
         }
         out.sort(Comparator.comparing(ExperimentalPresetCatalogItemDto::code));
         return out;
