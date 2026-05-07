@@ -321,6 +321,46 @@ export function ChatConfigurationPanelContent() {
               <MenuHint>No active index snapshot yet.</MenuHint>
             )}
 
+            {api?.runtimeState?.indexCompatibility?.presetIndexRequirements ? (
+              <div className="rounded-md border bg-background/50 px-3 py-2 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Preset index requirements</span>
+                  <span className="font-mono">
+                    {api.runtimeState.indexCompatibility.presetIndexRequirements.requiredMaterializationStrategy ?? "NONE"}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Requires metadata support</span>
+                  <span className="font-mono">
+                    {String(Boolean(api.runtimeState.indexCompatibility.presetIndexRequirements.requiresMetadataSupport))}
+                  </span>
+                </div>
+                {api.runtimeState.indexCompatibility.compatibilityStatus ? (
+                  <div className="mt-1 flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Compatibility</span>
+                    <span
+                      className={cn(
+                        "font-mono",
+                        api.runtimeState.requiresReindex ? "text-destructive" : "text-foreground",
+                      )}
+                    >
+                      {api.runtimeState.indexCompatibility.compatibilityStatus}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {api?.runtimeState?.requiresReindex ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+                <p className="text-destructive font-medium">Reindex required for this preset.</p>
+                <p className="text-muted-foreground mt-1">
+                  The active snapshot does not satisfy the preset’s index requirements (materialization/metadata). Reindex the
+                  project or pick a compatible preset.
+                </p>
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-1 gap-2 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-muted-foreground">Materialization strategy</span>

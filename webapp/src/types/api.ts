@@ -122,13 +122,7 @@ export type ConversationDto = {
   /** Populated when returned from POST create after validation preview; omitted or empty on list. */
   effectiveRuntimePreview?: Record<string, unknown>;
   runtimeWarnings?: RuntimeConfigValidationIssueDto[];
-  indexCompatibility?: {
-    activeProjectSnapshotId: string | null;
-    activeConversationSnapshotId: string | null;
-    activeIndexProfileHash: string | null;
-    activeIndexProfile: Record<string, unknown>;
-    hasActiveIndex: boolean;
-  } | null;
+  indexCompatibility?: RuntimeIndexCompatibilityDto | null;
   /** Backend clarification wait-state (`pending_clarification_jsonb`) when follow-up is expected. */
   pendingClarification?: Record<string, unknown> | null;
 };
@@ -379,6 +373,10 @@ export type ExperimentalPresetCatalogItemDto = {
   family: string;
   label: string;
   description: string;
+  indexRequirements?: {
+    requiredMaterializationStrategy: string | null;
+    requiresMetadataSupport: boolean;
+  } | null;
   requiredCapabilities: string[];
   supported: boolean;
   supportStatus: "EXECUTABLE" | "PARTIAL" | "NOT_SUPPORTED" | "REQUIRES_MULTI_TURN" | "DISABLED";
@@ -436,14 +434,29 @@ export type RuntimeConfigValidateResponse = {
   errors: RuntimeConfigValidationIssueDto[];
   warnings: RuntimeConfigValidationIssueDto[];
   selectedWorkflow: string | null;
-  indexCompatibility?: {
-    activeProjectSnapshotId: string | null;
-    activeConversationSnapshotId: string | null;
-    activeIndexProfileHash: string | null;
-    activeIndexProfile: Record<string, unknown>;
-    hasActiveIndex: boolean;
-  } | null;
+  indexCompatibility?: RuntimeIndexCompatibilityDto | null;
   requiresReindex?: boolean;
+};
+
+export type RuntimeIndexCompatibilityDto = {
+  activeProjectSnapshotId: string | null;
+  activeConversationSnapshotId: string | null;
+  activeIndexProfileHash: string | null;
+  activeIndexProfile: Record<string, unknown>;
+  hasActiveIndex: boolean;
+  activeSnapshotCapabilities?: {
+    materializationStrategy: string | null;
+    supportsMetadata: boolean | null;
+    embeddingModelId: string | null;
+    chunkMaxChars: number | null;
+    chunkOverlap: number | null;
+  } | null;
+  presetIndexRequirements?: {
+    requiredMaterializationStrategy: string | null;
+    requiresMetadataSupport: boolean;
+  } | null;
+  compatibleWithPreset?: boolean;
+  compatibilityStatus?: string | null;
 };
 
 export type EvaluationRunDetailDto = {
