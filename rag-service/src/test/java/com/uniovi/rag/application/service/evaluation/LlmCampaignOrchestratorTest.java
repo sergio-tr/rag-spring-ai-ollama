@@ -51,6 +51,7 @@ class LlmCampaignOrchestratorTest {
     @Mock private RagPresetRepository ragPresetRepository;
     @Mock private AsyncTaskRepository asyncTaskRepository;
     @Mock private AsyncTaskService asyncTaskService;
+    @Mock private LabJobLifecycleService labJobLifecycleService;
     @Mock private ProjectAccessService projectAccessService;
     @Mock private RagRuntimeProperties ragRuntimeProperties;
     @Mock private EvaluationDatasetStorePort evaluationDatasetStorePort;
@@ -68,6 +69,7 @@ class LlmCampaignOrchestratorTest {
                         ragPresetRepository,
                         asyncTaskRepository,
                         asyncTaskService,
+                        labJobLifecycleService,
                         projectAccessService,
                         ragRuntimeProperties,
                         evaluationDatasetStorePort,

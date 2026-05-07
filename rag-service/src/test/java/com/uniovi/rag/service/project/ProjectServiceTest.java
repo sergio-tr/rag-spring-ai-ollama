@@ -1,6 +1,9 @@
 package com.uniovi.rag.service.project;
 
 import com.uniovi.rag.application.service.AuditApplicationService;
+import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileApplicationService;
+import com.uniovi.rag.interfaces.rest.dto.ProjectIndexProfileDto;
+import com.uniovi.rag.interfaces.rest.dto.UpsertProjectIndexProfileRequest;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
@@ -13,6 +16,7 @@ import com.uniovi.rag.interfaces.rest.dto.PatchProjectRequest;
 import com.uniovi.rag.interfaces.rest.dto.ProjectListResponseDto;
 import com.uniovi.rag.interfaces.rest.dto.ProjectSummaryDto;
 import com.uniovi.rag.service.preset.PresetService;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -56,6 +60,9 @@ class ProjectServiceTest {
     @Mock
     private AuditApplicationService auditApplicationService;
 
+    @Mock
+    private ProjectIndexProfileApplicationService projectIndexProfileApplicationService;
+
     @InjectMocks
     private ProjectService projectService;
 
@@ -94,11 +101,26 @@ class ProjectServiceTest {
         });
         when(knowledgeDocumentRepository.countByProject_Id(any())).thenReturn(0L);
         when(conversationRepository.countByProject_Id(any())).thenReturn(0L);
+        when(projectIndexProfileApplicationService.get(eq(userId), eq(newId)))
+                .thenReturn(
+                        new ProjectIndexProfileDto(
+                                newId,
+                                "CHUNK_LEVEL",
+                                false,
+                                null,
+                                null,
+                                400,
+                                null,
+                                "ab",
+                                Instant.EPOCH,
+                                Instant.EPOCH));
 
         ProjectSummaryDto dto =
                 projectService.create(userId, new CreateProjectRequest("  My project  ", null, null));
 
         assertThat(dto.name()).isEqualTo("My project");
+        assertThat(dto.indexProfile()).isNotNull();
+        assertThat(dto.indexProfile().materializationStrategy()).isEqualTo("CHUNK_LEVEL");
     }
 
     @Test
@@ -116,10 +138,62 @@ class ProjectServiceTest {
         });
         when(knowledgeDocumentRepository.countByProject_Id(any())).thenReturn(0L);
         when(conversationRepository.countByProject_Id(any())).thenReturn(0L);
+        when(projectIndexProfileApplicationService.get(eq(userId), eq(newId)))
+                .thenReturn(
+                        new ProjectIndexProfileDto(
+                                newId,
+                                "CHUNK_LEVEL",
+                                false,
+                                null,
+                                null,
+                                400,
+                                null,
+                                "ab",
+                                Instant.EPOCH,
+                                Instant.EPOCH));
 
         projectService.create(userId, new CreateProjectRequest("P", null, presetId.toString()));
 
         verify(presetService).applyInitialPresetToProject(userId, newId, presetId);
+    }
+
+    @Test
+    void create_withInitialIndexProfile_callsPut() {
+        UUID userId = UUID.randomUUID();
+        UserEntity owner = mock(UserEntity.class);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+
+        UUID newId = UUID.randomUUID();
+        when(projectRepository.save(any(ProjectEntity.class))).thenAnswer(inv -> {
+            ProjectEntity p = inv.getArgument(0);
+            p.setId(newId);
+            return p;
+        });
+        when(knowledgeDocumentRepository.countByProject_Id(any())).thenReturn(0L);
+        when(conversationRepository.countByProject_Id(any())).thenReturn(0L);
+
+        UpsertProjectIndexProfileRequest initial =
+                new UpsertProjectIndexProfileRequest("DOCUMENT_LEVEL", true, null, "mxbai-embed-large", 800, 40);
+        ProjectIndexProfileDto returned =
+                new ProjectIndexProfileDto(
+                        newId,
+                        "DOCUMENT_LEVEL",
+                        true,
+                        null,
+                        "mxbai-embed-large",
+                        800,
+                        40,
+                        "hash",
+                        Instant.EPOCH,
+                        Instant.EPOCH);
+        when(projectIndexProfileApplicationService.put(eq(userId), eq(newId), eq(initial))).thenReturn(returned);
+
+        ProjectSummaryDto dto =
+                projectService.create(
+                        userId, new CreateProjectRequest("P", null, null, initial));
+
+        verify(projectIndexProfileApplicationService).put(userId, newId, initial);
+        assertThat(dto.indexProfile()).isEqualTo(returned);
     }
 
     @Test
@@ -130,12 +204,26 @@ class ProjectServiceTest {
         when(projectAccessService.requireOwnedProject(userId, pid)).thenReturn(p);
         when(knowledgeDocumentRepository.countByProject_Id(pid)).thenReturn(2L);
         when(conversationRepository.countByProject_Id(pid)).thenReturn(1L);
+        when(projectIndexProfileApplicationService.get(userId, pid))
+                .thenReturn(
+                        new ProjectIndexProfileDto(
+                                pid,
+                                "CHUNK_LEVEL",
+                                false,
+                                null,
+                                null,
+                                400,
+                                null,
+                                "x",
+                                Instant.EPOCH,
+                                Instant.EPOCH));
 
         ProjectSummaryDto dto = projectService.get(userId, pid);
 
         assertThat(dto.name()).isEqualTo("x");
         assertThat(dto.docCount()).isEqualTo(2L);
         assertThat(dto.convCount()).isEqualTo(1L);
+        assertThat(dto.indexProfile()).isNotNull();
     }
 
     @Test

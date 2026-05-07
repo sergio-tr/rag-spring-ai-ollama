@@ -3,6 +3,8 @@ package com.uniovi.rag.application.service.knowledge;
 import com.uniovi.rag.application.port.BinaryStoragePort;
 import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.domain.ProjectDocumentStatus;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
 import com.uniovi.rag.infrastructure.persistence.KnowledgeDocumentRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import org.junit.jupiter.api.Test;
@@ -15,6 +17,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,6 +40,7 @@ class KnowledgePipelineOrchestratorTest {
     @Mock private BinaryStoragePort binaryStoragePort;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
     @Mock private KnowledgeIndexingService knowledgeIndexingService;
+    @Mock private ProjectIndexProfileService projectIndexProfileService;
     @Mock private PlatformTransactionManager transactionManager;
 
     @Test
@@ -44,6 +48,19 @@ class KnowledgePipelineOrchestratorTest {
         UUID projectId = UUID.randomUUID();
         when(knowledgeDocumentRepository.findByProject_IdAndCorpusScopeOrderByIdAsc(eq(projectId), eq(CorpusScope.PROJECT_SHARED)))
                 .thenReturn(List.of());
+        when(projectIndexProfileService.ensureDefault(projectId))
+                .thenReturn(
+                        new ProjectIndexProfile(
+                                projectId,
+                                MaterializationStrategy.CHUNK_LEVEL,
+                                false,
+                                null,
+                                "mxbai-embed-large",
+                                400,
+                                null,
+                                "hash",
+                                Instant.now(),
+                                Instant.now()));
 
         KnowledgePipelineOrchestrator orchestrator =
                 new KnowledgePipelineOrchestrator(
@@ -52,10 +69,8 @@ class KnowledgePipelineOrchestratorTest {
                         binaryStoragePort,
                         knowledgeSnapshotService,
                         knowledgeIndexingService,
+                        projectIndexProfileService,
                         transactionManager,
-                        400,
-                        "mxbai-embed-large",
-                        "CHUNK_LEVEL",
                         null);
 
         String a = orchestrator.previewSnapshotSignatureHex(projectId, CorpusScope.PROJECT_SHARED, null);
@@ -69,7 +84,6 @@ class KnowledgePipelineOrchestratorTest {
         UUID projectId = UUID.randomUUID();
         when(knowledgeDocumentRepository.findByProject_IdAndCorpusScopeOrderByIdAsc(eq(projectId), eq(CorpusScope.PROJECT_SHARED)))
                 .thenReturn(List.of());
-
         KnowledgePipelineOrchestrator orchestrator =
                 new KnowledgePipelineOrchestrator(
                         jdbcTemplate,
@@ -77,10 +91,8 @@ class KnowledgePipelineOrchestratorTest {
                         binaryStoragePort,
                         knowledgeSnapshotService,
                         knowledgeIndexingService,
+                        projectIndexProfileService,
                         transactionManager,
-                        400,
-                        "mxbai-embed-large",
-                        "CHUNK_LEVEL",
                         null);
 
         assertThat(orchestrator.scopeHasRequiresReindex(projectId, CorpusScope.PROJECT_SHARED, null)).isFalse();
@@ -106,10 +118,8 @@ class KnowledgePipelineOrchestratorTest {
                         binaryStoragePort,
                         knowledgeSnapshotService,
                         knowledgeIndexingService,
+                        projectIndexProfileService,
                         transactionManager,
-                        400,
-                        "mxbai-embed-large",
-                        "CHUNK_LEVEL",
                         null);
 
         Path tmp = Files.createTempFile("rag-test-", ".txt");

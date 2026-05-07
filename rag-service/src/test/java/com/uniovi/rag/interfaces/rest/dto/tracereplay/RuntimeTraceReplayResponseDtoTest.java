@@ -113,6 +113,10 @@ class RuntimeTraceReplayResponseDtoTest {
                 base.retrievalQuery(),
                 base.packedContextPreview(),
                 base.sourceCount(),
-                base.retrievedDocumentNames());
+                base.retrievedDocumentNames(),
+                base.answerGroundingPolicy(),
+                base.promptContextCharCount(),
+                base.abstentionTriggered(),
+                base.abstentionReason());
     }
 }

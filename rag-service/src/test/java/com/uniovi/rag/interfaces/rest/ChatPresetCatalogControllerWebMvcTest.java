@@ -142,14 +142,14 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 "S2",
                                 "P6 preset",
                                 "desc",
-                                List.of("USE_RETRIEVAL", "REASONING"),
-                                false,
-                                "NOT_SUPPORTED",
-                                "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+                                List.of("USE_RETRIEVAL", "TOOLS"),
+                                true,
+                                "EXECUTABLE",
+                                null,
                                 false,
                                 Map.of(),
                                 List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
-                                false,
+                                true,
                                 true),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000018",
@@ -157,14 +157,14 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 "S2",
                                 "P8 preset",
                                 "desc",
-                                List.of("USE_RETRIEVAL"),
-                                false,
-                                "NOT_SUPPORTED",
-                                "ADVANCED_RUNTIME_CAPABILITIES_NOT_IMPLEMENTED",
+                                List.of("USE_RETRIEVAL", "RANKER", "POST_RETRIEVAL"),
+                                true,
+                                "EXECUTABLE",
+                                null,
                                 false,
                                 Map.of(),
                                 List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
-                                false,
+                                true,
                                 true),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000021",
@@ -173,13 +173,13 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 "P11 preset",
                                 "desc",
                                 List.of(),
-                                false,
+                                true,
                                 "REQUIRES_MULTI_TURN",
-                                "PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED",
+                                null,
                                 true,
                                 Map.of(),
                                 List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
-                                false,
+                                true,
                                 true),
                         new ExperimentalPresetCatalogItemDto(
                                 "cafe0001-0001-4001-8001-000000000022",
@@ -188,13 +188,13 @@ class ChatPresetCatalogControllerWebMvcTest {
                                 "P12 preset",
                                 "desc",
                                 List.of(),
-                                false,
+                                true,
                                 "REQUIRES_MULTI_TURN",
-                                "PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED",
+                                null,
                                 true,
                                 Map.of(),
                                 List.of("EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"),
-                                false,
+                                true,
                                 true)));
         // Fill up to 15 with placeholders.
         while (experimental.size() < 15) {
@@ -222,10 +222,10 @@ class ChatPresetCatalogControllerWebMvcTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.productPresets.length()").value(3))
                 .andExpect(jsonPath("$.experimentalPresets.length()").value(15))
-                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P11')].chatSelectable").value(false))
-                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P12')].chatSelectable").value(false))
-                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P6')].chatSelectable").value(false))
-                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P8')].chatSelectable").value(false));
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P11')].chatSelectable").value(true))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P12')].chatSelectable").value(true))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P6')].chatSelectable").value(true))
+                .andExpect(jsonPath("$.experimentalPresets[?(@.code=='P8')].chatSelectable").value(true));
     }
 }
 

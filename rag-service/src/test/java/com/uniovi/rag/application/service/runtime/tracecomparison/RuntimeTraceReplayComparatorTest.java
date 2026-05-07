@@ -118,7 +118,11 @@ class RuntimeTraceReplayComparatorTest {
                         aligned.retrievalQuery(),
                         aligned.packedContextPreview(),
                         aligned.sourceCount(),
-                        aligned.retrievedDocumentNames());
+                        aligned.retrievedDocumentNames(),
+                        aligned.answerGroundingPolicy(),
+                        aligned.promptContextCharCount(),
+                        aligned.abstentionTriggered(),
+                        aligned.abstentionReason());
         var mismatches = comparator.compare(dto, drift, Optional.of("x"));
         assertThat(mismatches).hasSize(1);
         assertThat(mismatches.getFirst().fieldPath()).isEqualTo("ExecutionTrace.classifierStatus");
@@ -187,7 +191,11 @@ class RuntimeTraceReplayComparatorTest {
                         replay.retrievalQuery(),
                         replay.packedContextPreview(),
                         replay.sourceCount(),
-                        replay.retrievedDocumentNames());
+                        replay.retrievedDocumentNames(),
+                        replay.answerGroundingPolicy(),
+                        replay.promptContextCharCount(),
+                        replay.abstentionTriggered(),
+                        replay.abstentionReason());
         var mismatches = comparator.compare(dto, drift, Optional.of("a"));
         assertThat(mismatches.stream().anyMatch(m -> "workflowName".equals(m.fieldPath()))).isTrue();
         assertThat(comparator.isCompatibleMismatchOnly(mismatches)).isFalse();
@@ -297,7 +305,11 @@ class RuntimeTraceReplayComparatorTest {
                 "",
                 "",
                 0,
-                List.of());
+                List.of(),
+                "",
+                0,
+                false,
+                "");
     }
 
     private static String str(Map<String, Object> j, String key) {

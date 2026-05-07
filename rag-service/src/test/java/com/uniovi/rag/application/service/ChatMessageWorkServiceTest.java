@@ -92,6 +92,32 @@ class ChatMessageWorkServiceTest {
     }
 
     @Test
+    void applyAssistantSuccess_mergesChatTelemetryIntoExecutionMetadata() {
+        UUID assistantId = UUID.randomUUID();
+        UUID convId = UUID.randomUUID();
+        MessageEntity m = new MessageEntity();
+        ConversationEntity conv = mock(ConversationEntity.class);
+        when(messageRepository.findById(assistantId)).thenReturn(Optional.of(m));
+        when(conversationRepository.findById(convId)).thenReturn(Optional.of(conv));
+
+        chatMessageWorkService.applyAssistantSuccess(
+                assistantId,
+                convId,
+                "answer",
+                List.of(),
+                "PLAIN",
+                "trace-9",
+                List.of(),
+                "llama",
+                Duration.ofMillis(1),
+                Map.of("memoryAttempted", true, "memoryOutcome", "CONDENSED"));
+
+        assertThat(m.getExecutionMetadata())
+                .containsEntry("memoryAttempted", true)
+                .containsEntry("memoryOutcome", "CONDENSED");
+    }
+
+    @Test
     void applyAssistantSuccess_nullAnswerUsesEmptyStringAndSkipsBlankLlmModel() {
         UUID assistantId = UUID.randomUUID();
         UUID convId = UUID.randomUUID();

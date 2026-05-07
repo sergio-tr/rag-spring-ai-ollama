@@ -9,6 +9,7 @@ import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeDocumentEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -75,7 +76,14 @@ class KnowledgeSnapshotServiceTest {
         UUID cfgId = UUID.randomUUID();
         KnowledgeIndexSnapshotEntity out =
                 knowledgeSnapshotService.createBuildingSnapshot(
-                        project, null, KnowledgeSnapshotScopeType.PROJECT, "sighex", cfgId, "a".repeat(64));
+                        project,
+                        null,
+                        KnowledgeSnapshotScopeType.PROJECT,
+                        "sighex",
+                        cfgId,
+                        "a".repeat(64),
+                        Map.of(),
+                        "profile-hash");
 
         assertThat(out.getStatus()).isEqualTo(IndexSnapshotStatus.BUILDING);
         assertThat(out.getSignatureHash()).isEqualTo("sighex");

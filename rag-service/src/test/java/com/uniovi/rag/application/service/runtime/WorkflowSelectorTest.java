@@ -314,6 +314,70 @@ class WorkflowSelectorTest {
         assertTrue(selector.select(ctx(ok)) instanceof ChunkDenseRagWorkflow);
     }
 
+    @Test
+    void select_rejects_rankerEnabled_without_retrieval() {
+        RagConfig base = rag(false, false, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig bad =
+                new RagConfig(
+                        base.expansionEnabled(),
+                        base.nerEnabled(),
+                        base.toolsEnabled(),
+                        base.metadataEnabled(),
+                        base.reasoningEnabled(),
+                        true,
+                        base.postRetrievalEnabled(),
+                        base.functionCallingEnabled(),
+                        false,
+                        base.useAdvisor(),
+                        base.clarificationEnabled(),
+                        base.memoryEnabled(),
+                        base.adaptiveRoutingEnabled(),
+                        base.judgeEnabled(),
+                        base.topK(),
+                        base.similarityThreshold(),
+                        base.llmModel(),
+                        base.embeddingModel(),
+                        base.classifierModelId(),
+                        base.reasoningStrategy(),
+                        base.naiveFullCorpusInPromptEnabled(),
+                        base.naiveFullCorpusMaxChars(),
+                        base.advancedRetrievalMaxContextChars(),
+                        base.materializationStrategy());
+        assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
+    }
+
+    @Test
+    void select_rejects_postRetrievalEnabled_without_retrieval() {
+        RagConfig base = rag(false, false, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig bad =
+                new RagConfig(
+                        base.expansionEnabled(),
+                        base.nerEnabled(),
+                        base.toolsEnabled(),
+                        base.metadataEnabled(),
+                        base.reasoningEnabled(),
+                        base.rankerEnabled(),
+                        true,
+                        base.functionCallingEnabled(),
+                        false,
+                        base.useAdvisor(),
+                        base.clarificationEnabled(),
+                        base.memoryEnabled(),
+                        base.adaptiveRoutingEnabled(),
+                        base.judgeEnabled(),
+                        base.topK(),
+                        base.similarityThreshold(),
+                        base.llmModel(),
+                        base.embeddingModel(),
+                        base.classifierModelId(),
+                        base.reasoningStrategy(),
+                        base.naiveFullCorpusInPromptEnabled(),
+                        base.naiveFullCorpusMaxChars(),
+                        base.advancedRetrievalMaxContextChars(),
+                        base.materializationStrategy());
+        assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
+    }
+
     private static RagConfig denseChunkWithUseAdvisor(boolean useAdvisor) {
         return new RagConfig(
                 false,

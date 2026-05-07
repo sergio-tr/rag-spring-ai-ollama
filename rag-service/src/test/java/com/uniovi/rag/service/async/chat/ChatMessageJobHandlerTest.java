@@ -165,7 +165,8 @@ class ChatMessageJobHandlerTest {
                         eq("trace-1"),
                         any(),
                         eq("m1"),
-                        any());
+                        any(),
+                        eq(Map.of()));
         verify(mutation).markSucceeded(eq(taskId), any());
         verify(cancellationRegistry).clear(taskId);
     }

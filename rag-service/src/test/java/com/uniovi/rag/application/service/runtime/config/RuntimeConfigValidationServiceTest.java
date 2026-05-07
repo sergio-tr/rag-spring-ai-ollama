@@ -8,13 +8,16 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.config.ConfigResolverService;
 import com.uniovi.rag.application.exception.RagServiceException;
+import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.application.service.runtime.ExecutionWorkflow;
+import com.uniovi.rag.application.service.runtime.KnowledgeRuntimeSnapshotSelector;
 import com.uniovi.rag.application.service.runtime.WorkflowSelector;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.config.validation.CompatibilityViolation;
 import com.uniovi.rag.domain.runtime.RagConfig;
+import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
 import com.uniovi.rag.domain.runtime.engine.RagExecutionResult;
 import com.uniovi.rag.infrastructure.persistence.ConversationRepository;
@@ -34,6 +37,8 @@ class RuntimeConfigValidationServiceTest {
     private ConversationRepository conversationRepository;
     private ConfigResolverService configResolverService;
     private WorkflowSelector workflowSelector;
+    private KnowledgeRuntimeSnapshotSelector snapshotSelector;
+    private KnowledgeSnapshotService snapshotService;
     private RuntimeConfigValidationService sut;
 
     @BeforeEach
@@ -41,9 +46,16 @@ class RuntimeConfigValidationServiceTest {
         conversationRepository = mock(ConversationRepository.class);
         configResolverService = mock(ConfigResolverService.class);
         workflowSelector = mock(WorkflowSelector.class);
+        snapshotSelector = mock(KnowledgeRuntimeSnapshotSelector.class);
+        snapshotService = mock(KnowledgeSnapshotService.class);
         sut =
                 new RuntimeConfigValidationService(
-                        conversationRepository, new ObjectMapper(), configResolverService, workflowSelector);
+                        conversationRepository,
+                        new ObjectMapper(),
+                        configResolverService,
+                        workflowSelector,
+                        snapshotSelector,
+                        snapshotService);
     }
 
     @Test
@@ -52,6 +64,9 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
+        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
+        when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
         ResolvedRuntimeConfig resolved = resolvedWithCompatibility(true);
         when(configResolverService.preview(any())).thenReturn(resolved);
@@ -71,6 +86,9 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
+        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
+        when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
         ResolvedRuntimeConfig resolved = resolvedWithCompatibility(true);
         when(configResolverService.preview(any())).thenReturn(resolved);
@@ -89,21 +107,48 @@ class RuntimeConfigValidationServiceTest {
     }
 
     @Test
-    void validate_reasoningEnabled_notSupported() {
+    void validate_reasoningEnabled_supported_whenWorkflowSelectable() {
         UUID uid = UUID.randomUUID();
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
+        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
+        when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
         ResolvedRuntimeConfig resolved = resolvedWithCompatibility(true);
         when(configResolverService.preview(any())).thenReturn(resolved);
-        when(workflowSelector.selectFromResolved(resolved))
-                .thenThrow(RagServiceException.unsupportedRuntimeConfiguration("advanced runtime capabilities are not implemented"));
+        when(workflowSelector.selectFromResolved(resolved)).thenReturn(new DummyWorkflow());
 
         var resp =
                 sut.validate(
                         uid,
                         new RuntimeConfigValidateRequest(cid, null, null, Map.of("reasoningEnabled", true)));
+        assertThat(resp.valid()).isTrue();
+        assertThat(resp.supported()).isTrue();
+        assertThat(resp.errors()).isEmpty();
+    }
+
+    @Test
+    void validate_rankerEnabled_requiresRetrieval_invalid() {
+        UUID uid = UUID.randomUUID();
+        UUID cid = UUID.randomUUID();
+        ConversationEntity conv = mockConversation(uid, cid);
+        when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
+        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
+        when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
+
+        ResolvedRuntimeConfig resolved = resolvedWithCompatibility(true);
+        when(configResolverService.preview(any())).thenReturn(resolved);
+        when(workflowSelector.selectFromResolved(resolved))
+                .thenThrow(RagServiceException.unsupportedRuntimeConfiguration("rankerEnabled requires useRetrieval"));
+
+        var resp =
+                sut.validate(
+                        uid,
+                        new RuntimeConfigValidateRequest(
+                                cid, null, null, Map.of("rankerEnabled", true, "useRetrieval", false)));
         assertThat(resp.valid()).isFalse();
         assertThat(resp.supported()).isFalse();
         assertThat(resp.errors()).isNotEmpty();
@@ -115,6 +160,9 @@ class RuntimeConfigValidationServiceTest {
         UUID cid = UUID.randomUUID();
         ConversationEntity conv = mockConversation(uid, cid);
         when(conversationRepository.findByIdWithConfigAndPreset(cid)).thenReturn(Optional.of(conv));
+        when(snapshotSelector.select(any(), any())).thenReturn(KnowledgeSnapshotSelection.empty());
+        when(snapshotService.findActiveProjectSnapshot(any())).thenReturn(Optional.empty());
+        when(snapshotService.findActiveConversationSnapshot(any())).thenReturn(Optional.empty());
 
         ResolvedRuntimeConfig resolved = resolvedWithCompatibility(true);
         when(configResolverService.preview(any())).thenReturn(resolved);

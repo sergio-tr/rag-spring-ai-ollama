@@ -238,9 +238,13 @@ class EngineRuntimeRecordsTest {
                         false,
                         "",
                         "",
-                        "",
-                        0,
-                        List.of());
+                "",
+                0,
+                List.of(),
+                "",
+                0,
+                false,
+                "");
 
         assertThat(t.usedResolvedConfigSnapshotId()).isEmpty();
         assertThat(t.usedConfigHash()).isEmpty();

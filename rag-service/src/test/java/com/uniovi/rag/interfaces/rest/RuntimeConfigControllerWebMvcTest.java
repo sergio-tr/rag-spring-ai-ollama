@@ -77,7 +77,8 @@ class RuntimeConfigControllerWebMvcTest {
                                                 List.of(),
                                                 List.of(),
                                                 null,
-                                                Map.of()))));
+                                                Map.of(),
+                                                null))));
 
         mockMvc.perform(get(path("/runtime-config/capabilities")))
                 .andExpect(status().isOk())
@@ -94,7 +95,9 @@ class RuntimeConfigControllerWebMvcTest {
                                 Map.of("useRetrieval", true),
                                 List.of(new RuntimeConfigValidationIssueDto("X", "field", "msg", "ERROR")),
                                 List.of(),
-                                "ChunkDenseRagWorkflow"));
+                                "ChunkDenseRagWorkflow",
+                                null,
+                                false));
 
         RuntimeConfigValidateRequest body =
                 new RuntimeConfigValidateRequest(UUID.randomUUID(), null, null, Map.of("useRetrieval", true));
