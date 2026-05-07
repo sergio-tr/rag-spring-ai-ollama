@@ -5,6 +5,7 @@ import { apiFetch, apiProductPath } from "@/lib/api-client";
 import { useAppStore } from "@/store/app.store";
 import type { ConversationDto, CreateConversationBody, MessageDto, PatchConversationBody } from "@/types/api";
 import { CHAT_DETERMINISTIC_DEFAULT_PRESET_ID } from "@/features/chat/lib/conversation-preset-ui";
+import { chatRuntimeStateKey } from "@/features/chat/hooks/use-chat-runtime-state";
 
 const convKey = (projectId: string) => ["conversations", projectId] as const;
 
@@ -119,6 +120,7 @@ export function usePatchConversation(projectId: string | undefined) {
         if (!old) return old;
         return old.map((c) => (c.id === conversationId ? data : c));
       });
+      void qc.invalidateQueries({ queryKey: chatRuntimeStateKey(conversationId) });
     },
   });
 }

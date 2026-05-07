@@ -35,8 +35,11 @@ export type ChatConversationDocumentsSheetProps = {
     errorMessage?: string | null;
   }>;
   onRetryUploadItem?: (id: string) => void;
+  onCheckUploadItem?: (id: string) => void;
   onDocToggle: (documentId: string, checked: boolean) => void;
   onUploadFiles: (files: FileList | null) => void;
+  onCleanSelection?: () => void;
+  staleSelectionWarning?: string | null;
 };
 
 export function ChatConversationDocumentsSheet({
@@ -54,6 +57,9 @@ export function ChatConversationDocumentsSheet({
   onDocToggle,
   onUploadFiles,
   onRetryUploadItem,
+  onCheckUploadItem,
+  onCleanSelection,
+  staleSelectionWarning,
 }: Readonly<ChatConversationDocumentsSheetProps>) {
   const t = useTranslations("Chat");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -116,13 +122,22 @@ export function ChatConversationDocumentsSheet({
                         <span className="truncate">{it.fileName}</span>
                         <span className="flex items-center gap-2">
                           <span className="font-mono text-muted-foreground">{it.phase.toUpperCase()}</span>
-                          {(it.phase === "error" || it.phase === "stalled") && it.id && onRetryUploadItem ? (
+                          {it.phase === "stalled" && it.id && onCheckUploadItem ? (
+                            <button
+                              type="button"
+                              className="text-primary underline underline-offset-2"
+                              onClick={() => onCheckUploadItem(it.id!)}
+                            >
+                              Check again
+                            </button>
+                          ) : null}
+                          {it.phase === "error" && it.id && onRetryUploadItem ? (
                             <button
                               type="button"
                               className="text-primary underline underline-offset-2"
                               onClick={() => onRetryUploadItem(it.id!)}
                             >
-                              Retry
+                              Retry ingest
                             </button>
                           ) : null}
                         </span>
@@ -131,6 +146,11 @@ export function ChatConversationDocumentsSheet({
                         <span className="text-muted-foreground">chunks: {it.chunkCount}</span>
                       ) : null}
                       {it.errorMessage ? <span className="text-destructive break-all">{it.errorMessage}</span> : null}
+                      {it.phase === "stalled" ? (
+                        <span className="text-muted-foreground">
+                          Still ingesting; check again to refresh status.
+                        </span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -140,6 +160,20 @@ export function ChatConversationDocumentsSheet({
 
           <div className="flex min-h-0 flex-1 flex-col gap-2">
             <Label className="text-xs">{t("documentsSheetPickLabel")}</Label>
+            {staleSelectionWarning ? (
+              <div className="flex items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-[11px]">
+                <span className="text-muted-foreground">{staleSelectionWarning}</span>
+                {onCleanSelection ? (
+                  <button
+                    type="button"
+                    className="text-primary underline underline-offset-2"
+                    onClick={() => onCleanSelection()}
+                  >
+                    Clean selection
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <ScrollArea className="max-h-64 rounded-md border p-2">
               {!docs?.length ? (
                 <p className="text-muted-foreground text-xs">{t("noDocumentsInProject")}</p>

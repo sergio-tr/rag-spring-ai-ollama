@@ -133,6 +133,39 @@ export type ConversationDto = {
   pendingClarification?: Record<string, unknown> | null;
 };
 
+export type ChatPresetSummaryDto = {
+  kind: "PRODUCT" | "EXPERIMENTAL" | "DEFAULT" | "MISSING";
+  code: string | null;
+  label: string;
+  chatSelectable: boolean;
+  supported: boolean;
+  supportStatus: string | null;
+  reasonIfUnsupported: string | null;
+};
+
+export type ChatRuntimeValidationDto = {
+  valid: boolean;
+  supported: boolean;
+  errors: RuntimeConfigValidationIssueDto[];
+  warnings: RuntimeConfigValidationIssueDto[];
+};
+
+export type ChatRuntimeStateDto = {
+  conversationId: string;
+  selectedPresetId: string | null;
+  effectivePresetId: string | null;
+  preset: ChatPresetSummaryDto;
+  baseEffectiveConfig: Record<string, unknown>;
+  effectiveConfig: Record<string, unknown>;
+  runtimeOverride: Record<string, unknown>;
+  manualOverrideKeys: string[];
+  isCustom: boolean;
+  validation: ChatRuntimeValidationDto;
+  selectedWorkflow: string | null;
+  indexCompatibility: ConversationDto["indexCompatibility"];
+  requiresReindex: boolean;
+};
+
 export type RagPresetDto = {
   id: string;
   name: string;
@@ -355,21 +388,27 @@ export type ExperimentalPresetCatalogItemDto = {
   allowedOutcomes: Array<"EXECUTED" | "NOT_SUPPORTED" | "FAILED" | "SKIPPED">;
   chatSelectable: boolean;
   labSelectable: boolean;
+  /** Derived: `labSelectable && !chatSelectable` */
+  labOnly: boolean;
 };
 
 export type RuntimeConfigCapabilityDto = {
   key: string;
   label: string;
   description: string;
-  group: string;
+  category: "RUNTIME_HOT_SWAPPABLE" | "INDEX_BOUND" | "LAB_ONLY" | "INTERNAL";
+  visibleInChat: boolean;
+  configurableInChat: boolean;
   implemented: boolean;
-  configurable: boolean;
+  engineWired: boolean;
+  supportMode: string | null;
+  displayOrder: number;
   requires: string[];
   excludes: string[];
+  requiresIndexSnapshot: boolean;
+  requiresReindexWhenChanged: boolean;
+  reasonIfDisabled: string | null;
   reasonIfNotImplemented: string | null;
-  options: Record<string, unknown>;
-  /** e.g. MULTI_TURN_REQUIRED — orthogonal to `implemented`; used for UX hints. */
-  supportMode?: string | null;
 };
 
 export type RuntimeConfigCapabilitiesResponse = {
@@ -457,12 +496,27 @@ export type AsyncTaskStatusDto = {
   failureCode?: string | null;
 };
 
+export type ChatSourceDto = {
+  documentId: string | null;
+  projectDocumentId: string | null;
+  filename: string | null;
+  snippet: string | null;
+  /** Smaller is closer (embedding distance). */
+  distance: number | null;
+  /** Fixed label for now (future: score/similarity). */
+  distanceLabel: "distance" | string | null;
+  chunkIndex: number | null;
+  /** Optional, only when backend provides a detected/known date. */
+  detectedDate: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
 export type MessageDto = {
   id: string;
   role: "USER" | "ASSISTANT";
   content: string;
   createdAt: string;
-  sources: Record<string, unknown>[] | null;
+  sources: ChatSourceDto[] | null;
   queryType: string | null;
   pipelineSteps: Record<string, unknown>[] | null;
   /** Message lifecycle for assistant rows (USER is typically DONE). */
@@ -475,7 +529,7 @@ export type StreamDonePayload = {
   queryType: string | null;
   usedTool: boolean;
   toolUsed: string | null;
-  sources: Record<string, unknown>[];
+  sources: ChatSourceDto[];
   pipelineSteps: Record<string, unknown>[];
   /** Privacy-safe runtime hints mirrored from the last assistant message metadata. */
   runtimeTelemetry?: Record<string, unknown>;

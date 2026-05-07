@@ -164,7 +164,20 @@ vi.mock("@/features/documents/hooks/use-project-documents", () => ({
     },
     refetch: projectDocsRefetchMock,
   }),
+  useProjectDocumentsForConversation: () => ({
+    get data() {
+      return projectDocsDataRef.current;
+    },
+    refetch: projectDocsRefetchMock,
+  }),
   useUploadProjectDocument: () => ({
+    mutateAsync: uploadMutateAsyncMock,
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+  }),
+  useUploadConversationOverlayDocument: () => ({
     mutateAsync: uploadMutateAsyncMock,
     isPending: false,
     isError: false,
@@ -292,6 +305,45 @@ function patchConversationApiCalls() {
 function defaultApiFetch(url: string | { toString(): string }, init?: RequestInit): Promise<unknown> {
   const u = typeof url === "string" ? url : url.toString();
   const method = (init?.method ?? "GET").toUpperCase();
+  const runtimeStateMatch =
+    method === "GET" ? u.match(/\/conversations\/([^/]+)\/runtime-state\/?$/) : null;
+  if (runtimeStateMatch) {
+    const conversationId = runtimeStateMatch[1];
+    const conv = mockConvRows.find((c) => c.id === conversationId) ?? null;
+    const selectedPresetId = conv?.presetId ?? null;
+    const effectivePresetId = conv?.effectivePresetId ?? DEFAULT_EFFECTIVE_PRESET_ID;
+    const runtimeOverride = conv?.runtimeOverride ?? {};
+    const baseEffectiveConfig: Record<string, unknown> = {
+      useRetrieval: true,
+      rankerEnabled: false,
+      memoryEnabled: false,
+    };
+    const effectiveConfig: Record<string, unknown> = { ...baseEffectiveConfig, ...runtimeOverride };
+    const manualOverrideKeys = Object.keys(runtimeOverride);
+    return Promise.resolve({
+      conversationId,
+      selectedPresetId,
+      effectivePresetId,
+      preset: {
+        kind: selectedPresetId ? "PRODUCT" : "DEFAULT",
+        code: null,
+        label: selectedPresetId ? "Selected preset" : "Recommended Default",
+        chatSelectable: true,
+        supported: true,
+        supportStatus: null,
+        reasonIfUnsupported: null,
+      },
+      baseEffectiveConfig,
+      effectiveConfig,
+      runtimeOverride,
+      manualOverrideKeys,
+      isCustom: manualOverrideKeys.length > 0,
+      validation: { valid: true, supported: true, errors: [], warnings: [] },
+      selectedWorkflow: "dense_chunk_workflow",
+      indexCompatibility: null,
+      requiresReindex: false,
+    });
+  }
   if (method === "GET" && u.includes("/projects/p1/index-profile")) {
     return Promise.resolve({
       projectId: "p1",
@@ -328,6 +380,7 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           allowedOutcomes: ["EXECUTED", "FAILED", "SKIPPED"],
           chatSelectable: true,
           labSelectable: true,
+          labOnly: false,
         },
         {
           productPresetId: "cafe0001-0001-4001-8001-000000000016",
@@ -344,6 +397,7 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
           chatSelectable: true,
           labSelectable: true,
+          labOnly: false,
         },
         {
           productPresetId: "cafe0001-0001-4001-8001-000000000018",
@@ -360,6 +414,7 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           allowedOutcomes: ["EXECUTED", "NOT_SUPPORTED", "FAILED", "SKIPPED"],
           chatSelectable: true,
           labSelectable: true,
+          labOnly: false,
         },
       ],
     });
@@ -371,11 +426,20 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           key: "useRetrieval",
           label: "Use retrieval",
           description: "desc",
+          category: "RUNTIME_HOT_SWAPPABLE",
+          visibleInChat: true,
+          configurableInChat: true,
+          engineWired: true,
+          supportMode: "SUPPORTED",
+          displayOrder: 1,
+          requiresIndexSnapshot: false,
+          requiresReindexWhenChanged: false,
           group: "Retrieval",
           implemented: true,
           configurable: true,
           requires: [],
           excludes: [],
+          reasonIfDisabled: null,
           reasonIfNotImplemented: null,
           options: {},
         },
@@ -383,11 +447,20 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           key: "reasoningEnabled",
           label: "Reasoning",
           description: "desc",
+          category: "RUNTIME_HOT_SWAPPABLE",
+          visibleInChat: true,
+          configurableInChat: true,
+          engineWired: true,
+          supportMode: "SUPPORTED",
+          displayOrder: 2,
+          requiresIndexSnapshot: false,
+          requiresReindexWhenChanged: false,
           group: "Advanced",
           implemented: true,
           configurable: true,
           requires: [],
           excludes: [],
+          reasonIfDisabled: null,
           reasonIfNotImplemented: null,
           options: {},
         },
@@ -395,11 +468,20 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           key: "rankerEnabled",
           label: "Ranker",
           description: "desc",
+          category: "RUNTIME_HOT_SWAPPABLE",
+          visibleInChat: true,
+          configurableInChat: true,
+          engineWired: true,
+          supportMode: "SUPPORTED",
+          displayOrder: 3,
+          requiresIndexSnapshot: false,
+          requiresReindexWhenChanged: false,
           group: "Advanced",
           implemented: true,
           configurable: true,
           requires: ["useRetrieval"],
           excludes: [],
+          reasonIfDisabled: null,
           reasonIfNotImplemented: null,
           options: {},
         },
@@ -407,11 +489,20 @@ function defaultApiFetch(url: string | { toString(): string }, init?: RequestIni
           key: "postRetrievalEnabled",
           label: "Post-retrieval",
           description: "desc",
+          category: "RUNTIME_HOT_SWAPPABLE",
+          visibleInChat: true,
+          configurableInChat: true,
+          engineWired: true,
+          supportMode: "SUPPORTED",
+          displayOrder: 4,
+          requiresIndexSnapshot: false,
+          requiresReindexWhenChanged: false,
           group: "Advanced",
           implemented: true,
           configurable: true,
           requires: ["useRetrieval"],
           excludes: [],
+          reasonIfDisabled: null,
           reasonIfNotImplemented: null,
           options: {},
         },
@@ -905,8 +996,8 @@ describe("ChatPage", () => {
     // Ignore unrelated initial effects (draft load, etc.).
     vi.mocked(apiFetch).mockClear();
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
-    expect(presetSelect).toHaveValue("cafe0001-0001-4001-8001-000000000003");
-    expect(screen.getByRole("option", { name: /^Unknown preset$/ })).toBeInTheDocument();
+    // R1: selected preset is backend-authoritative; when user did not select a preset, the select value is empty.
+    expect(presetSelect).toHaveValue("");
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
     expect(patchConversationApiCalls()).toHaveLength(0);
   });
@@ -935,14 +1026,13 @@ describe("ChatPage", () => {
     await openChatToolbarOverflow(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
     expect(presetSelect).toBeDisabled();
-    expect(screen.getByRole("option", { name: /^Unknown preset$/ })).toBeInTheDocument();
     expect(screen.getAllByRole("status").some((n) => /No presets are available/i.test(n.textContent ?? ""))).toBe(true);
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
     // Experimental group still loads from unified catalog.
     expect(screen.getByRole("option", { name: /^P4 — Chunk \+ metadata retrieval$/ })).toBeInTheDocument();
   });
 
-  it("when conversation omits preset ids, selects first system preset from catalog", async () => {
+  it("when conversation omits preset ids, shows Recommended Default (no local fallback)", async () => {
     mockConvRows[0] = {
       ...mockConvRows[0],
       presetId: null,
@@ -957,7 +1047,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: /^T1$/ }));
     await openChatToolbarOverflow(user);
     const presetSelect = await screen.findByRole("combobox", { name: /Preset/i });
-    await waitFor(() => expect(presetSelect).toHaveValue("s"));
+    await waitFor(() => expect(presetSelect).toHaveValue(""));
     expect(screen.queryByRole("option", { name: /^None$/i })).not.toBeInTheDocument();
   });
 
@@ -1254,6 +1344,9 @@ describe("ChatPage", () => {
       const u = typeof url === "string" ? url : url.toString();
       const method = (init?.method ?? "GET").toUpperCase();
       if (u.includes("/draft")) return { content: "" };
+      if (method === "GET" && u.includes("/runtime-state")) {
+        return { validation: { valid: true, supported: true, errors: [] } };
+      }
       if (u.includes("/conversations/c1/messages") && method === "GET") {
         return [...chatMessagesStore];
       }
@@ -1290,6 +1383,9 @@ describe("ChatPage", () => {
       const u = typeof url === "string" ? url : url.toString();
       const method = (init?.method ?? "GET").toUpperCase();
       if (u.includes("/draft")) return { content: "" };
+      if (method === "GET" && u.includes("/runtime-state")) {
+        return { validation: { valid: true, supported: true, errors: [] } };
+      }
       if (u.includes("/conversations/c1/messages") && method === "GET") {
         return [...chatMessagesStore];
       }

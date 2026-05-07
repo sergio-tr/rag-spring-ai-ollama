@@ -145,6 +145,7 @@ describe("conversation-preset-ui", () => {
           allowedOutcomes: ["EXECUTED"],
           chatSelectable: true,
           labSelectable: true,
+          labOnly: false,
         },
       ],
       "exp4",

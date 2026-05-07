@@ -12,7 +12,6 @@ import { MoveConversationDialog } from "@/features/chat/components/MoveConversat
 import { NewConversationDialog } from "@/features/chat/components/NewConversationDialog";
 import {
   CHAT_DETERMINISTIC_DEFAULT_PRESET_ID,
-  resolveChatPresetSelectValue,
 } from "@/features/chat/lib/conversation-preset-ui";
 import {
   useConversationMessages,
@@ -20,12 +19,13 @@ import {
   useCreateConversation,
   usePatchConversation,
 } from "@/features/chat/hooks/use-conversations";
+import { useChatRuntimeState } from "@/features/chat/hooks/use-chat-runtime-state";
 import { optimisticConsumed } from "@/features/chat/lib/chat-optimistic";
 import { useModelsCatalog } from "@/features/chat/hooks/use-models-catalog";
 import { useChatPresetsCatalog } from "@/features/chat/hooks/use-chat-presets-catalog";
 import {
-  useProjectDocuments,
-  useUploadProjectDocument,
+  useProjectDocumentsForConversation,
+  useUploadConversationOverlayDocument,
 } from "@/features/documents/hooks/use-project-documents";
 import { useProjectList } from "@/features/projects/hooks/use-projects";
 import { useSyncActiveProjectFromChatUrl } from "@/features/projects/hooks/use-sync-active-project-from-chat-url";
@@ -41,7 +41,6 @@ import {
 import { resolveChatJobFailureUserHint } from "@/features/chat/lib/chat-job-errors";
 import { followLabJob } from "@/lib/lab-job-follow";
 import { cn } from "@/lib/utils";
-import { useRuntimeConfigValidate } from "@/features/chat/hooks/use-runtime-config-validate";
 import { Link, useRouter } from "@/navigation";
 import { useAppStore } from "@/store/app.store";
 import { useChatExplainStore } from "@/store/chat-explain.store";
@@ -59,7 +58,6 @@ import { ChevronDown, PanelLeftClose, PanelLeftOpen, Trash2 } from "lucide-react
 import { useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { ChatConfigurationSidePanel } from "@/features/chat/components/ChatConfigurationSidePanel";
 import { useChatConfigurationPanelStore } from "@/features/chat/store/chat-configuration-panel.store";
@@ -178,7 +176,6 @@ function ChatPageInner() {
   const [editBody, setEditBody] = useState("");
   /** Empty string = backend default model. */
   const [llmModelChoice, setLlmModelChoice] = useState("");
-  const [presetSelectValue, setPresetSelectValue] = useState(CHAT_DETERMINISTIC_DEFAULT_PRESET_ID);
   /** Scoped to `conversationId` so switching chats does not require clearing in an effect. */
   const [limitDocsNoticeRecord, setLimitDocsNoticeRecord] = useState<{
     conversationId: string | null;
@@ -255,7 +252,7 @@ function ChatPageInner() {
   const { data: convs } = useConversations(projectId);
   const createConv = useCreateConversation(projectId);
   const patchConv = usePatchConversation(projectId);
-  const validateRuntimeConfig = useRuntimeConfigValidate();
+  // R1: runtime-state is the authoritative steady-state validation source.
   const { data: messages, refetch: refetchMessages } = useConversationMessages(conversationId ?? undefined);
   /** Only the latest user turn can be edited (matches backend truncate-from semantics). */
   const lastUserMessageId = useMemo(() => {
@@ -265,8 +262,8 @@ function ChatPageInner() {
     }
     return null;
   }, [messages]);
-  const { data: docs, refetch: refetchProjectDocuments } = useProjectDocuments(projectId);
-  const uploadDoc = useUploadProjectDocument(projectId);
+  const { data: docs, refetch: refetchProjectDocuments } = useProjectDocumentsForConversation(projectId, conversationId);
+  const uploadDoc = useUploadConversationOverlayDocument(projectId, conversationId);
   const { data: projectListData } = useProjectList(0, 64);
   const currentProject = useMemo(
     () => projectListData?.items?.find((p) => p.id === projectId),
@@ -302,16 +299,7 @@ function ChatPageInner() {
 
   const presetsCatalogEmpty = !presetsError && presets?.length === 0;
 
-  const syntheticPresetOptionNeeded = useMemo(() => {
-    if (!presetSelectValue) return false;
-    if (presetsLoading) return true;
-    const inProduct = Boolean(presets?.some((p) => p.id === presetSelectValue));
-    const inExperimental = Boolean(
-      experimentalPresets?.some((p) => p.productPresetId === presetSelectValue),
-    );
-    // Only synthesize an option when the selected id is not present in either catalog.
-    return !(inProduct || inExperimental);
-  }, [presetSelectValue, presets, experimentalPresets, presetsLoading]);
+  const syntheticPresetOptionNeeded = false;
 
   const presetSelectDisabled =
     !!presetsError || patchConv.isPending || presetsLoading || presetsCatalogEmpty;
@@ -325,17 +313,9 @@ function ChatPageInner() {
     return () => clearTimeout(syncTimer);
   }, [activeConv?.id, activeConv?.title]);
 
-  useEffect(() => {
-    if (!presetSyncKey || patchConv.isPending || !conversationId || !convs) return;
-    const conv = convs.find((c) => c.id === conversationId);
-    if (!conv) return;
-    const next = resolveChatPresetSelectValue(conv, presets);
-    const syncTimer = setTimeout(
-      () => setPresetSelectValue((prev) => (prev === next ? prev : next)),
-      0,
-    );
-    return () => clearTimeout(syncTimer);
-  }, [presetSyncKey, patchConv.isPending, conversationId, convs, presets]);
+  const runtimeStateQuery = useChatRuntimeState(conversationId);
+  const runtimeState = runtimeStateQuery.data ?? null;
+  const presetSelectValue = runtimeState?.selectedPresetId ?? "";
 
   const setLastDone = useChatExplainStore((s) => s.setLastDone);
   const setStreamingText = useChatExplainStore((s) => s.setStreamingText);
@@ -401,27 +381,7 @@ function ChatPageInner() {
     [t],
   );
 
-  const effectiveOverrideKey = useMemo(() => {
-    try {
-      return JSON.stringify(activeConv?.runtimeOverride ?? {});
-    } catch {
-      return "unserializable";
-    }
-  }, [activeConv]);
-
-  const effectiveRuntimeConfigQuery = useQuery({
-    queryKey: ["chat", "runtime-config", "effective", conversationId ?? "", presetSelectValue ?? "", effectiveOverrideKey],
-    enabled: Boolean(conversationId),
-    queryFn: async () => {
-      if (!conversationId) throw new Error("conversationId is required");
-      return validateRuntimeConfig.mutateAsync({
-        conversationId,
-        presetId: presetSelectValue || null,
-        overrides: activeConv?.runtimeOverride ?? {},
-      });
-    },
-    staleTime: 10_000,
-  });
+  // R1: /runtime-config/validate remains draft-only; do not use it for steady-state rendering.
 
   /** Cancel in-flight chat job when switching project, conversation, or unmounting. */
   useEffect(() => {
@@ -631,25 +591,18 @@ function ChatPageInner() {
       }
       if (!targetConversationId) return;
 
-      const hasManualOverrides =
-        activeConv?.runtimeOverride && Object.keys(activeConv.runtimeOverride).length > 0;
-      if (hasManualOverrides) {
-        const presetForValidation =
-          activeConv?.presetId ?? activeConv?.effectivePresetId ?? null;
-        const validation = await validateRuntimeConfig.mutateAsync({
-          conversationId: targetConversationId,
-          presetId: presetForValidation,
-          overrides: activeConv?.runtimeOverride ?? {},
-        });
-        if (!validation.valid || !validation.supported) {
-          const msg =
-            validation.errors?.[0]?.message ?? "Unsupported runtime configuration.";
-          setSendError(msg);
-          setInput(text);
-          setOptimisticUserContent(null);
-          setAssistantPhase(null);
-          return;
-        }
+      // R1: rely on runtime-state as the authoritative validation source.
+      const rs = await apiFetch<{ validation: { valid: boolean; supported: boolean; errors: { message: string }[] } }>(
+        apiProductPath(`/conversations/${targetConversationId}/runtime-state`),
+        { signal },
+      );
+      if (!rs.validation.valid || !rs.validation.supported) {
+        const msg = rs.validation.errors?.[0]?.message ?? "Unsupported runtime configuration.";
+        setSendError(msg);
+        setInput(text);
+        setOptimisticUserContent(null);
+        setAssistantPhase(null);
+        return;
       }
 
       const accepted = await apiFetch<LabJobAcceptedDto>(
@@ -695,15 +648,12 @@ function ChatPageInner() {
       setIsSending(false);
     }
   }, [
-    activeConv?.effectivePresetId,
-    activeConv?.presetId,
     conversationId,
     createConv,
     input,
     isSending,
     isStreaming,
     llmModelChoice,
-    validateRuntimeConfig,
     refetchMessages,
     runChatJob,
     selectConversation,
@@ -781,20 +731,13 @@ function ChatPageInner() {
         continueAfterUserMessageId: userMsgId,
       };
 
-      const presetForValidation =
-        activeConv?.presetId ?? activeConv?.effectivePresetId ?? null;
-      const hasManualOverrides =
-        activeConv?.runtimeOverride && Object.keys(activeConv.runtimeOverride).length > 0;
-      if (hasManualOverrides) {
-        const validation = await validateRuntimeConfig.mutateAsync({
-          conversationId,
-          presetId: presetForValidation,
-          overrides: null,
-        });
-        if (!validation.valid || !validation.supported) {
-          setSendError(validation.errors?.[0]?.message ?? "Unsupported runtime configuration.");
-          return;
-        }
+      const rs = await apiFetch<{ validation: { valid: boolean; supported: boolean; errors: { message: string }[] } }>(
+        apiProductPath(`/conversations/${conversationId}/runtime-state`),
+        { signal },
+      );
+      if (!rs.validation.valid || !rs.validation.supported) {
+        setSendError(rs.validation.errors?.[0]?.message ?? "Unsupported runtime configuration.");
+        return;
       }
 
       const accepted = await apiFetch<LabJobAcceptedDto>(
@@ -824,8 +767,6 @@ function ChatPageInner() {
       setIsSending(false);
     }
   }, [
-    activeConv?.effectivePresetId,
-    activeConv?.presetId,
     conversationId,
     editBody,
     editingUserMessageId,
@@ -834,7 +775,6 @@ function ChatPageInner() {
     refetchMessages,
     runChatJob,
     t,
-    validateRuntimeConfig,
   ]);
 
   const stop = useCallback(() => {
@@ -881,14 +821,18 @@ function ChatPageInner() {
 
   const onPresetChange = useCallback(
     (value: string) => {
-      if (!conversationId || !value.trim()) return;
-      const exp = experimentalPresets?.find((p) => p.productPresetId === value);
+      if (!conversationId) return;
+      const next = value.trim();
+      if (!next) {
+        patchConv.mutate({ conversationId, body: { clearPreset: true } });
+        return;
+      }
+      const exp = experimentalPresets?.find((p) => p.productPresetId === next);
       if (exp && !exp.chatSelectable) {
         // Disabled experimental presets must be visible but never persistable in Chat.
         return;
       }
-      setPresetSelectValue(value);
-      patchConv.mutate({ conversationId, body: { presetId: value } });
+      patchConv.mutate({ conversationId, body: { presetId: next } });
     },
     [conversationId, patchConv, experimentalPresets],
   );
@@ -1015,6 +959,33 @@ function ChatPageInner() {
     [conversationId, uploadItems, refetchProjectDocuments],
   );
 
+  const checkUploadItem = useCallback(
+    async (id: string) => {
+      const item = uploadItems.find((x) => x.id === id);
+      if (!item?.docId) return;
+      try {
+        const tick = await apiFetch<ProjectDocumentDto>(apiProductPath(`/documents/${item.docId}/status`));
+        setUploadItems((prev) =>
+          prev.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  phase: tick.status === "READY" ? "ready" : tick.status === "ERROR" ? "error" : "ingesting",
+                  chunkCount: tick.chunkCount ?? null,
+                  errorMessage: tick.errorMessage ?? null,
+                }
+              : x,
+          ),
+        );
+      } catch (e) {
+        const msg = getSafeApiErrorMessage(e);
+        setUploadItems((prev) => prev.map((x) => (x.id === id ? { ...x, phase: "error", errorMessage: msg } : x)));
+      }
+      await refetchProjectDocuments();
+    },
+    [uploadItems, refetchProjectDocuments],
+  );
+
   const onLimitDocsChange = useCallback(
     (checked: boolean) => {
       if (!conversationId) return;
@@ -1051,21 +1022,28 @@ function ChatPageInner() {
     patchConv.mutate({ conversationId, body: { documentFilter: next } });
   };
 
+  const staleSelectedIds = useMemo(() => {
+    if (!limitDocs) return [];
+    const eligible = new Set((docs ?? []).map((d) => d.id));
+    return (selectedDocIds ?? []).filter((id) => !eligible.has(id));
+  }, [docs, limitDocs, selectedDocIds]);
+
+  const cleanSelection = useCallback(() => {
+    if (!conversationId) return;
+    const eligibleReady = (docs ?? []).filter((d) => d.status === "READY").map((d) => d.id);
+    patchConv.mutate({ conversationId, body: { documentFilter: eligibleReady } });
+  }, [conversationId, docs, patchConv]);
+
   useEffect(() => {
     useChatConfigurationPanelStore.getState().hydrateFromStorage();
   }, []);
 
-  const effectiveRuntimeConfig = effectiveRuntimeConfigQuery.data?.effectiveConfig ?? null;
-  const effectiveRuntimeConfigLoading = effectiveRuntimeConfigQuery.isLoading || effectiveRuntimeConfigQuery.isFetching;
-  const effectiveRuntimeConfigError = effectiveRuntimeConfigQuery.isError
-    ? getSafeApiErrorMessage(effectiveRuntimeConfigQuery.error)
-    : !effectiveRuntimeConfigQuery.data?.valid || !effectiveRuntimeConfigQuery.data?.supported
-      ? effectiveRuntimeConfigQuery.data?.errors?.[0]?.message ?? null
-      : null;
+  const runtimeStateLoading = runtimeStateQuery.isLoading || runtimeStateQuery.isFetching;
+  const runtimeStateError = runtimeStateQuery.isError ? getSafeApiErrorMessage(runtimeStateQuery.error) : null;
 
-  const refreshEffectiveRuntimeConfig = useCallback(() => {
-    void effectiveRuntimeConfigQuery.refetch();
-  }, [effectiveRuntimeConfigQuery]);
+  const refreshRuntimeState = useCallback(() => {
+    void runtimeStateQuery.refetch();
+  }, [runtimeStateQuery]);
 
   useEffect(() => {
     if (!projectId) {
@@ -1106,7 +1084,7 @@ function ChatPageInner() {
       uploadPending: uploadDoc.isPending,
       uploadError,
       uploadNotice,
-      runtimeOverride: activeConv?.runtimeOverride ?? {},
+      runtimeOverride: runtimeState?.runtimeOverride ?? {},
       saveRuntimeOverride: (next) => {
         if (!conversationId) return;
         patchConv.mutate({ conversationId, body: { runtimeOverride: next } });
@@ -1115,10 +1093,10 @@ function ChatPageInner() {
         if (!conversationId) return;
         patchConv.mutate({ conversationId, body: { clearRuntimeOverride: true } });
       },
-      effectiveRuntimeConfig,
-      effectiveRuntimeConfigLoading,
-      effectiveRuntimeConfigError,
-      refreshEffectiveRuntimeConfig,
+      runtimeState,
+      runtimeStateLoading,
+      runtimeStateError,
+      refreshRuntimeState,
     });
     return () => useChatToolbarStore.getState().setApi(null);
   }, [
@@ -1149,11 +1127,10 @@ function ChatPageInner() {
     uploadDoc.isPending,
     uploadError,
     uploadNotice,
-    activeConv?.runtimeOverride,
-    effectiveRuntimeConfig,
-    effectiveRuntimeConfigLoading,
-    effectiveRuntimeConfigError,
-    refreshEffectiveRuntimeConfig,
+    runtimeState,
+    runtimeStateLoading,
+    runtimeStateError,
+    refreshRuntimeState,
     patchConv,
   ]);
 
@@ -1322,6 +1299,13 @@ function ChatPageInner() {
             onDocToggle={onDocToggle}
             onUploadFiles={handleChatDocumentUpload}
             onRetryUploadItem={retryUploadItem}
+            onCheckUploadItem={checkUploadItem}
+            staleSelectionWarning={
+              staleSelectedIds.length > 0
+                ? "Some selected documents are no longer available."
+                : null
+            }
+            onCleanSelection={staleSelectedIds.length > 0 ? cleanSelection : undefined}
           />
         ) : null}
         <div
@@ -1573,7 +1557,7 @@ function ChatPageInner() {
               {t("emptyConversationAdjustHint")}
             </p>
           ) : null}
-          {effectiveRuntimeConfig && coerceBool(effectiveRuntimeConfig.memoryEnabled) ? (
+          {runtimeState?.effectiveConfig && coerceBool(runtimeState.effectiveConfig.memoryEnabled) ? (
             <p className="text-muted-foreground text-xs" data-testid="chat-memory-badge" role="status">
               {t("memoryActiveBadge")}
             </p>

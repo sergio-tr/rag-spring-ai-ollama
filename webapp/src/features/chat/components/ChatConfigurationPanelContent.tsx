@@ -6,7 +6,6 @@ import { buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useRuntimeConfigCapabilities } from "@/features/chat/hooks/use-runtime-config-capabilities";
-import { resolveChatPresetLabel } from "@/features/chat/lib/conversation-preset-ui";
 import { useChatToolbarStore } from "@/features/chat/store/chat-toolbar.store";
 import { useActiveProjectSnapshot } from "@/features/projects/hooks/use-active-project-snapshot";
 import { useProjectIndexProfile } from "@/features/projects/hooks/use-project-index-profile";
@@ -108,24 +107,37 @@ export function ChatConfigurationPanelContent() {
 
   const needsProject = !api?.projectId;
   const needsConversation = !api?.conversationId;
-  const hasCustomOverride = api?.runtimeOverride && Object.keys(api.runtimeOverride).length > 0;
+  const hasCustomOverride = Boolean(api?.runtimeState?.isCustom);
 
-  const effectiveConfig = api?.effectiveRuntimeConfig ?? null;
+  const effectiveConfig = api?.runtimeState?.effectiveConfig ?? null;
   const indexProfileQuery = useProjectIndexProfile(api?.projectId);
   const activeSnapQuery = useActiveProjectSnapshot(api?.projectId);
 
-  const effectiveLoading = Boolean(api?.effectiveRuntimeConfigLoading);
-  const effectiveError = api?.effectiveRuntimeConfigError ?? null;
+  const effectiveLoading = Boolean(api?.runtimeStateLoading);
+  const effectiveError = api?.runtimeStateError ?? null;
 
   const caps = capabilitiesQuery.data?.capabilities ?? [];
   const capByKey = new Map(caps.map((c) => [c.key, c]));
 
+  const runtimeToggles = useMemo(() => {
+    const filtered = caps.filter(
+      (c) =>
+        c.category === "RUNTIME_HOT_SWAPPABLE" &&
+        c.visibleInChat === true &&
+        c.configurableInChat === true &&
+        c.implemented === true &&
+        c.engineWired === true,
+    );
+    filtered.sort((a, b) => a.displayOrder - b.displayOrder);
+    return filtered;
+  }, [caps]);
+
   const mergedRuntimeFlagValues = useMemo(() => {
-    const base =
-      effectiveConfig && typeof effectiveConfig === "object" ? { ...(effectiveConfig as Record<string, unknown>) } : {};
-    const ov = api?.runtimeOverride && typeof api.runtimeOverride === "object" ? api.runtimeOverride : {};
-    return { ...base, ...ov } as Record<string, unknown>;
-  }, [effectiveConfig, api?.runtimeOverride]);
+    // Effective config already includes runtimeOverride; keep this name to avoid invasive refactors in R1.
+    return effectiveConfig && typeof effectiveConfig === "object"
+      ? (effectiveConfig as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+  }, [effectiveConfig]);
 
   function coerceBool(v: unknown): boolean {
     return v === true || v === "true";
@@ -134,8 +146,9 @@ export function ChatConfigurationPanelContent() {
   const disabledReason = (key: string): string | null => {
     const c = capByKey.get(key);
     if (!c) return null;
-    if (!c.configurable) return "not configurable";
-    if (!c.implemented) return c.reasonIfNotImplemented ?? "not implemented";
+    if (c.reasonIfDisabled) return c.reasonIfDisabled;
+    if (!c.configurableInChat) return "Not configurable in Chat.";
+    if (!c.implemented || !c.engineWired) return c.reasonIfNotImplemented ?? "Not implemented.";
     if (c.requires?.length) {
       for (const reqKey of c.requires) {
         if (!coerceBool(mergedRuntimeFlagValues[reqKey])) {
@@ -143,40 +156,64 @@ export function ChatConfigurationPanelContent() {
         }
       }
     }
+    if (c.excludes?.length) {
+      for (const exKey of c.excludes) {
+        if (coerceBool(mergedRuntimeFlagValues[exKey])) {
+          return `Cannot be enabled with ${exKey}=true.`;
+        }
+      }
+    }
     return null;
   };
 
-  const selectedPresetId = api?.presetSelectValue ?? "";
-  const selectedInProduct = !!api?.presets?.some((p) => p.id === selectedPresetId);
+  const runtimeSelectedPresetId = api?.runtimeState?.selectedPresetId ?? null;
+  const selectedPresetValue = runtimeSelectedPresetId ? runtimeSelectedPresetId : "";
+  const selectedInProduct = !!api?.presets?.some((p) => p.id === runtimeSelectedPresetId);
   const selectedExperimental = (Array.isArray(api?.experimentalPresets) ? api?.experimentalPresets : []).find(
-    (p) => p.productPresetId === selectedPresetId,
+    (p) => p.productPresetId === runtimeSelectedPresetId,
   );
 
-  const presetKindBadge = selectedInProduct
-    ? "Product"
-    : selectedExperimental
-      ? "TFG"
-      : selectedPresetId
-        ? null
-        : "Recommended";
+  const presetKindBadge =
+    api?.runtimeState?.preset?.kind === "DEFAULT"
+      ? "Recommended"
+      : api?.runtimeState?.preset?.kind === "PRODUCT"
+        ? "Product"
+        : api?.runtimeState?.preset?.kind === "EXPERIMENTAL"
+          ? "TFG"
+          : api?.runtimeState?.preset?.kind === "MISSING"
+            ? "Missing"
+            : null;
 
   const presetSupportBadge =
-    selectedExperimental && !selectedExperimental.chatSelectable
-      ? selectedExperimental.supportStatus || "NOT_SUPPORTED"
+    api?.runtimeState?.preset && !api.runtimeState.preset.chatSelectable
+      ? api.runtimeState.preset.supportStatus || "NOT_SUPPORTED"
       : null;
 
-  const hotSwappableKeys = [
-    "useRetrieval",
-    "naiveFullCorpusInPromptEnabled",
-    "useAdvisor",
-    "reasoningEnabled",
-    "rankerEnabled",
-    "postRetrievalEnabled",
-    "clarificationEnabled",
-    "memoryEnabled",
-    "adaptiveRoutingEnabled",
-    "judgeEnabled",
-  ] as const;
+  useMemo(() => {
+    const known = new Set(
+      [
+        "useRetrieval",
+        "naiveFullCorpusInPromptEnabled",
+        "expansionEnabled",
+        "toolsEnabled",
+        "functionCallingEnabled",
+        "nerEnabled",
+        "useAdvisor",
+        "reasoningEnabled",
+        "rankerEnabled",
+        "postRetrievalEnabled",
+        "clarificationEnabled",
+        "memoryEnabled",
+        "adaptiveRoutingEnabled",
+        "judgeEnabled",
+      ].map(String),
+    );
+    const unknown = runtimeToggles.filter((c) => !known.has(c.key));
+    if (unknown.length > 0 && process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn("[chat] Unknown runtime capability keys:", unknown.map((x) => x.key));
+    }
+  }, [runtimeToggles]);
 
   const documentScopeHint =
     api?.limitDocs && api?.limitDocsToggleNotice ? api.limitDocsToggleNotice : null;
@@ -379,20 +416,19 @@ export function ChatConfigurationPanelContent() {
                   "border-input bg-background h-9 w-full rounded-md border px-2 text-sm",
                   api?.presetsError && "border-destructive",
                 )}
-                value={api?.presetSelectValue ?? ""}
+                value={selectedPresetValue}
                 onChange={(e) => api?.onPresetChange(e.target.value)}
                 disabled={needsProject || needsConversation || !!api?.presetSelectDisabled}
                 aria-label={tChat("presetLabel")}
               >
-                {api?.syntheticPresetOptionNeeded ? (
-                  <option value={api.presetSelectValue}>
-                    {resolveChatPresetLabel(
-                      api.presets,
-                      api.experimentalPresets,
-                      api.presetSelectValue,
-                      api.presetLabelOpts,
-                    )}
-                  </option>
+                <option value="">{tChat("presetRecommendedDefault")}</option>
+
+                {/* Defensive: when runtime-state selectedPresetId is not in loaded catalog yet. */}
+                {runtimeSelectedPresetId &&
+                !selectedInProduct &&
+                !selectedExperimental &&
+                api?.runtimeState?.preset?.label ? (
+                  <option value={runtimeSelectedPresetId}>{api.runtimeState.preset.label}</option>
                 ) : null}
 
                 <optgroup label="Product presets">
@@ -450,7 +486,7 @@ export function ChatConfigurationPanelContent() {
                 data-testid="chat-config-runtime-refresh-effective"
                 className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
                 disabled={needsProject || needsConversation || effectiveLoading}
-                onClick={() => api?.refreshEffectiveRuntimeConfig()}
+                onClick={() => api?.refreshRuntimeState()}
               >
                 {effectiveLoading ? "Loading..." : "Refresh"}
               </button>
@@ -502,30 +538,11 @@ export function ChatConfigurationPanelContent() {
             {runtimeOpen ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-3">
-                  {hotSwappableKeys.map((key) => {
+                  {runtimeToggles.map((cap) => {
+                    const key = cap.key;
                     const reason = disabledReason(key);
                     const rid = `disabled-${key}`;
-                    const capMeta = capByKey.get(key);
-                    const label =
-                      key === "useRetrieval"
-                        ? "Use retrieval"
-                        : key === "naiveFullCorpusInPromptEnabled"
-                          ? "Naive full corpus (no retrieval)"
-                          : key === "useAdvisor"
-                            ? "Advisor"
-                            : key === "reasoningEnabled"
-                              ? "Reasoning"
-                              : key === "rankerEnabled"
-                                ? "Ranker"
-                                : key === "postRetrievalEnabled"
-                                  ? "Post-retrieval"
-                                  : key === "clarificationEnabled"
-                                    ? "Clarification"
-                                    : key === "memoryEnabled"
-                                      ? "Memory"
-                                      : key === "adaptiveRoutingEnabled"
-                                        ? "Adaptive routing"
-                                        : "Judge";
+                    const showMultiTurn = cap.supportMode === "MULTI_TURN_REQUIRED";
                     return (
                       <div key={key} className="flex flex-col gap-1">
                         <div className="flex items-start justify-between gap-3">
@@ -535,19 +552,21 @@ export function ChatConfigurationPanelContent() {
                               className="border-input size-4 rounded"
                               checked={getBooleanValue(key)}
                               disabled={!!reason}
-                              onChange={(e) =>
-                                setOverrideBoolean(key, e.target.checked)
-                              }
+                              onChange={(e) => setOverrideBoolean(key, e.target.checked)}
                               aria-describedby={reason ? rid : undefined}
                             />
-                            <span>{label}</span>
+                            <span>{cap.label ?? key}</span>
                           </label>
-                          {reason ? <DisabledReason id={rid} reason={reason} /> : null}
+                          <div className="flex items-center gap-2">
+                            {showMultiTurn ? (
+                              <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium">
+                                Multi-turn
+                              </span>
+                            ) : null}
+                            {reason ? <DisabledReason id={rid} reason={reason} /> : null}
+                          </div>
                         </div>
-                        {(key === "clarificationEnabled" || key === "memoryEnabled") &&
-                        capMeta?.supportMode === "MULTI_TURN_REQUIRED" ? (
-                          <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint>
-                        ) : null}
+                        {showMultiTurn ? <MenuHint>{tChat("runtimeMultiTurnHint")}</MenuHint> : null}
                       </div>
                     );
                   })}

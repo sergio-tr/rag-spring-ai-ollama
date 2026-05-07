@@ -1,7 +1,12 @@
 "use client";
 
 import { create } from "zustand";
-import type { ExperimentalPresetCatalogItemDto, ModelsCatalogResponse, RagPresetDto } from "@/types/api";
+import type {
+  ChatRuntimeStateDto,
+  ExperimentalPresetCatalogItemDto,
+  ModelsCatalogResponse,
+  RagPresetDto,
+} from "@/types/api";
 
 /** Callback bundle registered by the chat page so the shell toolbar menu stays functional without duplicating UI. */
 export type ChatToolbarApi = {
@@ -42,10 +47,10 @@ export type ChatToolbarApi = {
   runtimeOverride: Record<string, unknown>;
   saveRuntimeOverride: (next: Record<string, unknown>) => void;
   clearRuntimeOverride: () => void;
-  effectiveRuntimeConfig: Record<string, unknown> | null;
-  effectiveRuntimeConfigLoading: boolean;
-  effectiveRuntimeConfigError: string | null;
-  refreshEffectiveRuntimeConfig: () => void;
+  runtimeState: ChatRuntimeStateDto | null;
+  runtimeStateLoading: boolean;
+  runtimeStateError: string | null;
+  refreshRuntimeState: () => void;
 };
 
 type ChatToolbarState = {
