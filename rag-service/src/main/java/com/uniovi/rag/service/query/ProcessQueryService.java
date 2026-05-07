@@ -238,6 +238,10 @@ public class ProcessQueryService implements QueryService, Loggable {
             log().warn("Inference backend unreachable: {}", e.getMessage());
             throw RagServiceException.llmUnavailable(e);
         }
+        if (ConnectivityFailureDetector.isContextLimitFailure(e)) {
+            log().warn("LLM context limit exceeded: {}", e.getMessage());
+            throw RagServiceException.llmContextLimitExceeded(e);
+        }
         if (ConnectivityFailureDetector.isOllamaModelMissingFailure(e)) {
             log().warn(LOG_REQUIRED_OLLAMA_MODEL_MISSING, e.getMessage());
             throw RagServiceException.ollamaModelNotInstalled(e);
