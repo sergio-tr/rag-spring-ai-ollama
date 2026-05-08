@@ -117,13 +117,25 @@ public class ExecutionContextFactory {
         Optional<String> model = validateAndNormalizeChatModel(chatModelOverride);
         JsonNode benchmarkTerminal =
                 BenchmarkPresetEvaluationContext.currentTerminalOverride().orElse(null);
+        BenchmarkPresetEvaluationContext.LabRuntimeContext labCtx =
+                BenchmarkPresetEvaluationContext.currentLabRuntimeContext().orElse(null);
+        UUID projectId = labCtx != null ? labCtx.projectId() : null;
         ResolvedRuntimeConfig resolved =
                 runtimeConfigResolutionService.resolveForOrchestratedExecute(
-                        null, null, benchmarkTerminal, correlationId);
-        KnowledgeSnapshotSelection snapshots = knowledgeRuntimeSnapshotSelector.select(null, null);
+                        null, projectId, benchmarkTerminal, correlationId);
+        KnowledgeSnapshotSelection snapshots;
+        if (labCtx != null && labCtx.snapshotIds() != null && !labCtx.snapshotIds().isEmpty()) {
+            snapshots = knowledgeRuntimeSnapshotSelector.selectExplicit(projectId, labCtx.snapshotIds());
+        } else if (labCtx != null && labCtx.forcedSnapshotSelection()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "LAB_FORCED_SNAPSHOT_SELECTION_REQUIRES_SNAPSHOT_IDS");
+        } else {
+            snapshots = knowledgeRuntimeSnapshotSelector.select(projectId, null);
+        }
         return buildWithClarification(
                 null,
-                null,
+                projectId,
                 null,
                 rawUserQuery,
                 RuntimeOperationKind.LEGACY_HTTP,

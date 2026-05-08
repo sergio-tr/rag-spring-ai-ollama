@@ -275,6 +275,44 @@ class ExecutionContextFactoryTest {
     }
 
     @Test
+    void buildForLegacyHttp_labContext_forces_explicit_snapshot_ids_over_active_selection() throws Exception {
+        RagConfig rag =
+                RagConfig.fromFeatureConfiguration(
+                        new RagFeatureConfiguration(), 5, 0.5, "m", "e", "c", "SIMPLE");
+        when(resolvedRuntimeConfig.toRagConfig()).thenReturn(rag);
+        when(resolvedRuntimeConfig.effectiveSystemPrompt()).thenReturn("sys");
+        when(clarificationStateResolver.bootstrap(null, "q"))
+                .thenReturn(new ClarificationBootstrap("q", false, false, false));
+        when(conversationMemoryStrategy.execute(any(ExecutionContext.class), anyString()))
+                .thenReturn(
+                        new ConversationMemoryExecutionResult(
+                                ConversationMemoryOutcome.NO_CONVERSATION_SCOPE,
+                                Optional.empty(),
+                                false,
+                                false,
+                                false,
+                                "q",
+                                List.of()));
+
+        UUID projectId = UUID.randomUUID();
+        UUID s1 = UUID.randomUUID();
+        when(knowledgeRuntimeSnapshotSelector.selectExplicit(projectId, List.of(s1)))
+                .thenReturn(new KnowledgeSnapshotSelection(List.of(s1), Optional.of(s1), Optional.empty(), Optional.empty(), Optional.empty()));
+
+        when(runtimeConfigResolutionService.resolveForOrchestratedExecute(
+                        isNull(), eq(projectId), isNull(), anyString()))
+                .thenReturn(resolvedRuntimeConfig);
+
+        try (AutoCloseable ignored =
+                BenchmarkPresetEvaluationContext.openLab(
+                        null, UUID.randomUUID(), projectId, List.of(s1), "HYBRID_METADATA", "P8", true)) {
+            ExecutionContext ctx = factory.buildForLegacyHttp("q", null);
+            assertThat(ctx.projectId()).isEqualTo(projectId);
+            assertThat(ctx.knowledgeSnapshotSelection().orderedSnapshotIds()).containsExactly(s1);
+        }
+    }
+
+    @Test
     void buildForChatMessage_invalidModelOverride_throwsBadRequest() {
         when(modelCatalogPort.allowedLlmNamesInGovernance()).thenReturn(Set.of("allowed-only"));
         UUID conversationId = UUID.randomUUID();

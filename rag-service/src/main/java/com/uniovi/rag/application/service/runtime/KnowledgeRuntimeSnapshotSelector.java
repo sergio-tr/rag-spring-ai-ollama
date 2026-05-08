@@ -56,4 +56,23 @@ public class KnowledgeRuntimeSnapshotSelector {
         return new KnowledgeSnapshotSelection(
                 ordered, projectIdOpt, chatIdOpt, projHash, chatHash);
     }
+
+    /**
+     * Lab-only explicit snapshot selection (bypass ACTIVE snapshot lookup).
+     *
+     * <p>Ordered ids are used as-is; projectSharedSnapshotId is set to the first id when present.</p>
+     */
+    public KnowledgeSnapshotSelection selectExplicit(UUID projectId, List<UUID> orderedSnapshotIds) {
+        if (projectId == null || orderedSnapshotIds == null || orderedSnapshotIds.isEmpty()) {
+            return KnowledgeSnapshotSelection.empty();
+        }
+        List<UUID> ordered = new ArrayList<>(new LinkedHashSet<>(orderedSnapshotIds));
+        Optional<UUID> projectShared = Optional.of(ordered.getFirst());
+        return new KnowledgeSnapshotSelection(
+                ordered,
+                projectShared,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty());
+    }
 }
