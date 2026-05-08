@@ -11,6 +11,7 @@ import com.uniovi.rag.infrastructure.persistence.KnowledgeIndexSnapshotRepositor
 import com.uniovi.rag.infrastructure.persistence.ProjectRepository;
 import com.uniovi.rag.infrastructure.persistence.ResolvedConfigSnapshotRepository;
 import com.uniovi.rag.infrastructure.persistence.UserRepository;
+import com.uniovi.rag.infrastructure.persistence.support.KnowledgeSnapshotTestFixtures;
 import com.uniovi.rag.infrastructure.persistence.support.ResolvedConfigSnapshotTestFixtures;
 import com.uniovi.rag.testsupport.TestAiStubConfiguration;
 import com.uniovi.rag.testsupport.TestcontainersDatasourceConfiguration;
@@ -119,6 +120,8 @@ class MoveConversationApplicationServiceIT {
         index.setStatus(IndexSnapshotStatus.ACTIVE);
         index.setResolvedConfigSnapshotId(resSnap.getId());
         index.setResolvedConfigHash("rh-move");
+        index.setIndexProfileJsonb(KnowledgeSnapshotTestFixtures.defaultIndexProfileJsonb());
+        index.setIndexProfileHash(KnowledgeSnapshotTestFixtures.defaultIndexProfileHash());
         index.setCreatedAt(now);
         index.setUpdatedAt(now);
         knowledgeIndexSnapshotRepository.save(index);
