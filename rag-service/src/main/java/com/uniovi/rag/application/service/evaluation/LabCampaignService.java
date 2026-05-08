@@ -73,7 +73,11 @@ public class LabCampaignService {
                         req.llmModelIds(),
                         req.embeddingModelIds(),
                         false,
-                        req.name());
+                        req.name(),
+                        null,
+                        null,
+                        null,
+                        null);
 
         BenchmarkJobAccepted accepted = orchestrator.startJsonBenchmark(userId, "USER", kind, body);
         UUID campaignId = accepted.campaignId().orElse(null);

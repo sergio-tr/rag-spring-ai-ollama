@@ -3,6 +3,7 @@ package com.uniovi.rag.service.async.lab;
 import com.uniovi.rag.application.service.evaluation.BenchmarkDatasetResolutionException;
 import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetResolver;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
+import com.uniovi.rag.application.service.knowledge.ProjectIndexOperationLockService;
 import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
@@ -10,6 +11,7 @@ import com.uniovi.rag.domain.AsyncTaskType;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.service.async.LabJobCancelledException;
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.UUID;
 
@@ -33,6 +36,7 @@ class EvalRagJobHandler implements LabJobHandler {
     private final ExperimentalDatasetResolver experimentalDatasetResolver;
     private final TypedRagPresetBenchmarkOrchestrator typedRagPresetBenchmarkOrchestrator;
     private final AsyncTaskCancellationService cancellationService;
+    private final ProjectIndexOperationLockService projectIndexOperationLockService;
 
     EvalRagJobHandler(
             RagFeatureConfiguration featureConfiguration,
@@ -41,7 +45,8 @@ class EvalRagJobHandler implements LabJobHandler {
             EvaluationRunRepository evaluationRunRepository,
             ExperimentalDatasetResolver experimentalDatasetResolver,
             TypedRagPresetBenchmarkOrchestrator typedRagPresetBenchmarkOrchestrator,
-            AsyncTaskCancellationService cancellationService) {
+            AsyncTaskCancellationService cancellationService,
+            ProjectIndexOperationLockService projectIndexOperationLockService) {
         this.featureConfiguration = featureConfiguration;
         this.implementationProperties = implementationProperties;
         this.canonicalPersistence = canonicalPersistence;
@@ -49,6 +54,7 @@ class EvalRagJobHandler implements LabJobHandler {
         this.experimentalDatasetResolver = experimentalDatasetResolver;
         this.typedRagPresetBenchmarkOrchestrator = typedRagPresetBenchmarkOrchestrator;
         this.cancellationService = cancellationService;
+        this.projectIndexOperationLockService = projectIndexOperationLockService;
     }
 
     @Override
@@ -61,6 +67,8 @@ class EvalRagJobHandler implements LabJobHandler {
         UUID taskId = task.getId();
         UUID evaluationRunId = LabJobPayloads.evaluationRunId(task.getRequestPayload());
         LabEvalConcurrency.SERIAL_EVAL.lock();
+        UUID lockedProjectId = null;
+        boolean lockAcquired = false;
         try {
             if (evaluationRunId == null) {
                 throw new IllegalStateException(
@@ -69,6 +77,25 @@ class EvalRagJobHandler implements LabJobHandler {
             }
             mutation.appendProgressLine(taskId, "Resolving typed dataset for RAG_PRESET_END_TO_END…");
             var runWithDataset = evaluationRunRepository.findByIdFetchDataset(evaluationRunId).orElse(null);
+            if (runWithDataset != null && Boolean.TRUE.equals(autoReindexEnabled(runWithDataset))) {
+                UUID projectId = runWithDataset.getProject() != null ? runWithDataset.getProject().getId() : null;
+                if (projectId == null) {
+                    throw new IllegalStateException("AUTO_REINDEX_REQUIRES_PROJECT_CONTEXT");
+                }
+                lockedProjectId = projectId;
+                var attempt =
+                        projectIndexOperationLockService.tryAcquire(
+                                projectId,
+                                "lab:auto-reindex",
+                                evaluationRunId,
+                                "RAG_PRESET_END_TO_END autoReindex");
+                if (!attempt.acquired()) {
+                    throw new IllegalStateException("PROJECT_REINDEX_IN_PROGRESS");
+                }
+                lockAcquired = true;
+                markLockAcquiredBestEffort(runWithDataset);
+                mutation.appendProgressLine(taskId, "Auto-reindex lock acquired for projectId=" + projectId);
+            }
             TypedBenchmarkDataset typed = experimentalDatasetResolver.resolve(evaluationRunId);
             if (!(typed instanceof TypedBenchmarkDataset.RagPresetQuestions rag)) {
                 throw new IllegalStateException("Resolver returned unexpected payload for RAG_PRESET_END_TO_END");
@@ -137,8 +164,33 @@ class EvalRagJobHandler implements LabJobHandler {
             }
             throw e;
         } finally {
+            if (lockAcquired && lockedProjectId != null) {
+                projectIndexOperationLockService.release(lockedProjectId, "lab:auto-reindex", evaluationRunId);
+            }
             LabEvalConcurrency.SERIAL_EVAL.unlock();
         }
+    }
+
+    private static boolean autoReindexEnabled(EvaluationRunEntity run) {
+        if (run == null || run.getAggregatesJson() == null) {
+            return false;
+        }
+        Object policyObj = run.getAggregatesJson().get("autoReindexPolicy");
+        if (!(policyObj instanceof Map<?, ?> m)) {
+            return false;
+        }
+        Object enabled = m.get("enabled");
+        return Boolean.TRUE.equals(enabled);
+    }
+
+    private void markLockAcquiredBestEffort(EvaluationRunEntity run) {
+        if (run == null) {
+            return;
+        }
+        Map<String, Object> agg = run.getAggregatesJson() != null ? new LinkedHashMap<>(run.getAggregatesJson()) : new LinkedHashMap<>();
+        agg.put("autoReindexLockAcquired", Boolean.TRUE);
+        run.setAggregatesJson(Map.copyOf(agg));
+        evaluationRunRepository.save(run);
     }
 
     @SuppressWarnings("unchecked")

@@ -62,6 +62,12 @@ public class BenchmarkRunOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(BenchmarkRunOrchestrator.class);
 
+    static final String AGG_KEY_REQUESTED_PRESET_CODES = "requested_preset_codes";
+    static final String AGG_KEY_AUTO_REINDEX_POLICY = "autoReindexPolicy";
+    static final String AGG_KEY_AUTO_REINDEX_LOCK_ACQUIRED = "autoReindexLockAcquired";
+    static final String AGG_KEY_AUTO_REINDEX_MODE = "autoReindexMode";
+    static final String AGG_KEY_AUTO_REINDEX_WARNING = "autoReindexWarning";
+
     private final UserRepository userRepository;
     private final EvaluationDatasetRepository evaluationDatasetRepository;
     private final EvaluationCampaignRepository evaluationCampaignRepository;
@@ -126,10 +132,12 @@ public class BenchmarkRunOrchestrator {
         }
         // RAG preset sweep campaign: group one run under a campaign so exports/comparison can be campaign-scoped.
         if (kind == BenchmarkKind.RAG_PRESET_END_TO_END && wantsRagPresetCampaign(request)) {
+            validateAutoReindexRequest(kind, request);
             return startRagPresetCampaign(userId, roleName, kind, request);
         }
 
         validateRunKind(roleName, request.runKind());
+        validateAutoReindexRequest(kind, request);
         requireNoActiveLabJob(userId, request.projectId());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -193,6 +201,7 @@ public class BenchmarkRunOrchestrator {
     private BenchmarkJobAccepted startRagPresetCampaign(
             UUID userId, String roleName, BenchmarkKind kind, StartBenchmarkRunRequest request) {
         validateRunKind(roleName, request.runKind());
+        validateAutoReindexRequest(kind, request);
         requireNoActiveLabJob(userId, request.projectId());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -285,7 +294,11 @@ public class BenchmarkRunOrchestrator {
                             List.of(),
                             List.of(),
                             false,
-                            null);
+                            null,
+                            request.autoReindex(),
+                            request.allowActiveSnapshotMutation(),
+                            request.reuseCompatibleActiveSnapshot(),
+                            request.failOnReindexFailure());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
@@ -513,14 +526,48 @@ public class BenchmarkRunOrchestrator {
             run.setPreset(preset);
         }
         run.setEmbeddingDownstreamRag(request.embeddingDownstreamRagEffective());
-        if (!request.experimentalPresetCodes().isEmpty()) {
-            run.setAggregatesJson(Map.of("requested_preset_codes", request.experimentalPresetCodes()));
+        if (!request.experimentalPresetCodes().isEmpty() || request.autoReindexEffective()) {
+            Map<String, Object> agg = new LinkedHashMap<>();
+            if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
+                agg.putAll(run.getAggregatesJson());
+            }
+            if (!request.experimentalPresetCodes().isEmpty()) {
+                agg.put(AGG_KEY_REQUESTED_PRESET_CODES, request.experimentalPresetCodes());
+            }
+            if (request.autoReindexEffective()) {
+                agg.put(AGG_KEY_AUTO_REINDEX_POLICY, LabAutoReindexPolicy.fromRequest(request).toMap());
+                agg.put(AGG_KEY_AUTO_REINDEX_LOCK_ACQUIRED, Boolean.FALSE);
+                agg.put(AGG_KEY_AUTO_REINDEX_MODE, "CONTROLLED_ACTIVE_SNAPSHOT_MUTATION");
+                agg.put(AGG_KEY_AUTO_REINDEX_WARNING, "ACTIVE_SNAPSHOT_MUTATION_ACCEPTED");
+            }
+            run.setAggregatesJson(Map.copyOf(agg));
         }
         if (request.llmModelId() != null && !request.llmModelId().isBlank()) {
             run.setLlmModelId(request.llmModelId().trim());
         }
         if (request.embeddingModelId() != null && !request.embeddingModelId().isBlank()) {
             run.setEmbeddingModelId(request.embeddingModelId().trim());
+        }
+    }
+
+    private static void validateAutoReindexRequest(BenchmarkKind kind, StartBenchmarkRunRequest request) {
+        if (request == null || !request.autoReindexEffective()) {
+            return;
+        }
+        if (kind != BenchmarkKind.RAG_PRESET_END_TO_END) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "AUTO_REINDEX_UNSUPPORTED_FOR_BENCHMARK_KIND: autoReindex is only supported for RAG_PRESET_END_TO_END");
+        }
+        if (request.projectId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "AUTO_REINDEX_REQUIRES_PROJECT_CONTEXT: autoReindex requires projectId");
+        }
+        if (!request.allowActiveSnapshotMutationEffective()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "AUTO_REINDEX_REQUIRES_ACTIVE_SNAPSHOT_MUTATION: autoReindex requires allowActiveSnapshotMutation=true");
         }
     }
 

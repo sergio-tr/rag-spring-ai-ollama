@@ -2,6 +2,7 @@ package com.uniovi.rag.service.async.lab;
 
 import com.uniovi.rag.application.service.evaluation.ExperimentalDatasetResolver;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
+import com.uniovi.rag.application.service.knowledge.ProjectIndexOperationLockService;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
 import com.uniovi.rag.domain.AsyncTaskType;
@@ -9,6 +10,8 @@ import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.workbook.RagPresetQuestion;
 import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.AsyncTaskEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
 import com.uniovi.rag.service.async.AsyncTaskCancellationService;
 import com.uniovi.rag.service.async.AsyncTaskMutationService;
 import com.uniovi.rag.service.evaluation.EvaluationCanonicalPersistenceService;
@@ -57,6 +60,9 @@ class EvalRagJobHandlerTest {
     @Mock
     private AsyncTaskCancellationService cancellationService;
 
+    @Mock
+    private ProjectIndexOperationLockService projectIndexOperationLockService;
+
     private EvalRagJobHandler handler() {
         return new EvalRagJobHandler(
                 featureConfiguration,
@@ -65,7 +71,8 @@ class EvalRagJobHandlerTest {
                 evaluationRunRepository,
                 experimentalDatasetResolver,
                 typedRagPresetBenchmarkOrchestrator,
-                cancellationService);
+                cancellationService,
+                projectIndexOperationLockService);
     }
 
     @Test
@@ -173,6 +180,145 @@ class EvalRagJobHandlerTest {
                 .hasMessage("boom");
 
         verify(canonicalPersistence).markRunFailed(runId, "boom");
+    }
+
+    @Test
+    void run_autoReindex_releasesProjectLock_onException() {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+
+        // Enable autoReindex via aggregates_json payload.
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        var project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(projectId);
+        run.setProject(project);
+        run.setAggregatesJson(
+                Map.of(
+                        "autoReindexPolicy",
+                        Map.of(
+                                "enabled", true,
+                                "allowActiveSnapshotMutation", true,
+                                "reuseCompatibleActiveSnapshot", true,
+                                "failOnReindexFailure", true)));
+        when(evaluationRunRepository.findByIdFetchDataset(runId)).thenReturn(Optional.of(run));
+
+        when(projectIndexOperationLockService.tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any()))
+                .thenReturn(ProjectIndexOperationLockService.LockAttempt.acquired(null));
+
+        RagPresetQuestion q =
+                new RagPresetQuestion(
+                        "rp1",
+                        "Q?",
+                        "A",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "",
+                        List.of(),
+                        List.of(),
+                        "",
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        "");
+        when(experimentalDatasetResolver.resolve(runId))
+                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
+        when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
+                        eq(runId),
+                        ArgumentMatchers.any(),
+                        eq(featureConfiguration),
+                        eq(implementationProperties),
+                        ArgumentMatchers.anySet(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any()))
+                .thenThrow(new RuntimeException("boom"));
+
+        AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
+
+        assertThatThrownBy(() -> handler().run(task, mutation))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("boom");
+
+        verify(projectIndexOperationLockService).release(projectId, "lab:auto-reindex", runId);
+    }
+
+    @Test
+    void run_autoReindex_releasesProjectLock_onSuccess() {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        var project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(projectId);
+        run.setProject(project);
+        run.setAggregatesJson(Map.of("autoReindexPolicy", Map.of("enabled", true)));
+        when(evaluationRunRepository.findByIdFetchDataset(runId)).thenReturn(Optional.of(run));
+
+        when(projectIndexOperationLockService.tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any()))
+                .thenReturn(ProjectIndexOperationLockService.LockAttempt.acquired(null));
+
+        RagPresetQuestion q =
+                new RagPresetQuestion(
+                        "rp1",
+                        "Q?",
+                        "A",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "",
+                        List.of(),
+                        List.of(),
+                        "",
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        "");
+        when(experimentalDatasetResolver.resolve(runId))
+                .thenReturn(new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of()));
+        Map<String, Object> eval = Map.of("k", "v", "evaluation_summary", Map.of());
+        when(typedRagPresetBenchmarkOrchestrator.runPresetBenchmark(
+                        eq(runId),
+                        ArgumentMatchers.any(TypedBenchmarkDataset.RagPresetQuestions.class),
+                        eq(featureConfiguration),
+                        eq(implementationProperties),
+                        ArgumentMatchers.anySet(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any()))
+                .thenReturn(eval);
+        AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
+
+        handler().run(task, mutation);
+
+        verify(projectIndexOperationLockService).release(projectId, "lab:auto-reindex", runId);
+    }
+
+    @Test
+    void run_autoReindex_failsWhenProjectLockAlreadyHeld() {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        var project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(projectId);
+        run.setProject(project);
+        run.setAggregatesJson(Map.of("autoReindexPolicy", Map.of("enabled", true)));
+        when(evaluationRunRepository.findByIdFetchDataset(runId)).thenReturn(Optional.of(run));
+
+        when(projectIndexOperationLockService.tryAcquire(eq(projectId), Mockito.any(), eq(runId), Mockito.any()))
+                .thenReturn(ProjectIndexOperationLockService.LockAttempt.rejected("ALREADY_LOCKED", null));
+
+        AsyncTaskEntity task = task(taskId, Map.of(LabJobPayloadKeys.EVALUATION_RUN_ID, runId.toString()));
+
+        assertThatThrownBy(() -> handler().run(task, mutation))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("PROJECT_REINDEX_IN_PROGRESS");
+
+        verify(canonicalPersistence).markRunFailed(runId, "PROJECT_REINDEX_IN_PROGRESS");
     }
 
     private static AsyncTaskEntity task(UUID id, Map<String, Object> payload) {
