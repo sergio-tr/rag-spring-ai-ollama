@@ -1,0 +1,284 @@
+package com.uniovi.rag.service.evaluation.preset;
+
+import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
+import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
+import com.uniovi.rag.application.service.runtime.config.IndexSnapshotCapabilities;
+import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
+import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+
+/**
+ * Builds {@link LabPresetRunPlanModels.LabPresetRunPlan} from canonical index requirements and active snapshot.
+ */
+@Service
+public class LabPresetRunPlanService {
+
+    private static final Comparator<LabPresetRunGroupKey> GROUP_ORDER =
+            Comparator.comparingInt(Enum::ordinal);
+
+    private final KnowledgeSnapshotService knowledgeSnapshotService;
+
+    public LabPresetRunPlanService(KnowledgeSnapshotService knowledgeSnapshotService) {
+        this.knowledgeSnapshotService = knowledgeSnapshotService;
+    }
+
+    /**
+     * @param requested ordered preset codes from the benchmark catalog selection (may be subset of P0–P14).
+     */
+    public LabPresetRunPlanModels.LabPresetRunPlan build(EvaluationRunEntity run, List<RagExperimentalPresetCode> requested) {
+        SnapshotContext snapCtx = resolveSnapshotContext(run);
+        List<RagExperimentalPresetCode> ordered = dedupePreserveOrder(requested);
+
+        Map<String, String> skipped = new LinkedHashMap<>();
+        List<String> executable = new ArrayList<>();
+
+        Map<LabPresetRunGroupKey, List<RagExperimentalPresetCode>> byGroup = new LinkedHashMap<>();
+        for (RagExperimentalPresetCode code : ordered) {
+            byGroup.computeIfAbsent(groupKeyFor(code), k -> new ArrayList<>()).add(code);
+        }
+
+        List<LabPresetRunGroupKey> groupKeys = new ArrayList<>(byGroup.keySet());
+        groupKeys.sort(GROUP_ORDER);
+
+        List<LabPresetRunPlanModels.LabPresetRunGroup> groups = new ArrayList<>();
+        for (LabPresetRunGroupKey gk : groupKeys) {
+            List<RagExperimentalPresetCode> codes = byGroup.get(gk);
+            if (codes == null || codes.isEmpty()) {
+                continue;
+            }
+            codes.sort(Comparator.comparingInt(RagExperimentalPresetCode::ordinal));
+            LabPresetRunPlanModels.LabPresetRunGroup gr = buildGroup(gk, codes, snapCtx, skipped, executable);
+            groups.add(gr);
+        }
+
+        List<String> requestedStr = ordered.stream().map(RagExperimentalPresetCode::name).toList();
+        return new LabPresetRunPlanModels.LabPresetRunPlan(
+                groups,
+                requestedStr,
+                List.copyOf(executable),
+                Map.copyOf(skipped),
+                snapCtx.snapshotId,
+                snapCtx.profileHash,
+                snapCtx.hasActive);
+    }
+
+    private static List<RagExperimentalPresetCode> dedupePreserveOrder(List<RagExperimentalPresetCode> requested) {
+        if (requested == null || requested.isEmpty()) {
+            return List.of();
+        }
+        Set<RagExperimentalPresetCode> seen = new LinkedHashSet<>();
+        List<RagExperimentalPresetCode> out = new ArrayList<>();
+        for (RagExperimentalPresetCode c : requested) {
+            if (c != null && seen.add(c)) {
+                out.add(c);
+            }
+        }
+        return out;
+    }
+
+    private LabPresetRunPlanModels.LabPresetRunGroup buildGroup(
+            LabPresetRunGroupKey gk,
+            List<RagExperimentalPresetCode> codes,
+            SnapshotContext snapCtx,
+            Map<String, String> skipped,
+            List<String> executable) {
+        if (gk == LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN) {
+            for (RagExperimentalPresetCode c : codes) {
+                skipped.put(c.name(), "MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED");
+            }
+            ExperimentalPresetCanonicalCatalog.IndexRequirements agg =
+                    codes.stream()
+                            .map(ExperimentalPresetCanonicalCatalog::effectiveIndexRequirements)
+                            .reduce(this::mergeRequirements)
+                            .orElse(ExperimentalPresetCanonicalCatalog.IndexRequirements.none());
+            return new LabPresetRunPlanModels.LabPresetRunGroup(
+                    gk,
+                    codes.stream().map(RagExperimentalPresetCode::name).toList(),
+                    indexRequirementsMap(agg),
+                    snapshotCapsMap(snapCtx.caps),
+                    snapCtx.snapshotId,
+                    false,
+                    false,
+                    "MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED",
+                    "Preset requires multi-turn harness; not executed in single-turn Lab benchmark.");
+        }
+
+        boolean allCompatible = true;
+        boolean anyRequiresReindex = false;
+        String worstReasonCode = null;
+        String worstReason = null;
+        ExperimentalPresetCanonicalCatalog.IndexRequirements mergedAgg =
+                ExperimentalPresetCanonicalCatalog.IndexRequirements.none();
+
+        for (RagExperimentalPresetCode c : codes) {
+            ExperimentalPresetCanonicalCatalog.IndexRequirements req =
+                    ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(c);
+            mergedAgg = mergeRequirements(mergedAgg, req);
+            IndexCompatibilityResult idx =
+                    IndexCompatibilityResult.check(req, snapCtx.hasActive, snapCtx.caps);
+            if (!idx.compatible()) {
+                allCompatible = false;
+            }
+            if (idx.requiresReindex()) {
+                anyRequiresReindex = true;
+            }
+            if (!idx.compatible() && idx.reasonCode() != null) {
+                worstReasonCode = idx.reasonCode();
+                worstReason = idx.message();
+            }
+        }
+
+        if (allCompatible) {
+            for (RagExperimentalPresetCode c : codes) {
+                executable.add(c.name());
+            }
+        } else {
+            for (RagExperimentalPresetCode c : codes) {
+                skipped.put(c.name(), worstReasonCode != null ? worstReasonCode : "INDEX_INCOMPATIBLE");
+            }
+        }
+
+        boolean groupRequiresReindex = !allCompatible && anyRequiresReindex;
+        return new LabPresetRunPlanModels.LabPresetRunGroup(
+                gk,
+                codes.stream().map(RagExperimentalPresetCode::name).toList(),
+                indexRequirementsMap(mergedAgg),
+                snapshotCapsMap(snapCtx.caps),
+                snapCtx.snapshotId,
+                allCompatible,
+                groupRequiresReindex,
+                worstReasonCode,
+                worstReason);
+    }
+
+    private ExperimentalPresetCanonicalCatalog.IndexRequirements mergeRequirements(
+            ExperimentalPresetCanonicalCatalog.IndexRequirements a,
+            ExperimentalPresetCanonicalCatalog.IndexRequirements b) {
+        if (b == null) {
+            return a;
+        }
+        if (a == null) {
+            return b;
+        }
+        ExperimentalPresetCanonicalCatalog.RequiredMaterialization mat =
+                mergeMat(a.requiredMaterialization(), b.requiredMaterialization());
+        boolean meta = a.requiresMetadataSupport() || b.requiresMetadataSupport();
+        return new ExperimentalPresetCanonicalCatalog.IndexRequirements(mat, meta);
+    }
+
+    private static ExperimentalPresetCanonicalCatalog.RequiredMaterialization mergeMat(
+            ExperimentalPresetCanonicalCatalog.RequiredMaterialization x,
+            ExperimentalPresetCanonicalCatalog.RequiredMaterialization y) {
+        if (x == null || x == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
+            return y != null ? y : x;
+        }
+        if (y == null || y == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
+            return x;
+        }
+        int ox = order(x);
+        int oy = order(y);
+        return ox >= oy ? x : y;
+    }
+
+    private static int order(ExperimentalPresetCanonicalCatalog.RequiredMaterialization m) {
+        return switch (m) {
+            case NONE -> 0;
+            case DOCUMENT_LEVEL -> 1;
+            case CHUNK_LEVEL -> 2;
+            case HYBRID -> 3;
+        };
+    }
+
+    public static LabPresetRunGroupKey groupKeyFor(RagExperimentalPresetCode code) {
+        if (ExperimentalPresetCanonicalCatalog.requiresMultiTurn(code)) {
+            return LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN;
+        }
+        ExperimentalPresetCanonicalCatalog.IndexRequirements eff =
+                ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(code);
+        if (eff.requiredMaterialization() == null
+                || eff.requiredMaterialization() == ExperimentalPresetCanonicalCatalog.RequiredMaterialization.NONE) {
+            return LabPresetRunGroupKey.NO_INDEX;
+        }
+        return switch (eff.requiredMaterialization()) {
+            case DOCUMENT_LEVEL -> LabPresetRunGroupKey.DOCUMENT_LEVEL;
+            case CHUNK_LEVEL ->
+                    eff.requiresMetadataSupport()
+                            ? LabPresetRunGroupKey.CHUNK_METADATA
+                            : LabPresetRunGroupKey.CHUNK_LEVEL_NO_METADATA;
+            case HYBRID -> LabPresetRunGroupKey.HYBRID_METADATA;
+            case NONE -> LabPresetRunGroupKey.NO_INDEX;
+        };
+    }
+
+    /** Preset execution order: group order then ordinal within group. */
+    public List<RagExperimentalPresetCode> sortDefinitionsOrder(List<RagExperimentalPresetCode> codes) {
+        List<RagExperimentalPresetCode> copy = new ArrayList<>(codes);
+        copy.sort(
+                Comparator.<RagExperimentalPresetCode, LabPresetRunGroupKey>comparing(LabPresetRunPlanService::groupKeyFor)
+                        .thenComparingInt(RagExperimentalPresetCode::ordinal));
+        return copy;
+    }
+
+    private SnapshotContext resolveSnapshotContext(EvaluationRunEntity run) {
+        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run);
+        boolean hasActive = snap != null && snap.getId() != null;
+        Map<String, Object> profile =
+                hasActive && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
+        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
+        UUID id = hasActive ? snap.getId() : null;
+        String hash = hasActive ? snap.getIndexProfileHash() : null;
+        return new SnapshotContext(hasActive, caps, id, hash);
+    }
+
+    private KnowledgeIndexSnapshotEntity resolveSnapshot(EvaluationRunEntity run) {
+        if (run == null) {
+            return null;
+        }
+        KnowledgeIndexSnapshotEntity explicit = run.getIndexSnapshot();
+        if (explicit != null && explicit.getId() != null) {
+            return explicit;
+        }
+        ProjectEntity p = run.getProject();
+        if (p == null || p.getId() == null) {
+            return null;
+        }
+        return knowledgeSnapshotService.findActiveProjectSnapshot(p.getId()).orElse(null);
+    }
+
+    private static Map<String, Object> indexRequirementsMap(ExperimentalPresetCanonicalCatalog.IndexRequirements req) {
+        if (req == null) {
+            return Map.of();
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put(
+                "requiredMaterializationStrategy",
+                req.requiredMaterialization() != null ? req.requiredMaterialization().name() : null);
+        m.put("requiresMetadataSupport", req.requiresMetadataSupport());
+        return m;
+    }
+
+    private static Map<String, Object> snapshotCapsMap(IndexSnapshotCapabilities caps) {
+        if (caps == null) {
+            return Map.of();
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("materializationStrategy", caps.materializationStrategy());
+        m.put("supportsMetadata", caps.supportsMetadata());
+        m.put("embeddingModelId", caps.embeddingModelId());
+        m.put("chunkMaxChars", caps.chunkMaxChars());
+        m.put("chunkOverlap", caps.chunkOverlap());
+        return m;
+    }
+
+    private record SnapshotContext(boolean hasActive, IndexSnapshotCapabilities caps, UUID snapshotId, String profileHash) {}
+}

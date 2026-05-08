@@ -27,7 +27,6 @@ import com.uniovi.rag.service.async.LabJobCancelledException;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,6 +34,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
@@ -53,16 +53,19 @@ public class TypedRagPresetBenchmarkOrchestrator {
     private final EvaluationRunRepository evaluationRunRepository;
     private final ExperimentalSnapshotFactory experimentalSnapshotFactory;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
+    private final LabPresetRunPlanService labPresetRunPlanService;
 
     public TypedRagPresetBenchmarkOrchestrator(
             EvaluationService evaluationService,
             EvaluationRunRepository evaluationRunRepository,
             ExperimentalSnapshotFactory experimentalSnapshotFactory,
-            KnowledgeSnapshotService knowledgeSnapshotService) {
+            KnowledgeSnapshotService knowledgeSnapshotService,
+            LabPresetRunPlanService labPresetRunPlanService) {
         this.evaluationService = evaluationService;
         this.evaluationRunRepository = evaluationRunRepository;
         this.experimentalSnapshotFactory = experimentalSnapshotFactory;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
+        this.labPresetRunPlanService = labPresetRunPlanService;
     }
 
     @SuppressWarnings("unchecked")
@@ -109,15 +112,45 @@ public class TypedRagPresetBenchmarkOrchestrator {
             Map<String, Object> single =
                     evaluationService.evaluateWithConfigurationForRagPresetQuestions(
                             base, impl, questions, itemProgress);
-            enrichRows((List<Map<String, Object>>) single.get("results"), null, null, llmSnap.model(), embSnap.model());
+            enrichRows(
+                    (List<Map<String, Object>>) single.get("results"),
+                    null,
+                    null,
+                    llmSnap.model(),
+                    embSnap.model(),
+                    null,
+                    null);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> summary =
+                    single.get("evaluation_summary") instanceof Map<?, ?>
+                            ? new LinkedHashMap<>((Map<String, Object>) single.get("evaluation_summary"))
+                            : new LinkedHashMap<>();
+            summary.put("runPlan", labPresetRunPlanService.build(run, List.of()).toMap());
+            single.put("evaluation_summary", summary);
             return single;
         }
 
-        List<RagPresetDefinition> sorted = new ArrayList<>(catalog);
-        if (requestedPresets != null && !requestedPresets.isEmpty()) {
-            sorted.removeIf(d -> !requestedPresets.contains(d.presetId()));
+        List<RagExperimentalPresetCode> codesForPlan;
+        if (requestedPresets == null || requestedPresets.isEmpty()) {
+            codesForPlan =
+                    labPresetRunPlanService.sortDefinitionsOrder(
+                            catalog.stream().map(RagPresetDefinition::presetId).toList());
+        } else {
+            codesForPlan = labPresetRunPlanService.sortDefinitionsOrder(new ArrayList<>(requestedPresets));
         }
-        sorted.sort(Comparator.comparing(d -> d.presetId().ordinal()));
+        LabPresetRunPlanModels.LabPresetRunPlan runPlan = labPresetRunPlanService.build(run, codesForPlan);
+
+        Map<RagExperimentalPresetCode, RagPresetDefinition> defByPreset =
+                catalog.stream()
+                        .collect(Collectors.toMap(RagPresetDefinition::presetId, d -> d, (a, b) -> a, LinkedHashMap::new));
+
+        List<RagPresetDefinition> sorted = new ArrayList<>();
+        for (RagExperimentalPresetCode code : codesForPlan) {
+            RagPresetDefinition def = defByPreset.get(code);
+            if (def != null) {
+                sorted.add(def);
+            }
+        }
 
         int totalOps = sorted.size() * Math.max(1, questions.size());
         AtomicInteger progressed = new AtomicInteger(0);
@@ -147,10 +180,19 @@ public class TypedRagPresetBenchmarkOrchestrator {
             }
             RagExperimentalPresetCode preset = def.presetId();
             Optional<String> blocked = ExperimentalPresetBenchmarkGate.blockReason(preset);
+            LabPresetRunGroupKey groupKey = LabPresetRunPlanService.groupKeyFor(preset);
             if (blocked.isPresent()) {
                 for (RagPresetQuestion q : questions) {
                     bump.run();
-                    allRows.add(notSupportedRow(q, def.name(), preset, blocked.get(), llmSnap.model(), embSnap.model()));
+                    allRows.add(
+                            notSupportedRow(
+                                    q,
+                                    def.name(),
+                                    preset,
+                                    blocked.get(),
+                                    llmSnap.model(),
+                                    embSnap.model(),
+                                    groupKey));
                 }
                 continue;
             }
@@ -164,6 +206,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
                             def.name(),
                             preset,
                             gate,
+                            groupKey,
                             llmSnap.model(),
                             embSnap.model()));
                 }
@@ -184,7 +227,14 @@ public class TypedRagPresetBenchmarkOrchestrator {
                                 itemProgress == null ? null : (i, n) -> bump.run());
                 List<Map<String, Object>> rows = (List<Map<String, Object>>) batch.get("results");
                 if (rows != null) {
-                    enrichRows(rows, def.name(), preset, llmSnap.model(), embSnap.model());
+                    enrichRows(
+                            rows,
+                            def.name(),
+                            preset,
+                            llmSnap.model(),
+                            embSnap.model(),
+                            gate,
+                            groupKey);
                     allRows.addAll(rows);
                 }
             } catch (Exception ex) {
@@ -192,9 +242,26 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     bump.run();
                     if (ex instanceof RagServiceException rse
                             && rse.getErrorCode() == ErrorCode.UNSUPPORTED_RUNTIME_CONFIGURATION) {
-                        allRows.add(notSupportedRow(q, def.name(), preset, rse.getErrorCode().name(), llmSnap.model(), embSnap.model()));
+                        allRows.add(
+                                notSupportedRow(
+                                        q,
+                                        def.name(),
+                                        preset,
+                                        rse.getErrorCode().name(),
+                                        llmSnap.model(),
+                                        embSnap.model(),
+                                        groupKey));
                     } else {
-                        allRows.add(failedRow(q, def.name(), preset, ex, llmSnap.model(), embSnap.model()));
+                        allRows.add(
+                                failedRow(
+                                        q,
+                                        def.name(),
+                                        preset,
+                                        ex,
+                                        llmSnap.model(),
+                                        embSnap.model(),
+                                        gate,
+                                        groupKey));
                     }
                 }
             }
@@ -207,6 +274,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
         out.put("configuration", Map.of("preset_benchmark", true, "last_preset_feature_flags", lastConfigurationMap));
         out.put("results", allRows);
         Map<String, Object> summary = new LinkedHashMap<>(evaluationService.summarizeJudgeResults(allRows));
+        summary.put("runPlan", runPlan.toMap());
         if (cancelled) {
             summary.put("cancelled", true);
             if (cancelReason != null && !cancelReason.isBlank()) {
@@ -268,11 +336,14 @@ public class TypedRagPresetBenchmarkOrchestrator {
             String presetLabel,
             RagExperimentalPresetCode preset,
             String llmModelId,
-            String embeddingModelId) {
+            String embeddingModelId,
+            PreflightIndexCompatibility indexGate,
+            LabPresetRunGroupKey groupKey) {
         if (rows == null) {
             return;
         }
         String presetStr = preset != null ? preset.name() : null;
+        LabPresetRunGroupKey gk = groupKey != null ? groupKey : LabPresetRunGroupKey.NO_INDEX;
         for (Map<String, Object> row : rows) {
             if (presetStr != null) {
                 row.put(BenchmarkResultRowKeys.PRESET_CODE, presetStr);
@@ -280,6 +351,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
             row.put(BenchmarkResultRowKeys.PRESET_LABEL, presetLabel);
             row.put(BenchmarkResultRowKeys.LLM_MODEL_ID, llmModelId);
             row.put(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID, embeddingModelId);
+            row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, indexGate));
         }
     }
 
@@ -289,7 +361,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
             RagExperimentalPresetCode preset,
             String errorCode,
             String llmModelId,
-            String embeddingModelId) {
+            String embeddingModelId,
+            LabPresetRunGroupKey groupKey) {
         Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
         row.put(JSON_KEY_GENERATED_ANSWER, "");
         row.put("llm_evaluation", "");
@@ -297,6 +370,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
         row.put(BenchmarkResultRowKeys.ERROR_CODE, errorCode);
         row.put(BenchmarkResultRowKeys.REASON, errorCode);
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
+        LabPresetRunGroupKey gk =
+                groupKey != null ? groupKey : LabPresetRunPlanService.groupKeyFor(preset);
+        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, null));
         return row;
     }
 
@@ -305,6 +381,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
             String presetLabel,
             RagExperimentalPresetCode preset,
             PreflightIndexCompatibility gate,
+            LabPresetRunGroupKey groupKey,
             String llmModelId,
             String embeddingModelId) {
         Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
@@ -315,7 +392,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
         row.put(BenchmarkResultRowKeys.ERROR_CODE, code);
         row.put(BenchmarkResultRowKeys.REASON, gate != null && gate.message() != null ? gate.message() : code);
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
-        row.put(JSON_KEY_METRICS_PAYLOAD, buildIndexGateMetricsPayload(presetLabel, preset, gate));
+        LabPresetRunGroupKey gk =
+                groupKey != null ? groupKey : LabPresetRunPlanService.groupKeyFor(preset);
+        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, gate));
         return row;
     }
 
@@ -325,7 +404,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
             RagExperimentalPresetCode preset,
             Exception ex,
             String llmModelId,
-            String embeddingModelId) {
+            String embeddingModelId,
+            PreflightIndexCompatibility indexGate,
+            LabPresetRunGroupKey groupKey) {
         Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
         row.put(JSON_KEY_GENERATED_ANSWER, "");
         row.put("llm_evaluation", "");
@@ -338,6 +419,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
                         ? ex.getMessage()
                         : ex.getClass().getSimpleName());
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
+        LabPresetRunGroupKey gk =
+                groupKey != null ? groupKey : LabPresetRunPlanService.groupKeyFor(preset);
+        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, indexGate));
         return row;
     }
 
@@ -362,11 +446,13 @@ public class TypedRagPresetBenchmarkOrchestrator {
         return row;
     }
 
-    private static Map<String, Object> buildIndexGateMetricsPayload(
+    private static Map<String, Object> buildLabMetricsPayload(
             String presetLabel,
             RagExperimentalPresetCode preset,
+            LabPresetRunGroupKey groupKey,
             PreflightIndexCompatibility gate) {
         Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put("groupKey", groupKey != null ? groupKey.name() : null);
         metrics.put(BenchmarkResultRowKeys.PRESET_CODE, preset != null ? preset.name() : null);
         metrics.put(BenchmarkResultRowKeys.PRESET_LABEL, presetLabel);
         if (gate == null) {

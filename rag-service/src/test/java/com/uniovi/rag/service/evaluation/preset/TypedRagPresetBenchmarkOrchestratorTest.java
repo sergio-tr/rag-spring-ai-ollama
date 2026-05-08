@@ -56,7 +56,11 @@ class TypedRagPresetBenchmarkOrchestratorTest {
 
     private TypedRagPresetBenchmarkOrchestrator orchestrator() {
         return new TypedRagPresetBenchmarkOrchestrator(
-                evaluationService, evaluationRunRepository, experimentalSnapshotFactory, knowledgeSnapshotService);
+                evaluationService,
+                evaluationRunRepository,
+                experimentalSnapshotFactory,
+                knowledgeSnapshotService,
+                new LabPresetRunPlanService(knowledgeSnapshotService));
     }
 
     @Test
@@ -135,6 +139,12 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 .isEqualTo(BenchmarkItemOutcome.NOT_SUPPORTED.name());
         assertThat(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE))
                 .isEqualTo("PRESET_CLARIFICATION_BENCHMARK_NOT_SUPPORTED");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(mp.get("groupKey")).isEqualTo(LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN.name());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> es = (Map<String, Object>) out.get("evaluation_summary");
+        assertThat(es).containsKey("runPlan");
         Mockito.verify(evaluationService, Mockito.never())
                 .evaluateWithConfigurationForRagPresetQuestions(
                         ArgumentMatchers.any(),
@@ -177,6 +187,12 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         assertThat(String.valueOf(rows.get(0).get(BenchmarkResultRowKeys.ERROR_CODE)))
                 .isEqualTo("MATERIALIZATION_NOT_SUPPORTED");
         assertThat(rows.get(0)).containsKey("metrics_payload");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
+        assertThat(mp.get("groupKey")).isEqualTo(LabPresetRunGroupKey.HYBRID_METADATA.name());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> es = (Map<String, Object>) out.get("evaluation_summary");
+        assertThat(es).containsKey("runPlan");
         Mockito.verify(evaluationService, Mockito.never())
                 .evaluateWithConfigurationForRagPresetQuestions(
                         ArgumentMatchers.any(),
