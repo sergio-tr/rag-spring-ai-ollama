@@ -61,7 +61,14 @@ public class LabEvaluationRunService {
                     "goldChunkIds",
                     "goldDocumentIds",
                     "retrievedChunkIds",
-                    "retrievedDocumentIds");
+                    "retrievedDocumentIds",
+                    "groupKey",
+                    "indexCompatibilityStatus",
+                    "requiresReindex",
+                    "indexSnapshotId",
+                    "indexProfileHash",
+                    "presetIndexRequirements",
+                    "activeSnapshotCapabilities");
 
     /** Stable MVP CSV columns (shared by comparison exports and unit tests). */
     public static List<String> MVP_ITEMS_CSV_COLUMNS_FOR_TESTS() {

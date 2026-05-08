@@ -118,6 +118,7 @@ public class EvaluationCanonicalPersistenceService {
             metrics.put("judge_scores", scores);
             metrics.put("llm_evaluation_excerpt", trunc(evalText, 4000));
             mergeOptionalRowKeys(r, metrics);
+            mergeMetricsPayloadFromRow(r, metrics);
             e.setMetricsPayload(metrics);
             saved.add(e);
         }
@@ -165,6 +166,7 @@ public class EvaluationCanonicalPersistenceService {
             e.setBenchmarkKind(BenchmarkKind.EMBEDDING_RETRIEVAL.name());
             Map<String, Object> metrics = shallowCopyStringKeyed(r.get("metrics"));
             mergeOptionalRowKeys(r, metrics);
+            mergeMetricsPayloadFromRow(r, metrics);
             String evalText = str(r.get("llm_evaluation"));
             if (evalText != null && !evalText.isBlank()) {
                 Map<String, Integer> scores = JudgeScoreParser.parseScores(evalText);
@@ -209,6 +211,21 @@ public class EvaluationCanonicalPersistenceService {
         run.setProgress(100);
         run.setCompletedAt(Instant.now());
         evaluationRunRepository.save(run);
+    }
+
+    /**
+     * Overlay row-level {@code metrics_payload} (Lab index plan / gate payload) onto persisted metrics so exports see the same keys as the runner output.
+     */
+    private static void mergeMetricsPayloadFromRow(Map<String, Object> row, Map<String, Object> metrics) {
+        Object mp = row.get("metrics_payload");
+        if (!(mp instanceof Map<?, ?> mm)) {
+            return;
+        }
+        for (Map.Entry<?, ?> e : mm.entrySet()) {
+            if (e.getKey() != null) {
+                metrics.put(String.valueOf(e.getKey()), e.getValue());
+            }
+        }
     }
 
     private static void mergeOptionalRowKeys(Map<String, Object> row, Map<String, Object> metrics) {

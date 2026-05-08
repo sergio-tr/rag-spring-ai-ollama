@@ -1,5 +1,6 @@
 package com.uniovi.rag.service.evaluation.mvp;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.domain.evaluation.BenchmarkKind;
 import com.uniovi.rag.domain.evaluation.BenchmarkItemOutcome;
@@ -17,6 +18,8 @@ import java.util.Optional;
  * Per-row MVP metrics for TFG exports — computed from persisted {@link EvaluationResultEntity} (+ run fallbacks).
  */
 public final class BenchmarkMvpMetricsCalculator {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private BenchmarkMvpMetricsCalculator() {}
 
@@ -127,7 +130,29 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("goldDocumentIds", joinIds(mp.get("gold_document_ids")));
         row.put("retrievedChunkIds", joinIds(mp.get("retrieved_chunk_ids")));
         row.put("retrievedDocumentIds", joinIds(mp.get("retrieved_document_ids")));
+
+        row.put("groupKey", csvVal(mp.get("groupKey")));
+        row.put("indexCompatibilityStatus", csvVal(mp.get("indexCompatibilityStatus")));
+        row.put("requiresReindex", csvVal(mp.get("requiresReindex")));
+        row.put("indexSnapshotId", csvVal(mp.get("indexSnapshotId")));
+        row.put("indexProfileHash", csvVal(mp.get("indexProfileHash")));
+        row.put("presetIndexRequirements", jsonCell(mp.get("presetIndexRequirements")));
+        row.put("activeSnapshotCapabilities", jsonCell(mp.get("activeSnapshotCapabilities")));
         return row;
+    }
+
+    private static String jsonCell(Object o) {
+        if (o == null) {
+            return "";
+        }
+        if (o instanceof String s) {
+            return s;
+        }
+        try {
+            return OBJECT_MAPPER.writeValueAsString(o);
+        } catch (Exception e) {
+            return String.valueOf(o);
+        }
     }
 
     private static Map<String, Object> payload(EvaluationResultEntity item) {
