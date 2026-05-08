@@ -8,6 +8,8 @@ import {
   useDeleteAllProjectDocuments,
   useDeleteProjectDocument,
   useProjectDocuments,
+  useProjectDocumentsForConversation,
+  useUploadConversationOverlayDocument,
   useUploadProjectDocument,
 } from "./use-project-documents";
 
@@ -64,6 +66,37 @@ describe("useProjectDocuments", () => {
   });
 });
 
+describe("useProjectDocumentsForConversation", () => {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+  });
+
+  function wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  }
+
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+    qc.clear();
+  });
+
+  it("does not fetch until both projectId and conversationId are defined", () => {
+    const { result } = renderHook(() => useProjectDocumentsForConversation("p1", null), { wrapper });
+    expect(result.current.isPending).toBe(true);
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("loads documents for a conversation including project shared docs", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce([]);
+    const { result } = renderHook(() => useProjectDocumentsForConversation("p1", "c1"), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const url = String(vi.mocked(apiFetch).mock.calls[0]?.[0]);
+    expect(url).toContain("/projects/p1/documents?");
+    expect(url).toContain("conversationId=c1");
+    expect(url).toContain("includeProjectShared=true");
+  });
+});
+
 describe("useUploadProjectDocument", () => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
@@ -92,6 +125,42 @@ describe("useUploadProjectDocument", () => {
     await result.current.mutateAsync(file);
     expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining("/projects/p-up/documents"), expect.any(Object));
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["project-documents", "p-up"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["projects"] });
+  });
+});
+
+describe("useUploadConversationOverlayDocument", () => {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+  });
+
+  function wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  }
+
+  beforeEach(() => {
+    vi.mocked(apiFetch).mockReset();
+    qc.clear();
+  });
+
+  it("rejects upload without conversation id", async () => {
+    const { result } = renderHook(() => useUploadConversationOverlayDocument("p1", null), { wrapper });
+    const file = new File([], "a.txt");
+    await expect(result.current.mutateAsync(file)).rejects.toThrow(/no_conversation/);
+  });
+
+  it("POSTs overlay doc and invalidates both caches", async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce(doc("u1", "up.txt"));
+    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+    const { result } = renderHook(() => useUploadConversationOverlayDocument("p-up", "c-up"), { wrapper });
+    const file = new File([], "up.txt");
+    await result.current.mutateAsync(file);
+    expect(apiFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/projects/p-up/conversations/c-up/documents"),
+      expect.any(Object),
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["project-documents", "p-up"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["project-documents", "p-up", "conversation", "c-up"] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["projects"] });
   });
 });

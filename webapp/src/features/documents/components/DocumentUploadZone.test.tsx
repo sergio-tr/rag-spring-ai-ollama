@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IntlTestProvider } from "@/test-utils/intl";
 import { DocumentUploadZone } from "./DocumentUploadZone";
@@ -67,6 +67,8 @@ describe("DocumentUploadZone", () => {
     const file = new File(["x"], "doc.txt", { type: "text/plain" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     await user.upload(input, file);
+    // Wait for state updates from the upload effect to settle (avoid act() warnings).
+    await screen.findByText(/doc\.txt/i);
     expect(apiMock.apiFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -80,6 +82,8 @@ describe("DocumentUploadZone", () => {
     const file = new File(["x"], "doc.txt", { type: "text/plain" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     await user.upload(input, file);
+    // Ensure no background state updates are pending (avoid act() warnings).
+    await waitFor(() => expect(screen.queryByTestId("doc-upload-items")).toBeNull());
     expect(apiMock.apiFetch).not.toHaveBeenCalled();
   });
 
@@ -108,6 +112,9 @@ describe("DocumentUploadZone", () => {
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["x"], "doc.txt", { type: "text/plain" })] } });
     expect(screen.getByText(/doc\.txt/i)).toBeInTheDocument();
+    // Allow the async effect chain to run without producing act() warnings.
+    // (We don't assert the final error text here; other tests cover error rendering.)
+    return waitFor(() => expect(apiMock.apiFetch).toHaveBeenCalledTimes(1));
   });
 
   it("uploads multiple selected files", async () => {
@@ -124,6 +131,8 @@ describe("DocumentUploadZone", () => {
     const b = new File(["b"], "b.txt", { type: "text/plain" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     await user.upload(input, [a, b]);
+    await screen.findByText(/a\.txt/i);
+    await screen.findByText(/b\.txt/i);
     expect(apiMock.apiFetch).toHaveBeenCalledTimes(2);
   });
 
@@ -167,6 +176,7 @@ describe("DocumentUploadZone", () => {
     // jsdom has no DataTransfer; pass a minimal dataTransfer.files array-like for onDrop
     const files = { 0: file, length: 1, item: (i: number) => (i === 0 ? file : null) };
     fireEvent.drop(zone!, { dataTransfer: { files } });
+    expect(screen.getByText(/drop\.txt/i)).toBeInTheDocument();
     expect(apiMock.apiFetch).toHaveBeenCalledTimes(1);
   });
 

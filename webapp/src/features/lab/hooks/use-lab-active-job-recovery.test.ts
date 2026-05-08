@@ -4,6 +4,7 @@ import {
   computeLabActiveJobRecovery,
   isSectionBenchmarkConsistent,
   orderingKeyForActiveJob,
+  expectedBenchmarkKindForSection,
 } from "./use-lab-active-job-recovery";
 import type { ActiveLabJobDto } from "@/types/api";
 import type { PersistedLabJobRecord } from "@/features/lab/lib/lab-job-persistence";
@@ -87,6 +88,39 @@ describe("computeLabActiveJobRecovery", () => {
     expect(d.kind).toBe("none");
   });
 
+  it("returns session_only when backend active jobs request fails but session has non-terminal job", () => {
+    const rec = sessionRec({ jobId: "sess-err", sectionKey: "evaluation-embedding" });
+    const d = computeLabActiveJobRecovery({
+      sectionKey: "evaluation-embedding",
+      benchmarkKind: "EMBEDDING_RETRIEVAL",
+      activeProjectId: null,
+      draftFollowMode: null,
+      backendActiveJobs: null,
+      backendActiveJobsLoading: false,
+      backendActiveJobsError: new Error("boom"),
+      sessionRecords: [rec],
+    });
+    expect(d.kind).toBe("session_only");
+    if (d.kind === "session_only") {
+      expect(d.reason).toBe("active_jobs_request_failed");
+      expect(d.record.jobId).toBe("sess-err");
+    }
+  });
+
+  it("returns none when backend active jobs request fails and session has no usable record", () => {
+    const d = computeLabActiveJobRecovery({
+      sectionKey: "evaluation-embedding",
+      benchmarkKind: "EMBEDDING_RETRIEVAL",
+      activeProjectId: null,
+      draftFollowMode: null,
+      backendActiveJobs: null,
+      backendActiveJobsLoading: false,
+      backendActiveJobsError: new Error("boom"),
+      sessionRecords: [],
+    });
+    expect(d.kind).toBe("none");
+  });
+
   it("returns auto_follow for a single matching backend job (empty session)", () => {
     const job = activeJob({ jobId: "job-1", benchmarkKind: "LLM_JUDGE_QA", projectId: null });
     const d = computeLabActiveJobRecovery({
@@ -140,7 +174,36 @@ describe("computeLabActiveJobRecovery", () => {
     expect(d.kind).toBe("session_only");
     if (d.kind === "session_only") {
       expect(d.record.jobId).toBe("sess-1");
+      expect(d.reason).toBe("no_backend_candidate");
     }
+  });
+
+  it("returns none when no backend job matches and session has no non-terminal rows", () => {
+    const recTerminal = sessionRec({
+      jobId: "sess-term",
+      sectionKey: "evaluation-llm",
+      lastStatus: {
+        id: "sess-term",
+        taskType: "LAB",
+        status: "SUCCEEDED",
+        terminal: true,
+        progressText: null,
+        errorMessage: null,
+        failureCode: null,
+        result: null,
+      },
+    });
+    const d = computeLabActiveJobRecovery({
+      sectionKey: "evaluation-llm",
+      benchmarkKind: "LLM_JUDGE_QA",
+      activeProjectId: null,
+      draftFollowMode: null,
+      backendActiveJobs: [],
+      backendActiveJobsLoading: false,
+      backendActiveJobsError: null,
+      sessionRecords: [recTerminal],
+    });
+    expect(d.kind).toBe("none");
   });
 
   it("returns cta when two jobs share the same ordering key", () => {
@@ -191,9 +254,51 @@ describe("computeLabActiveJobRecovery", () => {
       expect(d.candidate.jobId).toBe("new");
     }
   });
+
+  it("breaks ties deterministically by updatedAt then jobId", () => {
+    const a = activeJob({
+      jobId: "a",
+      benchmarkKind: "LLM_JUDGE_QA",
+      startedAt: "2024-01-02T00:00:00.000Z",
+      updatedAt: "2024-01-02T00:00:00.000Z",
+    });
+    const b = activeJob({
+      jobId: "b",
+      benchmarkKind: "LLM_JUDGE_QA",
+      startedAt: "2024-01-02T00:00:00.000Z",
+      updatedAt: "2024-01-02T00:02:00.000Z",
+    });
+    const d = computeLabActiveJobRecovery({
+      sectionKey: "evaluation-llm",
+      benchmarkKind: "LLM_JUDGE_QA",
+      activeProjectId: null,
+      draftFollowMode: null,
+      backendActiveJobs: [a, b],
+      backendActiveJobsLoading: false,
+      backendActiveJobsError: null,
+      sessionRecords: [],
+    });
+    expect(d.kind).toBe("auto_follow");
+    if (d.kind === "auto_follow") {
+      expect(d.candidate.jobId).toBe("b");
+    }
+  });
 });
 
 describe("activeJobMatchesCard", () => {
+  it("returns false when jobId is blank or benchmarkKind missing", () => {
+    expect(activeJobMatchesCard(activeJob({ jobId: "  ", benchmarkKind: "LLM_JUDGE_QA" }), "LLM_JUDGE_QA", null)).toBe(
+      false,
+    );
+    const j = activeJob({ jobId: "x", benchmarkKind: "LLM_JUDGE_QA" });
+    expect(activeJobMatchesCard({ ...j, benchmarkKind: "  " }, "LLM_JUDGE_QA", null)).toBe(false);
+  });
+
+  it("returns false when benchmark kinds do not match", () => {
+    const j = activeJob({ jobId: "x", benchmarkKind: "LLM_JUDGE_QA" });
+    expect(activeJobMatchesCard(j, "EMBEDDING_RETRIEVAL", null)).toBe(false);
+  });
+
   it("matches benchmark kind case-insensitively and both-null project scope", () => {
     const j = activeJob({ jobId: "x", benchmarkKind: "llm_judge_qa", projectId: null });
     expect(activeJobMatchesCard(j, "LLM_JUDGE_QA", null)).toBe(true);
@@ -208,11 +313,22 @@ describe("activeJobMatchesCard", () => {
     const j = activeJob({ jobId: "x", benchmarkKind: "LLM_JUDGE_QA", projectId: null });
     expect(activeJobMatchesCard(j, "LLM_JUDGE_QA", "550e8400-e29b-41d4-a716-446655440099")).toBe(false);
   });
+
+  it("accepts when both have same project id regardless of casing/whitespace", () => {
+    const j = activeJob({ jobId: "x", benchmarkKind: "LLM_JUDGE_QA", projectId: "  P1  " });
+    expect(activeJobMatchesCard(j, "LLM_JUDGE_QA", "p1")).toBe(true);
+  });
 });
 
 describe("isSectionBenchmarkConsistent", () => {
   it("is true for evaluation-llm + LLM_JUDGE_QA", () => {
     expect(isSectionBenchmarkConsistent("evaluation-llm", "LLM_JUDGE_QA")).toBe(true);
+  });
+
+  it("maps section keys to the expected benchmark kind", () => {
+    expect(expectedBenchmarkKindForSection("evaluation-llm")).toBe("LLM_JUDGE_QA");
+    expect(expectedBenchmarkKindForSection("evaluation-embedding")).toBe("EMBEDDING_RETRIEVAL");
+    expect(expectedBenchmarkKindForSection("evaluation-rag")).toBe("RAG_PRESET_END_TO_END");
   });
 });
 
@@ -222,5 +338,10 @@ describe("orderingKeyForActiveJob", () => {
     const a = activeJob({ jobId: "a", benchmarkKind: "LLM_JUDGE_QA", startedAt: t, updatedAt: t });
     const b = activeJob({ jobId: "b", benchmarkKind: "LLM_JUDGE_QA", startedAt: t, updatedAt: t });
     expect(orderingKeyForActiveJob(a)).toBe(orderingKeyForActiveJob(b));
+  });
+
+  it("handles invalid timestamps as 'na'", () => {
+    const a = activeJob({ jobId: "a", benchmarkKind: "LLM_JUDGE_QA", startedAt: "bad", updatedAt: "bad" });
+    expect(orderingKeyForActiveJob(a)).toBe("na|na");
   });
 });
