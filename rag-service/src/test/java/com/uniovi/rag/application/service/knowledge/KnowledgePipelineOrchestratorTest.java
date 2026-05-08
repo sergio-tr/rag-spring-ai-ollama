@@ -31,6 +31,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
 
 @ExtendWith(MockitoExtension.class)
 class KnowledgePipelineOrchestratorTest {
@@ -70,6 +71,7 @@ class KnowledgePipelineOrchestratorTest {
                         knowledgeSnapshotService,
                         knowledgeIndexingService,
                         projectIndexProfileService,
+                        mock(LabIndexProfileOverrideFactory.class),
                         transactionManager,
                         null);
 
@@ -92,6 +94,7 @@ class KnowledgePipelineOrchestratorTest {
                         knowledgeSnapshotService,
                         knowledgeIndexingService,
                         projectIndexProfileService,
+                        mock(LabIndexProfileOverrideFactory.class),
                         transactionManager,
                         null);
 
@@ -119,6 +122,7 @@ class KnowledgePipelineOrchestratorTest {
                         knowledgeSnapshotService,
                         knowledgeIndexingService,
                         projectIndexProfileService,
+                        mock(LabIndexProfileOverrideFactory.class),
                         transactionManager,
                         null);
 

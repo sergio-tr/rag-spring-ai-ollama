@@ -55,6 +55,7 @@ public class KnowledgePipelineOrchestrator {
     private final KnowledgeSnapshotService knowledgeSnapshotService;
     private final KnowledgeIndexingService knowledgeIndexingService;
     private final ProjectIndexProfileService projectIndexProfileService;
+    private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
     private final TransactionTemplate transactionTemplate;
     private final MeterRegistry meterRegistry;
 
@@ -65,6 +66,7 @@ public class KnowledgePipelineOrchestrator {
             KnowledgeSnapshotService knowledgeSnapshotService,
             KnowledgeIndexingService knowledgeIndexingService,
             ProjectIndexProfileService projectIndexProfileService,
+            LabIndexProfileOverrideFactory labIndexProfileOverrideFactory,
             PlatformTransactionManager transactionManager,
             @Autowired(required = false) MeterRegistry meterRegistry) {
         this.jdbcTemplate = jdbcTemplate;
@@ -73,6 +75,7 @@ public class KnowledgePipelineOrchestrator {
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.knowledgeIndexingService = knowledgeIndexingService;
         this.projectIndexProfileService = projectIndexProfileService;
+        this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.meterRegistry = meterRegistry;
     }
@@ -489,6 +492,101 @@ public class KnowledgePipelineOrchestrator {
                 knowledgeSnapshotService.failSnapshotById(building.getId());
             }
             throw new IllegalStateException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Lab-only internal rebuild using a derived profile override (materialization + metadata toggle).
+     *
+     * <p>This method intentionally does not write {@code project_index_profile}. It creates and activates a
+     * new {@code knowledge_index_snapshot} for the scope using the effective profile's capabilities.
+     *
+     * @return new knowledge snapshot id, or {@code null} when no READY documents (no snapshot created)
+     */
+    @Transactional
+    public UUID rebuildScopeWithProfileOverride(
+            UUID projectId,
+            CorpusScope corpusScope,
+            UUID conversationId,
+            UUID resolvedConfigSnapshotId,
+            String resolvedConfigHash,
+            ProjectIndexProfile effectiveProfile) {
+        List<KnowledgeDocumentEntity> scopeDocs = loadReadyScopeDocuments(projectId, corpusScope, conversationId);
+        if (scopeDocs.isEmpty()) {
+            log.info("rebuildScopeWithProfileOverride: no READY documents in scope project={}, corpusScope={}", projectId, corpusScope);
+            return null;
+        }
+        KnowledgeIndexSnapshotEntity building = null;
+        try {
+            recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "started");
+            ProjectIndexProfile profile =
+                    effectiveProfile != null ? effectiveProfile : loadProfile(projectId);
+            IndexAndSnapshotSig sig = computeSignaturePair(scopeDocs, null, profile);
+            String indexSigHex = sig.indexSigHex();
+            String snapshotSigHex = sig.snapshotSigHex();
+
+            KnowledgeSnapshotScopeType snapScope =
+                    corpusScope == CorpusScope.PROJECT_SHARED
+                            ? KnowledgeSnapshotScopeType.PROJECT
+                            : KnowledgeSnapshotScopeType.CONVERSATION;
+
+            Optional<KnowledgeIndexSnapshotEntity> previousActive =
+                    corpusScope == CorpusScope.PROJECT_SHARED
+                            ? knowledgeSnapshotService.findActiveProjectSnapshot(projectId)
+                            : knowledgeSnapshotService.findActiveConversationSnapshot(conversationId);
+
+            KnowledgeDocumentEntity first = scopeDocs.getFirst();
+            building =
+                    knowledgeSnapshotService.createBuildingSnapshot(
+                            first.getProject(),
+                            first.getConversation(),
+                            snapScope,
+                            snapshotSigHex,
+                            resolvedConfigSnapshotId,
+                            resolvedConfigHash != null ? resolvedConfigHash : "lab-auto-reindex",
+                            profile.toSnapshotJsonb(),
+                            profile.profileHash());
+
+            previousActive.ifPresent(p -> knowledgeSnapshotService.deleteVectorsForSnapshotId(p.getId()));
+            for (KnowledgeDocumentEntity d : scopeDocs) {
+                deleteVectorChunksForDocument(d.getId());
+            }
+
+            MaterializationStrategy strategy = profile.materializationStrategy();
+            int chunkMaxChars = profile.chunkMaxChars();
+            for (KnowledgeDocumentEntity doc : scopeDocs) {
+                knowledgeIndexingService.processDocument(
+                        new KnowledgeDocumentIndexingRequest(
+                                doc,
+                                null,
+                                doc.getFileName(),
+                                doc.getMimeType(),
+                                building,
+                                indexSigHex,
+                                strategy,
+                                chunkMaxChars));
+            }
+
+            knowledgeSnapshotService.activateSnapshot(building, scopeDocs, previousActive);
+
+            Instant now = Instant.now();
+            for (KnowledgeDocumentEntity d : scopeDocs) {
+                d.setRequiresReindex(false);
+                d.setChunkCount(knowledgeIndexingService.computeChunkCountForDoc(d.getId()));
+                d.setReindexedAt(now);
+                knowledgeDocumentRepository.save(d);
+            }
+            recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "success");
+            log.info("rebuildScopeWithProfileOverride completed snapshot {} for project {}", building.getId(), projectId);
+            return building.getId();
+        } catch (Exception e) {
+            recordEtlEvent(ETL_STAGE_REBUILD_SCOPE, "failure");
+            log.error("rebuildScopeWithProfileOverride failed: {}", e.getMessage(), e);
+            if (building != null) {
+                knowledgeSnapshotService.deleteVectorsForSnapshotId(building.getId());
+                knowledgeSnapshotService.failSnapshotById(building.getId());
+            }
+            throw new IllegalStateException("AUTO_REINDEX_FAILED: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()), e);
         }
     }
 
