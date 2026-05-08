@@ -7,6 +7,7 @@ import com.uniovi.rag.domain.evaluation.workbook.RagExperimentalPresetCode;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -41,6 +42,7 @@ public class LabPresetRunPlanService {
 
         Map<String, String> skipped = new LinkedHashMap<>();
         List<String> executable = new ArrayList<>();
+        List<LabPresetRunPlanModels.LabPresetRunPlanItem> items = new ArrayList<>();
 
         Map<LabPresetRunGroupKey, List<RagExperimentalPresetCode>> byGroup = new LinkedHashMap<>();
         for (RagExperimentalPresetCode code : ordered) {
@@ -57,19 +59,22 @@ public class LabPresetRunPlanService {
                 continue;
             }
             codes.sort(Comparator.comparingInt(RagExperimentalPresetCode::ordinal));
-            LabPresetRunPlanModels.LabPresetRunGroup gr = buildGroup(gk, codes, snapCtx, skipped, executable);
+            LabPresetRunPlanModels.LabPresetRunGroup gr = buildGroup(gk, codes, snapCtx, skipped, executable, items);
             groups.add(gr);
         }
 
         List<String> requestedStr = ordered.stream().map(RagExperimentalPresetCode::name).toList();
         return new LabPresetRunPlanModels.LabPresetRunPlan(
                 groups,
+                items,
                 requestedStr,
                 List.copyOf(executable),
                 Map.copyOf(skipped),
                 snapCtx.snapshotId,
                 snapCtx.profileHash,
-                snapCtx.hasActive);
+                snapCtx.hasActive,
+                LabPresetRunPlanModels.STRATEGY_VERSION,
+                Instant.now());
     }
 
     private static List<RagExperimentalPresetCode> dedupePreserveOrder(List<RagExperimentalPresetCode> requested) {
@@ -91,10 +96,27 @@ public class LabPresetRunPlanService {
             List<RagExperimentalPresetCode> codes,
             SnapshotContext snapCtx,
             Map<String, String> skipped,
-            List<String> executable) {
+            List<String> executable,
+            List<LabPresetRunPlanModels.LabPresetRunPlanItem> items) {
         if (gk == LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN) {
             for (RagExperimentalPresetCode c : codes) {
                 skipped.put(c.name(), "MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED");
+                items.add(
+                        new LabPresetRunPlanModels.LabPresetRunPlanItem(
+                                c.name(),
+                                gk,
+                                false,
+                                true,
+                                indexRequirementsMap(ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(c)),
+                                false,
+                                false,
+                                "NOT_SUPPORTED",
+                                "MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED",
+                                "Preset requires multi-turn harness; not executed in single-turn Lab benchmark.",
+                                snapCtx.snapshotId,
+                                snapCtx.profileHash,
+                                snapshotCapsMap(snapCtx.caps),
+                                LabPresetRunPlanModels.STRATEGY_VERSION));
             }
             ExperimentalPresetCanonicalCatalog.IndexRequirements agg =
                     codes.stream()
@@ -109,14 +131,25 @@ public class LabPresetRunPlanService {
                     snapCtx.snapshotId,
                     false,
                     false,
+                    "NOT_SUPPORTED",
                     "MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED",
-                    "Preset requires multi-turn harness; not executed in single-turn Lab benchmark.");
+                    "Preset requires multi-turn harness; not executed in single-turn Lab benchmark.",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
         }
 
         boolean allCompatible = true;
         boolean anyRequiresReindex = false;
         String worstReasonCode = null;
         String worstReason = null;
+        String worstStatus = "COMPATIBLE";
         ExperimentalPresetCanonicalCatalog.IndexRequirements mergedAgg =
                 ExperimentalPresetCanonicalCatalog.IndexRequirements.none();
 
@@ -135,16 +168,52 @@ public class LabPresetRunPlanService {
             if (!idx.compatible() && idx.reasonCode() != null) {
                 worstReasonCode = idx.reasonCode();
                 worstReason = idx.message();
+                worstStatus = idx.status();
             }
         }
 
         if (allCompatible) {
             for (RagExperimentalPresetCode c : codes) {
                 executable.add(c.name());
+                items.add(
+                        new LabPresetRunPlanModels.LabPresetRunPlanItem(
+                                c.name(),
+                                gk,
+                                true,
+                                false,
+                                indexRequirementsMap(ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(c)),
+                                true,
+                                false,
+                                "COMPATIBLE",
+                                null,
+                                null,
+                                snapCtx.snapshotId,
+                                snapCtx.profileHash,
+                                snapshotCapsMap(snapCtx.caps),
+                                LabPresetRunPlanModels.STRATEGY_VERSION));
             }
         } else {
             for (RagExperimentalPresetCode c : codes) {
                 skipped.put(c.name(), worstReasonCode != null ? worstReasonCode : "INDEX_INCOMPATIBLE");
+                boolean requiresReindex = IndexCompatibilityResult
+                        .check(ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(c), snapCtx.hasActive, snapCtx.caps)
+                        .requiresReindex();
+                items.add(
+                        new LabPresetRunPlanModels.LabPresetRunPlanItem(
+                                c.name(),
+                                gk,
+                                true,
+                                false,
+                                indexRequirementsMap(ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(c)),
+                                false,
+                                requiresReindex,
+                                worstStatus,
+                                worstReasonCode != null ? worstReasonCode : "INDEX_INCOMPATIBLE",
+                                worstReason,
+                                snapCtx.snapshotId,
+                                snapCtx.profileHash,
+                                snapshotCapsMap(snapCtx.caps),
+                                LabPresetRunPlanModels.STRATEGY_VERSION));
             }
         }
 
@@ -157,8 +226,18 @@ public class LabPresetRunPlanService {
                 snapCtx.snapshotId,
                 allCompatible,
                 groupRequiresReindex,
+                allCompatible ? "COMPATIBLE" : worstStatus,
                 worstReasonCode,
-                worstReason);
+                worstReason,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 
     private ExperimentalPresetCanonicalCatalog.IndexRequirements mergeRequirements(
@@ -213,8 +292,8 @@ public class LabPresetRunPlanService {
             case DOCUMENT_LEVEL -> LabPresetRunGroupKey.DOCUMENT_LEVEL;
             case CHUNK_LEVEL ->
                     eff.requiresMetadataSupport()
-                            ? LabPresetRunGroupKey.CHUNK_METADATA
-                            : LabPresetRunGroupKey.CHUNK_LEVEL_NO_METADATA;
+                            ? LabPresetRunGroupKey.CHUNK_LEVEL_METADATA
+                            : LabPresetRunGroupKey.CHUNK_LEVEL;
             case HYBRID -> LabPresetRunGroupKey.HYBRID_METADATA;
             case NONE -> LabPresetRunGroupKey.NO_INDEX;
         };

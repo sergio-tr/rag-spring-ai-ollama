@@ -2,6 +2,9 @@ package com.uniovi.rag.service.evaluation.preset;
 
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
+import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
+import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
+import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.configuration.RagImplementationProperties;
@@ -17,8 +20,12 @@ import com.uniovi.rag.infrastructure.persistence.EvaluationRunRepository;
 import com.uniovi.rag.infrastructure.persistence.jpa.EvaluationRunEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.KnowledgeIndexSnapshotEntity;
 import com.uniovi.rag.infrastructure.persistence.jpa.ProjectEntity;
+import com.uniovi.rag.infrastructure.persistence.jpa.ResolvedConfigSnapshotEntity;
 import com.uniovi.rag.service.evaluation.EvaluationService;
 import com.uniovi.rag.service.evaluation.baseline.ExperimentalSnapshotFactory;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
+import com.uniovi.rag.domain.knowledge.ProjectIndexProfile;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -35,6 +42,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,6 +52,9 @@ class TypedRagPresetBenchmarkOrchestratorTest {
     @Mock private EvaluationRunRepository evaluationRunRepository;
     @Mock private ExperimentalSnapshotFactory experimentalSnapshotFactory;
     @Mock private KnowledgeSnapshotService knowledgeSnapshotService;
+    @Mock private KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
+    @Mock private ProjectIndexProfileService projectIndexProfileService;
+    @Mock private LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
 
     private static LlmExperimentalSnapshot llmSnap() {
         return new LlmExperimentalSnapshot(
@@ -60,7 +71,31 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 evaluationRunRepository,
                 experimentalSnapshotFactory,
                 knowledgeSnapshotService,
-                new LabPresetRunPlanService(knowledgeSnapshotService));
+                new LabPresetRunPlanService(knowledgeSnapshotService),
+                knowledgePipelineOrchestrator,
+                projectIndexProfileService,
+                labIndexProfileOverrideFactory);
+    }
+
+    private static EvaluationRunEntity runWithAutoReindex(ProjectEntity project, boolean enabled) {
+        EvaluationRunEntity run = new EvaluationRunEntity();
+        run.setProject(project);
+        if (!enabled) {
+            return run;
+        }
+        ResolvedConfigSnapshotEntity cfg = ResolvedConfigSnapshotEntity.newForInsert();
+        cfg.setId(UUID.randomUUID());
+        cfg.setConfigHash("cfg-hash");
+        run.setResolvedConfigSnapshot(cfg);
+        run.setAggregatesJson(
+                Map.of(
+                        "autoReindexPolicy",
+                        Map.of(
+                                "enabled", true,
+                                "allowActiveSnapshotMutation", true,
+                                "reuseCompatibleActiveSnapshot", true,
+                                "failOnReindexFailure", true)));
+        return run;
     }
 
     @Test
@@ -142,6 +177,7 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
         assertThat(mp.get("groupKey")).isEqualTo(LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN.name());
+        assertThat(mp.get("runPlanVersion")).isNotNull();
         @SuppressWarnings("unchecked")
         Map<String, Object> es = (Map<String, Object>) out.get("evaluation_summary");
         assertThat(es).containsKey("runPlan");
@@ -190,11 +226,98 @@ class TypedRagPresetBenchmarkOrchestratorTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> mp = (Map<String, Object>) rows.get(0).get("metrics_payload");
         assertThat(mp.get("groupKey")).isEqualTo(LabPresetRunGroupKey.HYBRID_METADATA.name());
+        assertThat(mp.get("runPlanVersion")).isNotNull();
         @SuppressWarnings("unchecked")
         Map<String, Object> es = (Map<String, Object>) out.get("evaluation_summary");
         assertThat(es).containsKey("runPlan");
         Mockito.verify(evaluationService, Mockito.never())
                 .evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any());
+    }
+
+    @Test
+    void autoReindex_true_with_incompatible_snapshot_rebuilds_once_for_group_and_reuses_snapshot_for_all_group_presets() {
+        when(experimentalSnapshotFactory.buildLlmSnapshot(ArgumentMatchers.any())).thenReturn(llmSnap());
+        when(experimentalSnapshotFactory.buildEmbeddingSnapshot(ArgumentMatchers.any())).thenReturn(embSnap());
+
+        UUID projectId = UUID.randomUUID();
+        ProjectEntity project = Mockito.mock(ProjectEntity.class);
+        when(project.getId()).thenReturn(projectId);
+        EvaluationRunEntity run = runWithAutoReindex(project, true);
+        UUID runId = UUID.randomUUID();
+        when(evaluationRunRepository.findById(runId)).thenReturn(Optional.of(run));
+        when(evaluationRunRepository.save(ArgumentMatchers.any())).thenAnswer(inv -> inv.getArgument(0));
+
+        // First: chunk snapshot (incompatible for HYBRID_METADATA); after rebuild: hybrid snapshot.
+        UUID oldSnapId = UUID.randomUUID();
+        UUID newSnapId = UUID.randomUUID();
+        when(knowledgeSnapshotService.findActiveProjectSnapshot(projectId))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", true, "hOld", oldSnapId)))
+                .thenReturn(Optional.of(mockSnapshot("CHUNK_LEVEL", true, "hOld", oldSnapId)))
+                .thenReturn(Optional.of(mockSnapshot("HYBRID", true, "hNew", newSnapId)));
+
+        when(projectIndexProfileService.ensureDefault(projectId)).thenReturn(sampleProfile(projectId));
+        when(labIndexProfileOverrideFactory.buildEffectiveProfile(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any()))
+                .thenReturn(sampleProfile(projectId));
+        when(knowledgePipelineOrchestrator.rebuildScopeWithProfileOverride(
+                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any()))
+                .thenReturn(newSnapId);
+
+        RagPresetQuestion q = sampleQuestion();
+        RagPresetDefinition p8 = preset(RagExperimentalPresetCode.P8);
+        RagPresetDefinition p9 = preset(RagExperimentalPresetCode.P9);
+
+        Map<String, Object> eval = new HashMap<>();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        rows.add(new HashMap<>(Map.of("question", q.question())));
+        eval.put("results", rows);
+        eval.put("evaluation_summary", Map.of());
+        when(evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.any(),
+                        ArgumentMatchers.anyList(),
+                        ArgumentMatchers.any()))
+                .thenReturn(eval);
+        when(evaluationService.summarizeJudgeResults(ArgumentMatchers.anyList())).thenReturn(Map.of());
+
+        Map<String, Object> out =
+                orchestrator()
+                        .runPresetBenchmark(
+                                runId,
+                                new TypedBenchmarkDataset.RagPresetQuestions(List.of(q), List.of(p8, p9)),
+                                new RagFeatureConfiguration(),
+                                new RagImplementationProperties(),
+                                Set.of(RagExperimentalPresetCode.P8, RagExperimentalPresetCode.P9),
+                                null);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> outRows = (List<Map<String, Object>>) out.get("results");
+        assertThat(outRows).isNotEmpty();
+        // All emitted rows should carry effectiveGroupSnapshotId = newSnapId for HYBRID group.
+        for (Map<String, Object> r : outRows) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> mp = (Map<String, Object>) r.get("metrics_payload");
+            assertThat(mp.get("groupKey")).isEqualTo(LabPresetRunGroupKey.HYBRID_METADATA.name());
+            assertThat(mp.get("effectiveGroupSnapshotId")).isEqualTo(newSnapId.toString());
+            assertThat(mp.get("reindexAction")).isEqualTo("BUILD_AND_ACTIVATE");
+            assertThat(mp.get("forcedSnapshotSelection")).isEqualTo(true);
+        }
+
+        verify(knowledgePipelineOrchestrator, Mockito.times(1))
+                .rebuildScopeWithProfileOverride(
+                        ArgumentMatchers.eq(projectId),
+                        ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
                         ArgumentMatchers.any(),
@@ -458,5 +581,19 @@ class TypedRagPresetBenchmarkOrchestratorTest {
                 "chunkMaxChars", 400,
                 "chunkOverlap", 40));
         return snap;
+    }
+
+    private static ProjectIndexProfile sampleProfile(UUID projectId) {
+        return new ProjectIndexProfile(
+                projectId,
+                MaterializationStrategy.HYBRID,
+                true,
+                "meta-v1",
+                "emb",
+                400,
+                40,
+                ProjectIndexProfile.computeProfileHash(MaterializationStrategy.HYBRID, true, "meta-v1", "emb", 400, 40),
+                Instant.now(),
+                Instant.now());
     }
 }

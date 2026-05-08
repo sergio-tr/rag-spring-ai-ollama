@@ -8,10 +8,10 @@ public enum LabPresetRunGroupKey {
     NO_INDEX,
     /** P2 — document-level dense retrieval. */
     DOCUMENT_LEVEL,
-    /** P3 — chunk-level retrieval without mandatory index metadata. */
-    CHUNK_LEVEL_NO_METADATA,
+    /** P3 — chunk-level retrieval (no mandatory index metadata). */
+    CHUNK_LEVEL,
     /** P4–P7 — chunk-level + metadata index support. */
-    CHUNK_METADATA,
+    CHUNK_LEVEL_METADATA,
     /** P8–P12 — hybrid materialization + metadata. */
     HYBRID_METADATA,
     /** P13, P14 — not runnable in single-turn Lab harness. */

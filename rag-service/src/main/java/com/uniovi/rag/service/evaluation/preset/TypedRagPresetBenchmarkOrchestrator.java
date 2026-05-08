@@ -1,6 +1,10 @@
 package com.uniovi.rag.service.evaluation.preset;
 
 import com.uniovi.rag.application.service.knowledge.KnowledgeSnapshotService;
+import com.uniovi.rag.application.service.knowledge.KnowledgePipelineOrchestrator;
+import com.uniovi.rag.application.service.knowledge.LabIndexProfileOverrideFactory;
+import com.uniovi.rag.application.service.knowledge.ProjectIndexProfileService;
+import com.uniovi.rag.domain.knowledge.CorpusScope;
 import com.uniovi.rag.application.service.evaluation.BenchmarkResultRowKeys;
 import com.uniovi.rag.application.service.evaluation.TypedBenchmarkDataset;
 import com.uniovi.rag.application.service.runtime.config.IndexCompatibilityResult;
@@ -26,6 +30,7 @@ import com.uniovi.rag.domain.exception.ErrorCode;
 import com.uniovi.rag.service.async.LabJobCancelledException;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -37,6 +42,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 /**
  * Executes workbook {@code rag_preset_catalog_P0_P14} rows as sequential preset batches over shared typed questions,
@@ -48,24 +54,35 @@ public class TypedRagPresetBenchmarkOrchestrator {
     private static final String JSON_KEY_CORRECT_ANSWER = "correct_answer";
     private static final String JSON_KEY_GENERATED_ANSWER = "generated_answer";
     private static final String JSON_KEY_METRICS_PAYLOAD = "metrics_payload";
+    private static final String JSON_KEY_RUN_PLAN_VERSION = "runPlanVersion";
+    private static final String JSON_KEY_RUN_PLAN = "runPlan";
 
     private final EvaluationService evaluationService;
     private final EvaluationRunRepository evaluationRunRepository;
     private final ExperimentalSnapshotFactory experimentalSnapshotFactory;
     private final KnowledgeSnapshotService knowledgeSnapshotService;
     private final LabPresetRunPlanService labPresetRunPlanService;
+    private final KnowledgePipelineOrchestrator knowledgePipelineOrchestrator;
+    private final ProjectIndexProfileService projectIndexProfileService;
+    private final LabIndexProfileOverrideFactory labIndexProfileOverrideFactory;
 
     public TypedRagPresetBenchmarkOrchestrator(
             EvaluationService evaluationService,
             EvaluationRunRepository evaluationRunRepository,
             ExperimentalSnapshotFactory experimentalSnapshotFactory,
             KnowledgeSnapshotService knowledgeSnapshotService,
-            LabPresetRunPlanService labPresetRunPlanService) {
+            LabPresetRunPlanService labPresetRunPlanService,
+            KnowledgePipelineOrchestrator knowledgePipelineOrchestrator,
+            ProjectIndexProfileService projectIndexProfileService,
+            LabIndexProfileOverrideFactory labIndexProfileOverrideFactory) {
         this.evaluationService = evaluationService;
         this.evaluationRunRepository = evaluationRunRepository;
         this.experimentalSnapshotFactory = experimentalSnapshotFactory;
         this.knowledgeSnapshotService = knowledgeSnapshotService;
         this.labPresetRunPlanService = labPresetRunPlanService;
+        this.knowledgePipelineOrchestrator = knowledgePipelineOrchestrator;
+        this.projectIndexProfileService = projectIndexProfileService;
+        this.labIndexProfileOverrideFactory = labIndexProfileOverrideFactory;
     }
 
     @SuppressWarnings("unchecked")
@@ -119,6 +136,8 @@ public class TypedRagPresetBenchmarkOrchestrator {
                     llmSnap.model(),
                     embSnap.model(),
                     null,
+                    null,
+                    LabPresetRunPlanModels.STRATEGY_VERSION,
                     null);
             @SuppressWarnings("unchecked")
             Map<String, Object> summary =
@@ -139,20 +158,13 @@ public class TypedRagPresetBenchmarkOrchestrator {
             codesForPlan = labPresetRunPlanService.sortDefinitionsOrder(new ArrayList<>(requestedPresets));
         }
         LabPresetRunPlanModels.LabPresetRunPlan runPlan = labPresetRunPlanService.build(run, codesForPlan);
+        AutoReindexPolicy autoReindexPolicy = AutoReindexPolicy.fromRun(run);
 
         Map<RagExperimentalPresetCode, RagPresetDefinition> defByPreset =
                 catalog.stream()
                         .collect(Collectors.toMap(RagPresetDefinition::presetId, d -> d, (a, b) -> a, LinkedHashMap::new));
 
-        List<RagPresetDefinition> sorted = new ArrayList<>();
-        for (RagExperimentalPresetCode code : codesForPlan) {
-            RagPresetDefinition def = defByPreset.get(code);
-            if (def != null) {
-                sorted.add(def);
-            }
-        }
-
-        int totalOps = sorted.size() * Math.max(1, questions.size());
+        int totalOps = codesForPlan.size() * Math.max(1, questions.size());
         AtomicInteger progressed = new AtomicInteger(0);
         Runnable bump = () -> {
             if (cancellationCheck != null) {
@@ -168,7 +180,11 @@ public class TypedRagPresetBenchmarkOrchestrator {
         boolean cancelled = false;
         String cancelReason = null;
 
-        for (RagPresetDefinition def : sorted) {
+        for (LabPresetRunGroupKey gk : orderedGroupKeys()) {
+            LabPresetRunPlanModels.LabPresetRunGroup baseGroup = findGroup(runPlan, gk);
+            if (baseGroup == null || baseGroup.presetCodes() == null || baseGroup.presetCodes().isEmpty()) {
+                continue;
+            }
             try {
                 if (cancellationCheck != null) {
                     cancellationCheck.run();
@@ -178,96 +194,225 @@ public class TypedRagPresetBenchmarkOrchestrator {
                 cancelReason = ex.getMessage();
                 break;
             }
-            RagExperimentalPresetCode preset = def.presetId();
-            Optional<String> blocked = ExperimentalPresetBenchmarkGate.blockReason(preset);
-            LabPresetRunGroupKey groupKey = LabPresetRunPlanService.groupKeyFor(preset);
-            if (blocked.isPresent()) {
-                for (RagPresetQuestion q : questions) {
-                    bump.run();
-                    allRows.add(
-                            notSupportedRow(
-                                    q,
-                                    def.name(),
-                                    preset,
-                                    blocked.get(),
-                                    llmSnap.model(),
-                                    embSnap.model(),
-                                    groupKey));
+
+            GroupExecution exec = GroupExecution.initial(gk);
+            Instant groupStartedAt = Instant.now();
+            exec = exec.withStartedAt(groupStartedAt).withReindexStatus("PENDING");
+            runPlan = updateGroup(runPlan, gk, mergeGroupExecution(baseGroup, exec));
+            persistRunPlanBestEffort(evaluationRunId, runPlan);
+
+            if (gk == LabPresetRunGroupKey.NO_INDEX) {
+                exec = exec.withReindexAction("NONE").withReindexStatus("SKIPPED");
+            } else if (gk == LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN) {
+                exec = exec.withReindexAction("NONE").withReindexStatus("NOT_SUPPORTED");
+                for (String codeStr : baseGroup.presetCodes()) {
+                    Optional<RagExperimentalPresetCode> parsed = RagExperimentalPresetCode.tryParse(codeStr);
+                    if (parsed.isEmpty()) {
+                        continue;
+                    }
+                    RagExperimentalPresetCode preset = parsed.get();
+                    RagPresetDefinition def = defByPreset.get(preset);
+                    String label = def != null ? def.name() : preset.name();
+                    Optional<String> blocked = ExperimentalPresetBenchmarkGate.blockReason(preset);
+                    String errCode = blocked.orElse("MULTI_TURN_SINGLE_TURN_LAB_UNSUPPORTED");
+                    for (RagPresetQuestion q : questions) {
+                        bump.run();
+                        allRows.add(
+                                notSupportedRow(
+                                        q,
+                                        label,
+                                        preset,
+                                        errCode,
+                                        llmSnap.model(),
+                                        embSnap.model(),
+                                        gk,
+                                        runPlan.strategyVersion(),
+                                        exec));
+                    }
                 }
+                exec = exec.withCompletedAt(Instant.now());
+                runPlan = updateGroup(runPlan, gk, mergeGroupExecution(baseGroup, exec));
+                persistRunPlanBestEffort(evaluationRunId, runPlan);
                 continue;
             }
 
-            PreflightIndexCompatibility gate = checkPresetIndexCompatibility(run, preset);
-            if (!gate.compatible()) {
-                for (RagPresetQuestion q : questions) {
-                    bump.run();
-                    allRows.add(skippedRow(
-                            q,
-                            def.name(),
-                            preset,
-                            gate,
-                            groupKey,
-                            llmSnap.model(),
-                            embSnap.model()));
+            // Auto-reindex and snapshot selection for index-requiring groups.
+            if (autoReindexPolicy.enabled() && gk != LabPresetRunGroupKey.NO_INDEX) {
+                try {
+                    exec = ensureGroupSnapshot(run, baseGroup, exec, autoReindexPolicy);
+                    runPlan = updateGroup(runPlan, gk, mergeGroupExecution(baseGroup, exec));
+                    persistRunPlanBestEffort(evaluationRunId, runPlan);
+                } catch (RuntimeException reindexEx) {
+                    exec =
+                            exec.withReindexAction(exec.reindexAction() != null ? exec.reindexAction() : "BUILD_AND_ACTIVATE")
+                                    .withReindexStatus("FAILED")
+                                    .withErrorCode("AUTO_REINDEX_FAILED")
+                                    .withErrorReason(
+                                            reindexEx.getMessage() != null ? reindexEx.getMessage() : "AUTO_REINDEX_FAILED")
+                                    .withCompletedAt(Instant.now());
+                    runPlan = updateGroup(runPlan, gk, mergeGroupExecution(baseGroup, exec));
+                    persistRunPlanBestEffort(evaluationRunId, runPlan);
+
+                    // Mark all presets for this group as skipped (per question) with stable code.
+                    for (String codeStr : baseGroup.presetCodes()) {
+                        Optional<RagExperimentalPresetCode> parsed = RagExperimentalPresetCode.tryParse(codeStr);
+                        if (parsed.isEmpty()) {
+                            continue;
+                        }
+                        RagExperimentalPresetCode preset = parsed.get();
+                        RagPresetDefinition def = defByPreset.get(preset);
+                        String label = def != null ? def.name() : preset.name();
+                        for (RagPresetQuestion q : questions) {
+                            bump.run();
+                            allRows.add(
+                                    skippedRow(
+                                            q,
+                                            label,
+                                            preset,
+                                            PreflightIndexCompatibility.compatible(
+                                                    ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(preset),
+                                                    null,
+                                                    exec.groupSnapshotId(),
+                                                    exec.groupIndexProfileHash()),
+                                            gk,
+                                            llmSnap.model(),
+                                            embSnap.model(),
+                                            runPlan.strategyVersion(),
+                                            exec,
+                                            "AUTO_REINDEX_FAILED",
+                                            "AUTO_REINDEX_FAILED"));
+                        }
+                    }
+                    if (autoReindexPolicy.failOnReindexFailure()) {
+                        break;
+                    }
+                    continue;
                 }
-                continue;
+            } else if (gk != LabPresetRunGroupKey.NO_INDEX) {
+                exec = exec.withReindexAction("NONE").withReindexStatus("DISABLED");
             }
 
-            RagPresetExperimentalOverlay.Overlay overlay = RagPresetExperimentalOverlay.build(base, preset);
-            lastConfigurationMap = new LinkedHashMap<>();
-            overlay.features().getConfiguration().forEach(lastConfigurationMap::put);
-
-            try (AutoCloseable ignored =
-                    BenchmarkPresetEvaluationContext.open(overlay.terminalRuntimeJson())) {
-                Map<String, Object> batch =
-                        evaluationService.evaluateWithConfigurationForRagPresetQuestions(
-                                overlay.features(),
-                                impl,
-                                questions,
-                                itemProgress == null ? null : (i, n) -> bump.run());
-                List<Map<String, Object>> rows = (List<Map<String, Object>>) batch.get("results");
-                if (rows != null) {
-                    enrichRows(
-                            rows,
-                            def.name(),
-                            preset,
-                            llmSnap.model(),
-                            embSnap.model(),
-                            gate,
-                            groupKey);
-                    allRows.addAll(rows);
+            // Execute presets for the group.
+            for (String codeStr : baseGroup.presetCodes()) {
+                Optional<RagExperimentalPresetCode> parsed = RagExperimentalPresetCode.tryParse(codeStr);
+                if (parsed.isEmpty()) {
+                    continue;
                 }
-            } catch (Exception ex) {
-                for (RagPresetQuestion q : questions) {
-                    bump.run();
-                    if (ex instanceof RagServiceException rse
-                            && rse.getErrorCode() == ErrorCode.UNSUPPORTED_RUNTIME_CONFIGURATION) {
+                RagExperimentalPresetCode preset = parsed.get();
+                RagPresetDefinition def = defByPreset.get(preset);
+                if (def == null) {
+                    continue;
+                }
+                Optional<String> blocked = ExperimentalPresetBenchmarkGate.blockReason(preset);
+                if (blocked.isPresent()) {
+                    for (RagPresetQuestion q : questions) {
+                        bump.run();
                         allRows.add(
                                 notSupportedRow(
                                         q,
                                         def.name(),
                                         preset,
-                                        rse.getErrorCode().name(),
+                                        blocked.get(),
                                         llmSnap.model(),
                                         embSnap.model(),
-                                        groupKey));
-                    } else {
+                                        gk,
+                                        runPlan.strategyVersion(),
+                                        exec));
+                    }
+                    continue;
+                }
+
+                PreflightIndexCompatibility gate = checkPresetIndexCompatibility(run, preset);
+                if (!gate.compatible()) {
+                    for (RagPresetQuestion q : questions) {
+                        bump.run();
                         allRows.add(
-                                failedRow(
+                                skippedRow(
                                         q,
                                         def.name(),
                                         preset,
-                                        ex,
+                                        gate,
+                                        gk,
                                         llmSnap.model(),
                                         embSnap.model(),
-                                        gate,
-                                        groupKey));
+                                        runPlan.strategyVersion(),
+                                        exec,
+                                        null,
+                                        null));
+                    }
+                    continue;
+                }
+
+                RagPresetExperimentalOverlay.Overlay overlay = RagPresetExperimentalOverlay.build(base, preset);
+                lastConfigurationMap = new LinkedHashMap<>();
+                overlay.features().getConfiguration().forEach(lastConfigurationMap::put);
+
+                try (AutoCloseable ignored =
+                        BenchmarkPresetEvaluationContext.openLab(
+                                overlay.terminalRuntimeJson(),
+                                evaluationRunId,
+                                run != null && run.getProject() != null ? run.getProject().getId() : null,
+                                exec.groupSnapshotId() != null ? List.of(exec.groupSnapshotId()) : List.of(),
+                                gk != null ? gk.name() : null,
+                                preset != null ? preset.name() : null,
+                                exec.groupSnapshotId() != null)) {
+                    Map<String, Object> batch =
+                            evaluationService.evaluateWithConfigurationForRagPresetQuestions(
+                                    overlay.features(),
+                                    impl,
+                                    questions,
+                                    itemProgress == null ? null : (i, n) -> bump.run());
+                    List<Map<String, Object>> rows = (List<Map<String, Object>>) batch.get("results");
+                    if (rows != null) {
+                        enrichRows(
+                                rows,
+                                def.name(),
+                                preset,
+                                llmSnap.model(),
+                                embSnap.model(),
+                                gate,
+                                gk,
+                                runPlan.strategyVersion(),
+                                exec);
+                        allRows.addAll(rows);
+                    }
+                } catch (Exception ex) {
+                    for (RagPresetQuestion q : questions) {
+                        bump.run();
+                        if (ex instanceof RagServiceException rse
+                                && rse.getErrorCode() == ErrorCode.UNSUPPORTED_RUNTIME_CONFIGURATION) {
+                            allRows.add(
+                                    notSupportedRow(
+                                            q,
+                                            def.name(),
+                                            preset,
+                                            rse.getErrorCode().name(),
+                                            llmSnap.model(),
+                                            embSnap.model(),
+                                            gk,
+                                            runPlan.strategyVersion(),
+                                            exec));
+                        } else {
+                            allRows.add(
+                                    failedRow(
+                                            q,
+                                            def.name(),
+                                            preset,
+                                            ex,
+                                            llmSnap.model(),
+                                            embSnap.model(),
+                                            gate,
+                                            gk,
+                                            runPlan.strategyVersion(),
+                                            exec));
+                        }
                     }
                 }
             }
-            if (cancelled) {
-                break;
-            }
+
+            exec = exec.withCompletedAt(Instant.now()).withReindexStatus(exec.reindexStatus() != null ? exec.reindexStatus() : "DONE");
+            runPlan = updateGroup(runPlan, gk, mergeGroupExecution(baseGroup, exec));
+            persistRunPlanBestEffort(evaluationRunId, runPlan);
         }
 
         Map<String, Object> out = new HashMap<>();
@@ -285,6 +430,232 @@ public class TypedRagPresetBenchmarkOrchestrator {
         }
         out.put("evaluation_summary", summary);
         return out;
+    }
+
+    private static List<LabPresetRunGroupKey> orderedGroupKeys() {
+        return List.of(
+                LabPresetRunGroupKey.NO_INDEX,
+                LabPresetRunGroupKey.DOCUMENT_LEVEL,
+                LabPresetRunGroupKey.CHUNK_LEVEL,
+                LabPresetRunGroupKey.CHUNK_LEVEL_METADATA,
+                LabPresetRunGroupKey.HYBRID_METADATA,
+                LabPresetRunGroupKey.MULTI_TURN_UNSUPPORTED_IN_SINGLE_TURN);
+    }
+
+    private static LabPresetRunPlanModels.LabPresetRunGroup findGroup(
+            LabPresetRunPlanModels.LabPresetRunPlan plan, LabPresetRunGroupKey key) {
+        if (plan == null || key == null || plan.groups() == null) {
+            return null;
+        }
+        for (LabPresetRunPlanModels.LabPresetRunGroup g : plan.groups()) {
+            if (g != null && key == g.groupKey()) {
+                return g;
+            }
+        }
+        return null;
+    }
+
+    private static LabPresetRunPlanModels.LabPresetRunPlan updateGroup(
+            LabPresetRunPlanModels.LabPresetRunPlan plan,
+            LabPresetRunGroupKey key,
+            Function<LabPresetRunPlanModels.LabPresetRunGroup, LabPresetRunPlanModels.LabPresetRunGroup> updater) {
+        if (plan == null || key == null || updater == null || plan.groups() == null) {
+            return plan;
+        }
+        List<LabPresetRunPlanModels.LabPresetRunGroup> next = new ArrayList<>(plan.groups().size());
+        for (LabPresetRunPlanModels.LabPresetRunGroup g : plan.groups()) {
+            if (g != null && key == g.groupKey()) {
+                next.add(updater.apply(g));
+            } else {
+                next.add(g);
+            }
+        }
+        return new LabPresetRunPlanModels.LabPresetRunPlan(
+                next,
+                plan.items(),
+                plan.requestedPresetCodes(),
+                plan.executablePresetCodes(),
+                plan.skippedPresetCodes(),
+                plan.resolvedSnapshotId(),
+                plan.resolvedIndexProfileHash(),
+                plan.hasActiveSnapshot(),
+                plan.strategyVersion(),
+                plan.createdAt());
+    }
+
+    private Function<LabPresetRunPlanModels.LabPresetRunGroup, LabPresetRunPlanModels.LabPresetRunGroup> mergeGroupExecution(
+            LabPresetRunPlanModels.LabPresetRunGroup base,
+            GroupExecution exec) {
+        return g ->
+                new LabPresetRunPlanModels.LabPresetRunGroup(
+                        g.groupKey(),
+                        g.presetCodes(),
+                        g.aggregateIndexRequirements(),
+                        g.activeSnapshotCapabilities(),
+                        g.compatibleSnapshotId(),
+                        g.compatible(),
+                        g.requiresReindex(),
+                        g.compatibilityStatus(),
+                        g.reasonCode(),
+                        g.reason(),
+                        exec.reindexAction(),
+                        exec.reindexStatus(),
+                        exec.groupSnapshotId(),
+                        exec.groupIndexProfileHash(),
+                        exec.reindexEventId(),
+                        exec.startedAt(),
+                        exec.completedAt(),
+                        exec.errorCode(),
+                        exec.errorReason());
+    }
+
+    private void persistRunPlanBestEffort(UUID runId, LabPresetRunPlanModels.LabPresetRunPlan runPlan) {
+        if (runId == null || runPlan == null) {
+            return;
+        }
+        try {
+            EvaluationRunEntity run = evaluationRunRepository.findById(runId).orElse(null);
+            if (run == null) {
+                return;
+            }
+            Map<String, Object> agg =
+                    run.getAggregatesJson() != null ? new LinkedHashMap<>(run.getAggregatesJson()) : new LinkedHashMap<>();
+            agg.put(JSON_KEY_RUN_PLAN, runPlan.toMap());
+            run.setAggregatesJson(Map.copyOf(agg));
+            evaluationRunRepository.save(run);
+        } catch (Exception ignored) {
+            // best-effort only
+        }
+    }
+
+    private GroupExecution ensureGroupSnapshot(
+            EvaluationRunEntity run,
+            LabPresetRunPlanModels.LabPresetRunGroup group,
+            GroupExecution exec,
+            AutoReindexPolicy policy) {
+        if (run == null || group == null || exec == null || !policy.enabled()) {
+            return exec;
+        }
+        ProjectEntity project = run.getProject();
+        if (project == null || project.getId() == null) {
+            throw new IllegalStateException("AUTO_REINDEX_REQUIRES_PROJECT_CONTEXT");
+        }
+        UUID projectId = project.getId();
+
+        ExperimentalPresetCanonicalCatalog.IndexRequirements req = groupRequirements(group);
+        KnowledgeIndexSnapshotEntity snap = resolveSnapshot(run);
+        boolean hasActive = snap != null && snap.getId() != null;
+        Map<String, Object> profile = hasActive && snap.getIndexProfileJsonb() != null ? snap.getIndexProfileJsonb() : Map.of();
+        String profileHash = hasActive ? snap.getIndexProfileHash() : null;
+        IndexSnapshotCapabilities caps = IndexSnapshotCapabilities.fromIndexProfile(profile);
+        IndexCompatibilityResult idx = IndexCompatibilityResult.check(req, hasActive, caps);
+
+        if (idx.compatible()) {
+            return exec.withReindexAction("REUSE_ACTIVE")
+                    .withReindexStatus("REUSED")
+                    .withGroupSnapshotId(hasActive ? snap.getId() : null)
+                    .withGroupIndexProfileHash(profileHash);
+        }
+
+        if (!idx.requiresReindex() || !policy.allowActiveSnapshotMutation()) {
+            return exec.withReindexAction("NONE")
+                    .withReindexStatus("INCOMPATIBLE")
+                    .withErrorCode(idx.reasonCode())
+                    .withErrorReason(idx.message());
+        }
+
+        exec = exec.withReindexAction("BUILD_AND_ACTIVATE").withReindexStatus("BUILDING");
+        // Build effective profile derived from requirements + group key; keep embedding/chunking from current profile.
+        var current = projectIndexProfileService.ensureDefault(projectId);
+        var effective = labIndexProfileOverrideFactory.buildEffectiveProfile(current, req, group.groupKey());
+
+        UUID resolvedConfigSnapshotId =
+                run.getResolvedConfigSnapshot() != null ? run.getResolvedConfigSnapshot().getId() : null;
+        String resolvedConfigHash =
+                run.getResolvedConfigSnapshot() != null ? run.getResolvedConfigSnapshot().getConfigHash() : null;
+        UUID newSnapId =
+                knowledgePipelineOrchestrator.rebuildScopeWithProfileOverride(
+                        projectId,
+                        CorpusScope.PROJECT_SHARED,
+                        null,
+                        resolvedConfigSnapshotId,
+                        resolvedConfigHash,
+                        effective);
+
+        KnowledgeIndexSnapshotEntity after = knowledgeSnapshotService.findActiveProjectSnapshot(projectId).orElse(null);
+        UUID activeId = after != null ? after.getId() : newSnapId;
+        String afterHash = after != null ? after.getIndexProfileHash() : effective.profileHash();
+        Map<String, Object> afterProfile = after != null && after.getIndexProfileJsonb() != null ? after.getIndexProfileJsonb() : effective.toSnapshotJsonb();
+        IndexSnapshotCapabilities afterCaps = IndexSnapshotCapabilities.fromIndexProfile(afterProfile);
+        IndexCompatibilityResult afterIdx = IndexCompatibilityResult.check(req, activeId != null, afterCaps);
+        if (!afterIdx.compatible()) {
+            throw new IllegalStateException(afterIdx.reasonCode() != null ? afterIdx.reasonCode() : "SNAPSHOT_BUILD_FAILED");
+        }
+        return exec.withReindexStatus("BUILT")
+                .withGroupSnapshotId(activeId)
+                .withGroupIndexProfileHash(afterHash);
+    }
+
+    private static ExperimentalPresetCanonicalCatalog.IndexRequirements groupRequirements(
+            LabPresetRunPlanModels.LabPresetRunGroup group) {
+        if (group == null || group.presetCodes() == null || group.presetCodes().isEmpty()) {
+            return ExperimentalPresetCanonicalCatalog.IndexRequirements.none();
+        }
+        for (String code : group.presetCodes()) {
+            Optional<RagExperimentalPresetCode> parsed = RagExperimentalPresetCode.tryParse(code);
+            if (parsed.isPresent()) {
+                return ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(parsed.get());
+            }
+        }
+        return ExperimentalPresetCanonicalCatalog.IndexRequirements.none();
+    }
+
+    private record AutoReindexPolicy(
+            boolean enabled,
+            boolean allowActiveSnapshotMutation,
+            boolean reuseCompatibleActiveSnapshot,
+            boolean failOnReindexFailure) {
+        @SuppressWarnings("unchecked")
+        static AutoReindexPolicy fromRun(EvaluationRunEntity run) {
+            if (run == null || run.getAggregatesJson() == null) {
+                return new AutoReindexPolicy(false, false, true, true);
+            }
+            Object o = run.getAggregatesJson().get("autoReindexPolicy");
+            if (!(o instanceof Map<?, ?> m)) {
+                return new AutoReindexPolicy(false, false, true, true);
+            }
+            boolean enabled = Boolean.TRUE.equals(m.get("enabled"));
+            boolean allowMut = Boolean.TRUE.equals(m.get("allowActiveSnapshotMutation"));
+            boolean reuse = m.get("reuseCompatibleActiveSnapshot") == null || Boolean.TRUE.equals(m.get("reuseCompatibleActiveSnapshot"));
+            boolean fail = m.get("failOnReindexFailure") == null || Boolean.TRUE.equals(m.get("failOnReindexFailure"));
+            return new AutoReindexPolicy(enabled, allowMut, reuse, fail);
+        }
+    }
+
+    private record GroupExecution(
+            LabPresetRunGroupKey groupKey,
+            String reindexAction,
+            String reindexStatus,
+            UUID groupSnapshotId,
+            String groupIndexProfileHash,
+            UUID reindexEventId,
+            Instant startedAt,
+            Instant completedAt,
+            String errorCode,
+            String errorReason) {
+        static GroupExecution initial(LabPresetRunGroupKey key) {
+            return new GroupExecution(key, null, null, null, null, null, null, null, null, null);
+        }
+
+        GroupExecution withReindexAction(String v) { return new GroupExecution(groupKey, v, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, errorReason); }
+        GroupExecution withReindexStatus(String v) { return new GroupExecution(groupKey, reindexAction, v, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, errorReason); }
+        GroupExecution withGroupSnapshotId(UUID v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, v, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, errorReason); }
+        GroupExecution withGroupIndexProfileHash(String v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, v, reindexEventId, startedAt, completedAt, errorCode, errorReason); }
+        GroupExecution withReindexEventId(UUID v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, v, startedAt, completedAt, errorCode, errorReason); }
+        GroupExecution withStartedAt(Instant v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, v, completedAt, errorCode, errorReason); }
+        GroupExecution withCompletedAt(Instant v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, v, errorCode, errorReason); }
+        GroupExecution withErrorCode(String v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, v, errorReason); }
+        GroupExecution withErrorReason(String v) { return new GroupExecution(groupKey, reindexAction, reindexStatus, groupSnapshotId, groupIndexProfileHash, reindexEventId, startedAt, completedAt, errorCode, v); }
     }
 
     private PreflightIndexCompatibility checkPresetIndexCompatibility(
@@ -338,7 +709,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
             String llmModelId,
             String embeddingModelId,
             PreflightIndexCompatibility indexGate,
-            LabPresetRunGroupKey groupKey) {
+            LabPresetRunGroupKey groupKey,
+            int runPlanVersion,
+            GroupExecution exec) {
         if (rows == null) {
             return;
         }
@@ -351,7 +724,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
             row.put(BenchmarkResultRowKeys.PRESET_LABEL, presetLabel);
             row.put(BenchmarkResultRowKeys.LLM_MODEL_ID, llmModelId);
             row.put(BenchmarkResultRowKeys.EMBEDDING_MODEL_ID, embeddingModelId);
-            row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, indexGate));
+            row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, indexGate, runPlanVersion, exec));
         }
     }
 
@@ -362,7 +735,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
             String errorCode,
             String llmModelId,
             String embeddingModelId,
-            LabPresetRunGroupKey groupKey) {
+            LabPresetRunGroupKey groupKey,
+            int runPlanVersion,
+            GroupExecution exec) {
         Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
         row.put(JSON_KEY_GENERATED_ANSWER, "");
         row.put("llm_evaluation", "");
@@ -372,7 +747,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
         LabPresetRunGroupKey gk =
                 groupKey != null ? groupKey : LabPresetRunPlanService.groupKeyFor(preset);
-        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, null));
+        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, null, runPlanVersion, exec));
         return row;
     }
 
@@ -383,18 +758,25 @@ public class TypedRagPresetBenchmarkOrchestrator {
             PreflightIndexCompatibility gate,
             LabPresetRunGroupKey groupKey,
             String llmModelId,
-            String embeddingModelId) {
+            String embeddingModelId,
+            int runPlanVersion,
+            GroupExecution exec,
+            String overrideErrorCode,
+            String overrideReason) {
         Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
         row.put(JSON_KEY_GENERATED_ANSWER, "");
         row.put("llm_evaluation", "");
         row.put(BenchmarkResultRowKeys.ITEM_OUTCOME, BenchmarkItemOutcome.SKIPPED.name());
-        String code = gate != null && gate.reasonCode() != null ? gate.reasonCode() : "INDEX_REQUIRES_REINDEX";
+        String code =
+                overrideErrorCode != null
+                        ? overrideErrorCode
+                        : gate != null && gate.reasonCode() != null ? gate.reasonCode() : "INDEX_REQUIRES_REINDEX";
         row.put(BenchmarkResultRowKeys.ERROR_CODE, code);
-        row.put(BenchmarkResultRowKeys.REASON, gate != null && gate.message() != null ? gate.message() : code);
+        row.put(BenchmarkResultRowKeys.REASON, overrideReason != null ? overrideReason : gate != null && gate.message() != null ? gate.message() : code);
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
         LabPresetRunGroupKey gk =
                 groupKey != null ? groupKey : LabPresetRunPlanService.groupKeyFor(preset);
-        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, gate));
+        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, gate, runPlanVersion, exec));
         return row;
     }
 
@@ -406,7 +788,9 @@ public class TypedRagPresetBenchmarkOrchestrator {
             String llmModelId,
             String embeddingModelId,
             PreflightIndexCompatibility indexGate,
-            LabPresetRunGroupKey groupKey) {
+            LabPresetRunGroupKey groupKey,
+            int runPlanVersion,
+            GroupExecution exec) {
         Map<String, Object> row = baseRow(q, presetLabel, preset, llmModelId, embeddingModelId);
         row.put(JSON_KEY_GENERATED_ANSWER, "");
         row.put("llm_evaluation", "");
@@ -421,7 +805,7 @@ public class TypedRagPresetBenchmarkOrchestrator {
         row.put(BenchmarkResultRowKeys.LATENCY_MS, 0L);
         LabPresetRunGroupKey gk =
                 groupKey != null ? groupKey : LabPresetRunPlanService.groupKeyFor(preset);
-        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, indexGate));
+        row.put(JSON_KEY_METRICS_PAYLOAD, buildLabMetricsPayload(presetLabel, preset, gk, indexGate, runPlanVersion, exec));
         return row;
     }
 
@@ -450,11 +834,27 @@ public class TypedRagPresetBenchmarkOrchestrator {
             String presetLabel,
             RagExperimentalPresetCode preset,
             LabPresetRunGroupKey groupKey,
-            PreflightIndexCompatibility gate) {
+            PreflightIndexCompatibility gate,
+            int runPlanVersion,
+            GroupExecution exec) {
         Map<String, Object> metrics = new LinkedHashMap<>();
         metrics.put("groupKey", groupKey != null ? groupKey.name() : null);
         metrics.put(BenchmarkResultRowKeys.PRESET_CODE, preset != null ? preset.name() : null);
         metrics.put(BenchmarkResultRowKeys.PRESET_LABEL, presetLabel);
+        metrics.put(JSON_KEY_RUN_PLAN_VERSION, runPlanVersion);
+        if (exec != null) {
+            metrics.put("effectiveGroupSnapshotId", exec.groupSnapshotId() != null ? exec.groupSnapshotId().toString() : null);
+            metrics.put("groupSnapshotId", exec.groupSnapshotId() != null ? exec.groupSnapshotId().toString() : null);
+            metrics.put("groupIndexProfileHash", exec.groupIndexProfileHash());
+            metrics.put("reindexAction", exec.reindexAction());
+            metrics.put("reindexStatus", exec.reindexStatus());
+            metrics.put("forcedSnapshotSelection", exec.groupSnapshotId() != null);
+            metrics.put("reindexEventId", exec.reindexEventId() != null ? exec.reindexEventId().toString() : null);
+            metrics.put("reindexStartedAt", exec.startedAt() != null ? exec.startedAt().toString() : null);
+            metrics.put("reindexCompletedAt", exec.completedAt() != null ? exec.completedAt().toString() : null);
+            metrics.put("reindexErrorCode", exec.errorCode());
+            metrics.put("reindexErrorReason", exec.errorReason());
+        }
         if (gate == null) {
             return metrics;
         }
