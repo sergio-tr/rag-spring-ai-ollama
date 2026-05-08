@@ -73,6 +73,9 @@ public final class BenchmarkMvpMetricsCalculator {
         operational.put("outcome", outcome.isBlank() ? BenchmarkItemOutcome.EXECUTED.name() : outcome);
         operational.put("failureCode", failureCode(outcome, mp));
         operational.put("unsupportedReason", unsupportedReason(outcome, mp));
+        operational.put("skipReasonCode", skipReasonCode(outcome, mp));
+        operational.put("skipReason", skipReason(outcome, mp));
+        operational.put("runPlanVersion", str(mp.get("runPlanVersion")));
 
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("mvpSchemaVersion", BenchmarkMvpSchema.VERSION);
@@ -123,6 +126,9 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("outcome", csvVal(op.get("outcome")));
         row.put("failureCode", csvVal(op.get("failureCode")));
         row.put("unsupportedReason", csvVal(op.get("unsupportedReason")));
+        row.put("skipReasonCode", csvVal(op.get("skipReasonCode")));
+        row.put("skipReason", csvVal(op.get("skipReason")));
+        row.put("runPlanVersion", csvVal(op.get("runPlanVersion")));
 
         // Embedding retrieval: export gold + retrieved id lists for reproducibility/debugging.
         row.put("retrievalGoldMode", csvVal(mp.get("retrieval_gold_mode")));
@@ -136,6 +142,16 @@ public final class BenchmarkMvpMetricsCalculator {
         row.put("requiresReindex", csvVal(mp.get("requiresReindex")));
         row.put("indexSnapshotId", csvVal(mp.get("indexSnapshotId")));
         row.put("indexProfileHash", csvVal(mp.get("indexProfileHash")));
+        row.put("effectiveGroupSnapshotId", csvVal(mp.get("effectiveGroupSnapshotId")));
+        row.put("groupIndexProfileHash", csvVal(mp.get("groupIndexProfileHash")));
+        row.put("reindexAction", csvVal(mp.get("reindexAction")));
+        row.put("reindexStatus", csvVal(mp.get("reindexStatus")));
+        row.put("forcedSnapshotSelection", csvVal(mp.get("forcedSnapshotSelection")));
+        row.put("reindexEventId", csvVal(mp.get("reindexEventId")));
+        row.put("reindexStartedAt", csvVal(mp.get("reindexStartedAt")));
+        row.put("reindexCompletedAt", csvVal(mp.get("reindexCompletedAt")));
+        row.put("reindexErrorCode", csvVal(mp.get("reindexErrorCode")));
+        row.put("reindexErrorReason", csvVal(mp.get("reindexErrorReason")));
         row.put("presetIndexRequirements", jsonCell(mp.get("presetIndexRequirements")));
         row.put("activeSnapshotCapabilities", jsonCell(mp.get("activeSnapshotCapabilities")));
         return row;
@@ -189,6 +205,26 @@ public final class BenchmarkMvpMetricsCalculator {
         }
         String code = str(mp.get(BenchmarkResultRowKeys.ERROR_CODE));
         return code.isBlank() ? "NOT_SUPPORTED" : code;
+    }
+
+    private static String skipReasonCode(String outcome, Map<String, Object> mp) {
+        if (!BenchmarkItemOutcome.SKIPPED.name().equals(outcome)) {
+            return "";
+        }
+        String code = str(mp.get(BenchmarkResultRowKeys.ERROR_CODE));
+        return code.isBlank() ? "SKIPPED" : code;
+    }
+
+    private static String skipReason(String outcome, Map<String, Object> mp) {
+        if (!BenchmarkItemOutcome.SKIPPED.name().equals(outcome)) {
+            return "";
+        }
+        String reason = str(mp.get(BenchmarkResultRowKeys.REASON));
+        if (!reason.isBlank()) {
+            return truncate(reason, 200);
+        }
+        String code = str(mp.get(BenchmarkResultRowKeys.ERROR_CODE));
+        return code.isBlank() ? "SKIPPED" : code;
     }
 
     private static boolean deriveGoldFound(Map<String, Object> mp) {
