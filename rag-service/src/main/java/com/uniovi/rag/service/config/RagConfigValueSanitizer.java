@@ -27,7 +27,8 @@ public final class RagConfigValueSanitizer {
             "classifierModelId",
             "reasoningStrategy",
             "naiveFullCorpusInPromptEnabled",
-            "naiveFullCorpusMaxChars");
+            "naiveFullCorpusMaxChars",
+            "corpusGroundedDirectWorkflow");
 
     private RagConfigValueSanitizer() {
     }

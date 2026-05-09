@@ -2,6 +2,7 @@ package com.uniovi.rag.application.service.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.policy.AnswerGroundingPolicy;
@@ -14,7 +15,18 @@ class AnswerGroundingPolicySelectorTest {
         RagFeatureConfiguration fc = new RagFeatureConfiguration();
         fc.setUseRetrieval(false);
         RagConfig rag = RagConfig.fromFeatureConfiguration(fc, 10, 0.7, "l", "e", "c", "SIMPLE");
-        assertThat(AnswerGroundingPolicySelector.from(rag)).isEqualTo(AnswerGroundingPolicy.DIRECT_BASELINE);
+        assertThat(AnswerGroundingPolicySelector.from(rag)).isEqualTo(AnswerGroundingPolicy.DIRECT_UNGROUNDED_BASELINE);
+    }
+
+    @Test
+    void corpusGroundedBaseline_whenRetrievalOff_andNaiveFullCorpusEnabled() throws Exception {
+        RagFeatureConfiguration fc = new RagFeatureConfiguration();
+        fc.setUseRetrieval(false);
+        RagConfig rag =
+                RagConfig.applyJsonOverrides(
+                        RagConfig.fromFeatureConfiguration(fc, 10, 0.7, "l", "e", "c", "SIMPLE"),
+                        new ObjectMapper().readTree("{\"naiveFullCorpusInPromptEnabled\": true}"));
+        assertThat(AnswerGroundingPolicySelector.from(rag)).isEqualTo(AnswerGroundingPolicy.CORPUS_GROUNDED_BASELINE);
     }
 
     @Test

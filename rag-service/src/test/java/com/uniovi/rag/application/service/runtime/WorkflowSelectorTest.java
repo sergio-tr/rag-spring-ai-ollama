@@ -1,5 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uniovi.rag.application.exception.RagServiceException;
 import com.uniovi.rag.application.service.runtime.retrieval.AdvancedRetrievalPipeline;
 import com.uniovi.rag.configuration.RagFeatureConfiguration;
@@ -44,6 +45,7 @@ class WorkflowSelectorTest {
                 false,
                 false,
                 useRetrieval,
+                false,
                 false,
                 false,
                 false,
@@ -118,6 +120,11 @@ class WorkflowSelectorTest {
         selector =
                 new WorkflowSelector(
                         new DirectLlmWorkflow(chatClient, null),
+                        new CorpusGroundedDirectWorkflow(
+                                chatClient,
+                                mock(SnapshotCorpusAssembler.class),
+                                new RuntimePromptBudgeter(new RagRuntimeProperties()),
+                                null),
                         new FullCorpusWorkflow(
                                 chatClient,
                                 mock(SnapshotCorpusAssembler.class),
@@ -147,6 +154,22 @@ class WorkflowSelectorTest {
     void select_fullCorpus_whenNaiveCorpusWithoutRetrieval() {
         assertTrue(selector.select(ctx(rag(false, true, MaterializationStrategy.CHUNK_LEVEL, false)))
                 instanceof FullCorpusWorkflow);
+    }
+
+    @Test
+    void select_corpusGroundedDirect_whenNaiveCorpusAndDirectWorkflowFlag() throws Exception {
+        RagConfig base = rag(false, true, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig rag =
+                RagConfig.applyJsonOverrides(base, new ObjectMapper().readTree("{\"corpusGroundedDirectWorkflow\": true}"));
+        assertTrue(selector.select(ctx(rag)) instanceof CorpusGroundedDirectWorkflow);
+    }
+
+    @Test
+    void select_fullCorpus_whenNaiveCorpusAndDirectWorkflowFlagExplicitFalse() throws Exception {
+        RagConfig base = rag(false, true, MaterializationStrategy.CHUNK_LEVEL, false);
+        RagConfig rag =
+                RagConfig.applyJsonOverrides(base, new ObjectMapper().readTree("{\"corpusGroundedDirectWorkflow\": false}"));
+        assertTrue(selector.select(ctx(rag)) instanceof FullCorpusWorkflow);
     }
 
     @Test
@@ -211,6 +234,7 @@ class WorkflowSelectorTest {
                 false,
                 false,
                 false,
+                false,
                 5,
                 0.2,
                 "l",
@@ -252,6 +276,7 @@ class WorkflowSelectorTest {
                         base.naiveFullCorpusInPromptEnabled(),
                         base.naiveFullCorpusMaxChars(),
                         base.advancedRetrievalMaxContextChars(),
+                        base.corpusGroundedDirectWorkflow(),
                         base.materializationStrategy());
         assertTrue(selector.select(ctx(bad)) instanceof ChunkDenseRagWorkflow);
     }
@@ -284,6 +309,7 @@ class WorkflowSelectorTest {
                         base.naiveFullCorpusInPromptEnabled(),
                         base.naiveFullCorpusMaxChars(),
                         base.advancedRetrievalMaxContextChars(),
+                        base.corpusGroundedDirectWorkflow(),
                         base.materializationStrategy());
         assertTrue(selector.select(ctx(ok)) instanceof ChunkDenseRagWorkflow);
     }
@@ -316,6 +342,7 @@ class WorkflowSelectorTest {
                         base.naiveFullCorpusInPromptEnabled(),
                         base.naiveFullCorpusMaxChars(),
                         base.advancedRetrievalMaxContextChars(),
+                        base.corpusGroundedDirectWorkflow(),
                         base.materializationStrategy());
         assertTrue(selector.select(ctx(ok)) instanceof ChunkDenseRagWorkflow);
     }
@@ -348,6 +375,7 @@ class WorkflowSelectorTest {
                         base.naiveFullCorpusInPromptEnabled(),
                         base.naiveFullCorpusMaxChars(),
                         base.advancedRetrievalMaxContextChars(),
+                        base.corpusGroundedDirectWorkflow(),
                         base.materializationStrategy());
         assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
     }
@@ -380,6 +408,7 @@ class WorkflowSelectorTest {
                         base.naiveFullCorpusInPromptEnabled(),
                         base.naiveFullCorpusMaxChars(),
                         base.advancedRetrievalMaxContextChars(),
+                        base.corpusGroundedDirectWorkflow(),
                         base.materializationStrategy());
         assertThrows(RagServiceException.class, () -> selector.select(ctx(bad)));
     }
@@ -396,6 +425,7 @@ class WorkflowSelectorTest {
                 false,
                 true,
                 useAdvisor,
+                false,
                 false,
                 false,
                 false,

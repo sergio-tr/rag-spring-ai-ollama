@@ -4,8 +4,10 @@ import com.uniovi.rag.domain.runtime.engine.ExecutionStageTrace;
 import com.uniovi.rag.domain.runtime.engine.ExecutionTrace;
 import com.uniovi.rag.domain.runtime.retrieval.RetrievalDiagnostics;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Privacy-safe execution hints exposed on chat assistant rows ({@code execution_metadata}) and {@link com.uniovi.rag.application.model.QueryResponse} telemetry.
@@ -23,6 +25,13 @@ public final class ChatExecutionTelemetryMapper {
             return Map.of();
         }
         Map<String, Object> m = new LinkedHashMap<>();
+        if (trace.workflowName() != null && !trace.workflowName().isBlank()) {
+            m.put("workflowName", trace.workflowName());
+        }
+        List<UUID> snapshotIds = trace.usedKnowledgeSnapshotIds();
+        if (snapshotIds != null && !snapshotIds.isEmpty()) {
+            m.put("selectedSnapshotIds", snapshotIds.stream().map(UUID::toString).toList());
+        }
         boolean clarificationRequired =
                 trace.clarificationQuestionAsked()
                         || "ASKED_CLARIFICATION".equalsIgnoreCase(trace.clarificationOutcome());
@@ -62,12 +71,16 @@ public final class ChatExecutionTelemetryMapper {
         putReasoningTelemetry(trace, m);
         trace.retrievalDiagnostics().ifPresent(d -> putRetrievalDiagnosticsTelemetry(d, m));
 
+        parseCorpusBudgetTelemetry(trace, m);
+
         if (!trace.answerGroundingPolicy().isBlank()) {
             m.put("answerGroundingPolicy", trace.answerGroundingPolicy());
             // R4 stable key (avoid recomputing policy elsewhere).
             m.put("answerPolicy", trace.answerGroundingPolicy());
+            m.put("groundingPolicy", trace.answerGroundingPolicy());
         }
         m.put("promptContextCharCount", trace.promptContextCharCount());
+        m.put("corpusChars", trace.promptContextCharCount());
         m.put("sourceCount", trace.sourceCount());
         m.put("abstentionTriggered", trace.abstentionTriggered());
         if (!trace.abstentionReason().isBlank()) {
@@ -85,6 +98,27 @@ public final class ChatExecutionTelemetryMapper {
         m.put("clarificationRequired", clarificationRequired);
 
         return Map.copyOf(m);
+    }
+
+    private static void parseCorpusBudgetTelemetry(ExecutionTrace trace, Map<String, Object> m) {
+        if (trace.stages() == null) {
+            return;
+        }
+        for (ExecutionStageTrace st : trace.stages()) {
+            if (st == null || !"context_budget".equals(st.stageName())) {
+                continue;
+            }
+            String msg = st.message();
+            if (msg == null || msg.isBlank()) {
+                return;
+            }
+            if (msg.contains("truncated=true")) {
+                m.put("corpusTruncated", true);
+            } else if (msg.contains("truncated=false")) {
+                m.put("corpusTruncated", false);
+            }
+            return;
+        }
     }
 
     private static void putReasoningTelemetry(ExecutionTrace trace, Map<String, Object> m) {

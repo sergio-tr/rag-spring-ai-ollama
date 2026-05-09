@@ -1,6 +1,6 @@
 package com.uniovi.rag.application.service.runtime;
 
-import com.uniovi.rag.configuration.RagFeatureConfiguration;
+import com.uniovi.rag.domain.knowledge.MaterializationStrategy;
 import com.uniovi.rag.domain.config.capability.CapabilitySet;
 import com.uniovi.rag.domain.config.indexing.ReindexImpact;
 import com.uniovi.rag.domain.config.prompt.SystemPromptLayers;
@@ -9,6 +9,7 @@ import com.uniovi.rag.domain.config.runtime.ResolvedRuntimeConfig;
 import com.uniovi.rag.domain.config.validation.CompatibilityResult;
 import com.uniovi.rag.domain.runtime.RagConfig;
 import com.uniovi.rag.domain.runtime.engine.ExecutionContext;
+import com.uniovi.rag.domain.runtime.engine.ExecutionStageOutcome;
 import com.uniovi.rag.domain.runtime.engine.KnowledgeSnapshotSelection;
 import com.uniovi.rag.domain.runtime.query.QueryPlan;
 import com.uniovi.rag.testsupport.ChatClientTestSupport;
@@ -50,14 +51,19 @@ class FullCorpusWorkflowGroundingTest {
     }
 
     @Test
-    void generalQuestionWithoutContext_canUseGeneralLlmAnswer() {
+    void generalQuestionWithoutCorpus_skipsLlm_andReturnsInsufficientDocumentMessage() {
         ChatClient client = ChatClientTestSupport.clientWithUserPromptReturning("Buenos dias");
         SnapshotCorpusAssembler assembler = mock(SnapshotCorpusAssembler.class);
         when(assembler.assembleFullCorpusText(any())).thenReturn("");
         FullCorpusWorkflow workflow = new FullCorpusWorkflow(client, assembler, new RuntimePromptBudgeter(new RagRuntimeProperties()), null);
 
         var out = workflow.execute(ctxWithQuery("buenos dias"));
-        assertThat(out.answerText()).isEqualTo("Buenos dias");
+        assertThat(out.answerText())
+                .isIn(
+                        RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_ES,
+                        RuntimeAnswerPrompts.INSUFFICIENT_DOCUMENT_CONTEXT_MESSAGE_EN);
+        assertThat(out.workflowStageTraces())
+                .anyMatch(s -> s.stageName().equals("llm") && s.outcome() == ExecutionStageOutcome.SKIPPED);
     }
 
     private static ExecutionContext ctxWithQuery(String query) {
@@ -68,9 +74,32 @@ class FullCorpusWorkflowGroundingTest {
         when(ctx.effectiveSystemPrompt()).thenReturn("");
         when(ctx.chatModelOverride()).thenReturn(Optional.empty());
         when(ctx.knowledgeSnapshotSelection()).thenReturn(KnowledgeSnapshotSelection.empty());
-        RagFeatureConfiguration fc = new RagFeatureConfiguration();
-        fc.setUseRetrieval(true);
-        RagConfig rag = RagConfig.fromFeatureConfiguration(fc, 10, 0.7, "l", "e", "c", "SIMPLE");
+        RagConfig rag =
+                new RagConfig(
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        10,
+                        0.7,
+                        "l",
+                        "e",
+                        "c",
+                        "SIMPLE",
+                        true,
+                        RagConfig.DEFAULT_NAIVE_FULL_CORPUS_MAX_CHARS,
+                        RagConfig.DEFAULT_ADVANCED_RETRIEVAL_MAX_CONTEXT_CHARS,
+                        MaterializationStrategy.CHUNK_LEVEL);
         ResolvedRuntimeConfig resolved =
                 new ResolvedRuntimeConfig(
                         rag,

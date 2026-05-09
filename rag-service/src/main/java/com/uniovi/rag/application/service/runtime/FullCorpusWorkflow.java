@@ -60,11 +60,16 @@ public class FullCorpusWorkflow extends AbstractExecutionWorkflow {
                         + " finalChars=" + budget.finalChars()
                         + " budgetChars=" + budget.budgetChars()
                         + " reason=" + budget.reason()));
-        if (docBound && corpusSafe.isBlank()) {
+        if (corpusSafe.isBlank()) {
             answer = RuntimeAnswerPrompts.insufficientDocumentContextMessageFor(q);
             abstention = true;
-            abstentionReason = "no_document_evidence";
-            stages.add(stage("llm", t1, ExecutionStageOutcome.SKIPPED, "strict_document_grounding_no_context"));
+            abstentionReason = docBound ? "no_document_evidence" : "corpus_required_empty";
+            stages.add(
+                    stage(
+                            "llm",
+                            t1,
+                            ExecutionStageOutcome.SKIPPED,
+                            docBound ? "strict_document_grounding_no_context" : "corpus_required_no_document_evidence"));
         } else {
             String user =
                     RuntimeAnswerPrompts.ragUserTurn(

@@ -219,7 +219,9 @@ public final class RuntimeAnswerPrompts {
 
         AnswerGroundingPolicy p = policy != null ? policy : AnswerGroundingPolicy.ATTEMPT_WITH_CONTEXT;
         return switch (p) {
-            case DIRECT_BASELINE -> String.format(DIRECT_BASELINE_USER_TEMPLATE, planSection, q);
+            case DIRECT_UNGROUNDED_BASELINE -> String.format(DIRECT_BASELINE_USER_TEMPLATE, planSection, q);
+            case CORPUS_GROUNDED_BASELINE ->
+                    String.format(ATTEMPT_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
             case STRICT_GROUNDED -> String.format(STRICT_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
             case NEGATIVE_GROUNDED -> String.format(NEGATIVE_DOCUMENT_TEMPLATE, planSection, q, contextCombined);
             case ATTEMPT_WITH_CONTEXT -> String.format(ATTEMPT_DOCUMENT_TEMPLATE, planSection, q, contextCombined);

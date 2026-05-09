@@ -12,14 +12,19 @@ public final class AnswerGroundingPolicySelector {
     }
 
     /**
-     * P0-like (no retrieval): {@link AnswerGroundingPolicy#DIRECT_BASELINE}.
-     * P1–P3 / low RAG: {@link AnswerGroundingPolicy#ATTEMPT_WITH_CONTEXT} when retrieval is on.
-     * P4+ stricter stacks: {@link AnswerGroundingPolicy#STRICT_GROUNDED} when judge + metadata are on.
-     * Post-retrieval stacks: {@link AnswerGroundingPolicy#NEGATIVE_GROUNDED} when post-processing is on (unless strict wins).
+     * Ungrounded direct chat (no retrieval, no assembled corpus): {@link AnswerGroundingPolicy#DIRECT_UNGROUNDED_BASELINE}.
+     * Corpus-grounded without retrieval (naive full corpus): {@link AnswerGroundingPolicy#CORPUS_GROUNDED_BASELINE}.
+     * Dense RAG: {@link AnswerGroundingPolicy#ATTEMPT_WITH_CONTEXT} and stricter variants when retrieval is on.
      */
     public static AnswerGroundingPolicy from(RagConfig rag) {
-        if (rag == null || !rag.useRetrieval()) {
-            return AnswerGroundingPolicy.DIRECT_BASELINE;
+        if (rag == null) {
+            return AnswerGroundingPolicy.DIRECT_UNGROUNDED_BASELINE;
+        }
+        if (!rag.useRetrieval()) {
+            if (rag.naiveFullCorpusInPromptEnabled()) {
+                return AnswerGroundingPolicy.CORPUS_GROUNDED_BASELINE;
+            }
+            return AnswerGroundingPolicy.DIRECT_UNGROUNDED_BASELINE;
         }
         if (rag.judgeEnabled() && rag.metadataEnabled()) {
             return AnswerGroundingPolicy.STRICT_GROUNDED;

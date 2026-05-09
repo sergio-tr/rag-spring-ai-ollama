@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 public class WorkflowSelector {
 
     private final DirectLlmWorkflow directLlmWorkflow;
+    private final CorpusGroundedDirectWorkflow corpusGroundedDirectWorkflow;
     private final FullCorpusWorkflow fullCorpusWorkflow;
     private final DocumentDenseRagWorkflow documentDenseRagWorkflow;
     private final ChunkDenseRagWorkflow chunkDenseRagWorkflow;
@@ -21,11 +22,13 @@ public class WorkflowSelector {
 
     public WorkflowSelector(
             DirectLlmWorkflow directLlmWorkflow,
+            CorpusGroundedDirectWorkflow corpusGroundedDirectWorkflow,
             FullCorpusWorkflow fullCorpusWorkflow,
             DocumentDenseRagWorkflow documentDenseRagWorkflow,
             ChunkDenseRagWorkflow chunkDenseRagWorkflow,
             ChunkDenseMetadataWorkflow chunkDenseMetadataWorkflow) {
         this.directLlmWorkflow = directLlmWorkflow;
+        this.corpusGroundedDirectWorkflow = corpusGroundedDirectWorkflow;
         this.fullCorpusWorkflow = fullCorpusWorkflow;
         this.documentDenseRagWorkflow = documentDenseRagWorkflow;
         this.chunkDenseRagWorkflow = chunkDenseRagWorkflow;
@@ -59,7 +62,7 @@ public class WorkflowSelector {
             return directLlmWorkflow;
         }
         if (!rag.useRetrieval() && rag.naiveFullCorpusInPromptEnabled()) {
-            return fullCorpusWorkflow;
+            return rag.corpusGroundedDirectWorkflow() ? corpusGroundedDirectWorkflow : fullCorpusWorkflow;
         }
         if (rag.useRetrieval() && strategy == MaterializationStrategy.DOCUMENT_LEVEL) {
             return documentDenseRagWorkflow;

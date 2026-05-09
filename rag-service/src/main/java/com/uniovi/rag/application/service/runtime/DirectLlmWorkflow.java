@@ -34,7 +34,7 @@ public class DirectLlmWorkflow extends AbstractExecutionWorkflow {
         boolean abstention = false;
         String abstentionReason = "";
 
-        if (policy == AnswerGroundingPolicy.DIRECT_BASELINE) {
+        if (policy == AnswerGroundingPolicy.DIRECT_UNGROUNDED_BASELINE) {
             String user = RuntimeAnswerPrompts.directBaselineUserTurn(q, answerPlanBlock(ctx));
             answer = invokeChat(ctx, ctx.effectiveSystemPrompt(), user);
             stages.add(stage("llm", t0, ExecutionStageOutcome.SUCCESS, "direct_baseline"));
