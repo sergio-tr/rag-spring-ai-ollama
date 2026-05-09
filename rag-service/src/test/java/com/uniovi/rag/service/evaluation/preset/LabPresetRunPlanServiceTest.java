@@ -49,7 +49,6 @@ class LabPresetRunPlanServiceTest {
                 plan.groups().stream().map(g -> g.groupKey().name()).toList();
         assertThat(keys)
                 .containsExactly(
-                        LabPresetRunGroupKey.NO_INDEX.name(),
                         LabPresetRunGroupKey.DOCUMENT_LEVEL.name(),
                         LabPresetRunGroupKey.CHUNK_LEVEL.name(),
                         LabPresetRunGroupKey.CHUNK_LEVEL_METADATA.name(),
@@ -141,8 +140,8 @@ class LabPresetRunPlanServiceTest {
 
         LabPresetRunPlanModels.LabPresetRunPlan plan =
                 sut.build(run, List.of(RagExperimentalPresetCode.P0, RagExperimentalPresetCode.P1, RagExperimentalPresetCode.P2));
-        assertThat(plan.executablePresetCodes()).contains("P0", "P1");
-        assertThat(plan.skippedPresetCodes()).containsKey("P2");
+        assertThat(plan.executablePresetCodes()).isEmpty();
+        assertThat(plan.skippedPresetCodes()).containsKeys("P0", "P1", "P2");
         assertThat(plan.groups().stream().anyMatch(g -> g.requiresReindex())).isTrue();
     }
 

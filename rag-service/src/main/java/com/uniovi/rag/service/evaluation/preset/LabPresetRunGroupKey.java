@@ -4,7 +4,7 @@ package com.uniovi.rag.service.evaluation.preset;
  * Execution bucket for thesis P0–P14 preset sweeps (index-aware Lab planning).
  */
 public enum LabPresetRunGroupKey {
-    /** P0, P1 — no vector index requirements. */
+    /** Presets with {@link ExperimentalPresetCanonicalCatalog.RequiredMaterialization#NONE} only (no remaining thesis presets here after P0/P1 index alignment). */
     NO_INDEX,
     /** P2 — document-level dense retrieval. */
     DOCUMENT_LEVEL,

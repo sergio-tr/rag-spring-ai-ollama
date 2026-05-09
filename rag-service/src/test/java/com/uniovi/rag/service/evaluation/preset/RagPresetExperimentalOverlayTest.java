@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RagPresetExperimentalOverlayTest {
 
     @Test
-    void p0_direct_llm_disables_retrieval_in_features_and_terminal_json() {
+    void p0_corpus_grounded_direct_disables_retrieval_in_features_and_terminal_json() {
         RagFeatureConfiguration base = new RagFeatureConfiguration();
         base.setUseRetrieval(true);
         base.setToolsEnabled(true);
@@ -22,7 +22,8 @@ class RagPresetExperimentalOverlayTest {
         assertThat(o.features().isToolsEnabled()).isFalse();
         ObjectNode j = o.terminalRuntimeJson();
         assertThat(j.get("useRetrieval").asBoolean()).isFalse();
-        assertThat(j.get("naiveFullCorpusInPromptEnabled").asBoolean()).isFalse();
+        assertThat(j.get("naiveFullCorpusInPromptEnabled").asBoolean()).isTrue();
+        assertThat(j.get("corpusGroundedDirectWorkflow").asBoolean()).isTrue();
     }
 
     @Test

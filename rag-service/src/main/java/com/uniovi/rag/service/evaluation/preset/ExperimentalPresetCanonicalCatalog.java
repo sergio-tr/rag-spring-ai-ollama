@@ -62,7 +62,9 @@ public final class ExperimentalPresetCanonicalCatalog {
                 Map.ofEntries(
                         Map.entry("useRetrieval", false),
                         Map.entry("useAdvisor", false),
-                        Map.entry("naiveFullCorpusInPromptEnabled", false),
+                        Map.entry("naiveFullCorpusInPromptEnabled", true),
+                        Map.entry("corpusGroundedDirectWorkflow", true),
+                        Map.entry("naiveFullCorpusMaxChars", 32_000),
                         Map.entry("materializationStrategy", "CHUNK_LEVEL"),
                         // Explicitly off for determinism in Chat UI toggles.
                         Map.entry("metadataEnabled", false),
@@ -81,7 +83,7 @@ public final class ExperimentalPresetCanonicalCatalog {
                         Map.entry("topK", 5),
                         Map.entry("similarityThreshold", 0.7)
                 ),
-                IndexRequirements.none(),
+                new IndexRequirements(RequiredMaterialization.CHUNK_LEVEL, false),
                 false);
 
         define(
@@ -91,11 +93,12 @@ public final class ExperimentalPresetCanonicalCatalog {
                 Map.of(
                         "useRetrieval", false,
                         "naiveFullCorpusInPromptEnabled", true,
+                        "corpusGroundedDirectWorkflow", false,
                         "naiveFullCorpusMaxChars", 32_000,
                         "topK", 3,
                         "similarityThreshold", 0.9
                 ),
-                IndexRequirements.none(),
+                null,
                 false);
 
         define(
@@ -105,6 +108,7 @@ public final class ExperimentalPresetCanonicalCatalog {
                 Map.of(
                         "useRetrieval", true,
                         "naiveFullCorpusInPromptEnabled", false,
+                        "corpusGroundedDirectWorkflow", false,
                         "materializationStrategy", "DOCUMENT_LEVEL",
                         "topK", 8,
                         "similarityThreshold", 0.72
@@ -330,6 +334,45 @@ public final class ExperimentalPresetCanonicalCatalog {
 
     public static boolean requiresMultiTurn(RagExperimentalPresetCode code) {
         return require(code).requiresMultiTurn();
+    }
+
+    /** P0/P1 assemble documentary evidence from {@code vector_store} chunks bound to an index snapshot (Lab gate). */
+    public static boolean requiresSnapshotAssembledCorpusEvidence(RagExperimentalPresetCode code) {
+        return code == RagExperimentalPresetCode.P0 || code == RagExperimentalPresetCode.P1;
+    }
+
+    /**
+     * All thesis experimental presets (P0–P14) are defined for project-scoped document-backed evaluation; the runtime
+     * still enforces evidence availability per workflow (single-turn Lab uses P0–P12 only).
+     */
+    public static boolean corpusRequired(RagExperimentalPresetCode code) {
+        return code != null && code.ordinal() <= RagExperimentalPresetCode.P14.ordinal();
+    }
+
+    /**
+     * READY {@code PROJECT_SHARED} documents with storage are required before corpus assembly / retrieval can succeed.
+     */
+    public static boolean requiresProjectDocuments(RagExperimentalPresetCode code) {
+        return corpusRequired(code);
+    }
+
+    /**
+     * True when execution reads snapshot-bound {@code vector_store} rows (assembled corpus for P0/P1 or materialized index for P2+).
+     */
+    public static boolean requiresSnapshotForExecution(RagExperimentalPresetCode code) {
+        if (code == null) {
+            return false;
+        }
+        if (requiresSnapshotAssembledCorpusEvidence(code)) {
+            return true;
+        }
+        RequiredMaterialization mat = effectiveIndexRequirements(code).requiredMaterialization();
+        return mat != null && mat != RequiredMaterialization.NONE;
+    }
+
+    /** Single-turn Lab benchmark harness ({@code RAG_PRESET_END_TO_END}) supports P0–P12 only. */
+    public static boolean singleTurnBenchmarkSelectable(RagExperimentalPresetCode code) {
+        return code != null && code.ordinal() <= RagExperimentalPresetCode.P12.ordinal();
     }
 
     public static RagExperimentalPresetCode tryResolveCodeByProductPresetId(UUID presetId) {
