@@ -109,6 +109,11 @@ public class LabBenchmarkController {
                         null,
                         null,
                         null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
                         null);
         BenchmarkJobAccepted accepted =
                 benchmarkRunOrchestrator.startClassifierMetrics(

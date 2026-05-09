@@ -66,6 +66,10 @@ public class LabExperimentalPresetCatalogService {
             boolean labSelectable = blockedByLabHarness.isEmpty();
             boolean labOnly = labSelectable && !chatSelectable;
             var idxReq = ExperimentalPresetCanonicalCatalog.effectiveIndexRequirements(code);
+            boolean corpusReq = ExperimentalPresetCanonicalCatalog.corpusRequired(code);
+            boolean snapReq = ExperimentalPresetCanonicalCatalog.requiresSnapshotForExecution(code);
+            boolean docsReq = ExperimentalPresetCanonicalCatalog.requiresProjectDocuments(code);
+            boolean singleTurnBench = ExperimentalPresetCanonicalCatalog.singleTurnBenchmarkSelectable(code);
             out.add(
                     new ExperimentalPresetCatalogItemDto(
                             experimentalProductPresetId(code),
@@ -81,11 +85,15 @@ public class LabExperimentalPresetCatalogService {
                             supportStatus,
                             blockedByRuntime.orElse(null),
                             requiresMultiTurn(code),
-                            capabilities(d, code),
+                            capabilities(d, code, effective),
                             ALLOWED_OUTCOMES,
                             chatSelectable,
                             labSelectable,
-                            labOnly));
+                            labOnly,
+                            corpusReq,
+                            snapReq,
+                            docsReq,
+                            singleTurnBench));
         }
         out.sort(Comparator.comparing(ExperimentalPresetCatalogItemDto::code));
         return out;
@@ -97,7 +105,7 @@ public class LabExperimentalPresetCatalogService {
             return "NOT_SUPPORTED";
         }
         if (labBenchmarkBlocked && (code == RagExperimentalPresetCode.P13 || code == RagExperimentalPresetCode.P14)) {
-            return "REQUIRES_MULTI_TURN";
+            return "FUTURE_MULTI_TURN_NOT_SELECTABLE";
         }
         return "EXECUTABLE";
     }
@@ -141,7 +149,7 @@ public class LabExperimentalPresetCatalogService {
         return ExperimentalPresetCanonicalCatalog.productPresetId(code).toString();
     }
 
-    private static Map<String, Object> capabilities(RagPresetDefinition d, RagExperimentalPresetCode code) {
+    private static Map<String, Object> capabilities(RagPresetDefinition d, RagExperimentalPresetCode code, RagConfig effective) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("code", code.name());
         m.put("retrieval", d != null ? d.retrieval() : "");
@@ -150,6 +158,8 @@ public class LabExperimentalPresetCatalogService {
         m.put("memory", d != null ? d.memory() : "");
         m.put("judges", d != null ? d.judges() : "");
         m.put("datasetPolicy", d != null ? d.datasetPolicy() : "");
+        // Canonical resolved flags (same semantics as Chat terminal preset JSON + Lab overlay).
+        m.put("runtimeFeatureFlags", effective.toValueMap());
         return m;
     }
 }

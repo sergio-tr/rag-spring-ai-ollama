@@ -50,7 +50,13 @@ public interface EvaluationRunRepository extends JpaRepository<EvaluationRunEnti
             @Param("projectId") UUID projectId,
             @Param("statuses") List<AsyncTaskStatus> statuses);
 
-    @Query("SELECT r FROM EvaluationRunEntity r JOIN FETCH r.dataset WHERE r.id = :id")
+    @Query("""
+            SELECT r FROM EvaluationRunEntity r
+            JOIN FETCH r.dataset
+            JOIN FETCH r.user
+            LEFT JOIN FETCH r.project
+            WHERE r.id = :id
+            """)
     Optional<EvaluationRunEntity> findByIdFetchDataset(@Param("id") UUID id);
 
     List<EvaluationRunEntity> findByCampaign_IdOrderByCreatedAtAsc(UUID campaignId);

@@ -14,6 +14,7 @@ import com.uniovi.rag.domain.evaluation.workbook.WorkbookParseResult;
 import com.uniovi.rag.domain.evaluation.workbook.EvaluationWorkbook;
 import com.uniovi.rag.application.evaluation.workbook.EvaluationWorkbookParser;
 import com.uniovi.rag.application.evaluation.workbook.LabDatasetGateValidator;
+import com.uniovi.rag.application.service.evaluation.lab.LabCorpusBootstrapErrors;
 import com.uniovi.rag.domain.evaluation.workbook.ValidationReport;
 import com.uniovi.rag.application.port.EvaluationDatasetStorePort;
 import com.uniovi.rag.infrastructure.persistence.EvaluationDatasetRepository;
@@ -67,6 +68,7 @@ public class BenchmarkRunOrchestrator {
     static final String AGG_KEY_AUTO_REINDEX_LOCK_ACQUIRED = "autoReindexLockAcquired";
     static final String AGG_KEY_AUTO_REINDEX_MODE = "autoReindexMode";
     static final String AGG_KEY_AUTO_REINDEX_WARNING = "autoReindexWarning";
+    static final String AGG_KEY_CORPUS_BOOTSTRAP_POLICY = "corpusBootstrapPolicy";
 
     private final UserRepository userRepository;
     private final EvaluationDatasetRepository evaluationDatasetRepository;
@@ -138,6 +140,7 @@ public class BenchmarkRunOrchestrator {
 
         validateRunKind(roleName, request.runKind());
         validateAutoReindexRequest(kind, request);
+        validateClasspathCorpusBootstrapRequest(kind, request);
         requireNoActiveLabJob(userId, request.projectId());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -202,6 +205,7 @@ public class BenchmarkRunOrchestrator {
             UUID userId, String roleName, BenchmarkKind kind, StartBenchmarkRunRequest request) {
         validateRunKind(roleName, request.runKind());
         validateAutoReindexRequest(kind, request);
+        validateClasspathCorpusBootstrapRequest(kind, request);
         requireNoActiveLabJob(userId, request.projectId());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -243,6 +247,7 @@ public class BenchmarkRunOrchestrator {
     private BenchmarkJobAccepted startLlmCampaign(
             UUID userId, String roleName, BenchmarkKind kind, StartBenchmarkRunRequest request) {
         validateRunKind(roleName, request.runKind());
+        validateClasspathCorpusBootstrapRequest(kind, request);
         requireNoActiveLabJob(userId, request.projectId());
         EvaluationDatasetEntity dataset = loadAndAuthorizeDataset(userId, roleName, request.datasetId());
         validateDatasetForKind(dataset, kind);
@@ -298,7 +303,12 @@ public class BenchmarkRunOrchestrator {
                             request.autoReindex(),
                             request.allowActiveSnapshotMutation(),
                             request.reuseCompatibleActiveSnapshot(),
-                            request.failOnReindexFailure());
+                            request.failOnReindexFailure(),
+                            request.bootstrapCorpusFromClasspathDocs(),
+                            request.classpathDocsLocation(),
+                            request.bootstrapCorpusScope(),
+                            request.bootstrapSkipExisting(),
+                            request.bootstrapFailOnDocumentError());
             EvaluationRunEntity run = baseRun(userId, request.projectId(), dataset, kind, childReq);
             run.setCampaign(camp);
             run.setName(childRunName(request.name(), kind, modelId));
@@ -526,7 +536,9 @@ public class BenchmarkRunOrchestrator {
             run.setPreset(preset);
         }
         run.setEmbeddingDownstreamRag(request.embeddingDownstreamRagEffective());
-        if (!request.experimentalPresetCodes().isEmpty() || request.autoReindexEffective()) {
+        if (!request.experimentalPresetCodes().isEmpty()
+                || request.autoReindexEffective()
+                || request.bootstrapCorpusFromClasspathDocsEffective()) {
             Map<String, Object> agg = new LinkedHashMap<>();
             if (run.getAggregatesJson() != null && !run.getAggregatesJson().isEmpty()) {
                 agg.putAll(run.getAggregatesJson());
@@ -540,6 +552,15 @@ public class BenchmarkRunOrchestrator {
                 agg.put(AGG_KEY_AUTO_REINDEX_MODE, "CONTROLLED_ACTIVE_SNAPSHOT_MUTATION");
                 agg.put(AGG_KEY_AUTO_REINDEX_WARNING, "ACTIVE_SNAPSHOT_MUTATION_ACCEPTED");
             }
+            if (request.bootstrapCorpusFromClasspathDocsEffective()) {
+                Map<String, Object> corpusPolicy = new LinkedHashMap<>();
+                corpusPolicy.put("enabled", true);
+                corpusPolicy.put("classpathDocsLocation", request.classpathDocsLocationOrDefault());
+                corpusPolicy.put("corpusScope", request.bootstrapCorpusScopeOrDefault());
+                corpusPolicy.put("skipExisting", request.bootstrapSkipExistingEffective());
+                corpusPolicy.put("failOnDocumentError", request.bootstrapFailOnDocumentErrorEffective());
+                agg.put(AGG_KEY_CORPUS_BOOTSTRAP_POLICY, corpusPolicy);
+            }
             run.setAggregatesJson(Map.copyOf(agg));
         }
         if (request.llmModelId() != null && !request.llmModelId().isBlank()) {
@@ -547,6 +568,19 @@ public class BenchmarkRunOrchestrator {
         }
         if (request.embeddingModelId() != null && !request.embeddingModelId().isBlank()) {
             run.setEmbeddingModelId(request.embeddingModelId().trim());
+        }
+    }
+
+    private static void validateClasspathCorpusBootstrapRequest(BenchmarkKind kind, StartBenchmarkRunRequest request) {
+        if (request == null || !request.bootstrapCorpusFromClasspathDocsEffective()) {
+            return;
+        }
+        if (kind != BenchmarkKind.RAG_PRESET_END_TO_END) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, LabCorpusBootstrapErrors.UNSUPPORTED_BENCHMARK_KIND);
+        }
+        if (request.projectId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, LabCorpusBootstrapErrors.REQUIRES_PROJECT);
         }
     }
 

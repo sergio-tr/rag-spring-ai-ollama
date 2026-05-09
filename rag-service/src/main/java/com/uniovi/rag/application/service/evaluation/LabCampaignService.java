@@ -77,6 +77,11 @@ public class LabCampaignService {
                         null,
                         null,
                         null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
                         null);
 
         BenchmarkJobAccepted accepted = orchestrator.startJsonBenchmark(userId, "USER", kind, body);

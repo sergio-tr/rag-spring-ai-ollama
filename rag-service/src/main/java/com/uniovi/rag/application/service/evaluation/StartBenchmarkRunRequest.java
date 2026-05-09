@@ -39,7 +39,17 @@ public record StartBenchmarkRunRequest(
         /** When true, prefer reusing the current compatible ACTIVE snapshot instead of triggering rebuild. */
         Boolean reuseCompatibleActiveSnapshot,
         /** When true, fail the benchmark when auto-reindex fails (instead of skipping incompatible groups). */
-        Boolean failOnReindexFailure) {
+        Boolean failOnReindexFailure,
+        /** When true, Lab loads classpath resources into project documents before RAG_PRESET_END_TO_END (explicit only). */
+        Boolean bootstrapCorpusFromClasspathDocs,
+        /** Ant-style classpath pattern; default matches project docs tree via {@link #classpathDocsLocationOrDefault()}. */
+        String classpathDocsLocation,
+        /** Corpus scope string for bootstrap rows; default PROJECT_SHARED. */
+        String bootstrapCorpusScope,
+        /** When true, reuse READY rows with same filename (+checksum when present). */
+        Boolean bootstrapSkipExisting,
+        /** When true, fail the run when any classpath document cannot be ingested. */
+        Boolean bootstrapFailOnDocumentError) {
 
     public StartBenchmarkRunRequest {
         runKind = runKind == null ? EvaluationRunKind.PRODUCT_EXPLORATION : runKind;
@@ -64,6 +74,10 @@ public record StartBenchmarkRunRequest(
                 reuseCompatibleActiveSnapshot == null ? Boolean.TRUE : Boolean.TRUE.equals(reuseCompatibleActiveSnapshot);
         failOnReindexFailure =
                 failOnReindexFailure == null ? Boolean.TRUE : Boolean.TRUE.equals(failOnReindexFailure);
+        bootstrapCorpusFromClasspathDocs = Boolean.TRUE.equals(bootstrapCorpusFromClasspathDocs);
+        bootstrapSkipExisting = bootstrapSkipExisting == null ? Boolean.TRUE : Boolean.TRUE.equals(bootstrapSkipExisting);
+        bootstrapFailOnDocumentError =
+                bootstrapFailOnDocumentError == null ? Boolean.TRUE : Boolean.TRUE.equals(bootstrapFailOnDocumentError);
     }
 
     public boolean embeddingDownstreamRagEffective() {
@@ -88,5 +102,29 @@ public record StartBenchmarkRunRequest(
 
     public boolean failOnReindexFailureEffective() {
         return Boolean.TRUE.equals(failOnReindexFailure);
+    }
+
+    public boolean bootstrapCorpusFromClasspathDocsEffective() {
+        return Boolean.TRUE.equals(bootstrapCorpusFromClasspathDocs);
+    }
+
+    public String classpathDocsLocationOrDefault() {
+        return classpathDocsLocation != null && !classpathDocsLocation.isBlank()
+                ? classpathDocsLocation.trim()
+                : "classpath*:docs/**/*";
+    }
+
+    public String bootstrapCorpusScopeOrDefault() {
+        return bootstrapCorpusScope != null && !bootstrapCorpusScope.isBlank()
+                ? bootstrapCorpusScope.trim()
+                : "PROJECT_SHARED";
+    }
+
+    public boolean bootstrapSkipExistingEffective() {
+        return Boolean.TRUE.equals(bootstrapSkipExisting);
+    }
+
+    public boolean bootstrapFailOnDocumentErrorEffective() {
+        return Boolean.TRUE.equals(bootstrapFailOnDocumentError);
     }
 }
