@@ -39,7 +39,7 @@ export SONAR_TOKEN=your_token
 
 ## Closure mode (strict integration + fullstack E2E)
 
-When collecting closure-grade evidence (TFG annexes, release readiness), run:
+When collecting closure-grade evidence (annexes, release readiness), run:
 
 ```bash
 # Strict stack integration (no false-green: fails if everything was skipped)

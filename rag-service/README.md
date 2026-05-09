@@ -60,6 +60,14 @@ RAG (Retrieval-Augmented Generation) system with Spring Boot, Spring AI, Ollama 
 
 Run the full **`rag-service`** suite with working directory **`rag-service/`**: **`mvn test`** exits **0**. From a parent Maven reactor that lists **`rag-service`** as a module, **`mvn test -pl rag-service`** is equivalent. **T-P61-carry-p56-p60** requires **no weakening** of any test or Arch rule from **P56** through **P60**.
 
+## Lab benchmark — classpath corpus (thesis / reproducible runs)
+
+- **Location in this module:** add PDF or text actas under `src/main/resources/docs/`. Maven packages `src/main/resources` into the backend JAR, so the default pattern `classpath*:docs/**/*` resolves at runtime.
+- **Docker image:** `rag-service/Dockerfile` copies `src` and runs `./mvnw package`, so the same resources are present in the container JAR (no extra volume is required for shipped actas).
+- **API:** set `bootstrapCorpusFromClasspathDocs: true` (and optional `classpathDocsLocation`, `bootstrapCorpusScope`, `bootstrapSkipExisting`, `bootstrapFailOnDocumentError`) on `POST {product-base}/lab/benchmarks/RAG_PRESET_END_TO_END/runs` — see `StartBenchmarkRunRequest`.
+- **Order of operations:** the async `EVAL_RAG` job runs classpath bootstrap **before** typed dataset resolution and **before** acquiring the auto-reindex project lock, so `PROJECT_SHARED` documents exist prior to index rebuilds.
+- **Audit trail:** counters and scope are logged at INFO and persisted on the run as `evaluation_run.aggregates_json.corpusBootstrap` (and a structured failure map if bootstrap aborts).
+
 ## Build and run
 
 ### Backend (Spring Boot)
@@ -189,7 +197,7 @@ The `postgres` and `backend` services load **db/.env** for DB credentials. Port 
 
 Use **product** routes under `{product}/lab` (JWT). Canonical runs live in `evaluation_run` + `evaluation_result`; `async_task` is operational (poll `/lab/jobs/{asyncTaskId}`).
 
-**Internal reference workbook (TFG canonical dataset):** the canonical XLSX is shipped as a **classpath resource** at
+**Internal reference workbook (canonical dataset):** the canonical XLSX is shipped as a **classpath resource** at
 `evaluation/rag_experiment_datasets_and_protocols.xlsx` (under `rag-service/src/main/resources/evaluation/`) and loaded by
 `EvaluationReferenceBundleLoader` (typed parse + `ValidationReport`). There is **no** runtime fallback to any legacy or
 sample dataset; if the bundle is missing or invalid, Lab readiness surfaces report it and typed benchmarks must not run.
@@ -200,7 +208,7 @@ sample dataset; if the bundle is missing or invalid, Lab readiness surfaces repo
 
 **Typed benchmark runs:** `POST /lab/benchmarks/{kind}/runs` creates an `evaluation_run`; async jobs carry **`evaluation_run_id`**. Handlers resolve **`evaluation_dataset`** (`experimental_kind` + `storage_uri`; seeded **`REFERENCE_BUNDLE`** → `classpath:evaluation/rag_experiment_datasets_and_protocols.xlsx`) via **`ExperimentalDatasetResolver`** → **`EvaluationWorkbookParser`** → typed rows — **without** calling **`EvaluationService#getQuestionsAndAnswers()`**.
 
-**RAG preset catalog (`RAG_PRESET_END_TO_END`):** persisted **`evaluation_run.aggregates_json`** copies **`evaluation_summary`**, including **`runPlan`** (index-aware grouping of requested presets vs the resolved active or run-linked snapshot, plus executable vs skipped preset codes). **`evaluation_result.metrics_payload`** stores **`groupKey`** and index compatibility fields for nested MVP JSON and flat CSV exports.
+**RAG preset catalog (`RAG_PRESET_END_TO_END`):** persisted **`evaluation_run.aggregates_json`** copies **`evaluation_summary`**, including **`runPlan`** (index-aware grouping of requested presets vs the resolved active or run-linked snapshot, plus executable vs skipped preset codes). **`evaluation_result.metrics_payload`** stores thesis-grade traceability: preset identity (**`presetCode`**, **`presetLabel`**, **`productPresetId`**), effective feature flags (**`activeFeatures`** plus scalar mirrors), inferred **`workflowName`**, corpus evidence (**`corpusRequired`**, **`corpusAvailable`**, **`corpusChars`**, **`corpusTruncated`**), snapshot scope (**`selectedSnapshotIds`**, **`effectiveGroupSnapshotId`**), index/reindex (**`indexCompatibilityStatus`**, **`reindexAction`**, **`reindexStatus`**, **`forcedSnapshotSelection`**), **`materializationStrategy`**, **`groundingPolicy`**, and skip semantics (**`skippedReasonCode`**, **`skippedReason`**). Telemetry from execution merges on top of this baseline. Thesis presets **P0**/**P1** assemble evidence from **`vector_store`** chunks bound to a snapshot; missing READY **`PROJECT_SHARED`** documents or empty indexed corpus yields **`SKIPPED`** with **`CORPUS_REQUIRED`** (no LLM call).
 
 **Legacy Lab `POST /lab/evaluations/llm` / `rag`:** respond with **410 Gone** (`LAB_EVALUATIONS_LEGACY_REMOVED`); use canonical benchmark routes instead.
 
@@ -216,7 +224,7 @@ sample dataset; if the bundle is missing or invalid, Lab readiness surfaces repo
 
 Export: `GET /lab/runs/{id}/export?format=csv` (first line `#META:` + JSON run header, then CSV rows) or `format=json`.
 
-**MVP thesis bundle (Phase 7):** `GET /lab/runs/{id}/export/mvp/items.csv` (flat per-item metrics), `GET /lab/runs/{id}/export/mvp/items.json` (nested `mvp` block + raw `metricsPayload`), `GET /lab/runs/{id}/export/mvp/rollups.json` (`outcomeCounts` + `onExecuted` / `retrievalOnExecutedWhereApplicable` — means exclude `NOT_SUPPORTED` / non-`EXECUTED`).
+**MVP thesis bundle (Phase 7):** `GET /lab/runs/{id}/export/mvp/items.csv` (flat per-item metrics; includes traceability columns aligned with **`metrics_payload`** keys such as **`workflowName`**, **`activeFeatures`**, corpus and snapshot fields), `GET /lab/runs/{id}/export/mvp/items.json` (nested `mvp` block + raw `metricsPayload`), `GET /lab/runs/{id}/export/mvp/rollups.json` (`outcomeCounts` + `onExecuted` / `retrievalOnExecutedWhereApplicable` — means exclude `NOT_SUPPORTED` / non-`EXECUTED`).
 
 ### Thesis empirical evidence
 
